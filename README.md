@@ -1,0 +1,66 @@
+# Bao M0 Spike
+
+Proves the risky core: **record → deterministic replay** on a single page.
+No LLM, no backend, no cross-navigation (those are M1+).
+
+## Load it
+1. `chrome://extensions` → toggle **Developer mode** (top right)
+2. **Load unpacked** → select this folder (`bao-browser-m0`)
+3. Pin the extension, open any normal `http(s)` page (not `chrome://` pages)
+
+## Try it
+1. Click the icon → **● Record**
+2. Click around / type into fields on the page
+3. Reopen the icon → **■ Stop** (shows the captured steps in plain English)
+4. Reload or reset the page → **▶ Replay** (watch the red highlight re-drive it)
+
+## Test it (automated)
+A headless e2e loads the unpacked extension, records a real session on a fixture
+page, replays it, and dumps the artifacts to `out/`.
+
+```sh
+npm install
+npx playwright install chromium   # one-time: downloads the browser
+npm test                          # HEADED=1 npm test to watch it run
+```
+
+It drives the **real** `content.js` through `chrome.tabs.sendMessage` (the same
+path `popup.js` uses) and asserts the page was actually re-driven. Outputs:
+- `out/recorded-steps.json` — captured steps with the ranked selector candidates
+- `out/replay-results.json` — per-step resolution (`via` selector) + the events the page fired during replay
+
+## Test against a real, logged-in site (Substack, LinkedIn, …)
+The fixture above runs in a throwaway profile. To drive a real authenticated page
+you need a **persistent profile** (so your login survives) and a **headed**
+browser (so you can log in and interact by hand). `test/live.mjs` does this:
+
+```sh
+# 1) One-time: log in. A real Chrome window opens — log in fully, then press Enter.
+node test/live.mjs login  https://substack.com
+
+# 2) Record: interact with the page yourself, then press Enter to stop.
+node test/live.mjs record https://YOURPUB.substack.com/publish/post --out out/post.json
+
+# 3) Replay: re-drives the page from the saved steps.
+node test/live.mjs replay https://YOURPUB.substack.com/publish/post --in out/post.json
+```
+
+The session is stored in `.chrome-profile/` (git-ignored) and reused on every run,
+so you only log in once. `--seconds N` auto-stops recording instead of waiting for Enter.
+
+**Reality check on dynamic pages:** replay is only as deterministic as the page.
+A *stable* surface (compose box, settings form) replays reliably; an ever-changing
+**feed** is a poor target — text/aria selectors won't re-resolve once the content
+scrolls away. That's an M0 limit, not a bug (see below). Target stable UI to test.
+
+## What it demonstrates (the M0 risk-burndown)
+- **Ranked multi-selector capture** (`content.js` → `getSelectors`): testid > aria > text > stable id > css path
+- **Multi-selector fallback resolution** (`resolveStep`): tries each selector, first hit wins
+- **The input actuator** (`setNativeValue`): native value setter + real `InputEvent` so React/Vue register the change
+- **Graceful failure**: replay stops at the first unresolved step and reports which one
+
+## Known M0 limits (by design — next milestones)
+- Single page only; navigation kills the content script (M1: SW re-injection + state machine)
+- No screenshots / audit trail yet (full-viewport capture comes with the auditable-replay work)
+- Naive `change`/`input` coalescing; no dropdown/keypress/scroll steps yet
+- Selector heuristics are a starting port of Playwright/Chrome-Recorder ideas, not tuned

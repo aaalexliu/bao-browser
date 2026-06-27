@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao M0 Fixture</title>
+  <style>
+    body { font: 14px system-ui; max-width: 480px; margin: 40px auto; }
+    label { display: block; margin: 12px 0 4px; }
+    input, textarea { width: 100%; padding: 6px; box-sizing: border-box; }
+    button { margin-top: 16px; padding: 8px 16px; }
+    #log { margin-top: 24px; white-space: pre-wrap; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Bao M0 Fixture</h1>
+
+  <!-- aria/label resolution -->
+  <label for="email">Email</label>
+  <input id="email" type="email" aria-label="Email" placeholder="you@example.com" />
+
+  <!-- textarea: exercises the native textarea actuator -->
+  <label for="bio">Bio</label>
+  <textarea id="bio" aria-label="Bio" rows="3"></textarea>
+
+  <!-- testid takes top selector rank -->
+  <button data-testid="submit-btn" id="submit">Submit</button>
+
+  <!-- text/role resolution (no testid, auto-generated id is ignored) -->
+  <button id="ember123-reset">Reset</button>
+
+  <div id="log">no events yet</div>
+
+  <script>
+    // Records what actually fired, so the test can assert replay drove the page
+    // exactly like a real user (the whole point of "deterministic replay").
+    window.__events = [];
+    const log = document.getElementById("log");
+    function record(kind, detail) {
+      window.__events.push({ kind, detail, t: Date.now() });
+      log.textContent = window.__events
+        .map((e) => `${e.kind}: ${e.detail}`)
+        .join("\n");
+    }
+    document.getElementById("submit").addEventListener("click", () =>
+      record("click", "submit-btn")
+    );
+    document.getElementById("ember123-reset").addEventListener("click", () => {
+      document.getElementById("email").value = "";
+      document.getElementById("bio").value = "";
+      record("click", "reset");
+    });
+    document.getElementById("email").addEventListener("input", (e) =>
+      record("input", `email=${e.target.value}`)
+    );
+    document.getElementById("bio").addEventListener("input", (e) =>
+      record("input", `bio=${e.target.value}`)
+    );
+  </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build / generated output
+out/
+
+# Local Chrome profile used for automation
+.chrome-profile/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
