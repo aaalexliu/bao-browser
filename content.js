@@ -496,8 +496,14 @@
     if (action === "select") return `Choose an option in "${name}"`;
     return `Click "${name}"`;
   }
+  // Which frame this step was captured in. The content script runs per-frame
+  // (all_frames), so a cross-origin child records its own steps relative to its own
+  // document; the SW stitches frames together by frameId at stop time.
+  function frameInfo() {
+    return { url: location.href, origin: location.origin, top: window === window.top };
+  }
   function makeStep(action, el) {
-    return { action, label: humanLabel(action, el), target: getTarget(el) };
+    return { action, label: humanLabel(action, el), target: getTarget(el), frame: frameInfo(), ts: Date.now() };
   }
 
   // The real interactive element, piercing OPEN shadow boundaries. `event.target` is
@@ -543,6 +549,11 @@
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("input", onInput, true);
     document.removeEventListener("change", onChange, true);
+    // Report this frame's steps to the SW so it can merge them with sibling/child
+    // frames (which the top frame can't see across an origin boundary). Best-effort.
+    if (steps.length) {
+      try { chrome.runtime.sendMessage({ cmd: "bao-frame-steps", steps }).catch(() => {}); } catch (_) {}
+    }
     return steps;
   }
 

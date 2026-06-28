@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Cross-Origin Frame Fixture (child)</title>
+  <style>
+    body { font: 13px system-ui; margin: 16px; background: #f7f7f9; }
+    label { display: block; margin: 8px 0 2px; }
+    input { width: 220px; padding: 5px; }
+    button { margin-top: 12px; padding: 6px 14px; }
+  </style>
+</head>
+<body>
+  <!-- Stands in for a Stripe/SSO-style cross-origin payment frame. -->
+  <label for="card">Card number</label>
+  <input id="card" name="card" aria-label="Card number" placeholder="4242 4242 4242 4242" />
+  <button data-testid="pay-btn" id="pay-btn">Pay</button>
+
+  <script>
+    window.__events = [];
+    window.__fired = [];
+    function record(kind, detail) { window.__events.push({ kind, detail }); }
+    document.getElementById("card").addEventListener("input", (e) =>
+      record("input", `card=${e.target.value}`));
+    document.getElementById("pay-btn").addEventListener("click", () => {
+      record("click", "pay-btn"); window.__fired.push({ id: "pay-btn", card: document.getElementById("card").value });
+    });
+  </script>
+</body>
+</html>

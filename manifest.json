@@ -3,7 +3,7 @@
   "name": "Bao M0 Spike",
   "version": "0.0.1",
   "description": "Record + deterministic replay spike — single page, no LLM, no backend.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "action": { "default_popup": "popup.html" },
   "background": { "service_worker": "background.js" },
@@ -12,7 +12,8 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_idle",
-      "all_frames": false
+      "all_frames": true,
+      "match_origin_as_fallback": true
     }
   ]
 }

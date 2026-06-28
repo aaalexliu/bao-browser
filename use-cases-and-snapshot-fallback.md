@@ -286,6 +286,11 @@ exotic cases to the bottom.
 5. **`all_frames:true` + `frameId`/`FrameRef` cross-origin capture.** Per-frame content
    scripts + SW coordination. Mostly justified by QA (for gov forms, cross-origin
    payment/login degrades to `waitForUser`) — don't pull ahead of Tier A on gov grounds.
+   *Shipped:* manifest injects `all_frames` (+ `match_origin_as_fallback`); each step is
+   tagged with its `frame` (origin/url/top); on stop, every frame reports its steps to
+   the SW, which merges by `sender.frameId`; replay resolves each recorded `FrameRef` to
+   a live `frameId` via `webNavigation.getAllFrames` and routes the step there. Regression:
+   `test/frames.mjs` (two-port parent/child = genuine cross-origin).
 
 ### Tier C — opt-in / fuel-only, later (neither wedge needs it)
 6. **MAIN-world `attachShadow` force-open (closed shadow)** — invasive, behind a flag.

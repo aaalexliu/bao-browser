@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Cross-Origin Frame Fixture (parent)</title>
+  <style>
+    body { font: 14px system-ui; max-width: 640px; margin: 40px auto; }
+    iframe { width: 100%; height: 220px; border: 1px solid #ccc; margin-top: 16px; }
+    #log { margin-top: 16px; white-space: pre-wrap; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Cross-Origin Frame Fixture</h1>
+  <p>
+    The top frame and the embedded iframe are served from <strong>different
+    ports = different origins</strong>. A content script can't read across that
+    boundary, but one runs <em>inside</em> each frame; the SW stitches them by frameId.
+  </p>
+
+  <button data-testid="parent-btn" id="parent-btn">Parent action</button>
+
+  <!-- child origin injected by the test server -->
+  <iframe src="__CHILD_URL__" title="payment frame"></iframe>
+
+  <div id="log">no events yet</div>
+
+  <script>
+    window.__events = [];
+    window.__fired = [];
+    const log = document.getElementById("log");
+    function record(kind, detail) {
+      window.__events.push({ kind, detail });
+      log.textContent = window.__events.map((e) => `${e.kind}: ${e.detail}`).join("\n");
+    }
+    document.getElementById("parent-btn").addEventListener("click", () => {
+      record("click", "parent-btn"); window.__fired.push({ id: "parent-btn" });
+    });
+  </script>
+</body>
+</html>
