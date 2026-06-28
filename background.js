@@ -32,6 +32,32 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 // The merged, time-ordered recording across all frames.
 self.baoDrainSteps = () => self.__baoSteps.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
 
+// Tier-C item 6: opt-in "aggressive capture" — dynamically register a MAIN-world,
+// document_start script that forces closed shadow roots open so Tier-A piercing can
+// reach inside (e.g. salesforce.com's closed <cs-native-frame-holder>). Off by
+// default; applies to navigations after it's enabled (reload to take effect).
+const FORCE_OPEN_ID = "bao-forceopen";
+self.baoSetForceOpen = async (on) => {
+  try {
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [FORCE_OPEN_ID] });
+    if (on && !existing.length) {
+      await chrome.scripting.registerContentScripts([{
+        id: FORCE_OPEN_ID,
+        matches: ["<all_urls>"],
+        js: ["forceopen.js"],
+        runAt: "document_start",
+        world: "MAIN",
+        allFrames: true,
+      }]);
+    } else if (!on && existing.length) {
+      await chrome.scripting.unregisterContentScripts({ ids: [FORCE_OPEN_ID] });
+    }
+    return { ok: true, on: !!on };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+};
+
 // Map a recorded FrameRef onto a live frameId. Prefer an exact URL match, fall back
 // to same-origin (the cross-origin child case), then the top frame.
 function pickFrameId(frames, ref) {

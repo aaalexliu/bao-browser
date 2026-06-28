@@ -294,8 +294,16 @@ exotic cases to the bottom.
 
 ### Tier C — opt-in / fuel-only, later (neither wedge needs it)
 6. **MAIN-world `attachShadow` force-open (closed shadow)** — invasive, behind a flag.
+   *Shipped (opt-in):* `forceopen.js` patches `Element.prototype.attachShadow` to force
+   `mode:open`, registered by the SW (`baoSetForceOpen`) as a MAIN-world,
+   `document_start` content script only in aggressive mode. Once open, the **deterministic
+   Tier-A piercing** captures + replays the once-closed element — no VLM, no CDP. Verified
+   live: salesforce.com's closed `<cs-native-frame-holder>` (`shadowRoot` null → reachable
+   under the patch). Regression: `test/forceopen.mjs` (degrade → enable → reload →
+   deterministic replay → disable).
 7. **Tier-3 coordinate/VLM heal** consuming the Tier-A ride-along fuel (canvas, closed
-   shadow).
+   shadow). *Still unbuilt — the only genuinely probabilistic tier; the seams (degrade
+   markers + bbox) are in place.*
 
 Shape: Tier A is shared must-have core, Tier B is the QA-wedge bet, Tier C is escalation
 behind flags — mapping onto the existing M0/M1/M4 order.
