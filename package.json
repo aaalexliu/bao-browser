@@ -7,9 +7,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs",
+    "test": "node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs",
     "test:list": "node test/list.mjs",
-    "test:blindspots": "node test/blindspots.mjs"
+    "test:blindspots": "node test/blindspots.mjs",
+    "test:virtual": "node test/virtual.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"
