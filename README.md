@@ -29,6 +29,12 @@ path `popup.js` uses) and asserts the page was actually re-driven. Outputs:
 - `out/recorded-steps.json` — captured steps with the ranked selector candidates
 - `out/replay-results.json` — per-step resolution (`via` selector) + the events the page fired during replay
 
+`npm test` also runs `test/list.mjs` (`npm run test:list`), the repeated-list
+regression: it records a click on one of six identical cards, then reorders /
+prepends / deletes / swaps buttons and asserts replay still hits the right one
+via its **ancestor anchor** (a stable id, href, or text fingerprint) — the case
+that breaks naive aria/text/nth-of-type selectors.
+
 ## Test against a real, logged-in site (Substack, LinkedIn, …)
 The fixture above runs in a throwaway profile. To drive a real authenticated page
 you need a **persistent profile** (so your login survives) and a **headed**
@@ -48,10 +54,22 @@ node test/live.mjs replay https://YOURPUB.substack.com/publish/post --in out/pos
 The session is stored in `.chrome-profile/` (git-ignored) and reused on every run,
 so you only log in once. `--seconds N` auto-stops recording instead of waiting for Enter.
 
+**Live smoke test of anchoring** — `test/live-notes.mjs` is the real-Substack
+counterpart to the deterministic list regression. It records a Share-click on a
+chosen note in the Notes feed (many identical Share buttons), replays through the
+real `content.js`, and asserts it acted on the *same* note by its stable id:
+
+```sh
+node test/live.mjs login https://substack.com   # one-time, if not already
+node test/live-notes.mjs                         # default: target note #2 (not the first)
+HEADED=1 node test/live-notes.mjs 3              # watch it; target a different note
+```
+
 **Reality check on dynamic pages:** replay is only as deterministic as the page.
-A *stable* surface (compose box, settings form) replays reliably; an ever-changing
-**feed** is a poor target — text/aria selectors won't re-resolve once the content
-scrolls away. That's an M0 limit, not a bug (see below). Target stable UI to test.
+A *stable* surface (compose box, settings form) replays reliably. Repeated **feeds**
+used to be a poor target — but anchored capture now re-resolves a specific card by
+its stable id / href / text even after the feed reorders (see the list regression).
+The remaining limit is content that has *scrolled out of the DOM* entirely.
 
 ## What it demonstrates (the M0 risk-burndown)
 - **Ranked multi-selector capture** (`content.js` → `getSelectors`): testid > aria > text > stable id > css path
