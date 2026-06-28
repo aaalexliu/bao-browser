@@ -7,7 +7,9 @@
 // canvas degrade, cross-origin all_frames injection, closed-shadow force-open); the
 // heavier grids/iframes get a structural check.
 //
-// Run: npm run test:live   (HEADED=1 to watch)
+// Run: npm run test:live                       (all sites, headless)
+//      npm run test:live -- --headed           (watch in a real window)
+//      npm run test:live -- shoelace --headed  (only sites matching "shoelace")
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -15,6 +17,12 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// CLI args (via `npm run test:live -- ...`): `--headed`/`-H` to watch, and the first
+// non-flag positional is a case-insensitive site-name filter.
+const argv = process.argv.slice(2);
+const HEADED = argv.includes("--headed") || argv.includes("-H");
+const ONLY = argv.find((a) => !a.startsWith("-"))?.toLowerCase();
 
 let pass = 0, fail = 0, skip = 0;
 const ok = (n, e) => { console.log(`  ✓ ${n}${e ? ` — ${e}` : ""}`); pass++; };
@@ -33,6 +41,27 @@ async function recordVia(sw, tabId, act) {
   await send(sw, tabId, { cmd: "stop-record" }).catch(() => {});
   await sleep(350);
   return sw.evaluate(() => self.baoDrainSteps());
+}
+
+// HEADED-only: paint a red border over what we're about to click (and a dot at the
+// exact point, for canvas) so a watcher can SEE the real action. pointer-events:none
+// so it never intercepts the click; self-removes; no-op when not HEADED.
+async function flashClick(page, locator, pos) {
+  if (!HEADED) return;
+  const box = await locator.boundingBox().catch(() => null);
+  if (!box) return;
+  await page.evaluate(({ box, pos }) => {
+    const mk = (css) => {
+      const d = document.createElement("div");
+      d.className = "__baoFlash";
+      d.style.cssText = `z-index:2147483647;pointer-events:none;position:fixed;${css}`;
+      document.documentElement.appendChild(d);
+    };
+    mk(`left:${box.x}px;top:${box.y}px;width:${box.width}px;height:${box.height}px;border:3px solid red;box-shadow:0 0 0 4px rgba(255,0,0,.25)`);
+    if (pos) mk(`left:${box.x + pos.x - 9}px;top:${box.y + pos.y - 9}px;width:18px;height:18px;border-radius:50%;border:3px solid red;background:rgba(255,0,0,.35)`);
+    setTimeout(() => document.querySelectorAll(".__baoFlash").forEach((n) => n.remove()), 2500);
+  }, { box, pos });
+  await page.waitForTimeout(700); // let the watcher see the target before the click fires
 }
 
 async function openReady(ctx, sw, url, waitMs = 4000) {
@@ -64,6 +93,7 @@ const SITES = {
     if (!(await btn.count())) btn = page.locator("sl-button:visible").first();
     if (!(await btn.count())) throw new Skip("no <sl-button> on page");
     await btn.scrollIntoViewIfNeeded().catch(() => {});
+    await flashClick(page, btn);
     const steps = await recordVia(sw, tabId, () => btn.click({ force: true, timeout: 5000 }).catch(() => {}));
     const t = steps.find((s) => s.target?.reach === "open-shadow")?.target;
     if (!t) throw new Skip(`no open-shadow step captured (got ${JSON.stringify(steps.map((s) => s.target?.reach))})`);
@@ -75,6 +105,7 @@ const SITES = {
     const { page, tabId } = await openReady(ctx, sw, "https://excalidraw.com");
     const canvas = page.locator("canvas").first();
     if (!(await canvas.count())) throw new Skip("no <canvas> on page");
+    await flashClick(page, canvas, { x: 300, y: 300 });
     const steps = await recordVia(sw, tabId, () => canvas.click({ position: { x: 300, y: 300 }, force: true, timeout: 5000 }).catch(() => {}));
     const t = steps.find((s) => s.target?.reach === "canvas")?.target;
     if (!t) throw new Skip(`no canvas step captured (got ${JSON.stringify(steps.map((s) => s.target?.reach))})`);
@@ -130,7 +161,7 @@ const SITES = {
 async function main() {
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !HEADED,
     // A realistic UA; without it CloudFront/Akamai-fronted sites (ag-grid, salesforce)
     // bot-block the automated session outright — itself a live demo of the anti-bot
     // blind spot (§6). Sites that still block are SKIPped, not failed.
@@ -141,6 +172,7 @@ async function main() {
     let [sw] = ctx.serviceWorkers();
     if (!sw) sw = await ctx.waitForEvent("serviceworker", { timeout: 10_000 });
     for (const [name, fn] of Object.entries(SITES)) {
+      if (ONLY && !name.toLowerCase().includes(ONLY)) continue;
       console.log(`\n• ${name}`);
       try { await fn(ctx, sw); }
       catch (e) {
