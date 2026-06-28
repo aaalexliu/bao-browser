@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Select Fixture</title>
+  <style>
+    body { font: 14px system-ui; max-width: 480px; margin: 40px auto; }
+    label { display: block; margin: 16px 0 4px; }
+    select { width: 100%; padding: 6px; }
+    #log { margin-top: 24px; white-space: pre-wrap; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Bao Select Fixture</h1>
+  <p>
+    Native <code>&lt;select&gt;</code> — the option list is OS-drawn, so the recorder
+    can't "click" it; it must listen for <code>change</code> and emit a
+    <code>select</code> step keyed by option value/label. Gov forms are full of these.
+  </p>
+
+  <label for="state">State</label>
+  <select id="state" name="state" aria-label="State">
+    <option value="">— choose —</option>
+    <option value="CA">California</option>
+    <option value="NY">New York</option>
+    <option value="TX">Texas</option>
+    <option value="WA">Washington</option>
+  </select>
+
+  <label for="year">Year of birth</label>
+  <select id="year" name="year" aria-label="Year of birth">
+    <option value="">— choose —</option>
+    <option value="1990">1990</option>
+    <option value="1991">1991</option>
+    <option value="1992">1992</option>
+  </select>
+
+  <div id="log">no events yet</div>
+
+  <script>
+    window.__events = [];
+    window.__fired = [];
+    const log = document.getElementById("log");
+    function record(kind, detail) {
+      window.__events.push({ kind, detail, t: Date.now() });
+      log.textContent = window.__events.map((e) => `${e.kind}: ${e.detail}`).join("\n");
+    }
+    for (const id of ["state", "year"]) {
+      document.getElementById(id).addEventListener("change", (e) => {
+        record("select", `${id}=${e.target.value}`);
+        window.__fired.push({ name: id, value: e.target.value });
+      });
+    }
+  </script>
+</body>
+</html>

@@ -292,6 +292,48 @@ JS-dialog handling; download control; coordinate-based clicking (`DOM.getBoxMode
 heavier CWS review (browzer is stuck in it); some enterprise policies block it; more
 anti-bot detectable. Still can't touch `chrome://` etc.
 
+#### "Just go full CDP" — why not (the banner is the *cheap* part)
+
+The banner is the most *visible* CDP cost but not the worst. It's also
+**wedge-dependent**, which the binary framing hides:
+
+- **Gov-forms prosumer → banner genuinely bad.** A non-technical user handling SSNs sees
+  *"Bao started debugging this browser"* — indistinguishable from malware, non-suppressible,
+  unstylable. Per-step transient attach is *worse* here (a flickering warning looks more
+  alarming, not less).
+- **QA/IT → banner near non-issue.** That buyer lives in Playwright/DevTools; the bar is
+  wallpaper.
+
+The costs that actually decide it (roughly in order):
+
+1. **CWS distribution risk — the real killer.** `debugger` triggers heavy store review;
+   **browzer is stuck in review and ships via manual unpacked load.** For a consumer
+   product, "can't get listed" beats "annoying banner." The banner bugs users who already
+   installed; review friction means they never can.
+2. **Enterprise policy blocks — and they hit the IT wedge.** Orgs disable the debugger API
+   via policy (`DeveloperToolsAvailability`, permission blocklists). Irony: the wedge where
+   the banner *doesn't* matter is where `debugger` is most likely blocked on managed
+   machines. Force-install pre-grants it, but only after a security review.
+3. **One debugger per tab conflicts with DevTools** — the QA user opens DevTools
+   constantly; attach detaches it mid-run.
+4. **`debugger` undercuts the privacy story.** We sell "sensitive captures never leave the
+   device," then request the one permission that grants full network + DOM + input access
+   to everything. A security-conscious gov/finance/health buyer notices the contradiction.
+5. **Anti-bot is an arms race CDP doesn't cleanly win.** CDP gives trusted input, but
+   attach is itself detectable (DataDome/Kasada flag `Runtime.enable`) — you can trade an
+   `isTrusted:false` failure for a "CDP detected → harder block."
+6. **Lifecycle weight + Chromium-only** (no future Firefox/Safari port for this path).
+
+**To be fair:** CDP does *not* erode the determinism thesis — a `DebuggerExecutor` is
+still deterministic actuation ("why did it click there" still has a selector answer). The
+thesis-eroder is a **VLM in the runtime loop** (Tier 3), which is *orthogonal* to the
+executor choice. The real objection is that **mandatory CDP turns Bao into browzer minus
+voice** — same banner, same review limbo, same "power tool" positioning — surrendering the
+no-banner / easy-install / real-session wedge (see competitor teardown) to buy coverage
+(shadow/canvas/upload/trusted-input) the two wedges were *specifically chosen not to
+need*. Hence: CDP as opt-in **per-step Tier-4 escalation behind the Executor seam**, never
+the baseline.
+
 ### Strategy: v1 non-debugger, extend to debugger via an Executor seam
 
 Put the seam in **now** (cheap), implement only the content-script side:
