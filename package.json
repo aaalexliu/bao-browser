@@ -12,7 +12,8 @@
     "test:blindspots": "node test/blindspots.mjs",
     "test:virtual": "node test/virtual.mjs",
     "test:frames": "node test/frames.mjs",
-    "test:forceopen": "node test/forceopen.mjs"
+    "test:forceopen": "node test/forceopen.mjs",
+    "test:live": "node test/live-blindspots.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"
