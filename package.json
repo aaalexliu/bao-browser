@@ -7,10 +7,13 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs",
+    "test": "node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs && node test/frames.mjs && node test/forceopen.mjs",
     "test:list": "node test/list.mjs",
     "test:blindspots": "node test/blindspots.mjs",
-    "test:virtual": "node test/virtual.mjs"
+    "test:virtual": "node test/virtual.mjs",
+    "test:frames": "node test/frames.mjs",
+    "test:forceopen": "node test/forceopen.mjs",
+    "test:live": "node test/live-blindspots.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"

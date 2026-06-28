@@ -286,11 +286,24 @@ exotic cases to the bottom.
 5. **`all_frames:true` + `frameId`/`FrameRef` cross-origin capture.** Per-frame content
    scripts + SW coordination. Mostly justified by QA (for gov forms, cross-origin
    payment/login degrades to `waitForUser`) — don't pull ahead of Tier A on gov grounds.
+   *Shipped:* manifest injects `all_frames` (+ `match_origin_as_fallback`); each step is
+   tagged with its `frame` (origin/url/top); on stop, every frame reports its steps to
+   the SW, which merges by `sender.frameId`; replay resolves each recorded `FrameRef` to
+   a live `frameId` via `webNavigation.getAllFrames` and routes the step there. Regression:
+   `test/frames.mjs` (two-port parent/child = genuine cross-origin).
 
 ### Tier C — opt-in / fuel-only, later (neither wedge needs it)
 6. **MAIN-world `attachShadow` force-open (closed shadow)** — invasive, behind a flag.
+   *Shipped (opt-in):* `forceopen.js` patches `Element.prototype.attachShadow` to force
+   `mode:open`, registered by the SW (`baoSetForceOpen`) as a MAIN-world,
+   `document_start` content script only in aggressive mode. Once open, the **deterministic
+   Tier-A piercing** captures + replays the once-closed element — no VLM, no CDP. Verified
+   live: salesforce.com's closed `<cs-native-frame-holder>` (`shadowRoot` null → reachable
+   under the patch). Regression: `test/forceopen.mjs` (degrade → enable → reload →
+   deterministic replay → disable).
 7. **Tier-3 coordinate/VLM heal** consuming the Tier-A ride-along fuel (canvas, closed
-   shadow).
+   shadow). *Still unbuilt — the only genuinely probabilistic tier; the seams (degrade
+   markers + bbox) are in place.*
 
 Shape: Tier A is shared must-have core, Tier B is the QA-wedge bet, Tier C is escalation
 behind flags — mapping onto the existing M0/M1/M4 order.
@@ -307,7 +320,7 @@ interstitial) — safe for the Playwright harness.
 | Open / nested / closed shadow | `test/fixture-shadow.html` | `shoelace.style/components/button` | **344 open shadow roots**; fixture proves `composedPath` retarget trap + closed-shadow stops at host |
 | Native `<select>` | `test/fixture-select.html` | (any gov form) | `change` → `select` step |
 | Virtualization | `test/fixture-virtual.html` | `ag-grid.com/example/` | **22 rows rendered, `virtualized=true`**; fixture proves node recycling + scroll-find |
-| Cross-origin iframe | *(TODO: two-port fixture)* | `stripe.dev/elements-examples/` | cross-origin iframes `js.stripe.com`, `b.stripecdn.com` |
+| Cross-origin iframe | `test/fixture-frame-{parent,child}.html` (two-port) | `stripe.dev/elements-examples/` | cross-origin iframes `js.stripe.com`, `b.stripecdn.com` |
 | Canvas (graceful degrade) | `test/fixture-canvas.html` | `excalidraw.com` (or `tldraw.com`) | **2 / 1 `<canvas>`**; fixture proves 0 DOM buttons, pixel hit-test |
 
 Notes from verification: **reCAPTCHA's demo iframe is same-origin** (`www.google.com`
@@ -316,3 +329,23 @@ two-port local fixture) for true cross-origin. **YouTube is flaky headless** (co
 redirect, 0 shadow roots before hydration) → shoelace is the canonical open-shadow target.
 Definition of done per capability: `record → replay → assert correct element` passes on
 its fixture.
+
+### Live smoke suite (`npm run test:live`, opt-in)
+
+`test/live-blindspots.mjs` drives the **real extension on the real sites** — kept out of
+the default `npm test` because live sites flake/change (a load failure is a SKIP, not a
+FAIL). It exercises the extension where robust and falls back to a structural check
+otherwise:
+
+| Site | Asserts |
+|---|---|
+| shoelace.style | extension captures `reach=open-shadow` + a `shadowpath` on a real `<sl-button>` |
+| excalidraw.com | extension classifies a canvas click `reach=canvas` + degraded |
+| stripe.dev | the `all_frames` content script answers **inside** the cross-origin `b.stripecdn.com` frame |
+| ag-grid.com | windowed grid: only ~18 of thousands of rows in the DOM |
+| salesforce.com | real `<cs-native-frame-holder>` has a **closed** root (`shadowRoot===null`) |
+
+**Anti-bot finding (a live demo of §6's blind spot):** ag-grid (CloudFront) and
+salesforce (Akamai) **bot-block the automated session outright** unless a realistic
+`User-Agent` is set — exactly the `isTrusted`/automation-detection wall the design flags.
+With a real UA the suite passes 9/9, 0 skipped.
