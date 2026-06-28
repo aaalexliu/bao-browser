@@ -91,10 +91,18 @@ async function ensureReady(sw, tabId, { tries = 25, delay = 200 } = {}) {
 async function openTab(ctx, sw, target) {
   const page = await ctx.newPage();
   await page.goto(target, { waitUntil: "domcontentloaded" });
-  const tabId = await sw.evaluate(async (u) => {
-    const [t] = await chrome.tabs.query({ url: u + "*" });
-    return t?.id ?? null;
-  }, target.split("#")[0]);
+  // Match on the URL the tab actually *landed* on, not the one we asked for:
+  // sites like substack 301 www→apex, so `target` no longer matches the tab.
+  const final = page.url();
+  const { origin, pathname } = new URL(final);
+  const tabId = await sw.evaluate(async ([pattern, finalUrl]) => {
+    // Try the resolved origin+path first, then fall back to the active tab in
+    // case a later redirect (or query/hash) leaves the URL pattern off.
+    const [byUrl] = await chrome.tabs.query({ url: pattern });
+    if (byUrl) return byUrl.id;
+    const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return active?.id ?? null;
+  }, [`${origin}${pathname}*`, final]);
   return { page, tabId };
 }
 
