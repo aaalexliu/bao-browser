@@ -159,11 +159,42 @@
     }
     return null;
   }
+  // A css path from `root` down to `leaf` (root exclusive). Stable while the card's
+  // *internal* structure holds, even as the feed around it reorders.
+  function relPath(root, leaf) {
+    const parts = [];
+    let el = leaf;
+    while (el && el !== root && el.nodeType === 1) {
+      let nth = 1, sib = el;
+      while ((sib = sib.previousElementSibling)) if (sib.nodeName === el.nodeName) nth++;
+      parts.unshift(`${el.nodeName.toLowerCase()}:nth-of-type(${nth})`);
+      el = el.parentElement;
+    }
+    return el === root ? parts.join(" > ") : null;
+  }
+  // A content-stable discriminator that singles `leaf` out from its same-named
+  // siblings — its own attribute, independent of position.
+  function refineWithin(matches, leaf) {
+    for (const attr of ["data-testid", "data-test", "data-cy", "data-qa", "title", "name", "href"]) {
+      const v = leaf.getAttribute(attr);
+      if (v && matches.filter((m) => m.getAttribute(attr) === v).length === 1) return { attr, value: v };
+    }
+    return null;
+  }
   function describeWithin(anchorNode, leaf) {
     const role = implicitRole(leaf);
     const name = accName(leaf);
     const matches = allByWithin({ role, name }, anchorNode);
-    return { role, name, index: Math.max(0, matches.indexOf(leaf)) };
+    const within = { role, name, index: Math.max(0, matches.indexOf(leaf)) };
+    // Only when the role+name is itself ambiguous inside the card do we need a
+    // tiebreak: a distinguishing attribute first, a structural path second.
+    if (matches.length > 1) {
+      const attr = refineWithin(matches, leaf);
+      if (attr) within.attr = attr;
+      const rel = relPath(anchorNode, leaf);
+      if (rel) within.rel = rel;
+    }
+    return within;
   }
 
   // True iff selector `s` resolves to exactly the captured element (same path replay
@@ -234,10 +265,21 @@
   function resolveViaAnchor(target) {
     const seed = anchorSeed(target.anchor);
     if (!seed) return null;
+    const within = target.within;
     let node = seed;
     for (let i = 0; i < 15 && node; i++) {
-      const m = allByWithin(target.within, node);
-      if (m.length) return m[target.within.index] || m[0];
+      const m = allByWithin(within, node);
+      if (m.length) {
+        if (m.length === 1) return m[0];
+        // Collision inside the anchor: content-stable attribute beats structural
+        // path beats raw positional index.
+        if (within.attr) {
+          const hit = m.find((el) => el.getAttribute(within.attr.attr) === within.attr.value);
+          if (hit) return hit;
+        }
+        if (within.rel) { try { const r = node.querySelector(within.rel); if (r) return r; } catch (_) {} }
+        return m[within.index] || m[0];
+      }
       node = node.parentElement;
     }
     return null;

@@ -95,6 +95,32 @@ async function main() {
       // 4) delete the current first card
       await replayAndCheck("after delete-first", () => window.__deleteFirst());
     }
+
+    // ---- within-collision suite: two same-named "Save" buttons per card ----
+    // The target is the 2nd Save (data-testid=save-collection). A content-stable
+    // attribute must win over positional index when the buttons get reordered.
+    console.log(`\n• suite: within disambiguation (duplicate buttons)`);
+    await page.evaluate(() => window.__renderDup());
+    await send(tabId, { cmd: "start-record" });
+    await page.locator(`.card[data-card="${TARGET}"] button[aria-label="Save"]`).nth(1).click();
+    const dup = (await send(tabId, { cmd: "stop-record" })).steps;
+    const w = dup[0]?.target?.within;
+    check("within recorded a content-stable attr tiebreak", w?.attr?.value === "save-collection", JSON.stringify(w?.attr));
+    check("within still records positional index as fallback", w?.index === 1, String(w?.index));
+
+    const dupReplay = async (label, mutate) => {
+      if (mutate) await page.evaluate(mutate);
+      await page.evaluate(() => (window.__fired = []));
+      const res = await send(tabId, { cmd: "replay", steps: dup });
+      const f = (await page.evaluate(() => window.__fired))[0];
+      check(`[${label}] replay ok`, res?.ok === true, JSON.stringify(res?.results));
+      check(`[${label}] hit the right card AND the right button`,
+        f?.card === TARGET && f?.testid === "save-collection", JSON.stringify(f));
+    };
+    await dupReplay("baseline", null);
+    // Reverse the two Save buttons inside the target card: index=1 now points at
+    // save-default, so only the attribute tiebreak gets this right.
+    await dupReplay("after in-card button swap", () => window.__swapSaves("c-1004"));
   } finally {
     await ctx.close();
   }

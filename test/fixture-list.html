@@ -37,6 +37,11 @@
     const permalink = MODE.href
       ? `<a class="permalink" href="/notes/${name.toLowerCase().replace(/\s/g,"")}/note/${id}">View note</a>`
       : "";
+    // dup mode adds two same-named "Save" buttons, distinguished only by their
+    // data-testid — the within-collision case.
+    const dup = MODE.dup ? `
+        <button aria-label="Save" data-testid="save-default" data-slot="a">Save</button>
+        <button aria-label="Save" data-testid="save-collection" data-slot="b">Save</button>` : "";
     card.innerHTML = `
       <div class="author">${name}</div>
       ${permalink}
@@ -44,7 +49,7 @@
       <div class="actions">
         <button aria-label="Like">Like</button>
         <button aria-label="Copy link">Copy link</button>
-        <button aria-label="Reply">Reply</button>
+        <button aria-label="Reply">Reply</button>${dup}
       </div>`;
     return card;
   }
@@ -59,12 +64,24 @@
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("button[aria-label]");
     if (!btn) return;
-    window.__fired.push({ action: btn.getAttribute("aria-label"), card: btn.closest(".card")?.dataset.card });
+    window.__fired.push({
+      action: btn.getAttribute("aria-label"),
+      card: btn.closest(".card")?.dataset.card,
+      testid: btn.getAttribute("data-testid") || undefined,
+    });
   }, true);
 
   // Test hooks the harness drives via page.evaluate:
   window.__renderHref = (ids) => { MODE = { href: true }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
   window.__renderNoHref = (ids) => { MODE = { href: false }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
+  window.__renderDup = (ids) => { MODE = { href: true, dup: true }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
+  // Reverse the two Save buttons inside one card — breaks positional index/rel but
+  // not the data-testid tiebreak.
+  window.__swapSaves = (cardId) => {
+    const actions = document.querySelector(`.card[data-card="${cardId}"] .actions`);
+    const saves = actions.querySelectorAll('button[aria-label="Save"]');
+    actions.insertBefore(saves[1], saves[0]);
+  };
   window.__reorder = (ids) => render(ids);                          // full reshuffle
   window.__prepend = () => feed.prepend(makeCard(9));               // insert a new card at top (id c-1009)
   window.__deleteFirst = () => feed.firstElementChild.remove();     // drop the top card
