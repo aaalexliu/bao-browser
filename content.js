@@ -126,6 +126,23 @@
     }
     return null;
   }
+  // Last-resort signature for cards that carry no stable id/href (image-only
+  // restacks, etc.): a short text fingerprint whose *exact* occurrences all live
+  // inside `node` — i.e. unique to this card. Skips the target's own text and any
+  // text it shares with sibling cards ("Like", "Reply", …).
+  const normText = (el) => (el.textContent || "").replace(/\s+/g, " ").trim();
+  function uniqueTextIn(node, leaf) {
+    const seen = new Set();
+    for (const el of node.querySelectorAll("*")) {
+      if (el === leaf || el.contains(leaf) || leaf.contains(el)) continue;
+      const t = normText(el);
+      if (t.length < 3 || t.length > 80 || seen.has(t)) continue;
+      seen.add(t);
+      const exact = Array.from(document.querySelectorAll("*")).filter((e) => normText(e) === t);
+      if (exact.length && exact.every((e) => node.contains(e))) return t;
+    }
+    return null;
+  }
 
   // Walk up from the target to the nearest ancestor we can pin down uniquely, and
   // describe the target *within* it. This is what turns an ambiguous "Share" into
@@ -137,6 +154,8 @@
       if (sel) return { node, descriptor: { kind: "selector", value: sel } };
       const href = uniqueHrefIn(node);
       if (href) return { node, descriptor: { kind: "href", id: href } };
+      const txt = uniqueTextIn(node, leaf);
+      if (txt) return { node, descriptor: { kind: "text", id: txt } };
     }
     return null;
   }
@@ -203,9 +222,12 @@
     if (a.kind === "selector") return document.querySelector(a.value);
     if (a.kind === "href") return document.querySelector(`a[href*="${a.id.replace(/"/g, '\\"')}"]`);
     if (a.kind === "text") {
-      return Array.from(document.querySelectorAll("*"))
-        .filter((el) => (el.textContent || "").includes(a.id))
-        .sort((x, y) => x.textContent.length - y.textContent.length)[0] || null;
+      const all = Array.from(document.querySelectorAll("*"));
+      // Prefer an element whose exact text IS the fingerprint; fall back to any
+      // element containing it. Smallest wins so the seed lands deep in one card.
+      const exact = all.filter((el) => normText(el) === a.id);
+      const pool = exact.length ? exact : all.filter((el) => (el.textContent || "").includes(a.id));
+      return pool.sort((x, y) => x.textContent.length - y.textContent.length)[0] || null;
     }
     return null;
   }

@@ -2,6 +2,10 @@
 // identical ones, and that it survives DOM mutation (reorder / insert / delete)
 // that shatters positional (nth-of-type) selectors.
 //
+// Two suites, same fixture, different anchor kinds:
+//   1. href  — cards carry a stable permalink id (Substack-shaped).
+//   2. text  — cards carry NO id/href; only the author name disambiguates them.
+//
 // Run: npm run test:list   (or: node test/list.mjs ; HEADED=1 to watch)
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -21,6 +25,11 @@ function check(name, cond, extra) {
   if (!ok) failures++;
 }
 
+const SUITES = [
+  { name: "href anchor", setup: "__renderHref", expectKind: "href", expectId: "c-1004" },
+  { name: "text anchor (no href)", setup: "__renderNoHref", expectKind: "text", expectId: "Dana" },
+];
+
 async function main() {
   await mkdir(OUT, { recursive: true });
   const ctx = await chromium.launchPersistentContext("", {
@@ -38,53 +47,54 @@ async function main() {
     await page.waitForLoadState("domcontentloaded");
     const tabId = await sw.evaluate(async (url) => (await chrome.tabs.query({ url }))[0]?.id, FIXTURE);
 
-    // Record a click on the target card's "Copy link" (one of six identical buttons).
-    await send(tabId, { cmd: "start-record" });
-    await page.click(`.card:has(a[href*="${TARGET}"]) button[aria-label="Copy link"]`);
-    const { steps } = await send(tabId, { cmd: "stop-record" });
-    await writeFile(resolve(OUT, "list-steps.json"), JSON.stringify(steps, null, 2));
+    for (const suite of SUITES) {
+      console.log(`\n• suite: ${suite.name}`);
+      await page.evaluate((fn) => window[fn](), suite.setup);
 
-    const t = steps[0]?.target;
-    check("captured 1 step", steps?.length === 1);
-    check("leaf is ambiguous → an anchor was attached", !!t?.anchor, JSON.stringify(t?.anchor));
-    check("anchor keys off the card's stable id", t?.anchor?.id === TARGET, t?.anchor?.id);
-    check("target marked unique (resolvable)", t?.unique === true);
+      // Record a click on the target card's "Copy link" (one of six identical buttons).
+      await send(tabId, { cmd: "start-record" });
+      await page.click(`.card[data-card="${TARGET}"] button[aria-label="Copy link"]`);
+      const { steps } = await send(tabId, { cmd: "stop-record" });
+      await writeFile(resolve(OUT, `list-steps-${suite.expectKind}.json`), JSON.stringify(steps, null, 2));
 
-    // The brittle truth: the recorded css path is positional. We'll prove below it
-    // points at the WRONG card after a reorder — i.e. the anchor is load-bearing.
-    const cssSel = t.selectors.find((s) => s.type === "css")?.value;
+      const t = steps[0]?.target;
+      check("captured 1 step", steps?.length === 1);
+      check("leaf is ambiguous → an anchor was attached", !!t?.anchor, JSON.stringify(t?.anchor));
+      check(`anchor is kind="${suite.expectKind}"`, t?.anchor?.kind === suite.expectKind, t?.anchor?.kind);
+      check("anchor keys off the card's discriminator", t?.anchor?.id === suite.expectId, t?.anchor?.id);
+      check("target marked unique (resolvable)", t?.unique === true);
 
-    async function replayAndCheck(label, mutate) {
-      if (mutate) await page.evaluate(mutate);
-      await page.evaluate(() => (window.__fired = []));
-      const res = await send(tabId, { cmd: "replay", steps });
-      const fired = await page.evaluate(() => window.__fired);
-      check(`[${label}] replay ok`, res?.ok === true, JSON.stringify(res?.results));
-      check(`[${label}] clicked the RIGHT card`, fired[0]?.card === TARGET,
-        `fired ${JSON.stringify(fired)}`);
-      return res;
+      const cssSel = t.selectors.find((s) => s.type === "css")?.value;
+
+      const replayAndCheck = async (label, mutate) => {
+        if (mutate) await page.evaluate(mutate);
+        await page.evaluate(() => (window.__fired = []));
+        const res = await send(tabId, { cmd: "replay", steps });
+        const fired = await page.evaluate(() => window.__fired);
+        check(`[${label}] replay ok`, res?.ok === true, JSON.stringify(res?.results));
+        check(`[${label}] clicked the RIGHT card`, fired[0]?.card === TARGET, `fired ${JSON.stringify(fired)}`);
+      };
+
+      // 1) baseline — same DOM
+      await replayAndCheck("baseline", null);
+
+      // 2) full reorder (reverse) — nth-of-type now lies
+      const cssCardAfterReorder = await page.evaluate((sel) => {
+        window.__reorder([5, 4, 3, 2, 1, 0]);
+        try {
+          return document.querySelector(sel)?.closest(".card")?.dataset.card ?? null;
+        } catch { return "INVALID"; }
+      }, cssSel);
+      check("control: recorded css path now points at the WRONG card (or breaks)",
+        cssCardAfterReorder !== TARGET, `css → ${cssCardAfterReorder}`);
+      await replayAndCheck("after reorder", null);
+
+      // 3) insert a new card at the top — shifts every positional index
+      await replayAndCheck("after prepend", () => window.__prepend());
+
+      // 4) delete the current first card
+      await replayAndCheck("after delete-first", () => window.__deleteFirst());
     }
-
-    // 1) baseline — same DOM
-    await replayAndCheck("baseline", null);
-
-    // 2) full reorder (reverse) — nth-of-type now lies
-    const cssCardAfterReorder = await page.evaluate((sel) => {
-      window.__reorder([5, 4, 3, 2, 1, 0]);
-      try {
-        const el = document.querySelector(sel);
-        return el?.closest(".card")?.querySelector("a.permalink")?.getAttribute("href").match(/c-\d+/)?.[0] ?? null;
-      } catch { return "INVALID"; }
-    }, cssSel);
-    check("control: recorded css path now points at the WRONG card (or breaks)",
-      cssCardAfterReorder !== TARGET, `css → ${cssCardAfterReorder}`);
-    await replayAndCheck("after reorder", null);
-
-    // 3) insert a new card at the top — shifts every positional index
-    await replayAndCheck("after prepend", () => window.__prepend());
-
-    // 4) delete the current first card
-    await replayAndCheck("after delete-first", () => window.__deleteFirst());
   } finally {
     await ctx.close();
   }

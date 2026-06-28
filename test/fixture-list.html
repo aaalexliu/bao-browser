@@ -22,14 +22,24 @@
   const authors = ["Amy", "Mario Gabriele", "Josh Kim", "Lilian", "Dana", "Wren"];
   const feed = document.getElementById("feed");
 
+  // `data-card` is the test's ground-truth marker only — it is NOT a class the
+  // anchor logic reads (it inspects id / data-testid / href / text), so cards stay
+  // genuinely ambiguous to the recorder.
+  let MODE = { href: true };
   function makeCard(i) {
     const id = "c-100" + i;                 // stable per-card id
     const name = authors[i] || ("User" + i);
     const card = document.createElement("div");
     card.className = "card";
+    card.dataset.card = id;
+    // href mode: a stable permalink anchors the card. no-href mode: the card has
+    // NO id/href at all, so the only discriminator is the author's name (text).
+    const permalink = MODE.href
+      ? `<a class="permalink" href="/notes/${name.toLowerCase().replace(/\s/g,"")}/note/${id}">View note</a>`
+      : "";
     card.innerHTML = `
       <div class="author">${name}</div>
-      <a class="permalink" href="/notes/${name.toLowerCase().replace(/\s/g,"")}/note/${id}">View note</a>
+      ${permalink}
       <div class="body">Note body from ${name} number ${i}.</div>
       <div class="actions">
         <button aria-label="Like">Like</button>
@@ -45,16 +55,16 @@
   // initial order: 0..5
   render([0, 1, 2, 3, 4, 5]);
 
-  // Ground-truth logger: whichever Copy link fires, record its card's stable id.
+  // Ground-truth logger: whichever button fires, record its card's marker id.
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("button[aria-label]");
     if (!btn) return;
-    const card = btn.closest(".card");
-    const id = card?.querySelector("a.permalink")?.getAttribute("href").match(/c-\d+/)?.[0];
-    window.__fired.push({ action: btn.getAttribute("aria-label"), card: id });
+    window.__fired.push({ action: btn.getAttribute("aria-label"), card: btn.closest(".card")?.dataset.card });
   }, true);
 
   // Test hooks the harness drives via page.evaluate:
+  window.__renderHref = (ids) => { MODE = { href: true }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
+  window.__renderNoHref = (ids) => { MODE = { href: false }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
   window.__reorder = (ids) => render(ids);                          // full reshuffle
   window.__prepend = () => feed.prepend(makeCard(9));               // insert a new card at top (id c-1009)
   window.__deleteFirst = () => feed.firstElementChild.remove();     // drop the top card
