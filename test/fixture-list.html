@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bao list fixture — repeated cards (the ambiguity case)</title>
+<!--
+  Mirrors a Substack-style feed: N visually-identical cards, each with the SAME
+  "Copy link" / "Like" / "Reply" buttons. The ONLY per-card discriminator is a
+  stable id carried by a descendant <a href="/note/c-100X"> — never by the button.
+  window.__fired records which card's button actually fired (the ground truth).
+-->
+<style>
+  body { font: 14px system-ui; max-width: 640px; margin: 2rem auto; }
+  .card { border: 1px solid #ccc; border-radius: 8px; padding: 12px; margin: 10px 0; }
+  .author { font-weight: 600; }
+  .actions { margin-top: 8px; display: flex; gap: 8px; }
+  button { padding: 4px 10px; }
+</style>
+
+<div id="feed"></div>
+
+<script>
+  window.__fired = [];
+  const authors = ["Amy", "Mario Gabriele", "Josh Kim", "Lilian", "Dana", "Wren"];
+  const feed = document.getElementById("feed");
+
+  // `data-card` is the test's ground-truth marker only — it is NOT a class the
+  // anchor logic reads (it inspects id / data-testid / href / text), so cards stay
+  // genuinely ambiguous to the recorder.
+  let MODE = { href: true };
+  function makeCard(i) {
+    const id = "c-100" + i;                 // stable per-card id
+    const name = authors[i] || ("User" + i);
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.card = id;
+    // href mode: a stable permalink anchors the card. no-href mode: the card has
+    // NO id/href at all, so the only discriminator is the author's name (text).
+    const permalink = MODE.href
+      ? `<a class="permalink" href="/notes/${name.toLowerCase().replace(/\s/g,"")}/note/${id}">View note</a>`
+      : "";
+    // dup mode adds two same-named "Save" buttons, distinguished only by their
+    // data-testid — the within-collision case.
+    const dup = MODE.dup ? `
+        <button aria-label="Save" data-testid="save-default" data-slot="a">Save</button>
+        <button aria-label="Save" data-testid="save-collection" data-slot="b">Save</button>` : "";
+    card.innerHTML = `
+      <div class="author">${name}</div>
+      ${permalink}
+      <div class="body">Note body from ${name} number ${i}.</div>
+      <div class="actions">
+        <button aria-label="Like">Like</button>
+        <button aria-label="Copy link">Copy link</button>
+        <button aria-label="Reply">Reply</button>${dup}
+      </div>`;
+    return card;
+  }
+
+  function render(ids) {
+    feed.replaceChildren(...ids.map(makeCard));
+  }
+  // initial order: 0..5
+  render([0, 1, 2, 3, 4, 5]);
+
+  // Ground-truth logger: whichever button fires, record its card's marker id.
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[aria-label]");
+    if (!btn) return;
+    window.__fired.push({
+      action: btn.getAttribute("aria-label"),
+      card: btn.closest(".card")?.dataset.card,
+      testid: btn.getAttribute("data-testid") || undefined,
+    });
+  }, true);
+
+  // Test hooks the harness drives via page.evaluate:
+  window.__renderHref = (ids) => { MODE = { href: true }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
+  window.__renderNoHref = (ids) => { MODE = { href: false }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
+  window.__renderDup = (ids) => { MODE = { href: true, dup: true }; render(ids ?? [0, 1, 2, 3, 4, 5]); };
+  // Reverse the two Save buttons inside one card — breaks positional index/rel but
+  // not the data-testid tiebreak.
+  window.__swapSaves = (cardId) => {
+    const actions = document.querySelector(`.card[data-card="${cardId}"] .actions`);
+    const saves = actions.querySelectorAll('button[aria-label="Save"]');
+    actions.insertBefore(saves[1], saves[0]);
+  };
+  window.__reorder = (ids) => render(ids);                          // full reshuffle
+  window.__prepend = () => feed.prepend(makeCard(9));               // insert a new card at top (id c-1009)
+  window.__deleteFirst = () => feed.firstElementChild.remove();     // drop the top card
+</script>
