@@ -278,6 +278,11 @@ exotic cases to the bottom.
 
 ### Tier B — the structural investment, M1 (mainly the QA wedge)
 4. **Harden content-anchor + scroll-context for virtualization** (extends this branch).
+   *Shipped:* capture records the scrollable viewport (`target.scroll.container`);
+   replay **scroll-finds** the off-screen row by its content anchor, then **re-resolves
+   after the final scroll** so node recycling can't swap the data out from under the
+   click. Anchored targets refuse a unique-but-positional css fallback (the recycled-row
+   lie). Regression: `test/virtual.mjs` (10k rows, ~14 in DOM).
 5. **`all_frames:true` + `frameId`/`FrameRef` cross-origin capture.** Per-frame content
    scripts + SW coordination. Mostly justified by QA (for gov forms, cross-origin
    payment/login degrades to `waitForUser`) — don't pull ahead of Tier A on gov grounds.
