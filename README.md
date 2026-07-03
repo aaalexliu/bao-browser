@@ -78,7 +78,11 @@ The remaining limit is content that has *scrolled out of the DOM* entirely.
 - **Graceful failure**: replay stops at the first unresolved step and reports which one
 
 ## Known M0 limits (by design — next milestones)
-- Single page only; navigation kills the content script (M1: SW re-injection + state machine)
+- ~~Single page only~~ **landed (M1/T8):** recording streams steps to the SW
+  (`chrome.storage.session`), replay runs a storage-backed RunState machine in the SW
+  (phases `executing → awaiting_nav → … → done|failed`, plus a resumable
+  `paused_for_user` with a popup Continue button) — both survive full-document
+  navigations and SW death; see `test/nav.mjs`
 - contenteditable replay drives editors via `execCommand("insertText")` (deprecated but
   still the only synthetic path most editors accept) with a `beforeinput` dispatch
   fallback; heavily custom editors may reject both — replay then fails the step with a

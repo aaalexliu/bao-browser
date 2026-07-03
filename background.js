@@ -13,7 +13,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // after, so it lives on `self` (the SW global) rather than in chrome.storage for M0.
 self.__baoSteps = self.__baoSteps || [];
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
   if (msg.cmd === "bao-reset") { self.__baoSteps = []; return; }
   if (msg.cmd === "bao-frame-steps" && Array.isArray(msg.steps)) {
@@ -25,8 +25,263 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
         frame: { ...(step.frame || {}), frameId: sender.frameId, url: sender.url, top: sender.frameId === 0 },
       });
     }
+    return;
   }
-  // No async response needed.
+  // ---- M1 messages (recording stream, boot handshake, popup controls) ----
+  if (msg.cmd === "bao-step" && msg.step) { onRecStep(msg.step, sender); return; }
+  if (msg.cmd === "bao-boot") { onBoot(sender).then(sendResponse); return true; }
+  if (msg.cmd === "bao-rec-start") { baoRecStart(msg.tabId).then(sendResponse); return true; }
+  if (msg.cmd === "bao-rec-stop") { baoRecStop().then((steps) => sendResponse({ steps })); return true; }
+  if (msg.cmd === "bao-run-start") { baoRunStart(msg.tabId, msg.steps).then(sendResponse); return true; }
+  if (msg.cmd === "bao-run-status") { getRun().then(sendResponse); return true; }
+  if (msg.cmd === "bao-run-continue") { baoRunContinue().then(sendResponse); return true; }
+});
+
+// ============================ M1 — cross-navigation ============================
+// Every full-document navigation destroys the content script, and MV3 kills this
+// worker whenever it likes. So neither holds state: the recording trace lives in
+// chrome.storage.session and the replay RunState in chrome.storage.local; both the
+// SW and the content script rehydrate from storage on every wake (m1-design §0).
+const REC_KEY = "baoRec";
+const RUN_KEY = "baoRun";
+const NAV_TIMEOUT_MS = 30_000;
+
+// All state transitions are read-modify-write on storage; serialize them so two
+// events (boot ping + onCompleted, say) can't interleave and double-advance.
+let chain = Promise.resolve();
+function enqueue(fn) {
+  const p = chain.then(fn, fn);
+  chain = p.catch((e) => console.warn("[bao-m1]", e));
+  return p;
+}
+
+const getRec = async () => (await chrome.storage.session.get(REC_KEY))[REC_KEY] || null;
+const setRec = (rec) => rec ? chrome.storage.session.set({ [REC_KEY]: rec }) : chrome.storage.session.remove(REC_KEY);
+const getRun = async () => (await chrome.storage.local.get(RUN_KEY))[RUN_KEY] || null;
+const setRun = (run) => run ? chrome.storage.local.set({ [RUN_KEY]: run }) : chrome.storage.local.remove(RUN_KEY);
+
+// Record-time id ≠ replay-time id: wildcard digit runs when matching URLs (same
+// normalization the T7 soft-nav markers use).
+function urlMatches(pattern, url) {
+  try { return new RegExp(`^${pattern}$`).test(url); } catch (_) { return false; }
+}
+const urlPatternOf = (u) => u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\d+/g, "\\d+");
+
+// ---- recording across navigations (T8 phase 1) ----
+self.baoRecStart = async (tabId) => {
+  await setRec({ tabId, steps: [] });
+  // Arm content scripts already alive in the tab; documents created later re-arm
+  // themselves via the boot handshake.
+  try { await chrome.tabs.sendMessage(tabId, { cmd: "start-record" }); } catch (_) {}
+  return { ok: true };
+};
+self.baoRecStop = async () => {
+  const rec = await getRec();
+  await setRec(null);
+  if (!rec) return [];
+  try { await chrome.tabs.sendMessage(rec.tabId, { cmd: "stop-record" }); } catch (_) {}
+  return rec.steps.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
+};
+function onRecStep(step, sender) {
+  enqueue(async () => {
+    const rec = await getRec();
+    if (!rec || !sender.tab || sender.tab.id !== rec.tabId) return;
+    const merged = {
+      ...step,
+      frame: { ...(step.frame || {}), frameId: sender.frameId, url: sender.url, top: sender.frameId === 0 },
+    };
+    const i = rec.steps.findIndex((s) => s.seq === step.seq);
+    if (i >= 0) rec.steps[i] = merged; else rec.steps.push(merged);
+    await setRec(rec);
+  });
+}
+
+// ---- replay across navigations (T8 phase 2): the RunState machine ----
+// phases: executing → (navigate step) awaiting_nav → executing … → done | failed,
+// with paused_for_user as the resumable pause (T8 phase 3). Event-driven only:
+// element waits live in the content script, navigation waits on webNavigation,
+// timeouts on chrome.alarms — never a long timer in here.
+self.baoRunStart = async (tabId, steps) => {
+  const run = {
+    runId: Math.random().toString(36).slice(2), tabId, steps,
+    stepIndex: 0, phase: "executing", dispatched: false, results: [], lastError: null,
+  };
+  await setRun(run);
+  tick();
+  return { ok: true, runId: run.runId };
+};
+self.baoRunStatus = getRun;
+self.baoRunContinue = async () => {
+  const resumed = await enqueue(async () => {
+    const run = await getRun();
+    if (!run || run.phase !== "paused_for_user") return false;
+    run.results.push({ i: run.stepIndex, ok: true, via: "waitForUser (user continued)" });
+    run.stepIndex++; run.phase = "executing";
+    await setRun(run);
+    return true;
+  });
+  if (resumed) tick();
+  return { ok: resumed };
+};
+async function fail(run, reason) {
+  run.phase = "failed";
+  run.lastError = { stepIndex: run.stepIndex, reason };
+  await setRun(run);
+}
+
+// One turn of the machine. Reads state, acts on the current step, writes state.
+// The actual dispatch (which can take seconds of in-page element waiting) happens
+// OUTSIDE the serialized chain so wake events aren't blocked behind it.
+async function tick() {
+  const todo = await enqueue(async () => {
+    const run = await getRun();
+    if (!run || run.phase !== "executing") return null;
+    if (run.stepIndex >= run.steps.length) {
+      run.phase = "done"; await setRun(run); return null;
+    }
+    const step = run.steps[run.stepIndex];
+    if (step.action === "navigate") {
+      run.phase = "awaiting_nav";
+      run.expectedNav = { pattern: urlPatternOf(step.url), deadline: Date.now() + NAV_TIMEOUT_MS };
+      await setRun(run);
+      chrome.alarms.create("bao-run-watchdog", { when: Date.now() + NAV_TIMEOUT_MS });
+      return { kind: "check-nav" }; // the nav may already have finished — check now
+    }
+    if (step.action === "waitForUser") {
+      run.phase = "paused_for_user"; await setRun(run); return null;
+    }
+    run.dispatched = true; run.dispatchedAt = Date.now();
+    await setRun(run);
+    return { kind: "dispatch", run, step };
+  });
+  if (!todo) return;
+  if (todo.kind === "check-nav") return maybeResumeAfterNav();
+
+  const { run, step } = todo;
+  let res = null;
+  try {
+    res = await chrome.tabs.sendMessage(run.tabId, { cmd: "replay", steps: [step] }, { frameId: 0 });
+  } catch (_) { /* document torn down mid-step, or no content script yet */ }
+
+  const proceed = await enqueue(async () => {
+    const cur = await getRun();
+    // The world may have moved while we were dispatching (SW respawn advanced the
+    // run via boot ping). Only record a result if we're still on the same step.
+    if (!cur || cur.runId !== run.runId || cur.stepIndex !== run.stepIndex || cur.phase !== "executing") return false;
+    if (res && res.ok === true) {
+      cur.results.push({ i: cur.stepIndex, ok: true, via: res.results?.[0]?.via });
+      cur.stepIndex++; cur.dispatched = false;
+      await setRun(cur);
+      return true;
+    }
+    // No response and the trace says this click navigates (the next step is its
+    // navigate marker): the port died because the document did — that IS success.
+    const next = cur.steps[cur.stepIndex + 1];
+    if (!res && next && next.action === "navigate") {
+      cur.results.push({ i: cur.stepIndex, ok: true, via: "assumed-nav" });
+      cur.stepIndex++; cur.dispatched = false;
+      await setRun(cur);
+      return true;
+    }
+    await fail(cur, res ? (res.results?.[0]?.reason || "step failed") : "content script unreachable");
+    return false;
+  });
+  if (proceed) tick();
+}
+
+// Resume out of awaiting_nav once the destination document exists AND answers —
+// reached either from the boot ping (readyState complete) or from
+// webNavigation.onCompleted, whichever lands; the phase check makes it idempotent.
+async function maybeResumeAfterNav() {
+  const run = await getRun();
+  if (!run || run.phase !== "awaiting_nav") return;
+  let url;
+  try {
+    const tab = await chrome.tabs.get(run.tabId);
+    url = tab.url;
+    if (!urlMatches(run.expectedNav.pattern, url)) return;
+    await chrome.tabs.sendMessage(run.tabId, { cmd: "status" }, { frameId: 0 });
+  } catch (_) { return; } // not there yet — a later wake retries
+  const resumed = await enqueue(async () => {
+    const cur = await getRun();
+    if (!cur || cur.phase !== "awaiting_nav") return false;
+    cur.results.push({ i: cur.stepIndex, ok: true, via: "navigation", url });
+    cur.stepIndex++; cur.phase = "executing"; cur.dispatched = false;
+    delete cur.expectedNav;
+    await setRun(cur);
+    return true;
+  });
+  if (resumed) tick();
+}
+
+// Boot handshake from every fresh document (content.js sends it at readyState
+// complete). Recording: tell the new document to re-arm. Replay: this is the
+// primary awaiting_nav wake, and the re-execution guard for the riskiest race —
+// SW killed after dispatching a click, before its completion was recorded.
+async function onBoot(sender) {
+  if (!sender.tab) return {};
+  const rec = await getRec();
+  if (rec && sender.tab.id === rec.tabId) return { record: true };
+  const run = await getRun();
+  if (run && sender.tab.id === run.tabId && sender.frameId === 0) {
+    if (run.phase === "awaiting_nav") maybeResumeAfterNav();
+    else if (run.phase === "executing" && run.dispatched) {
+      // Dispatched but never confirmed, and the document has since been replaced.
+      // If the trace expected this step to navigate, treat it as completed.
+      const advanced = await enqueue(async () => {
+        const cur = await getRun();
+        if (!cur || cur.phase !== "executing" || !cur.dispatched) return false;
+        const next = cur.steps[cur.stepIndex + 1];
+        const stepUrl = cur.steps[cur.stepIndex]?.frame?.url;
+        if (next && next.action === "navigate" && sender.url !== stepUrl) {
+          cur.results.push({ i: cur.stepIndex, ok: true, via: "assumed-nav (SW respawn)" });
+          cur.stepIndex++; cur.dispatched = false;
+          await setRun(cur);
+          return true;
+        }
+        return false;
+      });
+      if (advanced) tick();
+    }
+  }
+  return {};
+}
+
+chrome.webNavigation.onCommitted.addListener(async (d) => {
+  if (d.frameId !== 0) return;
+  // Recording: a full-document nav in the recorded tab becomes a navigate step the
+  // replay state machine will wait on (the recorder itself dies with the document).
+  const rec = await getRec();
+  if (rec && d.tabId === rec.tabId) {
+    enqueue(async () => {
+      const cur = await getRec();
+      if (!cur || d.tabId !== cur.tabId) return;
+      cur.steps.push({
+        action: "navigate", label: `Navigate to ${d.url}`, url: d.url,
+        wait: { type: "navigation" }, ts: Date.now(), seq: `nav-${Date.now()}`,
+        frame: { url: d.url, top: true },
+      });
+      await setRec(cur);
+    });
+  }
+  // Replay: make sure the fresh document gets a content script early (the manifest
+  // injects at document_idle anyway; this is belt-and-braces, and idempotent).
+  const run = await getRun();
+  if (run && d.tabId === run.tabId && !["done", "failed"].includes(run.phase)) {
+    try { await chrome.scripting.executeScript({ target: { tabId: d.tabId }, files: ["content.js"] }); } catch (_) {}
+  }
+});
+chrome.webNavigation.onCompleted.addListener((d) => {
+  if (d.frameId === 0) maybeResumeAfterNav();
+});
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== "bao-run-watchdog") return;
+  await enqueue(async () => {
+    const run = await getRun();
+    if (!run || run.phase !== "awaiting_nav") return;
+    if (Date.now() < (run.expectedNav?.deadline || 0)) return;
+    await fail(run, `expected navigation to ${run.steps[run.stepIndex]?.url} never completed`);
+  });
 });
 
 // The merged, time-ordered recording across all frames.
