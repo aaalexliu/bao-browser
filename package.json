@@ -7,7 +7,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs && node test/frames.mjs && node test/forceopen.mjs",
+    "test": "node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs && node test/frames.mjs && node test/forceopen.mjs && node test/editable.mjs",
+    "test:editable": "node test/editable.mjs",
     "test:list": "node test/list.mjs",
     "test:blindspots": "node test/blindspots.mjs",
     "test:virtual": "node test/virtual.mjs",

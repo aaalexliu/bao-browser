@@ -79,6 +79,10 @@ The remaining limit is content that has *scrolled out of the DOM* entirely.
 
 ## Known M0 limits (by design — next milestones)
 - Single page only; navigation kills the content script (M1: SW re-injection + state machine)
+- contenteditable replay drives editors via `execCommand("insertText")` (deprecated but
+  still the only synthetic path most editors accept) with a `beforeinput` dispatch
+  fallback; heavily custom editors may reject both — replay then fails the step with a
+  clear report rather than pretending (Google Docs is canvas-rendered anyway)
 - No screenshots / audit trail yet (full-viewport capture comes with the auditable-replay work)
 - Naive `change`/`input` coalescing; no dropdown/keypress/scroll steps yet
 - Selector heuristics are a starting port of Playwright/Chrome-Recorder ideas, not tuned

@@ -471,6 +471,35 @@
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
+  // contenteditable actuator. setNativeValue can't drive these — there is no value
+  // setter. Attempt order: (1) execCommand insertText (deprecated, but still the only
+  // synthetic path most editors accept — it routes through the same cancelable
+  // beforeinput a real keystroke produces, so model-driven editors like ProseMirror/
+  // Lexical apply it to their model); (2) synthetic beforeinput+input dispatch;
+  // (3) verify the text landed, else report failure. Heavily custom editors (Google
+  // Docs is canvas anyway) may reject all synthetic paths — the honest failure is
+  // correct behavior, not a bug.
+  const squish = (s) => (s || "").replace(/\s+/g, " ").trim();
+  async function setEditableValue(el, value) {
+    const landed = () => squish(el.innerText).includes(squish(value));
+    el.focus();
+    try {
+      document.execCommand("selectAll", false, null);
+      document.execCommand("insertText", false, value);
+    } catch (_) {}
+    await sleep(50);
+    if (landed()) return true;
+    try {
+      el.dispatchEvent(new InputEvent("beforeinput", {
+        bubbles: true, cancelable: true, inputType: "insertText", data: value,
+      }));
+      el.dispatchEvent(new InputEvent("input", {
+        bubbles: true, inputType: "insertText", data: value,
+      }));
+    } catch (_) {}
+    await sleep(50);
+    return landed();
+  }
 
   // ---------- highlight overlay (the "watch it" feel) ----------
   function highlight(el) {
@@ -524,12 +553,43 @@
     lastInputEl = lastInputStep = null;
     steps.push(makeStep("click", el));
   }
+  // The editable ROOT the event belongs to. Editors nest contenteditable nodes, so
+  // walk to the highest contentEditable ancestor — that's the stable, addressable
+  // surface (the leaf under the caret churns per keystroke).
+  function editableRoot(node) {
+    let el = node instanceof Element ? node : node && node.parentElement;
+    if (!el || !el.isContentEditable) return null;
+    while (el.parentElement && el.parentElement.isContentEditable) el = el.parentElement;
+    return el;
+  }
+  // Coalesced contenteditable capture: one step per editable root per typing burst,
+  // value = innerText (we replay semantics, not markup).
+  function recordEditable(root) {
+    if (!recording) return;
+    const value = root.innerText;
+    if (lastInputEl === root && lastInputStep) { lastInputStep.value = value; return; }
+    const step = makeStep("input", root);
+    step.mode = "contenteditable"; step.value = value;
+    steps.push(step); lastInputStep = step; lastInputEl = root;
+  }
   function onInput(e) {
     const el = e.composedPath ? e.composedPath()[0] : e.target;
+    const root = editableRoot(el);
+    if (root) { recordEditable(root); return; }
     if (!(el instanceof Element) || !isTextField(el)) return;
     if (lastInputEl === el && lastInputStep) { lastInputStep.value = el.value; return; }
     const step = makeStep("input", el); step.value = el.value;
     steps.push(step); lastInputStep = step; lastInputEl = el;
+  }
+  // Strict model-driven editors (Lexical-style) preventDefault their beforeinput and
+  // mutate the DOM themselves — so no native `input` event ever fires. Capture via
+  // beforeinput too, reading the root's text on the next tick, after the editor (or
+  // the browser default) has applied the change. recordEditable coalesces, so the
+  // overlap with onInput on ordinary editables is harmless.
+  function onBeforeInput(e) {
+    const root = editableRoot(e.composedPath ? e.composedPath()[0] : e.target);
+    if (!root) return;
+    setTimeout(() => recordEditable(root), 0);
   }
   function onChange(e) {
     const el = e.composedPath ? e.composedPath()[0] : e.target;
@@ -542,12 +602,14 @@
     steps = []; lastInputEl = lastInputStep = null; recording = true;
     document.addEventListener("click", onClick, true);
     document.addEventListener("input", onInput, true);
+    document.addEventListener("beforeinput", onBeforeInput, true);
     document.addEventListener("change", onChange, true);
   }
   function stopRecording() {
     recording = false;
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("input", onInput, true);
+    document.removeEventListener("beforeinput", onBeforeInput, true);
     document.removeEventListener("change", onChange, true);
     // Report this frame's steps to the SW so it can merge them with sibling/child
     // frames (which the top frame can't see across an origin boundary). Best-effort.
@@ -585,6 +647,13 @@
       }
       highlight(el);
       if (step.action === "click") el.click();
+      else if (step.action === "input" && step.mode === "contenteditable") {
+        const landed = await setEditableValue(el, step.value);
+        if (!landed) {
+          results.push({ i, ok: false, reason: `Editor rejected synthetic input: ${step.label}` });
+          return { ok: false, failedAt: i, results };
+        }
+      }
       else if (step.action === "input") setNativeValue(el, step.value);
       else if (step.action === "select") setSelectValue(el, step.value);
       results.push({ i, ok: true, via: r.via });
