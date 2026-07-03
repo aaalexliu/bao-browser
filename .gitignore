@@ -13,3 +13,6 @@ out/
 # Logs
 *.log
 npm-debug.log*
+
+# TypeScript build output (esbuild)
+dist/
