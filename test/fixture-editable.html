@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Bao fixture — contenteditable editors</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    [contenteditable] { border: 1px solid #999; padding: 8px; min-height: 3em; margin: 1em 0; }
+  </style>
+</head>
+<body>
+  <h1>Editable fixture</h1>
+
+  <!-- (a) bare contenteditable: the browser's native editing does everything -->
+  <div id="plain" contenteditable="true" aria-label="Plain editor"></div>
+
+  <!-- (b) strict model-driven editor (ProseMirror/Lexical-style trap):
+       preventDefaults every beforeinput, applies the change to its own model,
+       re-renders from the model, and REVERTS any DOM mutation that bypassed the
+       model. A naive `.textContent =` replay silently loses here. -->
+  <div id="strict" contenteditable="true" aria-label="Strict editor"></div>
+
+  <button id="reset">Reset</button>
+
+  <script>
+    const strict = document.getElementById("strict");
+    let model = "";
+    let rendering = false;
+    function render() {
+      rendering = true;
+      strict.textContent = model;
+      rendering = false;
+    }
+    strict.addEventListener("beforeinput", (e) => {
+      e.preventDefault();
+      if (e.inputType === "insertText" && e.data != null) model += e.data;
+      else if (e.inputType === "insertParagraph" || e.inputType === "insertLineBreak") model += "\n";
+      else if (e.inputType === "deleteContentBackward") model = model.slice(0, -1);
+      render();
+    });
+    // Reject direct DOM mutation: anything that didn't come through the model is
+    // reverted (this is what makes a naive replay path fail honestly).
+    new MutationObserver(() => {
+      if (!rendering && strict.textContent !== model) render();
+    }).observe(strict, { childList: true, characterData: true, subtree: true });
+
+    document.getElementById("reset").addEventListener("click", () => {
+      document.getElementById("plain").textContent = "";
+      model = "";
+      render();
+    });
+  </script>
+</body>
+</html>
