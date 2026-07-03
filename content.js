@@ -530,14 +530,27 @@
   }
   function markSoftNav() {
     if (location.href === lastStepUrl) return;
-    steps.push({
+    const marker = {
       action: "softNav", label: `Route changed to ${location.href}`,
       urlAfter: location.href, urlPattern: urlPatternOf(location.href),
       frame: frameInfo(), ts: Date.now(),
-    });
+    };
+    steps.push(marker); syncStep(marker);
     lastStepUrl = location.href;
   }
-  function pushStep(step) { markSoftNav(); steps.push(step); }
+  function pushStep(step) { markSoftNav(); steps.push(step); syncStep(step); }
+
+  // M1: stream every step to the SW as it happens — a full-document navigation
+  // destroys this script and its page-memory buffer, so the durable trace lives in
+  // chrome.storage.session, SW-side. Coalesced input steps re-send under the same
+  // seq and the SW replaces in place. Fire-and-forget: when no SW-side recording
+  // session is active (M0 single-page flows), the SW ignores these.
+  let stepSeq = 0;
+  const seqPrefix = Math.random().toString(36).slice(2, 8); // per-frame uniqueness
+  function syncStep(step) {
+    if (!step.seq) step.seq = `${seqPrefix}-${++stepSeq}`;
+    try { chrome.runtime.sendMessage({ cmd: "bao-step", step }).catch(() => {}); } catch (_) {}
+  }
 
   function humanLabel(action, el) {
     const name = accName(el) || el.nodeName.toLowerCase();
@@ -587,7 +600,7 @@
   function recordEditable(root) {
     if (!recording) return;
     const value = root.innerText;
-    if (lastInputEl === root && lastInputStep) { lastInputStep.value = value; return; }
+    if (lastInputEl === root && lastInputStep) { lastInputStep.value = value; syncStep(lastInputStep); return; }
     const step = makeStep("input", root);
     step.mode = "contenteditable"; step.value = value;
     pushStep(step); lastInputStep = step; lastInputEl = root;
@@ -597,7 +610,7 @@
     const root = editableRoot(el);
     if (root) { recordEditable(root); return; }
     if (!(el instanceof Element) || !isTextField(el)) return;
-    if (lastInputEl === el && lastInputStep) { lastInputStep.value = el.value; return; }
+    if (lastInputEl === el && lastInputStep) { lastInputStep.value = el.value; syncStep(lastInputStep); return; }
     const step = makeStep("input", el); step.value = el.value;
     pushStep(step); lastInputStep = step; lastInputEl = el;
   }
@@ -659,6 +672,13 @@
     const results = [];
     for (let i = 0; i < stepList.length; i++) {
       const step = stepList[i];
+      // Full-document navigate markers are SW-owned (the RunState machine waits on
+      // webNavigation, not on this script — which the nav destroys). If one reaches
+      // the in-page replayer (M0 single-page path), it's a no-op.
+      if (step.action === "navigate" || step.action === "waitForUser") {
+        results.push({ i, ok: true, via: "noop (SW-owned step)" });
+        continue;
+      }
       if (step.action === "softNav") {
         const ok = await waitForUrl(step);
         if (!ok) {
@@ -714,4 +734,20 @@
     else if (msg.cmd === "replay") { replay(msg.steps).then(sendResponse); return true; }
     return true;
   });
+
+  // ---------- M1 boot handshake ----------
+  // Every fresh document announces itself to the SW once it's ready to be acted on
+  // (readyState complete — acting earlier misses not-yet-rendered targets). The SW
+  // rehydrates from storage and answers: re-arm recording mid-trace, or resume a
+  // paused run's state machine. Both the SW and this script are disposable; storage
+  // is the only memory.
+  function bootPing() {
+    try {
+      chrome.runtime.sendMessage({ cmd: "bao-boot", url: location.href, top: window === window.top })
+        .then((res) => { if (res && res.record && !recording) startRecording(); })
+        .catch(() => {});
+    } catch (_) {}
+  }
+  if (document.readyState === "complete") bootPing();
+  else window.addEventListener("load", bootPing, { once: true });
 })();
