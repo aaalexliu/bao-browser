@@ -518,6 +518,26 @@
 
   // ---------- recording ----------
   let recording = false, steps = [], lastInputStep = null, lastInputEl = null;
+  let lastStepUrl = null;
+
+  // SPA soft-navigation marker (T7). Rich SaaS apps route via history.pushState —
+  // the content script survives (no teardown), so we detect the route change by
+  // comparing location.href step-over-step and insert a synthetic marker the replay
+  // can wait on. urlPattern wildcards digit runs: the id minted at record time is
+  // not the id at replay time ("create then open" flows).
+  function urlPatternOf(u) {
+    return u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\d+/g, "\\d+");
+  }
+  function markSoftNav() {
+    if (location.href === lastStepUrl) return;
+    steps.push({
+      action: "softNav", label: `Route changed to ${location.href}`,
+      urlAfter: location.href, urlPattern: urlPatternOf(location.href),
+      frame: frameInfo(), ts: Date.now(),
+    });
+    lastStepUrl = location.href;
+  }
+  function pushStep(step) { markSoftNav(); steps.push(step); }
 
   function humanLabel(action, el) {
     const name = accName(el) || el.nodeName.toLowerCase();
@@ -551,7 +571,7 @@
     const el = composedLeaf(e);
     if (el.nodeName === "SELECT") return; // captured via change, not click
     lastInputEl = lastInputStep = null;
-    steps.push(makeStep("click", el));
+    pushStep(makeStep("click", el));
   }
   // The editable ROOT the event belongs to. Editors nest contenteditable nodes, so
   // walk to the highest contentEditable ancestor — that's the stable, addressable
@@ -570,7 +590,7 @@
     if (lastInputEl === root && lastInputStep) { lastInputStep.value = value; return; }
     const step = makeStep("input", root);
     step.mode = "contenteditable"; step.value = value;
-    steps.push(step); lastInputStep = step; lastInputEl = root;
+    pushStep(step); lastInputStep = step; lastInputEl = root;
   }
   function onInput(e) {
     const el = e.composedPath ? e.composedPath()[0] : e.target;
@@ -579,7 +599,7 @@
     if (!(el instanceof Element) || !isTextField(el)) return;
     if (lastInputEl === el && lastInputStep) { lastInputStep.value = el.value; return; }
     const step = makeStep("input", el); step.value = el.value;
-    steps.push(step); lastInputStep = step; lastInputEl = el;
+    pushStep(step); lastInputStep = step; lastInputEl = el;
   }
   // Strict model-driven editors (Lexical-style) preventDefault their beforeinput and
   // mutate the DOM themselves — so no native `input` event ever fires. Capture via
@@ -595,17 +615,18 @@
     const el = e.composedPath ? e.composedPath()[0] : e.target;
     if (!(el instanceof Element) || el.nodeName !== "SELECT") return;
     const step = makeStep("select", el); step.value = el.value;
-    steps.push(step); lastInputEl = lastInputStep = null;
+    pushStep(step); lastInputEl = lastInputStep = null;
   }
 
   function startRecording() {
-    steps = []; lastInputEl = lastInputStep = null; recording = true;
+    steps = []; lastInputEl = lastInputStep = null; lastStepUrl = location.href; recording = true;
     document.addEventListener("click", onClick, true);
     document.addEventListener("input", onInput, true);
     document.addEventListener("beforeinput", onBeforeInput, true);
     document.addEventListener("change", onChange, true);
   }
   function stopRecording() {
+    markSoftNav(); // a route change after the last step still gets its marker
     recording = false;
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("input", onInput, true);
@@ -620,10 +641,33 @@
   }
 
   // ---------- replay ----------
+  // Wait for a recorded soft navigation to settle: the URL must match the recorded
+  // pattern (digit runs wildcarded — replay-time ids differ) before the next step's
+  // element resolution starts, instead of leaning on the generic 5s retry.
+  async function waitForUrl(step, timeout = 5000) {
+    let re = null;
+    try { re = new RegExp(`^${step.urlPattern}$`); } catch (_) {}
+    const matches = () => (re ? re.test(location.href) : location.href === step.urlAfter);
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      if (matches()) return true;
+      await sleep(100);
+    }
+    return matches();
+  }
   async function replay(stepList) {
     const results = [];
     for (let i = 0; i < stepList.length; i++) {
       const step = stepList[i];
+      if (step.action === "softNav") {
+        const ok = await waitForUrl(step);
+        if (!ok) {
+          results.push({ i, ok: false, reason: `Route never matched ${step.urlAfter} (now: ${location.href})` });
+          return { ok: false, failedAt: i, results };
+        }
+        results.push({ i, ok: true, via: "softNav" });
+        continue;
+      }
       // Degraded capture (canvas / closed shadow): no clean selector exists. Fail
       // cleanly rather than guess — this is where a Tier-3/4 executor takes over.
       if (step.target && step.target.degraded) {

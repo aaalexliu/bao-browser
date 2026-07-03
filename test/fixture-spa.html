@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Bao fixture — SPA soft navigation</title>
+  <style>body { font-family: sans-serif; margin: 2rem; }</style>
+</head>
+<body>
+  <h1>SPA fixture</h1>
+  <div id="app"></div>
+
+  <script>
+    // Minimal client router. Two twists that mirror real rich-SaaS apps:
+    //  1) the pushState happens ASYNC after the click (a "save then route" flow),
+    //     so the URL change is what replay must wait on, and
+    //  2) the routed view renders after a further delay, and its item id is minted
+    //     fresh per session — record-time id ≠ replay-time id.
+    function render() {
+      const app = document.getElementById("app");
+      if (location.pathname.startsWith("/item/")) {
+        app.innerHTML = "<p>Loading item…</p>";
+        setTimeout(() => {
+          const id = location.pathname.split("/")[2];
+          app.innerHTML =
+            '<h2 id="item-title">Item ' + id + "</h2>" +
+            '<input id="note" aria-label="Note" />';
+        }, 400);
+      } else {
+        app.innerHTML = '<h2>Route 1</h2><button id="open-item">Open item</button>';
+        document.getElementById("open-item").addEventListener("click", () => {
+          setTimeout(() => {
+            const id = 10000 + Math.floor(Math.random() * 90000);
+            history.pushState({}, "", "/item/" + id);
+            render();
+          }, 300);
+        });
+      }
+    }
+    window.addEventListener("popstate", render);
+    render();
+  </script>
+</body>
+</html>
