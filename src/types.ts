@@ -91,8 +91,8 @@ export interface Step {
   urlAfter?: string;
   urlPattern?: string;
   // record-time frame grounding (T11): the viewport the step was captured in and when.
-  // goldenScreenshotRef is added by T12.
-  meta?: { viewport: { w: number; h: number }; recordedAt: number };
+  // goldenScreenshotRef (T12) is an IndexedDB key for the full-viewport golden frame.
+  meta?: { viewport: { w: number; h: number }; recordedAt: number; goldenScreenshotRef?: string };
 }
 
 // ---------- replay results ----------
