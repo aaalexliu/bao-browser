@@ -52,6 +52,14 @@ const stepLabel = (s: Step) => `${s.label}${s.value ? ` = "${s.value}"` : ""}`;
 const domainOf = (u: string) => { try { return new URL(u).hostname || "other"; } catch (_) { return "other"; } };
 const dateFmt = (ts: number) =>
   new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+function relTime(ts: number): string {
+  const d = Date.now() - ts;
+  if (d < 60_000) return "just now";
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
+  if (d < 7 * 86_400_000) return `${Math.floor(d / 86_400_000)}d ago`;
+  return dateFmt(ts);
+}
 
 function setStatus(text: string): void {
   statusEl.hidden = !text;
@@ -135,7 +143,7 @@ function card(w: WorkflowSummary): HTMLElement {
   name.title = w.startUrl;
   const meta = document.createElement("div");
   meta.className = "meta";
-  meta.textContent = `${w.count} steps · ${dateFmt(w.createdAt)}`;
+  meta.textContent = `${w.count} steps · ${relTime(w.createdAt)}`;
   body.append(name, meta);
 
   // Run from a card goes through the detail view (§3): one codepath for progress,
@@ -162,6 +170,7 @@ function card(w: WorkflowSummary): HTMLElement {
         await sw({ cmd: "bao-wf-update", id: w.id, patch: { pinned: !w.pinned } });
         await refresh();
       }),
+      menuItem("Export JSON", () => exportWorkflow(w.id)),
       menuItem("Delete", () => deleteWithUndo(w)),
     );
     menu.appendChild(pop);
@@ -316,7 +325,7 @@ function runMatchesDetail(): boolean {
 function renderDetail(): void {
   const wf = detailWf;
   renderDetailName();
-  dpinBtn.hidden = ddeleteBtn.hidden = drunBtn.hidden = !wf;
+  dpinBtn.hidden = ddeleteBtn.hidden = drunBtn.hidden = ($("dexport") as HTMLButtonElement).hidden = !wf;
   if (wf) {
     dmetaEl.textContent =
       `${domainOf(wf.startUrl)} · ${wf.steps.length} steps · created ${dateFmt(wf.createdAt)}`;
@@ -453,6 +462,51 @@ ddeleteBtn.onclick = () => {
   detailWf = null;
   showView("home");
   deleteWithUndo(wf);
+};
+
+// ---------------------------- import / export (§6) ----------------------------
+// Export is exactly the stored Workflow shape — directly usable by the harness
+// tooling (test/run.mjs consumes `steps`), a deliberate bridge.
+const slugify = (name: string) =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "workflow";
+
+async function exportWorkflow(id: string): Promise<void> {
+  const wf: Workflow | null = await sw({ cmd: "bao-wf-get", id });
+  if (!wf) return;
+  const blob = new Blob([JSON.stringify(wf, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `bao-${slugify(wf.name)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+$("dexport").onclick = () => { if (detailWf) exportWorkflow(detailWf.id); };
+
+// Minimal validation, no silent partial imports (§6): name + steps with
+// action/label or the whole file is rejected. The SW assigns the fresh id.
+function isImportable(w: unknown): w is Workflow {
+  const c = w as Workflow;
+  return !!c && typeof c.name === "string" && Array.isArray(c.steps) &&
+    c.steps.every((s) => s && typeof s.action === "string" && typeof s.label === "string");
+}
+const importFileEl = $("importfile") as HTMLInputElement;
+$("import").onclick = () => importFileEl.click();
+importFileEl.onchange = async () => {
+  const file = importFileEl.files?.[0];
+  importFileEl.value = "";
+  if (!file) return;
+  let parsed: unknown;
+  try { parsed = JSON.parse(await file.text()); } catch (_) {
+    showToast("Import failed: not valid JSON.", null);
+    return;
+  }
+  if (!isImportable(parsed)) {
+    showToast("Import failed: not a Bao workflow file.", null);
+    return;
+  }
+  const res = await sw({ cmd: "bao-wf-import", workflow: parsed });
+  showToast(res?.ok ? `Imported "${parsed.name}".` : "Import failed.", null);
+  refresh();
 };
 
 // ---------------------------- record availability ----------------------------

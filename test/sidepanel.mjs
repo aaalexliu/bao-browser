@@ -9,6 +9,7 @@
 import { chromium } from "playwright";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -97,6 +98,38 @@ async function main() {
     await sleep(UNDO_MS + 700);
     check("expired delete removed the workflow",
       (await swEval((id) => self.baoGetWorkflow(id), seeded.a)) === null);
+
+    // ---- Export JSON downloads the exact Workflow shape (§6) ----
+    const [dl] = await Promise.all([
+      panel.waitForEvent("download"),
+      (async () => {
+        await panel.locator(".card", { hasText: "Upvote story" }).locator("button", { hasText: "⋯" }).click();
+        await panel.locator(".menu-pop button", { hasText: "Export JSON" }).click();
+      })(),
+    ]);
+    check("export filename is slugified", dl.suggestedFilename() === "bao-upvote-story.json",
+      dl.suggestedFilename());
+    const exported = JSON.parse(readFileSync(await dl.path(), "utf8"));
+    check("export is the stored Workflow shape",
+      exported.id === seeded.b && exported.version === 1 && exported.steps?.length === 2,
+      JSON.stringify({ id: exported.id, version: exported.version, steps: exported.steps?.length }));
+
+    // ---- Import: fresh id via bao-wf-import; invalid file rejected whole ----
+    mkdirSync(resolve(ROOT, "out"), { recursive: true });
+    const impPath = resolve(ROOT, "out/bao-import-test.json");
+    writeFileSync(impPath, JSON.stringify({ ...exported, name: "Imported upvote" }));
+    await panel.setInputFiles("#importfile", impPath);
+    await sleep(400);
+    const importedId = await swEval(async () =>
+      (await self.baoListWorkflows()).find((w) => w.name === "Imported upvote")?.id ?? null);
+    check("import created a fresh workflow", importedId != null && importedId !== seeded.b, importedId);
+    const badPath = resolve(ROOT, "out/bao-import-bad.json");
+    writeFileSync(badPath, JSON.stringify({ nope: true }));
+    await panel.setInputFiles("#importfile", badPath);
+    await sleep(300);
+    check("invalid import rejected with a toast",
+      (await panel.locator("#toastmsg").textContent())?.includes("Import failed"),
+      await panel.locator("#toastmsg").textContent());
 
     // ---- Live recording feed + stop → rename handoff ----
     const page = await ctx.newPage();

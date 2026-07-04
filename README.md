@@ -11,10 +11,16 @@ No LLM, no backend, no cross-navigation (those are M1+).
 4. Pin the extension, open any normal `http(s)` page (not `chrome://` pages)
 
 ## Try it
-1. Click the icon → **● Record**
-2. Click around / type into fields on the page
-3. Reopen the icon → **■ Stop** (shows the captured steps in plain English)
-4. Reload or reset the page → **▶ Replay** (watch the red highlight re-drive it)
+1. Click the toolbar icon — the **side panel** opens (T15; it stays open while you
+   work, unlike the old popup)
+2. **● Record**, then click around / type into fields on the page — steps appear
+   live in the panel as you interact
+3. **■ Stop** — the recording is auto-saved with a generated name; the name is
+   focused for an inline rename (typing replaces it, Enter commits)
+4. **▶ Run** from a workflow card or its detail view — the step list shows live
+   ✓/✗ progress, pauses inline with a **Continue** button when a step needs you
+5. Workflows are searchable, grouped by site, pinnable, and import/export as JSON
+   (the exported file is directly usable by `node test/run.mjs`)
 
 ## Test it (automated)
 A headless e2e loads the unpacked extension, records a real session on a fixture
@@ -27,13 +33,13 @@ npm test                          # HEADED=1 npm test to watch it run
 ```
 
 It drives the **real** `content.ts` (built to `dist/content.js`) through
-`chrome.tabs.sendMessage` (the same path `popup.ts` uses) and asserts the page was actually re-driven. Outputs:
+`chrome.tabs.sendMessage` (the same path `sidepanel.ts` uses) and asserts the page was actually re-driven. Outputs:
 - `out/recorded-steps.json` — captured steps with the ranked selector candidates
 - `out/replay-results.json` — per-step resolution (`via` selector) + the events the page fired during replay
 
 **Assertions + headless runner (T6)** — recording supports *expectations*, not just
 actions: press **Alt+Shift+A** while recording, then click an element to capture an
-`assert` (defaults to "expect this text present"; the popup shows it as `Expect: …`).
+`assert` (defaults to "expect this text present"; the panel shows it as `Expect: …`).
 Assertions are checked at replay, are **non-fatal** (all are reported; the run fails
 iff any assert fails), and support `textPresent | elementVisible | elementAbsent |
 urlMatches`. The thin CI runner replays a saved trace and reports a ✓/✗ table:
@@ -128,7 +134,7 @@ The remaining limit is content that has *scrolled out of the DOM* entirely.
 - ~~Single page only~~ **landed (M1/T8):** recording streams steps to the SW
   (`chrome.storage.session`), replay runs a storage-backed RunState machine in the SW
   (phases `executing → awaiting_nav → … → done|failed`, plus a resumable
-  `paused_for_user` with a popup Continue button) — both survive full-document
+  `paused_for_user` with an inline Continue button in the panel) — both survive full-document
   navigations and SW death; see `test/nav.mjs`
 - contenteditable replay drives editors via `execCommand("insertText")` (deprecated but
   still the only synthetic path most editors accept) with a `beforeinput` dispatch
