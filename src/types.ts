@@ -34,7 +34,13 @@ export interface Target {
   reach: Reach;
   unique: boolean;
   degraded?: boolean;
-  bbox?: { x: number; y: number; w: number; h: number };
+  // Per-target grounding (T11), captured on EVERY step as self-healing fuel. bbox is
+  // stored viewport-relative (x/y/w/h as % of the viewport, one decimal) so it survives
+  // a resize; vw/vh are the capture-time viewport pixels, enough to derive a crop from
+  // a full-frame screenshot (fullFrame ✂ bbox). text/role are unused at replay today.
+  bbox?: { x: number; y: number; w: number; h: number; vw: number; vh: number };
+  text?: string;
+  role?: string | null;
   scroll?: { container: string };
   anchor?: AnchorDescriptor;
   within?: WithinDescriptor;
@@ -84,6 +90,9 @@ export interface Step {
   // softNav (SPA route change, content-recorded)
   urlAfter?: string;
   urlPattern?: string;
+  // record-time frame grounding (T11): the viewport the step was captured in and when.
+  // goldenScreenshotRef is added by T12.
+  meta?: { viewport: { w: number; h: number }; recordedAt: number };
 }
 
 // ---------- replay results ----------
