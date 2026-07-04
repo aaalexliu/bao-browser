@@ -321,7 +321,17 @@ of done per task = `record → replay → assert correct effect` passes on its f
   plausible dimensions.
 - **Size:** M.
 
-### T13. Tier-2 capture-only DOM subtree snapshot
+### T13. Tier-2 capture-only DOM subtree snapshot — ✅ shipped (PR #24)
+> `getTarget` attaches `target.snapshot` on every step: `outerHTML` of the **anchor
+> node** when one was built (the meaningful unit to re-derive), else the leaf's nearest
+> ~3-hop ancestor (`nHopAncestor`, stopping at `<body>`). Serialized from a
+> `cloneNode(true)` with all `value` attributes stripped — a *typed* value lives in the
+> `.value` property, which `cloneNode` never serializes, so only a declared `value="…"`
+> could leak, and that's stripped (a T1-sensitive step would drop the snapshot entirely
+> once T1 lands). Capped at 64KB with a `<!-- bao:truncated NB -->` marker. Regression:
+> `test/snapshot.mjs` (anchored feed click → the one card's subtree, sibling cards
+> excluded; a `value="hunter2"` password never appears in any snapshot; a 70KB subtree
+> truncates to ~64KB with the marker).
 - **Goal:** offline anchor re-derivation fuel ([[use-cases-and-snapshot-fallback]]
   §5a). Capture the *anchor subtree*, not the whole document (privacy).
 - **Do:** on each step, serialize `outerHTML` of the anchor node (or the leaf's

@@ -41,6 +41,9 @@ export interface Target {
   bbox?: { x: number; y: number; w: number; h: number; vw: number; vh: number };
   text?: string;
   role?: string | null;
+  // Tier-2 (T13): outerHTML of the anchor node (or a ~3-hop ancestor when unanchored),
+  // value-attributes stripped, capped at 64KB. Offline anchor re-derivation fuel.
+  snapshot?: string;
   scroll?: { container: string };
   anchor?: AnchorDescriptor;
   within?: WithinDescriptor;
