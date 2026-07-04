@@ -41,11 +41,12 @@ $("record").onclick = async () => {
   stepsEl.textContent = "";
 };
 $("stop").onclick = async () => {
-  const { steps } = await sw({ cmd: "bao-rec-stop" });
-  pendingSteps = steps || [];
-  renderSteps(pendingSteps, `Captured ${pendingSteps.length} steps — name & save it.`);
-  saveRow.style.display = pendingSteps.length ? "" : "none";
-  nameInput.focus();
+  // T15: the SW auto-saves on stop; the save row is now only a rename-by-resave path
+  // until the side panel (step 2) replaces this popup entirely.
+  const { steps, workflow } = await sw({ cmd: "bao-rec-stop" });
+  renderSteps(steps || [], workflow ? `Auto-saved as "${workflow.name}".` : "Nothing captured.");
+  saveRow.style.display = "none";
+  await refreshList();
 };
 $("save").onclick = async () => {
   if (!pendingSteps.length) return;

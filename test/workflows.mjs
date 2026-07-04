@@ -113,6 +113,61 @@ async function main() {
     const after = await swEval(() => self.baoListWorkflows());
     check("delete removed workflow A", after?.length === 1 && after[0].name === "Post bio",
       JSON.stringify(after?.map((w) => w.name)));
+
+    // ============================ T15 — SW/protocol ============================
+    // ---- bao-wf-get returns the full workflow (steps included) ----
+    const full = await swEval((id) => self.baoGetWorkflow(id), saveB.id);
+    check("bao-wf-get returns full steps", full?.id === saveB.id && full?.steps?.length === 2,
+      JSON.stringify({ id: full?.id, steps: full?.steps?.length }));
+    check("bao-wf-get miss returns null", (await swEval(() => self.baoGetWorkflow("wf-nope"))) === null);
+
+    // ---- bao-wf-update: rename + pin round-trip; createdAt immutable ----
+    const upd = await swEval((id) => self.baoUpdateWorkflow(id, { name: "Post bio v2", pinned: true }), saveB.id);
+    const updated = await swEval((id) => self.baoGetWorkflow(id), saveB.id);
+    check("rename + pin round-trip", upd?.ok === true && updated?.name === "Post bio v2" &&
+      updated?.pinned === true && typeof updated?.updatedAt === "number",
+      JSON.stringify({ name: updated?.name, pinned: updated?.pinned, updatedAt: updated?.updatedAt }));
+    check("createdAt immutable on update", updated?.createdAt === full?.createdAt);
+    const listPinned = await swEval(() => self.baoListWorkflows());
+    check("summary mirrors pinned + updatedAt", listPinned?.some((w) =>
+      w.id === saveB.id && w.pinned === true && typeof w.updatedAt === "number"), JSON.stringify(listPinned));
+    check("update on unknown id is not ok",
+      (await swEval(() => self.baoUpdateWorkflow("wf-nope", { name: "x" })))?.ok === false);
+
+    // ---- bao-wf-import: fresh id every time, pinned stripped ----
+    const imp1 = await swEval((wf) => self.baoImportWorkflow(wf), updated);
+    const imp2 = await swEval((wf) => self.baoImportWorkflow(wf), updated);
+    check("import assigns fresh ids (same payload twice → two ids)",
+      imp1?.ok === true && imp2?.ok === true && imp1.id !== imp2.id && imp1.id !== saveB.id,
+      JSON.stringify({ imp1: imp1?.id, imp2: imp2?.id }));
+    const imported = await swEval((id) => self.baoGetWorkflow(id), imp1.id);
+    check("import strips pinned + re-derives step ids", imported?.pinned === undefined &&
+      imported?.steps?.every((s, i) => s.index === i && s.id?.startsWith(imp1.id)),
+      JSON.stringify({ pinned: imported?.pinned, ids: imported?.steps?.map((s) => s.id) }));
+
+    // ---- auto-save on stop (the data-loss fix): record via the SW rec state ----
+    await swEval((id) => self.baoRecStart(id), tabId);
+    await page.fill("#email", "auto@example.com");
+    await page.click('[data-testid="submit-btn"]');
+    await sleep(600); // let the streamed bao-step messages land in session storage
+    const stopRes = await swEval(() => self.baoRecStop());
+    check("stop auto-saved a workflow", stopRes?.workflow?.id != null && stopRes.workflow.count === 2,
+      JSON.stringify(stopRes?.workflow));
+    check("generated name (file:// has no hostname → Recording — …)",
+      /^Recording — /.test(stopRes?.workflow?.name || ""), stopRes?.workflow?.name);
+    check("auto-saved startUrl comes from the first step's frame",
+      (stopRes?.workflow?.startUrl || "").endsWith("fixture.html"), stopRes?.workflow?.startUrl);
+    const listAuto = await swEval(() => self.baoListWorkflows());
+    check("auto-saved workflow persisted", listAuto?.some((w) => w.id === stopRes.workflow.id));
+
+    // ---- zero-step stop saves nothing ----
+    await swEval((id) => self.baoRecStart(id), tabId);
+    const stopEmpty = await swEval(() => self.baoRecStop());
+    check("zero-step stop returns no workflow", stopEmpty?.workflow === null && stopEmpty?.steps?.length === 0,
+      JSON.stringify(stopEmpty));
+    const listFinal = await swEval(() => self.baoListWorkflows());
+    check("zero-step stop persisted nothing", listFinal?.length === listAuto?.length,
+      `${listFinal?.length} vs ${listAuto?.length}`);
   } finally {
     await ctx.close();
   }

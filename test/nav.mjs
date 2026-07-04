@@ -87,7 +87,7 @@ async function main() {
     }
     await page.click("#finish");
     await sleep(200); // let the last streamed step land in storage
-    const steps = await swEval(() => self.baoRecStop());
+    const { steps } = await swEval(() => self.baoRecStop()); // T15: stop returns { steps, workflow }
 
     const actions = steps.map((s) => s.action);
     check("merged trace spans both documents", JSON.stringify(actions) === '["input","click","navigate","click"]',
