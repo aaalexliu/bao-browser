@@ -41,7 +41,16 @@ of done per task = `record → replay → assert correct effect` passes on its f
   steps); normal field still records/replays.
 - **Size:** S.
 
-### T2. contenteditable / rich-text capture + replay
+### T2. contenteditable / rich-text capture + replay — ✅ shipped (PR #11)
+> `onInput` and `onBeforeInput` capture typing into the editable *root*
+> (`editableRoot` walks to the highest contentEditable ancestor), coalesced per root
+> as `action:"input"`, `mode:"contenteditable"`, `value: root.innerText`. The
+> `beforeinput` path (capture-phase, read on the next tick) catches strict model-driven
+> editors that preventDefault and never fire a native `input`. Replay `setEditableValue`
+> tries `execCommand("selectAll"+"insertText")` first, falls back to synthetic
+> `beforeinput`+`input`, then verifies `innerText` landed or fails with a clear report.
+> Regression: `test/editable.mjs` (bare contenteditable div + a Lexical-style trap that
+> reverts direct DOM writes; both record and replay on a reset page).
 - **Goal:** typing into contenteditable surfaces (ProseMirror, Lexical, Slate, Quill,
   Gmail/Substack/Notion/HubSpot-notes composers) records an `input` step. Today
   `onInput` bails unless `isTextField(el)` — the typing is silently dropped.
@@ -167,7 +176,15 @@ of done per task = `record → replay → assert correct effect` passes on its f
   deliberate page change) → runner exit codes and report reflect both.
 - **Size:** M.
 
-### T7. SPA soft-navigation awareness (record + replay)
+### T7. SPA soft-navigation awareness (record + replay) — ✅ shipped (PR #12)
+> The recorder compares `location.href` step-over-step (`markSoftNav`, called from
+> `pushStep` and at stop time) and inserts a synthetic `{action:"softNav", urlAfter,
+> urlPattern}` marker on a route change — no MAIN-world patching. `urlPattern`
+> wildcards digit runs so the record-time id ≠ replay-time id ("create then open").
+> Replay `waitForUrl` blocks until `location.href` matches the pattern before resolving
+> the next step's element, instead of leaning on the generic 5s retry. Regression:
+> `test/spa.mjs` (two pushState routes over local HTTP; replay from route 1 cold waits
+> for the route-2 URL, with the item id wildcarded, then fills route-2 input).
 - **Goal:** rich SaaS apps (HubSpot, Linear, Notion, Jira) never do full document
   loads — routes change via `history.pushState`. The content script *survives* these,
   so recording already works across routes; what's missing is (a) marking the route
@@ -189,7 +206,18 @@ of done per task = `record → replay → assert correct effect` passes on its f
 - **Size:** M. **This, not M1, is the gating item for the rich-SaaS category** —
   see Part 2.
 
-### T8. M1 cross-navigation (full-document): storage-backed state machine
+### T8. M1 cross-navigation (full-document): storage-backed state machine — ✅ shipped (PR #13)
+> All three phases landed. **Record:** the recorder streams each step to the SW as it
+> happens (`bao-step` → `chrome.storage.session`); recording state lives in storage so
+> the freshly injected content script re-arms via the boot handshake; the SW writes a
+> `navigate` step + `wait:{type:"navigation"}` on `webNavigation.onCommitted`.
+> **Replay:** the SW-owned `RunState` machine (phases `executing → awaiting_nav →
+> executing … → done|failed`, `paused_for_user` as the resumable pause) is event-driven
+> only — element waits in the content script, nav waits on `webNavigation`, timeouts on
+> `chrome.alarms`; a `dispatched` marker + runId/stepIndex guard make it idempotent
+> across SW respawns. **`waitForUser`:** pause phase + `bao-run-continue`. Regression:
+> `test/nav.mjs` (record type→click→nav→click across two documents; cold replay; pause
+> that survives a forced CDP SW-kill mid-run, then resumes).
 - **Goal:** the multi-page gov-form wedge. Full spec exists — [[m1-design]] is the
   source of truth; this entry just scopes the agent-sized phases.
 - **Phases (each independently landable):**
@@ -210,7 +238,13 @@ of done per task = `record → replay → assert correct effect` passes on its f
 - **Size:** L (the big rock). Do not start before T1–T5 land — they all touch the
   recorder's event handlers and would conflict.
 
-### T9. Wait over-capture (click→nav tagging)
+### T9. Wait over-capture (click→nav tagging) — ✅ shipped (landed inside T8, PR #13)
+> Implemented as part of T8's record/replay: during recording the SW's
+> `webNavigation.onCommitted` handler appends the `navigate` step carrying
+> `wait:{type:"navigation"}` right after the click that caused the full-document load;
+> at replay a click whose next step is that `navigate` marker is treated as complete
+> when its port dies with the document (`via:"assumed-nav"` / `"assumed-nav (SW
+> respawn)"`). Covered by `test/nav.mjs`. (`producesDownload` tagging is T10.)
 - **Goal:** replay must not guess whether a click navigates ([[m1-design]] §5.1).
 - **Do:** during recording the SW correlates `webNavigation.onCommitted`
   (frameId 0, the recorded tab) within ~2s of the last recorded click and tags that
