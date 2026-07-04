@@ -21,6 +21,7 @@ declare global {
   var baoSetForceOpen: (on: boolean) => Promise<{ ok: boolean; on?: boolean; error?: string }>;
   var baoReplayAcrossFrames: (tabId: number, steps: Step[]) => Promise<ReplayResponse>;
   var __baoRecentDownloads: { id: number; filename: string; ts: number }[];
+  var baoGetGolden: (ref: string) => Promise<{ type: string; size: number; width: number; height: number } | null>;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -134,6 +135,8 @@ function onRecStep(step: Step, sender: chrome.runtime.MessageSender): void {
     const i = rec.steps.findIndex((s) => s.seq === step.seq);
     if (i >= 0) rec.steps[i] = merged; else rec.steps.push(merged);
     await setRec(rec);
+    // T12: grab a golden frame for element steps (markers have no visual target).
+    if (merged.target && merged.seq) scheduleGolden(rec.tabId, merged.seq);
   });
 }
 
@@ -413,6 +416,94 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
   });
 });
+
+// ============================ T12 — golden screenshots ============================
+// One full-viewport frame per recorded step, stored LOCAL-ONLY in IndexedDB (never
+// leaves the machine — the privacy stance). Later feeds the audit filmstrip's
+// record-time half and the VLM-heal crop source (fullFrame ✂ bbox, T11). Chrome
+// hard-throttles captureVisibleTab to 2/s, so we coalesce: a burst of steps keeps only
+// the latest pending frame, and real captures are spaced ≥550ms apart.
+const GOLDEN_DB = "bao-golden", GOLDEN_STORE = "shots", GOLDEN_MAX_W = 1000;
+
+function goldenDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(GOLDEN_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(GOLDEN_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function goldenPut(key: string, blob: Blob): Promise<void> {
+  const db = await goldenDB();
+  try {
+    await new Promise<void>((res, rej) => {
+      const tx = db.transaction(GOLDEN_STORE, "readwrite");
+      tx.objectStore(GOLDEN_STORE).put(blob, key);
+      tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+    });
+  } finally { db.close(); }
+}
+async function goldenGet(key: string): Promise<Blob | null> {
+  const db = await goldenDB();
+  try {
+    return await new Promise<Blob | null>((res, rej) => {
+      const tx = db.transaction(GOLDEN_STORE, "readonly");
+      const r = tx.objectStore(GOLDEN_STORE).get(key);
+      r.onsuccess = () => res((r.result as Blob) || null); r.onerror = () => rej(r.error);
+    });
+  } finally { db.close(); }
+}
+
+let lastCaptureAt = 0;
+let pendingGolden: { tabId: number; seq: string } | null = null;
+let goldenTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleGolden(tabId: number, seq: string): void {
+  pendingGolden = { tabId, seq }; // latest wins on a burst
+  if (goldenTimer) return;
+  goldenTimer = setTimeout(runGolden, Math.max(0, 550 - (Date.now() - lastCaptureAt)));
+}
+async function runGolden(): Promise<void> {
+  goldenTimer = null;
+  const job = pendingGolden; pendingGolden = null;
+  if (!job) return;
+  lastCaptureAt = Date.now();
+  try { await captureGolden(job.tabId, job.seq); } catch (e) { console.warn("[bao-t12]", e); }
+  // A step may have arrived during the capture; drain it. (Cast: TS narrows the
+  // module-level `let` to null across the awaits and can't see it was reassigned.)
+  const next = pendingGolden as { tabId: number; seq: string } | null;
+  if (next) scheduleGolden(next.tabId, next.seq);
+}
+async function captureGolden(tabId: number, seq: string): Promise<void> {
+  const rec = await getRec();
+  if (!rec || rec.tabId !== tabId) return; // recording ended / different tab
+  const tab = await chrome.tabs.get(tabId);
+  const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: "jpeg", quality: 75 });
+  const src = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  const scale = Math.min(1, GOLDEN_MAX_W / src.width);
+  const w = Math.max(1, Math.round(src.width * scale)), h = Math.max(1, Math.round(src.height * scale));
+  const canvas = new OffscreenCanvas(w, h);
+  canvas.getContext("2d")!.drawImage(src, 0, 0, w, h);
+  src.close();
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.75 });
+  await goldenPut(seq, blob);
+  // Stamp the ref onto the recorded step (only element steps carry meta; T1-sensitive
+  // steps will skip capture entirely once T1 lands).
+  await enqueue(async () => {
+    const cur = await getRec();
+    const s = cur?.steps.find((st) => st.seq === seq);
+    if (s?.meta) { s.meta.goldenScreenshotRef = seq; await setRec(cur!); }
+  });
+}
+// Harness read-side: decode a stored golden and report its shape (a Blob can't cross
+// sw.evaluate, but these plain fields can).
+self.baoGetGolden = async (ref) => {
+  const blob = await goldenGet(ref);
+  if (!blob) return null;
+  const bmp = await createImageBitmap(blob);
+  const out = { type: blob.type, size: blob.size, width: bmp.width, height: bmp.height };
+  bmp.close();
+  return out;
+};
 
 // The merged, time-ordered recording across all frames.
 self.baoDrainSteps = () => self.__baoSteps.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));

@@ -298,7 +298,18 @@ of done per task = `record → replay → assert correct effect` passes on its f
   bbox/text/role/meta.
 - **Size:** S.
 
-### T12. Golden screenshots (SW `captureVisibleTab` per step)
+### T12. Golden screenshots (SW `captureVisibleTab` per step) — ✅ shipped (PR #23)
+> On every streamed element step (`onRecStep`) the SW schedules a golden capture:
+> `chrome.tabs.captureVisibleTab` (JPEG q75) → `createImageBitmap` → `OffscreenCanvas`
+> downscale to ≤1000px wide → `convertToBlob` → stored **local-only** in IndexedDB
+> (`bao-golden/shots`) keyed by the step `seq`, with `meta.goldenScreenshotRef` stamped
+> back onto the step. Chrome hard-throttles `captureVisibleTab` to 2/s, so captures are
+> coalesced: a burst keeps only the latest pending frame and real captures are spaced
+> ≥550ms apart (drop-to-latest). Markers (softNav/navigate) have no target → no capture;
+> T1-sensitive steps will skip entirely once T1 lands. Harness read-side `baoGetGolden`
+> decodes a stored blob to `{type,size,width,height}` (a Blob can't cross `sw.evaluate`).
+> Regression: `test/golden.mjs` (record a paced 3-step flow → 3 distinct refs each
+> resolving to a decodable JPEG ≤1000px wide; an unknown ref returns null).
 - **Goal:** the audit filmstrip's record-time half + the VLM-heal crop source
   (derived `fullFrame ✂ bbox`, never stored separately).
 - **Do:** recorder pings the SW per captured step; SW `captureVisibleTab` (JPEG ~q75,

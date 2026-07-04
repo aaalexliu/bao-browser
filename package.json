@@ -7,10 +7,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node build.mjs && node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs && node test/frames.mjs && node test/forceopen.mjs && node test/editable.mjs && node test/spa.mjs && node test/nav.mjs && node test/check.mjs && node test/keyboard.mjs && node test/pointerdown.mjs && node test/assert.mjs && node test/download.mjs && node test/grounding.mjs",
+    "test": "node build.mjs && node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs && node test/frames.mjs && node test/forceopen.mjs && node test/editable.mjs && node test/spa.mjs && node test/nav.mjs && node test/check.mjs && node test/keyboard.mjs && node test/pointerdown.mjs && node test/assert.mjs && node test/download.mjs && node test/grounding.mjs && node test/golden.mjs",
     "test:assert": "node build.mjs && node test/assert.mjs",
     "test:download": "node build.mjs && node test/download.mjs",
     "test:grounding": "node build.mjs && node test/grounding.mjs",
+    "test:golden": "node build.mjs && node test/golden.mjs",
     "test:check": "node build.mjs && node test/check.mjs",
     "test:keyboard": "node build.mjs && node test/keyboard.mjs",
     "test:pointerdown": "node build.mjs && node test/pointerdown.mjs",
