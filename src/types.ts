@@ -78,6 +78,9 @@ export interface Step {
   // navigate (full-document, SW-recorded)
   url?: string;
   wait?: { type: "navigation" };
+  // click that triggers a browser download (T10): SW-correlated at record via
+  // chrome.downloads.onCreated; replay waits for onChanged state:complete.
+  download?: { filename?: string; id?: number };
   // softNav (SPA route change, content-recorded)
   urlAfter?: string;
   urlPattern?: string;
@@ -91,6 +94,7 @@ export interface StepResult {
   reason?: string;
   frameId?: number;
   url?: string;
+  filename?: string; // completed download's basename (T10)
 }
 
 export interface ReplayResponse {
@@ -105,7 +109,8 @@ export interface RecState {
   steps: Step[];
 }
 
-export type RunPhase = "executing" | "awaiting_nav" | "paused_for_user" | "done" | "failed";
+export type RunPhase =
+  | "executing" | "awaiting_nav" | "awaiting_download" | "paused_for_user" | "done" | "failed";
 
 export interface RunState {
   runId: string;
@@ -118,6 +123,7 @@ export interface RunState {
   results: StepResult[];
   lastError: { stepIndex: number; reason: string } | null;
   expectedNav?: { pattern: string; deadline: number };
+  expectedDownload?: { deadline: number; filename?: string };
 }
 
 // ---------- runtime messages ----------

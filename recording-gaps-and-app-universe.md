@@ -254,7 +254,20 @@ of done per task = `record → replay → assert correct effect` passes on its f
   wait; a non-navigating click doesn't.
 - **Size:** S (on top of T8 phase 1).
 
-### T10. Download capture + replay wait
+### T10. Download capture + replay wait — ✅ shipped (PR #21)
+> **Record:** `chrome.downloads.onCreated` correlates a starting download to the most
+> recent click step within a 3s window and tags it `download:{id, filename}`, where
+> filename is the download URL's last path segment (`report.csv`) — NOT the on-disk
+> name, which is environment-specific (a UUID under a managed downloads dir, `report
+> (1).csv` on collision). `onChanged` backfills the name once known. **Replay:** a
+> download-tagged click still fires normally, then the RunState machine parks in a new
+> `awaiting_download` phase until `chrome.downloads.onChanged` reports `state:complete`
+> (matched by URL name); a `chrome.alarms` watchdog fails the run if it never lands. The
+> click→download→complete can all happen in one SW turn, beating the phase transition,
+> so completed downloads are buffered in SW memory and the transition re-checks them.
+> Adds `"downloads"` to manifest permissions. Regression: `test/download.mjs` (HTTP
+> server with a `Content-Disposition: attachment` route; record tags the click, cold
+> replay reports the download in run history via `via:"download"`).
 - **Goal:** the "morning report → Download CSV" ending. Spec: [[m1-design]] §4
   verbatim (`chrome.downloads.onCreated` correlation at record; wait on
   `onChanged state:complete` at replay; alarm timeout).

@@ -20,6 +20,7 @@ declare global {
   var baoDrainSteps: () => Step[];
   var baoSetForceOpen: (on: boolean) => Promise<{ ok: boolean; on?: boolean; error?: string }>;
   var baoReplayAcrossFrames: (tabId: number, steps: Step[]) => Promise<ReplayResponse>;
+  var __baoRecentDownloads: { id: number; filename: string; ts: number }[];
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -62,6 +63,25 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
 const REC_KEY = "baoRec";
 const RUN_KEY = "baoRun";
 const NAV_TIMEOUT_MS = 30_000;
+const DOWNLOAD_TIMEOUT_MS = 30_000;
+
+const basename = (p: string) => (p || "").split(/[\\/]/).pop() || "";
+// The download's identity is its URL's last path segment (e.g. "report.csv"), NOT the
+// on-disk filename — the latter is environment-specific (a random UUID under a managed
+// downloads dir, "report (1).csv" on a name collision) and differs record-vs-replay.
+const downloadName = (item: { finalUrl?: string; url?: string }) => {
+  try { return basename(new URL(item.finalUrl || item.url || "").pathname); } catch { return ""; }
+};
+// A download that completed can beat the tick that transitions us into
+// awaiting_download (click → download → complete, all within one SW turn). Keep the
+// most-recent completions in SW memory so that transition can catch an already-done
+// one. SW death loses this, but so does the in-flight download — the watchdog fails
+// such a run honestly rather than hanging.
+self.__baoRecentDownloads = self.__baoRecentDownloads || [];
+const noteDownloadDone = (id: number, filename: string) => {
+  self.__baoRecentDownloads.push({ id, filename, ts: Date.now() });
+  if (self.__baoRecentDownloads.length > 20) self.__baoRecentDownloads.shift();
+};
 
 // All state transitions are read-modify-write on storage; serialize them so two
 // events (boot ping + onCompleted, say) can't interleave and double-advance.
@@ -186,16 +206,25 @@ async function tick(): Promise<void> {
     res = await chrome.tabs.sendMessage(run.tabId, { cmd: "replay", steps: [step] }, { frameId: 0 });
   } catch (_) { /* document torn down mid-step, or no content script yet */ }
 
-  const proceed = await enqueue(async () => {
+  const proceed = await enqueue<"tick" | "await-download" | false>(async () => {
     const cur = await getRun();
     // The world may have moved while we were dispatching (SW respawn advanced the
     // run via boot ping). Only record a result if we're still on the same step.
     if (!cur || cur.runId !== run.runId || cur.stepIndex !== run.stepIndex || cur.phase !== "executing") return false;
     if (res && res.ok === true) {
+      // The click fired; if it was tagged as producing a download (T10), don't advance
+      // yet — park in awaiting_download until chrome.downloads reports completion.
+      if (cur.steps[cur.stepIndex]?.download) {
+        cur.phase = "awaiting_download";
+        cur.expectedDownload = { deadline: Date.now() + DOWNLOAD_TIMEOUT_MS, filename: cur.steps[cur.stepIndex].download!.filename };
+        await setRun(cur);
+        chrome.alarms.create("bao-run-watchdog", { when: Date.now() + DOWNLOAD_TIMEOUT_MS });
+        return "await-download";
+      }
       cur.results.push({ i: cur.stepIndex, ok: true, via: res.results?.[0]?.via });
       cur.stepIndex++; cur.dispatched = false;
       await setRun(cur);
-      return true;
+      return "tick";
     }
     // No response and the trace says this click navigates (the next step is its
     // navigate marker): the port died because the document did — that IS success.
@@ -204,12 +233,13 @@ async function tick(): Promise<void> {
       cur.results.push({ i: cur.stepIndex, ok: true, via: "assumed-nav" });
       cur.stepIndex++; cur.dispatched = false;
       await setRun(cur);
-      return true;
+      return "tick";
     }
     await fail(cur, res ? (res.results?.[0]?.reason || "step failed") : "content script unreachable");
     return false;
   });
-  if (proceed) tick();
+  if (proceed === "tick") tick();
+  else if (proceed === "await-download") maybeCompleteDownload(); // catch a completion that beat us here
 }
 
 // Resume out of awaiting_nav once the destination document exists AND answers —
@@ -235,6 +265,36 @@ async function maybeResumeAfterNav(): Promise<void> {
     return true;
   });
   if (resumed) tick();
+}
+
+// Resume out of awaiting_download once a download reports state:complete — reached
+// from chrome.downloads.onChanged, or from the dispatch tick catching a completion
+// that finished before we transitioned (the recent-downloads buffer). The phase check
+// makes it idempotent against both firing.
+async function maybeCompleteDownload(done?: { id: number; filename: string }): Promise<void> {
+  const run = await getRun();
+  if (!run || run.phase !== "awaiting_download") return;
+  // Prefer the completion we were handed; else the newest one seen since we dispatched.
+  const hit = done || self.__baoRecentDownloads
+    .filter((d) => d.ts >= (run.dispatchedAt || 0) - 500)
+    .sort((a, b) => b.ts - a.ts)[0];
+  if (!hit) return; // not done yet — a later onChanged will call us again
+  const got = basename(hit.filename);
+  const want = run.expectedDownload?.filename ? basename(run.expectedDownload.filename) : "";
+  // Chrome dedups filename collisions as "report (1).csv"; treat that as the same file.
+  const canon = (n: string) => n.replace(/ \(\d+\)(\.[^.]*)?$/, "$1");
+  const matched = !want || got === want || canon(got) === want;
+  const advanced = await enqueue(async () => {
+    const cur = await getRun();
+    if (!cur || cur.phase !== "awaiting_download") return false;
+    if (!matched) { await fail(cur, `download completed as "${got}", expected "${want}"`); return false; }
+    cur.results.push({ i: cur.stepIndex, ok: true, via: "download", filename: got });
+    cur.stepIndex++; cur.phase = "executing"; cur.dispatched = false;
+    delete cur.expectedDownload;
+    await setRun(cur);
+    return true;
+  });
+  if (advanced) tick();
 }
 
 // Boot handshake from every fresh document (content.ts sends it at readyState
@@ -297,13 +357,60 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
 chrome.webNavigation.onCompleted.addListener((d) => {
   if (d.frameId === 0) maybeResumeAfterNav();
 });
+
+// ---- downloads (T10): correlate at record, wait for completion at replay ----
+chrome.downloads.onCreated.addListener((item) => {
+  // Record: tag the click that just fired as download-producing. onCreated's filename
+  // is often empty; the URL is enough for a first guess, backfilled on completion.
+  getRec().then((rec) => {
+    if (!rec) return;
+    enqueue(async () => {
+      const cur = await getRec();
+      if (!cur) return;
+      const now = Date.now();
+      for (let i = cur.steps.length - 1; i >= 0; i--) {
+        const s = cur.steps[i];
+        if (now - (s.ts || 0) > 3000) break; // correlation window (m1-design §5.1)
+        if (s.action === "click") {
+          s.download = { id: item.id, filename: downloadName(item) || undefined };
+          await setRec(cur);
+          return;
+        }
+      }
+    });
+  });
+});
+chrome.downloads.onChanged.addListener((delta) => {
+  if (delta.state?.current !== "complete") return;
+  chrome.downloads.search({ id: delta.id }).then((items) => {
+    const filename = downloadName(items[0] || {});
+    noteDownloadDone(delta.id, filename);
+    // Record: backfill the now-known name onto the step tagged at onCreated (onCreated's
+    // finalUrl can lag behind the original url).
+    getRec().then((rec) => {
+      if (!rec || !filename) return;
+      enqueue(async () => {
+        const cur = await getRec();
+        const s = cur?.steps.find((st) => st.download?.id === delta.id);
+        if (s) { s.download!.filename = filename; await setRec(cur!); }
+      });
+    });
+    // Replay: advance if the run is parked waiting on this download.
+    maybeCompleteDownload({ id: delta.id, filename });
+  });
+});
+
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== "bao-run-watchdog") return;
   await enqueue(async () => {
     const run = await getRun();
-    if (!run || run.phase !== "awaiting_nav") return;
-    if (Date.now() < (run.expectedNav?.deadline || 0)) return;
-    await fail(run, `expected navigation to ${run.steps[run.stepIndex]?.url} never completed`);
+    if (run?.phase === "awaiting_nav") {
+      if (Date.now() < (run.expectedNav?.deadline || 0)) return;
+      await fail(run, `expected navigation to ${run.steps[run.stepIndex]?.url} never completed`);
+    } else if (run?.phase === "awaiting_download") {
+      if (Date.now() < (run.expectedDownload?.deadline || 0)) return;
+      await fail(run, `expected download never completed: ${run.steps[run.stepIndex]?.label}`);
+    }
   });
 });
 
