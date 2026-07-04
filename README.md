@@ -67,6 +67,40 @@ node test/live-notes.mjs                         # default: target note #2 (not 
 HEADED=1 node test/live-notes.mjs 3              # watch it; target a different note
 ```
 
+**Live gap-analysis suite** — one runnable file per category (sharing
+`test/live-helpers.mjs`) drives real record→replay→assert against the no-login targets
+in `recording-gaps-and-app-universe.md` §Part 3, scoped to the categories whose
+capability actually shipped (so a live FAIL means a regression):
+
+```sh
+npm run test:live-gaps               # all four categories, headless
+npm run test:live-gaps:forms         # cat 1 only
+npm run test:live-gaps:spa           # cat 2 only
+npm run test:live-gaps:editors       # cat 3 only
+npm run test:live-gaps:feed          # cat 4 only
+
+# Watch one in a real window (headed is per-category — the aggregate is headless):
+npm run test:live-gaps:editors -- --headed
+npm run test:live-gaps:editors -- lexical   # filter within a multi-case file
+```
+
+- **cat 1 forms** (`live-gaps-forms.mjs`) — selenium web-form: records a text `input` +
+  native `<select>`, resets both, replays, asserts the values are driven back (real
+  baseline→target round-trip)
+- **cat 2 SPA (T7)** (`live-gaps-spa.mjs`) — TodoMVC: clicks across hash routes, asserts a
+  `softNav` marker is captured and that replay *waits* on the route (`via=softNav`)
+- **cat 3 editors (T2)** (`live-gaps-editors.mjs`) — Lexical / ProseMirror / Quill: types a
+  unique token, resets via reload, replays through the contenteditable actuator.
+  ProseMirror/Quill must accept a synthetic path; **Lexical is the documented "strict
+  editor" case** — it cleanly rejects all synthetic paths, treated as the expected honest
+  outcome, not a fail
+- **cat 4 feed** (`live-gaps-feed.mjs`) — Hacker News: records a click on story #4 of 30
+  identical rows and asserts replay hits the *same* story by its stable `item?id=` (the
+  login-free counterpart to `live-notes.mjs`)
+
+Same contract as the smoke suite: opt-in (not part of `npm test`); a load failure /
+bot-block / missing structure is a **SKIP**, a wrong replay effect is a **FAIL**.
+
 **Reality check on dynamic pages:** replay is only as deterministic as the page.
 A *stable* surface (compose box, settings form) replays reliably. Repeated **feeds**
 used to be a poor target — but anchored capture now re-resolves a specific card by
