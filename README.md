@@ -67,6 +67,31 @@ node test/live-notes.mjs                         # default: target note #2 (not 
 HEADED=1 node test/live-notes.mjs 3              # watch it; target a different note
 ```
 
+**Live gap-analysis suite** — `test/live-gaps.mjs` drives real record→replay→assert
+against the no-login targets in `recording-gaps-and-app-universe.md` §Part 3, scoped to
+the categories whose capability actually shipped (so a live FAIL means a regression):
+
+```sh
+npm run test:live-gaps                     # all cases, headless
+npm run test:live-gaps -- --headed         # watch in a real window
+npm run test:live-gaps -- editor --headed  # only cases matching "editor"
+```
+
+- **cat 1 forms** — selenium web-form: records a text `input` + native `<select>`,
+  resets both, replays, asserts the values are driven back (real baseline→target round-trip)
+- **cat 2 SPA (T7)** — TodoMVC: clicks across hash routes, asserts a `softNav` marker is
+  captured and that replay *waits* on the route (`via=softNav`) before continuing
+- **cat 3 editors (T2)** — Lexical / ProseMirror / Quill: types a unique token, resets via
+  reload, replays through the contenteditable actuator. ProseMirror/Quill must accept a
+  synthetic path; **Lexical is the documented "strict editor" case** — it cleanly rejects
+  all synthetic paths, which the suite treats as the expected honest outcome, not a fail
+- **cat 4 feed** — Hacker News: records a click on story #4 of 30 identical rows and asserts
+  replay hits the *same* story by its stable `item?id=` (the login-free counterpart to
+  `live-notes.mjs`)
+
+Same contract as the smoke suite: opt-in (not part of `npm test`); a load failure /
+bot-block / missing structure is a **SKIP**, a wrong replay effect is a **FAIL**.
+
 **Reality check on dynamic pages:** replay is only as deterministic as the page.
 A *stable* surface (compose box, settings form) replays reliably. Repeated **feeds**
 used to be a poor target — but anchored capture now re-resolves a specific card by

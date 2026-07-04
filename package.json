@@ -17,6 +17,7 @@
     "test:frames": "node build.mjs && node test/frames.mjs",
     "test:forceopen": "node build.mjs && node test/forceopen.mjs",
     "test:live": "node build.mjs && node test/live-blindspots.mjs",
+    "test:live-gaps": "node build.mjs && node test/live-gaps.mjs",
     "probe": "node build.mjs && node test/probe-sites.mjs",
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
