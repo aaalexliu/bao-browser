@@ -56,7 +56,7 @@ async function main() {
     await sleep(700);
     await page.click('[data-testid="submit-btn"]');
     await sleep(1500); // let the last golden capture + ref-stamp flush before stop
-    const steps = await swEval(() => self.baoRecStop());
+    const { steps } = await swEval(() => self.baoRecStop()); // T15: stop returns { steps, workflow }
 
     const elementSteps = (steps || []).filter((s) => s.target);
     check("3 element steps recorded", elementSteps.length === 3, JSON.stringify(steps?.map((s) => s.action)));

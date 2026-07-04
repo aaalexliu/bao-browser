@@ -113,15 +113,20 @@ export interface Workflow {
   variables: string[];
   steps: Step[];
   createdAt: number;
+  pinned?: boolean;    // T15: pin favorites to the top of the panel
+  updatedAt?: number;  // T15: bumped on rename/pin; createdAt stays immutable
 }
 
-// The lightweight shape the popup/harness lists (no step payloads).
+// The lightweight shape the panel/harness lists (no step payloads). The panel
+// derives `domain` from startUrl itself — don't store what's derivable.
 export interface WorkflowSummary {
   id: string;
   name: string;
   startUrl: string;
   count: number;
   createdAt: number;
+  pinned?: boolean;
+  updatedAt?: number;
 }
 
 // ---------- replay results ----------
@@ -182,6 +187,10 @@ export type Msg =
   | { cmd: "bao-wf-list" }
   | { cmd: "bao-wf-delete"; id: string }
   | { cmd: "bao-wf-run"; tabId: number; id: string }
+  // side panel (T15)
+  | { cmd: "bao-wf-get"; id: string }                                                 // → Workflow | null
+  | { cmd: "bao-wf-update"; id: string; patch: { name?: string; pinned?: boolean } }  // → { ok }
+  | { cmd: "bao-wf-import"; workflow: Workflow }                                      // → { ok, id } (fresh id)
   // popup/SW → content
   | { cmd: "start-record" }
   | { cmd: "stop-record" }

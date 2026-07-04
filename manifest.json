@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Bao M0 Spike",
+  "name": "Bao",
   "version": "0.0.1",
-  "description": "Record + deterministic replay spike — single page, no LLM, no backend.",
-  "permissions": ["storage", "activeTab", "scripting", "webNavigation", "alarms", "downloads"],
+  "description": "Record + deterministic replay of browser actions.",
+  "permissions": ["storage", "activeTab", "scripting", "webNavigation", "alarms", "downloads", "sidePanel"],
   "host_permissions": ["<all_urls>"],
+  "side_panel": { "default_path": "sidepanel.html" },
   "action": { "default_popup": "popup.html" },
   "background": { "service_worker": "dist/background.js" },
   "content_scripts": [

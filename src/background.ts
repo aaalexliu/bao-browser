@@ -13,7 +13,7 @@ import type { FrameRef, Msg, RecState, ReplayResponse, RunState, Step, StepResul
 declare global {
   var __baoSteps: Step[];
   var baoRecStart: (tabId: number) => Promise<{ ok: boolean }>;
-  var baoRecStop: () => Promise<Step[]>;
+  var baoRecStop: () => Promise<{ steps: Step[]; workflow: WorkflowSummary | null }>;
   var baoRunStart: (tabId: number, steps: Step[]) => Promise<{ ok: boolean; runId: string }>;
   var baoRunStatus: () => Promise<RunState | null>;
   var baoRunContinue: () => Promise<{ ok: boolean }>;
@@ -26,12 +26,22 @@ declare global {
   var baoListWorkflows: () => Promise<WorkflowSummary[]>;
   var baoDeleteWorkflow: (id: string) => Promise<{ ok: boolean }>;
   var baoRunWorkflow: (tabId: number, id: string) => Promise<{ ok: boolean; runId?: string; error?: string }>;
+  var baoGetWorkflow: (id: string) => Promise<Workflow | null>;
+  var baoUpdateWorkflow: (id: string, patch: { name?: string; pinned?: boolean }) => Promise<{ ok: boolean }>;
+  var baoImportWorkflow: (workflow: Workflow) => Promise<{ ok: boolean; id: string }>;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[bao-m0] service worker installed");
   migrateLegacy(); // import a pre-T14 recording as "Untitled workflow", once
 });
+
+// T15: the toolbar icon toggles the side panel — declarative, no action.onClicked
+// listener (chrome.sidePanel.open() would need a user gesture anyway). Top-level so
+// it re-arms on every SW wake. While default_popup is still in the manifest (until
+// the panel UI lands in step 2) the popup takes precedence over this.
+chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((e) => console.warn("[bao-t15]", e));
 
 // Cross-frame recording buffer. The e2e harness resets it before a run and reads it
 // after, so it lives on `self` (the SW global) rather than in chrome.storage for M0.
@@ -55,7 +65,7 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
   if (msg.cmd === "bao-step" && msg.step) { onRecStep(msg.step, sender); return; }
   if (msg.cmd === "bao-boot") { onBoot(sender).then(sendResponse); return true; }
   if (msg.cmd === "bao-rec-start") { baoRecStart(msg.tabId).then(sendResponse); return true; }
-  if (msg.cmd === "bao-rec-stop") { baoRecStop().then((steps) => sendResponse({ steps })); return true; }
+  if (msg.cmd === "bao-rec-stop") { baoRecStop().then(sendResponse); return true; }
   if (msg.cmd === "bao-run-start") { baoRunStart(msg.tabId, msg.steps).then(sendResponse); return true; }
   if (msg.cmd === "bao-run-status") { getRun().then(sendResponse); return true; }
   if (msg.cmd === "bao-run-continue") { baoRunContinue().then(sendResponse); return true; }
@@ -64,6 +74,10 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
   if (msg.cmd === "bao-wf-list") { baoListWorkflows().then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-delete") { baoDeleteWorkflow(msg.id).then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-run") { baoRunWorkflow(msg.tabId, msg.id).then(sendResponse); return true; }
+  // ---- side panel (T15) ----
+  if (msg.cmd === "bao-wf-get") { baoGetWorkflow(msg.id).then(sendResponse); return true; }
+  if (msg.cmd === "bao-wf-update") { baoUpdateWorkflow(msg.id, msg.patch).then(sendResponse); return true; }
+  if (msg.cmd === "bao-wf-import") { baoImportWorkflow(msg.workflow).then(sendResponse); return true; }
 });
 
 // ============================ M1 — cross-navigation ============================
@@ -127,12 +141,20 @@ self.baoRecStart = async (tabId) => {
   try { await chrome.tabs.sendMessage(tabId, { cmd: "start-record" }); } catch (_) {}
   return { ok: true };
 };
+// Stop auto-saves (T15): the captured trace used to be returned and hoped-saved by
+// the popup, which lost it the moment the popup closed. Now a non-empty recording
+// becomes a persisted Workflow right here; the panel renames it afterwards.
 self.baoRecStop = async () => {
   const rec = await getRec();
   await setRec(null);
-  if (!rec) return [];
+  if (!rec) return { steps: [], workflow: null };
   try { await chrome.tabs.sendMessage(rec.tabId, { cmd: "stop-record" }); } catch (_) {}
-  return rec.steps.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  const steps = rec.steps.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  if (!steps.length) return { steps, workflow: null };
+  const startUrl = steps.find((s) => s.frame?.url)?.frame?.url || "";
+  const wf = makeWorkflow(autoName(startUrl), startUrl, steps);
+  await putWorkflow(wf);
+  return { steps, workflow: summarize(wf) };
 };
 function onRecStep(step: Step, sender: chrome.runtime.MessageSender): void {
   enqueue(async () => {
@@ -196,6 +218,27 @@ function makeWorkflow(name: string, startUrl: string, steps: Step[]): Workflow {
     createdAt: Date.now(),
   };
 }
+function putWorkflow(wf: Workflow): Promise<void> {
+  return enqueue(async () => {
+    const all = await getWorkflows();
+    all[wf.id] = wf;
+    await chrome.storage.local.set({ [WF_KEY]: all });
+  });
+}
+const summarize = (w: Workflow): WorkflowSummary => ({
+  id: w.id, name: w.name, startUrl: w.startUrl, count: w.steps.length,
+  createdAt: w.createdAt, pinned: w.pinned, updatedAt: w.updatedAt,
+});
+// T15 auto-save names: "{hostname} — {Mon D, h:mma}". No collision handling — ids
+// are the identity, duplicate names are harmless.
+function autoName(startUrl: string): string {
+  const d = new Date();
+  const time = `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}, ` +
+    `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")}${d.getHours() < 12 ? "am" : "pm"}`;
+  let host = "";
+  try { host = new URL(startUrl).hostname; } catch (_) {}
+  return `${host || "Recording"} — ${time}`;
+}
 // One-time import of the pre-T14 recording. Idempotent: runs only while no workflows
 // exist and clears the legacy key so it can't re-import.
 async function migrateLegacy(): Promise<void> {
@@ -214,18 +257,37 @@ async function migrateLegacy(): Promise<void> {
 
 self.baoSaveWorkflow = async (name, startUrl, steps) => {
   const wf = makeWorkflow(name, startUrl, steps);
-  await enqueue(async () => {
+  await putWorkflow(wf);
+  return { ok: true, id: wf.id };
+};
+self.baoGetWorkflow = async (id) => (await getWorkflows())[id] || null;
+self.baoUpdateWorkflow = async (id, patch) => {
+  const ok = await enqueue(async () => {
     const all = await getWorkflows();
-    all[wf.id] = wf;
+    const wf = all[id];
+    if (!wf) return false;
+    if (typeof patch.name === "string" && patch.name.trim()) wf.name = patch.name.trim();
+    if (typeof patch.pinned === "boolean") wf.pinned = patch.pinned;
+    wf.updatedAt = Date.now();
     await chrome.storage.local.set({ [WF_KEY]: all });
+    return true;
   });
+  return { ok };
+};
+// Import assigns a fresh id + createdAt (never trust/collide on the file's id —
+// importing the same file twice yields two workflows) and strips pinned; step
+// ids/indexes are re-derived from the new workflow id by makeWorkflow.
+self.baoImportWorkflow = async (workflow) => {
+  const steps = (workflow.steps || []).map((s) => { const { id: _i, index: _x, ...rest } = s; return rest as Step; });
+  const wf = makeWorkflow(workflow.name, workflow.startUrl || "", steps);
+  await putWorkflow(wf);
   return { ok: true, id: wf.id };
 };
 self.baoListWorkflows = async () => {
   await migrateLegacy();
   return Object.values(await getWorkflows())
     .sort((a, b) => a.createdAt - b.createdAt)
-    .map((w): WorkflowSummary => ({ id: w.id, name: w.name, startUrl: w.startUrl, count: w.steps.length, createdAt: w.createdAt }));
+    .map(summarize);
 };
 self.baoDeleteWorkflow = async (id) => {
   await enqueue(async () => {

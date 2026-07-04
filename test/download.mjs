@@ -80,7 +80,7 @@ async function main() {
     await swEval((id) => self.baoRecStart(id), tabId);
     await page.click("#dl");
     await sleep(1500); // let onCreated correlate + onChanged backfill the filename
-    const steps = await swEval(() => self.baoRecStop());
+    const { steps } = await swEval(() => self.baoRecStop()); // T15: stop returns { steps, workflow }
 
     check("one click step recorded", steps.length === 1 && steps[0].action === "click",
       JSON.stringify(steps.map((s) => s.action)));
