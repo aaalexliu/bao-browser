@@ -312,16 +312,30 @@ declare global {
     return m.length === 1 && m[0] === el;
   }
 
+  // T11: per-target grounding, captured on EVERY step. bbox viewport-relative (%),
+  // plus the capture-time viewport pixels; text + aria role are healing fuel (unused at
+  // replay today). (A sensitive step — T1, not yet landed — would omit `text`; inputs
+  // carry no textContent anyway, so no value leaks through here today.)
+  function bboxOf(el: Element): { x: number; y: number; w: number; h: number; vw: number; vh: number } {
+    const r = el.getBoundingClientRect();
+    const vw = Math.max(1, window.innerWidth), vh = Math.max(1, window.innerHeight);
+    const pct = (n: number, d: number) => Math.round((n / d) * 1000) / 10;
+    return { x: pct(r.left, vw), y: pct(r.top, vh), w: pct(r.width, vw), h: pct(r.height, vh), vw, vh };
+  }
+  function groundingOf(el: Element): Pick<Target, "bbox" | "text" | "role"> {
+    return { bbox: bboxOf(el), text: normText(el).slice(0, 120), role: implicitRole(el) };
+  }
+
   // The recorded target: leaf selectors, plus an anchor + within-descriptor whenever
   // the leaf alone can't be resolved back to the exact element.
   function getTarget(el: Element): Target {
     const reach = reachOf(el);
+    const grounding = groundingOf(el);
     // Pixels (canvas) or an opaque custom element (likely closed shadow): we can't
-    // build a clean selector. Capture bbox as Tier-2/3 fuel and degrade honestly.
+    // build a clean selector. Grounding (bbox/text/role) is exactly the Tier-2/3 fuel
+    // that lets these degrade honestly instead of recording a confident lie.
     if (reach === "canvas" || reach === "opaque-custom") {
-      const r = el.getBoundingClientRect();
-      const bbox = { x: r.left, y: r.top, w: r.width, h: r.height };
-      return { selectors: getSelectors(el), reach, bbox, unique: false, degraded: true };
+      return { selectors: getSelectors(el), reach, ...grounding, unique: false, degraded: true };
     }
     const selectors = getSelectors(el);
     // Open-shadow leaf: prepend a shadow-piercing path so resolution can re-find it
@@ -333,7 +347,7 @@ declare global {
     // record the viewport so resolution can scroll-find it. (Additive — absent on
     // ordinary pages.)
     const sc = scrollableAncestor(el);
-    const base: Omit<Target, "unique"> = { selectors, reach };
+    const base: Omit<Target, "unique"> = { selectors, reach, ...grounding };
     if (sc) base.scroll = { container: nodeSelector(sc) };
 
     const robustUnique = selectors.some((s) => s.type !== "css" && resolvesUniquelyTo(s, el));
@@ -609,7 +623,12 @@ declare global {
   // `target` is precomputed only for T5 (grabbed at pointerdown, before the node could
   // unmount); otherwise resolve it now against the live element.
   function makeStep(action: StepAction, el: Element, target?: Target, key?: string): Step {
-    return { action, label: humanLabel(action, el, key), target: target ?? getTarget(el), frame: frameInfo(), ts: Date.now() };
+    const now = Date.now();
+    return {
+      action, label: humanLabel(action, el, key), target: target ?? getTarget(el),
+      frame: frameInfo(), ts: now,
+      meta: { viewport: { w: window.innerWidth, h: window.innerHeight }, recordedAt: now }, // T11
+    };
   }
 
   // The real interactive element, piercing OPEN shadow boundaries. `event.target` is

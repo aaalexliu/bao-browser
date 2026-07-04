@@ -278,7 +278,16 @@ of done per task = `record → replay → assert correct effect` passes on its f
 
 ## P2 — over-capture & IR (the self-healing fuel; every recording made before this lands is un-healable later)
 
-### T11. Per-target grounding: bbox + text + role + viewport on every step
+### T11. Per-target grounding: bbox + text + role + viewport on every step — ✅ shipped (PR #22)
+> `getTarget` now attaches `groundingOf(el)` to EVERY target (both the clean and the
+> degraded path): `bbox` stored viewport-relative (`x/y/w/h` as % of the viewport, one
+> decimal, plus capture-time `vw/vh` pixels so a crop derives from a full frame), `text`
+> (trimmed ≤120), and `role` (from `implicitRole`). `makeStep` stamps every step with
+> `meta:{viewport:{w,h}, recordedAt}`. All of it is unused at replay — pure self-healing
+> fuel so a future VLM heal needs no re-record. (T1 sensitive-masking isn't landed yet;
+> inputs carry no textContent, so no value leaks through `text` today — noted in a code
+> comment for when T1 arrives.) Regression: `test/grounding.mjs` (record type/type/click
+> on `fixture.html`; assert every step carries a viewport-% bbox + text + role + meta).
 - **Goal:** product-design-v1 "non-negotiable #1". Today bbox is captured only on
   degraded targets.
 - **Do:** in `getTarget`, always include
