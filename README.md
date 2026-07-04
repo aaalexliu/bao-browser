@@ -29,7 +29,7 @@ page, replays it, and dumps the artifacts to `out/`.
 ```sh
 npm install
 npx playwright install chromium   # one-time: downloads the browser
-npm test                          # HEADED=1 npm test to watch it run
+npm test                          # npm test -- --headed to watch it run
 ```
 
 It drives the **real** `content.ts` (built to `dist/content.js`) through

@@ -4,7 +4,7 @@
 // routes each step back to its frame. Proves capture + replay across the same-origin
 // boundary without CDP. See use-cases-and-snapshot-fallback.md §8 (Tier-B item 5).
 //
-// Run: npm run test:frames   (HEADED=1 to watch)
+// Run: npm run test:frames   (-- --headed to watch)
 import { chromium } from "playwright";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -36,7 +36,7 @@ async function main() {
 
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !process.env.HEADED && !process.argv.includes("--headed") && !process.argv.includes("-H"),
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
   });
   try {

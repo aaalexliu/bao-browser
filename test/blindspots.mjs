@@ -8,7 +8,7 @@
 //   closed shadow         → graceful degrade (honest, no false selector)
 //   canvas                → graceful degrade (pixels, no DOM target)
 //
-// Run: npm run test:blindspots   (HEADED=1 to watch)
+// Run: npm run test:blindspots   (-- --headed to watch)
 import { chromium } from "playwright";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -27,7 +27,7 @@ function check(name, cond, extra) {
 async function main() {
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !process.env.HEADED && !process.argv.includes("--headed") && !process.argv.includes("-H"),
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
   });
   try {

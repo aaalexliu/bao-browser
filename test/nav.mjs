@@ -34,7 +34,7 @@ async function main() {
 
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !process.env.HEADED && !process.argv.includes("--headed") && !process.argv.includes("-H"),
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
   });
 
