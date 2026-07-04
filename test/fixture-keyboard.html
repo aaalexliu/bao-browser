@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Keyboard Fixture</title>
+  <style>
+    body { font: 14px system-ui; max-width: 480px; margin: 40px auto; }
+    #modal { margin: 16px 0; padding: 12px; border: 1px solid #888; border-radius: 6px; }
+    #modal[hidden] { display: none; }
+    #result { margin-top: 16px; color: #060; }
+  </style>
+</head>
+<body>
+  <h1>Bao Keyboard Fixture</h1>
+  <p>
+    A form with <strong>no submit button</strong> — the only way to submit is Enter in
+    the field. Recording must capture the Enter (tagged <code>submits</code>) and the
+    Escape that dismisses the dialog. Replay's synthetic keys can't trigger the
+    browser's implicit submit, so it must <code>requestSubmit()</code> the tagged step.
+  </p>
+
+  <form id="f">
+    <input id="q" name="q" type="text" aria-label="Search query" placeholder="type then press Enter" />
+  </form>
+
+  <div id="modal" aria-label="Notice">
+    Press <kbd>Esc</kbd> to dismiss this dialog.
+  </div>
+
+  <div id="result">not submitted</div>
+
+  <script>
+    window.__submits = 0;
+    window.__escapes = 0;
+    const result = document.getElementById("result");
+    const modal = document.getElementById("modal");
+
+    document.getElementById("f").addEventListener("submit", (e) => {
+      e.preventDefault(); // SPA-style: no navigation, mutate the DOM instead
+      window.__submits++;
+      result.textContent = "submitted: " + document.getElementById("q").value;
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { window.__escapes++; modal.hidden = true; }
+    });
+  </script>
+</body>
+</html>

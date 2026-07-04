@@ -66,7 +66,12 @@ of done per task = `record → replay → assert correct effect` passes on its f
 - **Size:** M. The replay half is the risky part; timebox execCommand vs beforeinput
   exploration to the two fixtures.
 
-### T3. Checkbox / radio: record state, replay as *set* not *toggle*
+### T3. Checkbox / radio: record state, replay as *set* not *toggle* — ✅ shipped
+> `setChecked` action records the settled post-click state (read on the next task, so a
+> preventDefault revert is reflected); replay drives to that state via `el.click()` with
+> a `.checked` + `change` fallback, and a no-op when already correct. Label-wrapped
+> inputs resolve through the browser's synthesized control click (no double-record).
+> Regression: `test/check.mjs` (unchecked→flips, pre-checked→no-op, radio group).
 - **Goal:** a recorded check ends in the recorded state regardless of the box's state
   at replay. Today they're generic clicks and `el.click()` toggles — if defaults
   changed, replay inverts the intent.
@@ -83,7 +88,15 @@ of done per task = `record → replay → assert correct effect` passes on its f
   radio group records the chosen option.
 - **Size:** S.
 
-### T4. Keyboard capture: Enter-submit, Escape, Tab-commit
+### T4. Keyboard capture: Enter-submit, Escape, Tab-commit — ✅ shipped
+> Capture-phase `keydown` whitelisted to `{Enter,Escape,Tab}` → `keypress` steps;
+> capture-phase `submit` dedupes against a recent click/Enter cause (tags it
+> `submits:true`, drops the bare `submit`; a JS-triggered submit with no cause records a
+> bare `submit` on the form). Replay dispatches `keydown`+`keyup` and, for a
+> `submits:true` step whose synthetic key didn't fire the submit, falls back to
+> `form.requestSubmit()`. Regression: `test/keyboard.mjs` (no-button Enter-submit +
+> Escape-dismiss). Known limit unchanged: synthetic keys are `isTrusted:false` — sites
+> gating on that fail cleanly (Tier 4).
 - **Goal:** the `keypress` action the IR already defines. Enter-submitted forms
   currently record the typing but not the submission — replay types and then nothing
   happens.
@@ -104,7 +117,14 @@ of done per task = `record → replay → assert correct effect` passes on its f
   modal as second case.
 - **Size:** S–M.
 
-### T5. Capture-timing hardening: grab the target at `pointerdown`
+### T5. Capture-timing hardening: grab the target at `pointerdown` — ✅ shipped
+> Capture-phase `pointerdown` records a pending `{leaf, target, ts}` (running
+> `getTarget` while the node is alive); the step commits from `onClick` normally, or from
+> `onPointerUp` when the captured node has disconnected — because Chromium dispatches
+> **no** `click` at all when the mousedown target is removed (verified), so a click-only
+> flush would silently drop it. A `flushed` guard prevents a double-emit. Regression:
+> `test/pointerdown.mjs` (button `remove()`s itself on mousedown; a click step with the
+> real selectors is still captured, not the `#host` retarget).
 - **Goal:** don't lose clicks whose target is unmounted before `click` fires (menus
   that close on mousedown, rows that re-render). product-design-v1's capture table
   says `pointerdown` + `click`; only `click` is implemented.

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Checkbox / Radio Fixture</title>
+  <style>
+    body { font: 14px system-ui; max-width: 480px; margin: 40px auto; }
+    fieldset { margin: 16px 0; }
+    label { display: block; margin: 6px 0; }
+    #log { margin-top: 16px; white-space: pre-wrap; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Bao Checkbox / Radio Fixture</h1>
+  <p>
+    A recorded check must end in the recorded <em>state</em>, not toggle — so replay
+    against a pre-checked box is a no-op, and against an unchecked box it flips.
+  </p>
+
+  <fieldset>
+    <legend>Options</legend>
+    <label><input type="checkbox" id="terms" name="terms" /> Accept terms</label>
+    <!-- label-wrapped, no id on the input: exercises label.control resolution -->
+    <label><input type="checkbox" name="news" /> Subscribe to newsletter</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Favorite color</legend>
+    <label><input type="radio" name="color" value="red" /> Red</label>
+    <label><input type="radio" name="color" value="green" /> Green</label>
+    <label><input type="radio" name="color" value="blue" /> Blue</label>
+  </fieldset>
+
+  <div id="log">no changes yet</div>
+
+  <script>
+    // Frameworks key off `change`; log it so the test can see real handlers fired.
+    window.__changes = [];
+    const log = document.getElementById("log");
+    document.addEventListener("change", (e) => {
+      const t = e.target;
+      const id = t.id || t.name;
+      const detail = t.type === "radio" ? `${t.name}=${t.value}` : `${id}=${t.checked}`;
+      window.__changes.push(detail);
+      log.textContent = window.__changes.join("\n");
+    });
+  </script>
+</body>
+</html>
