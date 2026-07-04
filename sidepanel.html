@@ -1,7 +1,60 @@
-<!doctype html>
-<!-- T15 step 1 placeholder so side_panel.default_path resolves; the real panel UI
-     (src/sidepanel.ts) lands in step 2, which also removes the popup. -->
+<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Bao</title></head>
-<body style="font: 13px system-ui; padding: 12px">Bao — panel UI coming in T15 step 2.</body>
+<head>
+  <meta charset="utf-8" />
+  <title>Bao</title>
+  <style>
+    body { font: 13px system-ui, sans-serif; margin: 0; padding: 0 12px 12px; color: #222; }
+    [hidden] { display: none !important; }
+    header { display: flex; align-items: center; gap: 8px; padding: 10px 0;
+             position: sticky; top: 0; background: #fff; border-bottom: 1px solid #eee; }
+    h1 { font-size: 14px; margin: 0; flex: 1; }
+    button { font: inherit; padding: 5px 9px; cursor: pointer; }
+    button:disabled { cursor: default; opacity: .5; }
+    input { font: inherit; padding: 5px 6px; box-sizing: border-box; }
+    .rec { color: #e11; font-weight: 600; }
+    #status { color: #666; margin: 8px 0 0; }
+    #search { width: 100%; margin: 10px 0 4px; }
+    .group-h { display: flex; align-items: center; gap: 4px; margin: 10px 0 4px; color: #444;
+               font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; }
+    .group-h .n { color: #999; font-weight: 400; }
+    .card { border: 1px solid #e5e5e5; border-radius: 6px; padding: 7px 9px; margin: 4px 0;
+            display: flex; align-items: center; gap: 6px; }
+    .card .body { flex: 1; min-width: 0; }
+    .card .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card .name input { width: 100%; }
+    .card .meta { color: #999; font-size: 11px; margin-top: 2px; }
+    .card button { padding: 3px 7px; }
+    .menu { position: relative; }
+    .menu-pop { position: absolute; right: 0; top: 26px; z-index: 10; background: #fff;
+                border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.12);
+                display: flex; flex-direction: column; min-width: 110px; }
+    .menu-pop button { border: 0; background: none; text-align: left; padding: 7px 10px; }
+    .menu-pop button:hover { background: #f2f2f2; }
+    .empty { color: #999; margin: 14px 0; }
+    #toast { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 20;
+             background: #333; color: #fff; border-radius: 6px; padding: 8px 10px;
+             display: flex; align-items: center; gap: 8px; }
+    #toast span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #toast button { background: none; border: 0; color: #8cf; font-weight: 600; padding: 2px 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Bao</h1>
+    <button id="continue" hidden>⏵ Continue</button>
+    <button id="record">● Record</button>
+    <button id="stop" hidden>■ Stop</button>
+  </header>
+
+  <section id="home">
+    <div id="status" hidden></div>
+    <input id="search" type="search" placeholder="Search workflows…" />
+    <div id="list"></div>
+  </section>
+
+  <div id="toast" hidden><span id="toastmsg"></span><button id="undo">Undo</button></div>
+
+  <script src="dist/sidepanel.js"></script>
+</body>
 </html>

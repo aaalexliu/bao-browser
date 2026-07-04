@@ -7,7 +7,7 @@ const options = {
   entryPoints: [
     "src/background.ts",
     "src/content.ts",
-    "src/popup.ts",
+    "src/sidepanel.ts",
     "src/forceopen.ts",
   ],
   outdir: "dist",

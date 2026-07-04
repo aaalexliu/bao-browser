@@ -1028,7 +1028,7 @@ declare global {
     return failed ? { ok: false, failedAt: failed.i, results } : { ok: true, results };
   }
 
-  // ---------- popup messaging ----------
+  // ---------- panel/SW messaging ----------
   chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
     if (msg.cmd === "start-record") { startRecording(); sendResponse({ ok: true }); }
     else if (msg.cmd === "stop-record") { sendResponse({ steps: stopRecording() }); }
