@@ -6,7 +6,7 @@
 //   1. href  — cards carry a stable permalink id (Substack-shaped).
 //   2. text  — cards carry NO id/href; only the author name disambiguates them.
 //
-// Run: npm run test:list   (or: node test/list.mjs ; HEADED=1 to watch)
+// Run: npm run test:list   (or: node test/list.mjs --headed to watch)
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -34,7 +34,7 @@ async function main() {
   await mkdir(OUT, { recursive: true });
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !process.env.HEADED && !process.argv.includes("--headed") && !process.argv.includes("-H"),
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
   });
   try {

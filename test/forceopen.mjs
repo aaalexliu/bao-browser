@@ -4,7 +4,7 @@
 // Real-world shape: salesforce.com's closed <cs-native-frame-holder> (see the design
 // doc §8 Tier-C). Here we use the controlled closed-shadow fixture.
 //
-// Run: npm run test:forceopen   (HEADED=1 to watch)
+// Run: npm run test:forceopen   (-- --headed to watch)
 import { chromium } from "playwright";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -23,7 +23,7 @@ function check(name, cond, extra) {
 async function main() {
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !process.env.HEADED && !process.argv.includes("--headed") && !process.argv.includes("-H"),
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
   });
   try {

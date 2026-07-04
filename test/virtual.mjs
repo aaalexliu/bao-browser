@@ -2,7 +2,7 @@
 // that is NOT in the DOM at replay time (windowed list recycles ~14 nodes over
 // 10,000 logical rows). Drives the real content.js. See §8 of the design doc.
 //
-// Run: npm run test:virtual   (HEADED=1 to watch it scroll)
+// Run: npm run test:virtual   (-- --headed to watch it scroll)
 import { chromium } from "playwright";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -22,7 +22,7 @@ function check(name, cond, extra) {
 async function main() {
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !process.env.HEADED && !process.argv.includes("--headed") && !process.argv.includes("-H"),
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
   });
   try {

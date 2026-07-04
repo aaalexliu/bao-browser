@@ -35,10 +35,10 @@ async function main() {
   await mkdir(OUT, { recursive: true });
 
   // `channel: "chromium"` uses the full Chromium build (not headless-shell) whose
-  // new headless mode supports MV3 extensions. Set HEADED=1 to watch it run.
+  // new headless mode supports MV3 extensions. Pass --headed to watch it run.
   const ctx = await chromium.launchPersistentContext("", {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !process.env.HEADED && !process.argv.includes("--headed") && !process.argv.includes("-H"),
     args: [
       `--disable-extensions-except=${ROOT}`,
       `--load-extension=${ROOT}`,
