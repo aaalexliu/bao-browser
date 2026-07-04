@@ -671,6 +671,18 @@ declare global {
   }
   function onClick(e: Event): void {
     const clickLeaf = composedLeaf(e);
+    // T6: assert-mode — the click marks an expectation, it doesn't perform the action.
+    // Swallow it (no navigation/submit) and record a textPresent assertion by default.
+    if (assertArmed) {
+      assertArmed = false; pending = null;
+      e.preventDefault(); e.stopImmediatePropagation();
+      const step = makeStep("assert", clickLeaf);
+      const value = normText(clickLeaf).slice(0, 120);
+      step.assert = { kind: "textPresent", value };
+      step.label = `Expect: "${value}"`;
+      pushStep(step);
+      return;
+    }
     if (clickLeaf.nodeName === "SELECT") return; // captured via change, not click
     const p = pending; pending = null;
     if (p && p.flushed) return;                  // onPointerUp already emitted this gesture (T5)
@@ -696,9 +708,14 @@ declare global {
     }
     commitClick(leaf, adopt ? adopt.target : undefined);
   }
+  // T6: Alt+Shift+A arms assert-mode — the next click captures an expectation instead
+  // of an action. Keyed off code+modifiers (Alt on macOS mangles e.key).
+  let assertArmed = false;
   // T4: whitelisted keys only — Enter (submit/commit), Escape (dismiss), Tab (commit).
   function onKeyDown(e: KeyboardEvent): void {
-    if (!recording || !KEYS[e.key]) return;
+    if (!recording) return;
+    if (e.altKey && e.shiftKey && e.code === "KeyA") { assertArmed = true; return; } // T6
+    if (!KEYS[e.key]) return;
     const el = composedLeaf(e);
     const step = makeStep("keypress", el, undefined, e.key);
     step.key = e.key;
@@ -768,7 +785,7 @@ declare global {
 
   function startRecording(): void {
     steps = []; lastInputEl = lastInputStep = null; lastStepUrl = location.href;
-    pending = null; submitCause = null; recording = true;
+    pending = null; submitCause = null; assertArmed = false; recording = true;
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("pointerup", onPointerUp, true);
     document.addEventListener("click", onClick, true);
@@ -812,10 +829,64 @@ declare global {
     }
     return matches();
   }
+  // T6: poll until the target is gone or hidden (elementAbsent inverts waitForStep).
+  async function assertAbsent(target: Target, timeout = 3000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const r = resolveStep(target);
+      if (!r.el || !isVisible(r.el)) return true;
+      await sleep(100);
+    }
+    return false;
+  }
+  // T6: poll until location.href matches (regex if `value` compiles, else substring).
+  async function assertUrl(value: string, timeout = 5000): Promise<boolean> {
+    let re: RegExp | null = null;
+    try { re = new RegExp(value); } catch (_) {}
+    const matches = () => (re ? re.test(location.href) : location.href.includes(value));
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      if (matches()) return true;
+      await sleep(100);
+    }
+    return matches();
+  }
+  // T6: evaluate one expectation. Never acts on the page; returns pass/fail + detail.
+  async function evalAssert(step: Step): Promise<{ ok: boolean; detail: string }> {
+    const a = step.assert!;
+    if (a.kind === "urlMatches") {
+      const ok = await assertUrl(a.value ?? "");
+      return { ok, detail: location.href };
+    }
+    if (a.kind === "elementAbsent") {
+      const ok = step.target ? await assertAbsent(step.target) : true;
+      return { ok, detail: ok ? "absent" : "still present" };
+    }
+    if (a.kind === "elementVisible") {
+      const r = step.target ? await waitForStep(step.target) : { el: null };
+      return { ok: !!r.el, detail: r.el ? "visible" : "not found" };
+    }
+    // textPresent — page-wide: the text must appear somewhere in the rendered body.
+    const want = squish(a.value ?? "");
+    const start = Date.now();
+    while (Date.now() - start < 5000) {
+      if (squish(document.body.innerText).includes(want)) return { ok: true, detail: "found" };
+      await sleep(100);
+    }
+    return { ok: false, detail: `"${want}" not on page` };
+  }
+
   async function replay(stepList: Step[]): Promise<ReplayResponse> {
     const results: StepResult[] = [];
     for (let i = 0; i < stepList.length; i++) {
       const step = stepList[i];
+      // T6: assertions are checked, never acted on, and are NON-FATAL — a failed
+      // expectation is recorded and replay continues so the runner reports them all.
+      if (step.action === "assert") {
+        const { ok, detail } = await evalAssert(step);
+        results.push({ i, ok, via: `assert:${step.assert!.kind}`, reason: ok ? undefined : `Expected ${step.assert!.kind} ${JSON.stringify(step.assert!.value)} — ${detail}` });
+        continue;
+      }
       // Full-document navigate markers are SW-owned (the RunState machine waits on
       // webNavigation, not on this script — which the nav destroys). If one reaches
       // the in-page replayer (M0 single-page path), it's a no-op.
@@ -907,7 +978,10 @@ declare global {
       results.push({ i, ok: true, via: r.via });
       await sleep(300);
     }
-    return { ok: true, results };
+    // Actions early-return on failure; reaching here means every action passed, so the
+    // run is ok iff no non-fatal assertion (T6) failed.
+    const failed = results.find((res) => !res.ok);
+    return failed ? { ok: false, failedAt: failed.i, results } : { ok: true, results };
   }
 
   // ---------- popup messaging ----------

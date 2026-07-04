@@ -139,7 +139,17 @@ of done per task = `record → replay → assert correct effect` passes on its f
 
 ## P1 — wedge unlocks
 
-### T6. `assert` primitive + thin runner/reporter
+### T6. `assert` primitive + thin runner/reporter — ✅ shipped
+> `assert` action with `{kind: textPresent|elementVisible|elementAbsent|urlMatches}`,
+> evaluated at replay and **non-fatal** (a failed expectation is recorded and replay
+> continues so the runner reports them all; the run's `ok` is false iff any assert
+> failed). Capture UX: `Alt+Shift+A` arms assert-mode, the next click captures a
+> `textPresent` of the element's text (swallowed — no navigation/submit) and shows as
+> `Expect: …` in the popup. Runner: `test/run.mjs <steps.json> <url>` — headless, prints
+> a per-step ✓/✗ table, exits 0/1. Regression: `test/assert.mjs` (record two asserts →
+> in-page replay → the other three kinds hand-built → `run.mjs` subprocess exits 0 on
+> the unchanged page, 1 when a `?title=` change fails one). The other three kinds have
+> no capture UX yet (textPresent is the recorded default); they're replay/IR features.
 - **Goal:** the QA wedge's missing primitive (use-cases doc §2B): expectations, not
   just actions.
 - **Do (IR + replay):** new `action:"assert"` with

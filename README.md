@@ -31,6 +31,17 @@ It drives the **real** `content.ts` (built to `dist/content.js`) through
 - `out/recorded-steps.json` — captured steps with the ranked selector candidates
 - `out/replay-results.json` — per-step resolution (`via` selector) + the events the page fired during replay
 
+**Assertions + headless runner (T6)** — recording supports *expectations*, not just
+actions: press **Alt+Shift+A** while recording, then click an element to capture an
+`assert` (defaults to "expect this text present"; the popup shows it as `Expect: …`).
+Assertions are checked at replay, are **non-fatal** (all are reported; the run fails
+iff any assert fails), and support `textPresent | elementVisible | elementAbsent |
+urlMatches`. The thin CI runner replays a saved trace and reports a ✓/✗ table:
+
+```sh
+node test/run.mjs <steps.json> <url>   # exit 0 = all passed, 1 = a step/assert failed
+```
+
 `npm test` also runs `test/list.mjs` (`npm run test:list`), the repeated-list
 regression: it records a click on one of six identical cards, then reorders /
 prepends / deletes / swaps buttons and asserts replay still hits the right one

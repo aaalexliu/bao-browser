@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Assert Fixture</title>
+  <style>
+    body { font: 14px system-ui; max-width: 480px; margin: 40px auto; }
+    #status { margin: 16px 0; color: #060; }
+    #draft { display: inline-block; padding: 2px 8px; background: #fe8; border-radius: 4px; }
+    #draft[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <!-- Title text is overridable via ?title= so the runner can force an assert to fail
+       against a "changed" page without a second fixture file. -->
+  <h1 id="title">Quarterly Report</h1>
+
+  <span id="draft">DRAFT</span>
+  <button id="save">Save</button>
+  <div id="status">not saved</div>
+
+  <script>
+    const p = new URLSearchParams(location.search);
+    if (p.get("title")) document.getElementById("title").textContent = p.get("title");
+    document.getElementById("save").addEventListener("click", () => {
+      document.getElementById("status").textContent = "Saved!";
+      document.getElementById("draft").hidden = true; // draft badge goes away on save
+    });
+  </script>
+</body>
+</html>
