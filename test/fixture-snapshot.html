@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Bao — subtree snapshot fixture (T13)</title></head>
+<body>
+  <!-- A repeated-card feed: the "Like" buttons are identical, so a click anchors to the
+       card (via its post link) — the snapshot root should be that card's subtree. -->
+  <ul id="feed">
+    <li class="card"><a href="/c-101">Post 101</a> <button class="like">Like</button></li>
+    <li class="card"><a href="/c-102">Post 102</a> <button class="like">Like</button></li>
+    <li class="card"><a href="/c-103">Post 103</a> <button class="like">Like</button></li>
+  </ul>
+
+  <!-- A login box: the password's declared value must never survive into the snapshot. -->
+  <div id="loginbox">
+    <label for="pw">Password</label>
+    <input id="pw" type="password" value="hunter2" autocomplete="current-password" />
+    <button id="login">Log in</button>
+  </div>
+
+  <!-- An oversized subtree: the 3-hop ancestor of #grow exceeds the 64KB cap. -->
+  <div id="huge">
+    <span id="blob"></span>
+    <div><button id="grow">Grow</button></div>
+  </div>
+
+  <script>
+    // >64KB of inline content so #huge's serialized subtree trips the snapshot cap.
+    document.getElementById("blob").textContent = "x".repeat(70000);
+  </script>
+</body>
+</html>

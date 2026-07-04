@@ -326,6 +326,29 @@ declare global {
     return { bbox: bboxOf(el), text: normText(el).slice(0, 120), role: implicitRole(el) };
   }
 
+  // T13: the anchor subtree (Tier-2 fuel) — NOT the whole document, for privacy and
+  // size. Serialize the *anchor* node when we have one, else the leaf's nearest ~3-hop
+  // ancestor. Value attributes are stripped (a typed value lives in the .value property,
+  // which cloneNode never serializes, so only a declared value="…" could leak — and a
+  // sensitive step, once T1 lands, would drop this entirely). Capped at 64KB.
+  const SNAPSHOT_CAP = 64 * 1024;
+  function nHopAncestor(el: Element, hops: number): Element {
+    let n: Element = el;
+    for (let i = 0; i < hops && n.parentElement && n.parentElement !== document.body; i++) n = n.parentElement;
+    return n;
+  }
+  function snapshotSubtree(root: Element): string {
+    let clone: Element;
+    try { clone = root.cloneNode(true) as Element; } catch (_) { return ""; }
+    for (const el of [clone, ...Array.from(clone.querySelectorAll("*"))]) {
+      if (el.hasAttribute && el.hasAttribute("value")) el.setAttribute("value", "");
+    }
+    const html = clone.outerHTML || "";
+    return html.length > SNAPSHOT_CAP
+      ? html.slice(0, SNAPSHOT_CAP) + `<!-- bao:truncated ${html.length}B -->`
+      : html;
+  }
+
   // The recorded target: leaf selectors, plus an anchor + within-descriptor whenever
   // the leaf alone can't be resolved back to the exact element.
   function getTarget(el: Element): Target {
@@ -335,7 +358,7 @@ declare global {
     // build a clean selector. Grounding (bbox/text/role) is exactly the Tier-2/3 fuel
     // that lets these degrade honestly instead of recording a confident lie.
     if (reach === "canvas" || reach === "opaque-custom") {
-      return { selectors: getSelectors(el), reach, ...grounding, unique: false, degraded: true };
+      return { selectors: getSelectors(el), reach, ...grounding, snapshot: snapshotSubtree(nHopAncestor(el, 3)), unique: false, degraded: true };
     }
     const selectors = getSelectors(el);
     // Open-shadow leaf: prepend a shadow-piercing path so resolution can re-find it
@@ -347,7 +370,9 @@ declare global {
     // record the viewport so resolution can scroll-find it. (Additive — absent on
     // ordinary pages.)
     const sc = scrollableAncestor(el);
-    const base: Omit<Target, "unique"> = { selectors, reach, ...grounding };
+    // Default snapshot root: the leaf's ~3-hop ancestor. Overridden with the anchor node
+    // below when we build one (the anchor subtree is the meaningful unit to re-derive).
+    const base: Omit<Target, "unique"> = { selectors, reach, ...grounding, snapshot: snapshotSubtree(nHopAncestor(el, 3)) };
     if (sc) base.scroll = { container: nodeSelector(sc) };
 
     const robustUnique = selectors.some((s) => s.type !== "css" && resolvesUniquelyTo(s, el));
@@ -356,7 +381,7 @@ declare global {
     const anchor = buildAnchor(el);
     if (anchor) {
       const within = describeWithin(anchor.node, el);
-      return { ...base, anchor: anchor.descriptor, within, unique: true };
+      return { ...base, anchor: anchor.descriptor, within, snapshot: snapshotSubtree(anchor.node), unique: true };
     }
     return { ...base, unique: false }; // best-effort: brittle css path only
   }
