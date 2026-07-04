@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node build.mjs && node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs && node test/frames.mjs && node test/forceopen.mjs && node test/editable.mjs && node test/spa.mjs && node test/nav.mjs && node test/check.mjs && node test/keyboard.mjs && node test/pointerdown.mjs && node test/assert.mjs && node test/download.mjs && node test/grounding.mjs && node test/golden.mjs && node test/snapshot.mjs && node test/workflows.mjs",
+    "test": "node build.mjs && node test/e2e.mjs && node test/list.mjs && node test/blindspots.mjs && node test/virtual.mjs && node test/frames.mjs && node test/forceopen.mjs && node test/editable.mjs && node test/spa.mjs && node test/nav.mjs && node test/check.mjs && node test/keyboard.mjs && node test/pointerdown.mjs && node test/assert.mjs && node test/download.mjs && node test/grounding.mjs && node test/golden.mjs && node test/snapshot.mjs && node test/workflows.mjs && node test/sidepanel.mjs",
     "test:assert": "node build.mjs && node test/assert.mjs",
     "test:download": "node build.mjs && node test/download.mjs",
     "test:grounding": "node build.mjs && node test/grounding.mjs",
@@ -39,7 +39,8 @@
     "watch": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test:snapshot": "node build.mjs && node test/snapshot.mjs",
-    "test:workflows": "node build.mjs && node test/workflows.mjs"
+    "test:workflows": "node build.mjs && node test/workflows.mjs",
+    "test:sidepanel": "node build.mjs && node test/sidepanel.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.2",
