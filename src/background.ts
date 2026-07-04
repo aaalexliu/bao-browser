@@ -6,7 +6,7 @@
 //  2) at replay, route each step to the live frame it was recorded in — resolving
 //     the recorded FrameRef (origin/url) to a current frameId via webNavigation.
 
-import type { FrameRef, Msg, RecState, ReplayResponse, RunState, Step, StepResult } from "./types";
+import type { FrameRef, Msg, RecState, ReplayResponse, RunState, Step, StepResult, Workflow, WorkflowSummary } from "./types";
 
 // The SW's harness-visible API: the e2e tests drive these via sw.evaluate, so they
 // must live on the worker global under exactly these names.
@@ -22,10 +22,15 @@ declare global {
   var baoReplayAcrossFrames: (tabId: number, steps: Step[]) => Promise<ReplayResponse>;
   var __baoRecentDownloads: { id: number; filename: string; ts: number }[];
   var baoGetGolden: (ref: string) => Promise<{ type: string; size: number; width: number; height: number } | null>;
+  var baoSaveWorkflow: (name: string, startUrl: string, steps: Step[]) => Promise<{ ok: boolean; id: string }>;
+  var baoListWorkflows: () => Promise<WorkflowSummary[]>;
+  var baoDeleteWorkflow: (id: string) => Promise<{ ok: boolean }>;
+  var baoRunWorkflow: (tabId: number, id: string) => Promise<{ ok: boolean; runId?: string; error?: string }>;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[bao-m0] service worker installed");
+  migrateLegacy(); // import a pre-T14 recording as "Untitled workflow", once
 });
 
 // Cross-frame recording buffer. The e2e harness resets it before a run and reads it
@@ -54,6 +59,11 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
   if (msg.cmd === "bao-run-start") { baoRunStart(msg.tabId, msg.steps).then(sendResponse); return true; }
   if (msg.cmd === "bao-run-status") { getRun().then(sendResponse); return true; }
   if (msg.cmd === "bao-run-continue") { baoRunContinue().then(sendResponse); return true; }
+  // ---- named workflows (T14) ----
+  if (msg.cmd === "bao-wf-save") { baoSaveWorkflow(msg.name, msg.startUrl, msg.steps).then(sendResponse); return true; }
+  if (msg.cmd === "bao-wf-list") { baoListWorkflows().then(sendResponse); return true; }
+  if (msg.cmd === "bao-wf-delete") { baoDeleteWorkflow(msg.id).then(sendResponse); return true; }
+  if (msg.cmd === "bao-wf-run") { baoRunWorkflow(msg.tabId, msg.id).then(sendResponse); return true; }
 });
 
 // ============================ M1 — cross-navigation ============================
@@ -167,6 +177,92 @@ self.baoRunContinue = async () => {
   if (resumed) tick();
   return { ok: resumed };
 };
+
+// ============================ T14 — named workflows ============================
+// A recording becomes a first-class Workflow {id,name,version,startUrl,variables,steps}
+// instead of an anonymous `steps` array. Stored as an id→Workflow map under one local
+// key; the pre-T14 single-recording `steps` key migrates once as "Untitled workflow".
+const WF_KEY = "baoWorkflows";
+const LEGACY_STEPS_KEY = "steps";
+
+async function getWorkflows(): Promise<Record<string, Workflow>> {
+  return ((await chrome.storage.local.get(WF_KEY))[WF_KEY] as Record<string, Workflow> | undefined) || {};
+}
+function makeWorkflow(name: string, startUrl: string, steps: Step[]): Workflow {
+  const id = "wf-" + Math.random().toString(36).slice(2, 10);
+  return {
+    id, name: name || "Untitled workflow", version: 1, startUrl, variables: [],
+    steps: steps.map((s, i) => ({ ...s, id: s.id || `${id}-${i}`, index: i })),
+    createdAt: Date.now(),
+  };
+}
+// One-time import of the pre-T14 recording. Idempotent: runs only while no workflows
+// exist and clears the legacy key so it can't re-import.
+async function migrateLegacy(): Promise<void> {
+  await enqueue(async () => {
+    const all = await getWorkflows();
+    if (Object.keys(all).length) return;
+    const legacy = (await chrome.storage.local.get(LEGACY_STEPS_KEY))[LEGACY_STEPS_KEY] as Step[] | undefined;
+    if (!legacy || !legacy.length) return;
+    const startUrl = legacy.find((s) => s.frame?.url)?.frame?.url || "";
+    const wf = makeWorkflow("Untitled workflow", startUrl, legacy);
+    all[wf.id] = wf;
+    await chrome.storage.local.set({ [WF_KEY]: all });
+    await chrome.storage.local.remove(LEGACY_STEPS_KEY);
+  });
+}
+
+self.baoSaveWorkflow = async (name, startUrl, steps) => {
+  const wf = makeWorkflow(name, startUrl, steps);
+  await enqueue(async () => {
+    const all = await getWorkflows();
+    all[wf.id] = wf;
+    await chrome.storage.local.set({ [WF_KEY]: all });
+  });
+  return { ok: true, id: wf.id };
+};
+self.baoListWorkflows = async () => {
+  await migrateLegacy();
+  return Object.values(await getWorkflows())
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((w): WorkflowSummary => ({ id: w.id, name: w.name, startUrl: w.startUrl, count: w.steps.length, createdAt: w.createdAt }));
+};
+self.baoDeleteWorkflow = async (id) => {
+  await enqueue(async () => {
+    const all = await getWorkflows();
+    delete all[id];
+    await chrome.storage.local.set({ [WF_KEY]: all });
+  });
+  return { ok: true };
+};
+self.baoRunWorkflow = async (tabId, id) => {
+  const wf = (await getWorkflows())[id];
+  if (!wf) return { ok: false, error: "no such workflow" };
+  // Land on the workflow's start page first if the tab isn't already there.
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (wf.startUrl && !urlMatches(urlPatternOf(wf.startUrl), tab.url || "")) {
+      await navigateAndWait(tabId, wf.startUrl);
+    }
+  } catch (_) {}
+  return baoRunStart(tabId, wf.steps);
+};
+// Drive a bare navigation and wait for the tab to settle on it (not part of the replay
+// state machine — this is the pre-run "get to startUrl" hop).
+async function navigateAndWait(tabId: number, url: string, timeout = 15_000): Promise<boolean> {
+  await chrome.tabs.update(tabId, { url });
+  const pattern = urlPatternOf(url);
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    try {
+      const t = await chrome.tabs.get(tabId);
+      if (t.status === "complete" && urlMatches(pattern, t.url || "")) return true;
+    } catch (_) {}
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return false;
+}
+
 async function fail(run: RunState, reason: string): Promise<void> {
   run.phase = "failed";
   run.lastError = { stepIndex: run.stepIndex, reason };

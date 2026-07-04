@@ -341,7 +341,20 @@ of done per task = `record → replay → assert correct effect` passes on its f
   never appears; oversized subtree is truncated with a marker.
 - **Size:** S.
 
-### T14. IR alignment + named workflows
+### T14. IR alignment + named workflows — ✅ shipped (PR #25)
+> A recording is now a first-class `Workflow {id, name, version, startUrl, variables:[],
+> steps, createdAt}` (steps gain `id` + `index` at save) stored as an id→Workflow map
+> under one local key, instead of an anonymous `steps` array. New SW ops `baoSaveWorkflow
+> / baoListWorkflows / baoDeleteWorkflow / baoRunWorkflow` (+ `bao-wf-*` messages); the
+> popup gains a name field + Save, a saved-workflows list, and per-row ▶ replay / 🗑
+> delete. `baoRunWorkflow` navigates the tab to `startUrl` first (pattern-matched,
+> digit-runs wildcarded) when it isn't already there, then runs the steps through the
+> existing RunState machine. The pre-T14 single `steps` key migrates once as "Untitled
+> workflow" (idempotent — runs only while no workflows exist, then clears the key).
+> `variables` stays empty until M4 parameterization. Regression: `test/workflows.mjs`
+> (save two named workflows → list is IR-shaped with per-step id/index → replay the
+> second BY ID from a tab parked on about:blank, proving the navigate-to-startUrl hop →
+> delete removes one).
 - **Goal:** steps become the durable Workflow IR of product-design-v1, not an
   anonymous array under one storage key.
 - **Do:** wrap recordings as `Workflow {id, name, version, startUrl, variables:[],

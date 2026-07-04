@@ -71,6 +71,9 @@ export interface Step {
   label: string;
   ts: number;
   seq?: string;
+  // Stable IR identity within a saved Workflow (T14). Assigned at save time.
+  id?: string;
+  index?: number;
   frame?: FrameRef;
   // click / input / select
   target?: Target;
@@ -96,6 +99,29 @@ export interface Step {
   // record-time frame grounding (T11): the viewport the step was captured in and when.
   // goldenScreenshotRef (T12) is an IndexedDB key for the full-viewport golden frame.
   meta?: { viewport: { w: number; h: number }; recordedAt: number; goldenScreenshotRef?: string };
+}
+
+// ---------- named workflows (T14): the durable IR wrapper ----------
+// A recording becomes a first-class, named Workflow instead of an anonymous array
+// under one storage key. `variables` is empty until M4 parameterization; `startUrl`
+// lets replay land on the right page first.
+export interface Workflow {
+  id: string;
+  name: string;
+  version: number;
+  startUrl: string;
+  variables: string[];
+  steps: Step[];
+  createdAt: number;
+}
+
+// The lightweight shape the popup/harness lists (no step payloads).
+export interface WorkflowSummary {
+  id: string;
+  name: string;
+  startUrl: string;
+  count: number;
+  createdAt: number;
 }
 
 // ---------- replay results ----------
@@ -151,6 +177,11 @@ export type Msg =
   | { cmd: "bao-run-start"; tabId: number; steps: Step[] }
   | { cmd: "bao-run-status" }
   | { cmd: "bao-run-continue" }
+  // named workflows (T14)
+  | { cmd: "bao-wf-save"; name: string; startUrl: string; steps: Step[] }
+  | { cmd: "bao-wf-list" }
+  | { cmd: "bao-wf-delete"; id: string }
+  | { cmd: "bao-wf-run"; tabId: number; id: string }
   // popup/SW → content
   | { cmd: "start-record" }
   | { cmd: "stop-record" }

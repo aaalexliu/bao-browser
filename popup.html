@@ -3,24 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <style>
-    body { font: 13px system-ui, sans-serif; width: 260px; margin: 0; padding: 12px; }
+    body { font: 13px system-ui, sans-serif; width: 280px; margin: 0; padding: 12px; }
     h1 { font-size: 13px; margin: 0 0 8px; }
+    h2 { font-size: 12px; margin: 14px 0 6px; color: #444; }
     button { font: inherit; padding: 6px 10px; margin: 0 4px 6px 0; cursor: pointer; }
+    input { font: inherit; padding: 5px 6px; box-sizing: border-box; }
     #status { color: #666; margin: 6px 0; }
-    #steps { background: #f6f6f6; border-radius: 4px; padding: 6px 8px; max-height: 200px;
+    #steps { background: #f6f6f6; border-radius: 4px; padding: 6px 8px; max-height: 140px;
              overflow: auto; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 11px; }
+    #saverow { display: none; margin: 6px 0; }
+    #wfname { width: 150px; }
+    .wf { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-top: 1px solid #eee; }
+    .wf .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wf .count { color: #999; font-size: 11px; }
+    .wf button { padding: 3px 7px; margin: 0; }
     .rec { color: #e11; font-weight: 600; }
+    .empty { color: #999; }
   </style>
 </head>
 <body>
-  <h1>Bao M0 Spike</h1>
+  <h1>Bao</h1>
   <button id="record">● Record</button>
   <button id="stop">■ Stop</button>
-  <button id="replay">▶ Replay</button>
   <button id="continue" style="display:none">⏵ Continue</button>
-  <button id="clear">Clear</button>
   <div id="status">—</div>
+
+  <div id="saverow">
+    <input id="wfname" placeholder="Workflow name" />
+    <button id="save">Save</button>
+  </div>
   <div id="steps"></div>
+
+  <h2>Saved workflows</h2>
+  <div id="list"></div>
+
   <script src="dist/popup.js"></script>
 </body>
 </html>

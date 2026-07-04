@@ -1,25 +1,33 @@
-import type { Msg, RunState, Step } from "./types";
+import type { Msg, RunState, Step, WorkflowSummary } from "./types";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const statusEl = $("status"), stepsEl = $("steps"), continueBtn = $("continue");
+const saveRow = $("saverow"), nameInput = $("wfname") as HTMLInputElement, listEl = $("list");
 
 async function activeTabId(): Promise<number> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab.id!;
 }
-// Record/replay are SW-owned now (M1): the state machine survives navigations and
-// SW death, so the popup only sends commands and renders status.
+// Record/replay are SW-owned (M1): the state machine survives navigations and SW
+// death, so the popup only sends commands and renders status.
 const sw = (msg: Msg) => chrome.runtime.sendMessage(msg);
 async function contentAlive(): Promise<boolean> {
   try { return !!(await chrome.tabs.sendMessage(await activeTabId(), { cmd: "status" })); }
   catch (_) { return false; }
 }
 
-function render(steps: Step[] | undefined, note?: string): void {
+// The just-recorded, not-yet-saved trace (T14: you name it, then it becomes a Workflow).
+let pendingSteps: Step[] = [];
+
+function renderSteps(steps: Step[], note?: string): void {
   stepsEl.textContent = (steps || [])
     .map((s, i) => `${i + 1}. ${s.label}${s.value ? ` = "${s.value}"` : ""}`)
-    .join("\n") || "(no steps yet)";
+    .join("\n") || "";
   if (note) statusEl.textContent = note;
+}
+
+function startUrlOf(steps: Step[]): string {
+  return steps.find((s) => s.frame?.url)?.frame?.url || "";
 }
 
 $("record").onclick = async () => {
@@ -27,21 +35,28 @@ $("record").onclick = async () => {
     statusEl.textContent = "No content script on this page (try a normal http page).";
     return;
   }
+  saveRow.style.display = "none";
   await sw({ cmd: "bao-rec-start", tabId: await activeTabId() });
-  statusEl.innerHTML = '<span class="rec">● recording…</span> interact with the page (navigations are fine), then Stop';
+  statusEl.innerHTML = '<span class="rec">● recording…</span> interact, then Stop';
   stepsEl.textContent = "";
 };
 $("stop").onclick = async () => {
   const { steps } = await sw({ cmd: "bao-rec-stop" });
-  await chrome.storage.local.set({ steps });
-  render(steps, `Captured ${steps.length} steps.`);
+  pendingSteps = steps || [];
+  renderSteps(pendingSteps, `Captured ${pendingSteps.length} steps — name & save it.`);
+  saveRow.style.display = pendingSteps.length ? "" : "none";
+  nameInput.focus();
 };
-$("replay").onclick = async () => {
-  const { steps } = (await chrome.storage.local.get("steps")) as { steps?: Step[] };
-  if (!steps || !steps.length) return void (statusEl.textContent = "Nothing recorded yet.");
-  statusEl.textContent = "Replaying…";
-  await sw({ cmd: "bao-run-start", tabId: await activeTabId(), steps });
-  pollRun();
+$("save").onclick = async () => {
+  if (!pendingSteps.length) return;
+  const name = nameInput.value.trim() || "Untitled workflow";
+  await sw({ cmd: "bao-wf-save", name, startUrl: startUrlOf(pendingSteps), steps: pendingSteps });
+  pendingSteps = [];
+  nameInput.value = "";
+  saveRow.style.display = "none";
+  statusEl.textContent = `Saved "${name}".`;
+  stepsEl.textContent = "";
+  await refreshList();
 };
 continueBtn.onclick = async () => {
   await sw({ cmd: "bao-run-continue" });
@@ -49,10 +64,48 @@ continueBtn.onclick = async () => {
   statusEl.textContent = "Resumed…";
   pollRun();
 };
-$("clear").onclick = async () => {
-  await chrome.storage.local.remove("steps");
-  render([], "Cleared.");
-};
+
+async function refreshList(): Promise<void> {
+  const wfs: WorkflowSummary[] = await sw({ cmd: "bao-wf-list" });
+  listEl.textContent = "";
+  if (!wfs.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No saved workflows yet.";
+    listEl.appendChild(empty);
+    return;
+  }
+  for (const wf of wfs) {
+    const row = document.createElement("div");
+    row.className = "wf";
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = wf.name;
+    name.title = wf.startUrl;
+
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `${wf.count}`;
+
+    const play = document.createElement("button");
+    play.textContent = "▶";
+    play.title = "Replay";
+    play.onclick = async () => {
+      statusEl.textContent = `Replaying "${wf.name}"…`;
+      await sw({ cmd: "bao-wf-run", tabId: await activeTabId(), id: wf.id });
+      pollRun();
+    };
+
+    const del = document.createElement("button");
+    del.textContent = "🗑";
+    del.title = "Delete";
+    del.onclick = async () => { await sw({ cmd: "bao-wf-delete", id: wf.id }); await refreshList(); };
+
+    row.append(name, count, play, del);
+    listEl.appendChild(row);
+  }
+}
 
 let polling = false;
 async function pollRun(): Promise<void> {
@@ -62,10 +115,7 @@ async function pollRun(): Promise<void> {
     for (;;) {
       const run: RunState | null = await sw({ cmd: "bao-run-status" });
       if (!run) return;
-      if (run.phase === "done") {
-        statusEl.textContent = `✓ Replayed ${run.steps.length} steps.`;
-        return;
-      }
+      if (run.phase === "done") { statusEl.textContent = `✓ Replayed ${run.steps.length} steps.`; return; }
       if (run.phase === "failed") {
         statusEl.textContent = `✗ Failed at step ${run.lastError!.stepIndex + 1}: ${run.lastError!.reason}`;
         return;
@@ -86,10 +136,9 @@ async function pollRun(): Promise<void> {
 
 // reflect current state on open
 (async () => {
-  const { steps } = (await chrome.storage.local.get("steps")) as { steps?: Step[] };
-  render(steps);
+  await refreshList();
   const run: RunState | null = await sw({ cmd: "bao-run-status" });
-  if (run && ["executing", "awaiting_nav", "paused_for_user"].includes(run.phase)) pollRun();
+  if (run && ["executing", "awaiting_nav", "awaiting_download", "paused_for_user"].includes(run.phase)) pollRun();
   try {
     const st = await chrome.tabs.sendMessage(await activeTabId(), { cmd: "status" });
     if (st && st.recording) statusEl.innerHTML = '<span class="rec">● recording…</span>';
