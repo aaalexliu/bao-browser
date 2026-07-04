@@ -38,8 +38,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // T15: the toolbar icon toggles the side panel — declarative, no action.onClicked
 // listener (chrome.sidePanel.open() would need a user gesture anyway). Top-level so
-// it re-arms on every SW wake. While default_popup is still in the manifest (until
-// the panel UI lands in step 2) the popup takes precedence over this.
+// it re-arms on every SW wake.
 chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true })
   .catch((e) => console.warn("[bao-t15]", e));
 
@@ -61,7 +60,7 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
     }
     return;
   }
-  // ---- M1 messages (recording stream, boot handshake, popup controls) ----
+  // ---- M1 messages (recording stream, boot handshake, panel controls) ----
   if (msg.cmd === "bao-step" && msg.step) { onRecStep(msg.step, sender); return; }
   if (msg.cmd === "bao-boot") { onBoot(sender).then(sendResponse); return true; }
   if (msg.cmd === "bao-rec-start") { baoRecStart(msg.tabId).then(sendResponse); return true; }
@@ -142,8 +141,9 @@ self.baoRecStart = async (tabId) => {
   return { ok: true };
 };
 // Stop auto-saves (T15): the captured trace used to be returned and hoped-saved by
-// the popup, which lost it the moment the popup closed. Now a non-empty recording
-// becomes a persisted Workflow right here; the panel renames it afterwards.
+// the (now-deleted) popup, which lost it the moment the popup closed. Now a
+// non-empty recording becomes a persisted Workflow right here; the panel renames
+// it afterwards.
 self.baoRecStop = async () => {
   const rec = await getRec();
   await setRec(null);

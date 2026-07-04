@@ -1,5 +1,5 @@
 // Bao — shared step schema. The one source of truth for what content.ts records,
-// background.ts stores/routes, and popup.ts renders. Everything that crosses a
+// background.ts stores/routes, and sidepanel.ts renders. Everything that crosses a
 // chrome.runtime message boundary or lands in chrome.storage is typed here.
 
 // ---------- selectors & targets (capture output, resolution input) ----------
@@ -176,7 +176,7 @@ export type Msg =
   | { cmd: "bao-frame-steps"; steps: Step[] }
   | { cmd: "bao-step"; step: Step }
   | { cmd: "bao-boot"; url: string; top: boolean }
-  // popup/harness → SW
+  // panel/harness → SW
   | { cmd: "bao-rec-start"; tabId: number }
   | { cmd: "bao-rec-stop" }
   | { cmd: "bao-run-start"; tabId: number; steps: Step[] }
@@ -191,7 +191,7 @@ export type Msg =
   | { cmd: "bao-wf-get"; id: string }                                                 // → Workflow | null
   | { cmd: "bao-wf-update"; id: string; patch: { name?: string; pinned?: boolean } }  // → { ok }
   | { cmd: "bao-wf-import"; workflow: Workflow }                                      // → { ok, id } (fresh id)
-  // popup/SW → content
+  // panel/SW → content
   | { cmd: "start-record" }
   | { cmd: "stop-record" }
   | { cmd: "status" }
