@@ -77,7 +77,7 @@ async function openReady(ctx, sw, url, waitMs = 4000) {
   // Make sure the content script is live (heavy pages inject late).
   for (let i = 0; i < 20; i++) {
     try { const st = await send(sw, tabId, { cmd: "status" }); if (st && "recording" in st) break; } catch (_) {}
-    if (i === 10) await sw.evaluate((id) => chrome.scripting.executeScript({ target: { tabId: id }, files: ["content.js"] }), tabId).catch(() => {});
+    if (i === 10) await sw.evaluate((id) => chrome.scripting.executeScript({ target: { tabId: id }, files: ["dist/content.js"] }), tabId).catch(() => {});
     await sleep(300);
   }
   return { page, tabId };

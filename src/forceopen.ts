@@ -5,13 +5,18 @@
 //
 // This is an escalation, not a baseline: it globally changes page semantics and can
 // break sites that rely on closed encapsulation, so the SW only registers it when the
-// user opts into "aggressive capture" mode (background.js: baoSetForceOpen).
+// user opts into "aggressive capture" mode (background.ts: baoSetForceOpen).
+
+type AttachShadow = typeof Element.prototype.attachShadow & { __baoForced?: boolean };
+
 (() => {
-  const orig = Element.prototype.attachShadow;
+  const orig = Element.prototype.attachShadow as AttachShadow;
   if (orig.__baoForced) return; // idempotent
-  const patched = function attachShadow(init) {
-    return orig.call(this, Object.assign({}, init, { mode: "open" }));
-  };
+  const patched = function attachShadow(this: Element, init: ShadowRootInit): ShadowRoot {
+    return orig.call(this, Object.assign({}, init, { mode: "open" as const }));
+  } as AttachShadow;
   patched.__baoForced = true;
   Element.prototype.attachShadow = patched;
 })();
+
+export {};

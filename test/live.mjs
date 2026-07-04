@@ -79,7 +79,7 @@ async function ensureReady(sw, tabId, { tries = 25, delay = 200 } = {}) {
     if (!injected && i >= Math.floor(tries / 2)) {
       injected = true;
       await sw.evaluate(
-        (id) => chrome.scripting.executeScript({ target: { tabId: id }, files: ["content.js"] }),
+        (id) => chrome.scripting.executeScript({ target: { tabId: id }, files: ["dist/content.js"] }),
         tabId
       );
     }

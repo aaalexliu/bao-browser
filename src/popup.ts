@@ -1,19 +1,21 @@
-const $ = (id) => document.getElementById(id);
+import type { Msg, RunState, Step } from "./types";
+
+const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const statusEl = $("status"), stepsEl = $("steps"), continueBtn = $("continue");
 
-async function activeTabId() {
+async function activeTabId(): Promise<number> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab.id;
+  return tab.id!;
 }
 // Record/replay are SW-owned now (M1): the state machine survives navigations and
 // SW death, so the popup only sends commands and renders status.
-const sw = (msg) => chrome.runtime.sendMessage(msg);
-async function contentAlive() {
+const sw = (msg: Msg) => chrome.runtime.sendMessage(msg);
+async function contentAlive(): Promise<boolean> {
   try { return !!(await chrome.tabs.sendMessage(await activeTabId(), { cmd: "status" })); }
   catch (_) { return false; }
 }
 
-function render(steps, note) {
+function render(steps: Step[] | undefined, note?: string): void {
   stepsEl.textContent = (steps || [])
     .map((s, i) => `${i + 1}. ${s.label}${s.value ? ` = "${s.value}"` : ""}`)
     .join("\n") || "(no steps yet)";
@@ -35,8 +37,8 @@ $("stop").onclick = async () => {
   render(steps, `Captured ${steps.length} steps.`);
 };
 $("replay").onclick = async () => {
-  const { steps } = await chrome.storage.local.get("steps");
-  if (!steps || !steps.length) return (statusEl.textContent = "Nothing recorded yet.");
+  const { steps } = (await chrome.storage.local.get("steps")) as { steps?: Step[] };
+  if (!steps || !steps.length) return void (statusEl.textContent = "Nothing recorded yet.");
   statusEl.textContent = "Replaying…";
   await sw({ cmd: "bao-run-start", tabId: await activeTabId(), steps });
   pollRun();
@@ -53,19 +55,19 @@ $("clear").onclick = async () => {
 };
 
 let polling = false;
-async function pollRun() {
+async function pollRun(): Promise<void> {
   if (polling) return;
   polling = true;
   try {
     for (;;) {
-      const run = await sw({ cmd: "bao-run-status" });
+      const run: RunState | null = await sw({ cmd: "bao-run-status" });
       if (!run) return;
       if (run.phase === "done") {
         statusEl.textContent = `✓ Replayed ${run.steps.length} steps.`;
         return;
       }
       if (run.phase === "failed") {
-        statusEl.textContent = `✗ Failed at step ${run.lastError.stepIndex + 1}: ${run.lastError.reason}`;
+        statusEl.textContent = `✗ Failed at step ${run.lastError!.stepIndex + 1}: ${run.lastError!.reason}`;
         return;
       }
       if (run.phase === "paused_for_user") {
@@ -84,9 +86,9 @@ async function pollRun() {
 
 // reflect current state on open
 (async () => {
-  const { steps } = await chrome.storage.local.get("steps");
+  const { steps } = (await chrome.storage.local.get("steps")) as { steps?: Step[] };
   render(steps);
-  const run = await sw({ cmd: "bao-run-status" });
+  const run: RunState | null = await sw({ cmd: "bao-run-status" });
   if (run && ["executing", "awaiting_nav", "paused_for_user"].includes(run.phase)) pollRun();
   try {
     const st = await chrome.tabs.sendMessage(await activeTabId(), { cmd: "status" });

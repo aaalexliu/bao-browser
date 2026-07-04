@@ -45,7 +45,7 @@ async function main() {
     // ensure content.js is live (auto-inject can lag on a heavy page)
     for (let i = 0; i < 20; i++) {
       try { const st = await send(tabId, { cmd: "status" }); if (st && "recording" in st) break; } catch {}
-      if (i === 8) await sw.evaluate((id) => chrome.scripting.executeScript({ target: { tabId: id }, files: ["content.js"] }), tabId);
+      if (i === 8) await sw.evaluate((id) => chrome.scripting.executeScript({ target: { tabId: id }, files: ["dist/content.js"] }), tabId);
       await sleep(200);
     }
 

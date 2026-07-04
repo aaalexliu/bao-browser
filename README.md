@@ -4,9 +4,11 @@ Proves the risky core: **record → deterministic replay** on a single page.
 No LLM, no backend, no cross-navigation (those are M1+).
 
 ## Load it
-1. `chrome://extensions` → toggle **Developer mode** (top right)
-2. **Load unpacked** → select this folder (`bao-browser-m0`)
-3. Pin the extension, open any normal `http(s)` page (not `chrome://` pages)
+1. `npm install && npm run build` — sources are TypeScript (`src/`), esbuild bundles
+   them to `dist/` (use `npm run watch` while developing)
+2. `chrome://extensions` → toggle **Developer mode** (top right)
+3. **Load unpacked** → select this folder (`bao-browser-m0`)
+4. Pin the extension, open any normal `http(s)` page (not `chrome://` pages)
 
 ## Try it
 1. Click the icon → **● Record**
@@ -24,8 +26,8 @@ npx playwright install chromium   # one-time: downloads the browser
 npm test                          # HEADED=1 npm test to watch it run
 ```
 
-It drives the **real** `content.js` through `chrome.tabs.sendMessage` (the same
-path `popup.js` uses) and asserts the page was actually re-driven. Outputs:
+It drives the **real** `content.ts` (built to `dist/content.js`) through
+`chrome.tabs.sendMessage` (the same path `popup.ts` uses) and asserts the page was actually re-driven. Outputs:
 - `out/recorded-steps.json` — captured steps with the ranked selector candidates
 - `out/replay-results.json` — per-step resolution (`via` selector) + the events the page fired during replay
 
@@ -57,7 +59,7 @@ so you only log in once. `--seconds N` auto-stops recording instead of waiting f
 **Live smoke test of anchoring** — `test/live-notes.mjs` is the real-Substack
 counterpart to the deterministic list regression. It records a Share-click on a
 chosen note in the Notes feed (many identical Share buttons), replays through the
-real `content.js`, and asserts it acted on the *same* note by its stable id:
+real content script, and asserts it acted on the *same* note by its stable id:
 
 ```sh
 node test/live.mjs login https://substack.com   # one-time, if not already
@@ -72,7 +74,7 @@ its stable id / href / text even after the feed reorders (see the list regressio
 The remaining limit is content that has *scrolled out of the DOM* entirely.
 
 ## What it demonstrates (the M0 risk-burndown)
-- **Ranked multi-selector capture** (`content.js` → `getSelectors`): testid > aria > text > stable id > css path
+- **Ranked multi-selector capture** (`src/content.ts` → `getSelectors`): testid > aria > text > stable id > css path
 - **Multi-selector fallback resolution** (`resolveStep`): tries each selector, first hit wins
 - **The input actuator** (`setNativeValue`): native value setter + real `InputEvent` so React/Vue register the change
 - **Graceful failure**: replay stops at the first unresolved step and reports which one

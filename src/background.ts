@@ -1,10 +1,27 @@
 // Bao M0 — service worker.
-// The record/replay core lives in content.js (one instance per frame, since the
+// The record/replay core lives in content.ts (one instance per frame, since the
 // manifest injects with all_frames). This worker's job for cross-origin frames:
 //  1) collect each frame's recorded steps (a parent content script can't read a
 //     cross-origin child's DOM, but every frame can message the SW), and
 //  2) at replay, route each step to the live frame it was recorded in — resolving
 //     the recorded FrameRef (origin/url) to a current frameId via webNavigation.
+
+import type { FrameRef, Msg, RecState, ReplayResponse, RunState, Step, StepResult } from "./types";
+
+// The SW's harness-visible API: the e2e tests drive these via sw.evaluate, so they
+// must live on the worker global under exactly these names.
+declare global {
+  var __baoSteps: Step[];
+  var baoRecStart: (tabId: number) => Promise<{ ok: boolean }>;
+  var baoRecStop: () => Promise<Step[]>;
+  var baoRunStart: (tabId: number, steps: Step[]) => Promise<{ ok: boolean; runId: string }>;
+  var baoRunStatus: () => Promise<RunState | null>;
+  var baoRunContinue: () => Promise<{ ok: boolean }>;
+  var baoDrainSteps: () => Step[];
+  var baoSetForceOpen: (on: boolean) => Promise<{ ok: boolean; on?: boolean; error?: string }>;
+  var baoReplayAcrossFrames: (tabId: number, steps: Step[]) => Promise<ReplayResponse>;
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[bao-m0] service worker installed");
 });
@@ -13,7 +30,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // after, so it lives on `self` (the SW global) rather than in chrome.storage for M0.
 self.__baoSteps = self.__baoSteps || [];
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse) => {
   if (!msg) return;
   if (msg.cmd === "bao-reset") { self.__baoSteps = []; return; }
   if (msg.cmd === "bao-frame-steps" && Array.isArray(msg.steps)) {
@@ -48,24 +65,28 @@ const NAV_TIMEOUT_MS = 30_000;
 
 // All state transitions are read-modify-write on storage; serialize them so two
 // events (boot ping + onCompleted, say) can't interleave and double-advance.
-let chain = Promise.resolve();
-function enqueue(fn) {
+let chain: Promise<unknown> = Promise.resolve();
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const p = chain.then(fn, fn);
   chain = p.catch((e) => console.warn("[bao-m1]", e));
   return p;
 }
 
-const getRec = async () => (await chrome.storage.session.get(REC_KEY))[REC_KEY] || null;
-const setRec = (rec) => rec ? chrome.storage.session.set({ [REC_KEY]: rec }) : chrome.storage.session.remove(REC_KEY);
-const getRun = async () => (await chrome.storage.local.get(RUN_KEY))[RUN_KEY] || null;
-const setRun = (run) => run ? chrome.storage.local.set({ [RUN_KEY]: run }) : chrome.storage.local.remove(RUN_KEY);
+const getRec = async (): Promise<RecState | null> =>
+  ((await chrome.storage.session.get(REC_KEY))[REC_KEY] as RecState | undefined) || null;
+const setRec = (rec: RecState | null) =>
+  rec ? chrome.storage.session.set({ [REC_KEY]: rec }) : chrome.storage.session.remove(REC_KEY);
+const getRun = async (): Promise<RunState | null> =>
+  ((await chrome.storage.local.get(RUN_KEY))[RUN_KEY] as RunState | undefined) || null;
+const setRun = (run: RunState | null) =>
+  run ? chrome.storage.local.set({ [RUN_KEY]: run }) : chrome.storage.local.remove(RUN_KEY);
 
 // Record-time id ≠ replay-time id: wildcard digit runs when matching URLs (same
 // normalization the T7 soft-nav markers use).
-function urlMatches(pattern, url) {
+function urlMatches(pattern: string, url: string): boolean {
   try { return new RegExp(`^${pattern}$`).test(url); } catch (_) { return false; }
 }
-const urlPatternOf = (u) => u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\d+/g, "\\d+");
+const urlPatternOf = (u: string) => u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\d+/g, "\\d+");
 
 // ---- recording across navigations (T8 phase 1) ----
 self.baoRecStart = async (tabId) => {
@@ -82,11 +103,11 @@ self.baoRecStop = async () => {
   try { await chrome.tabs.sendMessage(rec.tabId, { cmd: "stop-record" }); } catch (_) {}
   return rec.steps.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
 };
-function onRecStep(step, sender) {
+function onRecStep(step: Step, sender: chrome.runtime.MessageSender): void {
   enqueue(async () => {
     const rec = await getRec();
     if (!rec || !sender.tab || sender.tab.id !== rec.tabId) return;
-    const merged = {
+    const merged: Step = {
       ...step,
       frame: { ...(step.frame || {}), frameId: sender.frameId, url: sender.url, top: sender.frameId === 0 },
     };
@@ -102,7 +123,7 @@ function onRecStep(step, sender) {
 // element waits live in the content script, navigation waits on webNavigation,
 // timeouts on chrome.alarms — never a long timer in here.
 self.baoRunStart = async (tabId, steps) => {
-  const run = {
+  const run: RunState = {
     runId: Math.random().toString(36).slice(2), tabId, steps,
     stepIndex: 0, phase: "executing", dispatched: false, results: [], lastError: null,
   };
@@ -123,17 +144,19 @@ self.baoRunContinue = async () => {
   if (resumed) tick();
   return { ok: resumed };
 };
-async function fail(run, reason) {
+async function fail(run: RunState, reason: string): Promise<void> {
   run.phase = "failed";
   run.lastError = { stepIndex: run.stepIndex, reason };
   await setRun(run);
 }
 
+type TickTodo = { kind: "check-nav" } | { kind: "dispatch"; run: RunState; step: Step } | null;
+
 // One turn of the machine. Reads state, acts on the current step, writes state.
 // The actual dispatch (which can take seconds of in-page element waiting) happens
 // OUTSIDE the serialized chain so wake events aren't blocked behind it.
-async function tick() {
-  const todo = await enqueue(async () => {
+async function tick(): Promise<void> {
+  const todo = await enqueue<TickTodo>(async () => {
     const run = await getRun();
     if (!run || run.phase !== "executing") return null;
     if (run.stepIndex >= run.steps.length) {
@@ -142,7 +165,7 @@ async function tick() {
     const step = run.steps[run.stepIndex];
     if (step.action === "navigate") {
       run.phase = "awaiting_nav";
-      run.expectedNav = { pattern: urlPatternOf(step.url), deadline: Date.now() + NAV_TIMEOUT_MS };
+      run.expectedNav = { pattern: urlPatternOf(step.url || ""), deadline: Date.now() + NAV_TIMEOUT_MS };
       await setRun(run);
       chrome.alarms.create("bao-run-watchdog", { when: Date.now() + NAV_TIMEOUT_MS });
       return { kind: "check-nav" }; // the nav may already have finished — check now
@@ -158,7 +181,7 @@ async function tick() {
   if (todo.kind === "check-nav") return maybeResumeAfterNav();
 
   const { run, step } = todo;
-  let res = null;
+  let res: ReplayResponse | null = null;
   try {
     res = await chrome.tabs.sendMessage(run.tabId, { cmd: "replay", steps: [step] }, { frameId: 0 });
   } catch (_) { /* document torn down mid-step, or no content script yet */ }
@@ -192,14 +215,14 @@ async function tick() {
 // Resume out of awaiting_nav once the destination document exists AND answers —
 // reached either from the boot ping (readyState complete) or from
 // webNavigation.onCompleted, whichever lands; the phase check makes it idempotent.
-async function maybeResumeAfterNav() {
+async function maybeResumeAfterNav(): Promise<void> {
   const run = await getRun();
   if (!run || run.phase !== "awaiting_nav") return;
-  let url;
+  let url: string;
   try {
     const tab = await chrome.tabs.get(run.tabId);
-    url = tab.url;
-    if (!urlMatches(run.expectedNav.pattern, url)) return;
+    url = tab.url || "";
+    if (!urlMatches(run.expectedNav!.pattern, url)) return;
     await chrome.tabs.sendMessage(run.tabId, { cmd: "status" }, { frameId: 0 });
   } catch (_) { return; } // not there yet — a later wake retries
   const resumed = await enqueue(async () => {
@@ -214,11 +237,11 @@ async function maybeResumeAfterNav() {
   if (resumed) tick();
 }
 
-// Boot handshake from every fresh document (content.js sends it at readyState
+// Boot handshake from every fresh document (content.ts sends it at readyState
 // complete). Recording: tell the new document to re-arm. Replay: this is the
 // primary awaiting_nav wake, and the re-execution guard for the riskiest race —
 // SW killed after dispatching a click, before its completion was recorded.
-async function onBoot(sender) {
+async function onBoot(sender: chrome.runtime.MessageSender): Promise<{ record?: boolean }> {
   if (!sender.tab) return {};
   const rec = await getRec();
   if (rec && sender.tab.id === rec.tabId) return { record: true };
@@ -268,7 +291,7 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
   // injects at document_idle anyway; this is belt-and-braces, and idempotent).
   const run = await getRun();
   if (run && d.tabId === run.tabId && !["done", "failed"].includes(run.phase)) {
-    try { await chrome.scripting.executeScript({ target: { tabId: d.tabId }, files: ["content.js"] }); } catch (_) {}
+    try { await chrome.scripting.executeScript({ target: { tabId: d.tabId }, files: ["dist/content.js"] }); } catch (_) {}
   }
 });
 chrome.webNavigation.onCompleted.addListener((d) => {
@@ -299,7 +322,7 @@ self.baoSetForceOpen = async (on) => {
       await chrome.scripting.registerContentScripts([{
         id: FORCE_OPEN_ID,
         matches: ["<all_urls>"],
-        js: ["forceopen.js"],
+        js: ["dist/forceopen.js"],
         runAt: "document_start",
         world: "MAIN",
         allFrames: true,
@@ -309,13 +332,13 @@ self.baoSetForceOpen = async (on) => {
     }
     return { ok: true, on: !!on };
   } catch (e) {
-    return { ok: false, error: String((e && e.message) || e) };
+    return { ok: false, error: String(e instanceof Error ? e.message : e) };
   }
 };
 
 // Map a recorded FrameRef onto a live frameId. Prefer an exact URL match, fall back
 // to same-origin (the cross-origin child case), then the top frame.
-function pickFrameId(frames, ref) {
+function pickFrameId(frames: chrome.webNavigation.GetAllFrameResultDetails[], ref: FrameRef | undefined): number | null {
   if (!ref) return 0;
   let f = frames.find((fr) => fr.url === ref.url);
   if (!f && ref.origin) f = frames.find((fr) => { try { return new URL(fr.url).origin === ref.origin; } catch { return false; } });
@@ -327,8 +350,8 @@ function pickFrameId(frames, ref) {
 // to (chrome.tabs.sendMessage with an explicit frameId), in order. Callable from the
 // harness via sw.evaluate.
 self.baoReplayAcrossFrames = async (tabId, steps) => {
-  const frames = await chrome.webNavigation.getAllFrames({ tabId });
-  const results = [];
+  const frames = (await chrome.webNavigation.getAllFrames({ tabId })) || [];
+  const results: StepResult[] = [];
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     const frameId = pickFrameId(frames, step.frame);
@@ -336,15 +359,15 @@ self.baoReplayAcrossFrames = async (tabId, steps) => {
       results.push({ i, ok: false, reason: `frame not found: ${step.frame && step.frame.origin}` });
       return { ok: false, failedAt: i, results };
     }
-    let res;
+    let res: ReplayResponse | undefined;
     try {
       res = await chrome.tabs.sendMessage(tabId, { cmd: "replay", steps: [step] }, { frameId });
     } catch (e) {
-      results.push({ i, ok: false, frameId, reason: String(e && e.message || e) });
+      results.push({ i, ok: false, frameId, reason: String(e instanceof Error ? e.message : e) });
       return { ok: false, failedAt: i, results };
     }
-    const r0 = (res && res.results && res.results[0]) || {};
-    results.push({ i, ok: res && res.ok === true, via: r0.via, frameId });
+    const r0 = (res && res.results && res.results[0]) || ({} as StepResult);
+    results.push({ i, ok: !!res && res.ok === true, via: r0.via, frameId });
     if (!res || res.ok !== true) return { ok: false, failedAt: i, results };
   }
   return { ok: true, results };
