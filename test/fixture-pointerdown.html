@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Pointerdown-Timing Fixture</title>
+  <style>
+    body { font: 14px system-ui; max-width: 480px; margin: 40px auto; }
+    #host { padding: 20px; border: 1px dashed #aaa; border-radius: 6px; }
+    button { padding: 8px 14px; font: inherit; }
+    #log { margin-top: 16px; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Bao Pointerdown-Timing Fixture</h1>
+  <p>
+    The button <strong>removes itself in its own <code>mousedown</code></strong> — so by
+    the time <code>click</code> fires the target is gone (menus that close on mousedown,
+    rows that re-render). Capturing at <code>pointerdown</code>, while the node is still
+    alive, is the only way to record a usable click.
+  </p>
+
+  <div id="host">
+    <button id="vanish" data-testid="vanish-btn" aria-label="Vanishing action">
+      Click me (I disappear on mousedown)
+    </button>
+  </div>
+
+  <div id="log">button present</div>
+
+  <script>
+    const log = document.getElementById("log");
+    const btn = document.getElementById("vanish");
+    // Remove self during mousedown — pointerdown (where the recorder captures) has
+    // already fired by now; click will retarget to #host with the button detached.
+    btn.addEventListener("mousedown", function () {
+      this.remove();
+      log.textContent = "button removed on mousedown";
+    });
+  </script>
+</body>
+</html>

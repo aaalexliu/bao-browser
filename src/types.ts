@@ -50,7 +50,9 @@ export interface FrameRef {
   frameId?: number;
 }
 
-export type StepAction = "click" | "input" | "select" | "navigate" | "softNav" | "waitForUser";
+export type StepAction =
+  | "click" | "input" | "select" | "setChecked" | "keypress" | "submit"
+  | "navigate" | "softNav" | "waitForUser";
 
 export interface Step {
   action: StepAction;
@@ -62,6 +64,12 @@ export interface Step {
   target?: Target;
   value?: string;
   mode?: "contenteditable";
+  // setChecked (T3): the recorded end-state, replayed as SET not toggle
+  checked?: boolean;
+  // keypress (T4): a whitelisted key (Enter | Escape | Tab)
+  key?: string;
+  // click / keypress that caused a form submit (T4): replay ensures the submit fires
+  submits?: boolean;
   // navigate (full-document, SW-recorded)
   url?: string;
   wait?: { type: "navigation" };

@@ -123,6 +123,12 @@ The remaining limit is content that has *scrolled out of the DOM* entirely.
   still the only synthetic path most editors accept) with a `beforeinput` dispatch
   fallback; heavily custom editors may reject both — replay then fails the step with a
   clear report rather than pretending (Google Docs is canvas-rendered anyway)
+- ~~no keypress / checkbox-state / pointerdown-timing capture~~ **landed (P0/T3–T5):**
+  checkbox/radio record their end-**state** and replay as *set*, not toggle
+  (`test/check.mjs`); `Enter`/`Escape`/`Tab` record as `keypress` and Enter-submit is
+  tagged so replay `requestSubmit()`s it (`test/keyboard.mjs`); the click target is
+  grabbed at `pointerdown` so a node that unmounts before `click` is still captured
+  (`test/pointerdown.mjs`)
 - No screenshots / audit trail yet (full-viewport capture comes with the auditable-replay work)
-- Naive `change`/`input` coalescing; no dropdown/keypress/scroll steps yet
+- Naive `change`/`input` coalescing; no scroll steps yet
 - Selector heuristics are a starting port of Playwright/Chrome-Recorder ideas, not tuned

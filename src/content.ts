@@ -582,10 +582,22 @@ declare global {
     try { chrome.runtime.sendMessage({ cmd: "bao-step", step }).catch(() => {}); } catch (_) {}
   }
 
-  function humanLabel(action: StepAction, el: Element): string {
+  // The only keys we capture (T4). General typing is owned by onInput; this whitelist
+  // is the submit/commit/dismiss set. code === key for all three; keyCode kept for the
+  // odd handler that still reads it.
+  const KEYS: Record<string, { code: string; keyCode: number }> = {
+    Enter: { code: "Enter", keyCode: 13 },
+    Escape: { code: "Escape", keyCode: 27 },
+    Tab: { code: "Tab", keyCode: 9 },
+  };
+
+  function humanLabel(action: StepAction, el: Element, key?: string): string {
     const name = accName(el) || el.nodeName.toLowerCase();
     if (action === "input") return `Type into "${name}"`;
     if (action === "select") return `Choose an option in "${name}"`;
+    if (action === "setChecked") return `Set "${name}"`;
+    if (action === "keypress") return `Press ${key || "key"} in "${name}"`;
+    if (action === "submit") return `Submit "${name}"`;
     return `Click "${name}"`;
   }
   // Which frame this step was captured in. The content script runs per-frame
@@ -594,8 +606,10 @@ declare global {
   function frameInfo() {
     return { url: location.href, origin: location.origin, top: window === window.top };
   }
-  function makeStep(action: StepAction, el: Element): Step {
-    return { action, label: humanLabel(action, el), target: getTarget(el), frame: frameInfo(), ts: Date.now() };
+  // `target` is precomputed only for T5 (grabbed at pointerdown, before the node could
+  // unmount); otherwise resolve it now against the live element.
+  function makeStep(action: StepAction, el: Element, target?: Target, key?: string): Step {
+    return { action, label: humanLabel(action, el, key), target: target ?? getTarget(el), frame: frameInfo(), ts: Date.now() };
   }
 
   // The real interactive element, piercing OPEN shadow boundaries. `event.target` is
@@ -610,11 +624,101 @@ declare global {
     return path[0] instanceof Element ? path[0] : (e.target as Element);
   }
 
-  function onClick(e: Event): void {
-    const el = composedLeaf(e);
-    if (el.nodeName === "SELECT") return; // captured via change, not click
+  // T5: the target of a click can unmount before `click` fires (menus that close on
+  // mousedown, rows that re-render). Capture it at pointerdown — while the node is
+  // still alive — and commit either from onClick (normal) or from onPointerUp (when the
+  // node vanished, since Chromium then dispatches no click at all). `flushed` guards
+  // against a double-emit if a click somehow still follows a pointerup commit.
+  let pending: { leaf: Element; target: Target; ts: number; flushed: boolean } | null = null;
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  function onPointerDown(e: Event): void {
+    if (!recording) return;
+    const leaf = composedLeaf(e);
+    pending = { leaf, target: getTarget(leaf), ts: Date.now(), flushed: false };
+    if (pendingTimer) clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => { pending = null; }, 500); // drags/text-selection leave no click
+  }
+  // If the pointerdown target unmounted before a click could fire (verified: Chromium
+  // dispatches NO click when the mousedown target is removed), commit the step here so
+  // it isn't silently lost — using the target we grabbed while the node was alive.
+  function onPointerUp(): void {
+    if (!recording || !pending || pending.flushed) return;
+    if (!pending.leaf.isConnected) { pending.flushed = true; commitClick(pending.leaf, pending.target); }
+  }
+
+  // T3: the checkbox/radio a click ultimately toggles — directly, or via its <label>.
+  function checkableFrom(el: Element): HTMLInputElement | null {
+    if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) return el;
+    const label = el.closest?.("label") as HTMLLabelElement | null;
+    const ctrl = label?.control;
+    if (ctrl instanceof HTMLInputElement && (ctrl.type === "checkbox" || ctrl.type === "radio")) return ctrl;
+    return null;
+  }
+
+  // T4: remember the last action that could cause a form submit, so onSubmit can tag
+  // it `submits:true` and drop the redundant bare `submit` step.
+  let submitCause: { step: Step; form: HTMLFormElement; ts: number } | null = null;
+  function noteSubmitCause(step: Step, el: Element): void {
+    const form = (el as HTMLInputElement).form || el.closest?.("form") || null;
+    if (form instanceof HTMLFormElement) submitCause = { step, form, ts: Date.now() };
+  }
+
+  function commitClick(leaf: Element, target?: Target): void {
     lastInputEl = lastInputStep = null;
-    pushStep(makeStep("click", el));
+    const step = makeStep("click", leaf, target);
+    noteSubmitCause(step, leaf); // T4: this click may be what submits the form
+    pushStep(step);
+  }
+  function onClick(e: Event): void {
+    const clickLeaf = composedLeaf(e);
+    if (clickLeaf.nodeName === "SELECT") return; // captured via change, not click
+    const p = pending; pending = null;
+    if (p && p.flushed) return;                  // onPointerUp already emitted this gesture (T5)
+    // Adopt the pointerdown capture on the same leaf (saves a re-resolve) or when the
+    // captured node vanished and the click retargeted to an ancestor.
+    const adopt = p && (p.leaf === clickLeaf || !p.leaf.isConnected) ? p : null;
+    const leaf = adopt ? adopt.leaf : clickLeaf;
+
+    // T3: a DIRECT click on a checkbox/radio → record its END-STATE (replayed as SET,
+    // not toggle). A click that reaches the control only through its <label> is
+    // ignored: the browser synthesizes a second click on the control itself, which we
+    // record instead — otherwise the label + control clicks double-record.
+    const directBox = leaf instanceof HTMLInputElement && (leaf.type === "checkbox" || leaf.type === "radio") ? leaf : null;
+    if (!directBox && checkableFrom(leaf)) return;
+    if (directBox) {
+      lastInputEl = lastInputStep = null;
+      const step = makeStep("setChecked", directBox);
+      pushStep(step);
+      // The click handler sees pre-activation checkedness (reverted if something
+      // preventDefaults); read the settled value on the next task.
+      setTimeout(() => { step.checked = directBox.checked; syncStep(step); }, 0);
+      return;
+    }
+    commitClick(leaf, adopt ? adopt.target : undefined);
+  }
+  // T4: whitelisted keys only — Enter (submit/commit), Escape (dismiss), Tab (commit).
+  function onKeyDown(e: KeyboardEvent): void {
+    if (!recording || !KEYS[e.key]) return;
+    const el = composedLeaf(e);
+    const step = makeStep("keypress", el, undefined, e.key);
+    step.key = e.key;
+    pushStep(step);
+    if (e.key === "Enter") noteSubmitCause(step, el); // Enter-implicit submit
+  }
+  // T4: covers Enter-implicit and button-implicit submits uniformly. If a click/Enter
+  // we just recorded caused this submit, tag it and drop the bare step; otherwise the
+  // submit was JS-triggered with no recorded cause, so record it against the form.
+  function onSubmit(e: Event): void {
+    if (!recording) return;
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    const c = submitCause;
+    submitCause = null;
+    if (c && c.form === form && Date.now() - c.ts < 200) {
+      c.step.submits = true; syncStep(c.step);
+      return;
+    }
+    pushStep(makeStep("submit", form));
   }
   // The editable ROOT the event belongs to. Editors nest contenteditable nodes, so
   // walk to the highest contentEditable ancestor — that's the stable, addressable
@@ -663,19 +767,28 @@ declare global {
   }
 
   function startRecording(): void {
-    steps = []; lastInputEl = lastInputStep = null; lastStepUrl = location.href; recording = true;
+    steps = []; lastInputEl = lastInputStep = null; lastStepUrl = location.href;
+    pending = null; submitCause = null; recording = true;
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup", onPointerUp, true);
     document.addEventListener("click", onClick, true);
     document.addEventListener("input", onInput, true);
     document.addEventListener("beforeinput", onBeforeInput, true);
     document.addEventListener("change", onChange, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("submit", onSubmit, true);
   }
   function stopRecording(): Step[] {
     markSoftNav(); // a route change after the last step still gets its marker
     recording = false;
+    document.removeEventListener("pointerdown", onPointerDown, true);
+    document.removeEventListener("pointerup", onPointerUp, true);
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("input", onInput, true);
     document.removeEventListener("beforeinput", onBeforeInput, true);
     document.removeEventListener("change", onChange, true);
+    document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("submit", onSubmit, true);
     // Report this frame's steps to the SW so it can merge them with sibling/child
     // frames (which the top frame can't see across an origin boundary). Best-effort.
     if (steps.length) {
@@ -752,6 +865,45 @@ declare global {
       }
       else if (step.action === "input") setNativeValue(el as HTMLInputElement | HTMLTextAreaElement, step.value ?? "");
       else if (step.action === "select") setSelectValue(el as HTMLSelectElement, step.value ?? "");
+      // T3: drive to the recorded state, don't blindly toggle. A real click keeps
+      // framework handlers happy; only fall back to setting .checked if it didn't take.
+      else if (step.action === "setChecked") {
+        const box = el as HTMLInputElement;
+        const want = step.checked === true;
+        if (box.checked !== want) {
+          box.click();
+          if (box.checked !== want) { box.checked = want; box.dispatchEvent(new Event("change", { bubbles: true })); }
+        }
+        if (box.checked !== want) {
+          results.push({ i, ok: false, reason: `Could not set checkbox: ${step.label}` });
+          return { ok: false, failedAt: i, results };
+        }
+      }
+      // T4: synthetic keys are isTrusted:false — they won't trigger the browser's
+      // implicit form submit, so for a submit-causing key we requestSubmit() unless the
+      // dispatch already submitted (a page that listens on keydown Enter).
+      else if (step.action === "keypress") {
+        const key = step.key || "Enter";
+        const info = KEYS[key] || { code: key, keyCode: 0 };
+        // keyCode/which can't be set via the constructor init (ignored → 0); the
+        // whitelist keys are all read via key/code by any modern handler.
+        const opts: KeyboardEventInit = { key, code: info.code, bubbles: true, cancelable: true };
+        const form = (el as HTMLInputElement).form || el.closest?.("form") || null;
+        let submitted = false;
+        const onSub = () => { submitted = true; };
+        if (step.submits && form) form.addEventListener("submit", onSub, { once: true, capture: true });
+        el.dispatchEvent(new KeyboardEvent("keydown", opts));
+        el.dispatchEvent(new KeyboardEvent("keyup", opts));
+        if (step.submits && form) {
+          await sleep(50);
+          form.removeEventListener("submit", onSub, true);
+          if (!submitted) { try { form.requestSubmit(); } catch (_) { form.submit(); } }
+        }
+      }
+      // T4: a bare submit with no recorded click/Enter cause (JS-triggered at record).
+      else if (step.action === "submit") {
+        if (el instanceof HTMLFormElement) { try { el.requestSubmit(); } catch (_) { el.submit(); } }
+      }
       results.push({ i, ok: true, via: r.via });
       await sleep(300);
     }
