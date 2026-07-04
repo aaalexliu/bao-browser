@@ -332,10 +332,12 @@ its fixture.
 
 ### Live smoke suite (`npm run test:live`, opt-in)
 
-`test/live-blindspots.mjs` drives the **real extension on the real sites** — kept out of
-the default `npm test` because live sites flake/change (a load failure is a SKIP, not a
-FAIL). It exercises the extension where robust and falls back to a structural check
-otherwise:
+The `test/live-blindspots-*.mjs` suite (one runnable file per site, sharing
+`test/live-helpers.mjs`; `npm run test:live` runs them all, or `npm run
+test:live:open-shadow` / `:canvas` / `:frames` / `:virtual` / `:closed-shadow`
+individually) drives the **real extension on the real sites** — kept out of the default
+`npm test` because live sites flake/change (a load failure is a SKIP, not a FAIL). It
+exercises the extension where robust and falls back to a structural check otherwise:
 
 | Site | Asserts |
 |---|---|

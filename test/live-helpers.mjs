@@ -6,10 +6,10 @@
 // docs); they share the launch, the record/replay helpers, the ✓/✗/⊘ reporting, and
 // the runner here.
 //
-// Contract (same as test/live-blindspots.mjs): opt-in, NOT part of `npm test`. Real
-// sites flake, so a load failure / fresh bot-block / missing structure is a SKIP; a
-// FAIL means the site loaded and exhibited its structure but record→replay produced
-// the wrong effect — i.e. a shipped capability regressed.
+// Contract: opt-in, NOT part of `npm test`. Real sites flake, so a load failure / fresh
+// bot-block / missing structure is a SKIP; a FAIL means the site loaded and exhibited
+// its structure but record→replay produced the wrong effect — i.e. a shipped capability
+// regressed.
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -33,8 +33,8 @@ export class Skip extends Error {}
 export const send = (sw, tabId, msg, opts) =>
   sw.evaluate(([id, m, o]) => chrome.tabs.sendMessage(id, m, o || {}), [tabId, msg, opts]);
 
-// Record via the SW's cross-frame buffer (same path as live-blindspots): reset the
-// buffer, arm the real content script, run `act`, stop, and drain what the content
+// Record via the SW's cross-frame buffer: reset the buffer, arm the real content
+// script, run `act`, stop, and drain what the content
 // script reported at stop-record (`bao-frame-steps`) — includes softNav markers and
 // coalesced input steps.
 export async function recordVia(sw, tabId, act) {
@@ -75,6 +75,27 @@ export async function openReady(ctx, sw, url, waitMs = 4000) {
 
 export const reaches = (steps) => JSON.stringify(steps.map((s) => `${s.action}${s.mode ? ":" + s.mode : ""}`));
 export const token = () => "baolive" + Math.random().toString(36).slice(2, 8);
+
+// HEADED-only: paint a red border over what we're about to click (and a dot at the
+// exact point, for canvas) so a watcher can SEE the real action. pointer-events:none so
+// it never intercepts the click; self-removes; a no-op when not HEADED.
+export async function flashClick(page, locator, pos) {
+  if (!HEADED) return;
+  const box = await locator.boundingBox().catch(() => null);
+  if (!box) return;
+  await page.evaluate(({ box, pos }) => {
+    const mk = (css) => {
+      const d = document.createElement("div");
+      d.className = "__baoFlash";
+      d.style.cssText = `z-index:2147483647;pointer-events:none;position:fixed;${css}`;
+      document.documentElement.appendChild(d);
+    };
+    mk(`left:${box.x}px;top:${box.y}px;width:${box.width}px;height:${box.height}px;border:3px solid red;box-shadow:0 0 0 4px rgba(255,0,0,.25)`);
+    if (pos) mk(`left:${box.x + pos.x - 9}px;top:${box.y + pos.y - 9}px;width:18px;height:18px;border-radius:50%;border:3px solid red;background:rgba(255,0,0,.35)`);
+    setTimeout(() => document.querySelectorAll(".__baoFlash").forEach((n) => n.remove()), 2500);
+  }, { box, pos });
+  await page.waitForTimeout(700); // let the watcher see the target before the click fires
+}
 
 // Launch one persistent Chrome with the unpacked extension, run each case in `cases`
 // (a { name: async (ctx, sw) => {} } map), report, and exit 0/1. Called once per file.
