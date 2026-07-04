@@ -7,12 +7,14 @@
     body { font: 13px system-ui, sans-serif; margin: 0; padding: 0 12px 12px; color: #222; }
     [hidden] { display: none !important; }
     header { display: flex; align-items: center; gap: 8px; padding: 10px 0;
-             position: sticky; top: 0; background: #fff; border-bottom: 1px solid #eee; }
+             position: sticky; top: 0; background: #fff; border-bottom: 1px solid #eee; z-index: 5; }
     h1 { font-size: 14px; margin: 0; flex: 1; }
     button { font: inherit; padding: 5px 9px; cursor: pointer; }
     button:disabled { cursor: default; opacity: .5; }
     input { font: inherit; padding: 5px 6px; box-sizing: border-box; }
     .rec { color: #e11; font-weight: 600; }
+    .rec .dot { animation: pulse 1.2s infinite; display: inline-block; }
+    @keyframes pulse { 50% { opacity: .25; } }
     #status { color: #666; margin: 8px 0 0; }
     #search { width: 100%; margin: 10px 0 4px; }
     .group-h { display: flex; align-items: center; gap: 4px; margin: 10px 0 4px; color: #444;
@@ -20,7 +22,7 @@
     .group-h .n { color: #999; font-weight: 400; }
     .card { border: 1px solid #e5e5e5; border-radius: 6px; padding: 7px 9px; margin: 4px 0;
             display: flex; align-items: center; gap: 6px; }
-    .card .body { flex: 1; min-width: 0; }
+    .card .body { flex: 1; min-width: 0; cursor: pointer; }
     .card .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .card .name input { width: 100%; }
     .card .meta { color: #999; font-size: 11px; margin-top: 2px; }
@@ -32,6 +34,33 @@
     .menu-pop button { border: 0; background: none; text-align: left; padding: 7px 10px; }
     .menu-pop button:hover { background: #f2f2f2; }
     .empty { color: #999; margin: 14px 0; }
+    /* recording feed */
+    #recfeed { font-family: ui-monospace, monospace; font-size: 11px; margin-top: 10px;
+               white-space: pre-wrap; }
+    #recfeed div { padding: 2px 0; }
+    .cursor { animation: pulse 1.2s infinite; color: #e11; }
+    /* detail view */
+    #dback { margin: 10px 0 6px; }
+    .dname { font-size: 14px; font-weight: 600; margin: 2px 0; display: flex; gap: 6px;
+             align-items: center; }
+    .dname .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+    .dname input { flex: 1; }
+    .dname .edit { border: 0; background: none; padding: 2px; }
+    #dmeta { color: #999; font-size: 11px; margin-bottom: 8px; }
+    .dactions { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    #dsummary { color: #2a7; margin: 6px 0; }
+    #dsteps { border-top: 1px solid #eee; padding-top: 6px;
+              font-family: ui-monospace, monospace; font-size: 11px; }
+    .srow { padding: 3px 0; display: flex; gap: 6px; align-items: baseline; }
+    .srow .lbl { flex: 1; min-width: 0; }
+    .srow.pend { color: #aaa; }
+    .srow.done { color: #2a7; }
+    .srow.cur { color: #222; font-weight: 600; }
+    .srow.fail { color: #e11; }
+    .srow .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .srow button { padding: 2px 8px; font-size: 11px; }
+    .why { color: #e11; font-weight: 400; }
     #toast { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 20;
              background: #333; color: #fff; border-radius: 6px; padding: 8px 10px;
              display: flex; align-items: center; gap: 8px; }
@@ -41,8 +70,7 @@
 </head>
 <body>
   <header>
-    <h1>Bao</h1>
-    <button id="continue" hidden>⏵ Continue</button>
+    <h1 id="title">Bao</h1>
     <button id="record">● Record</button>
     <button id="stop" hidden>■ Stop</button>
   </header>
@@ -51,6 +79,23 @@
     <div id="status" hidden></div>
     <input id="search" type="search" placeholder="Search workflows…" />
     <div id="list"></div>
+  </section>
+
+  <section id="recording" hidden>
+    <div id="recfeed"></div>
+  </section>
+
+  <section id="detail" hidden>
+    <button id="dback">← Back</button>
+    <div id="dname" class="dname"></div>
+    <div id="dmeta"></div>
+    <div class="dactions">
+      <button id="drun">▶ Run</button>
+      <button id="dpin">📌 Pin</button>
+      <button id="ddelete">🗑 Delete</button>
+    </div>
+    <div id="dsummary" hidden></div>
+    <div id="dsteps"></div>
   </section>
 
   <div id="toast" hidden><span id="toastmsg"></span><button id="undo">Undo</button></div>
