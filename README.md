@@ -64,7 +64,7 @@ real content script, and asserts it acted on the *same* note by its stable id:
 ```sh
 node test/live.mjs login https://substack.com   # one-time, if not already
 node test/live-notes.mjs                         # default: target note #2 (not the first)
-HEADED=1 node test/live-notes.mjs 3              # watch it; target a different note
+node test/live-notes.mjs 3 --headed              # watch it; target a different note
 ```
 
 **Live gap-analysis suite** — one runnable file per category (sharing

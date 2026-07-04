@@ -9,7 +9,7 @@
 //   node test/live.mjs login https://substack.com
 // Then:
 //   node test/live-notes.mjs [targetIndex]     # default index 2 (NOT the first note)
-//   HEADED=1 node test/live-notes.mjs          # watch it run
+//   node test/live-notes.mjs --headed          # watch it run (-H works too)
 import { chromium } from "playwright";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,13 +17,16 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const PROFILE = resolve(ROOT, ".chrome-profile");
-const TARGET_INDEX = Number(process.argv[2] ?? 2);
+const argv = process.argv.slice(2);
+const HEADED = argv.includes("--headed") || argv.includes("-H");
+// First non-flag positional is the target note index (default 2, NOT the first note).
+const TARGET_INDEX = Number(argv.find((a) => !a.startsWith("-")) ?? 2);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const ctx = await chromium.launchPersistentContext(PROFILE, {
     channel: "chromium",
-    headless: !process.env.HEADED,
+    headless: !HEADED,
     viewport: { width: 1400, height: 1100 },
     args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`],
   }).catch((e) => {
