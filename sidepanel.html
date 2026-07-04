@@ -34,6 +34,7 @@
     .menu-pop button { border: 0; background: none; text-align: left; padding: 7px 10px; }
     .menu-pop button:hover { background: #f2f2f2; }
     .empty { color: #999; margin: 14px 0; }
+    .link { border: 0; background: none; color: #36c; padding: 8px 0; margin-top: 8px; }
     /* recording feed */
     #recfeed { font-family: ui-monospace, monospace; font-size: 11px; margin-top: 10px;
                white-space: pre-wrap; }
@@ -79,6 +80,8 @@
     <div id="status" hidden></div>
     <input id="search" type="search" placeholder="Search workflows…" />
     <div id="list"></div>
+    <button id="import" class="link">⤓ Import workflow…</button>
+    <input id="importfile" type="file" accept=".json" hidden />
   </section>
 
   <section id="recording" hidden>
@@ -92,6 +95,7 @@
     <div class="dactions">
       <button id="drun">▶ Run</button>
       <button id="dpin">📌 Pin</button>
+      <button id="dexport">⤓ Export</button>
       <button id="ddelete">🗑 Delete</button>
     </div>
     <div id="dsummary" hidden></div>
