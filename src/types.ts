@@ -52,7 +52,10 @@ export interface FrameRef {
 
 export type StepAction =
   | "click" | "input" | "select" | "setChecked" | "keypress" | "submit"
-  | "navigate" | "softNav" | "waitForUser";
+  | "assert" | "navigate" | "softNav" | "waitForUser";
+
+// QA expectations (T6): checked at replay, recorded pass/fail, without acting.
+export type AssertKind = "textPresent" | "elementVisible" | "elementAbsent" | "urlMatches";
 
 export interface Step {
   action: StepAction;
@@ -70,6 +73,8 @@ export interface Step {
   key?: string;
   // click / keypress that caused a form submit (T4): replay ensures the submit fires
   submits?: boolean;
+  // assert (T6): an expectation checked at replay, not an action
+  assert?: { kind: AssertKind; value?: string };
   // navigate (full-document, SW-recorded)
   url?: string;
   wait?: { type: "navigation" };

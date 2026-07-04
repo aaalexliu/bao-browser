@@ -48,14 +48,17 @@ select-capture + M1 cross-nav + waitForUser. No new *resolution* tech required.
 drives a real headed profile via Playwright — the seed of a runner.
 
 **Gaps:**
-- **Assertions.** QA needs *expectations*, not just actions: "expect text X", "expect
-  element gone", "expect url matches". The IR has `extract` but no `assert`. This is
-  the one genuinely missing primitive — capture it at record time (select an element →
-  "assert visible / assert text").
-- **Flake control & CI:** element waits (planned) + a headless runner + golden/actual
-  screenshot diffing (designed in [[product-design-v1]] "auditable replay").
+- ~~**Assertions.**~~ **shipped (T6):** `assert` action with
+  `textPresent | elementVisible | elementAbsent | urlMatches`, checked at replay and
+  non-fatal (all expectations reported, run fails iff any assert fails). Captured at
+  record time via the `Alt+Shift+A` chord (click an element → `textPresent`); the other
+  kinds are replay/IR features without capture UX yet.
+- **Flake control & CI:** element waits (planned) + ~~a headless runner~~ **shipped
+  (T6):** `test/run.mjs <steps.json> <url>` prints a per-step ✓/✗ table and exits 0/1
+  — the seed of the CI story; + golden/actual screenshot diffing (designed in
+  [[product-design-v1]] "auditable replay").
 
-**Verdict:** engine proven; ship `assert` + a runner/reporter and this is a product.
+**Verdict:** engine proven; `assert` + the runner/reporter shipped — this is a product.
 
 ## 3. Necessary functionality, layered as a resolution ladder
 
