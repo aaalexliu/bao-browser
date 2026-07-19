@@ -5,6 +5,7 @@
 // (live feed), detail (steps + run progress). Everything renders from storage;
 // the SW never knows the panel is watching (§3 of t15-sidepanel-design).
 import type { Msg, RunState, Step, Workflow, WorkflowSummary } from "./types";
+import { domainOf, dateFmt, relTime, stepLabel, slugify, nSteps, groupWorkflows } from "./wf-view";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const titleEl = $("title"), statusEl = $("status"), listEl = $("list");
@@ -48,19 +49,6 @@ function showView(v: View): void {
   stopBtn.hidden = v !== "recording";
 }
 
-const stepLabel = (s: Step) => `${s.label}${s.value ? ` = "${s.value}"` : ""}`;
-const domainOf = (u: string) => { try { return new URL(u).hostname || "other"; } catch (_) { return "other"; } };
-const dateFmt = (ts: number) =>
-  new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-function relTime(ts: number): string {
-  const d = Date.now() - ts;
-  if (d < 60_000) return "just now";
-  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
-  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
-  if (d < 7 * 86_400_000) return `${Math.floor(d / 86_400_000)}d ago`;
-  return dateFmt(ts);
-}
-
 function setStatus(text: string): void {
   statusEl.hidden = !text;
   statusEl.textContent = text;
@@ -96,23 +84,16 @@ function render(): void {
     listEl.appendChild(empty);
     return;
   }
-  const pinned = items.filter((w) => w.pinned).sort((a, b) => b.createdAt - a.createdAt);
+  // Pinned section first, then site groups (shared ordering with the dashboard, §4).
+  const { pinned, groups } = groupWorkflows(items);
   if (pinned.length) {
     listEl.appendChild(groupHeader("📌 Pinned", pinned.length, null));
     if (!collapsed.has(" pinned")) for (const w of pinned) listEl.appendChild(card(w));
   }
-  // Site groups ordered by their newest workflow; newest-first inside (§4).
-  const groups = new Map<string, WorkflowSummary[]>();
-  for (const w of items.filter((w) => !w.pinned)) {
-    const d = domainOf(w.startUrl);
-    (groups.get(d) || groups.set(d, []).get(d)!).push(w);
-  }
-  const ordered = [...groups.entries()].sort(
-    (a, b) => Math.max(...b[1].map((w) => w.createdAt)) - Math.max(...a[1].map((w) => w.createdAt)));
-  for (const [domain, ws] of ordered) {
+  for (const [domain, ws] of groups) {
     listEl.appendChild(groupHeader(domain, ws.length, domain));
     if (collapsed.has(domain)) continue;
-    for (const w of ws.sort((a, b) => b.createdAt - a.createdAt)) listEl.appendChild(card(w));
+    for (const w of ws) listEl.appendChild(card(w));
   }
 }
 
@@ -143,7 +124,7 @@ function card(w: WorkflowSummary): HTMLElement {
   name.title = w.startUrl;
   const meta = document.createElement("div");
   meta.className = "meta";
-  meta.textContent = `${w.count} steps · ${relTime(w.createdAt)}`;
+  meta.textContent = `${nSteps(w.count)} · ${relTime(w.createdAt)}`;
   body.append(name, meta);
 
   // Run from a card goes through the detail view (§3): one codepath for progress,
@@ -328,7 +309,7 @@ function renderDetail(): void {
   dpinBtn.hidden = ddeleteBtn.hidden = drunBtn.hidden = ($("dexport") as HTMLButtonElement).hidden = !wf;
   if (wf) {
     dmetaEl.textContent =
-      `${domainOf(wf.startUrl)} · ${wf.steps.length} steps · created ${dateFmt(wf.createdAt)}`;
+      `${domainOf(wf.startUrl)} · ${nSteps(wf.steps.length)} · created ${dateFmt(wf.createdAt)}`;
     dpinBtn.textContent = wf.pinned ? "📌 Unpin" : "📌 Pin";
   } else {
     dmetaEl.textContent = detailRun ? `${detailRun.steps.length} steps` : "";
@@ -467,9 +448,6 @@ ddeleteBtn.onclick = () => {
 // ---------------------------- import / export (§6) ----------------------------
 // Export is exactly the stored Workflow shape — directly usable by the harness
 // tooling (test/run.mjs consumes `steps`), a deliberate bridge.
-const slugify = (name: string) =>
-  name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "workflow";
-
 async function exportWorkflow(id: string): Promise<void> {
   const wf: Workflow | null = await sw({ cmd: "bao-wf-get", id });
   if (!wf) return;
@@ -507,6 +485,20 @@ importFileEl.onchange = async () => {
   const res = await sw({ cmd: "bao-wf-import", workflow: parsed });
   showToast(res?.ok ? `Imported "${parsed.name}".` : "Import failed.", null);
   refresh();
+};
+
+// ---------------------------- dashboard link (T16) ----------------------------
+// The full page is the library/edit/history home; the panel keeps live capture.
+// Focus an existing dashboard tab rather than spawning duplicates.
+$("dashboard").onclick = async () => {
+  const url = chrome.runtime.getURL("dashboard.html");
+  const [existing] = await chrome.tabs.query({ url });
+  if (existing?.id != null) {
+    await chrome.tabs.update(existing.id, { active: true });
+    if (existing.windowId != null) await chrome.windows.update(existing.windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url });
+  }
 };
 
 // ---------------------------- record availability ----------------------------
