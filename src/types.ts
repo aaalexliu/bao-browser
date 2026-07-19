@@ -167,6 +167,30 @@ export interface RunState {
   lastError: { stepIndex: number; reason: string } | null;
   expectedNav?: { pattern: string; deadline: number };
   expectedDownload?: { deadline: number; filename?: string };
+  // T16: workflow identity, threaded through when a run is started from a saved
+  // Workflow (absent for ad-hoc raw-steps runs). Denormalized into the RunRecord so
+  // history survives the workflow being renamed or deleted.
+  startedAt?: number;
+  workflowId?: string;
+  workflowName?: string;
+  startUrl?: string;
+}
+
+// ---------- T16 run history (durable audit trail) ----------
+// A finished run, persisted for the dashboard filmstrip. Self-contained: it snapshots
+// the name + steps it ran so it stays readable after the workflow changes or is deleted.
+export type RunOutcome = "passed" | "failed";
+export interface RunRecord {
+  id: string;                 // "run-xxxx"
+  workflowId: string;         // "" for an ad-hoc run; may dangle after a delete
+  workflowName: string;
+  startUrl: string;
+  startedAt: number;
+  finishedAt: number;
+  outcome: RunOutcome;        // failed iff the run ended in the failed phase
+  results: StepResult[];
+  steps: Step[];              // snapshot of the exact steps run (labels for the filmstrip)
+  frames: (string | null)[];  // frames[i] = IndexedDB key of the replay-time shot, or null
 }
 
 // ---------- runtime messages ----------
@@ -191,6 +215,12 @@ export type Msg =
   | { cmd: "bao-wf-get"; id: string }                                                 // → Workflow | null
   | { cmd: "bao-wf-update"; id: string; patch: { name?: string; pinned?: boolean } }  // → { ok }
   | { cmd: "bao-wf-import"; workflow: Workflow }                                      // → { ok, id } (fresh id)
+  // full-page dashboard (T16)
+  | { cmd: "bao-wf-update-steps"; id: string; steps: Step[] }  // → { ok } | { ok:false, error } (light edit: subset+reorder)
+  | { cmd: "bao-runs-list"; workflowId?: string }             // → RunRecord[] (metadata, newest first)
+  | { cmd: "bao-run-get"; id: string }                        // → RunRecord | null
+  | { cmd: "bao-run-delete"; id: string }                     // → { ok } (+ its frames)
+  | { cmd: "bao-runs-clear"; workflowId?: string }            // → { ok }
   // panel/SW → content
   | { cmd: "start-record" }
   | { cmd: "stop-record" }
