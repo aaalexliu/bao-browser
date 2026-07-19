@@ -859,13 +859,23 @@ declare global {
   }
 
   // ---------- replay ----------
-  // Wait for a recorded soft navigation to settle: the URL must match the recorded
-  // pattern (digit runs wildcarded — replay-time ids differ) before the next step's
-  // element resolution starts, instead of leaning on the generic 5s retry.
+  // The route "shape" of a URL: origin + path + hash, with digit runs collapsed
+  // (replay-time ids differ from record time). The query string is dropped — SPA
+  // routers hang volatile A/B junk off it (e.g. ?checkoutImprovedParams=true,
+  // ?tids=…) — but the hash is kept, since hash-routed apps carry the real route
+  // there (#/orders/42). What's left is what stays stable across sessions.
+  function urlShape(u: string): string {
+    try { const { origin, pathname, hash } = new URL(u); return (origin + pathname + hash).replace(/\d+/g, "#"); }
+    catch (_) { return u; }
+  }
+  // Wait for a recorded soft navigation to settle before the next step's element
+  // resolution starts, instead of leaning on the generic 5s retry. Best-effort by
+  // design: this is a synchronization barrier, not an assertion — the caller never
+  // fails the run on a miss (the next real step's element wait is the arbiter).
   async function waitForUrl(step: Step, timeout = 5000): Promise<boolean> {
-    let re: RegExp | null = null;
-    try { re = new RegExp(`^${step.urlPattern}$`); } catch (_) {}
-    const matches = () => (re ? re.test(location.href) : location.href === step.urlAfter);
+    if (!step.urlAfter) return true;
+    const want = urlShape(step.urlAfter);
+    const matches = () => urlShape(location.href) === want;
     const start = Date.now();
     while (Date.now() - start < timeout) {
       if (matches()) return true;
@@ -939,12 +949,11 @@ declare global {
         continue;
       }
       if (step.action === "softNav") {
+        // Non-fatal: wait for the route to settle, but never abort the run on a
+        // miss. The app may have shipped a new route shape since recording; let the
+        // next real step's element resolution decide whether replay can continue.
         const ok = await waitForUrl(step);
-        if (!ok) {
-          results.push({ i, ok: false, reason: `Route never matched ${step.urlAfter} (now: ${location.href})` });
-          return { ok: false, failedAt: i, results };
-        }
-        results.push({ i, ok: true, via: "softNav" });
+        results.push({ i, ok: true, via: ok ? "softNav" : "softNav (route differed)" });
         continue;
       }
       // Degraded capture (canvas / closed shadow): no clean selector exists. Fail
