@@ -153,6 +153,12 @@ async function main() {
     await panel.click("#stop");
     await sleep(500);
     check("stop lands in the detail view", await panel.locator("#detail").isVisible());
+    const startRow = panel.locator(".srow.start");
+    check("detail view leads with the start-URL row", await startRow.count() === 1,
+      await startRow.textContent().catch(() => "no start row"));
+    check("start row shows the starting URL",
+      (await startRow.textContent())?.includes("Start at file://"),
+      await startRow.textContent().catch(() => ""));
     const renameInput = panel.locator("#dname input");
     check("generated name is in inline-edit mode", await renameInput.count() === 1,
       await renameInput.inputValue().catch(() => "no input"));
