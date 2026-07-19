@@ -67,6 +67,9 @@
     .steps.editing { border-color: var(--accent); }
     .dactions #dsave { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
+    .blockhead { display: flex; align-items: center; justify-content: space-between; }
+    .blockhead h3 { margin: 0 0 8px; }
+    #dclear { padding: 3px 9px; font-size: 12px; color: var(--bad); }
     .runs { display: flex; flex-direction: column; gap: 6px; }
     .run-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line);
                border-radius: 7px; padding: 8px 12px; background: #fff; cursor: pointer; }
@@ -77,6 +80,37 @@
     .run-row .when { flex: 1; min-width: 0; }
     .run-row .sub { color: var(--muted); font-size: 12px; }
     .runs .empty { margin: 8px 2px; }
+
+    /* filmstrip player */
+    .player { position: fixed; inset: 0; z-index: 30; background: rgba(20,20,22,.55);
+              display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .player-box { background: #fff; border-radius: 12px; width: min(1000px, 100%);
+                  max-height: 92vh; overflow: auto; padding: 18px 20px 20px;
+                  box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+    .phead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .phead .pinfo { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+    .phead .sub { color: var(--muted); font-size: 13px; font-weight: 400; }
+    #pclose { border: 0; background: none; font-size: 18px; padding: 2px 8px; color: var(--muted); }
+    .frames { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0 10px; }
+    .frames figure { margin: 0; }
+    .frames figcaption { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+                         color: var(--muted); margin-bottom: 5px; }
+    .frame { border: 1px solid var(--line); border-radius: 8px; background: #f4f4f5;
+             aspect-ratio: 16 / 10; display: flex; align-items: center; justify-content: center;
+             overflow: hidden; }
+    .frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .frame .noframe { color: var(--muted); font-size: 12px; }
+    .pstep { font-family: ui-monospace, monospace; font-size: 12.5px; margin: 6px 2px 12px;
+             display: flex; gap: 8px; align-items: baseline; }
+    .pstep .ok { color: var(--ok); } .pstep .bad { color: var(--bad); }
+    .scrub { display: flex; align-items: center; gap: 12px; justify-content: center; }
+    .dots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    .dots .d { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #ccc;
+               background: #fff; cursor: pointer; padding: 0; }
+    .dots .d.ok { background: var(--ok); border-color: var(--ok); }
+    .dots .d.bad { background: var(--bad); border-color: var(--bad); }
+    .dots .d.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .pactions { margin-top: 14px; text-align: right; }
   </style>
 </head>
 <body>
@@ -117,11 +151,35 @@
         </section>
 
         <section class="block">
-          <h3>Run history</h3>
+          <div class="blockhead">
+            <h3>Run history</h3>
+            <button id="dclear" hidden>Clear history</button>
+          </div>
           <div id="druns" class="runs"></div>
         </section>
       </div>
     </main>
+  </div>
+
+  <!-- Filmstrip player: re-watch a past run, record-time vs replay-time, step by step. -->
+  <div id="player" class="player" hidden>
+    <div class="player-box">
+      <header class="phead">
+        <div class="pinfo"><span id="pdot" class="dot"></span> <b id="poutcome"></b> <span id="pmeta" class="sub"></span></div>
+        <button id="pclose" title="Close">✕</button>
+      </header>
+      <div class="frames">
+        <figure><figcaption>Recorded</figcaption><div id="pgolden" class="frame"></div></figure>
+        <figure><figcaption>Replayed</figcaption><div id="preplay" class="frame"></div></figure>
+      </div>
+      <div class="pstep"><span id="pstepnum" class="num"></span> <span id="pstepresult"></span></div>
+      <div class="scrub">
+        <button id="pprev">◀ Prev</button>
+        <div id="pdots" class="dots"></div>
+        <button id="pnext">Next ▶</button>
+      </div>
+      <div class="pactions"><button id="pdelrun" class="danger">🗑 Delete this run</button></div>
+    </div>
   </div>
 
   <script src="dist/dashboard.js"></script>
