@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Bao — Dashboard</title>
+  <style>
+    :root { --line: #e5e5e5; --muted: #999; --accent: #36c; --ok: #2a7; --bad: #e11; }
+    * { box-sizing: border-box; }
+    body { font: 14px system-ui, sans-serif; margin: 0; color: #222; background: #fafafa; }
+    [hidden] { display: none !important; }
+    button { font: inherit; padding: 6px 11px; cursor: pointer; border: 1px solid var(--line);
+             background: #fff; border-radius: 6px; }
+    button:hover { background: #f2f2f2; }
+    button:disabled { cursor: default; opacity: .5; }
+    input { font: inherit; padding: 7px 9px; box-sizing: border-box; border: 1px solid var(--line);
+            border-radius: 6px; }
+
+    .app { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; min-height: 100vh; }
+    .lib { border-right: 1px solid var(--line); background: #fff; display: flex; flex-direction: column; }
+    .lib header { padding: 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+                  background: #fff; z-index: 5; }
+    .lib h1 { font-size: 18px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+    .lib h1 .tag { font-size: 11px; font-weight: 400; color: var(--muted); border: 1px solid var(--line);
+                   border-radius: 4px; padding: 1px 5px; }
+    #search { width: 100%; }
+    .libhint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .libbody { padding: 8px 12px 24px; overflow-y: auto; }
+    .group-h { display: flex; align-items: center; gap: 4px; margin: 14px 0 4px; color: #444;
+               font-size: 12px; font-weight: 600; user-select: none; }
+    .group-h .n { color: var(--muted); font-weight: 400; }
+    .card { border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; margin: 6px 0;
+            display: flex; align-items: center; gap: 8px; cursor: pointer; background: #fff; }
+    .card:hover { border-color: #ccc; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+    .card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .card .body { flex: 1; min-width: 0; }
+    .card .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .card .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .card .run { padding: 4px 9px; }
+    .empty { color: var(--muted); margin: 18px 4px; }
+
+    .detail { padding: 28px 32px; max-width: 900px; }
+    .placeholder { color: var(--muted); margin-top: 60px; text-align: center; font-size: 15px; }
+    .dhead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .dhead h2 { font-size: 20px; margin: 0; }
+    .dmeta { color: var(--muted); font-size: 13px; margin: 6px 0 16px; }
+    .dactions { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+    .dactions .danger { color: var(--bad); }
+    section.block { margin-bottom: 26px; }
+    section.block > h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+                         color: var(--muted); margin: 0 0 8px; }
+
+    .steps { border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden;
+             font-family: ui-monospace, monospace; font-size: 12.5px; }
+    .srow { padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+            border-top: 1px solid #f0f0f0; }
+    .srow:first-child { border-top: 0; }
+    .srow .num { color: var(--muted); min-width: 1.6em; text-align: right; }
+    .srow .lbl { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .srow.start { color: var(--muted); font-style: italic; background: #fbfbfb; }
+
+    .runs { display: flex; flex-direction: column; gap: 6px; }
+    .run-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line);
+               border-radius: 7px; padding: 8px 12px; background: #fff; cursor: pointer; }
+    .run-row:hover { border-color: #ccc; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .dot.passed { background: var(--ok); }
+    .dot.failed { background: var(--bad); }
+    .run-row .when { flex: 1; min-width: 0; }
+    .run-row .sub { color: var(--muted); font-size: 12px; }
+    .runs .empty { margin: 8px 2px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="lib">
+      <header>
+        <h1>Bao <span class="tag">Dashboard</span></h1>
+        <input id="search" type="search" placeholder="Search workflows…" />
+        <div class="libhint">Record from the side panel (toolbar icon). Saved workflows appear here.</div>
+        <div style="margin-top:10px; display:flex; gap:8px;">
+          <button id="import">⤓ Import…</button>
+        </div>
+        <input id="importfile" type="file" accept=".json" hidden />
+      </header>
+      <div class="libbody"><div id="list"></div></div>
+    </aside>
+
+    <main class="detail">
+      <div id="placeholder" class="placeholder">Select a workflow to view its steps and run history.</div>
+
+      <div id="detail" hidden>
+        <div class="dhead">
+          <h2 id="dname"></h2>
+        </div>
+        <div id="dmeta" class="dmeta"></div>
+        <div class="dactions">
+          <button id="drun">▶ Run</button>
+          <button id="dexport">⤓ Export</button>
+          <button id="ddelete" class="danger">🗑 Delete</button>
+        </div>
+
+        <section class="block">
+          <h3>Steps</h3>
+          <div id="dsteps" class="steps"></div>
+        </section>
+
+        <section class="block">
+          <h3>Run history</h3>
+          <div id="druns" class="runs"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="dist/dashboard.js"></script>
+</body>
+</html>

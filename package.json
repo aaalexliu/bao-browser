@@ -40,7 +40,8 @@
     "typecheck": "tsc --noEmit",
     "test:snapshot": "node build.mjs && node test/snapshot.mjs",
     "test:workflows": "node build.mjs && node test/workflows.mjs",
-    "test:sidepanel": "node build.mjs && node test/sidepanel.mjs"
+    "test:sidepanel": "node build.mjs && node test/sidepanel.mjs",
+    "test:dashboard": "node build.mjs && node test/dashboard.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.2",

@@ -8,6 +8,7 @@ const options = {
     "src/background.ts",
     "src/content.ts",
     "src/sidepanel.ts",
+    "src/dashboard.ts",
     "src/forceopen.ts",
   ],
   outdir: "dist",

@@ -6,6 +6,7 @@
   "permissions": ["storage", "activeTab", "scripting", "webNavigation", "alarms", "downloads", "sidePanel"],
   "host_permissions": ["<all_urls>"],
   "side_panel": { "default_path": "sidepanel.html" },
+  "options_page": "dashboard.html",
   "action": {},
   "background": { "service_worker": "dist/background.js" },
   "content_scripts": [
