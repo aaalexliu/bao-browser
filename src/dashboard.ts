@@ -4,7 +4,7 @@
 // shares the extension origin with the SW — it reads storage/IndexedDB directly and
 // writes only through SW messages (the single-writer discipline). Live capture stays in
 // the panel; this surface is the library + post-hoc filmstrip.
-import type { Msg, RunRecord, RunState, Workflow, WorkflowSummary } from "./types";
+import type { AssertKind, Msg, RunRecord, RunState, Step, Workflow, WorkflowSummary } from "./types";
 import { domainOf, dateFmt, relTime, stepLabel, slugify, nSteps, groupWorkflows } from "./wf-view";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -12,6 +12,9 @@ const listEl = $("list"), searchEl = $("search") as HTMLInputElement;
 const placeholderEl = $("placeholder"), detailEl = $("detail");
 const dnameEl = $("dname"), dmetaEl = $("dmeta"), dstepsEl = $("dsteps"), drunsEl = $("druns");
 const drunBtn = $("drun") as HTMLButtonElement;
+const deditBtn = $("dedit") as HTMLButtonElement, dsaveBtn = $("dsave") as HTMLButtonElement;
+const dcancelBtn = $("dcancel") as HTMLButtonElement, dexportBtn = $("dexport") as HTMLButtonElement;
+const ddeleteBtn = $("ddelete") as HTMLButtonElement;
 
 const sw = (msg: Msg) => chrome.runtime.sendMessage(msg);
 
@@ -20,6 +23,8 @@ let summaries: WorkflowSummary[] = [];
 let query = "";
 let currentId: string | null = null;   // selected workflow (drives the detail pane)
 let currentWf: Workflow | null = null;
+let editing = false;                    // step-edit mode (T16 light editing)
+let draft: Step[] = [];                 // working copy while editing; committed on Save
 
 async function refresh(): Promise<void> {
   summaries = (await sw({ cmd: "bao-wf-list" })) || [];
@@ -92,6 +97,7 @@ function card(w: WorkflowSummary): HTMLElement {
 // ---------------------------- detail ----------------------------
 async function openDetail(id: string): Promise<void> {
   currentId = id;
+  editing = false; draft = [];
   currentWf = await sw({ cmd: "bao-wf-get", id });
   if (!currentWf) { currentId = null; showPlaceholder(); await refresh(); return; }
   placeholderEl.hidden = true;
@@ -112,7 +118,18 @@ function renderDetail(): void {
   dmetaEl.textContent =
     `${domainOf(wf.startUrl)} · ${nSteps(wf.steps.length)} · created ${dateFmt(wf.createdAt)}` +
     (wf.pinned ? " · 📌 pinned" : "");
+  setEditUI();
   renderSteps();
+}
+
+// Edit mode swaps the action bar and outlines the step list; the read/run/export/delete
+// actions are hidden so the surface reads as a focused editor.
+function setEditUI(): void {
+  deditBtn.hidden = editing;
+  drunBtn.hidden = dexportBtn.hidden = ddeleteBtn.hidden = editing;
+  dsaveBtn.hidden = dcancelBtn.hidden = !editing;
+  dstepsEl.classList.toggle("editing", editing);
+  $("stepshead").textContent = editing ? "Steps (editing)" : "Steps";
 }
 
 function renderSteps(): void {
@@ -131,18 +148,95 @@ function renderSteps(): void {
     row.append(num, lbl);
     dstepsEl.appendChild(row);
   }
-  wf.steps.forEach((s, i) => {
-    const row = document.createElement("div");
-    row.className = "srow";
-    const num = document.createElement("span");
-    num.className = "num";
-    num.textContent = String(i + 1);
-    const lbl = document.createElement("span");
-    lbl.className = "lbl";
-    lbl.textContent = stepLabel(s);
-    row.append(num, lbl);
-    dstepsEl.appendChild(row);
-  });
+  const steps = editing ? draft : wf.steps;
+  steps.forEach((s, i) => dstepsEl.appendChild(editing ? editRow(s, i) : readRow(s, i)));
+}
+
+function readRow(s: Step, i: number): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "srow";
+  const num = document.createElement("span");
+  num.className = "num";
+  num.textContent = String(i + 1);
+  const lbl = document.createElement("span");
+  lbl.className = "lbl";
+  lbl.textContent = stepLabel(s);
+  row.append(num, lbl);
+  return row;
+}
+
+// An editable step row: ▲▼ reorder, ✕ delete, plus an inline field for the only
+// hand-editable bits (input/select `value`, assert kind+value). Structural facts
+// (action/target) stay read-only — the SW rejects any attempt to change them anyway.
+function editRow(s: Step, i: number): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "srow edit";
+
+  const ctl = document.createElement("div");
+  ctl.className = "ctl";
+  const up = mkBtn("▲", "Move up", () => { swap(i, i - 1); });
+  const down = mkBtn("▼", "Move down", () => { swap(i, i + 1); });
+  up.disabled = i === 0;
+  down.disabled = i === draft.length - 1;
+  const del = mkBtn("✕", "Delete step", () => removeStep(i));
+  del.className = "del";
+  ctl.append(up, down, del);
+
+  const num = document.createElement("span");
+  num.className = "num";
+  num.textContent = String(i + 1);
+  const lbl = document.createElement("span");
+  lbl.className = "lbl";
+  lbl.textContent = s.label;
+  row.append(ctl, num, lbl);
+
+  if (s.action === "input" || s.action === "select") {
+    const vedit = document.createElement("div");
+    vedit.className = "vedit";
+    const input = document.createElement("input");
+    input.value = s.value ?? "";
+    input.placeholder = "value";
+    input.oninput = () => { draft[i] = { ...draft[i], value: input.value }; };
+    vedit.appendChild(input);
+    row.appendChild(vedit);
+  } else if (s.action === "assert") {
+    const vedit = document.createElement("div");
+    vedit.className = "vedit";
+    const kind = document.createElement("select");
+    for (const k of ["textPresent", "elementVisible", "elementAbsent", "urlMatches"] as AssertKind[]) {
+      const opt = document.createElement("option");
+      opt.value = k; opt.textContent = k;
+      if (s.assert?.kind === k) opt.selected = true;
+      kind.appendChild(opt);
+    }
+    const val = document.createElement("input");
+    val.value = s.assert?.value ?? "";
+    val.placeholder = "expected value";
+    const sync = () => {
+      draft[i] = { ...draft[i], assert: { kind: kind.value as AssertKind, value: val.value } };
+    };
+    kind.onchange = sync; val.oninput = sync;
+    vedit.append(kind, val);
+    row.appendChild(vedit);
+  }
+  return row;
+}
+
+function mkBtn(text: string, title: string, fn: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.textContent = text; b.title = title;
+  b.onclick = fn;
+  return b;
+}
+function swap(a: number, b: number): void {
+  if (b < 0 || b >= draft.length) return;
+  [draft[a], draft[b]] = [draft[b], draft[a]];
+  renderSteps();
+}
+function removeStep(i: number): void {
+  if (draft.length === 1 && !confirm("Delete the last step? This leaves the workflow empty.")) return;
+  draft.splice(i, 1);
+  renderSteps();
 }
 
 // ---------------------------- run history ----------------------------
@@ -188,6 +282,27 @@ async function runWorkflow(id: string, startUrl: string): Promise<void> {
   await sw({ cmd: "bao-wf-run", tabId: tab.id!, id });
 }
 drunBtn.onclick = () => { if (currentWf) runWorkflow(currentWf.id, currentWf.startUrl); };
+
+// ---- edit steps ----
+deditBtn.onclick = () => {
+  if (!currentWf) return;
+  editing = true;
+  draft = currentWf.steps.map((s) => ({ ...s })); // shallow clone; edits stay local until Save
+  setEditUI();
+  renderSteps();
+};
+dcancelBtn.onclick = () => {
+  editing = false; draft = [];
+  setEditUI();
+  renderSteps();
+};
+dsaveBtn.onclick = async () => {
+  if (!currentWf) return;
+  const res = await sw({ cmd: "bao-wf-update-steps", id: currentWf.id, steps: draft });
+  if (!res?.ok) { alert(`Couldn't save: ${res?.error || "unknown error"}`); return; }
+  editing = false; draft = [];
+  await openDetail(currentWf.id); // re-read the committed workflow + refresh history/list
+};
 
 async function exportWorkflow(id: string): Promise<void> {
   const wf: Workflow | null = await sw({ cmd: "bao-wf-get", id });
@@ -236,8 +351,9 @@ importFileEl.onchange = async () => {
   chrome.storage.local.onChanged.addListener((ch) => {
     if (ch.baoWorkflows) {
       refresh();
-      if (currentId) sw({ cmd: "bao-wf-get", id: currentId }).then((wf: Workflow | null) => {
-        if (wf && currentId === wf.id) { currentWf = wf; renderDetail(); }
+      // Don't clobber an in-progress edit with a background refresh.
+      if (currentId && !editing) sw({ cmd: "bao-wf-get", id: currentId }).then((wf: Workflow | null) => {
+        if (wf && currentId === wf.id && !editing) { currentWf = wf; renderDetail(); }
       });
     }
     // A run finishing flips baoRun to done/failed and writes a history record; refresh

@@ -28,6 +28,7 @@ declare global {
   var baoRunWorkflow: (tabId: number, id: string) => Promise<{ ok: boolean; runId?: string; error?: string }>;
   var baoGetWorkflow: (id: string) => Promise<Workflow | null>;
   var baoUpdateWorkflow: (id: string, patch: { name?: string; pinned?: boolean }) => Promise<{ ok: boolean }>;
+  var baoUpdateWorkflowSteps: (id: string, steps: Step[]) => Promise<{ ok: boolean; error?: string }>;
   var baoImportWorkflow: (workflow: Workflow) => Promise<{ ok: boolean; id: string }>;
   // T16 run history
   var baoListRuns: (workflowId?: string) => Promise<RunRecord[]>;
@@ -86,6 +87,7 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
   if (msg.cmd === "bao-wf-update") { baoUpdateWorkflow(msg.id, msg.patch).then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-import") { baoImportWorkflow(msg.workflow).then(sendResponse); return true; }
   // ---- full-page dashboard (T16) ----
+  if (msg.cmd === "bao-wf-update-steps") { baoUpdateWorkflowSteps(msg.id, msg.steps).then(sendResponse); return true; }
   if (msg.cmd === "bao-runs-list") { baoListRuns(msg.workflowId).then(sendResponse); return true; }
   if (msg.cmd === "bao-run-get") { baoGetRun(msg.id).then(sendResponse); return true; }
   if (msg.cmd === "bao-run-delete") { baoDeleteRun(msg.id).then(sendResponse); return true; }
@@ -289,6 +291,44 @@ self.baoUpdateWorkflow = async (id, patch) => {
     return true;
   });
   return { ok };
+};
+// T16 light editing: the only mutation that touches a workflow's steps. Deliberately
+// narrow to protect the T14 IR invariants without reopening the M2 re-record story:
+//  - ids are identity: the new list must be a SUBSET of existing step ids (delete +
+//    reorder only) — no fabricated ids, no duplicates, no additions.
+//  - index is position: re-derived 0..N-1 from the incoming order.
+//  - field edits are whitelisted: only `value` (input/select) and `assert` may change;
+//    action/target/selectors/frame are copied from the stored step, never the payload,
+//    so the editor can't silently rewrite how a step resolves.
+self.baoUpdateWorkflowSteps = async (id, incoming) => {
+  return enqueue(async () => {
+    const all = await getWorkflows();
+    const wf = all[id];
+    if (!wf) return { ok: false, error: "no such workflow" };
+    const byId = new Map(wf.steps.map((s) => [s.id, s]));
+    const seen = new Set<string>();
+    const rebuilt: Step[] = [];
+    for (const inc of incoming) {
+      const base = inc.id ? byId.get(inc.id) : undefined;
+      if (!base) return { ok: false, error: `unknown step id: ${inc.id}` };
+      if (seen.has(inc.id!)) return { ok: false, error: `duplicate step id: ${inc.id}` };
+      seen.add(inc.id!);
+      const merged: Step = { ...base }; // action/target/selectors/frame come from storage
+      if ((base.action === "input" || base.action === "select") && typeof inc.value === "string") {
+        merged.value = inc.value;
+      }
+      if (base.action === "assert" && inc.assert && typeof inc.assert.kind === "string") {
+        merged.assert = { kind: inc.assert.kind, value: inc.assert.value };
+      }
+      rebuilt.push(merged);
+    }
+    rebuilt.forEach((s, i) => { s.index = i; });
+    wf.steps = rebuilt;
+    wf.version = (wf.version || 1) + 1;
+    wf.updatedAt = Date.now();
+    await chrome.storage.local.set({ [WF_KEY]: all });
+    return { ok: true };
+  });
 };
 // Import assigns a fresh id + createdAt (never trust/collide on the file's id —
 // importing the same file twice yields two workflows) and strips pinned; step
