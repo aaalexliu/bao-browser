@@ -211,6 +211,50 @@ async function main() {
       (await swEval((id) => self.baoGetRun(id), runRes.runId)) === null);
     await swEval(() => self.baoClearRuns());
     check("baoClearRuns empties history", (await swEval(() => self.baoListRuns()))?.length === 0);
+
+    // ============================ T16 — light step editing ============================
+    // bao-wf-update-steps: delete + reorder only, ids are identity, index re-derived,
+    // and only value/assert may change. saveB has 2 steps: [input(bio), click(submit)].
+    const wfEdit = await swEval((id) => self.baoGetWorkflow(id), saveB.id);
+    const [inStep, clickStep] = wfEdit.steps; // inStep = input, clickStep = submit click
+    const baseVersion = wfEdit.version;
+
+    // Reorder → ids preserved, index re-derived from position, version bumped.
+    const r1 = await swEval(({ id, steps }) => self.baoUpdateWorkflowSteps(id, steps),
+      { id: saveB.id, steps: [clickStep, inStep] });
+    const reordered = await swEval((id) => self.baoGetWorkflow(id), saveB.id);
+    check("reorder preserves ids + re-derives index",
+      r1?.ok === true && reordered.steps[0].id === clickStep.id && reordered.steps[1].id === inStep.id &&
+      reordered.steps.every((s, i) => s.index === i),
+      JSON.stringify(reordered.steps.map((s) => ({ id: s.id, index: s.index }))));
+    check("version bumped on a step edit", reordered.version === baseVersion + 1);
+
+    // Value edit on the input step; the click's action/target are copied from storage.
+    const edited = reordered.steps.map((s) => (s.id === inStep.id ? { ...s, value: "EDITED", action: "navigate" } : s));
+    await swEval(({ id, steps }) => self.baoUpdateWorkflowSteps(id, steps), { id: saveB.id, steps: edited });
+    const afterEdit = await swEval((id) => self.baoGetWorkflow(id), saveB.id);
+    check("value edit persists on the input step",
+      afterEdit.steps.find((s) => s.id === inStep.id)?.value === "EDITED");
+    check("action is copied from storage, not the payload (tamper ignored)",
+      afterEdit.steps.find((s) => s.id === inStep.id)?.action === "input");
+
+    // Rejections: fabricated id, duplicate id, unknown workflow.
+    check("fabricated step id rejected",
+      (await swEval((id) => self.baoUpdateWorkflowSteps(id,
+        [{ id: "nope", action: "click", label: "x", ts: 1 }]), saveB.id))?.ok === false);
+    check("duplicate step id rejected",
+      (await swEval(({ id, s }) => self.baoUpdateWorkflowSteps(id, [s, s]),
+        { id: saveB.id, s: afterEdit.steps[0] }))?.ok === false);
+    check("update-steps on unknown workflow not ok",
+      (await swEval(() => self.baoUpdateWorkflowSteps("wf-nope", [])))?.ok === false);
+
+    // Delete → the new list is the kept subset, index re-derived.
+    await swEval(({ id, s }) => self.baoUpdateWorkflowSteps(id, [s]),
+      { id: saveB.id, s: afterEdit.steps[0] });
+    const afterDel = await swEval((id) => self.baoGetWorkflow(id), saveB.id);
+    check("delete reduces to the kept subset",
+      afterDel.steps.length === 1 && afterDel.steps[0].id === afterEdit.steps[0].id && afterDel.steps[0].index === 0,
+      JSON.stringify(afterDel.steps.map((s) => s.id)));
   } finally {
     await ctx.close();
   }

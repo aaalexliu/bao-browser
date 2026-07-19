@@ -81,6 +81,7 @@ async function main() {
     const page = await ctx.newPage();
     const pageErrors = [];
     page.on("pageerror", (e) => pageErrors.push(String(e)));
+    page.on("dialog", (d) => d.accept()); // accept the last-step delete confirm()
     await page.goto(`chrome-extension://${extId}/dashboard.html`);
     await sleep(400);
 
@@ -118,6 +119,37 @@ async function main() {
     const runText = await page.locator(".run-row").textContent();
     check("run-row summarizes outcome + steps + duration",
       runText?.includes("Passed") && runText?.includes("2/2 steps") && /\d\.\ds/.test(runText || ""), runText);
+
+    // ---- Light step editing: reorder + delete, then Save persists ----
+    // "Upvote story" is selected. Steps: [Click upvote, Click confirm].
+    await page.click("#dedit");
+    check("edit mode shows editable rows", (await page.locator("#dsteps .srow.edit").count()) === 2);
+    check("run/export/delete hidden while editing", !(await page.locator("#drun").isVisible()));
+    check("save + cancel shown while editing", await page.locator("#dsave").isVisible());
+    // Move the first step (upvote) down → order becomes [confirm, upvote].
+    await page.locator("#dsteps .srow.edit").first().locator(".ctl button").nth(1).click();
+    check("first row is now the confirm step",
+      (await page.locator("#dsteps .srow.edit").first().locator(".lbl").textContent())?.includes("confirm"),
+      await page.locator("#dsteps .srow.edit").first().locator(".lbl").textContent());
+    // Delete the now-first step (confirm) → only upvote remains.
+    await page.locator("#dsteps .srow.edit").first().locator(".ctl .del").click();
+    check("one edit row remains after delete", (await page.locator("#dsteps .srow.edit").count()) === 1);
+    await page.click("#dsave");
+    await sleep(300);
+    const saved = await swEval((id) => self.baoGetWorkflow(id), seeded.b);
+    check("save persisted the edit (1 step, the reordered survivor)",
+      saved?.steps?.length === 1 && saved.steps[0].label === "Click upvote" && saved.steps[0].index === 0,
+      JSON.stringify(saved?.steps?.map((s) => s.label)));
+    check("version bumped after save", saved?.version === 2, String(saved?.version));
+    check("back to read mode after save", await page.locator("#dedit").isVisible());
+
+    // Cancel discards edits.
+    await page.click("#dedit");
+    await page.locator("#dsteps .srow.edit .ctl .del").first().click();
+    check("edit removed the row in the draft", (await page.locator("#dsteps .srow.edit").count()) === 0);
+    await page.click("#dcancel");
+    const afterCancel = await swEval((id) => self.baoGetWorkflow(id), seeded.b);
+    check("cancel discarded the draft (still 1 step)", afterCancel?.steps?.length === 1);
 
     // ---- Switching selection swaps the detail ----
     await page.locator(".card", { hasText: "Comment on post" }).click();
