@@ -18,6 +18,27 @@ const ddeleteBtn = $("ddelete") as HTMLButtonElement;
 
 const sw = (msg: Msg) => chrome.runtime.sendMessage(msg);
 
+// Screenshots live in IndexedDB, same origin as the SW, so the dashboard reads the blobs
+// directly (no marshaling across messages): record-time golden frames from bao-golden,
+// replay-time frames from bao-history. Missing DB/store/key all resolve to null.
+function idbGetBlob(dbName: string, stores: string[], store: string, key: string): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const req = indexedDB.open(dbName, 1);
+    req.onupgradeneeded = () => { for (const s of stores) if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s); };
+    req.onsuccess = () => {
+      const db = req.result;
+      try {
+        const r = db.transaction(store, "readonly").objectStore(store).get(key);
+        r.onsuccess = () => { resolve((r.result as Blob) ?? null); db.close(); };
+        r.onerror = () => { resolve(null); db.close(); };
+      } catch { resolve(null); db.close(); }
+    };
+    req.onerror = () => resolve(null);
+  });
+}
+const goldenBlob = (key: string) => idbGetBlob("bao-golden", ["shots"], "shots", key);
+const historyFrameBlob = (key: string) => idbGetBlob("bao-history", ["runs", "frames"], "frames", key);
+
 // ---------------------------- library ----------------------------
 let summaries: WorkflowSummary[] = [];
 let query = "";
@@ -244,6 +265,7 @@ async function loadHistory(id: string): Promise<void> {
   const runs: RunRecord[] = (await sw({ cmd: "bao-runs-list", workflowId: id })) || [];
   if (currentId !== id) return; // selection moved on while we awaited
   drunsEl.textContent = "";
+  (($("dclear")) as HTMLButtonElement).hidden = runs.length === 0;
   if (!runs.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
@@ -257,6 +279,7 @@ async function loadHistory(id: string): Promise<void> {
 function runRow(r: RunRecord): HTMLElement {
   const el = document.createElement("div");
   el.className = "run-row";
+  el.onclick = () => openPlayer(r);
   const dot = document.createElement("span");
   dot.className = `dot ${r.outcome}`;
   const when = document.createElement("div");
@@ -272,6 +295,104 @@ function runRow(r: RunRecord): HTMLElement {
   el.append(dot, when);
   return el;
 }
+
+$("dclear").onclick = async () => {
+  if (!currentId || !confirm("Clear all run history for this workflow?")) return;
+  await sw({ cmd: "bao-runs-clear", workflowId: currentId });
+  loadHistory(currentId);
+};
+
+// ---------------------------- filmstrip player ----------------------------
+// Re-watch a past run step by step: the record-time golden frame (left) against the
+// replay-time frame (right), scrubbed with ◀▶ / dots / arrow keys. Blobs are read
+// straight from IndexedDB and turned into object URLs, revoked on every step change.
+const playerEl = $("player");
+let playerRun: RunRecord | null = null;
+let playerStep = 0;
+let objectUrls: string[] = [];
+const revokeUrls = () => { for (const u of objectUrls) URL.revokeObjectURL(u); objectUrls = []; };
+
+async function openPlayer(rec: RunRecord): Promise<void> {
+  playerRun = rec; playerStep = 0;
+  $("pdot").className = `dot ${rec.outcome}`;
+  $("poutcome").textContent = rec.outcome === "passed" ? "Passed" : "Failed";
+  $("pmeta").textContent =
+    `${rec.workflowName} · ${new Date(rec.finishedAt).toLocaleString()} · ${((rec.finishedAt - rec.startedAt) / 1000).toFixed(1)}s`;
+  playerEl.hidden = false;
+  await renderFrame();
+}
+function closePlayer(): void { playerEl.hidden = true; revokeUrls(); playerRun = null; }
+
+function setFrame(container: HTMLElement, blob: Blob | null): void {
+  container.textContent = "";
+  if (!blob) {
+    const d = document.createElement("div");
+    d.className = "noframe";
+    d.textContent = "No frame captured";
+    container.appendChild(d);
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  objectUrls.push(url);
+  const img = document.createElement("img");
+  img.src = url;
+  container.appendChild(img);
+}
+
+async function renderFrame(): Promise<void> {
+  const rec = playerRun;
+  if (!rec) return;
+  const i = playerStep;
+  const step = rec.steps[i];
+  revokeUrls();
+  const goldenRef = step?.meta?.goldenScreenshotRef;
+  setFrame($("pgolden"), goldenRef ? await goldenBlob(goldenRef) : null);
+  setFrame($("preplay"), rec.frames[i] ? await historyFrameBlob(rec.frames[i]!) : null);
+  if (playerRun !== rec || playerStep !== i) return; // scrubbed again while awaiting
+
+  const res = rec.results.find((r) => r.i === i);
+  $("pstepnum").textContent = `${i + 1}.`;
+  const rl = $("pstepresult");
+  rl.className = res ? (res.ok ? "ok" : "bad") : "";
+  rl.textContent = `${step ? stepLabel(step) : ""}` +
+    (res ? (res.ok ? `  ✓ ${res.via || "ok"}` : `  ✗ ${res.reason || "failed"}`) : "  · not reached");
+  (($("pprev")) as HTMLButtonElement).disabled = i === 0;
+  (($("pnext")) as HTMLButtonElement).disabled = i >= rec.steps.length - 1;
+  renderDots();
+}
+
+function renderDots(): void {
+  const dots = $("pdots");
+  dots.textContent = "";
+  playerRun!.steps.forEach((_, i) => {
+    const res = playerRun!.results.find((r) => r.i === i);
+    const b = document.createElement("button");
+    b.className = "d" + (res ? (res.ok ? " ok" : " bad") : "") + (i === playerStep ? " cur" : "");
+    b.title = `Step ${i + 1}`;
+    b.onclick = () => { playerStep = i; renderFrame(); };
+    dots.appendChild(b);
+  });
+}
+
+const stepBack = () => { if (playerRun && playerStep > 0) { playerStep--; renderFrame(); } };
+const stepFwd = () => { if (playerRun && playerStep < playerRun.steps.length - 1) { playerStep++; renderFrame(); } };
+$("pprev").onclick = stepBack;
+$("pnext").onclick = stepFwd;
+$("pclose").onclick = closePlayer;
+playerEl.onclick = (e) => { if (e.target === playerEl) closePlayer(); }; // click the backdrop to close
+document.addEventListener("keydown", (e) => {
+  if (playerEl.hidden) return;
+  if (e.key === "Escape") closePlayer();
+  else if (e.key === "ArrowLeft") stepBack();
+  else if (e.key === "ArrowRight") stepFwd();
+});
+$("pdelrun").onclick = async () => {
+  if (!playerRun) return;
+  await sw({ cmd: "bao-run-delete", id: playerRun.id });
+  const wfId = currentId;
+  closePlayer();
+  if (wfId) loadHistory(wfId);
+};
 
 // ---------------------------- actions ----------------------------
 // Run from the dashboard needs a target that isn't the dashboard tab itself, so open a

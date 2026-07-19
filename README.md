@@ -21,6 +21,12 @@ No LLM, no backend, no cross-navigation (those are M1+).
    ✓/✗ progress, pauses inline with a **Continue** button when a step needs you
 5. Workflows are searchable, grouped by site, pinnable, and import/export as JSON
    (the exported file is directly usable by `node test/run.mjs`)
+6. Open the **dashboard** (the ⤢ button in the panel header, or right-click the
+   extension → Options) for a full-page home: browse the library at width, **edit** a
+   workflow's steps (reorder / delete / edit values, no re-record - T16 §3), and
+   re-watch **run history** as a record-vs-replay **filmstrip**. Every replay now saves
+   a screenshot per step (IndexedDB `bao-history`), paired with the record-time golden
+   frame so you can scrub what replay saw against what recording expected.
 
 ## Test it (automated)
 A headless e2e loads the unpacked extension, records a real session on a fixture

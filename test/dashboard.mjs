@@ -159,6 +159,71 @@ async function main() {
       (await page.locator("#druns").textContent())?.includes("No runs yet"),
       await page.locator("#druns").textContent());
 
+    // ---- Filmstrip player: re-watch a run, record-time vs replay-time, step by step ----
+    // Seed a workflow + a run record with real golden (record) + history (replay) blobs.
+    const filmWf = await swEval(() => self.baoSaveWorkflow("Filmstrip demo", "https://x.test/", [
+      { action: "input", label: "Fill name", value: "Ada", ts: 1 },
+      { action: "click", label: "Click submit", ts: 2 },
+    ]));
+    await swEval(async ({ wfId }) => {
+      const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+      const putBlob = (dbName, stores, store, key, blob) => new Promise((res, rej) => {
+        const req = indexedDB.open(dbName, 1);
+        req.onupgradeneeded = () => { for (const s of stores) if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s); };
+        req.onsuccess = () => { const db = req.result; const tx = db.transaction(store, "readwrite"); tx.objectStore(store).put(blob, key); tx.oncomplete = () => { db.close(); res(); }; tx.onerror = () => rej(tx.error); };
+        req.onerror = () => rej(req.error);
+      });
+      await putBlob("bao-golden", ["shots"], "shots", "film-golden", await (await fetch(png)).blob());
+      const rec = {
+        id: "run-film", workflowId: wfId, workflowName: "Filmstrip demo", startUrl: "https://x.test/",
+        startedAt: Date.now() - 2000, finishedAt: Date.now(), outcome: "failed",
+        results: [{ i: 0, ok: true, via: "aria" }, { i: 1, ok: false, reason: "boom" }],
+        steps: [{ action: "input", label: "Fill name", value: "Ada", meta: { goldenScreenshotRef: "film-golden" } },
+                { action: "click", label: "Click submit" }],
+        frames: ["run-film:0", null],
+      };
+      await putBlob("bao-history", ["runs", "frames"], "runs", "run-film", rec);
+      await putBlob("bao-history", ["runs", "frames"], "frames", "run-film:0", await (await fetch(png)).blob());
+    }, { wfId: filmWf.id });
+
+    await page.locator(".card", { hasText: "Filmstrip demo" }).click();
+    await sleep(300);
+    await page.locator(".run-row").click();
+    await sleep(200);
+    check("player opens", await page.locator("#player").isVisible());
+    check("player header shows the failed outcome",
+      (await page.locator("#poutcome").textContent()) === "Failed" &&
+      (await page.locator("#pdot.failed").count()) === 1);
+    check("step 1 shows both frames as images",
+      (await page.locator("#pgolden img").getAttribute("src"))?.startsWith("blob:") &&
+      (await page.locator("#preplay img").getAttribute("src"))?.startsWith("blob:"));
+    check("step 1 result line shows the ✓ via", (await page.locator("#pstepresult").textContent())?.includes("aria"));
+    check("two scrubber dots render", (await page.locator("#pdots .d").count()) === 2);
+    check("prev disabled on the first step", await page.locator("#pprev").isDisabled());
+
+    await page.click("#pnext");
+    await sleep(150);
+    check("step 2 shows placeholders (no captured frames)",
+      (await page.locator("#pgolden .noframe").count()) === 1 && (await page.locator("#preplay .noframe").count()) === 1);
+    check("step 2 result line shows the ✗ reason", (await page.locator("#pstepresult").textContent())?.includes("boom"));
+    check("next disabled on the last step", await page.locator("#pnext").isDisabled());
+
+    await page.locator("#pdots .d").first().click(); // jump back via a dot
+    await sleep(150);
+    check("dot jump returns to step 1", (await page.locator("#pgolden img").count()) === 1);
+
+    await page.click("#pclose");
+    check("player closes", await page.locator("#player").isHidden());
+
+    // Delete this run from the player → history empties for the workflow.
+    await page.locator(".run-row").click();
+    await sleep(150);
+    await page.click("#pdelrun");
+    await sleep(250);
+    check("delete-this-run empties the history",
+      (await page.locator("#druns").textContent())?.includes("No runs yet") &&
+      (await page.locator(".run-row").count()) === 0);
+
     check("no page errors in the dashboard", pageErrors.length === 0, pageErrors.join(" | "));
   } finally {
     await ctx.close();
