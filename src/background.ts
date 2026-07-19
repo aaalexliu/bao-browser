@@ -6,7 +6,7 @@
 //  2) at replay, route each step to the live frame it was recorded in — resolving
 //     the recorded FrameRef (origin/url) to a current frameId via webNavigation.
 
-import type { FrameRef, Msg, RecState, ReplayResponse, RunState, Step, StepResult, Workflow, WorkflowSummary } from "./types";
+import type { FrameRef, Msg, RecState, ReplayResponse, RunRecord, RunState, Step, StepResult, Workflow, WorkflowSummary } from "./types";
 
 // The SW's harness-visible API: the e2e tests drive these via sw.evaluate, so they
 // must live on the worker global under exactly these names.
@@ -14,7 +14,7 @@ declare global {
   var __baoSteps: Step[];
   var baoRecStart: (tabId: number) => Promise<{ ok: boolean }>;
   var baoRecStop: () => Promise<{ steps: Step[]; workflow: WorkflowSummary | null }>;
-  var baoRunStart: (tabId: number, steps: Step[]) => Promise<{ ok: boolean; runId: string }>;
+  var baoRunStart: (tabId: number, steps: Step[], meta?: RunMeta) => Promise<{ ok: boolean; runId: string }>;
   var baoRunStatus: () => Promise<RunState | null>;
   var baoRunContinue: () => Promise<{ ok: boolean }>;
   var baoDrainSteps: () => Step[];
@@ -29,7 +29,15 @@ declare global {
   var baoGetWorkflow: (id: string) => Promise<Workflow | null>;
   var baoUpdateWorkflow: (id: string, patch: { name?: string; pinned?: boolean }) => Promise<{ ok: boolean }>;
   var baoImportWorkflow: (workflow: Workflow) => Promise<{ ok: boolean; id: string }>;
+  // T16 run history
+  var baoListRuns: (workflowId?: string) => Promise<RunRecord[]>;
+  var baoGetRun: (id: string) => Promise<RunRecord | null>;
+  var baoDeleteRun: (id: string) => Promise<{ ok: boolean }>;
+  var baoClearRuns: (workflowId?: string) => Promise<{ ok: boolean }>;
 }
+
+// Workflow identity carried into a run so its history record can be attributed.
+type RunMeta = { workflowId?: string; workflowName?: string; startUrl?: string };
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[bao-m0] service worker installed");
@@ -77,6 +85,11 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
   if (msg.cmd === "bao-wf-get") { baoGetWorkflow(msg.id).then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-update") { baoUpdateWorkflow(msg.id, msg.patch).then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-import") { baoImportWorkflow(msg.workflow).then(sendResponse); return true; }
+  // ---- full-page dashboard (T16) ----
+  if (msg.cmd === "bao-runs-list") { baoListRuns(msg.workflowId).then(sendResponse); return true; }
+  if (msg.cmd === "bao-run-get") { baoGetRun(msg.id).then(sendResponse); return true; }
+  if (msg.cmd === "bao-run-delete") { baoDeleteRun(msg.id).then(sendResponse); return true; }
+  if (msg.cmd === "bao-runs-clear") { baoClearRuns(msg.workflowId).then(sendResponse); return true; }
 });
 
 // ============================ M1 — cross-navigation ============================
@@ -177,11 +190,14 @@ function onRecStep(step: Step, sender: chrome.runtime.MessageSender): void {
 // with paused_for_user as the resumable pause (T8 phase 3). Event-driven only:
 // element waits live in the content script, navigation waits on webNavigation,
 // timeouts on chrome.alarms — never a long timer in here.
-self.baoRunStart = async (tabId, steps) => {
+self.baoRunStart = async (tabId, steps, meta) => {
   const run: RunState = {
-    runId: Math.random().toString(36).slice(2), tabId, steps,
+    runId: "run-" + Math.random().toString(36).slice(2, 10), tabId, steps,
     stepIndex: 0, phase: "executing", dispatched: false, results: [], lastError: null,
+    startedAt: Date.now(),
+    workflowId: meta?.workflowId, workflowName: meta?.workflowName, startUrl: meta?.startUrl,
   };
+  runFrames.set(run.runId, new Set()); // fresh per-step screenshot buffer (T16)
   await setRun(run);
   tick();
   return { ok: true, runId: run.runId };
@@ -307,7 +323,7 @@ self.baoRunWorkflow = async (tabId, id) => {
       await navigateAndWait(tabId, wf.startUrl);
     }
   } catch (_) {}
-  return baoRunStart(tabId, wf.steps);
+  return baoRunStart(tabId, wf.steps, { workflowId: wf.id, workflowName: wf.name, startUrl: wf.startUrl });
 };
 // Drive a bare navigation and wait for the tab to settle on it (not part of the replay
 // state machine — this is the pre-run "get to startUrl" hop).
@@ -329,6 +345,7 @@ async function fail(run: RunState, reason: string): Promise<void> {
   run.phase = "failed";
   run.lastError = { stepIndex: run.stepIndex, reason };
   await setRun(run);
+  await finalizeRun(run); // T16: persist the failed run for the history filmstrip
 }
 
 type TickTodo = { kind: "check-nav" } | { kind: "dispatch"; run: RunState; step: Step } | null;
@@ -341,7 +358,7 @@ async function tick(): Promise<void> {
     const run = await getRun();
     if (!run || run.phase !== "executing") return null;
     if (run.stepIndex >= run.steps.length) {
-      run.phase = "done"; await setRun(run); return null;
+      run.phase = "done"; await setRun(run); await finalizeRun(run); return null;
     }
     const step = run.steps[run.stepIndex];
     if (step.action === "navigate") {
@@ -366,6 +383,9 @@ async function tick(): Promise<void> {
   try {
     res = await chrome.tabs.sendMessage(run.tabId, { cmd: "replay", steps: [step] }, { frameId: 0 });
   } catch (_) { /* document torn down mid-step, or no content script yet */ }
+  // T16: snapshot this step's resulting page while it's still on screen (before we
+  // advance). null res means the document went away — nothing meaningful to capture.
+  if (res) await captureRunFrame(run.runId, run.tabId, run.stepIndex);
 
   const proceed = await enqueue<"tick" | "await-download" | false>(async () => {
     const cur = await getRun();
@@ -415,6 +435,7 @@ async function maybeResumeAfterNav(): Promise<void> {
     url = tab.url || "";
     if (!urlMatches(run.expectedNav!.pattern, url)) return;
     await chrome.tabs.sendMessage(run.tabId, { cmd: "status" }, { frameId: 0 });
+    await captureRunFrame(run.runId, run.tabId, run.stepIndex); // T16: the nav step's landing page
   } catch (_) { return; } // not there yet — a later wake retries
   const resumed = await enqueue(async () => {
     const cur = await getRun();
@@ -661,6 +682,142 @@ self.baoGetGolden = async (ref) => {
   const out = { type: blob.type, size: blob.size, width: bmp.width, height: bmp.height };
   bmp.close();
   return out;
+};
+
+// ============================ T16 — run history ============================
+// A finished run becomes a durable RunRecord + one replay-time screenshot per step, so
+// the dashboard can re-watch it against the record-time golden frames. Mirrors the
+// golden IndexedDB pattern above; kept in a separate DB (two stores: runs, frames) so
+// the audit trail is self-contained. Retention is capped so disk stays bounded.
+const HIST_DB = "bao-history", RUNS_STORE = "runs", FRAMES_STORE = "frames";
+const HIST_MAX_RUNS = 50, HIST_MAX_W = 1000;
+
+function historyDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(HIST_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(RUNS_STORE)) db.createObjectStore(RUNS_STORE);
+      if (!db.objectStoreNames.contains(FRAMES_STORE)) db.createObjectStore(FRAMES_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function histPut(store: string, key: string, val: unknown): Promise<void> {
+  const db = await historyDB();
+  try {
+    await new Promise<void>((res, rej) => {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).put(val, key);
+      tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+    });
+  } finally { db.close(); }
+}
+async function histGet<T>(store: string, key: string): Promise<T | null> {
+  const db = await historyDB();
+  try {
+    return await new Promise<T | null>((res, rej) => {
+      const tx = db.transaction(store, "readonly");
+      const r = tx.objectStore(store).get(key);
+      r.onsuccess = () => res((r.result as T) ?? null); r.onerror = () => rej(r.error);
+    });
+  } finally { db.close(); }
+}
+async function histDelete(store: string, key: string): Promise<void> {
+  const db = await historyDB();
+  try {
+    await new Promise<void>((res, rej) => {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).delete(key);
+      tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+    });
+  } finally { db.close(); }
+}
+async function histAllRuns(): Promise<RunRecord[]> {
+  const db = await historyDB();
+  try {
+    return await new Promise<RunRecord[]>((res, rej) => {
+      const tx = db.transaction(RUNS_STORE, "readonly");
+      const r = tx.objectStore(RUNS_STORE).getAll();
+      r.onsuccess = () => res((r.result as RunRecord[]) || []); r.onerror = () => rej(r.error);
+    });
+  } finally { db.close(); }
+}
+// Drop a run and every frame it owns.
+async function histDeleteRun(rec: RunRecord): Promise<void> {
+  await histDelete(RUNS_STORE, rec.id);
+  for (const key of rec.frames) if (key) await histDelete(FRAMES_STORE, key);
+}
+
+// Per-run buffer of which step frames actually captured (frames[i] = key | null on the
+// record). Lives in SW memory for the duration of a run; SW death loses it, which only
+// costs a frameless record — the run state itself is storage-backed and resumes fine.
+const runFrames = new Map<string, Set<number>>();
+let runLastCaptureAt = 0;
+// Capture the visible tab as this step's replay frame. Best-effort: throttled to respect
+// Chrome's 2/s captureVisibleTab cap (a too-soon call is skipped → null frame, never a
+// stall) and captured inline so the shot reflects THIS step's page, not a later one.
+async function captureRunFrame(runId: string, tabId: number, i: number): Promise<void> {
+  if (Date.now() - runLastCaptureAt < 550) return; // throttle guard → leave frame null
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    runLastCaptureAt = Date.now();
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: "jpeg", quality: 75 });
+    const src = await createImageBitmap(await (await fetch(dataUrl)).blob());
+    const scale = Math.min(1, HIST_MAX_W / src.width);
+    const w = Math.max(1, Math.round(src.width * scale)), h = Math.max(1, Math.round(src.height * scale));
+    const canvas = new OffscreenCanvas(w, h);
+    canvas.getContext("2d")!.drawImage(src, 0, 0, w, h);
+    src.close();
+    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.75 });
+    await histPut(FRAMES_STORE, `${runId}:${i}`, blob);
+    (runFrames.get(runId) ?? runFrames.set(runId, new Set()).get(runId)!).add(i);
+  } catch (e) { console.warn("[bao-t16]", e); } // headless / throttle / torn-down tab → null frame
+}
+
+// Assemble + persist the RunRecord at a terminal phase (done | failed). Idempotent on
+// runId so a double-finalize (two paths racing to fail) can't write twice. Not enqueue'd:
+// callers already hold the state chain, and this only touches IndexedDB.
+async function finalizeRun(run: RunState): Promise<void> {
+  try {
+    if (await histGet(RUNS_STORE, run.runId)) return; // already recorded
+    const set = runFrames.get(run.runId) ?? new Set<number>();
+    const startUrl = run.startUrl || run.steps.find((s) => s.frame?.url)?.frame?.url || "";
+    const rec: RunRecord = {
+      id: run.runId,
+      workflowId: run.workflowId || "",
+      workflowName: run.workflowName || autoName(startUrl),
+      startUrl,
+      startedAt: run.startedAt || Date.now(),
+      finishedAt: Date.now(),
+      outcome: run.phase === "failed" ? "failed" : "passed",
+      results: run.results,
+      steps: run.steps,
+      frames: run.steps.map((_, i) => (set.has(i) ? `${run.runId}:${i}` : null)),
+    };
+    await histPut(RUNS_STORE, rec.id, rec);
+    // Retention: keep the newest HIST_MAX_RUNS, prune the rest + their frames.
+    const all = (await histAllRuns()).sort((a, b) => b.finishedAt - a.finishedAt);
+    for (const old of all.slice(HIST_MAX_RUNS)) await histDeleteRun(old);
+  } catch (e) { console.warn("[bao-t16]", e); }
+  finally { runFrames.delete(run.runId); }
+}
+
+self.baoListRuns = async (workflowId) => {
+  const all = (await histAllRuns()).sort((a, b) => b.finishedAt - a.finishedAt);
+  return workflowId ? all.filter((r) => r.workflowId === workflowId) : all;
+};
+self.baoGetRun = (id) => histGet<RunRecord>(RUNS_STORE, id);
+self.baoDeleteRun = async (id) => {
+  const rec = await histGet<RunRecord>(RUNS_STORE, id);
+  if (rec) await histDeleteRun(rec);
+  return { ok: true };
+};
+self.baoClearRuns = async (workflowId) => {
+  const all = await histAllRuns();
+  for (const rec of all) if (!workflowId || rec.workflowId === workflowId) await histDeleteRun(rec);
+  return { ok: true };
 };
 
 // The merged, time-ordered recording across all frames.

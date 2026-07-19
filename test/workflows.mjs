@@ -168,6 +168,49 @@ async function main() {
     const listFinal = await swEval(() => self.baoListWorkflows());
     check("zero-step stop persisted nothing", listFinal?.length === listAuto?.length,
       `${listFinal?.length} vs ${listAuto?.length}`);
+
+    // ============================ T16 — run history ============================
+    // The workflow-B run near the top should have persisted a durable RunRecord (the
+    // only run executed so far). It snapshots the name at run time — which was "Post
+    // bio", BEFORE the rename to "Post bio v2" — proving history survives a rename.
+    const runsList = await swEval(() => self.baoListRuns());
+    check("run history recorded the completed run", runsList?.length === 1,
+      JSON.stringify(runsList?.map((r) => r.outcome)));
+    const brec = runsList?.[0];
+    check("record attributed to B, outcome passed, one result per step",
+      brec?.workflowId === saveB.id && brec?.outcome === "passed" && brec?.results?.length === 2,
+      JSON.stringify({ wf: brec?.workflowId, outcome: brec?.outcome, results: brec?.results?.length }));
+    check("record snapshots steps + a frame slot per step",
+      brec?.steps?.length === 2 && brec?.frames?.length === 2,
+      JSON.stringify({ steps: brec?.steps?.length, frames: brec?.frames?.length }));
+    check("record id matches the run id", brec?.id === runRes.runId, `${brec?.id} vs ${runRes.runId}`);
+    check("name denormalized at run time (survives the later rename)", brec?.workflowName === "Post bio",
+      brec?.workflowName);
+    const got = await swEval((id) => self.baoGetRun(id), runRes.runId);
+    check("baoGetRun round-trips the record", got?.id === runRes.runId);
+    check("baoListRuns filters by workflowId",
+      (await swEval((id) => self.baoListRuns(id), saveB.id))?.length === 1 &&
+      (await swEval(() => self.baoListRuns("wf-nope")))?.length === 0);
+
+    // A failing ad-hoc run persists too, with outcome "failed" and an empty workflowId.
+    await page.goto(FIXTURE);
+    await page.waitForLoadState("domcontentloaded");
+    const badStep = { action: "click", label: "nope", ts: Date.now(),
+      target: { selectors: [{ type: "css", value: "#definitely-not-here", score: 1 }], reach: "light", unique: true } };
+    const badRun = await swEval(({ id, step }) => self.baoRunStart(id, [step]), { id: tabId, step: badStep });
+    await waitForPhase(["failed"]);
+    const badRec = await swEval((id) => self.baoGetRun(id), badRun.runId);
+    check("failed run persisted with outcome failed", badRec?.outcome === "failed",
+      JSON.stringify({ outcome: badRec?.outcome }));
+    check("ad-hoc run has empty workflowId + a generated name",
+      badRec?.workflowId === "" && typeof badRec?.workflowName === "string", badRec?.workflowName);
+
+    // Delete one record, then clear all.
+    await swEval((id) => self.baoDeleteRun(id), runRes.runId);
+    check("baoDeleteRun removes the record",
+      (await swEval((id) => self.baoGetRun(id), runRes.runId)) === null);
+    await swEval(() => self.baoClearRuns());
+    check("baoClearRuns empties history", (await swEval(() => self.baoListRuns()))?.length === 0);
   } finally {
     await ctx.close();
   }
