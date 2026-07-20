@@ -40,6 +40,47 @@ declare global {
         !["checkbox", "radio", "button", "submit", "file", "range"].includes(el.type));
   }
 
+  // T1: a field whose value must never be persisted. `type=password` is the hard
+  // signal; autocomplete tokens + name/id/label/placeholder patterns catch SSN / card /
+  // CVV / OTP fields that render as plain text (so their value is on-screen too — the
+  // golden frame is skipped for these). Value-shape (exact SSN / Luhn-valid card) is a
+  // last-resort net for an otherwise-unmarked field clearly holding a secret.
+  const SENSITIVE_AC = new Set([
+    "current-password", "new-password", "cc-number", "cc-csc", "cc-exp",
+    "cc-exp-month", "cc-exp-year", "one-time-code",
+  ]);
+  const SENSITIVE_RE = /pass(word|code)|\bssn\b|social.?security|credit.?card|card.?number|\bcc-?num|\bcvv\b|\bcvc\b|security.?code|\botp\b|one.?time.?code|routing.?number|\bpin\b/i;
+  function luhnCard(v: string): boolean {
+    const d = v.replace(/[\s-]/g, "");
+    if (!/^\d{13,19}$/.test(d)) return false;
+    let sum = 0, alt = false;
+    for (let i = d.length - 1; i >= 0; i--) {
+      let n = +d[i];
+      if (alt) { n *= 2; if (n > 9) n -= 9; }
+      sum += n; alt = !alt;
+    }
+    return sum % 10 === 0;
+  }
+  function isSensitive(el: Element): boolean {
+    if (el instanceof HTMLInputElement && el.type === "password") return true;
+    const ac = (el.getAttribute("autocomplete") || "").toLowerCase().trim();
+    if (SENSITIVE_AC.has(ac)) return true;
+    const hay = ["name", "id", "autocomplete", "aria-label", "placeholder"]
+      .map((a) => el.getAttribute(a)).filter(Boolean).join(" ");
+    if (SENSITIVE_RE.test(hay)) return true;
+    const v = (el as HTMLInputElement).value || "";
+    if (/^\s*\d{3}-?\d{2}-?\d{4}\s*$/.test(v)) return true; // SSN-shaped
+    return luhnCard(v);
+  }
+  // T1: strip every trace of a secret from a recorded step — the value itself plus the
+  // target's screenshot-adjacent fuel (text/snapshot). The step still replays
+  // structurally (selectors intact); only the secret is withheld.
+  function maskStep(step: Step): void {
+    step.sensitive = true;
+    delete step.value;
+    if (step.target) { delete step.target.text; delete step.target.snapshot; }
+  }
+
   function isVisible(el: Element): boolean {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return false;
@@ -314,8 +355,8 @@ declare global {
 
   // T11: per-target grounding, captured on EVERY step. bbox viewport-relative (%),
   // plus the capture-time viewport pixels; text + aria role are healing fuel (unused at
-  // replay today). (A sensitive step — T1, not yet landed — would omit `text`; inputs
-  // carry no textContent anyway, so no value leaks through here today.)
+  // replay today). (A sensitive step (T1) has its `text` stripped by maskStep after
+  // capture; inputs carry no textContent anyway, so no value leaks through here.)
   function bboxOf(el: Element): { x: number; y: number; w: number; h: number; vw: number; vh: number } {
     const r = el.getBoundingClientRect();
     const vw = Math.max(1, window.innerWidth), vh = Math.max(1, window.innerHeight);
@@ -330,7 +371,7 @@ declare global {
   // size. Serialize the *anchor* node when we have one, else the leaf's nearest ~3-hop
   // ancestor. Value attributes are stripped (a typed value lives in the .value property,
   // which cloneNode never serializes, so only a declared value="…" could leak — and a
-  // sensitive step, once T1 lands, would drop this entirely). Capped at 64KB.
+  // sensitive step (T1) has its snapshot dropped entirely by maskStep). Capped at 64KB.
   const SNAPSHOT_CAP = 64 * 1024;
   function nHopAncestor(el: Element, hops: number): Element {
     let n: Element = el;
@@ -795,10 +836,18 @@ declare global {
   // value = innerText (we replay semantics, not markup).
   function recordEditable(root: HTMLElement): void {
     if (!recording) return;
-    const value = root.innerText;
-    if (lastInputEl === root && lastInputStep) { lastInputStep.value = value; syncStep(lastInputStep); return; }
+    const secret = isSensitive(root);
+    // Coalesce into the open burst. If the field only now reads as sensitive (a
+    // value-shape match part-way through typing), retroactively mask the open step so
+    // the earlier partial is scrubbed from storage; otherwise re-sync the plain value.
+    if (lastInputEl === root && lastInputStep) {
+      if (secret) { if (!lastInputStep.sensitive) { maskStep(lastInputStep); syncStep(lastInputStep); } }
+      else { lastInputStep.value = root.innerText; syncStep(lastInputStep); }
+      return;
+    }
     const step = makeStep("input", root);
-    step.mode = "contenteditable"; step.value = value;
+    step.mode = "contenteditable";
+    if (secret) maskStep(step); else step.value = root.innerText;
     pushStep(step); lastInputStep = step; lastInputEl = root;
   }
   function onInput(e: Event): void {
@@ -806,8 +855,14 @@ declare global {
     const root = editableRoot(el);
     if (root) { recordEditable(root); return; }
     if (!(el instanceof Element) || !isTextField(el)) return;
-    if (lastInputEl === el && lastInputStep) { lastInputStep.value = el.value; syncStep(lastInputStep); return; }
-    const step = makeStep("input", el); step.value = el.value;
+    const secret = isSensitive(el);
+    if (lastInputEl === el && lastInputStep) {
+      if (secret) { if (!lastInputStep.sensitive) { maskStep(lastInputStep); syncStep(lastInputStep); } }
+      else { lastInputStep.value = el.value; syncStep(lastInputStep); }
+      return;
+    }
+    const step = makeStep("input", el);
+    if (secret) maskStep(step); else step.value = el.value;
     pushStep(step); lastInputStep = step; lastInputEl = el;
   }
   // Strict model-driven editors (Lexical-style) preventDefault their beforeinput and
@@ -979,6 +1034,13 @@ declare global {
         if (isGood(rr, step.target)) el = rr.el;
       }
       highlight(el);
+      // T1: a sensitive field's value was never recorded. Focus it so the user knows
+      // where the secret goes, but never synthesize a value we deliberately don't have.
+      if (step.sensitive) {
+        (el as HTMLElement).focus?.();
+        results.push({ i, ok: true, via: "sensitive (value withheld — enter manually)" });
+        continue;
+      }
       if (step.action === "click") el.click();
       else if (step.action === "input" && step.mode === "contenteditable") {
         const landed = await setEditableValue(el, step.value ?? "");

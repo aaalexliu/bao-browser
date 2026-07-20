@@ -183,7 +183,9 @@ function onRecStep(step: Step, sender: chrome.runtime.MessageSender): void {
     if (i >= 0) rec.steps[i] = merged; else rec.steps.push(merged);
     await setRec(rec);
     // T12: grab a golden frame for element steps (markers have no visual target).
-    if (merged.target && merged.seq) scheduleGolden(rec.tabId, merged.seq);
+    // T1: skip sensitive steps — the secret is often on-screen (SSN/card in a plain
+    // field), and a full-viewport screenshot would recapture what we just withheld.
+    if (merged.target && merged.seq && !merged.sensitive) scheduleGolden(rec.tabId, merged.seq);
   });
 }
 
@@ -706,7 +708,7 @@ async function captureGolden(tabId: number, seq: string): Promise<void> {
   const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.75 });
   await goldenPut(seq, blob);
   // Stamp the ref onto the recorded step (only element steps carry meta; T1-sensitive
-  // steps will skip capture entirely once T1 lands).
+  // steps never reach here — scheduleGolden is skipped for them in onRecStep).
   await enqueue(async () => {
     const cur = await getRec();
     const s = cur?.steps.find((st) => st.seq === seq);

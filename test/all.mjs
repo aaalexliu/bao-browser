@@ -14,7 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const suites = [
   "e2e", "list", "blindspots", "virtual", "frames", "forceopen", "editable",
   "spa", "nav", "check", "keyboard", "pointerdown", "assert", "download",
-  "grounding", "golden", "snapshot", "workflows", "sidepanel", "dashboard",
+  "grounding", "golden", "snapshot", "sensitive", "workflows", "sidepanel", "dashboard",
 ];
 
 const args = process.argv.slice(2);
