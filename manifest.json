@@ -3,11 +3,25 @@
   "name": "Bao",
   "version": "0.0.1",
   "description": "Record + deterministic replay of browser actions.",
-  "permissions": ["storage", "activeTab", "scripting", "webNavigation", "alarms", "downloads", "sidePanel"],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["storage", "scripting", "webNavigation", "alarms", "downloads", "sidePanel"],
   "host_permissions": ["<all_urls>"],
   "side_panel": { "default_path": "sidepanel.html" },
   "options_page": "dashboard.html",
-  "action": {},
+  "action": {
+    "default_title": "Bao - open side panel",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
   "background": { "service_worker": "dist/background.js" },
   "content_scripts": [
     {
