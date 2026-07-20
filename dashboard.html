@@ -66,6 +66,49 @@
     .srow .vedit input { flex: 1; min-width: 0; }
     .steps.editing { border-color: var(--accent); }
     .dactions #dsave { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .dactions #ddebug.active { border-color: var(--accent); color: var(--accent); background: #f0f4ff; }
+
+    /* debug rows: each step expands to its full recorded IR */
+    .steps.debug { border-color: var(--accent); }
+    details.dbg { border-top: 1px solid #f0f0f0; }
+    details.dbg:first-child { border-top: 0; }
+    details.dbg > summary { padding: 7px 12px; display: flex; flex-wrap: wrap; gap: 8px;
+                            align-items: baseline; cursor: pointer; list-style: none; }
+    details.dbg > summary::-webkit-details-marker { display: none; }
+    details.dbg > summary::before { content: "▸"; color: var(--muted); margin-right: 2px; }
+    details.dbg[open] > summary::before { content: "▾"; }
+    details.dbg[open] > summary { background: #f7f9ff; }
+    details.dbg > summary:hover { background: #f4f4f5; }
+    details.dbg .num { color: var(--muted); min-width: 1.4em; text-align: right; }
+    details.dbg .lbl { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    details.dbg .badge { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+                         color: #555; background: #eef0f2; border-radius: 4px; padding: 1px 6px; flex: none; }
+    .dbgbody { padding: 4px 14px 14px; background: #fbfbfc; font-family: system-ui, sans-serif;
+               font-size: 12.5px; }
+    .dbgsec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+              margin: 14px 0 6px; font-family: system-ui, sans-serif; }
+    .dbgframe { position: relative; display: inline-block; max-width: 100%; border: 1px solid var(--line);
+                border-radius: 6px; overflow: hidden; background: #f4f4f5; color: var(--muted); }
+    .dbgframe.noframe { padding: 20px 26px; }
+    .dbgframe img { display: block; max-width: 100%; height: auto; }
+    .dbgframe .bbox { position: absolute; border: 2px solid var(--accent);
+                      box-shadow: 0 0 0 9999px rgba(51,102,204,.12); border-radius: 2px; pointer-events: none; }
+    .seltable { display: flex; flex-direction: column; gap: 3px; }
+    .selrow { display: flex; align-items: baseline; gap: 8px; }
+    .selrank { color: var(--muted); min-width: 1.2em; text-align: right; font-variant-numeric: tabular-nums; }
+    .seltype { flex: none; min-width: 70px; color: var(--accent); font-weight: 600; font-size: 11.5px; }
+    .selval { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 12px;
+              overflow-wrap: anywhere; background: #fff; border: 1px solid var(--line);
+              border-radius: 4px; padding: 1px 6px; }
+    .selscore { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; align-items: baseline; }
+    .kv .k { color: var(--muted); white-space: nowrap; }
+    .kv .v { font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
+    details.snap { margin-top: 12px; }
+    details.snap > summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+    details.snap pre { margin: 6px 0 0; padding: 8px 10px; background: #fff; border: 1px solid var(--line);
+                       border-radius: 6px; max-height: 240px; overflow: auto; font-size: 11.5px;
+                       white-space: pre-wrap; overflow-wrap: anywhere; }
 
     .blockhead { display: flex; align-items: center; justify-content: space-between; }
     .blockhead h3 { margin: 0 0 8px; }
@@ -139,6 +182,7 @@
         <div class="dactions">
           <button id="drun">▶ Run</button>
           <button id="dedit">✎ Edit steps</button>
+          <button id="ddebug" title="Expand every step to its selectors, metadata & golden screenshot">🐞 Debug</button>
           <button id="dexport">⤓ Export</button>
           <button id="ddelete" class="danger">🗑 Delete</button>
           <button id="dsave" hidden>✔ Save</button>
