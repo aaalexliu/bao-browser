@@ -26,7 +26,7 @@ dashboard, run history, and an audit filmstrip. The engine covers the two target
 |---|---|
 | M0 — capture + deterministic replay, ranked multi-selector fallback, native input actuator | ✅ shipped |
 | P0 recorder correctness — checkbox *set* (T3), keyboard/Enter-submit (T4), pointerdown-timing (T5) | ✅ shipped |
-| **T1 — mask sensitive inputs (passwords / SSNs)** | ❌ **NOT shipped — see blockers** |
+| **T1 — mask sensitive inputs (passwords / SSNs / cards / CVV / OTP)** | ✅ shipped |
 | contenteditable / rich-text (T2), assert + headless CI runner (T6) | ✅ shipped |
 | SPA soft-nav (T7), M1 cross-navigation state machine + `waitForUser` (T8), downloads (T10) | ✅ shipped |
 | Over-capture fuel — grounding (T11), golden screenshots (T12), subtree snapshot (T13) | ✅ shipped |
@@ -132,27 +132,27 @@ extension itself distributable. Two audiences, two very different readiness leve
 
 ### Blockers, in priority order
 
-1. **T1 — plaintext secrets (hard liability, must fix first).** `onInput` records
-   `step.value = el.value` for `type=password` fields and it lands in
-   `chrome.storage.local` unencrypted. Shipping this to real users is a non-starter.
-   Scope is small (classify sensitive fields → store `value:null` + a display mask →
-   degrade to a clear "re-enter" at replay; redact from `out/` dumps). Full spec:
-   `recording-gaps-and-app-universe.md` §T1. **This gates any non-dev distribution.**
-2. **No extension icons.** `manifest.json` has `"action": {}` and no `icons` key. A Chrome
-   Web Store listing requires a 128px icon (+ toolbar sizes) and store screenshots/promo
-   assets. Blocker for a listing; trivial once assets exist.
-3. **Chrome Web Store review risk.** `<all_urls>` host permissions + `scripting` /
-   `tabs` / `webNavigation` / `downloads` trigger heavy review and a per-permission
-   justification form. Mitigant: Bao does **not** request `debugger` (the thing keeping
-   browzer stuck in review), and the privacy story is genuinely strong. Also clean up the
-   redundant **`activeTab`** that sits alongside `<all_urls>` — it reads as confused to a
-   reviewer. Budget for review back-and-forth; the `<all_urls>` justification ("a
-   general-purpose recorder must run on the page the user chooses") is the crux.
-4. **Privacy policy (required, and an asset not a chore).** CWS requires one for these
-   permissions. Bao's stance is a selling point: screenshots and DOM snapshots are
-   **local-only + input-masked**; only a redacted, masked trace would ever reach the M2
-   backend. Write it to match the code, publish it on the landing site, link it in the
-   listing.
+1. ✅ **T1 — plaintext secrets (done).** Sensitive fields (password / SSN / card / CVV /
+   OTP, by type / autocomplete / name / value-shape) are masked at capture: the value is
+   never written, the target's text/snapshot fuel and the golden screenshot are dropped,
+   and replay focuses the field but leaves it empty. Regression `test/sensitive.mjs`
+   asserts no secret substring survives in the returned steps or in SW storage. Full spec:
+   `recording-gaps-and-app-universe.md` §T1.
+2. ✅ **Extension icons (done).** `icons/` holds 16/32/48/128 PNGs (a steamed-bao mark),
+   wired into `manifest.icons` + `action.default_icon`; source SVG + a deps-free
+   Playwright rasterizer live in `assets/`. Store screenshots / promo tiles still TODO for
+   the listing itself.
+3. **Chrome Web Store review risk (partly mitigated).** `<all_urls>` host permissions +
+   `scripting` / `webNavigation` / `downloads` still trigger heavy review and a
+   per-permission justification form. Mitigants in place: Bao requests **no `debugger`**
+   (the thing keeping browzer stuck in review), the redundant **`activeTab`** is now
+   removed, and the privacy story is strong and written down. Budget for review
+   back-and-forth; the `<all_urls>` justification ("a general-purpose recorder must run on
+   the page the user chooses") is the crux.
+4. ✅ **Privacy policy (done).** [`PRIVACY.md`](PRIVACY.md) — verified against the code:
+   no backend, no network egress, local-only storage (`chrome.storage` + IndexedDB, no
+   sync), sensitive fields masked at capture, plus a per-permission justification table.
+   Publish it on the landing site and link it in the listing.
 5. **Distribution mode.** "Download instructions" for a Developer-mode *unpacked load* is
    fine for a beta but hostile to the non-technical primary user (it directly contradicts
    the thesis). The real answer is a **CWS listing** (one-click install); use unpacked /
@@ -169,7 +169,11 @@ extension itself distributable. Two audiences, two very different readiness leve
 
 ### Shortest credible path to a public beta
 
-**T1 → icons + manifest cleanup → privacy policy → CWS submission**, in parallel with a
-static landing page (what it is, a 60-second demo, install CTA, docs). Target the **QA/dev
-wedge** for launch #1 (no backend, engine already proven), and treat the M2 compiler +
-gov-forms wedge as launch #2 once the backend exists.
+**T1 (✅) → icons + manifest cleanup (✅) → privacy policy (✅) → CWS submission (next)**,
+in parallel with a static landing page (`site/index.html` — what it is, a replay demo,
+install CTA, docs). Target the **QA/dev wedge** for launch #1 (no backend, engine already
+proven), and treat the M2 compiler + gov-forms wedge as launch #2 once the backend exists.
+
+What's left before a listing goes live is now mostly *your* action, not code: create the
+CWS developer account, bump the `version`, capture store screenshots + a promo tile, and
+submit with the `<all_urls>` justification + [`PRIVACY.md`](PRIVACY.md).
