@@ -14,7 +14,7 @@ const dnameEl = $("dname"), dmetaEl = $("dmeta"), dstepsEl = $("dsteps"), drunsE
 const drunBtn = $("drun") as HTMLButtonElement;
 const deditBtn = $("dedit") as HTMLButtonElement, dsaveBtn = $("dsave") as HTMLButtonElement;
 const dcancelBtn = $("dcancel") as HTMLButtonElement, dexportBtn = $("dexport") as HTMLButtonElement;
-const ddeleteBtn = $("ddelete") as HTMLButtonElement;
+const ddeleteBtn = $("ddelete") as HTMLButtonElement, ddebugBtn = $("ddebug") as HTMLButtonElement;
 
 const sw = (msg: Msg) => chrome.runtime.sendMessage(msg);
 
@@ -46,6 +46,11 @@ let currentId: string | null = null;   // selected workflow (drives the detail p
 let currentWf: Workflow | null = null;
 let editing = false;                    // step-edit mode (T16 light editing)
 let draft: Step[] = [];                 // working copy while editing; committed on Save
+let debugging = false;                  // debug mode: each step expands to its full IR + golden shot
+// Golden frames rendered in expanded debug rows are read as object URLs; tracked so we
+// can revoke them whenever the step list is torn down (mode change, re-select, re-render).
+let dbgUrls: string[] = [];
+const revokeDbgUrls = () => { for (const u of dbgUrls) URL.revokeObjectURL(u); dbgUrls = []; };
 
 async function refresh(): Promise<void> {
   summaries = (await sw({ cmd: "bao-wf-list" })) || [];
@@ -119,6 +124,7 @@ function card(w: WorkflowSummary): HTMLElement {
 async function openDetail(id: string): Promise<void> {
   currentId = id;
   editing = false; draft = [];
+  debugging = false; revokeDbgUrls();
   currentWf = await sw({ cmd: "bao-wf-get", id });
   if (!currentWf) { currentId = null; showPlaceholder(); await refresh(); return; }
   placeholderEl.hidden = true;
@@ -144,17 +150,22 @@ function renderDetail(): void {
 }
 
 // Edit mode swaps the action bar and outlines the step list; the read/run/export/delete
-// actions are hidden so the surface reads as a focused editor.
+// actions are hidden so the surface reads as a focused editor. Debug is a read-only view
+// toggle (hidden while editing) that expands every step to its full IR + golden frame.
 function setEditUI(): void {
-  deditBtn.hidden = editing;
+  deditBtn.hidden = ddebugBtn.hidden = editing;
   drunBtn.hidden = dexportBtn.hidden = ddeleteBtn.hidden = editing;
   dsaveBtn.hidden = dcancelBtn.hidden = !editing;
   dstepsEl.classList.toggle("editing", editing);
-  $("stepshead").textContent = editing ? "Steps (editing)" : "Steps";
+  dstepsEl.classList.toggle("debug", debugging && !editing);
+  ddebugBtn.classList.toggle("active", debugging);
+  ddebugBtn.textContent = debugging ? "🐞 Debug: on" : "🐞 Debug";
+  $("stepshead").textContent = editing ? "Steps (editing)" : debugging ? "Steps (debug)" : "Steps";
 }
 
 function renderSteps(): void {
   const wf = currentWf!;
+  revokeDbgUrls();          // rows are rebuilt from scratch; drop any frames the old ones held
   dstepsEl.textContent = "";
   // Lead row: where replay navigates before step 1 (same convention as the panel).
   if (wf.startUrl) {
@@ -170,7 +181,8 @@ function renderSteps(): void {
     dstepsEl.appendChild(row);
   }
   const steps = editing ? draft : wf.steps;
-  steps.forEach((s, i) => dstepsEl.appendChild(editing ? editRow(s, i) : readRow(s, i)));
+  steps.forEach((s, i) =>
+    dstepsEl.appendChild(editing ? editRow(s, i) : debugging ? debugRow(s, i) : readRow(s, i)));
 }
 
 function readRow(s: Step, i: number): HTMLElement {
@@ -184,6 +196,163 @@ function readRow(s: Step, i: number): HTMLElement {
   lbl.textContent = stepLabel(s);
   row.append(num, lbl);
   return row;
+}
+
+// ---------------------------- debug rows ----------------------------
+// A collapsible step row exposing the full recorded IR: the golden screenshot (with the
+// captured target bbox drawn over it), the ranked selector list replay tries in order,
+// and every metadata field the step carries. Built as a native <details> so expand/
+// collapse is free; the golden blob + body are built lazily on first open.
+function debugRow(s: Step, i: number): HTMLElement {
+  const row = document.createElement("details");
+  row.className = "srow dbg";
+
+  const sum = document.createElement("summary");
+  const num = document.createElement("span");
+  num.className = "num";
+  num.textContent = String(i + 1);
+  const lbl = document.createElement("span");
+  lbl.className = "lbl";
+  lbl.textContent = stepLabel(s);
+  const badge = document.createElement("span");
+  badge.className = "badge";
+  badge.textContent = s.action;
+  sum.append(num, lbl, badge);
+  row.appendChild(sum);
+
+  const body = document.createElement("div");
+  body.className = "dbgbody";
+  let built = false;
+  row.addEventListener("toggle", () => { if (row.open && !built) { built = true; buildDebugBody(body, s); } });
+  row.appendChild(body);
+  return row;
+}
+
+function dbgSection(title: string): HTMLElement {
+  const h = document.createElement("div");
+  h.className = "dbgsec";
+  h.textContent = title;
+  return h;
+}
+
+function buildDebugBody(body: HTMLElement, s: Step): void {
+  // Golden screenshot with the target bbox overlaid — the frame is read async and slots
+  // in when it lands; bbox x/y/w/h are viewport-relative %, so they map straight onto the
+  // full-viewport shot as percentage insets.
+  const ref = s.meta?.goldenScreenshotRef;
+  if (ref) {
+    body.appendChild(dbgSection("Golden screenshot"));
+    const holder = document.createElement("div");
+    holder.className = "dbgframe";
+    holder.textContent = "Loading…";
+    body.appendChild(holder);
+    goldenBlob(ref).then((blob) => {
+      holder.textContent = "";
+      if (!blob) { holder.classList.add("noframe"); holder.textContent = "No screenshot captured"; return; }
+      const url = URL.createObjectURL(blob);
+      dbgUrls.push(url);
+      const img = document.createElement("img");
+      img.src = url;
+      holder.appendChild(img);
+      const bb = s.target?.bbox;
+      if (bb) {
+        const ov = document.createElement("div");
+        ov.className = "bbox";
+        ov.style.cssText = `left:${bb.x}%;top:${bb.y}%;width:${bb.w}%;height:${bb.h}%`;
+        holder.appendChild(ov);
+      }
+    });
+  }
+
+  // Selectors: the ranked list replay resolves against, best first.
+  const sels = s.target?.selectors ?? [];
+  if (sels.length) {
+    body.appendChild(dbgSection(`Selectors (${sels.length})`));
+    const tbl = document.createElement("div");
+    tbl.className = "seltable";
+    sels.forEach((sel, idx) => {
+      const r = document.createElement("div");
+      r.className = "selrow";
+      const rank = document.createElement("span");
+      rank.className = "selrank";
+      rank.textContent = String(idx + 1);
+      const type = document.createElement("span");
+      type.className = "seltype";
+      type.textContent = sel.type;
+      const val = document.createElement("code");
+      val.className = "selval";
+      val.textContent = sel.value;
+      const score = document.createElement("span");
+      score.className = "selscore";
+      score.textContent = sel.score.toFixed(2);
+      r.append(rank, type, val, score);
+      tbl.appendChild(r);
+    });
+    body.appendChild(tbl);
+  }
+
+  // Everything else, as a key/value grid — only non-empty fields show.
+  body.appendChild(dbgSection("Metadata"));
+  const kv = document.createElement("div");
+  kv.className = "kv";
+  const add = (k: string, v: unknown) => {
+    if (v == null || v === "" || v === false) return;
+    const key = document.createElement("div");
+    key.className = "k";
+    key.textContent = k;
+    const val = document.createElement("div");
+    val.className = "v";
+    val.textContent = typeof v === "object" ? JSON.stringify(v) : String(v);
+    kv.append(key, val);
+  };
+  const t = s.target;
+  add("action", s.action);
+  add("id", s.id);
+  add("seq", s.seq);
+  add("index", s.index);
+  add("value", s.value);
+  add("mode", s.mode);
+  add("key", s.key);
+  add("checked", s.checked);
+  add("submits", s.submits);
+  if (s.assert) add("assert", `${s.assert.kind}${s.assert.value ? ` = "${s.assert.value}"` : ""}`);
+  add("url", s.url);
+  add("urlAfter", s.urlAfter);
+  add("urlPattern", s.urlPattern);
+  if (s.download) add("download", s.download.filename ?? JSON.stringify(s.download));
+  add("recordedAt", s.meta ? new Date(s.meta.recordedAt).toLocaleString() : undefined);
+  add("captured ts", s.ts ? new Date(s.ts).toLocaleString() : undefined);
+  if (s.meta?.viewport) add("viewport", `${s.meta.viewport.w}×${s.meta.viewport.h}`);
+  if (s.frame) {
+    add("frame id", s.frame.frameId);
+    add("frame top", s.frame.top);
+    add("frame url", s.frame.url);
+    add("frame origin", s.frame.origin);
+  }
+  if (t) {
+    add("reach", t.reach);
+    add("unique", t.unique);
+    add("degraded", t.degraded);
+    if (t.bbox) add("bbox", `x ${t.bbox.x}% · y ${t.bbox.y}% · ${t.bbox.w}%×${t.bbox.h}% @ ${t.bbox.vw}×${t.bbox.vh}`);
+    add("text", t.text);
+    add("role", t.role);
+    if (t.anchor) add("anchor", t.anchor);
+    if (t.within) add("within", t.within);
+    if (t.scroll) add("scroll", t.scroll.container);
+  }
+  body.appendChild(kv);
+
+  // The captured outerHTML snapshot (T13) can be large; keep it in its own collapsible.
+  if (t?.snapshot) {
+    const det = document.createElement("details");
+    det.className = "snap";
+    const sm = document.createElement("summary");
+    sm.textContent = `HTML snapshot (${t.snapshot.length} chars)`;
+    const pre = document.createElement("pre");
+    pre.textContent = t.snapshot;
+    det.append(sm, pre);
+    body.appendChild(det);
+  }
 }
 
 // An editable step row: ▲▼ reorder, ✕ delete, plus an inline field for the only
@@ -404,10 +573,19 @@ async function runWorkflow(id: string, startUrl: string): Promise<void> {
 }
 drunBtn.onclick = () => { if (currentWf) runWorkflow(currentWf.id, currentWf.startUrl); };
 
+// ---- debug view ----
+ddebugBtn.onclick = () => {
+  if (!currentWf) return;
+  debugging = !debugging;
+  setEditUI();
+  renderSteps();
+};
+
 // ---- edit steps ----
 deditBtn.onclick = () => {
   if (!currentWf) return;
   editing = true;
+  debugging = false;   // edit and debug are mutually exclusive step-list modes
   draft = currentWf.steps.map((s) => ({ ...s })); // shallow clone; edits stay local until Save
   setEditUI();
   renderSteps();
