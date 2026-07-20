@@ -1,0 +1,57 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a7be6"/>
+      <stop offset="1" stop-color="#2a4fc0"/>
+    </linearGradient>
+    <linearGradient id="bun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#f0e4cc"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.38" cy="0.32" r="0.7">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.7"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- app tile -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#tile)"/>
+
+  <!-- steam wisps -->
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="12" stroke-linecap="round">
+    <path d="M212 150 C 196 128, 228 116, 212 92"/>
+    <path d="M300 150 C 284 128, 316 116, 300 92"/>
+  </g>
+
+  <!-- bao bun -->
+  <g>
+    <!-- body -->
+    <path d="M256 178
+             C 158 178, 96 246, 96 320
+             C 96 372, 132 404, 190 412
+             C 214 415, 298 415, 322 412
+             C 380 404, 416 372, 416 320
+             C 416 246, 354 178, 256 178 Z" fill="url(#bun)"/>
+    <!-- sheen -->
+    <path d="M256 178
+             C 158 178, 96 246, 96 320
+             C 96 372, 132 404, 190 412
+             C 214 415, 298 415, 322 412
+             C 380 404, 416 372, 416 320
+             C 416 246, 354 178, 256 178 Z" fill="url(#sheen)"/>
+
+    <!-- pleats: folds converging to the top-center twist -->
+    <g stroke="#d8c7a4" stroke-width="9" stroke-linecap="round" fill="none" stroke-opacity="0.85">
+      <path d="M256 208 C 214 236, 176 288, 158 356"/>
+      <path d="M256 208 C 236 250, 214 306, 206 372"/>
+      <path d="M256 208 C 256 260, 256 312, 256 380"/>
+      <path d="M256 208 C 276 250, 298 306, 306 372"/>
+      <path d="M256 208 C 298 236, 336 288, 354 356"/>
+    </g>
+
+    <!-- top twist knot -->
+    <circle cx="256" cy="204" r="24" fill="#fffaf0"/>
+    <circle cx="256" cy="204" r="24" fill="url(#sheen)"/>
+    <circle cx="256" cy="204" r="24" fill="none" stroke="#d8c7a4" stroke-width="7" stroke-opacity="0.7"/>
+  </g>
+</svg>
