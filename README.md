@@ -92,6 +92,9 @@ distribution — far lighter Chrome Web Store review.
 5. **`t15-sidepanel-design.md`** — the side panel (live capture + quick-run surface).
 6. **`t16-dashboard-design.md`** — the full-page dashboard: library, light step editing,
    durable run history, and the record-vs-replay filmstrip.
+7. **`backend-webapp-design.md`** — launch #2: the hosted compiler (M2), accounts + sync,
+   and **workflow sharing** — designed local-first so the backend stays additive and the
+   privacy wedge survives.
 
 Docs cross-link with `[[wikilinks]]` by basename.
 
