@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bao - Bold &amp; Techy</title>
+<style>
+  :root{
+    --bg:#0C0B10; --bg2:#131119; --ink:#F4F1EA; --muted:#9B94A8; --line:#242030;
+    --amber:#F6A94A; --amber2:#FFC978; --grn:#57D9A3; --red:#FF6B6B; --violet:#A78BFA;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:"Inter",system-ui,sans-serif;background:var(--bg);color:var(--ink);
+    -webkit-font-smoothing:antialiased;line-height:1.6;overflow-x:hidden;
+    background-image:radial-gradient(60% 50% at 80% -5%,rgba(167,139,250,.16),transparent 60%),
+                     radial-gradient(50% 40% at 5% 0%,rgba(246,169,74,.14),transparent 55%);}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 26px}
+  a{color:inherit;text-decoration:none}
+  .mono{font-family:var(--mono)}
+  .btn{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:15px;padding:13px 22px;border-radius:10px;cursor:pointer;border:1px solid transparent;transition:.18s}
+  .btn-primary{background:var(--amber);color:#1A1206}
+  .btn-primary:hover{background:var(--amber2);transform:translateY(-1px)}
+  .btn-line{background:transparent;border-color:var(--line);color:var(--ink)}
+  .btn-line:hover{border-color:#3a3450;background:var(--bg2)}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:20px 0}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px}
+  .navlinks{display:flex;gap:28px;font-size:14.5px;color:var(--muted);font-family:var(--mono)}
+  .navlinks a:hover{color:var(--amber2)}
+  @media(max-width:780px){.navlinks{display:none}}
+
+  .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:44px;align-items:center;padding:56px 0 40px}
+  @media(max-width:900px){.hero{grid-template-columns:1fr}}
+  .tag{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;color:var(--grn);
+    border:1px solid var(--line);background:var(--bg2);padding:7px 13px;border-radius:8px}
+  h1{font-size:clamp(38px,6vw,62px);line-height:1.03;letter-spacing:-1.5px;font-weight:800;margin:22px 0 18px}
+  h1 .g{background:linear-gradient(90deg,var(--amber2),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{font-size:19px;color:var(--muted);max-width:52ch;margin-bottom:28px}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap}
+  .note{margin-top:16px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .note b{color:var(--grn)}
+
+  /* terminal card */
+  .term{background:linear-gradient(180deg,#15121D,#100E17);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:0 30px 70px -30px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.03)}
+  .term .tbar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line);background:#0F0D15}
+  .term .tbar .d{width:11px;height:11px;border-radius:50%}
+  .term .tt{margin-left:8px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .term .body{padding:18px 18px 20px;font-family:var(--mono);font-size:13.5px;line-height:1.9}
+  .cm{color:var(--muted)}.kw{color:var(--violet)}.st{color:var(--grn)}.nu{color:var(--amber2)}.fn{color:#7CC5FF}
+  .ln{white-space:pre-wrap}
+  .pass{color:var(--grn)} .runline{color:var(--muted)}
+  .cursor-blink{display:inline-block;width:8px;height:16px;background:var(--amber);vertical-align:-2px;animation:bl 1s steps(2) infinite}
+  @keyframes bl{50%{opacity:0}}
+
+  /* logline strip */
+  .why{padding:70px 0}
+  .why h2{font-size:clamp(26px,3.6vw,38px);font-weight:800;letter-spacing:-1px;text-align:center;margin-bottom:10px}
+  .why .s{color:var(--muted);text-align:center;max-width:60ch;margin:0 auto 44px;font-size:17px}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:900px;margin:0 auto}
+  @media(max-width:720px){.cmp{grid-template-columns:1fr}}
+  .col{border:1px solid var(--line);border-radius:14px;padding:24px;background:var(--bg2)}
+  .col.bad{opacity:.9}
+  .col h3{font-family:var(--mono);font-size:14px;margin-bottom:16px;letter-spacing:.3px}
+  .col.bad h3{color:var(--red)} .col.good h3{color:var(--grn)}
+  .col li{list-style:none;display:flex;gap:10px;margin:11px 0;color:var(--muted);font-size:15px}
+  .col li::before{content:"✕";color:var(--red);font-weight:700}
+  .col.good li::before{content:"✓";color:var(--grn)}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:20px 0 30px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .fc{border:1px solid var(--line);border-radius:14px;padding:22px;background:linear-gradient(180deg,var(--bg2),#100E17)}
+  .fc .k{font-family:var(--mono);font-size:12px;color:var(--amber);margin-bottom:10px}
+  .fc h3{font-size:17px;margin-bottom:7px}
+  .fc p{color:var(--muted);font-size:14.5px}
+
+  .band{margin:50px auto 80px;border:1px solid var(--line);border-radius:20px;padding:52px 34px;text-align:center;
+    background:radial-gradient(80% 140% at 50% -20%,rgba(246,169,74,.18),transparent 60%),var(--bg2)}
+  .band h2{font-size:clamp(28px,4vw,44px);font-weight:800;letter-spacing:-1px;margin-bottom:12px}
+  .band p{color:var(--muted);margin-bottom:26px;font-size:18px}
+  footer{border-top:1px solid var(--line);padding:30px 0;color:var(--muted);font-family:var(--mono);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="brand"><svg width="30" height="30" viewBox="0 0 100 100"><use href="#bao"/></svg> Bao</div>
+    <div class="navlinks"><a href="#why">why</a><a href="#how">how</a><a href="#">docs</a><a href="#">github</a></div>
+    <a class="btn btn-primary" href="#get">Add to Chrome</a>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <span class="tag">// the LLM is <b style="color:var(--red)">not</b> the runtime</span>
+      <h1>Record a browser task once. <span class="g">Replay it forever.</span></h1>
+      <p class="lede">Bao compiles your clicks into a readable, editable workflow. Replay is plain deterministic code - free, instant, offline. When the page really changes, it fails cleanly instead of hallucinating.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#get">
+          <svg width="18" height="18" viewBox="0 0 48 48"><circle cx="24" cy="24" r="10" fill="#1A1206"/><path fill="#EA4335" d="M24 4a20 20 0 0 1 17.3 10H24a10 10 0 0 0-9 5.5z"/><path fill="#34A853" d="M6.7 14A20 20 0 0 0 24 44l7-16a10 10 0 0 1-14.6-4z"/><path fill="#FBBC05" d="M44 24a20 20 0 0 1-13 20l-7-16h17.3z"/></svg>
+          Add to Chrome
+        </a>
+        <a class="btn btn-line mono" href="#how">$ see it run</a>
+      </div>
+      <p class="note">MV3 extension · <b>0 API calls</b> at replay · passwords never stored</p>
+    </div>
+
+    <div class="term" id="how">
+      <div class="tbar">
+        <span class="d" style="background:#FF5F57"></span><span class="d" style="background:#FEBC2E"></span><span class="d" style="background:#28C840"></span>
+        <span class="tt">bao · renew-permit.workflow</span>
+      </div>
+      <div class="body">
+<div class="ln"><span class="cm"># recorded once → compiled to IR</span></div>
+<div class="ln"><span class="kw">workflow</span> <span class="st">"renew-permit"</span> {</div>
+<div class="ln">  <span class="fn">goto</span>  <span class="st">"county.gov/permits"</span></div>
+<div class="ln">  <span class="fn">type</span>  <span class="cm">#permit-id</span> ← <span class="nu">$license</span> <span class="cm">// masked</span></div>
+<div class="ln">  <span class="fn">click</span> <span class="st">"Renew"</span></div>
+<div class="ln">  <span class="fn">wait</span>  <span class="cm">for user → OTP</span></div>
+<div class="ln">  <span class="fn">assert</span> text <span class="st">"Approved"</span></div>
+<div class="ln">  <span class="fn">download</span> <span class="st">"receipt.pdf"</span></div>
+<div class="ln">}</div>
+<div class="ln">&nbsp;</div>
+<div class="ln"><span class="runline">$ bao replay renew-permit</span></div>
+<div class="ln"><span class="pass">✓ 6 steps · 1.8s · deterministic</span> <span class="cursor-blink"></span></div>
+      </div>
+    </div>
+  </header>
+</div>
+
+<!-- WHY -->
+<section class="why" id="why">
+  <div class="wrap">
+    <h2>Other tools let an AI drive. Bao doesn't.</h2>
+    <p class="s">An LLM guessing at runtime is slow, costs money on every run, and breaks in ways you can't see. Bao uses the model once - at authoring time - then gets out of the way.</p>
+    <div class="cmp">
+      <div class="col bad">
+        <h3>LLM-as-runtime (browser-use, etc.)</h3>
+        <li>Pays a model on every single run</li>
+        <li>Non-deterministic - different each time</li>
+        <li>Needs a connection; never truly offline</li>
+        <li>Fails silently by guessing wrong</li>
+      </div>
+      <div class="col good">
+        <h3>Bao - compiled workflow</h3>
+        <li>Model runs once, then never again</li>
+        <li>Same result every replay, byte for byte</li>
+        <li>Runs offline, instant, free</li>
+        <li>Fails loudly: “page changed, re-record”</li>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="fc"><div class="k">RESILIENCE</div><h3>Ranked selector fallback</h3><p>Each step carries multiple ways to find its target and walks the cheapest tier that still works.</p></div>
+    <div class="fc"><div class="k">COVERAGE</div><h3>Real-world DOM</h3><p>Cross-origin frames, open/closed shadow DOM, virtualized lists, native selects, downloads.</p></div>
+    <div class="fc"><div class="k">TRUST</div><h3>Golden-frame audit</h3><p>Every run is captured as a filmstrip with per-step IR so you can see exactly what happened.</p></div>
+    <div class="fc"><div class="k">PRIVACY</div><h3>Sensitive-field masking</h3><p>Passwords, SSNs, card and CVV values are never recorded. Local-only by design.</p></div>
+    <div class="fc"><div class="k">CI</div><h3>Headless runner + asserts</h3><p>Turn a recording into a synthetic monitor or record-to-test check that runs in your pipeline.</p></div>
+    <div class="fc"><div class="k">CONTROL</div><h3>waitForUser pauses</h3><p>Hand control back for OTPs or captchas, then resume the deterministic replay automatically.</p></div>
+  </div>
+
+  <div class="band" id="get">
+    <svg width="76" height="76" viewBox="0 0 100 100" style="margin-bottom:6px"><use href="#bao"/></svg>
+    <h2>Compile your first workflow tonight</h2>
+    <p>Free MV3 extension. No backend, no account, no runtime bill.</p>
+    <a class="btn btn-primary" href="#" style="font-size:17px;padding:15px 28px">Add Bao to Chrome</a>
+  </div>
+
+  <footer>
+    <div class="brand mono" style="font-size:15px"><svg width="22" height="22" viewBox="0 0 100 100"><use href="#bao"/></svg> bao</div>
+    <div>v0.0.1 · record → compile → replay · MIT</div>
+  </footer>
+</div>
+
+<!-- reusable bao mascot (dark-friendly) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient>
+  <radialGradient id="dough" cx="42%" cy="32%" r="78%"><stop offset="0" stop-color="#FFFDF8"/><stop offset="66%" stop-color="#FFF1DE"/><stop offset="100%" stop-color="#F8DEBE"/></radialGradient>
+  <g id="baobun">
+    <g stroke="#E7D3B6" stroke-width="2" stroke-linecap="round" fill="none" opacity=".8"><path d="M41 27 C39.2 24.3 42.8 23 41 20.3"/><path d="M50 26 C48.2 23.3 51.8 22 50 19.3"/><path d="M59 27 C57.2 24.3 60.8 23 59 20.3"/></g>
+    <path d="M50 34 C70 34 79 48 79 62 C79 78 65 84 50 84 C35 84 21 78 21 62 C21 48 30 34 50 34Z" fill="url(#dough)" stroke="#EBD3B2" stroke-width="1.4"/>
+    <ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2" stroke-width="1"/>
+    <path d="M36 60 Q41 52.5 46 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M54 60 Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M44 72 Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+  </g>
+  <g id="bao">
+    <rect x="4" y="4" width="92" height="92" rx="24" fill="url(#bg)"/>
+    <g stroke="#FFE6C4" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"><path d="M41 27 C39.2 24.3 42.8 23 41 20.3"/><path d="M50 26 C48.2 23.3 51.8 22 50 19.3"/><path d="M59 27 C57.2 24.3 60.8 23 59 20.3"/></g>
+    <path d="M50 34 C70 34 79 48 79 62 C79 78 65 84 50 84 C35 84 21 78 21 62 C21 48 30 34 50 34Z" fill="url(#dough)" stroke="#EBD3B2" stroke-width="1.4"/>
+    <ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2" stroke-width="1"/>
+    <path d="M36 60 Q41 52.5 46 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M54 60 Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M44 72 Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+  </g>
+</defs></svg>
+</body>
+</html>
