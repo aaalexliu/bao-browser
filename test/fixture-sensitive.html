@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bao Sensitive-Input Fixture</title>
+  <style>
+    body { font: 14px system-ui; max-width: 480px; margin: 40px auto; }
+    label { display: block; margin: 10px 0 4px; }
+    input { display: block; width: 260px; padding: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Bao Sensitive-Input Fixture</h1>
+  <p>
+    T1: a sensitive field's value must never be recorded. Passwords, SSN / card / CVV /
+    OTP fields (by type, autocomplete, name, or value-shape) are masked; an ordinary
+    field records its value as usual.
+  </p>
+
+  <form id="signup">
+    <label for="user">Username</label>
+    <input id="user" name="username" type="text" autocomplete="username" />
+
+    <!-- type=password: the hard signal -->
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" />
+
+    <!-- plain text field, but name/autocomplete mark it as a card number -->
+    <label for="card">Card number</label>
+    <input id="card" name="cc-number" type="text" autocomplete="cc-number" inputmode="numeric" />
+
+    <!-- unmarked generic field; sensitivity comes from the SSN value-shape alone -->
+    <label for="misc">Reference code</label>
+    <input id="misc" name="ref" type="text" />
+  </form>
+</body>
+</html>

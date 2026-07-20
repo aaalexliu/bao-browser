@@ -79,6 +79,12 @@ export interface Step {
   target?: Target;
   value?: string;
   mode?: "contenteditable";
+  // T1: a sensitive field (password / SSN / card / CVV / OTP …). Its value is NEVER
+  // recorded — `value` is absent, and the target's text/snapshot fuel + the golden
+  // screenshot are all dropped so the secret can't leak through the audit layer. At
+  // replay the field is focused but not filled; the user supplies the secret (a
+  // natural M4 variable slot later).
+  sensitive?: boolean;
   // setChecked (T3): the recorded end-state, replayed as SET not toggle
   checked?: boolean;
   // keypress (T4): a whitelisted key (Enter | Escape | Tab)
