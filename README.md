@@ -1,157 +1,175 @@
-# Bao M0 Spike
+# Bao
 
-Proves the risky core: **record → deterministic replay** on a single page.
-No LLM, no backend, no cross-navigation (those are M1+).
+**Record a browser workflow once, get human-readable steps, replay it deterministically
+whenever you want.** A Chrome MV3 extension for non-technical users with a repetitive
+browser task ("log in, open the report, download the CSV").
 
-## Load it
-1. `npm install && npm run build` — sources are TypeScript (`src/`), esbuild bundles
-   them to `dist/` (use `npm run watch` while developing)
-2. `chrome://extensions` → toggle **Developer mode** (top right)
-3. **Load unpacked** → select this folder (`bao-browser-m0`)
-4. Pin the extension, open any normal `http(s)` page (not `chrome://` pages)
+Unlike browser-use / Skyvern, **the LLM is not the runtime.** The durable artifact is a
+readable, editable **workflow (IR)**. An LLM is a *compiler* (raw trace → clean steps)
+that runs once at authoring time. Replay is plain deterministic code: free, instant,
+offline, and it fails *cleanly* (a clear "the page changed, re-record" report) instead of
+guessing.
 
-## Try it
-1. Click the toolbar icon — the **side panel** opens (T15; it stays open while you
-   work, unlike the old popup)
-2. **● Record**, then click around / type into fields on the page — steps appear
-   live in the panel as you interact
-3. **■ Stop** — the recording is auto-saved with a generated name; the name is
-   focused for an inline rename (typing replaces it, Enter commits)
-4. **▶ Run** from a workflow card or its detail view — the step list shows live
-   ✓/✗ progress, pauses inline with a **Continue** button when a step needs you
-5. Workflows are searchable, grouped by site, pinnable, and import/export as JSON
-   (the exported file is directly usable by `node test/run.mjs`)
-6. Open the **dashboard** (the ⤢ button in the panel header, or right-click the
-   extension → Options) for a full-page home: browse the library at width, **edit** a
-   workflow's steps (reorder / delete / edit values, no re-record - T16 §3), and
-   re-watch **run history** as a record-vs-replay **filmstrip**. Every replay now saves
-   a screenshot per step (IndexedDB `bao-history`), paired with the record-time golden
-   frame so you can scrub what replay saw against what recording expected.
+> This README is the single entry point. It states where the project is, links every
+> design doc in reading order, and lays out the path to a public launch. Deep design
+> lives in the docs mapped below; how to run the tests lives in [TESTING.md](TESTING.md).
 
-## Test it (automated)
-A headless e2e loads the unpacked extension, records a real session on a fixture
-page, replays it, and dumps the artifacts to `out/`.
+---
+
+## Status at a glance
+
+The risky core is **built and green** (`npm run typecheck` + `npm test` pass): capture →
+deterministic replay, across full-document navigations, with a side panel, a full-page
+dashboard, run history, and an audit filmstrip. The engine covers the two target wedges.
+
+| Area | State |
+|---|---|
+| M0 — capture + deterministic replay, ranked multi-selector fallback, native input actuator | ✅ shipped |
+| P0 recorder correctness — checkbox *set* (T3), keyboard/Enter-submit (T4), pointerdown-timing (T5) | ✅ shipped |
+| **T1 — mask sensitive inputs (passwords / SSNs)** | ❌ **NOT shipped — see blockers** |
+| contenteditable / rich-text (T2), assert + headless CI runner (T6) | ✅ shipped |
+| SPA soft-nav (T7), M1 cross-navigation state machine + `waitForUser` (T8), downloads (T10) | ✅ shipped |
+| Over-capture fuel — grounding (T11), golden screenshots (T12), subtree snapshot (T13) | ✅ shipped |
+| IR + named workflows (T14), side panel (T15), dashboard + light editing + run history + filmstrip (T16) | ✅ shipped |
+| Structural coverage — open-shadow piercing, `<select>`, reachability classifier, virtualization scroll-find, cross-origin frames, opt-in closed-shadow force-open | ✅ shipped |
+| **M2 — hosted LLM compiler** (raw trace → readable labels; the non-technical trust surface) | ⬜ not started |
+| **M4 — Tier-3 VLM self-heal • parameterization / variables** (the "record I just created" gap) | ⬜ future |
+| Backlog — hover, drag-and-drop, clipboard, dblclick, odd input types, multi-tab | ⬜ deferred |
+
+Full task-by-task history and acceptance criteria: `recording-gaps-and-app-universe.md`
+§Part 1.
+
+---
+
+## The strategy, in brief
+
+**Where Bao wins:** no API, auth lives in the browser, the task is repetitive multi-step
+UI, and the page churns between runs. Two beachheads, chosen because they lean *least* on
+the unsolved structural problems (shadow DOM, virtualization, cross-origin, canvas):
+
+- **A. Government / bureaucratic forms (prosumer).** Visceral pain, no API, "I did this
+  last year and forgot how." Gated on: T1 masking, M1 cross-nav (✅), `waitForUser` (✅),
+  and — for the readable-steps promise to a non-technical user — the M2 compiler.
+- **B. Record-to-test for QA / synthetic monitoring (IT).** Technical buyer, the engine
+  *is* the product, **no backend required**. Assert + headless runner already shipped
+  (T6). This wedge is closest to launchable today.
+
+**The resolution ladder** (walk the cheapest deterministic tier that works; escalate
+per-step, never globally; cache any escalation back down to a deterministic selector):
+
+| Tier | Mechanism | Determinism | Status |
+|---|---|---|---|
+| 0 | Unique robust selector (testid/id/aria) | full | ✅ |
+| 1 | Content anchor + within-descriptor + M1 cross-nav | full | ✅ |
+| 2 | Capture-only DOM subtree + screenshot (fuel / audit, **not** a resolver) | n/a | ✅ |
+| 3 | VLM self-heal on miss → writes a fresh selector back to the IR | probabilistic → re-cached | ⬜ M4 |
+| 4 | Debugger / CDP executor (trusted input, file upload, closed shadow) | full | ⬜ opt-in, behind the Executor seam |
+
+**The bet, stated honestly:** for repetitive, light-DOM, single-origin tasks,
+*"free + deterministic + fails cleanly"* beats *"probabilistic + expensive + 95% right."*
+The blind spots (canvas interiors, `isTrusted`/anti-bot walls, `chrome://` & OS dialogs)
+are the explicit boundary of that wager — the seams to cross it per-step are pre-built,
+never the baseline. This is the wedge against **browzer** (the closest competitor):
+Bao requests **no `debugger` permission**, so no trust banner and — critically for
+distribution — far lighter Chrome Web Store review.
+
+---
+
+## Documentation map (read in this order)
+
+1. **`product-design-v1.md`** — the master design: architecture, the IR, storage &
+   privacy, auditable replay, the Executor seam, non-debugger vs debugger execution, and
+   the browzer teardown. Start here.
+2. **`use-cases-and-snapshot-fallback.md`** — which use cases to aim at, the resolution
+   ladder in depth, the "can we just snapshot the DOM/screen?" question answered, and the
+   blind-spot comparison vs browser-use / Skyvern.
+3. **`recording-gaps-and-app-universe.md`** — every capability specced as an executable
+   task (T1–T14 + backlog, with shipped-status annotations), the taxonomy of all
+   browser-app categories and what each layer of work unlocks, and the live no-login test
+   targets per category.
+4. **`m1-design.md`** — the cross-navigation milestone: the storage-backed SW state
+   machine, re-inject/resume, `waitForUser`, downloads, and the genuinely hard races.
+5. **`t15-sidepanel-design.md`** — the side panel (live capture + quick-run surface).
+6. **`t16-dashboard-design.md`** — the full-page dashboard: library, light step editing,
+   durable run history, and the record-vs-replay filmstrip.
+
+Docs cross-link with `[[wikilinks]]` by basename.
+
+---
+
+## Quickstart
 
 ```sh
-npm install
-npx playwright install chromium   # one-time: downloads the browser
-npm test                          # npm test -- --headed to watch it run
+npm install && npm run build   # TypeScript in src/ → esbuild bundles to dist/ (npm run watch to iterate)
 ```
 
-It drives the **real** `content.ts` (built to `dist/content.js`) through
-`chrome.tabs.sendMessage` (the same path `sidepanel.ts` uses) and asserts the page was actually re-driven. Outputs:
-- `out/recorded-steps.json` — captured steps with the ranked selector candidates
-- `out/replay-results.json` — per-step resolution (`via` selector) + the events the page fired during replay
+1. `chrome://extensions` → toggle **Developer mode** → **Load unpacked** → select this folder.
+2. Pin the extension, open any normal `http(s)` page (not `chrome://`), click the toolbar
+   icon — the **side panel** opens.
+3. **● Record**, click / type on the page (steps appear live), **■ Stop** — auto-saved
+   with a generated name, focused for an inline rename.
+4. **▶ Run** from a card or the detail view — the step list shows live ✓/✗ progress and
+   pauses inline with a **Continue** button when a step needs you.
+5. Open the **dashboard** (⤢ in the panel header, or right-click → Options) for the
+   full-page home: browse the library, **edit** steps (reorder / delete / edit
+   value+assert, no re-record), and re-watch **run history** as a record-vs-replay
+   filmstrip.
 
-**Assertions + headless runner (T6)** — recording supports *expectations*, not just
-actions: press **Alt+Shift+A** while recording, then click an element to capture an
-`assert` (defaults to "expect this text present"; the panel shows it as `Expect: …`).
-Assertions are checked at replay, are **non-fatal** (all are reported; the run fails
-iff any assert fails), and support `textPresent | elementVisible | elementAbsent |
-urlMatches`. The thin CI runner replays a saved trace and reports a ✓/✗ table:
+Testing (unit e2e, the headless CI runner, live-site suites): **[TESTING.md](TESTING.md)**.
 
-```sh
-node test/run.mjs <steps.json> <url>   # exit 0 = all passed, 1 = a step/assert failed
-```
+---
 
-`npm test` also runs `test/list.mjs` (`npm run test:list`), the repeated-list
-regression: it records a click on one of six identical cards, then reorders /
-prepends / deletes / swaps buttons and asserts replay still hits the right one
-via its **ancestor anchor** (a stable id, href, or text fingerprint) — the case
-that breaks naive aria/text/nth-of-type selectors.
+## Path to launch: "a web app + install the extension"
 
-## Test against a real, logged-in site (Substack, LinkedIn, …)
-The fixture above runs in a throwaway profile. To drive a real authenticated page
-you need a **persistent profile** (so your login survives) and a **headed**
-browser (so you can log in and interact by hand). `test/live.mjs` does this:
+The product *is* the extension. "Deploy as a web app" means a **landing site** (what it
+is, a demo, install CTA, docs) that points users at the extension — plus getting the
+extension itself distributable. Two audiences, two very different readiness levels:
 
-```sh
-# 1) One-time: log in. A real Chrome window opens — log in fully, then press Enter.
-node test/live.mjs login  https://substack.com
+- **QA / dev wedge (B):** pure client-side, **no backend**. Closest to shippable today.
+- **Non-technical / gov wedge (A):** the readable-steps promise implies the **M2 hosted
+  compiler** — a real backend service (LLM key, infra, and privacy handling of the
+  redacted trace). Bigger lift; decide whether launch #1 targets this at all.
 
-# 2) Record: interact with the page yourself, then press Enter to stop.
-node test/live.mjs record https://YOURPUB.substack.com/publish/post --out out/post.json
+### Blockers, in priority order
 
-# 3) Replay: re-drives the page from the saved steps.
-node test/live.mjs replay https://YOURPUB.substack.com/publish/post --in out/post.json
-```
+1. **T1 — plaintext secrets (hard liability, must fix first).** `onInput` records
+   `step.value = el.value` for `type=password` fields and it lands in
+   `chrome.storage.local` unencrypted. Shipping this to real users is a non-starter.
+   Scope is small (classify sensitive fields → store `value:null` + a display mask →
+   degrade to a clear "re-enter" at replay; redact from `out/` dumps). Full spec:
+   `recording-gaps-and-app-universe.md` §T1. **This gates any non-dev distribution.**
+2. **No extension icons.** `manifest.json` has `"action": {}` and no `icons` key. A Chrome
+   Web Store listing requires a 128px icon (+ toolbar sizes) and store screenshots/promo
+   assets. Blocker for a listing; trivial once assets exist.
+3. **Chrome Web Store review risk.** `<all_urls>` host permissions + `scripting` /
+   `tabs` / `webNavigation` / `downloads` trigger heavy review and a per-permission
+   justification form. Mitigant: Bao does **not** request `debugger` (the thing keeping
+   browzer stuck in review), and the privacy story is genuinely strong. Also clean up the
+   redundant **`activeTab`** that sits alongside `<all_urls>` — it reads as confused to a
+   reviewer. Budget for review back-and-forth; the `<all_urls>` justification ("a
+   general-purpose recorder must run on the page the user chooses") is the crux.
+4. **Privacy policy (required, and an asset not a chore).** CWS requires one for these
+   permissions. Bao's stance is a selling point: screenshots and DOM snapshots are
+   **local-only + input-masked**; only a redacted, masked trace would ever reach the M2
+   backend. Write it to match the code, publish it on the landing site, link it in the
+   listing.
+5. **Distribution mode.** "Download instructions" for a Developer-mode *unpacked load* is
+   fine for a beta but hostile to the non-technical primary user (it directly contradicts
+   the thesis). The real answer is a **CWS listing** (one-click install); use unpacked /
+   `.crx` / Enterprise force-install only for beta and design-partner installs while the
+   listing is in review.
+6. **M2 backend — only if launch #1 targets the non-technical wedge.** No backend exists.
+   Standing up the thin compiler service (host the LLM key, coalesce/label the trace,
+   handle the redacted trace privately) is the largest single item, and it's a *product
+   decision*, not a bug: the QA wedge can launch without it.
+7. **Housekeeping.** Version is `0.0.1`; the design docs still carry per-task "not yet
+   landed" notes that are now stale (T1 excepted) — this README's status table is the
+   source of truth. `product-design-v1.md` still references a `[[browser-use-vs-skyvern]]`
+   sibling doc that isn't in the repo.
 
-The session is stored in `.chrome-profile/` (git-ignored) and reused on every run,
-so you only log in once. `--seconds N` auto-stops recording instead of waiting for Enter.
+### Shortest credible path to a public beta
 
-**Live smoke test of anchoring** — `test/live-notes.mjs` is the real-Substack
-counterpart to the deterministic list regression. It records a Share-click on a
-chosen note in the Notes feed (many identical Share buttons), replays through the
-real content script, and asserts it acted on the *same* note by its stable id:
-
-```sh
-node test/live.mjs login https://substack.com   # one-time, if not already
-node test/live-notes.mjs                         # default: target note #2 (not the first)
-node test/live-notes.mjs 3 --headed              # watch it; target a different note
-```
-
-**Live gap-analysis suite** — one runnable file per category (sharing
-`test/live-helpers.mjs`) drives real record→replay→assert against the no-login targets
-in `recording-gaps-and-app-universe.md` §Part 3, scoped to the categories whose
-capability actually shipped (so a live FAIL means a regression):
-
-```sh
-npm run test:live-gaps               # all four categories, headless
-npm run test:live-gaps:forms         # cat 1 only
-npm run test:live-gaps:spa           # cat 2 only
-npm run test:live-gaps:editors       # cat 3 only
-npm run test:live-gaps:feed          # cat 4 only
-
-# Watch one in a real window (headed is per-category — the aggregate is headless):
-npm run test:live-gaps:editors -- --headed
-npm run test:live-gaps:editors -- lexical   # filter within a multi-case file
-```
-
-- **cat 1 forms** (`live-gaps-forms.mjs`) — selenium web-form: records a text `input` +
-  native `<select>`, resets both, replays, asserts the values are driven back (real
-  baseline→target round-trip)
-- **cat 2 SPA (T7)** (`live-gaps-spa.mjs`) — TodoMVC: clicks across hash routes, asserts a
-  `softNav` marker is captured and that replay *waits* on the route (`via=softNav`)
-- **cat 3 editors (T2)** (`live-gaps-editors.mjs`) — Lexical / ProseMirror / Quill: types a
-  unique token, resets via reload, replays through the contenteditable actuator.
-  ProseMirror/Quill must accept a synthetic path; **Lexical is the documented "strict
-  editor" case** — it cleanly rejects all synthetic paths, treated as the expected honest
-  outcome, not a fail
-- **cat 4 feed** (`live-gaps-feed.mjs`) — Hacker News: records a click on story #4 of 30
-  identical rows and asserts replay hits the *same* story by its stable `item?id=` (the
-  login-free counterpart to `live-notes.mjs`)
-
-Same contract as the smoke suite: opt-in (not part of `npm test`); a load failure /
-bot-block / missing structure is a **SKIP**, a wrong replay effect is a **FAIL**.
-
-**Reality check on dynamic pages:** replay is only as deterministic as the page.
-A *stable* surface (compose box, settings form) replays reliably. Repeated **feeds**
-used to be a poor target — but anchored capture now re-resolves a specific card by
-its stable id / href / text even after the feed reorders (see the list regression).
-The remaining limit is content that has *scrolled out of the DOM* entirely.
-
-## What it demonstrates (the M0 risk-burndown)
-- **Ranked multi-selector capture** (`src/content.ts` → `getSelectors`): testid > aria > text > stable id > css path
-- **Multi-selector fallback resolution** (`resolveStep`): tries each selector, first hit wins
-- **The input actuator** (`setNativeValue`): native value setter + real `InputEvent` so React/Vue register the change
-- **Graceful failure**: replay stops at the first unresolved step and reports which one
-
-## Known M0 limits (by design — next milestones)
-- ~~Single page only~~ **landed (M1/T8):** recording streams steps to the SW
-  (`chrome.storage.session`), replay runs a storage-backed RunState machine in the SW
-  (phases `executing → awaiting_nav → … → done|failed`, plus a resumable
-  `paused_for_user` with an inline Continue button in the panel) — both survive full-document
-  navigations and SW death; see `test/nav.mjs`
-- contenteditable replay drives editors via `execCommand("insertText")` (deprecated but
-  still the only synthetic path most editors accept) with a `beforeinput` dispatch
-  fallback; heavily custom editors may reject both — replay then fails the step with a
-  clear report rather than pretending (Google Docs is canvas-rendered anyway)
-- ~~no keypress / checkbox-state / pointerdown-timing capture~~ **landed (P0/T3–T5):**
-  checkbox/radio record their end-**state** and replay as *set*, not toggle
-  (`test/check.mjs`); `Enter`/`Escape`/`Tab` record as `keypress` and Enter-submit is
-  tagged so replay `requestSubmit()`s it (`test/keyboard.mjs`); the click target is
-  grabbed at `pointerdown` so a node that unmounts before `click` is still captured
-  (`test/pointerdown.mjs`)
-- No screenshots / audit trail yet (full-viewport capture comes with the auditable-replay work)
-- Naive `change`/`input` coalescing; no scroll steps yet
-- Selector heuristics are a starting port of Playwright/Chrome-Recorder ideas, not tuned
+**T1 → icons + manifest cleanup → privacy policy → CWS submission**, in parallel with a
+static landing page (what it is, a 60-second demo, install CTA, docs). Target the **QA/dev
+wedge** for launch #1 (no backend, engine already proven), and treat the M2 compiler +
+gov-forms wedge as launch #2 once the backend exists.
