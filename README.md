@@ -16,6 +16,27 @@ guessing.
 
 ---
 
+## Install
+
+**Chrome Web Store (one-click): _coming soon._** The listing is packaged and staged
+(`store/`) but not yet submitted - track [blocker #5](#blockers-in-priority-order). Once
+it's live, this line becomes the install button.
+
+**Beta (available now): download + load unpacked.** Until the store listing is live, grab
+the packaged build from the [latest release](https://github.com/aaalexliu/bao-browser/releases/latest):
+
+1. Download `bao-extension.zip` from the release and **unzip** it.
+2. Open `chrome://extensions`, toggle **Developer mode** (top-right).
+3. **Load unpacked** → select the unzipped folder.
+4. Pin Bao, open any normal `http(s)` page, click the toolbar icon - the side panel opens.
+
+> This is a beta distribution mode: Developer-mode unpacked load is fine for early users
+> but is not the intended path for non-technical users (see the thesis in
+> [blocker #5](#blockers-in-priority-order)) - the Chrome Web Store listing is. Building
+> from source instead? See **[Quickstart](#quickstart)** below.
+
+---
+
 ## Status at a glance
 
 The risky core is **built and green** (`npm run typecheck` + `npm test` pass): capture →
@@ -156,16 +177,18 @@ extension itself distributable. Two audiences, two very different readiness leve
    no backend, no network egress, local-only storage (`chrome.storage` + IndexedDB, no
    sync), sensitive fields masked at capture, plus a per-permission justification table.
    Publish it on the landing site and link it in the listing.
-5. **Distribution mode.** "Download instructions" for a Developer-mode *unpacked load* is
-   fine for a beta but hostile to the non-technical primary user (it directly contradicts
-   the thesis). The real answer is a **CWS listing** (one-click install); use unpacked /
-   `.crx` / Enterprise force-install only for beta and design-partner installs while the
-   listing is in review.
+5. **Distribution mode (beta shipped, store pending).** A **beta unpacked build** is now
+   published as a [GitHub release](https://github.com/aaalexliu/bao-browser/releases/latest)
+   (download `bao-extension.zip` → load unpacked; see [Install](#install)). That's fine for
+   early/design-partner users but stays hostile to the non-technical primary user (it
+   contradicts the thesis). The real answer is still a **CWS listing** (one-click install),
+   which is packaged and awaiting submission.
 6. **M2 backend — only if launch #1 targets the non-technical wedge.** No backend exists.
    Standing up the thin compiler service (host the LLM key, coalesce/label the trace,
    handle the redacted trace privately) is the largest single item, and it's a *product
    decision*, not a bug: the QA wedge can launch without it.
-7. **Housekeeping.** Version is `0.0.1`; the design docs still carry per-task "not yet
+7. **Housekeeping.** Version is `0.1.0` (bumped off `0.0.1` for the first beta release);
+   the design docs still carry per-task "not yet
    landed" notes that are now stale (T1 excepted) — this README's status table is the
    source of truth. `product-design-v1.md` still references a `[[browser-use-vs-skyvern]]`
    sibling doc that isn't in the repo.
