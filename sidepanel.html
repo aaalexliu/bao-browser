@@ -52,8 +52,10 @@
     #dsummary { color: #2a7; margin: 6px 0; }
     #dsteps { border-top: 1px solid #eee; padding-top: 6px;
               font-family: ui-monospace, monospace; font-size: 11px; }
-    .srow { padding: 3px 0; display: flex; gap: 6px; align-items: baseline; }
-    .srow .lbl { flex: 1; min-width: 0; }
+    .srow { padding: 3px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+    .srow .lbl { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .srow.start { color: #888; padding-bottom: 5px; margin-bottom: 3px;
+                  border-bottom: 1px dashed #eee; }
     .srow.pend { color: #aaa; }
     .srow.done { color: #2a7; }
     .srow.cur { color: #222; font-weight: 600; }
@@ -61,7 +63,8 @@
     .srow .spin { display: inline-block; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .srow button { padding: 2px 8px; font-size: 11px; }
-    .why { color: #e11; font-weight: 400; }
+    .why { color: #e11; font-weight: 400; flex-basis: 100%; min-width: 0;
+           padding-left: calc(1ch + 6px); overflow-wrap: anywhere; }
     #toast { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 20;
              background: #333; color: #fff; border-radius: 6px; padding: 8px 10px;
              display: flex; align-items: center; gap: 8px; }

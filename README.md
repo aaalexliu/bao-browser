@@ -12,7 +12,7 @@ guessing.
 
 > This README is the single entry point. It states where the project is, links every
 > design doc in reading order, and lays out the path to a public launch. Deep design
-> lives in the docs mapped below; how to run the tests lives in [TESTING.md](TESTING.md).
+> lives in the docs mapped below; how to run the tests lives in [TESTING.md](docs/TESTING.md).
 
 ---
 
@@ -57,7 +57,7 @@ dashboard, run history, and an audit filmstrip. The engine covers the two target
 | **M4 — Tier-3 VLM self-heal • parameterization / variables** (the "record I just created" gap) | ⬜ future |
 | Backlog — hover, drag-and-drop, clipboard, dblclick, odd input types, multi-tab | ⬜ deferred |
 
-Full task-by-task history and acceptance criteria: `recording-gaps-and-app-universe.md`
+Full task-by-task history and acceptance criteria: `docs/recording-gaps-and-app-universe.md`
 §Part 1.
 
 ---
@@ -98,24 +98,23 @@ distribution — far lighter Chrome Web Store review.
 
 ## Documentation map (read in this order)
 
-1. **`product-design-v1.md`** — the master design: architecture, the IR, storage &
+1. **`docs/product-design-v1.md`** — the master design: architecture, the IR, storage &
    privacy, auditable replay, the Executor seam, non-debugger vs debugger execution, and
    the browzer teardown. Start here.
-2. **`use-cases-and-snapshot-fallback.md`** — which use cases to aim at, the resolution
+2. **`docs/use-cases-and-snapshot-fallback.md`** — which use cases to aim at, the resolution
    ladder in depth, the "can we just snapshot the DOM/screen?" question answered, and the
    blind-spot comparison vs browser-use / Skyvern.
-3. **`recording-gaps-and-app-universe.md`** — every capability specced as an executable
+3. **`docs/recording-gaps-and-app-universe.md`** — every capability specced as an executable
    task (T1–T14 + backlog, with shipped-status annotations), the taxonomy of all
    browser-app categories and what each layer of work unlocks, and the live no-login test
    targets per category.
-4. **`m1-design.md`** — the cross-navigation milestone: the storage-backed SW state
+4. **`docs/m1-design.md`** — the cross-navigation milestone: the storage-backed SW state
    machine, re-inject/resume, `waitForUser`, downloads, and the genuinely hard races.
-5. **`t15-sidepanel-design.md`** — the side panel (live capture + quick-run surface).
-6. **`t16-dashboard-design.md`** — the full-page dashboard: library, light step editing,
+5. **`docs/t15-sidepanel-design.md`** — the side panel (live capture + quick-run surface).
+6. **`docs/t16-dashboard-design.md`** — the full-page dashboard: library, light step editing,
    durable run history, and the record-vs-replay filmstrip.
-7. **`backend-webapp-design.md`** — launch #2: the hosted compiler (M2), accounts + sync,
-   and **workflow sharing** — designed local-first so the backend stays additive and the
-   privacy wedge survives.
+7. **`docs/backend-webapp-design.md`** — launch #2: the hosted compiler (M2), accounts + sync,
+   and **workflow sharing** — designed local-first so the backend stays additive.
 
 Docs cross-link with `[[wikilinks]]` by basename.
 
@@ -139,7 +138,7 @@ npm install && npm run build   # TypeScript in src/ → esbuild bundles to dist/
    value+assert, no re-record), and re-watch **run history** as a record-vs-replay
    filmstrip.
 
-Testing (unit e2e, the headless CI runner, live-site suites): **[TESTING.md](TESTING.md)**.
+Testing (unit e2e, the headless CI runner, live-site suites): **[TESTING.md](docs/TESTING.md)**.
 
 ---
 
@@ -161,7 +160,7 @@ extension itself distributable. Two audiences, two very different readiness leve
    never written, the target's text/snapshot fuel and the golden screenshot are dropped,
    and replay focuses the field but leaves it empty. Regression `test/sensitive.mjs`
    asserts no secret substring survives in the returned steps or in SW storage. Full spec:
-   `recording-gaps-and-app-universe.md` §T1.
+   `docs/recording-gaps-and-app-universe.md` §T1.
 2. ✅ **Extension icons (done).** `icons/` holds 16/32/48/128 PNGs (a steamed-bao mark),
    wired into `manifest.icons` + `action.default_icon`; source SVG + a deps-free
    Playwright rasterizer live in `assets/`. Store screenshots / promo tiles still TODO for
@@ -170,13 +169,12 @@ extension itself distributable. Two audiences, two very different readiness leve
    `scripting` / `webNavigation` / `downloads` still trigger heavy review and a
    per-permission justification form. Mitigants in place: Bao requests **no `debugger`**
    (the thing keeping browzer stuck in review), the redundant **`activeTab`** is now
-   removed, and the privacy story is strong and written down. Budget for review
+   removed, and the data story is simple (local-first today). Budget for review
    back-and-forth; the `<all_urls>` justification ("a general-purpose recorder must run on
    the page the user chooses") is the crux.
-4. ✅ **Privacy policy (done).** [`PRIVACY.md`](PRIVACY.md) — verified against the code:
-   no backend, no network egress, local-only storage (`chrome.storage` + IndexedDB, no
-   sync), sensitive fields masked at capture, plus a per-permission justification table.
-   Publish it on the landing site and link it in the listing.
+4. **Privacy-policy URL (only if CWS asks).** No privacy doc is maintained in-repo. If the
+   store requires a policy URL for the `<all_urls>` permission, host a short statement at
+   submission time (local-first today; cloud features opt-in and coming).
 5. **Distribution mode (beta shipped, store pending).** A **beta unpacked build** is now
    published as a [GitHub release](https://github.com/aaalexliu/bao-browser/releases/latest)
    (download `bao-extension.zip` → load unpacked; see [Install](#install)). That's fine for
@@ -190,16 +188,16 @@ extension itself distributable. Two audiences, two very different readiness leve
 7. **Housekeeping.** Version is `0.1.0` (bumped off `0.0.1` for the first beta release);
    the design docs still carry per-task "not yet
    landed" notes that are now stale (T1 excepted) — this README's status table is the
-   source of truth. `product-design-v1.md` still references a `[[browser-use-vs-skyvern]]`
+   source of truth. `docs/product-design-v1.md` still references a `[[browser-use-vs-skyvern]]`
    sibling doc that isn't in the repo.
 
 ### Shortest credible path to a public beta
 
-**T1 (✅) → icons + manifest cleanup (✅) → privacy policy (✅) → CWS submission (next)**,
+**T1 (✅) → icons + manifest cleanup (✅) → CWS submission (next)**,
 in parallel with a static landing page (`site/index.html` — what it is, a replay demo,
 install CTA, docs). Target the **QA/dev wedge** for launch #1 (no backend, engine already
 proven), and treat the M2 compiler + gov-forms wedge as launch #2 once the backend exists.
 
 What's left before a listing goes live is now mostly *your* action, not code: create the
 CWS developer account, bump the `version`, capture store screenshots + a promo tile, and
-submit with the `<all_urls>` justification + [`PRIVACY.md`](PRIVACY.md).
+submit with the `<all_urls>` justification.

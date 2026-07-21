@@ -28,13 +28,12 @@ the manifest.
 1. **Create a Chrome Web Store developer account** - https://chrome.google.com/webstore/devconsole
    Pay the **one-time $5** registration fee. (Use the Google account you want to own the listing.)
 2. **Verify a contact email** in the developer console (Account tab) - required before you can publish.
-3. **Host the privacy policy at a public URL.** CWS needs a link, not a file. Easiest options:
-   - publish [`../PRIVACY.md`](../PRIVACY.md) on the landing site as `/privacy`, **or**
-   - enable GitHub Pages and link the rendered `PRIVACY.md`, **or**
-   - link the raw file: `https://github.com/aaalexliu/bao-browser/blob/main/PRIVACY.md`.
-   Copy that URL - you'll paste it in step 3 of submission.
-4. *(Recommended)* **Bump the version** off `0.0.1` in `manifest.json` to e.g. `0.1.0`, then
-   re-run `npm run build` and re-zip (command at the bottom). `0.0.1` reads as "not real."
+3. **Privacy-policy URL (only if CWS asks).** No privacy doc is maintained in-repo. If the
+   store requires a policy URL for the `<all_urls>` permission, host a short statement at a
+   public URL at submission time (local-first today; cloud features opt-in and coming) and
+   paste that URL in step 3 of submission.
+4. **Version** is already `0.1.0` in `manifest.json` (bumped off `0.0.1` for the first beta
+   release). If you change it, re-run `npm run build` and re-zip (command at the bottom).
 
 ---
 
@@ -97,7 +96,7 @@ WHY IT'S DIFFERENT
   one-line runner that exits non-zero when a step or assertion fails.
 - Survives churn. Anchored capture re-resolves the same item even after a feed reorders.
 
-PRIVACY BY DESIGN
+YOUR DATA
 - Local-first: your workflows and screenshots stay in your browser. This build has no
   backend and no account.
 - Secrets are never captured: passwords, card numbers, CVVs, SSNs and one-time codes are

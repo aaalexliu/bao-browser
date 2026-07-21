@@ -376,6 +376,21 @@ function renderDetailSteps(): void {
   dsummaryEl.hidden = true;
   drunBtn.disabled = !!(run && ACTIVE_PHASES.includes(run.phase));
 
+  // Lead row: where the workflow begins. Replay navigates here (wf.startUrl) before
+  // step 1, so it belongs at the top of the list. Presentational — not a run step,
+  // so it carries no ✓/✗ and doesn't shift the 1..N numbering below.
+  if (detailWf?.startUrl) {
+    const row = document.createElement("div");
+    row.className = "srow start";
+    const mark = document.createElement("span");
+    mark.textContent = "↦";
+    const lbl = document.createElement("span");
+    lbl.className = "lbl";
+    lbl.textContent = `Start at ${detailWf.startUrl}`;
+    row.append(mark, lbl);
+    dstepsEl.appendChild(row);
+  }
+
   steps.forEach((s, i) => {
     const row = document.createElement("div");
     row.className = "srow";
