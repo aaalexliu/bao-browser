@@ -146,13 +146,12 @@ extension itself distributable. Two audiences, two very different readiness leve
    `scripting` / `webNavigation` / `downloads` still trigger heavy review and a
    per-permission justification form. Mitigants in place: Bao requests **no `debugger`**
    (the thing keeping browzer stuck in review), the redundant **`activeTab`** is now
-   removed, and the privacy story is strong and written down. Budget for review
+   removed, and the data story is simple (local-first today). Budget for review
    back-and-forth; the `<all_urls>` justification ("a general-purpose recorder must run on
    the page the user chooses") is the crux.
-4. ✅ **Privacy policy (done).** [`PRIVACY.md`](docs/PRIVACY.md) — verified against the code:
-   no backend, no network egress, local-only storage (`chrome.storage` + IndexedDB, no
-   sync), sensitive fields masked at capture, plus a per-permission justification table.
-   Publish it on the landing site and link it in the listing.
+4. **Privacy-policy URL (only if CWS asks).** No privacy doc is maintained in-repo. If the
+   store requires a policy URL for the `<all_urls>` permission, host a short statement at
+   submission time (local-first today; cloud features opt-in and coming).
 5. **Distribution mode.** "Download instructions" for a Developer-mode *unpacked load* is
    fine for a beta but hostile to the non-technical primary user (it directly contradicts
    the thesis). The real answer is a **CWS listing** (one-click install); use unpacked /
@@ -169,11 +168,11 @@ extension itself distributable. Two audiences, two very different readiness leve
 
 ### Shortest credible path to a public beta
 
-**T1 (✅) → icons + manifest cleanup (✅) → privacy policy (✅) → CWS submission (next)**,
+**T1 (✅) → icons + manifest cleanup (✅) → CWS submission (next)**,
 in parallel with a static landing page (`site/index.html` — what it is, a replay demo,
 install CTA, docs). Target the **QA/dev wedge** for launch #1 (no backend, engine already
 proven), and treat the M2 compiler + gov-forms wedge as launch #2 once the backend exists.
 
 What's left before a listing goes live is now mostly *your* action, not code: create the
 CWS developer account, bump the `version`, capture store screenshots + a promo tile, and
-submit with the `<all_urls>` justification + [`PRIVACY.md`](docs/PRIVACY.md).
+submit with the `<all_urls>` justification.
