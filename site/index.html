@@ -1,0 +1,535 @@
+<title>Bao — deterministic browser replay</title>
+<style>
+  :root {
+    --bg: #f5f6fb;
+    --surface: #ffffff;
+    --surface-2: #eef1f8;
+    --ink: #10131f;
+    --ink-2: #444b5e;
+    --muted: #6a7285;
+    --line: #e2e6ef;
+    --accent: #3355cc;
+    --accent-strong: #2743a8;
+    --accent-tint: rgba(51, 85, 204, .08);
+    --ok: #10906a;
+    --ok-tint: rgba(16, 144, 106, .10);
+    --bad: #cf4636;
+    --bad-tint: rgba(207, 70, 54, .09);
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --maxw: 1120px;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(16, 19, 31, .04), 0 12px 34px -18px rgba(16, 19, 31, .22);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0d15;
+      --surface: #121726;
+      --surface-2: #0d1220;
+      --ink: #eaedf7;
+      --ink-2: #aeb6c9;
+      --muted: #7b8398;
+      --line: #212a3c;
+      --accent: #7d99ff;
+      --accent-strong: #a5b8ff;
+      --accent-tint: rgba(125, 153, 255, .13);
+      --ok: #35c48d;
+      --ok-tint: rgba(53, 196, 141, .13);
+      --bad: #f0685a;
+      --bad-tint: rgba(240, 104, 90, .12);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 18px 40px -20px rgba(0, 0, 0, .7);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6fb; --surface: #ffffff; --surface-2: #eef1f8; --ink: #10131f;
+    --ink-2: #444b5e; --muted: #6a7285; --line: #e2e6ef; --accent: #3355cc;
+    --accent-strong: #2743a8; --accent-tint: rgba(51, 85, 204, .08);
+    --ok: #10906a; --ok-tint: rgba(16, 144, 106, .10); --bad: #cf4636;
+    --bad-tint: rgba(207, 70, 54, .09);
+    --shadow: 0 1px 2px rgba(16, 19, 31, .04), 0 12px 34px -18px rgba(16, 19, 31, .22);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0d15; --surface: #121726; --surface-2: #0d1220; --ink: #eaedf7;
+    --ink-2: #aeb6c9; --muted: #7b8398; --line: #212a3c; --accent: #7d99ff;
+    --accent-strong: #a5b8ff; --accent-tint: rgba(125, 153, 255, .13);
+    --ok: #35c48d; --ok-tint: rgba(53, 196, 141, .13); --bad: #f0685a;
+    --bad-tint: rgba(240, 104, 90, .12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 18px 40px -20px rgba(0, 0, 0, .7);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; }
+  h1, h2, h3 { margin: 0; line-height: 1.08; letter-spacing: -.02em; text-wrap: balance; font-weight: 800; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent-strong);
+  }
+  .mono { font-family: var(--mono); }
+
+  /* ---------- top bar ---------- */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar { display: flex; align-items: center; gap: 20px; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.01em; font-size: 18px; }
+  .brand .glyph { width: 28px; height: 28px; border-radius: 7px; display: block; box-shadow: var(--shadow); }
+  nav.links { display: flex; gap: 26px; margin-left: auto; }
+  nav.links a { font-size: 14.5px; color: var(--ink-2); text-decoration: none; font-weight: 500; }
+  nav.links a:hover { color: var(--ink); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; font-family: var(--sans);
+    font-size: 14.5px; font-weight: 650; padding: 9px 16px; border-radius: 9px;
+    border: 1px solid transparent; cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: transform .08s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 6px 18px -8px var(--accent); }
+  .btn.primary:hover { background: var(--accent-strong); }
+  .btn.ghost { border-color: var(--line); color: var(--ink); background: var(--surface); }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .nav-cta { margin-left: 4px; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 74px 0 40px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 54px; align-items: center; }
+  .hero h1 { font-size: clamp(2.3rem, 4.6vw, 3.55rem); }
+  .hero h1 .u { color: var(--accent-strong); }
+  .lede { margin: 22px 0 0; font-size: clamp(1.05rem, 1.6vw, 1.22rem); color: var(--ink-2); max-width: 32ch; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; align-items: center; }
+  .cta-note { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+  .trust-inline { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 30px; font-size: 13px; color: var(--muted); }
+  .trust-inline span { display: inline-flex; align-items: center; gap: 6px; }
+  .trust-inline .tick { color: var(--ok); font-weight: 700; }
+
+  /* ---------- replay panel (hero object) ---------- */
+  .panel {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    border-bottom: 1px solid var(--line); background: var(--surface-2);
+  }
+  .panel-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px var(--ok-tint); }
+  .panel-head .title { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .panel-head .status { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--ok); font-weight: 600; }
+  .steplist { list-style: none; margin: 0; padding: 6px 0; }
+  .steprow { display: flex; align-items: center; gap: 12px; padding: 9px 16px; font-size: 14px; }
+  .steprow .idx { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 16px; text-align: right; }
+  .steprow .check {
+    width: 19px; height: 19px; border-radius: 50%; flex: none; display: grid; place-items: center;
+    border: 1.5px solid var(--line); color: transparent; font-size: 11px; font-weight: 800;
+  }
+  .steprow.done .check { background: var(--ok-tint); border-color: transparent; color: var(--ok); }
+  .steprow .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+  .steprow .label b { font-weight: 650; }
+  .steprow .via {
+    font-family: var(--mono); font-size: 11px; color: var(--accent-strong);
+    background: var(--accent-tint); padding: 2px 7px; border-radius: 5px; flex: none;
+  }
+  .steprow.sens .via { color: var(--muted); background: var(--surface-2); }
+  .panel-foot {
+    display: flex; align-items: center; gap: 10px; padding: 11px 16px;
+    border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .panel-foot .ok { color: var(--ok); font-weight: 700; }
+
+  /* staggered "replay" reveal */
+  .steprow { opacity: .55; }
+  .steprow .check { transition: background .25s ease, color .25s ease, border-color .25s ease; }
+  .anim .steprow { animation: settle .4s ease forwards; }
+  @keyframes settle { to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .steprow { opacity: 1; } .anim .steprow { animation: none; }
+  }
+
+  /* ---------- generic section ---------- */
+  section { padding: 58px 0; }
+  .sec-head { max-width: 62ch; margin-bottom: 34px; }
+  .sec-head h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); margin-top: 12px; }
+  .sec-head p { color: var(--ink-2); font-size: 1.06rem; margin: 14px 0 0; }
+  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  /* ---------- thesis: determinism vs probabilistic ---------- */
+  .versus { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .vcard { border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; background: var(--surface); }
+  .vcard.win { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: var(--shadow); }
+  .vcard h3 { font-size: 1.18rem; display: flex; align-items: center; gap: 10px; }
+  .vcard .tag { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; }
+  .vcard.win .tag { background: var(--ok-tint); color: var(--ok); }
+  .vcard.lose .tag { background: var(--bad-tint); color: var(--bad); }
+  .vcard ul { list-style: none; margin: 20px 0 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+  .vcard li { display: flex; gap: 11px; font-size: 14.5px; color: var(--ink-2); align-items: flex-start; }
+  .vcard li .m { font-family: var(--mono); font-weight: 700; flex: none; line-height: 1.5; }
+  .vcard.win li .m { color: var(--ok); }
+  .vcard.lose li .m { color: var(--bad); }
+
+  /* ---------- how it works (sequence) ---------- */
+  .steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; counter-reset: s; }
+  .s3 { position: relative; padding-top: 20px; }
+  .s3 .n { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent-strong); letter-spacing: .1em; }
+  .s3 h3 { font-size: 1.16rem; margin: 12px 0 8px; }
+  .s3 p { color: var(--ink-2); font-size: 14.5px; margin: 0; }
+  .s3::before { content: ""; position: absolute; top: 0; left: 0; width: 34px; height: 3px; background: var(--accent); border-radius: 2px; }
+
+  /* ---------- resolution ladder ---------- */
+  .ladder-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  table.ladder { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 620px; }
+  table.ladder th, table.ladder td { text-align: left; padding: 13px 18px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ladder thead th { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; }
+  table.ladder tbody tr:last-child td { border-bottom: 0; }
+  table.ladder .tier { font-family: var(--mono); font-weight: 700; color: var(--accent-strong); }
+  table.ladder .mech b { font-weight: 650; }
+  table.ladder .det { font-family: var(--mono); font-size: 12.5px; }
+  .pill { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
+  .pill.live { background: var(--ok-tint); color: var(--ok); }
+  .pill.soon { background: var(--accent-tint); color: var(--accent-strong); }
+  .pill.opt { background: var(--surface-2); color: var(--muted); }
+  .ladder-note { font-size: 13px; color: var(--muted); margin: 16px 0 0; max-width: 70ch; }
+
+  /* ---------- CI / terminal ---------- */
+  .ci-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; }
+  .term { background: #0c1120; border: 1px solid #1d2740; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .term-head { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid #1d2740; }
+  .term-head i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .term-head .t { font-family: var(--mono); font-size: 12px; color: #8792ab; margin-left: 8px; }
+  .term pre { margin: 0; padding: 16px 18px; font-family: var(--mono); font-size: 12.7px; line-height: 1.7; color: #cdd6ea; overflow-x: auto; }
+  .term .prompt { color: #7d99ff; }
+  .term .cmd { color: #eef1f7; }
+  .term .pass { color: #35c48d; }
+  .term .fail { color: #f0685a; }
+  .term .dim { color: #6b7690; }
+  .ci-list { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+  .ci-list li { display: flex; gap: 12px; }
+  .ci-list .k { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent-strong); flex: none; width: 96px; padding-top: 2px; }
+  .ci-list .d { font-size: 14.5px; color: var(--ink-2); }
+  .ci-list .d b { color: var(--ink); font-weight: 650; }
+
+  /* ---------- trust strip ---------- */
+  .trust { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .trust-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
+  .tcell h3 { font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+  .tcell .ico { color: var(--accent); flex: none; }
+  .tcell p { color: var(--ink-2); font-size: 13.5px; margin: 8px 0 0; }
+
+  /* ---------- closing CTA ---------- */
+  .close { text-align: center; padding: 82px 0; }
+  .close h2 { font-size: clamp(1.9rem, 3.4vw, 2.7rem); }
+  .close p { color: var(--ink-2); font-size: 1.1rem; margin: 16px auto 0; max-width: 46ch; }
+  .close .cta-row { justify-content: center; }
+
+  footer { border-top: 1px solid var(--line); padding: 30px 0 46px; }
+  .foot { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; font-size: 13.5px; color: var(--muted); }
+  .foot a { color: var(--ink-2); text-decoration: none; }
+  .foot a:hover { color: var(--accent-strong); }
+  .foot .brand { font-size: 15px; color: var(--ink); }
+  .foot .spacer { margin-left: auto; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 900px) {
+    .hero-grid, .ci-grid { grid-template-columns: 1fr; gap: 34px; }
+    .versus, .trust-grid { grid-template-columns: 1fr 1fr; }
+    .steps3 { grid-template-columns: 1fr; }
+    nav.links { display: none; }
+  }
+  @media (max-width: 560px) {
+    .versus, .trust-grid { grid-template-columns: 1fr; }
+    .hero { padding: 48px 0 24px; }
+    .lede { max-width: none; }
+  }
+</style>
+
+<header>
+  <div class="wrap bar">
+    <span class="brand">
+      <svg class="glyph" viewBox="0 0 512 512" aria-hidden="true">
+        <defs>
+          <linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a7be6"/><stop offset="1" stop-color="#2a4fc0"/></linearGradient>
+          <linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#f0e4cc"/></linearGradient>
+        </defs>
+        <rect width="512" height="512" rx="112" fill="url(#t)"/>
+        <path d="M256 178C158 178 96 246 96 320c0 52 36 84 94 92 24 3 108 3 132 0 58-8 94-40 94-92 0-74-62-142-160-142Z" fill="url(#b)"/>
+        <g stroke="#d8c7a4" stroke-width="9" stroke-linecap="round" fill="none" stroke-opacity=".85">
+          <path d="M256 208c-42 28-80 80-98 148"/><path d="M256 208c-20 42-42 98-50 164"/>
+          <path d="M256 208v172"/><path d="M256 208c20 42 42 98 50 164"/><path d="M256 208c42 28 80 80 98 148"/>
+        </g>
+        <circle cx="256" cy="204" r="24" fill="#fffaf0" stroke="#d8c7a4" stroke-width="7" stroke-opacity=".7"/>
+      </svg>
+      Bao
+    </span>
+    <nav class="links">
+      <a href="#why">Why deterministic</a>
+      <a href="#how">How it works</a>
+      <a href="#ci">For QA &amp; CI</a>
+      <a href="#privacy">Privacy</a>
+    </nav>
+    <a class="btn primary nav-cta" href="#get">Get the beta</a>
+  </div>
+</header>
+
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Chrome extension · record → replay</p>
+        <h1>Record a browser task once.<br><span class="u">Replay it exactly</span>, forever.</h1>
+        <p class="lede">
+          Bao captures what you do on a page and replays it as plain deterministic code -
+          free, instant, offline, and honest when the page changes.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="#get">Get the beta</a>
+          <a class="btn ghost" href="#how">See how it works</a>
+        </div>
+        <div class="trust-inline">
+          <span><span class="tick">✓</span> Replays offline, no account</span>
+          <span><span class="tick">✓</span> Your secrets never leave your machine</span>
+          <span><span class="tick">✓</span> No <code class="mono">debugger</code> permission</span>
+        </div>
+      </div>
+
+      <!-- the hero object: a workflow replaying -->
+      <div class="panel" id="replay" aria-label="A recorded workflow replaying, step by step">
+        <div class="panel-head">
+          <span class="dot"></span>
+          <span class="title">weekly-report.bao</span>
+          <span class="status">▶ Replaying</span>
+        </div>
+        <ol class="steplist">
+          <li class="steprow" style="--d:.15s"><span class="idx">01</span><span class="check">✓</span><span class="label"><b>Go to</b> app.acme.com/login</span><span class="via">nav</span></li>
+          <li class="steprow" style="--d:.45s"><span class="idx">02</span><span class="check">✓</span><span class="label"><b>Type</b> into “Email”</span><span class="via">aria</span></li>
+          <li class="steprow sens" style="--d:.75s"><span class="idx">03</span><span class="check">✓</span><span class="label"><b>Password</b> — you enter it</span><span class="via">masked</span></li>
+          <li class="steprow" style="--d:1.05s"><span class="idx">04</span><span class="check">✓</span><span class="label"><b>Click</b> “Sign in”</span><span class="via">testid</span></li>
+          <li class="steprow" style="--d:1.35s"><span class="idx">05</span><span class="check">✓</span><span class="label"><b>Open</b> “Reports” → “Weekly”</span><span class="via">anchor</span></li>
+          <li class="steprow" style="--d:1.65s"><span class="idx">06</span><span class="check">✓</span><span class="label"><b>Download</b> report.csv</span><span class="via">download</span></li>
+        </ol>
+        <div class="panel-foot"><span class="ok">✓ 6 / 6 passed</span> · resolved deterministically · 0 guesses</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- WHY DETERMINISTIC -->
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">The bet</p>
+        <h2>The LLM is not the runtime.</h2>
+        <p>
+          Agent tools ask a model to re-decide every click, every run - so they're slow,
+          metered, and only mostly right. Bao uses a model <em>once</em>, at authoring time,
+          to turn your recording into readable steps. Replay after that is ordinary code.
+        </p>
+      </div>
+      <div class="versus">
+        <div class="vcard win">
+          <h3><span class="tag">Bao</span> Deterministic replay</h3>
+          <ul>
+            <li><span class="m">✓</span><span><b style="color:var(--ink)">Free &amp; instant.</b> No tokens per run. Replay is code, not a prompt.</span></li>
+            <li><span class="m">✓</span><span><b style="color:var(--ink)">Same result every time.</b> A ranked selector ladder re-finds each element - no dice roll.</span></li>
+            <li><span class="m">✓</span><span><b style="color:var(--ink)">Offline.</b> Runs entirely in the browser, on any page you choose.</span></li>
+            <li><span class="m">✓</span><span><b style="color:var(--ink)">Fails cleanly.</b> When a page truly changed, you get “re-record this step,” not a wrong click.</span></li>
+          </ul>
+        </div>
+        <div class="vcard lose">
+          <h3><span class="tag">LLM agents</span> Probabilistic each run</h3>
+          <ul>
+            <li><span class="m">✗</span><span>Metered - every run spends tokens and wall-clock latency.</span></li>
+            <li><span class="m">✗</span><span>Non-repeatable - the model may take a different path on identical input.</span></li>
+            <li><span class="m">✗</span><span>Needs the network and a live model to do anything at all.</span></li>
+            <li><span class="m">✗</span><span>Fails <em>silently</em> - a confident wrong action looks just like a right one.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">How it works</p>
+        <h2>Three steps, and the middle one is the whole idea.</h2>
+      </div>
+      <div class="steps3">
+        <div class="s3">
+          <div class="n">01 · RECORD</div>
+          <h3>Do the task once</h3>
+          <p>Open the side panel, hit record, and click through your workflow. Steps appear live as you go - assertions too, if you want replay to check the page.</p>
+        </div>
+        <div class="s3">
+          <div class="n">02 · COMPILE</div>
+          <h3>Get readable, editable steps</h3>
+          <p>Your recording becomes a clean workflow you can actually read - reorder, delete, or edit a value with no re-recording. Secrets are never captured.</p>
+        </div>
+        <div class="s3">
+          <div class="n">03 · REPLAY</div>
+          <h3>Run it deterministically</h3>
+          <p>Replay in the browser with live ✓/✗ progress, or headless in CI. Export the workflow as JSON and drive it from a one-line test runner.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- RESOLUTION LADDER -->
+  <section id="ladder">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Why replay holds up</p>
+        <h2>A resolution ladder, not a guess.</h2>
+        <p>For every step, Bao walks the cheapest deterministic way to re-find your element and stops at the first that works. It escalates per step, never globally.</p>
+      </div>
+      <div class="ladder-wrap">
+        <table class="ladder">
+          <thead>
+            <tr><th>Tier</th><th>How it re-finds the element</th><th>Determinism</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="tier">0</td><td class="mech"><b>Unique robust selector</b> - test-id, id, or aria</td><td class="det">full</td><td><span class="pill live">shipped</span></td></tr>
+            <tr><td class="tier">1</td><td class="mech"><b>Content anchor</b> + within-descriptor, across navigations</td><td class="det">full</td><td><span class="pill live">shipped</span></td></tr>
+            <tr><td class="tier">2</td><td class="mech"><b>DOM subtree + screenshot</b> - audit fuel, not a resolver</td><td class="det">n/a</td><td><span class="pill live">shipped</span></td></tr>
+            <tr><td class="tier">3</td><td class="mech"><b>VLM self-heal</b> on a miss → writes a fresh selector back</td><td class="det">re-cached</td><td><span class="pill soon">next</span></td></tr>
+            <tr><td class="tier">4</td><td class="mech"><b>CDP executor</b> - trusted input, file upload, closed shadow</td><td class="det">full</td><td><span class="pill opt">opt-in</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="ladder-note">Any escalation is cached back down to a deterministic selector, so the expensive tier runs at most once. Light-DOM, single-origin tasks live at tiers 0-1.</p>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- FOR QA / CI -->
+  <section id="ci">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">For QA &amp; CI</p>
+        <h2>Record a test. Run it headless. Get a clean ✓/✗.</h2>
+        <p>The engine <em>is</em> the product here - no backend required. Capture assertions while you record, export the workflow as JSON, and replay it from a thin runner that exits non-zero when a step or assert fails.</p>
+      </div>
+      <div class="ci-grid">
+        <div class="term" role="img" aria-label="Terminal output of the Bao test runner reporting six passing steps and one failing assertion">
+          <div class="term-head"><i style="background:#f0685a"></i><i style="background:#f5bf4f"></i><i style="background:#35c48d"></i><span class="t">bao — test runner</span></div>
+          <pre><span class="prompt">$</span> <span class="cmd">node test/run.mjs weekly-report.json https://app.acme.com</span>
+
+<span class="dim">replaying 6 steps + 2 assertions…</span>
+
+  <span class="pass">✓</span> 01  go to /login              <span class="dim">via nav</span>
+  <span class="pass">✓</span> 02  type into “Email”         <span class="dim">via aria</span>
+  <span class="pass">✓</span> 03  password (you enter it)   <span class="dim">masked</span>
+  <span class="pass">✓</span> 04  click “Sign in”           <span class="dim">via testid</span>
+  <span class="pass">✓</span> 05  open Reports → Weekly     <span class="dim">via anchor</span>
+  <span class="pass">✓</span> 06  download report.csv       <span class="dim">via download</span>
+  <span class="pass">✓</span> assert  “Q3 Summary” present
+  <span class="fail">✗</span> assert  row count = 42        <span class="fail">got 41</span>
+
+<span class="fail">✗ 1 assertion failed</span>  <span class="dim">— exit 1</span></pre>
+        </div>
+        <div>
+          <ul class="ci-list">
+            <li><span class="k">assertions</span><span class="d"><b>Record what to check, not just what to do.</b> textPresent, elementVisible/absent, urlMatches - non-fatal, all reported, the run fails if any fails.</span></li>
+            <li><span class="k">headless</span><span class="d"><b>One command, honest exit code.</b> <code class="mono">node test/run.mjs steps.json url</code> - exit 0 all-green, 1 on any failure. Drop it straight into CI.</span></li>
+            <li><span class="k">portable</span><span class="d"><b>The workflow is just JSON.</b> Export from the panel or dashboard; it's directly consumable by the runner - no proprietary format, readable in a diff.</span></li>
+            <li><span class="k">stable</span><span class="d"><b>Survives a churning feed.</b> Anchored capture re-resolves the same card by its stable id even after the list reorders.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- TRUST STRIP -->
+<div class="trust" id="privacy">
+  <div class="wrap" style="padding-top:52px;padding-bottom:52px;">
+    <div class="sec-head" style="margin-bottom:30px;">
+      <p class="eyebrow">Local-first by design</p>
+      <h2 style="font-size:clamp(1.6rem,2.7vw,2.1rem);">Local by default. Your secrets, always.</h2>
+      <p>Recording and replay run entirely in your browser. Cloud features - turning a recording into clean, shareable steps, and sharing a workflow with your team - are on the roadmap, opt-in, and would send only a redacted, masked trace. Secrets never travel, even then.</p>
+    </div>
+    <div class="trust-grid">
+      <div class="tcell">
+        <h3><span class="ico">◆</span> Local-first</h3>
+        <p>Workflows and screenshots live in your browser's storage. Replay needs no account and, today, no backend at all.</p>
+      </div>
+      <div class="tcell">
+        <h3><span class="ico">◆</span> Secrets never leave</h3>
+        <p>Passwords, cards, CVVs, SSNs and one-time codes are dropped at capture - never written, never in a screenshot, never in a shared workflow.</p>
+      </div>
+      <div class="tcell">
+        <h3><span class="ico">◆</span> No <span class="mono">debugger</span></h3>
+        <p>Bao never asks for the debugger permission - so no scary trust banner, and a far lighter store review.</p>
+      </div>
+      <div class="tcell">
+        <h3><span class="ico">◆</span> Readable, not a black box</h3>
+        <p>Every step is human-readable and editable. You can see exactly what a workflow will do before you run it.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CLOSING CTA -->
+<section class="close" id="get">
+  <div class="wrap">
+    <p class="eyebrow">Early access</p>
+    <h2>Bring a repetitive task. Leave with a workflow.</h2>
+    <p>Bao is in developer beta while its Chrome Web Store listing is in review. Load the unpacked extension today, or watch this space for one-click install.</p>
+    <div class="cta-row">
+      <a class="btn primary" href="#get">Get the beta</a>
+      <a class="btn ghost" href="https://github.com/aaalexliu/bao-browser">Read the docs</a>
+    </div>
+    <p class="cta-note" style="margin-top:18px;">Chrome · Manifest V3 · <span style="color:var(--ok);font-weight:700;">no</span> backend required for QA/CI use</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <span class="brand">Bao</span>
+    <span>Record once. Replay exactly.</span>
+    <span class="spacer"></span>
+    <a href="#how">How it works</a>
+    <a href="#ci">For QA &amp; CI</a>
+    <a href="PRIVACY.md">Privacy policy</a>
+    <a href="https://github.com/aaalexliu/bao-browser">Source</a>
+  </div>
+</footer>
+
+<script>
+  // Kick the staggered "replay" reveal once the panel scrolls into view.
+  (function () {
+    var panel = document.getElementById('replay');
+    if (!panel) return;
+    var rows = panel.querySelectorAll('.steprow');
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function run() {
+      panel.classList.add('anim');
+      rows.forEach(function (r, i) {
+        var delay = reduce ? 0 : 150 + i * 300;
+        r.style.animationDelay = delay + 'ms';
+        setTimeout(function () { r.classList.add('done'); }, delay);
+      });
+    }
+    if (reduce) { rows.forEach(function (r) { r.classList.add('done'); r.style.opacity = 1; }); return; }
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { run(); io.disconnect(); } });
+    }, { threshold: .4 });
+    io.observe(panel);
+  })();
+</script>
