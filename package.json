@@ -1,6 +1,6 @@
 {
   "name": "bao-browser-m0",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Record + deterministic replay spike — single page, no LLM, no backend.",
   "engines": {

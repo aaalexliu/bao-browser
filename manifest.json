@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bao",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Record + deterministic replay of browser actions.",
   "icons": {
     "16": "icons/icon-16.png",
