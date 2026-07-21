@@ -273,7 +273,7 @@
       <a href="#why">Why deterministic</a>
       <a href="#how">How it works</a>
       <a href="#ci">For QA &amp; CI</a>
-      <a href="#privacy">Privacy</a>
+      <a href="#privacy">Your data</a>
     </nav>
     <a class="btn primary nav-cta" href="#get">Get the beta</a>
   </div>
@@ -295,9 +295,9 @@
           <a class="btn ghost" href="#how">See how it works</a>
         </div>
         <div class="trust-inline">
-          <span><span class="tick">✓</span> Replays offline, no account</span>
-          <span><span class="tick">✓</span> Your secrets never leave your machine</span>
-          <span><span class="tick">✓</span> No <code class="mono">debugger</code> permission</span>
+          <span><span class="tick">✓</span> Same result every run</span>
+          <span><span class="tick">✓</span> Readable, editable steps</span>
+          <span><span class="tick">✓</span> Runs offline, no account</span>
         </div>
       </div>
 
@@ -376,7 +376,7 @@
         <div class="s3">
           <div class="n">02 · COMPILE</div>
           <h3>Get readable, editable steps</h3>
-          <p>Your recording becomes a clean workflow you can actually read - reorder, delete, or edit a value with no re-recording. Secrets are never captured.</p>
+          <p>Your recording becomes a clean workflow you can actually read - reorder, delete, or edit a value with no re-recording. Sensitive fields like passwords are masked at capture.</p>
         </div>
         <div class="s3">
           <div class="n">03 · REPLAY</div>
@@ -460,26 +460,26 @@
 <div class="trust" id="privacy">
   <div class="wrap" style="padding-top:52px;padding-bottom:52px;">
     <div class="sec-head" style="margin-bottom:30px;">
-      <p class="eyebrow">Local-first by design</p>
-      <h2 style="font-size:clamp(1.6rem,2.7vw,2.1rem);">Local by default. Your secrets, always.</h2>
-      <p>Recording and replay run entirely in your browser. Cloud features - turning a recording into clean, shareable steps, and sharing a workflow with your team - are on the roadmap, opt-in, and would send only a redacted, masked trace. Secrets never travel, even then.</p>
+      <p class="eyebrow">Yours to read, edit, and own</p>
+      <h2 style="font-size:clamp(1.6rem,2.7vw,2.1rem);">A workflow you can actually read - not a black box.</h2>
+      <p>Every step is human-readable and editable, and the whole workflow exports as plain JSON. Recording and replay run in your browser today, with no account. Cloud features - compiling cleaner steps, sharing a workflow with your team, and saving credentials so a run can sign in for you - are on the roadmap and opt-in.</p>
     </div>
     <div class="trust-grid">
       <div class="tcell">
-        <h3><span class="ico">◆</span> Local-first</h3>
-        <p>Workflows and screenshots live in your browser's storage. Replay needs no account and, today, no backend at all.</p>
+        <h3><span class="ico">◆</span> Readable, not a black box</h3>
+        <p>Every step is human-readable and editable. You can see exactly what a workflow will do before you run it.</p>
       </div>
       <div class="tcell">
-        <h3><span class="ico">◆</span> Secrets never leave</h3>
-        <p>Passwords, cards, CVVs, SSNs and one-time codes are dropped at capture - never written, never in a screenshot, never in a shared workflow.</p>
+        <h3><span class="ico">◆</span> Yours to export</h3>
+        <p>Any workflow exports as plain JSON - no proprietary format, readable in a diff, and directly runnable in CI.</p>
+      </div>
+      <div class="tcell">
+        <h3><span class="ico">◆</span> Local-first today</h3>
+        <p>Workflows and screenshots live in your browser. Replay needs no backend at all; cloud features are opt-in and coming.</p>
       </div>
       <div class="tcell">
         <h3><span class="ico">◆</span> No <span class="mono">debugger</span></h3>
         <p>Bao never asks for the debugger permission - so no scary trust banner, and a far lighter store review.</p>
-      </div>
-      <div class="tcell">
-        <h3><span class="ico">◆</span> Readable, not a black box</h3>
-        <p>Every step is human-readable and editable. You can see exactly what a workflow will do before you run it.</p>
       </div>
     </div>
   </div>
@@ -506,7 +506,6 @@
     <span class="spacer"></span>
     <a href="#how">How it works</a>
     <a href="#ci">For QA &amp; CI</a>
-    <a href="PRIVACY.md">Privacy policy</a>
     <a href="https://github.com/aaalexliu/bao-browser">Source</a>
   </div>
 </footer>
