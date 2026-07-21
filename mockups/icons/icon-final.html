@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bao Icon - Squircle</title>
+<style>
+  :root{--bg:#F3EEE6;--ink:#2C2620;--muted:#8A7B6A;--line:#E3D8C7;--card:#FFFDF8}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Inter",system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;padding:44px 24px 80px}
+  body.dark{--bg:#14121A;--ink:#F3EEE6;--muted:#9C93A6;--line:#2A2536;--card:#1D1A26}
+  .head{max-width:900px;margin:0 auto 34px;text-align:center}
+  .head h1{font-size:30px;font-weight:800;letter-spacing:-.6px;margin-bottom:8px}
+  .head p{color:var(--muted)}
+  .toggle{display:inline-flex;gap:6px;margin-top:16px;background:var(--card);border:1px solid var(--line);padding:5px;border-radius:999px}
+  .toggle button{border:none;background:transparent;font:inherit;font-weight:700;font-size:14px;color:var(--muted);padding:8px 18px;border-radius:999px;cursor:pointer}
+  .toggle button.on{background:var(--ink);color:#fff}
+
+  .hero{max-width:900px;margin:0 auto 40px;display:flex;gap:40px;align-items:center;justify-content:center;flex-wrap:wrap}
+  .hero .big{width:240px;height:240px;filter:drop-shadow(0 20px 40px rgba(180,100,40,.35))}
+  .sizes{display:flex;align-items:flex-end;gap:26px}
+  .sizes .s{text-align:center}
+  .sizes .s span{display:block;margin-top:8px;font-size:12px;color:var(--muted);font-weight:600}
+
+  .row{max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:700px){.row{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;text-align:center}
+  .card .st{height:130px;display:flex;align-items:center;justify-content:center;border-radius:12px;margin-bottom:12px}
+  .card svg{width:104px;height:104px}
+  .card h3{font-size:15px;font-weight:700;margin-bottom:3px}
+  .card p{font-size:12.5px;color:var(--muted)}
+  .onwhite{background:#fff}.onink{background:#14121A}.onbrand{background:#E8813A}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>🥟 Bao - squircle badge, refined</h1>
+    <p>Content <b>^ ^</b> eyes · fuller bun · minimal steam</p>
+    <div class="toggle"><button class="on" onclick="setT('light')">Light</button><button onclick="setT('dark')">Dark</button></div>
+  </div>
+
+  <div class="hero">
+    <span id="big"></span>
+    <div class="sizes">
+      <div class="s"><span id="s128"></span><span>128</span></div>
+      <div class="s"><span id="s48"></span><span>48</span></div>
+      <div class="s"><span id="s32"></span><span>32</span></div>
+      <div class="s"><span id="s16"></span><span>16</span></div>
+    </div>
+  </div>
+
+  <div class="row" id="row"></div>
+
+<script>
+// === the refined icon ===
+// squircle ground, big bun, content ^^ eyes, minimal steam
+function bao(withBg){return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient>
+  <radialGradient id="dough" cx="42%" cy="32%" r="78%"><stop offset="0" stop-color="#FFFDF8"/><stop offset="66%" stop-color="#FFF1DE"/><stop offset="100%" stop-color="#F8DEBE"/></radialGradient>
+</defs>
+${withBg?`<rect x="4" y="4" width="92" height="92" rx="24" fill="url(#bg)"/>`:''}
+<!-- minimal steam: three tiny whispers -->
+<g stroke="${withBg?'#FFE6C4':'#E7D3B6'}" stroke-width="2" stroke-linecap="round" fill="none" opacity="${withBg?'.6':'.78'}">
+  <path d="M41 27 C39.2 24.3 42.8 23 41 20.3"/>
+  <path d="M50 26 C48.2 23.3 51.8 22 50 19.3"/>
+  <path d="M59 27 C57.2 24.3 60.8 23 59 20.3"/>
+</g>
+<!-- bun: smaller, centered, roomy padding -->
+<path d="M50 34 C70 34 79 48 79 62 C79 78 65 84 50 84 C35 84 21 78 21 62 C21 48 30 34 50 34Z" fill="url(#dough)" stroke="#EBD3B2" stroke-width="1.4"/>
+<!-- soft pleat cap -->
+<ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2" stroke-width="1"/>
+<!-- content ^^ eyes -->
+<path d="M36 60 Q41 52.5 46 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+<path d="M54 60 Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+<!-- gentle smile, given room below the eyes -->
+<path d="M44 72 Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+</svg>`;}
+
+const icon=bao(true);
+const set=(id,px)=>{const el=document.getElementById(id);el.innerHTML=icon;const s=el.querySelector('svg');s.setAttribute('width',px);s.setAttribute('height',px);};
+document.getElementById('big').innerHTML=`<span class="big-wrap"></span>`;
+document.getElementById('big').innerHTML=icon;const b=document.getElementById('big').querySelector('svg');b.setAttribute('class','big');
+set('s128',128);set('s48',48);set('s32',32);set('s16',16);
+
+const variants=[
+ {cls:'onwhite',bg:true,name:'On its own',desc:'The full app / store tile'},
+ {cls:'onbrand',bg:false,name:'Bun only',desc:'No ground - for light-on-color spots'},
+ {cls:'onink',bg:true,name:'Dark surfaces',desc:'Tile keeps contrast on dark UI'},
+];
+document.getElementById('row').innerHTML=variants.map(v=>`<div class="card"><div class="st ${v.cls}">${bao(v.bg)}</div><h3>${v.name}</h3><p>${v.desc}</p></div>`).join('');
+
+function setT(t){document.body.classList.toggle('dark',t==='dark');document.querySelectorAll('.toggle button').forEach(x=>x.classList.toggle('on',x.textContent.toLowerCase()===t));}
+</script>
+</body>
+</html>
