@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Bao fixture — extract (scalar)</title>
+  <style>body { font-family: sans-serif; margin: 2rem; }</style>
+</head>
+<body>
+  <h1>Profile</h1>
+  <!-- The four extract sources this slice reads: text, attr, href, form value. -->
+  <h2 id="name" data-testid="name" data-id="u-42">Ada Lovelace</h2>
+  <a id="profile" data-testid="profile" href="/users/42" onclick="return false">Open profile</a>
+  <input id="preset" data-testid="preset" value="preset-value" />
+
+  <!-- A search that echoes the submitted term, so the test can prove an extracted
+       value feeds a downstream {{substitution}} — read-into-binding, end to end. -->
+  <h2>Search</h2>
+  <input id="q" aria-label="Search" placeholder="Search for…" />
+  <button id="go" data-testid="go">Search</button>
+  <p>You searched for: <span id="out"></span></p>
+  <script>
+    document.getElementById("go").addEventListener("click", () => {
+      document.getElementById("out").textContent = document.getElementById("q").value;
+    });
+  </script>
+</body>
+</html>

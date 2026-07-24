@@ -471,7 +471,14 @@ async function tick(): Promise<void> {
         chrome.alarms.create("bao-run-watchdog", { when: Date.now() + DOWNLOAD_TIMEOUT_MS });
         return "await-download";
       }
-      cur.results.push({ i: cur.stepIndex, ok: true, via: res.results?.[0]?.via });
+      // M4 extract: commit the value the content script read into the run's bindings,
+      // so a later {{into}} ref resolves to it. The template step is untouched.
+      const r0 = res.results?.[0];
+      const tmpl = cur.steps[cur.stepIndex];
+      if (tmpl?.action === "extract" && tmpl.extract && typeof r0?.extracted === "string") {
+        cur.bindings = { ...cur.bindings, [tmpl.extract.into]: r0.extracted };
+      }
+      cur.results.push({ i: cur.stepIndex, ok: true, via: r0?.via, extracted: r0?.extracted });
       cur.stepIndex++; cur.dispatched = false;
       await setRun(cur);
       return "tick";

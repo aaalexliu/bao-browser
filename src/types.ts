@@ -61,10 +61,18 @@ export interface FrameRef {
 
 export type StepAction =
   | "click" | "input" | "select" | "setChecked" | "keypress" | "submit"
-  | "assert" | "navigate" | "softNav" | "waitForUser";
+  | "assert" | "navigate" | "softNav" | "waitForUser" | "extract";
 
 // QA expectations (T6): checked at replay, recorded pass/fail, without acting.
 export type AssertKind = "textPresent" | "elementVisible" | "elementAbsent" | "urlMatches";
+
+// extract (M4): what to read off the resolved element.
+//  - text:  the element's rendered text (whitespace-squished unless trim:false)
+//  - attr:  getAttribute(attr)
+//  - href:  the anchor/link absolute URL (.href property, attribute fallback)
+//  - value: a form control's current .value
+//  - input: alias of value (reads .value); kept distinct for authoring clarity
+export type ExtractSource = "text" | "attr" | "href" | "value" | "input";
 
 export interface Step {
   action: StepAction;
@@ -93,6 +101,11 @@ export interface Step {
   submits?: boolean;
   // assert (T6): an expectation checked at replay, not an action
   assert?: { kind: AssertKind; value?: string };
+  // extract (M4): resolve a Target and READ it into a variable instead of acting.
+  // Sibling of assert — reuses the whole target-resolution stack. Scalar form (this
+  // slice) writes bindings[into] (a kind:"extracted" variable); inside a forEach the
+  // same step writes a row field (later slice). `attr` is required when source==="attr".
+  extract?: { source: ExtractSource; attr?: string; trim?: boolean; into: string };
   // navigate (full-document, SW-recorded)
   url?: string;
   wait?: { type: "navigation" };
@@ -163,6 +176,7 @@ export interface StepResult {
   frameId?: number;
   url?: string;
   filename?: string; // completed download's basename (T10)
+  extracted?: string; // extract (M4): the value read off the page, committed to bindings[into]
 }
 
 export interface ReplayResponse {

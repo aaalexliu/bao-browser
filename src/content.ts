@@ -985,6 +985,21 @@ declare global {
     return { ok: false, detail: `"${want}" not on page` };
   }
 
+  // M4 extract: read a value off the resolved element (never acts on the page).
+  // Sibling of evalAssert — the SW commits the returned string into bindings[into].
+  function readExtract(el: HTMLElement, ex: NonNullable<Step["extract"]>): string {
+    const anyEl = el as unknown as { value?: unknown; href?: unknown };
+    if (ex.source === "text") {
+      const t = el.innerText ?? el.textContent ?? "";
+      return ex.trim === false ? t : squish(t);
+    }
+    let v: string;
+    if (ex.source === "attr") v = el.getAttribute(ex.attr ?? "") ?? "";
+    else if (ex.source === "href") v = (typeof anyEl.href === "string" ? anyEl.href : el.getAttribute("href")) ?? "";
+    else v = typeof anyEl.value === "string" ? anyEl.value : ""; // "value" | "input"
+    return ex.trim ? v.trim() : v;
+  }
+
   async function replay(stepList: Step[]): Promise<ReplayResponse> {
     const results: StepResult[] = [];
     for (let i = 0; i < stepList.length; i++) {
@@ -994,6 +1009,24 @@ declare global {
       if (step.action === "assert") {
         const { ok, detail } = await evalAssert(step);
         results.push({ i, ok, via: `assert:${step.assert!.kind}`, reason: ok ? undefined : `Expected ${step.assert!.kind} ${JSON.stringify(step.assert!.value)} — ${detail}` });
+        continue;
+      }
+      // M4 extract: resolve the Target and read it into a variable. Unlike assert it is
+      // FATAL on a miss — a downstream {{ref}} depends on the value, so a silent skip
+      // would just push the failure to a confusing later step. Reuses waitForStep.
+      if (step.action === "extract") {
+        if (!step.target || step.target.degraded) {
+          results.push({ i, ok: false, reason: `Extract needs a resolvable target: ${step.label}` });
+          return { ok: false, failedAt: i, results };
+        }
+        const r = await waitForStep(step.target);
+        if (!r.el) {
+          results.push({ i, ok: false, reason: `Could not find (extract): ${step.label}` });
+          return { ok: false, failedAt: i, results };
+        }
+        highlight(r.el);
+        const extracted = readExtract(r.el, step.extract!);
+        results.push({ i, ok: true, via: `extract:${step.extract!.source}`, extracted });
         continue;
       }
       // Full-document navigate markers are SW-owned (the RunState machine waits on
