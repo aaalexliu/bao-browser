@@ -61,7 +61,7 @@ export interface FrameRef {
 
 export type StepAction =
   | "click" | "input" | "select" | "setChecked" | "keypress" | "submit"
-  | "assert" | "navigate" | "softNav" | "waitForUser" | "extract";
+  | "assert" | "navigate" | "softNav" | "waitForUser" | "extract" | "export";
 
 // QA expectations (T6): checked at replay, recorded pass/fail, without acting.
 export type AssertKind = "textPresent" | "elementVisible" | "elementAbsent" | "urlMatches";
@@ -106,6 +106,13 @@ export interface Step {
   // slice) writes bindings[into] (a kind:"extracted" variable); inside a forEach the
   // same step writes a row field (later slice). `attr` is required when source==="attr".
   extract?: { source: ExtractSource; attr?: string; trim?: boolean; into: string };
+  // export (M4): terminal action — serialize the run's dataset to a file download.
+  // Reuses the T10 download plumbing (a synthesized data: URL instead of a page-
+  // triggered download). `columns` fixes column order (the deterministic path); with
+  // no `columns` the default is the SORTED union of row keys (insertion order can't
+  // survive the SW storage round-trip). Outside a loop the dataset is a single row
+  // from the scalar bindings.
+  export?: { format: "csv" | "json"; columns?: string[]; filename?: string };
   // navigate (full-document, SW-recorded)
   url?: string;
   wait?: { type: "navigation" };
@@ -124,6 +131,9 @@ export interface Step {
 // A runtime-bound value. Slice 1 (variables + {{substitution}}) handles scalars;
 // `ElementLocator` for loop-bound items arrives with forEach.
 export type Value = string | number | boolean;
+
+// A committed export row: a flat map of column → stringified cell.
+export type Row = Record<string, string>;
 
 // A workflow's declared variable, distinguished by lifecycle (`kind`):
 //  - input:     bound at run start, prompted from the runner
@@ -208,8 +218,12 @@ export interface RunState {
   // dispatches. Seeded from the run's `input` variables at start; `extract`/`forEach`
   // will write here in later slices. Empty for un-parameterized runs.
   bindings: Record<string, Value>;
+  // M4: rows accumulated for `export`. A stable forEach commits one row per iteration
+  // (later slice); with no loop, export synthesizes a single row from the scalar
+  // bindings. Empty for runs that never export.
+  dataset: Row[];
   expectedNav?: { pattern: string; deadline: number };
-  expectedDownload?: { deadline: number; filename?: string };
+  expectedDownload?: { deadline: number; filename?: string; id?: number };
   // T16: workflow identity, threaded through when a run is started from a saved
   // Workflow (absent for ad-hoc raw-steps runs). Denormalized into the RunRecord so
   // history survives the workflow being renamed or deleted.

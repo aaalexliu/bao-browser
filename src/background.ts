@@ -6,7 +6,7 @@
 //  2) at replay, route each step to the live frame it was recorded in — resolving
 //     the recorded FrameRef (origin/url) to a current frameId via webNavigation.
 
-import type { FrameRef, Msg, RecState, ReplayResponse, RunRecord, RunState, Step, StepResult, Value, Workflow, WorkflowSummary } from "./types";
+import type { FrameRef, Msg, RecState, ReplayResponse, Row, RunRecord, RunState, Step, StepResult, Value, Workflow, WorkflowSummary } from "./types";
 
 // The SW's harness-visible API: the e2e tests drive these via sw.evaluate, so they
 // must live on the worker global under exactly these names.
@@ -109,6 +109,8 @@ const basename = (p: string) => (p || "").split(/[\\/]/).pop() || "";
 // The download's identity is its URL's last path segment (e.g. "report.csv"), NOT the
 // on-disk filename — the latter is environment-specific (a random UUID under a managed
 // downloads dir, "report (1).csv" on a name collision) and differs record-vs-replay.
+// (A synthesized export has a data: URL with no meaningful path; it is matched by the
+// download *id* the SW created, not by name — see maybeCompleteDownload.)
 const downloadName = (item: { finalUrl?: string; url?: string }) => {
   try { return basename(new URL(item.finalUrl || item.url || "").pathname); } catch { return ""; }
 };
@@ -171,6 +173,51 @@ function resolveStep(step: Step, bindings: Record<string, Value>): Step {
   return out;
 }
 
+// ---- M4: export serialization (CSV / JSON) ----
+// The dataset drives export. A forEach commits rows into run.dataset (later slice);
+// with no loop, the scalar bindings are a single row.
+function datasetOf(run: RunState): Row[] {
+  if (run.dataset.length) return run.dataset;
+  const keys = Object.keys(run.bindings);
+  if (!keys.length) return [];
+  const row: Row = {};
+  for (const k of keys) row[k] = String(run.bindings[k]);
+  return [row];
+}
+// Column order: explicit `columns` is the author-controlled, deterministic order (the
+// intended path for a readable export). The default union is SORTED, not first-seen —
+// RunState round-trips through chrome.storage every tick, and that serialization does
+// NOT preserve object-key insertion order, so a sorted union is the only deterministic
+// default available.
+function exportColumns(rows: Row[], columns?: string[]): string[] {
+  if (columns && columns.length) return columns;
+  const seen = new Set<string>();
+  for (const row of rows) for (const k of Object.keys(row)) seen.add(k);
+  return [...seen].sort();
+}
+const csvCell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+function toCsv(rows: Row[], cols: string[]): string {
+  const head = cols.map(csvCell).join(",");
+  if (!rows.length) return head + "\r\n";
+  const body = rows.map((r) => cols.map((c) => csvCell(r[c] ?? "")).join(",")).join("\r\n");
+  return `${head}\r\n${body}\r\n`;
+}
+function toJson(rows: Row[], cols: string[]): string {
+  // Project each row onto the chosen columns so JSON key order matches `columns`.
+  const proj = rows.map((r) => { const o: Row = {}; for (const c of cols) if (c in r) o[c] = r[c]; return o; });
+  return JSON.stringify(proj, null, 2);
+}
+function serializeExport(run: RunState, spec: NonNullable<Step["export"]>): { text: string; mime: string; filename: string } {
+  const rows = datasetOf(run);
+  const cols = exportColumns(rows, spec.columns);
+  const csv = spec.format === "csv";
+  return {
+    text: csv ? toCsv(rows, cols) : toJson(rows, cols),
+    mime: csv ? "text/csv" : "application/json",
+    filename: spec.filename || (csv ? "export.csv" : "export.json"),
+  };
+}
+
 // ---- recording across navigations (T8 phase 1) ----
 self.baoRecStart = async (tabId) => {
   await setRec({ tabId, steps: [] });
@@ -222,7 +269,7 @@ self.baoRunStart = async (tabId, steps, meta) => {
   const run: RunState = {
     runId: "run-" + Math.random().toString(36).slice(2, 10), tabId, steps,
     stepIndex: 0, phase: "executing", dispatched: false, results: [], lastError: null,
-    bindings: meta?.inputs || {},
+    bindings: meta?.inputs || {}, dataset: [],
     startedAt: Date.now(),
     workflowId: meta?.workflowId, workflowName: meta?.workflowName, startUrl: meta?.startUrl,
   };
@@ -415,7 +462,7 @@ async function fail(run: RunState, reason: string): Promise<void> {
   await finalizeRun(run); // T16: persist the failed run for the history filmstrip
 }
 
-type TickTodo = { kind: "check-nav" } | { kind: "dispatch"; run: RunState; step: Step } | null;
+type TickTodo = { kind: "check-nav" } | { kind: "dispatch"; run: RunState; step: Step } | { kind: "export"; run: RunState; step: Step } | null;
 
 // One turn of the machine. Reads state, acts on the current step, writes state.
 // The actual dispatch (which can take seconds of in-page element waiting) happens
@@ -440,12 +487,20 @@ async function tick(): Promise<void> {
     if (step.action === "waitForUser") {
       run.phase = "paused_for_user"; await setRun(run); return null;
     }
+    // export is SW-owned like navigate: nothing is dispatched to the page — the SW
+    // serializes the dataset and triggers a synthesized download (handled below).
+    if (step.action === "export") {
+      run.dispatched = true; run.dispatchedAt = Date.now();
+      await setRun(run);
+      return { kind: "export", run, step };
+    }
     run.dispatched = true; run.dispatchedAt = Date.now();
     await setRun(run);
     return { kind: "dispatch", run, step };
   });
   if (!todo) return;
   if (todo.kind === "check-nav") return maybeResumeAfterNav();
+  if (todo.kind === "export") return runExport(todo.run, todo.step);
 
   const { run, step } = todo;
   let res: ReplayResponse | null = null;
@@ -499,6 +554,36 @@ async function tick(): Promise<void> {
   else if (proceed === "await-download") maybeCompleteDownload(); // catch a completion that beat us here
 }
 
+// M4 export: SW-owned terminal step. Serialize the dataset and deliver it through the
+// SAME download path as T10 — a synthesized data: URL instead of a page-triggered
+// download — then park in awaiting_download until chrome.downloads reports complete.
+async function runExport(run: RunState, step: Step): Promise<void> {
+  const { text, mime, filename } = serializeExport(run, step.export!);
+  const url = `data:${mime};charset=utf-8,${encodeURIComponent(text)}`;
+  await captureRunFrame(run.runId, run.tabId, run.stepIndex); // this step's filmstrip frame
+  // Fire the download first to learn its id; a completion arriving before we arm below
+  // is buffered in __baoRecentDownloads (keyed by id), which the trailing call reads.
+  let id: number;
+  try {
+    id = await chrome.downloads.download({ url, filename, saveAs: false });
+  } catch (e) {
+    const cur = await getRun();
+    if (cur) await fail(cur, `export download failed: ${String(e)}`);
+    return;
+  }
+  const armed = await enqueue(async () => {
+    const cur = await getRun();
+    if (!cur || cur.runId !== run.runId || cur.stepIndex !== run.stepIndex || cur.phase !== "executing") return false;
+    cur.phase = "awaiting_download";
+    cur.expectedDownload = { deadline: Date.now() + DOWNLOAD_TIMEOUT_MS, filename, id };
+    await setRun(cur);
+    chrome.alarms.create("bao-run-watchdog", { when: Date.now() + DOWNLOAD_TIMEOUT_MS });
+    return true;
+  });
+  if (!armed) return;
+  maybeCompleteDownload(); // catch a completion that finished before we armed
+}
+
 // Resume out of awaiting_nav once the destination document exists AND answers —
 // reached either from the boot ping (readyState complete) or from
 // webNavigation.onCompleted, whichever lands; the phase check makes it idempotent.
@@ -532,6 +617,26 @@ async function maybeResumeAfterNav(): Promise<void> {
 async function maybeCompleteDownload(done?: { id: number; filename: string }): Promise<void> {
   const run = await getRun();
   if (!run || run.phase !== "awaiting_download") return;
+  // Synthesized export (M4): the SW knows the exact download id it created, so match on
+  // that. The on-disk name is unreliable (a managed downloads dir renames to a GUID),
+  // so history records the *requested* filename instead of an environment-specific one.
+  const wantId = run.expectedDownload?.id;
+  if (wantId != null) {
+    const seen = (done && done.id === wantId) || self.__baoRecentDownloads.some((d) => d.id === wantId);
+    if (!seen) return; // this export's download hasn't completed yet — a later onChanged retries
+    const name = basename(run.expectedDownload?.filename || "");
+    const advanced = await enqueue(async () => {
+      const cur = await getRun();
+      if (!cur || cur.phase !== "awaiting_download") return false;
+      cur.results.push({ i: cur.stepIndex, ok: true, via: "download", filename: name });
+      cur.stepIndex++; cur.phase = "executing"; cur.dispatched = false;
+      delete cur.expectedDownload;
+      await setRun(cur);
+      return true;
+    });
+    if (advanced) tick();
+    return;
+  }
   // Prefer the completion we were handed; else the newest one seen since we dispatched.
   const hit = done || self.__baoRecentDownloads
     .filter((d) => d.ts >= (run.dispatchedAt || 0) - 500)

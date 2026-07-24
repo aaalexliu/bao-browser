@@ -317,6 +317,7 @@ function buildDebugBody(body: HTMLElement, s: Step): void {
   add("submits", s.submits);
   if (s.assert) add("assert", `${s.assert.kind}${s.assert.value ? ` = "${s.assert.value}"` : ""}`);
   if (s.extract) add("extract", `${s.extract.source}${s.extract.attr ? `[${s.extract.attr}]` : ""} → {{${s.extract.into}}}`);
+  if (s.export) add("export", `${s.export.format}${s.export.filename ? ` → ${s.export.filename}` : ""}${s.export.columns ? ` [${s.export.columns.join(", ")}]` : ""}`);
   add("url", s.url);
   add("urlAfter", s.urlAfter);
   add("urlPattern", s.urlPattern);

@@ -249,11 +249,18 @@ a single-row dataset). A terminal action serializes it:
   export: { format: "csv" | "json", columns?: ["contact_name","contact_email"], filename?: "contacts.csv" } }
 ```
 
-`columns` gives deterministic, readable column order; default to the union of row keys.
+`columns` gives deterministic, readable column order; with no `columns` the default is the
+**sorted** union of row keys - *not* first-seen order, because `RunState` round-trips through
+`chrome.storage` every tick and that serialization does not preserve object-key insertion
+order (verified: keys come back alphabetized). So a sorted union is the only deterministic
+default; the readable path is explicit `columns` (which the §5 compile-time pass produces).
 Serialization is ~30 lines. **The download path is already built (T10):** `chrome.downloads`,
 `expectedDownload`, the `download:complete` wait, and the filmstrip capture. Export is a
-*synthesized* download (a data/blob URL) instead of a page-triggered one - it reuses that
-whole plumbing rather than adding a new egress path.
+*synthesized* download (a data URL) instead of a page-triggered one - it reuses that whole
+plumbing rather than adding a new egress path. One wrinkle the build surfaced: a synthesized
+download can't be identified by its URL's last path segment (a `data:` URL has none), and a
+managed downloads dir renames the file to a GUID - so the SW matches the completion by the
+**download id** it gets back from `chrome.downloads.download`, not by filename.
 
 ---
 

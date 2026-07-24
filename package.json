@@ -47,6 +47,7 @@
     "test:workflows": "node build.mjs && node test/workflows.mjs",
     "test:params": "node build.mjs && node test/params.mjs",
     "test:extract": "node build.mjs && node test/extract.mjs",
+    "test:export": "node build.mjs && node test/export.mjs",
     "test:sidepanel": "node build.mjs && node test/sidepanel.mjs",
     "test:dashboard": "node build.mjs && node test/dashboard.mjs"
   },
