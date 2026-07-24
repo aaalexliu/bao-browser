@@ -11,7 +11,12 @@
   </style>
 </head>
 <body>
-  <!-- Stands in for a Stripe/SSO-style cross-origin payment frame. -->
+  <!-- Stands in for a Stripe/SSO-style cross-origin payment frame. The coupon field is
+       ordinary (non-sensitive) and is what this test records/replays to prove
+       cross-origin frame refill; the card field is sensitive (its withholding is
+       covered by test/sensitive.mjs) and is left here only for realism. -->
+  <label for="coupon">Coupon code</label>
+  <input id="coupon" name="coupon" aria-label="Coupon code" placeholder="SAVE20" />
   <label for="card">Card number</label>
   <input id="card" name="card" aria-label="Card number" placeholder="4242 4242 4242 4242" />
   <button data-testid="pay-btn" id="pay-btn">Pay</button>
@@ -20,10 +25,10 @@
     window.__events = [];
     window.__fired = [];
     function record(kind, detail) { window.__events.push({ kind, detail }); }
-    document.getElementById("card").addEventListener("input", (e) =>
-      record("input", `card=${e.target.value}`));
+    document.getElementById("coupon").addEventListener("input", (e) =>
+      record("input", `coupon=${e.target.value}`));
     document.getElementById("pay-btn").addEventListener("click", () => {
-      record("click", "pay-btn"); window.__fired.push({ id: "pay-btn", card: document.getElementById("card").value });
+      record("click", "pay-btn"); window.__fired.push({ id: "pay-btn", coupon: document.getElementById("coupon").value });
     });
   </script>
 </body>
