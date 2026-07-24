@@ -107,16 +107,35 @@ export interface Step {
   meta?: { viewport: { w: number; h: number }; recordedAt: number; goldenScreenshotRef?: string };
 }
 
+// ---------- M4 parameterization ----------
+// A runtime-bound value. Slice 1 (variables + {{substitution}}) handles scalars;
+// `ElementLocator` for loop-bound items arrives with forEach.
+export type Value = string | number | boolean;
+
+// A workflow's declared variable, distinguished by lifecycle (`kind`):
+//  - input:     bound at run start, prompted from the runner
+//  - extracted: bound mid-run by an `extract` step (later M4 slice)
+//  - loop:      bound per-iteration by a `forEach` (later M4 slice)
+// The T1 masked-input slot is the first `kind:"input"` variable in disguise.
+export interface VariableDecl {
+  name: string;
+  kind: "input" | "extracted" | "loop";
+  type: "text" | "number" | "boolean" | "element";
+  prompt?: string;   // input: the label shown when the runner is asked for it
+  default?: string;  // input: prefilled value
+}
+
 // ---------- named workflows (T14): the durable IR wrapper ----------
 // A recording becomes a first-class, named Workflow instead of an anonymous array
-// under one storage key. `variables` is empty until M4 parameterization; `startUrl`
-// lets replay land on the right page first.
+// under one storage key. `variables` is [] until parameterized (M4); old workflows
+// carry [], so widening string[] → VariableDecl[] is transparent. `startUrl` lets
+// replay land on the right page first.
 export interface Workflow {
   id: string;
   name: string;
   version: number;
   startUrl: string;
-  variables: string[];
+  variables: VariableDecl[];
   steps: Step[];
   createdAt: number;
   pinned?: boolean;    // T15: pin favorites to the top of the panel
@@ -171,6 +190,10 @@ export interface RunState {
   dispatchedAt?: number;
   results: StepResult[];
   lastError: { stepIndex: number; reason: string } | null;
+  // M4: variable bindings resolved into {{name}} refs just before each step
+  // dispatches. Seeded from the run's `input` variables at start; `extract`/`forEach`
+  // will write here in later slices. Empty for un-parameterized runs.
+  bindings: Record<string, Value>;
   expectedNav?: { pattern: string; deadline: number };
   expectedDownload?: { deadline: number; filename?: string };
   // T16: workflow identity, threaded through when a run is started from a saved
@@ -216,7 +239,7 @@ export type Msg =
   | { cmd: "bao-wf-save"; name: string; startUrl: string; steps: Step[] }
   | { cmd: "bao-wf-list" }
   | { cmd: "bao-wf-delete"; id: string }
-  | { cmd: "bao-wf-run"; tabId: number; id: string }
+  | { cmd: "bao-wf-run"; tabId: number; id: string; inputs?: Record<string, Value> }
   // side panel (T15)
   | { cmd: "bao-wf-get"; id: string }                                                 // → Workflow | null
   | { cmd: "bao-wf-update"; id: string; patch: { name?: string; pinned?: boolean } }  // → { ok }

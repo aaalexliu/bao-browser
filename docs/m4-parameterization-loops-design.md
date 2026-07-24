@@ -120,6 +120,26 @@ and the filmstrip keep working unchanged: a 3-item loop over a 2-step body natur
 6 frames, which is the honest audit trail you want for a destructive run. Nesting falls out
 for free via a stack. Cost: one `loopStack` on `RunState`.
 
+**Alternatives considered: a self-contained `scrape` step that owns the loop.** The tempting
+shortcut is one fat step - `{ action: "scrape", collection, fields: [{source, into}, ...] }` -
+that bundles the collection and the per-item reads, no sentinels, no `loopStack`. For the
+read-only contacts case it *is* nicer. It fails as the general answer for three reasons.
+(1) **The mutate case has no `fields[]`.** "Cancel every subscription" *acts* per item (click,
+wait, confirm, submit); a field list can only *read*. So a scrape step can't express draining
+loops at all, forcing a *second* loop construct - two iterators, two relative-resolution paths,
+two termination models, two audit integrations. Sentinels use **one** loop for both, because a
+body is just the normal step vocabulary. (2) **It hides the tree instead of removing it.** A
+3-row x 2-field scrape still owes 6 result records, 6 filmstrip frames, and field-level editing -
+so the flat invariants (results 1:1 with steps, a frame per step, a reorderable flat list) get
+re-implemented *inside* the step, where none of the existing machinery reaches. (3) **`extract`
+must exist as a standalone leaf anyway** (the scalar copy-one-name case, §2); giving it loop
+semantics too means two shapes for one action. **The resolution is composition, not fusion:**
+`extract` stays a single-purpose leaf, `forEach`/`endForEach` is an orthogonal wrapper over
+*any* leaves, and the two compose (extract in a loop, out of one, or nested). The ergonomic
+declarative `scrape` shape is kept - but as **authoring/compile-time sugar that desugars to the
+sentinel form** (§5's generalize-from-one is where the lift happens), so there is exactly one
+runtime iterator and the mutate case comes for free.
+
 ### 3.2 The loop descriptor - and the two iteration modes
 
 This is the load-bearing decision. "Scrape every contact" and "cancel every subscription"

@@ -6,7 +6,7 @@
 //  2) at replay, route each step to the live frame it was recorded in — resolving
 //     the recorded FrameRef (origin/url) to a current frameId via webNavigation.
 
-import type { FrameRef, Msg, RecState, ReplayResponse, RunRecord, RunState, Step, StepResult, Workflow, WorkflowSummary } from "./types";
+import type { FrameRef, Msg, RecState, ReplayResponse, RunRecord, RunState, Step, StepResult, Value, Workflow, WorkflowSummary } from "./types";
 
 // The SW's harness-visible API: the e2e tests drive these via sw.evaluate, so they
 // must live on the worker global under exactly these names.
@@ -25,7 +25,7 @@ declare global {
   var baoSaveWorkflow: (name: string, startUrl: string, steps: Step[]) => Promise<{ ok: boolean; id: string }>;
   var baoListWorkflows: () => Promise<WorkflowSummary[]>;
   var baoDeleteWorkflow: (id: string) => Promise<{ ok: boolean }>;
-  var baoRunWorkflow: (tabId: number, id: string) => Promise<{ ok: boolean; runId?: string; error?: string }>;
+  var baoRunWorkflow: (tabId: number, id: string, inputs?: Record<string, Value>) => Promise<{ ok: boolean; runId?: string; error?: string }>;
   var baoGetWorkflow: (id: string) => Promise<Workflow | null>;
   var baoUpdateWorkflow: (id: string, patch: { name?: string; pinned?: boolean }) => Promise<{ ok: boolean }>;
   var baoUpdateWorkflowSteps: (id: string, steps: Step[]) => Promise<{ ok: boolean; error?: string }>;
@@ -38,7 +38,8 @@ declare global {
 }
 
 // Workflow identity carried into a run so its history record can be attributed.
-type RunMeta = { workflowId?: string; workflowName?: string; startUrl?: string };
+// `inputs` seeds the M4 variable bindings (the prompted `kind:"input"` variables).
+type RunMeta = { workflowId?: string; workflowName?: string; startUrl?: string; inputs?: Record<string, Value> };
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[bao-m0] service worker installed");
@@ -81,7 +82,7 @@ chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse
   if (msg.cmd === "bao-wf-save") { baoSaveWorkflow(msg.name, msg.startUrl, msg.steps).then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-list") { baoListWorkflows().then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-delete") { baoDeleteWorkflow(msg.id).then(sendResponse); return true; }
-  if (msg.cmd === "bao-wf-run") { baoRunWorkflow(msg.tabId, msg.id).then(sendResponse); return true; }
+  if (msg.cmd === "bao-wf-run") { baoRunWorkflow(msg.tabId, msg.id, msg.inputs).then(sendResponse); return true; }
   // ---- side panel (T15) ----
   if (msg.cmd === "bao-wf-get") { baoGetWorkflow(msg.id).then(sendResponse); return true; }
   if (msg.cmd === "bao-wf-update") { baoUpdateWorkflow(msg.id, msg.patch).then(sendResponse); return true; }
@@ -147,6 +148,29 @@ function urlMatches(pattern: string, url: string): boolean {
 }
 const urlPatternOf = (u: string) => u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\d+/g, "\\d+");
 
+// ---- M4: {{variable}} substitution ----
+// The entire runtime cost of parameterization: resolve `{{name}}` refs against the
+// run's bindings on the string fields a step dispatches (value / url / urlPattern),
+// immediately before it runs. Returns the step unchanged when nothing to do, so the
+// persisted template (run.steps) is preserved for history and loop re-dispatch — the
+// resolved copy is ephemeral. A ref with no binding is left verbatim, so a mis-templated
+// step fails visibly at the target instead of silently blanking a field.
+const TEMPLATE = /\{\{\s*([\w.$]+)\s*\}\}/g;
+const subst = (s: string, bindings: Record<string, Value>): string =>
+  s.replace(TEMPLATE, (m, name) => (name in bindings ? String(bindings[name]) : m));
+function resolveStep(step: Step, bindings: Record<string, Value>): Step {
+  if (!bindings || !Object.keys(bindings).length) return step;
+  let out = step;
+  for (const k of ["value", "url", "urlPattern"] as const) {
+    const v = step[k];
+    if (typeof v === "string" && v.includes("{{")) {
+      if (out === step) out = { ...step };
+      out[k] = subst(v, bindings);
+    }
+  }
+  return out;
+}
+
 // ---- recording across navigations (T8 phase 1) ----
 self.baoRecStart = async (tabId) => {
   await setRec({ tabId, steps: [] });
@@ -198,6 +222,7 @@ self.baoRunStart = async (tabId, steps, meta) => {
   const run: RunState = {
     runId: "run-" + Math.random().toString(36).slice(2, 10), tabId, steps,
     stepIndex: 0, phase: "executing", dispatched: false, results: [], lastError: null,
+    bindings: meta?.inputs || {},
     startedAt: Date.now(),
     workflowId: meta?.workflowId, workflowName: meta?.workflowName, startUrl: meta?.startUrl,
   };
@@ -355,7 +380,7 @@ self.baoDeleteWorkflow = async (id) => {
   });
   return { ok: true };
 };
-self.baoRunWorkflow = async (tabId, id) => {
+self.baoRunWorkflow = async (tabId, id, inputs) => {
   const wf = (await getWorkflows())[id];
   if (!wf) return { ok: false, error: "no such workflow" };
   // Land on the workflow's start page first if the tab isn't already there.
@@ -365,7 +390,7 @@ self.baoRunWorkflow = async (tabId, id) => {
       await navigateAndWait(tabId, wf.startUrl);
     }
   } catch (_) {}
-  return baoRunStart(tabId, wf.steps, { workflowId: wf.id, workflowName: wf.name, startUrl: wf.startUrl });
+  return baoRunStart(tabId, wf.steps, { workflowId: wf.id, workflowName: wf.name, startUrl: wf.startUrl, inputs });
 };
 // Drive a bare navigation and wait for the tab to settle on it (not part of the replay
 // state machine — this is the pre-run "get to startUrl" hop).
@@ -402,7 +427,9 @@ async function tick(): Promise<void> {
     if (run.stepIndex >= run.steps.length) {
       run.phase = "done"; await setRun(run); await finalizeRun(run); return null;
     }
-    const step = run.steps[run.stepIndex];
+    // Resolve {{variable}} refs against the run's bindings just before use; the raw
+    // step in run.steps stays a template (history, loop re-dispatch).
+    const step = resolveStep(run.steps[run.stepIndex], run.bindings);
     if (step.action === "navigate") {
       run.phase = "awaiting_nav";
       run.expectedNav = { pattern: urlPatternOf(step.url || ""), deadline: Date.now() + NAV_TIMEOUT_MS };

@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Bao fixture — parameterized search</title>
+  <style>body { font-family: sans-serif; margin: 2rem; }</style>
+</head>
+<body>
+  <h1>Search</h1>
+  <input id="q" aria-label="Search" placeholder="Search for…" />
+  <button id="go" data-testid="go">Search</button>
+  <p>You searched for: <span id="out"></span></p>
+  <script>
+    // Echo the submitted query so the test can assert the value that actually
+    // reached the field at replay (i.e. after {{search_term}} substitution).
+    document.getElementById("go").addEventListener("click", () => {
+      document.getElementById("out").textContent = document.getElementById("q").value;
+    });
+  </script>
+</body>
+</html>
