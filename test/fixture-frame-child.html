@@ -11,19 +11,21 @@
   </style>
 </head>
 <body>
-  <!-- Stands in for a Stripe/SSO-style cross-origin payment frame. -->
-  <label for="card">Card number</label>
-  <input id="card" name="card" aria-label="Card number" placeholder="4242 4242 4242 4242" />
+  <!-- Stands in for a cross-origin payment frame's *routing*, not for T1.
+       A card number / "Card number" label is masked and withheld at replay
+       (test/sensitive.mjs). This field stays unmarked so the value can round-trip. -->
+  <label for="note">Note</label>
+  <input id="note" name="note" aria-label="Note" placeholder="hello" />
   <button data-testid="pay-btn" id="pay-btn">Pay</button>
 
   <script>
     window.__events = [];
     window.__fired = [];
     function record(kind, detail) { window.__events.push({ kind, detail }); }
-    document.getElementById("card").addEventListener("input", (e) =>
-      record("input", `card=${e.target.value}`));
+    document.getElementById("note").addEventListener("input", (e) =>
+      record("input", `note=${e.target.value}`));
     document.getElementById("pay-btn").addEventListener("click", () => {
-      record("click", "pay-btn"); window.__fired.push({ id: "pay-btn", card: document.getElementById("card").value });
+      record("click", "pay-btn"); window.__fired.push({ id: "pay-btn", note: document.getElementById("note").value });
     });
   </script>
 </body>
