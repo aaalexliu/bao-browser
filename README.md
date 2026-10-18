@@ -134,6 +134,14 @@ is still the source of truth for the extension.
   multi-tab); OS hooks (AT-SPI / AX / UIA) live in Rust; Tauri 2 is the window only
   after two spikes pass. The shared IR is extended, not forked. No app code, extension
   behavior unchanged.
+- **2026-10-18 — Desktop spike 1 (pass).** `npm run spike1` launches an owned Chrome
+  with a fresh temp profile (the app-owned persistent path is
+  `desktop/src/profile.ts`; demos do not use it), records the-internet.herokuapp.com
+  (checkbox, input, second tab, intercepted file upload), writes a version-2
+  workflow, and replays it from a second temp profile. DOM matches, `isTrusted`
+  is true, both profiles are deleted. Selector ranking in the spike is a small
+  page-side list, not an extraction of `src/content.ts`. Extension behavior is
+  unchanged.
 
 ---
 

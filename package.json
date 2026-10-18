@@ -38,6 +38,7 @@
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
+    "spike1": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/spike1.js",
     "test:snapshot": "node build.mjs && node test/snapshot.mjs",
     "test:sensitive": "node build.mjs && node test/sensitive.mjs",
     "test:workflows": "node build.mjs && node test/workflows.mjs",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.2.2",
+    "@types/node": "^22.20.5",
     "esbuild": "^0.28.1",
     "playwright": "^1.49.0",
     "typescript": "^6.0.3"
