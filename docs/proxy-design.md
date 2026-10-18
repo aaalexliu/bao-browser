@@ -2,7 +2,7 @@
 
 Bao's desktop app as the computer that a computer-use agent drives. The agent never gets a pipe to the machine. Bao executes each action, records what the agent saw and did, and turns that trace into a workflow the replayer can run without the model.
 
-This pass is a design. No proxy code. It sits on the desktop spikes: an owned Chrome profile (`desktop/`, spike 1) and an AT-SPI helper for native dialogs (`desktop/os-helper/`, spike 2). The shared IR stays `Workflow` / `Step` in `src/types.ts`. Extension behavior does not change.
+This pass is the design. The first spike lives in `desktop/src/proxy/` (scripted OpenAI adapter, audit trail, capture HAR). It sits on the desktop spikes: an owned Chrome profile (`desktop/`, spike 1) and an AT-SPI helper for native dialogs (`desktop/os-helper/`, spike 2). The shared IR stays `Workflow` / `Step` in `src/types.ts`. Extension behavior does not change.
 
 The constraints the shape has to honor:
 
@@ -122,7 +122,7 @@ Taken from B: the stored program is semantic. Replay never sees `x` and `y`. The
 
 Rejected: replaying the raw vendor trace, CDP passthrough, and a Grok Bot shim. The last one has nothing public to shim.
 
-Interface depth. Callers of the executor use two operations, `observe` and `perform`. Adapters are not a layer the replayer imports. The workflow file is the contract between capture and replay. That is the whole public surface.
+Interface depth. Callers of the executor use two operations, `observe` and `act`. Adapters are not a layer the replayer imports. The audit trail is the primary record. The workflow file is a derived view of that trail, and it is still the only thing replay runs.
 
 Tradeoffs accepted:
 
@@ -170,6 +170,48 @@ Parameterize:
 
 The output is a version-2 `Workflow`. `startUrl` is the first document. An OS-only tail (the save dialog) keeps `surface: "os"` steps after the DOM steps. The extension still does not run that workflow. Desktop-design's open question on version-2 in the side panel stays open.
 
+## Audit trail
+
+The trail is an append-only list, `desktop/src/proxy/audit.ts`, version 1. Each event is one read or one act:
+
+- `id`, `ts`
+- `kind`: `read` or `act`
+- `op`: `navigate`, `screenshot`, `dom`, `ax`, `click`, `type`, `keypress`, or the vendor action name when this spike does not perform it
+- `source.agent`, `source.vendor`, `source.adapter`
+- `raw`: the vendor payload after T1 redaction. A secret is omitted, not replaced with a mask string. The rule is `src/mask.ts`, the same one `content.ts` uses (password / autocomplete / name, plus an SSN-shaped or Luhn-valid value)
+- `before` and `after`: snapshot refs. `screenshot` is `sha256:` of the PNG. `dom` and `ax` are the small snapshots. The PNG bytes stay in the computer-call transcript
+- `resolved`: tag, ranked selectors, unique, text. Null when the hit missed
+- `unresolved.reason` when the act was stored and not performed
+- `provenance` for a pixel the vendor sent. Replay does not read it
+- `sensitive` when a typed value was withheld
+- `checked` when the act was a checkbox, so derive can emit `setChecked`
+
+Reads are not workflow steps. `deriveWorkflow` walks act events only. `trimTrail` drops a screenshot read whose image hash equals the previous screenshot read. DOM and AX events between those two stay. Deriving again from the trimmed trail produces the same steps. That is the seam a later interpret pass uses to drop retries and name reads versus writes. This spike does not run that pass. It only trims duplicate screenshots.
+
+An event is appended when it starts, so network captured during it can point at the id. `before` / `after` are filled once each. Events are not otherwise edited.
+
+## Network capture, and what replay would mean
+
+Capture writes a HAR 1.2 file (`NetworkCapture` in `desktop/src/proxy/network.ts`). Each entry's `_auditEventId` is the trail event that was open when the request started. The saved file drops request and response cookies and these headers: `cookie`, `authorization`, `proxy-authorization`, `x-api-key`, `set-cookie`. Bodies are not stored. This spike does not replay the HAR. The checkbox demo still replays by selector.
+
+A later spike can use that HAR in three places, and should not use it in others.
+
+It works when:
+
+- The request is an idempotent GET of a public document (the page HTML, a static stylesheet). Replaying it, or serving it from the HAR, lets a test run when the origin is down.
+- The request is a read the page renders, and the test wants a frozen response. Mocking that GET from the HAR makes the replay deterministic without clicking through a flaky API.
+- The write is one obvious call whose body is already in the audit event (a POST with the same JSON the agent typed), and the body has no one-time nonce. That call can replace the click. It is still a write, so the replay gate applies.
+
+It breaks when:
+
+- The body or a header carries a CSRF token or nonce minted for that page load. The recorded request fails on the next load.
+- The call needs an auth token or a cookie. The saved HAR does not have them, and replaying a captured session cookie would be the wrong session anyway.
+- The request is signed over a timestamp or a body hash. The signature does not survive a later send.
+- The session is a WebSocket or a stream. A HAR entry is not a live socket.
+- The request has a side effect (charge, send, delete). Replaying it does the thing twice. The click in the workflow is the write. The HAR is evidence of what the click caused, not a second way to cause it.
+
+**Follow-up spike.** A local fixture page GETs `/items` (idempotent JSON) and POSTs `/charge` with a csrf field read from the HTML. Throwaway Chrome, same launch as spike 1. Capture stores a HAR linked to the click that caused the POST, with no `Cookie` or `Authorization` header in the file. Replay serves the recorded GET from the HAR and does not send it to the network. The POST is not replayed from the HAR. The workflow click runs against a fresh load of the fixture, so the csrf is the new page's token. Pass: the GET is answered from the HAR, the saved HAR has no cookie or auth header, and `/charge` is hit once, by the click, not by a replayed entry. Fail: replay re-POSTs `/charge`, the HAR still contains `Cookie` or `Authorization`, or the mocked GET returns the POST's body.
+
 ## Safety
 
 Writes are gated on replay. The replayer runs reads and non-submitting DOM setup only when the gate is closed. `uploadFile`, a submitting click, `osConfirm`, and any step interpret marked write-and-external (send, pay, delete) wait for an explicit allow on that run. The gate is not the model. The first spike's checkbox is a write of page state inside the throwaway profile. It is not an external write, and the spike allows it so the demo can finish. The gate's default for anything that leaves the profile is closed.
@@ -198,6 +240,8 @@ Scripted, no model. The driver speaks the OpenAI `computer_call` shape from the 
 **Pass.** Workflow version 2, a selector on the step, replay flips the same checkbox, profiles deleted, the executor's response is a `computer_call_output` with the matching `call_id`.
 
 **Fail.** Replay clicks the stored coordinate. Resolution misses and the run still claims success. The driver needed a network call to OpenAI. The profile was not a temp dir.
+
+The spike also writes the audit trail, trims duplicate screenshot reads, and re-derives the workflow from the trimmed trail. A click on blank space is an unresolved act with no selector. A typed Luhn test card is withheld with the extension's T1 rule. Capture saves a HAR linked to the trail event that was open when each request started, with cookies and auth headers removed. Replaying that HAR is the follow-up spike above, not this one.
 
 Claude's adapter and a live model are the spike after this one, on the same executor. Grok waits until either xAI publishes a computer-use action schema or we deliberately expose shape B's function tools.
 

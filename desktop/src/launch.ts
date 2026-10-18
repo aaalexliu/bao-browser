@@ -11,6 +11,7 @@ export async function launchOwnedChrome(opts: {
   userDataDir: string;
   videoDir?: string;
   headless?: boolean;
+  args?: string[];
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
@@ -18,7 +19,7 @@ export async function launchOwnedChrome(opts: {
     headless: opts.headless ?? true,
     viewport: { width: 1280, height: 720 },
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: LAUNCH_ARGS,
+    args: [...LAUNCH_ARGS, ...(opts.args ?? [])],
   });
   assertOwnedProcess(ctx, opts.userDataDir);
   return ctx;

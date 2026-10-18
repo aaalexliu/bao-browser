@@ -14,6 +14,7 @@ import type {
   Target,
   WithinDescriptor,
 } from "./types";
+import { isSensitiveElement as isSensitive } from "./mask";
 
 declare global {
   interface Window {
@@ -40,38 +41,6 @@ declare global {
         !["checkbox", "radio", "button", "submit", "file", "range"].includes(el.type));
   }
 
-  // T1: a field whose value must never be persisted. `type=password` is the hard
-  // signal; autocomplete tokens + name/id/label/placeholder patterns catch SSN / card /
-  // CVV / OTP fields that render as plain text (so their value is on-screen too — the
-  // golden frame is skipped for these). Value-shape (exact SSN / Luhn-valid card) is a
-  // last-resort net for an otherwise-unmarked field clearly holding a secret.
-  const SENSITIVE_AC = new Set([
-    "current-password", "new-password", "cc-number", "cc-csc", "cc-exp",
-    "cc-exp-month", "cc-exp-year", "one-time-code",
-  ]);
-  const SENSITIVE_RE = /pass(word|code)|\bssn\b|social.?security|credit.?card|card.?number|\bcc-?num|\bcvv\b|\bcvc\b|security.?code|\botp\b|one.?time.?code|routing.?number|\bpin\b/i;
-  function luhnCard(v: string): boolean {
-    const d = v.replace(/[\s-]/g, "");
-    if (!/^\d{13,19}$/.test(d)) return false;
-    let sum = 0, alt = false;
-    for (let i = d.length - 1; i >= 0; i--) {
-      let n = +d[i];
-      if (alt) { n *= 2; if (n > 9) n -= 9; }
-      sum += n; alt = !alt;
-    }
-    return sum % 10 === 0;
-  }
-  function isSensitive(el: Element): boolean {
-    if (el instanceof HTMLInputElement && el.type === "password") return true;
-    const ac = (el.getAttribute("autocomplete") || "").toLowerCase().trim();
-    if (SENSITIVE_AC.has(ac)) return true;
-    const hay = ["name", "id", "autocomplete", "aria-label", "placeholder"]
-      .map((a) => el.getAttribute(a)).filter(Boolean).join(" ");
-    if (SENSITIVE_RE.test(hay)) return true;
-    const v = (el as HTMLInputElement).value || "";
-    if (/^\s*\d{3}-?\d{2}-?\d{4}\s*$/.test(v)) return true; // SSN-shaped
-    return luhnCard(v);
-  }
   // T1: strip every trace of a secret from a recorded step — the value itself plus the
   // target's screenshot-adjacent fuel (text/snapshot). The step still replays
   // structurally (selectors intact); only the secret is withheld.

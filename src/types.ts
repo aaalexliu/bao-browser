@@ -153,6 +153,11 @@ export interface Step {
   upload?: UploadRef;
   dialog?: BrowserDialog;
   os?: { target: OsTarget; value?: string; key?: string };
+  // Proxy capture audit. The pixel the vendor asked for. Replay does not click it.
+  provenance?: { x: number; y: number; space: "viewport" };
+  // Hit-test missed an actionable element, or the action is not one this spike performs.
+  // The step is stored so the miss is visible. Replay skips it.
+  unresolved?: { reason: string };
 }
 
 // ---------- named workflows (T14): the durable IR wrapper ----------

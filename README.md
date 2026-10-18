@@ -119,7 +119,8 @@ distribution — far lighter Chrome Web Store review.
    via CDP, OS accessibility for native dialogs). Exploratory; the extension stays the
    product. Spike 1 and spike 2 live under `desktop/`.
 9. **`docs/proxy-design.md`** — design for the desktop app as the harness computer-use
-   agents drive. Docs only. No proxy code yet.
+   agents drive. The first spike (`npm run spike-proxy`) is a scripted OpenAI
+   computer-call adapter over a vendor-neutral executor.
 
 Docs cross-link with `[[wikilinks]]` by basename.
 
@@ -171,6 +172,20 @@ is still the source of truth for the extension.
   Recommended first spike: a scripted OpenAI `computer_call` (screenshot, then
   one click) against a throwaway Chrome, resolved to a selector at capture,
   replayed without coordinates and without a model.
+- **2026-10-18 — Proxy spike, OpenAI computer tool (pass).** `npm run spike-proxy`
+  drives a throwaway Chrome on the-internet's checkboxes page with scripted
+  `computer_call`s (screenshot, one measured click, one blank click, one
+  `type` of the T1 test card). The OpenAI adapter only translates that schema.
+  The executor hit-tests and appends an audit event; the version-2 workflow is
+  derived from the trail, not written beside it. `trimTrail` drops duplicate
+  screenshot reads (6 → 2) and the same three steps fall out again. The
+  checkbox step's selector is `#checkboxes > input:nth-of-type(1)`; the pixel
+  stays on `provenance`. Replay shifts the page 220px and clicks the live
+  element (y 195 → 415). A blank click is an unresolved act with no target.
+  The typed card is withheld by `src/mask.ts` (the extension's T1 rule) and
+  is absent from the trail. Capture writes a HAR linked to the open audit
+  event, with cookies and auth headers removed. No call to the OpenAI API.
+  Claude is a type sketch in `desktop/src/proxy/claude.ts`.
 
 ---
 
