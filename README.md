@@ -115,8 +115,25 @@ distribution — far lighter Chrome Web Store review.
    durable run history, and the record-vs-replay filmstrip.
 7. **`docs/backend-webapp-design.md`** — launch #2: the hosted compiler (M2), accounts + sync,
    and **workflow sharing** — designed local-first so the backend stays additive.
+8. **`docs/desktop-design.md`** — architecture pass for a desktop modality (owned Chrome
+   via CDP, OS accessibility for native dialogs). Exploratory; the extension stays the
+   product. No app code yet.
 
 Docs cross-link with `[[wikilinks]]` by basename.
+
+---
+
+## Spike log
+
+Short notes for explorations that are not on the launch path. The status table above
+is still the source of truth for the extension.
+
+- **2026-10-18 — Desktop architecture pass.** Recommendation in
+  [`docs/desktop-design.md`](docs/desktop-design.md): a second modality, not a rewrite.
+  Node + Playwright drives an owned Chrome over CDP (file upload, trusted input,
+  multi-tab); OS hooks (AT-SPI / AX / UIA) live in Rust; Tauri 2 is the window only
+  after two spikes pass. The shared IR is extended, not forked. No app code, extension
+  behavior unchanged.
 
 ---
 
