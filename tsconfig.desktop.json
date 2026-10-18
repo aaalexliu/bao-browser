@@ -12,5 +12,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["desktop/src/**/*.ts", "src/types.ts"]
+  "include": ["desktop/src/**/*.ts", "src/types.ts", "src/mask.ts"]
 }
