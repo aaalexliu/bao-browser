@@ -117,7 +117,9 @@ distribution — far lighter Chrome Web Store review.
    and **workflow sharing** — designed local-first so the backend stays additive.
 8. **`docs/desktop-design.md`** — architecture pass for a desktop modality (owned Chrome
    via CDP, OS accessibility for native dialogs). Exploratory; the extension stays the
-   product. No app code yet.
+   product. Spike 1 and spike 2 live under `desktop/`.
+9. **`docs/proxy-design.md`** — design for the desktop app as the harness computer-use
+   agents drive. Docs only. No proxy code yet.
 
 Docs cross-link with `[[wikilinks]]` by basename.
 
@@ -161,6 +163,14 @@ is still the source of truth for the extension.
   GTK 4's `GetRoleName` is `text box` / `button`, not the libatspi enum strings.
   `Text.getText` stays empty. Details in
   [`desktop/os-helper/NOTES.md`](desktop/os-helper/NOTES.md).
+- **2026-10-18 — Proxy design.** [`docs/proxy-design.md`](docs/proxy-design.md)
+  compares two integration shapes. The base is a screenshot/action shim that
+  speaks the published OpenAI computer tool and Claude computer toolset, and
+  stores a semantic workflow. A semantic MCP door is the later path for
+  function-calling models. Grok Bot publishes no action schema to shim.
+  Recommended first spike: a scripted OpenAI `computer_call` (screenshot, then
+  one click) against a throwaway Chrome, resolved to a selector at capture,
+  replayed without coordinates and without a model.
 
 ---
 
