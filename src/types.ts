@@ -3,7 +3,7 @@
 // chrome.runtime message boundary or lands in chrome.storage is typed here.
 
 // ---------- selectors & targets (capture output, resolution input) ----------
-export type SelectorType = "testid" | "aria" | "text" | "id" | "css" | "shadowpath";
+export type SelectorType = "testid" | "aria" | "text" | "id" | "css" | "shadowpath" | "ax";
 
 export interface Selector {
   type: SelectorType;
@@ -12,7 +12,7 @@ export interface Selector {
 }
 
 // How reachable the captured element was — drives graceful degrade.
-export type Reach = "light" | "open-shadow" | "canvas" | "opaque-custom";
+export type Reach = "light" | "open-shadow" | "canvas" | "opaque-custom" | "closed-shadow" | "os";
 
 // The nearest uniquely-identifiable ancestor of an ambiguous target.
 export type AnchorDescriptor =
@@ -52,16 +52,58 @@ export interface Target {
 // ---------- steps ----------
 // Which frame a step was captured in. frameId/url are stamped on by the SW from
 // `sender` (authoritative); origin/top come from the content script.
+/** Which tab a desktop step belongs to. CDP targetId is intentionally absent — it changes every run. */
+export interface TabHint {
+  index: number;
+  openerIndex?: number;
+  urlPattern?: string;
+}
+
 export interface FrameRef {
   url?: string;
   origin?: string;
   top?: boolean;
   frameId?: number;
+  // Desktop only. The extension's frameId stays the Chrome-extension id.
+  tab?: TabHint;
 }
+
+// uploadFile / switchTab / handleDialog / os* are the desktop plane (docs/desktop-design.md).
+// Optional additions. The extension replayer does not implement them: a version-2
+// workflow must not be handed to it until unknown actions fail closed (see that doc).
+export type StepSurface = "dom" | "browser" | "os";
 
 export type StepAction =
   | "click" | "input" | "select" | "setChecked" | "keypress" | "submit"
-  | "assert" | "navigate" | "softNav" | "waitForUser";
+  | "assert" | "navigate" | "softNav" | "waitForUser"
+  | "uploadFile" | "switchTab" | "handleDialog"
+  | "osClick" | "osType" | "osKey" | "osSetValue" | "osConfirm";
+
+/** A file the workflow names. Never an absolute path on the author's machine. */
+export interface UploadRef {
+  name: string;
+  names?: string[];
+  accept?: string;
+}
+
+export interface BrowserDialog {
+  kind: "alert" | "confirm" | "prompt" | "beforeunload";
+  action: "accept" | "dismiss";
+  promptText?: string;
+}
+
+export type OsPlatform = "macos" | "windows" | "linux";
+export type OsDialogKind = "open" | "save" | "print" | "auth" | "permission" | "other";
+
+export interface OsTarget {
+  platform: OsPlatform;
+  app: string;
+  role: string;
+  name: string;
+  path: { role: string; name?: string }[];
+  bbox?: { x: number; y: number; w: number; h: number; sw: number; sh: number };
+  dialog?: OsDialogKind;
+}
 
 // QA expectations (T6): checked at replay, recorded pass/fail, without acting.
 export type AssertKind = "textPresent" | "elementVisible" | "elementAbsent" | "urlMatches";
@@ -105,6 +147,12 @@ export interface Step {
   // record-time frame grounding (T11): the viewport the step was captured in and when.
   // goldenScreenshotRef (T12) is an IndexedDB key for the full-viewport golden frame.
   meta?: { viewport: { w: number; h: number }; recordedAt: number; goldenScreenshotRef?: string };
+  // --- desktop (all optional; absent on every workflow the extension writes) ---
+  surface?: StepSurface;
+  requires?: "trustedInput" | "fileUpload" | "closedShadow" | null;
+  upload?: UploadRef;
+  dialog?: BrowserDialog;
+  os?: { target: OsTarget; value?: string; key?: string };
 }
 
 // ---------- named workflows (T14): the durable IR wrapper ----------

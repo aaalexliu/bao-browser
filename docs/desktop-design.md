@@ -617,12 +617,13 @@ not remote debugging.
 
 ### Questions that block a build
 
-1. **Whose session does desktop replay run in?** Throwaway profiles prove the
-   engine and cannot serve "log in, download the morning report." An app-owned
-   persistent profile can, at the cost of a second login and a directory we are
-   now responsible for encrypting and excluding from workflow export. Attaching
-   to the user's Chrome is the option this doc rejects by default. This choice
-   decides whether desktop is a product or a power-user tool.
+1. **Whose session does desktop replay run in?** Decided for spike 1: an
+   **app-owned persistent profile**. `desktop/src/profile.ts` resolves
+   `BAO_PROFILE_DIR`, otherwise the platform app-data directory
+   (`~/Library/Application Support/Bao/chrome-profile`, `%APPDATA%/Bao/chrome-profile`,
+   `$XDG_DATA_HOME/bao/chrome-profile`). Logins stick across real runs. Launch
+   refuses the daily Chrome profile and port 9222. The spike 1 demo still passes
+   a fresh temp dir and deletes it, so the pass bar below stays reproducible.
 2. **What does the extension do with a version-2 workflow?** Shared IR means a
    mixed recording (DOM steps + one save dialog) will show up in the side panel.
    Today that run either aborts at the first target-less OS step (`Needs
@@ -674,7 +675,7 @@ Decided: second modality, owned Chrome, Playwright as the CDP client, shared IR
 with the additions in §2, `core/` extracted in place rather than an npm workspace
 move, Tauri only after the spikes, extension behavior untouched.
 
-Not decided: persistent profile vs throwaway-only, how version-2 workflows render
-in the side panel, whether the non-technical wedge is ever asked to approve TCC,
-and which public-site flows are worth a desktop recording once login is in the
+Not decided: how version-2 workflows render in the side panel, whether the
+non-technical wedge is ever asked to approve TCC, and which public-site flows
+are worth a desktop recording once login is in the
 app's own profile.
