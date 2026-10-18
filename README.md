@@ -142,6 +142,16 @@ is still the source of truth for the extension.
   is true, both profiles are deleted. Selector ranking in the spike is a small
   page-side list, not an extraction of `src/content.ts`. Extension behavior is
   unchanged.
+- **2026-10-18 — pstack vendored.** Cursor agents in this repo get poteto's
+  public skill pack under `.cursor/skills/` (architect, arena, how, interrogate,
+  four principle leaves, poteto-mode, technical-writing, unslop) plus
+  `.cursor/agents/poteto-agent.md`. Upstream commit
+  `75fabace38ce507ee044546eaca64167c8c1e21b`, MIT, attribution in
+  [`.cursor/third-party/pstack/VENDORED.md`](.cursor/third-party/pstack/VENDORED.md).
+  Sibling skills that poteto-mode names but this tree does not include are
+  listed there. `.cursor/rules/pstack.mdc` says to use architect before a big
+  shape decision, arena when one attempt would lock in the wrong design, and
+  principle-prove-it-works before calling a spike done.
 
 ---
 
