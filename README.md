@@ -152,6 +152,15 @@ is still the source of truth for the extension.
   listed there. `.cursor/rules/pstack.mdc` says to use architect before a big
   shape decision, arena when one attempt would lock in the wrong design, and
   principle-prove-it-works before calling a spike done.
+- **2026-10-18 — Desktop spike 2 (pass).** `npm run spike2` opens zenity 4's
+  save dialog in a throwaway Xvfb + dbus + AT-SPI session, enumerates the tree,
+  writes a version-2 workflow (`osSetValue` on the Name text box,
+  `osConfirm` on OK), and replays it from a second helper process. Both runs
+  print `$WORKDIR/bao-spike2-note.txt` and the dialog exits because
+  `Action.doAction("click")` ran. Extents are stored and not used as a click.
+  GTK 4's `GetRoleName` is `text box` / `button`, not the libatspi enum strings.
+  `Text.getText` stays empty. Details in
+  [`desktop/os-helper/NOTES.md`](desktop/os-helper/NOTES.md).
 
 ---
 
