@@ -16,3 +16,6 @@ npm-debug.log*
 
 # TypeScript build output (esbuild)
 dist/
+
+# Rust helper build
+desktop/os-helper/target/

@@ -558,6 +558,10 @@ clicks is a fail.
 **Fail (Linux):** coordinate-only hit, missing screenshot, the dialog was Chrome's
 own picker (spike 1's problem), or the spike touched files outside the temp dir.
 
+**Ran 2026-10-18, pass.** `npm run spike2` drives zenity 4's save dialog through
+the Rust helper in `desktop/os-helper/`. What the bus actually returned, and
+what AT-SPI could not see, is in [`desktop/os-helper/NOTES.md`](../desktop/os-helper/NOTES.md).
+
 **Mac bar, not runnable here and not implied by a Linux pass.** A signed helper
 with Accessibility permission already granted. Open a fixture app's `NSSavePanel`
 (TextEdit is acceptable only with a throwaway document in `/tmp`, never an
