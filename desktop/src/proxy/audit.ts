@@ -47,6 +47,17 @@ export interface AuditEvent {
   sensitive?: boolean;
   provenance?: { x: number; y: number; space: "viewport" };
   checked?: boolean;
+  /** Playwright key name. Replay presses this, not a coordinate. */
+  key?: string;
+  /** Escape or Tab with no focused editable. A real step, not a miss. */
+  pageLevel?: boolean;
+  submits?: boolean;
+  focus?: {
+    scope: "element" | "page";
+    editable: boolean;
+    axRole?: string;
+    axName?: string;
+  };
 }
 
 export interface AuditLog {
@@ -96,6 +107,24 @@ export class AuditTrail {
   log(): AuditLog {
     return { version: 1, events: this.events };
   }
+
+  /** T1: a typed secret must not remain in earlier snapshots either. */
+  redactSecret(secret: string): void {
+    if (!secret) return;
+    const walk = (v: unknown): unknown => {
+      if (typeof v === "string") return v.split(secret).join("");
+      if (Array.isArray(v)) return v.map(walk);
+      if (v && typeof v === "object") {
+        const out: Record<string, unknown> = {};
+        for (const [k, child] of Object.entries(v as Record<string, unknown>)) out[k] = walk(child);
+        return out;
+      }
+      return v;
+    };
+    for (let i = 0; i < this.events.length; i++) {
+      this.events[i] = walk(this.events[i]) as AuditEvent;
+    }
+  }
 }
 
 /**
@@ -122,9 +151,23 @@ function typedText(raw: unknown): string | undefined {
   return typeof text === "string" ? text : undefined;
 }
 
+function targetOf(e: AuditEvent): Step["target"] {
+  if (!e.resolved) return undefined;
+  return {
+    selectors: e.resolved.selectors,
+    reach: "light",
+    unique: e.resolved.unique,
+    text: e.sensitive ? undefined : e.resolved.text,
+  };
+}
+
 /** Workflow version 2, from act events only. Reads are not steps. */
-export function deriveWorkflow(events: readonly AuditEvent[], startUrl: string): Workflow {
-  const id = "wf-proxy-openai";
+export function deriveWorkflow(
+  events: readonly AuditEvent[],
+  startUrl: string,
+  opts?: { id?: string; name?: string },
+): Workflow {
+  const id = opts?.id ?? "wf-proxy-openai";
   const steps: Step[] = [];
   for (const e of events) {
     if (e.kind !== "act") continue;
@@ -144,7 +187,30 @@ export function deriveWorkflow(events: readonly AuditEvent[], startUrl: string):
         label: e.sensitive ? "Type (withheld)" : "Type",
         sensitive: e.sensitive || undefined,
         value: e.sensitive ? undefined : typedText(e.raw),
-        unresolved: e.unresolved,
+        target: e.resolved ? targetOf(e) : undefined,
+        unresolved: e.resolved ? undefined : e.unresolved,
+      });
+      continue;
+    }
+    if (e.op === "keypress" && e.pageLevel && e.key) {
+      steps.push({
+        ...base,
+        action: "keypress",
+        key: e.key,
+        label: `Press ${e.key}`,
+        provenance: undefined,
+      });
+      continue;
+    }
+    if (e.op === "keypress" && e.resolved && e.key && !e.unresolved) {
+      steps.push({
+        ...base,
+        action: "keypress",
+        key: e.key,
+        label: `Press ${e.key}`,
+        target: targetOf(e),
+        submits: e.submits || undefined,
+        provenance: undefined,
       });
       continue;
     }
@@ -187,7 +253,7 @@ export function deriveWorkflow(events: readonly AuditEvent[], startUrl: string):
   const createdAt = events[0]?.ts ?? Date.now();
   return {
     id,
-    name: "Proxy spike — checkboxes",
+    name: opts?.name ?? "Proxy spike — checkboxes",
     version: 2,
     startUrl,
     variables: [],

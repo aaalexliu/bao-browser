@@ -186,6 +186,15 @@ is still the source of truth for the extension.
   is absent from the trail. Capture writes a HAR linked to the open audit
   event, with cookies and auth headers removed. No call to the OpenAI API.
   Claude is a type sketch in `desktop/src/proxy/claude.ts`.
+- **2026-10-19 — Proxy focus (pass).** `npm run spike-proxy-focus` logs into
+  the-internet (`tomsmith`) with scripted `computer_call`s. The executor tracks
+  `document.activeElement` and the CDP partial AX tree of that node after each
+  action (role `textbox`). Type, Tab, and Enter become selector steps
+  (`#username`, `#password`). Escape with nothing focused is a page-level key.
+  A letter with nothing focused stays unresolved. The public test password is
+  withheld (`sensitive`, no value) from the workflow, trail, and transcript.
+  Replay shifts the page 220px (y 350 → 570) and the flash reads
+  "You logged into a secure area!" from the DOM. No call to the OpenAI API.
 
 ---
 

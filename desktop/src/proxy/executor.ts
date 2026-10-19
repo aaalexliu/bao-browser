@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type { Page } from "playwright";
-import { isSensitiveField, isSensitiveValue, omitSecret, redactPayload, type FieldHint } from "../../../src/mask";
+import { isSensitiveField, isSensitiveValue, omitSecret, redactPayload } from "../../../src/mask";
 import { installPageHelpers, type Described } from "../page-fns";
-import { AuditTrail, deriveWorkflow, trimTrail, type AuditOrigin, type AuditSnapshot } from "./audit";
+import { AuditTrail, deriveWorkflow, trimTrail, type AuditEvent, type AuditOrigin, type AuditSnapshot } from "./audit";
+import { PAGE_KEYS, normalizeKey, readFocus, type TrackedFocus } from "./focus";
 import { clickViewport } from "./input";
 import type { ActResult, AxSnap, DomSnap, Executor, NeutralAction, Observation } from "./neutral";
 
@@ -28,6 +29,7 @@ export async function preparePage(page: Page): Promise<void> {
 
 export class PageExecutor implements Executor {
   private navId: string | null = null;
+  private secrets: string[] = [];
 
   constructor(readonly page: Page, readonly trail: AuditTrail) {}
 
@@ -90,9 +92,7 @@ export class PageExecutor implements Executor {
   async act(action: NeutralAction, origin: AuditOrigin): Promise<ActResult> {
     const before = await this.capture();
     if (action.op === "type") return this.actType(action.text, origin, before);
-    if (action.op === "keypress") {
-      return this.recordUnresolved("keypress", origin, before, "keypress is not performed in this spike");
-    }
+    if (action.op === "keypress") return this.actKey(action.keys, origin, before);
     if (action.op === "unsupported") {
       const reason = `${action.vendor} action ${action.type} is not performed in this spike`;
       return this.recordUnresolved(action.type, origin, before, reason);
@@ -127,6 +127,7 @@ export class PageExecutor implements Executor {
       checked = await this.readChecked(action.x, action.y);
     }
     const after = await this.capture();
+    const focus = await readFocus(this.page);
     this.trail.append({
       kind: "act",
       op: "click",
@@ -142,6 +143,7 @@ export class PageExecutor implements Executor {
       },
       provenance,
       checked,
+      focus: focusNote(focus),
     });
     return { unresolved: false };
   }
@@ -151,22 +153,123 @@ export class PageExecutor implements Executor {
   }
 
   private async actType(text: string, origin: AuditOrigin, before: Captured): Promise<ActResult> {
-    const hint = await focusedField(this.page);
-    const secret = isSensitiveValue(text) || (!!hint && isSensitiveField({ ...hint, value: text }));
-    const redacted = redactPayload(origin.raw);
-    const raw = secret ? omitSecret(redacted.value, text) : redacted.value;
-    const reason = "type has no focused text control in this spike";
+    const focus = await readFocus(this.page);
+    const secret = isSensitiveValue(text) || (!!focus.hint && isSensitiveField({ ...focus.hint, value: text }));
+    const raw = secret ? omitSecret(redactPayload(origin.raw).value, text) : redactPayload(origin.raw).value;
+    if (focus.scope !== "element" || !focus.editable || !focus.described) {
+      const reason = "type has no focused editable";
+      const after = await this.capture();
+      this.trail.append(scrubEvent({
+        kind: "act",
+        op: "type",
+        source: origin.source,
+        raw,
+        before: before.snap,
+        after: after.snap,
+        resolved: null,
+        unresolved: { reason },
+        sensitive: secret || undefined,
+        focus: focusNote(focus),
+      }, secret ? text : ""));
+      return { unresolved: true, reason };
+    }
+    await this.page.evaluate(() => {
+      document.querySelectorAll("[data-bao-hit]").forEach((el) => el.removeAttribute("data-bao-hit"));
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) el.setAttribute("data-bao-hit", "1");
+    });
+    await this.page.locator("[data-bao-hit='1']").fill(text);
+    if (secret) {
+      this.secrets.push(text);
+      this.trail.redactSecret(text);
+    }
+    const afterFocus = await readFocus(this.page);
     const after = await this.capture();
-    this.trail.append({
+    this.trail.append(scrubEvent({
       kind: "act",
       op: "type",
       source: origin.source,
       raw,
       before: before.snap,
       after: after.snap,
+      resolved: {
+        tag: focus.tag,
+        selectors: focus.described.selectors,
+        unique: focus.described.unique,
+        text: secret ? undefined : (focus.described.text || undefined),
+      },
+      sensitive: secret || undefined,
+      focus: focusNote(afterFocus),
+    }, secret ? text : ""));
+    return { unresolved: false };
+  }
+
+  private async actKey(keys: string[], origin: AuditOrigin, before: Captured): Promise<ActResult> {
+    const focus = await readFocus(this.page);
+    const normalized = keys.map(normalizeKey);
+    const key = normalized.join(",");
+    const raw = redactPayload(origin.raw).value;
+    const urlBefore = this.page.url();
+    if (focus.scope === "element" && focus.described) {
+      for (const k of normalized) await this.page.keyboard.press(k);
+      if (normalized.includes("Enter")) {
+        const start = Date.now();
+        while (this.page.url() === urlBefore && Date.now() - start < 8000) {
+          await this.page.waitForTimeout(100);
+        }
+      }
+      const after = await this.capture();
+      const afterFocus = await readFocus(this.page);
+      this.trail.append({
+        kind: "act",
+        op: "keypress",
+        source: origin.source,
+        raw,
+        before: before.snap,
+        after: after.snap,
+        key,
+        submits: this.page.url() !== urlBefore || undefined,
+        resolved: {
+          tag: focus.tag,
+          selectors: focus.described.selectors,
+          unique: focus.described.unique,
+          text: focus.described.text || undefined,
+        },
+        focus: focusNote(afterFocus),
+      });
+      return { unresolved: false };
+    }
+    if (normalized.every((k) => PAGE_KEYS.has(k))) {
+      for (const k of normalized) await this.page.keyboard.press(k);
+      const after = await this.capture();
+      const afterFocus = await readFocus(this.page);
+      this.trail.append({
+        kind: "act",
+        op: "keypress",
+        source: origin.source,
+        raw,
+        before: before.snap,
+        after: after.snap,
+        key,
+        pageLevel: true,
+        resolved: null,
+        focus: focusNote(afterFocus),
+      });
+      return { unresolved: false };
+    }
+    const reason = `keypress ${key} has no focused element and is not a page key`;
+    const after = await this.capture();
+    this.trail.append({
+      kind: "act",
+      op: "keypress",
+      source: origin.source,
+      raw,
+      before: before.snap,
+      after: after.snap,
+      key,
       resolved: null,
       unresolved: { reason },
-      sensitive: secret || undefined,
+      focus: focusNote(focus),
     });
     return { unresolved: true, reason };
   }
@@ -216,12 +319,13 @@ export class PageExecutor implements Executor {
       });
       return out;
     });
-    const ax = await axSnapshot(this.page);
+    const ax = (await axSnapshot(this.page)).map((a) => ({ ...a, name: this.scrub(a.name) }));
+    const domScrubbed = dom.map((d) => ({ ...d, text: this.scrub(d.text) }));
     const screenshot = "sha256:" + createHash("sha256").update(png).digest("hex");
     return {
       png,
       viewport: { w: viewport.width, h: viewport.height },
-      snap: { screenshot, url: this.page.url(), dom, ax },
+      snap: { screenshot, url: this.page.url(), dom: domScrubbed, ax },
     };
   }
 
@@ -249,6 +353,12 @@ export class PageExecutor implements Executor {
     }, { x, y, control: CONTROL });
   }
 
+  private scrub(s: string): string {
+    let out = s;
+    for (const secret of this.secrets) out = out.split(secret).join("");
+    return out;
+  }
+
   private async readChecked(x: number, y: number): Promise<boolean> {
     return this.page.evaluate(({ x, y }) => {
       const el = document.elementFromPoint(x, y);
@@ -258,23 +368,34 @@ export class PageExecutor implements Executor {
   }
 }
 
-async function focusedField(page: Page): Promise<FieldHint | null> {
-  return page.evaluate(() => {
-    const el = document.activeElement;
-    if (!el || el === document.body || el === document.documentElement) return null;
-    const input = el instanceof HTMLInputElement ? el : null;
-    const area = el instanceof HTMLTextAreaElement ? el : null;
-    if (!input && !area) return null;
+function focusNote(focus: TrackedFocus): NonNullable<AuditEvent["focus"]> {
+  return {
+    scope: focus.scope,
+    editable: focus.editable,
+    axRole: focus.ax?.role || undefined,
+    axName: focus.ax?.name || undefined,
+  };
+}
+
+function scrubEvent(partial: Omit<AuditEvent, "id" | "ts">, secret: string): Omit<AuditEvent, "id" | "ts"> {
+  if (!secret) return partial;
+  const clean = (s: string) => s.split(secret).join("");
+  const snap = (s?: AuditSnapshot): AuditSnapshot | undefined => {
+    if (!s) return s;
     return {
-      type: input?.type || "",
-      autocomplete: el.getAttribute("autocomplete") || "",
-      name: el.getAttribute("name") || "",
-      id: el.id || "",
-      ariaLabel: el.getAttribute("aria-label") || "",
-      placeholder: el.getAttribute("placeholder") || "",
-      value: input?.value || area?.value || "",
+      ...s,
+      dom: s.dom.map((d) => ({ ...d, text: clean(d.text) })),
+      ax: s.ax.map((a) => ({ ...a, name: clean(a.name) })),
     };
-  });
+  };
+  return {
+    ...partial,
+    before: snap(partial.before),
+    after: snap(partial.after),
+    focus: partial.focus
+      ? { ...partial.focus, axName: partial.focus.axName ? clean(partial.focus.axName) : undefined }
+      : undefined,
+  };
 }
 
 async function axSnapshot(page: Page): Promise<AxSnap[]> {
