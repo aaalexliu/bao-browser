@@ -4,8 +4,8 @@ import { isSensitiveField, isSensitiveValue, omitSecret, redactPayload } from ".
 import { installPageHelpers, type Described } from "../page-fns";
 import { AuditTrail, deriveWorkflow, trimTrail, type AuditEvent, type AuditOrigin, type AuditSnapshot } from "./audit";
 import { PAGE_KEYS, normalizeKey, readFocus, type TrackedFocus } from "./focus";
-import { clickViewport } from "./input";
-import type { ActResult, AxSnap, DomSnap, Executor, NeutralAction, Observation } from "./neutral";
+import { clickViewport, dragViewport, modifierBits, mouseButton, moveViewport } from "./input";
+import type { ActResult, AxSnap, DomSnap, Executor, NeutralAction, Observation, Provenance } from "./neutral";
 
 const CONTROL = "a,button,input,select,textarea";
 
@@ -30,6 +30,8 @@ export async function preparePage(page: Page): Promise<void> {
 export class PageExecutor implements Executor {
   private navId: string | null = null;
   private secrets: string[] = [];
+  /** Last pointer position in viewport pixels. Claude's cursor_position reads this. */
+  private cursor = { x: 0, y: 0 };
 
   constructor(readonly page: Page, readonly trail: AuditTrail) {}
 
@@ -90,19 +92,48 @@ export class PageExecutor implements Executor {
   }
 
   async act(action: NeutralAction, origin: AuditOrigin): Promise<ActResult> {
+    if (action.op === "wait") {
+      await this.page.waitForTimeout(action.ms);
+      this.trail.append({ kind: "read", op: "wait", source: origin.source, raw: origin.raw });
+      return { unresolved: false };
+    }
+    if (action.op === "cursor") {
+      this.trail.append({ kind: "read", op: "cursor", source: origin.source, raw: origin.raw });
+      return { unresolved: false, text: `${this.cursor.x},${this.cursor.y}` };
+    }
+    if (action.op === "move") {
+      this.cursor = { x: action.x, y: action.y };
+      await moveViewport(this.page, action.x, action.y);
+      this.trail.append({
+        kind: "read",
+        op: "move",
+        source: origin.source,
+        raw: origin.raw,
+        provenance: action.provenance,
+      });
+      return { unresolved: false };
+    }
+    if (action.op === "mousedown" || action.op === "mouseup") {
+      await mouseButton(this.page, this.cursor.x, this.cursor.y, action.op === "mousedown" ? "down" : "up");
+      this.trail.append({ kind: "read", op: action.op, source: origin.source, raw: origin.raw });
+      return { unresolved: false };
+    }
     const before = await this.capture();
     if (action.op === "type") return this.actType(action.text, origin, before);
-    if (action.op === "keypress") return this.actKey(action.keys, origin, before);
+    if (action.op === "keypress") return this.actKey(action.keys, origin, before, action.holdMs);
+    if (action.op === "zoom") return this.actZoom(action, origin, before);
+    if (action.op === "screenshot") {
+      await this.observe(origin);
+      return { unresolved: false };
+    }
     if (action.op === "unsupported") {
       const reason = `${action.vendor} action ${action.type} is not performed in this spike`;
       return this.recordUnresolved(action.type, origin, before, reason);
     }
-    if (action.button !== "left") {
-      const reason = `click button ${action.button} is not performed in this spike`;
-      return this.recordUnresolved("click", origin, before, reason, { x: action.x, y: action.y });
-    }
+    if (action.op === "scroll") return this.actScroll(action, origin, before);
+    if (action.op === "drag") return this.actDrag(action, origin, before);
     const hit = await this.hitTest(action.x, action.y);
-    const provenance = { x: action.x, y: action.y, space: "viewport" as const };
+    const provenance = action.provenance ?? { x: action.x, y: action.y, space: "viewport" as const };
     if (hit.blank || !hit.described || !hit.rect) {
       const reason = `hit ${hit.tag || "nothing"}, not an actionable control`;
       const after = await this.capture();
@@ -121,7 +152,12 @@ export class PageExecutor implements Executor {
     }
     const cx = hit.rect.x + hit.rect.w / 2;
     const cy = hit.rect.y + hit.rect.h / 2;
-    await clickViewport(this.page, cx, cy);
+    this.cursor = { x: cx, y: cy };
+    await clickViewport(this.page, cx, cy, {
+      button: action.button,
+      count: action.count ?? 1,
+      modifiers: modifierBits(action.modifiers ?? []),
+    });
     let checked: boolean | undefined;
     if (hit.inputType === "checkbox" || hit.inputType === "radio") {
       checked = await this.readChecked(action.x, action.y);
@@ -204,14 +240,24 @@ export class PageExecutor implements Executor {
     return { unresolved: false };
   }
 
-  private async actKey(keys: string[], origin: AuditOrigin, before: Captured): Promise<ActResult> {
+  private async actKey(keys: string[], origin: AuditOrigin, before: Captured, holdMs?: number): Promise<ActResult> {
     const focus = await readFocus(this.page);
     const normalized = keys.map(normalizeKey);
     const key = normalized.join(",");
     const raw = redactPayload(origin.raw).value;
     const urlBefore = this.page.url();
+    const press = async (k: string) => {
+      if (!holdMs) {
+        await this.page.keyboard.press(k);
+        return;
+      }
+      const parts = k.split("+");
+      for (const part of parts) await this.page.keyboard.down(part);
+      await this.page.waitForTimeout(holdMs);
+      for (const part of parts.slice().reverse()) await this.page.keyboard.up(part);
+    };
     if (focus.scope === "element" && focus.described) {
-      for (const k of normalized) await this.page.keyboard.press(k);
+      for (const k of normalized) await press(k);
       if (normalized.includes("Enter")) {
         const start = Date.now();
         while (this.page.url() === urlBefore && Date.now() - start < 8000) {
@@ -240,7 +286,7 @@ export class PageExecutor implements Executor {
       return { unresolved: false };
     }
     if (normalized.every((k) => PAGE_KEYS.has(k))) {
-      for (const k of normalized) await this.page.keyboard.press(k);
+      for (const k of normalized) await press(k);
       const after = await this.capture();
       const afterFocus = await readFocus(this.page);
       this.trail.append({
@@ -274,12 +320,66 @@ export class PageExecutor implements Executor {
     return { unresolved: true, reason };
   }
 
+  private async actZoom(
+    action: Extract<NeutralAction, { op: "zoom" }>,
+    origin: AuditOrigin,
+    before: Captured,
+  ): Promise<ActResult> {
+    const width = Math.max(1, Math.round(action.x1 - action.x0));
+    const height = Math.max(1, Math.round(action.y1 - action.y0));
+    const png = await this.page.screenshot({
+      type: "png",
+      clip: { x: Math.max(0, Math.round(action.x0)), y: Math.max(0, Math.round(action.y0)), width, height },
+    });
+    this.trail.append({
+      kind: "read",
+      op: "zoom",
+      source: origin.source,
+      raw: redactPayload(origin.raw).value,
+      before: before.snap,
+    });
+    return { unresolved: false, png };
+  }
+
+  private async actScroll(
+    action: Extract<NeutralAction, { op: "scroll" }>,
+    origin: AuditOrigin,
+    before: Captured,
+  ): Promise<ActResult> {
+    this.cursor = { x: action.x, y: action.y };
+    await moveViewport(this.page, action.x, action.y);
+    await this.page.mouse.wheel(action.dx, action.dy);
+    return this.recordUnresolved(
+      "scroll",
+      origin,
+      before,
+      "scroll has no semantic target in this spike",
+      action.provenance,
+    );
+  }
+
+  private async actDrag(
+    action: Extract<NeutralAction, { op: "drag" }>,
+    origin: AuditOrigin,
+    before: Captured,
+  ): Promise<ActResult> {
+    await dragViewport(this.page, action.x0, action.y0, action.x1, action.y1, modifierBits(action.modifiers ?? []));
+    this.cursor = { x: action.x1, y: action.y1 };
+    return this.recordUnresolved(
+      "drag",
+      origin,
+      before,
+      "drag has no semantic target in this spike",
+      action.provenance,
+    );
+  }
+
   private async recordUnresolved(
     op: string,
     origin: AuditOrigin,
     before: Captured,
     reason: string,
-    at?: { x: number; y: number },
+    provenance?: Provenance,
   ): Promise<ActResult> {
     const after = await this.capture();
     this.trail.append({
@@ -291,7 +391,7 @@ export class PageExecutor implements Executor {
       after: after.snap,
       resolved: null,
       unresolved: { reason },
-      provenance: at ? { x: at.x, y: at.y, space: "viewport" } : undefined,
+      provenance,
     });
     return { unresolved: true, reason };
   }

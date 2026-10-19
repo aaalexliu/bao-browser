@@ -45,7 +45,7 @@ export interface AuditEvent {
   resolved?: ResolvedElement | null;
   unresolved?: { reason: string };
   sensitive?: boolean;
-  provenance?: { x: number; y: number; space: "viewport" };
+  provenance?: { x: number; y: number; space: "viewport" | "image" };
   checked?: boolean;
   /** Playwright key name. Replay presses this, not a coordinate. */
   key?: string;
