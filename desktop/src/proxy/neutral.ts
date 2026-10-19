@@ -87,7 +87,8 @@ export interface VendorAdapter<Call, Output> {
 }
 
 export interface Executor {
-  readonly page: Page;
+  /** Present for a browser surface. A native desktop executor has no page. */
+  readonly page?: Page;
   readonly trail: AuditTrail;
   observe(origin: AuditOrigin): Promise<Observation>;
   act(action: NeutralAction, origin: AuditOrigin): Promise<ActResult>;

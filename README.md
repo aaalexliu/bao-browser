@@ -204,6 +204,19 @@ is still the source of truth for the extension.
   apart from provenance (`image` vs `viewport`). Both replays shift the page
   and land on the secure-area flash without clicking the stored coordinate.
   All 17 members map onto the neutral core. No call to Anthropic or OpenAI.
+- **2026-10-19 — Proxy native AT-SPI (pass).** `npm run spike-proxy-native`
+  clicks a GTK 3 calculator (`desktop/os-helper/baocalc.py`), not a browser.
+  The helper resolves each pixel to the smallest accessible whose screen
+  extents contain it, and records an `osClick` (app `baocalc.py`, role
+  `push button`, name `7` / `+` / `5` / `=`). The coordinate is provenance
+  (Claude image y 42, OpenAI screen y 84). Replay launches a new window at
+  a different position and size and calls `Action.doAction` with role and
+  name only. The label reads `12` from AT-SPI, and the live button is at
+  y 187. A drawing area and an empty desktop point are unresolved and keep
+  a screenshot crop. GTK 4 `gnome-calculator` is the poor-accessibility
+  case: its buttons are named, but every extent is origin `(0, 0)`, so the
+  helper does not store a button. An image template match of the crop is
+  the documented last resort, not implemented. No call to Anthropic or OpenAI.
 
 ---
 

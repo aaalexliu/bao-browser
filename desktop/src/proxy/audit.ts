@@ -45,7 +45,16 @@ export interface AuditEvent {
   resolved?: ResolvedElement | null;
   unresolved?: { reason: string };
   sensitive?: boolean;
-  provenance?: { x: number; y: number; space: "viewport" | "image" };
+  provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
+  /** Set when the act resolved against the OS accessibility tree. */
+  os?: {
+    app: string;
+    role: string;
+    name: string;
+    path: { role: string; name: string }[];
+  };
+  /** sha256 of a screenshot crop kept for an unresolved pixel. */
+  crop?: string;
   checked?: boolean;
   /** Playwright key name. Replay presses this, not a coordinate. */
   key?: string;
@@ -171,6 +180,37 @@ export function deriveWorkflow(
   const steps: Step[] = [];
   for (const e of events) {
     if (e.kind !== "act") continue;
+    if (e.op === "osClick" || e.op === "osType") {
+      const osBase: Step = {
+        ts: e.ts,
+        action: e.op === "osType" ? "osType" : "osClick",
+        label: e.op,
+        surface: "os",
+        provenance: e.provenance,
+      };
+      if (e.unresolved || !e.os) {
+        steps.push({
+          ...osBase,
+          label: `Unresolved ${e.op}`,
+          unresolved: e.unresolved ?? { reason: "unresolved" },
+        });
+        continue;
+      }
+      steps.push({
+        ...osBase,
+        label: e.op === "osType" ? "Type" : (e.os.name ? `Click "${e.os.name}"` : `Click ${e.os.role}`),
+        os: {
+          target: {
+            platform: "linux",
+            app: e.os.app,
+            role: e.os.role,
+            name: e.os.name,
+            path: e.os.path,
+          },
+        },
+      });
+      continue;
+    }
     const frameUrl = e.after?.url || e.before?.url || startUrl;
     const base: Step = {
       ts: e.ts,
