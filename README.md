@@ -186,6 +186,15 @@ is still the source of truth for the extension.
   is absent from the trail. Capture writes a HAR linked to the open audit
   event, with cookies and auth headers removed. No call to the OpenAI API.
   Claude is a type sketch in `desktop/src/proxy/claude.ts`.
+- **2026-10-19 - macOS Accessibility spike (blocked on privacy permission).**
+  `npm run spike-macos` adds `desktop/os-helper-macos` (`bao-os-macos`) and a
+  macOS executor. A scripted OpenAI `computer_call` click and a scripted Claude
+  `left_click` are meant to resolve to an AX element (bundle, role, name, path).
+  Replay calls `AXPress` or `AXValue` by that identity. The coordinate stays on
+  `provenance`. On macOS 26.6.2 (25G83) the spike prompted once. Accessibility
+  and Screen Recording both stayed false for the ad-hoc helper binary, so
+  Calculator and TextEdit were not launched and there is no replay artifact.
+  Details are in [`desktop/os-helper-macos/NOTES.md`](desktop/os-helper-macos/NOTES.md).
 
 ---
 
