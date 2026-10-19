@@ -57,10 +57,44 @@ window capture also runs `/usr/sbin/screencapture` as a child of the helper.
 A rebuild changes the ad-hoc cdhash, and macOS treats that as a different app.
 Do not rebuild this binary after granting it. Re-run with `BAO_OS_PROMPT=0`.
 
-## Not observed yet
+## Ran 2026-10-19, permission granted, tree has no buttons
 
-Calculator on recent macOS is SwiftUI. This run never saw its tree, so button
-names (`7`, `+`, `5`, `=`) and whether the display is an `AXStaticText` value
-are still unknown. TextEdit's untitled `AXTextArea` was not opened. The
-coordinate flip detector has not been compared against a live window. Those
-are the demo criteria, and they are unmet until the permission is granted.
+A later fresh process, still without a rebuild and without another prompt,
+reported both checks true. Same file: mtime 2026-10-19 16:01:21, size 776496,
+cdhash `13a561381ca5073009e5c80d549d6a857201d618`. The Screen Recording row
+matches this binary. It is not a stale signature.
+
+`BAO_OS_PROMPT=0 npm run spike-macos` then launched Calculator. The CoreGraphics
+window was 207 by 369 points at (459, 558), window id 136621. The AX walk did
+not contain that window. It returned 21 nested `AXApplication` elements and
+20 `AXMenuBar` elements, and nothing with a button name. `useful` was empty,
+so the script stopped at `no AX button for 7`. `hit` on the window bounds, on
+a flipped y, and on a menu-bar point all returned `no accessibility element
+at point`. TextEdit was not opened. No replay screenshot was taken. The
+Calculator process this run started was quit.
+
+The walker only follows `AXChildren`. Calculator's buttons are not in that
+list. Fixing the walk (follow `AXWindows`) or the hit test means a Rust
+change, which means a rebuild, which changes the ad-hoc cdhash and drops this
+grant. A minimal `.app` bundle with its own bundle id, signed once and
+launched with `open`, is the way to make the next grant stick to an identity
+that does not change every rebuild.
+
+## Process macOS treats as the parent
+
+The helper's parent chain on this machine ends at launchd, not at Cursor.app.
+
+1. `bao-os-macos` (this binary).
+2. `/bin/zsh`, or Node at
+   `/Users/alexliu/.local/share/mise/installs/node/24.19.0/bin/node`
+   when the spike spawns it.
+3. pid 58964, argv0 `cursor-agent`, parent pid 1. The executable is
+   `/Users/alexliu/Library/Application Support/Cursor/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/share/cursor-agent/versions/2026.10.01-e373342/node`.
+   codesign identifier `node`, Team ID `HX7739G8FX`, no Info.plist, no bundle id.
+   The `cursor-agent` path next to it is an unsigned bash script.
+4. `/sbin/launchd`.
+
+Cursor.app is not in that chain. Its bundle id is `com.todesktop.230313mzl4w4u92`
+(Team ID `VDXQ22DGB9`). `CGPreflightScreenCaptureAccess` inside `bao-os-macos`
+is what turned true, so the grant that matters for this check is the
+`bao-os-macos` row, not the Node row and not Cursor.app.
