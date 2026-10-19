@@ -19,3 +19,4 @@ dist/
 
 # Rust helper build
 desktop/os-helper/target/
+desktop/os-helper-macos/target/
