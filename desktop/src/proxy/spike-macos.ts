@@ -14,7 +14,8 @@ import { ARTIFACTS, CALC_BUNDLE, HELPER, ensureArtifacts, quitOwned, sleep, work
 async function gate(helper: MacOsHelper): Promise<Record<string, unknown>> {
   let perm = await helper.permissions(false);
   let prompted = false;
-  if (!perm.accessibility || !perm.screenCapture) {
+  const allowPrompt = process.env.BAO_OS_PROMPT !== "0";
+  if ((!perm.accessibility || !perm.screenCapture) && allowPrompt) {
     perm = await helper.permissions(true);
     prompted = true;
     await sleep(400);
