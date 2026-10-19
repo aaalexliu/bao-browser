@@ -191,9 +191,11 @@ is still the source of truth for the extension.
   macOS executor. A scripted OpenAI `computer_call` click and a scripted Claude
   `left_click` are meant to resolve to an AX element (bundle, role, name, path).
   Replay calls `AXPress` or `AXValue` by that identity. The coordinate stays on
-  `provenance`. On macOS 26.6.2 (25G83) the spike prompted once. Accessibility
-  and Screen Recording both stayed false for the ad-hoc helper binary, so
-  Calculator and TextEdit were not launched and there is no replay artifact.
+  `provenance`.   On macOS 26.6.2 (25G83) the first run prompted once and both privacy checks
+  were false. A second run with `BAO_OS_PROMPT=0` did not prompt: Accessibility
+  for the ad-hoc helper is granted, and Screen Recording
+  (`CGPreflightScreenCaptureAccess`) is still false, so Calculator and TextEdit
+  were not launched and there is no replay artifact.
   Details are in [`desktop/os-helper-macos/NOTES.md`](desktop/os-helper-macos/NOTES.md).
 
 ---

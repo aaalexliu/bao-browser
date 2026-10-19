@@ -25,32 +25,37 @@ Window captures use `screencapture -l <window id>`. That crops to the test windo
 
 ## Ran 2026-10-19, blocked
 
-Host: macOS 26.6.2 (build 25G83), arm64. The release binary was already built.
-`npm run spike-macos` typechecked the proxy wiring, then asked for permission
-once. Both checks stayed false on the recheck, so the spike did not launch
-Calculator or TextEdit and did not take a screenshot.
+Host: macOS 26.6.2 (build 25G83), arm64. The release binary was not rebuilt.
+codesign identifier `bao_os_macos-fcc59b856054f483`, ad-hoc, no Team ID.
 
-| Check | Result |
-| --- | --- |
-| Accessibility | false |
-| Screen Recording | false |
-| Prompted | once, then stop |
-| Calculator / TextEdit | not launched |
+First run prompted once. Accessibility and Screen Recording were both false,
+so Calculator and TextEdit were not launched.
 
-Enable this exact binary in System Settings, Privacy & Security:
+Second run used `BAO_OS_PROMPT=0` and did not prompt. Accessibility for the
+helper is now true. `CGPreflightScreenCaptureAccess` inside that same binary
+is still false, so the spike stopped again before launching an app. There is
+no screenshot or replay.
+
+| Check | First run | Second run |
+| --- | --- | --- |
+| Accessibility | false | true |
+| Screen Recording | false | false |
+| Prompted | once | no |
+| Calculator / TextEdit | not launched | not launched |
+
+The missing row is Screen Recording for this exact binary:
 
 `/Users/alexliu/dev/bao-mac-spike/desktop/os-helper-macos/target/release/bao-os-macos`
 
-- Accessibility: that binary. codesign identifier `bao_os_macos-fcc59b856054f483`, ad-hoc, no Team ID.
-- Screen Recording: that binary. The parent at the prompt was
-  `/Users/alexliu/.local/share/mise/installs/node/24.19.0/bin/node`,
-  because the spike spawns the helper from Node. If the list names Node or
-  Cursor instead, enable that row too. A later capture runs `/usr/sbin/screencapture`
-  as a child of the helper.
+The preflight runs in the helper, not in its parent. A Screen Recording grant
+on Node or on Cursor does not satisfy this check. When the spike spawns the
+helper, the parent is
+`/Users/alexliu/.local/share/mise/installs/node/24.19.0/bin/node`.
+The worker above that is `cursor-agent`. Those are separate rows. A later
+window capture also runs `/usr/sbin/screencapture` as a child of the helper.
 
 A rebuild changes the ad-hoc cdhash, and macOS treats that as a different app.
-Do not rebuild this binary after granting it. The spike must be re-run with
-`BAO_OS_PROMPT=0` so it does not prompt again.
+Do not rebuild this binary after granting it. Re-run with `BAO_OS_PROMPT=0`.
 
 ## Not observed yet
 
