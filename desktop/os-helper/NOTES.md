@@ -70,6 +70,13 @@ AT-SPI does not see Chrome's own file picker. That picker is spike 1
 Wayland was not tested. The session is Xvfb. Screenshots here are X
 `import`, which a portal-less Wayland session will not do.
 
+The native proxy spike hits the same extent bug on GTK 4 `gnome-calculator`:
+every button reports origin `(0, 0)`, and `GetAccessibleAtPoint` does not
+return the button under the pixel. The helper refuses that as ambiguous
+geometry. The demo that does resolve pixels is the GTK 3 window in
+`baocalc.py`, whose extents move when the window moves. See
+[`docs/proxy-design.md`](../../docs/proxy-design.md).
+
 Setting the name pops an autocomplete menu of the current directory (the
 replay video shows `confirm.log`, `workflow.json`, `tree.txt` under the
 field). OK still returned the basename we set, not one of those rows. The

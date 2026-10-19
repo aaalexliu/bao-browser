@@ -253,6 +253,16 @@ The executor acts in viewport pixels. The Claude adapter owns the scale factor. 
 
 `key` text `Return` is normalized to Playwright `Enter` before the step is recorded. Scroll and drag are performed and flagged unresolved, because this spike has no semantic target for a gesture. Move, wait, zoom, cursor position, and mouse down/up are reads. They are not steps.
 
+## Native pixels
+
+A click that is not inside a Chrome window is resolved against the OS accessibility tree. The helper asks for the smallest accessible whose screen extents contain the point. The step stores app, role, name, and the ancestor path. The coordinate stays on `provenance`. Replay calls `Action.doAction` for that role and name. It does not receive `--x` or `--y`.
+
+`gnome-calculator` on GTK 4.14 is the poor-accessibility case. Its buttons are in the tree (`7`, `+`, `5`, `=`), and `Text` is not required to read them. `Component.GetExtents(Screen)` still returns origin `(0, 0)` for every button, the same failure spike 2 saw on zenity. `GetAccessibleAtPoint` stops on a panel, or on a tiny GTK 4 window it returns the same label for every pixel. Several buttons therefore share one origin. The helper calls that ambiguous and does not store a button. A drawing area, or a point on the empty desktop, is unresolved and keeps a screenshot crop.
+
+The last resort, not built here, is an image template match of that crop against a later screenshot. It would be a flagged tier on the trail (`strategy: image-template`), never a silent coordinate click, and never the path when a name and an action exist.
+
+The native demo uses a GTK 3 calculator (`desktop/os-helper/baocalc.py`) because its extents are distinct and move when the window moves. A point inside a Chrome window is classified as DOM and is not sent to AT-SPI.
+
 ## Open questions
 
 - Does interpret's "a read is whatever a later write consumed" miss reads a person still wants to see in the workflow, such as a price they only looked at?

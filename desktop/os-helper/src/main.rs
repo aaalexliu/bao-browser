@@ -17,7 +17,7 @@ use atspi::proxy::text::TextProxy;
 use atspi::zbus::proxy::CacheProperties;
 use atspi::zbus::zvariant::ObjectPath;
 use atspi::zbus::names::BusName;
-use atspi::{AccessibilityConnection, CoordType, ObjectRefOwned};
+use atspi::{AccessibilityConnection, CoordType, ObjectRefOwned, State};
 use serde::Serialize;
 
 type Res<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -37,7 +37,7 @@ struct Hit {
     obj_path: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct BBox {
     x: i32,
     y: i32,
@@ -107,6 +107,8 @@ struct Opts {
     workflow: Option<String>,
     screen: (i32, i32),
     pause_ms: u64,
+    x: Option<i32>,
+    y: Option<i32>,
 }
 
 fn now_ms() -> u64 {
@@ -148,6 +150,14 @@ fn parse() -> Res<Opts> {
         pause_ms: flag(&args, "--pause-ms")
             .unwrap_or_else(|| "0".into())
             .parse()?,
+        x: match flag(&args, "--x") {
+            Some(v) => Some(v.parse()?),
+            None => None,
+        },
+        y: match flag(&args, "--y") {
+            Some(v) => Some(v.parse()?),
+            None => None,
+        },
     })
 }
 
@@ -434,9 +444,11 @@ async fn main() -> Res<()> {
     let opts = parse()?;
     if opts.cmd == "help" || opts.cmd == "--help" {
         eprintln!(
-            "usage: bao-os-helper dump|record|confirm|replay\n  \
+            "usage: bao-os-helper dump|record|confirm|replay|nodes|hit|focus|press|read\n  \
              record --value FILENAME --out workflow.json [--dump tree.txt]\n  \
-             confirm|replay --workflow workflow.json"
+             confirm|replay --workflow workflow.json\n  \
+             hit --x N --y N\n  \
+             press|read --app NAME --entry-role ROLE --entry-name NAME"
         );
         return Ok(());
     }
@@ -576,7 +588,269 @@ async fn main() -> Res<()> {
             press(&conn, &button).await?;
             println!("APPLIED={}", opts.cmd);
         }
+        "nodes" => {
+            let geoms = collect_geoms(&conn, opts.screen).await?;
+            println!("{}", serde_json::to_string(&geoms_json(&geoms))?);
+        }
+        "hit" => {
+            let x = opts.x.ok_or("--x is required")?;
+            let y = opts.y.ok_or("--y is required")?;
+            let geoms = collect_geoms(&conn, opts.screen).await?;
+            println!("{}", serde_json::to_string(&hit_test(&geoms, x, y))?);
+        }
+        "focus" => {
+            let geoms = collect_geoms(&conn, opts.screen).await?;
+            let focused = focused_geom(&conn, &geoms).await?;
+            println!("{}", serde_json::to_string(&focused)?);
+        }
+        "press" => {
+            let geoms = collect_geoms(&conn, opts.screen).await?;
+            let geom = unique_geom(&geoms, &opts.app, &opts.entry)?;
+            let hit = Hit {
+                role: geom.role.clone(),
+                name: geom.name.clone(),
+                path: geom.path.clone(),
+                dest: geom.dest.clone(),
+                obj_path: geom.obj_path.clone(),
+            };
+            invoke_action(&conn, &hit).await?;
+            let live = extents(&reopen(&conn, &hit).await?, opts.screen).await;
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "ok": true,
+                    "strategy": "atspi-action",
+                    "app": geom.app,
+                    "role": geom.role,
+                    "name": geom.name,
+                    "bbox": live,
+                }))?
+            );
+        }
+        "read" => {
+            let geoms = collect_geoms(&conn, opts.screen).await?;
+            let names: Vec<&str> = geoms
+                .iter()
+                .filter(|g| g.app == opts.app && g.role == opts.entry.role && !g.name.is_empty())
+                .map(|g| g.name.as_str())
+                .collect();
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({ "ok": true, "names": names }))?
+            );
+        }
         other => return Err(format!("unknown command {other}").into()),
     }
     Ok(())
+}
+
+#[derive(Clone)]
+struct Geom {
+    app: String,
+    role: String,
+    name: String,
+    path: Vec<Seg>,
+    dest: String,
+    obj_path: String,
+    bbox: BBox,
+    actions: i32,
+}
+
+fn geoms_json(geoms: &[Geom]) -> serde_json::Value {
+    serde_json::json!(geoms
+        .iter()
+        .map(|g| serde_json::json!({
+            "app": g.app,
+            "role": g.role,
+            "name": g.name,
+            "path": g.path,
+            "bbox": g.bbox,
+            "actions": g.actions,
+        }))
+        .collect::<Vec<_>>())
+}
+
+fn contains_point(b: &BBox, x: i32, y: i32) -> bool {
+    b.w > 0 && b.h > 0 && x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h
+}
+
+fn hit_test(geoms: &[Geom], x: i32, y: i32) -> serde_json::Value {
+    let mut hits: Vec<&Geom> = geoms.iter().filter(|g| contains_point(&g.bbox, x, y)).collect();
+    if hits.is_empty() {
+        return serde_json::json!({
+            "ok": false,
+            "reason": "no accessible at point",
+            "strategy": "extents",
+        });
+    }
+    hits.sort_by_key(|g| (g.bbox.w as i64) * (g.bbox.h as i64));
+    let best = (hits[0].bbox.w as i64) * (hits[0].bbox.h as i64);
+    let smallest: Vec<&Geom> = hits
+        .into_iter()
+        .filter(|g| (g.bbox.w as i64) * (g.bbox.h as i64) == best)
+        .collect();
+    let same = smallest.iter().all(|g| g.role == smallest[0].role && g.name == smallest[0].name);
+    if smallest.len() > 1 && !same {
+        return serde_json::json!({
+            "ok": false,
+            "reason": "ambiguous geometry",
+            "strategy": "extents",
+            "candidates": smallest.len(),
+        });
+    }
+    let winner = smallest[0];
+    if winner.name.is_empty() || winner.actions < 1 {
+        return serde_json::json!({
+            "ok": false,
+            "reason": format!(
+                "no actionable accessible at point (role {}, name {:?})",
+                winner.role, winner.name
+            ),
+            "strategy": "extents",
+            "role": winner.role,
+            "name": winner.name,
+        });
+    }
+    serde_json::json!({
+        "ok": true,
+        "strategy": "extents",
+        "app": winner.app,
+        "role": winner.role,
+        "name": winner.name,
+        "path": winner.path,
+        "bbox": winner.bbox,
+        "actions": winner.actions,
+    })
+}
+
+fn unique_geom<'a>(geoms: &'a [Geom], app: &str, want: &Want) -> Res<&'a Geom> {
+    let matches: Vec<&Geom> = geoms
+        .iter()
+        .filter(|g| g.app == app && g.role == want.role && g.name == want.name)
+        .collect();
+    match matches.len() {
+        1 => Ok(matches[0]),
+        0 => Err(format!(
+            "accessible lookup missed app={app:?} role={:?} name={:?}; refusing coordinate fallback",
+            want.role, want.name
+        )
+        .into()),
+        n => Err(format!("accessible lookup ambiguous ({n}); refusing coordinate fallback").into()),
+    }
+}
+
+async fn invoke_action(conn: &AccessibilityConnection, hit: &Hit) -> Res<()> {
+    let acc = reopen(conn, hit).await?;
+    let action = action_of(&acc).await?;
+    let n = action.n_actions().await?;
+    if n < 1 {
+        return Err(format!("{:?} has no AT-SPI action; refusing coordinate fallback", hit.name).into());
+    }
+    let mut index = 0;
+    for i in 0..n {
+        let name = action.get_name(i).await.unwrap_or_default();
+        if name == "click" {
+            index = i;
+            break;
+        }
+    }
+    let did = action.do_action(index).await?;
+    if !did {
+        return Err("Action.doAction returned false".into());
+    }
+    Ok(())
+}
+
+async fn focused_geom(conn: &AccessibilityConnection, geoms: &[Geom]) -> Res<serde_json::Value> {
+    let mut found: Option<&Geom> = None;
+    for geom in geoms {
+        let acc = reopen(
+            conn,
+            &Hit {
+                role: geom.role.clone(),
+                name: geom.name.clone(),
+                path: geom.path.clone(),
+                dest: geom.dest.clone(),
+                obj_path: geom.obj_path.clone(),
+            },
+        )
+        .await?;
+        let Ok(state) = acc.get_state().await else { continue };
+        if state.contains(State::Focused) {
+            found = Some(geom);
+        }
+    }
+    let Some(geom) = found else {
+        return Ok(serde_json::json!({ "ok": false, "reason": "nothing focused" }));
+    };
+    Ok(serde_json::json!({
+        "ok": true,
+        "app": geom.app,
+        "role": geom.role,
+        "name": geom.name,
+        "path": geom.path,
+        "actions": geom.actions,
+    }))
+}
+
+async fn collect_geoms(conn: &AccessibilityConnection, screen: (i32, i32)) -> Res<Vec<Geom>> {
+    let root = conn.root_accessible_on_registry().await?;
+    let children = root.get_children().await?;
+    let mut out = Vec::new();
+    for child in children {
+        if child.is_null() {
+            continue;
+        }
+        let Some(child_name) = child.name() else { continue };
+        let proxy = proxy_builder(conn.connection(), child_name.as_str(), child.path().as_str())?
+            .build()
+            .await?;
+        let app_name = proxy.name().await.unwrap_or_default();
+        let mut stack = vec![(
+            child_name.to_string(),
+            child.path().to_string(),
+            Vec::<Seg>::new(),
+            app_name,
+        )];
+        while let Some((dest, obj_path, ancestors, app)) = stack.pop() {
+            if out.len() > 800 || ancestors.len() > 24 {
+                continue;
+            }
+            let node = proxy_builder(conn.connection(), &dest, &obj_path)?.build().await?;
+            let role = node.get_role_name().await.unwrap_or_else(|_| "?".into());
+            let name = node.name().await.unwrap_or_default();
+            let actions = match action_of(&node).await {
+                Ok(action) => action.n_actions().await.unwrap_or(0),
+                Err(_) => 0,
+            };
+            if let Some(bbox) = extents(&node, screen).await {
+                out.push(Geom {
+                    app: app.clone(),
+                    role: role.clone(),
+                    name: name.clone(),
+                    path: ancestors.clone(),
+                    dest: dest.clone(),
+                    obj_path: obj_path.clone(),
+                    bbox,
+                    actions,
+                });
+            }
+            let children = node.get_children().await.unwrap_or_default();
+            let mut child_anc = ancestors;
+            child_anc.push(Seg { role, name });
+            for child in children.into_iter().rev() {
+                if child.is_null() {
+                    continue;
+                }
+                let Some(child_name) = child.name() else { continue };
+                stack.push((
+                    child_name.to_string(),
+                    child.path().to_string(),
+                    child_anc.clone(),
+                    app.clone(),
+                ));
+            }
+        }
+    }
+    Ok(out)
 }
