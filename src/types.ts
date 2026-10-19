@@ -154,7 +154,9 @@ export interface Step {
   dialog?: BrowserDialog;
   os?: { target: OsTarget; value?: string; key?: string };
   // Proxy capture audit. The pixel the vendor asked for. Replay does not click it.
-  provenance?: { x: number; y: number; space: "viewport" };
+  // "viewport" is the page's CSS pixel. "image" is the screenshot the model saw,
+  // which may be a scaled-down copy of that viewport.
+  provenance?: { x: number; y: number; space: "viewport" | "image" };
   // Hit-test missed an actionable element, or the action is not one this spike performs.
   // The step is stored so the miss is visible. Replay skips it.
   unresolved?: { reason: string };

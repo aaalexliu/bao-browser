@@ -245,10 +245,18 @@ The spike also writes the audit trail, trims duplicate screenshot reads, and re-
 
 Claude's adapter and a live model are the spike after this one, on the same executor. Grok waits until either xAI publishes a computer-use action schema or we deliberately expose shape B's function tools.
 
+## Claude adapter
+
+`computer_toolset_20260801` is a second adapter on the same executor, not a second executor. The neutral button set is `left | middle | right`. OpenAI's `wheel`, `back`, and `forward` stay on the OpenAI side as unsupported. They are not neutral buttons.
+
+The executor acts in viewport pixels. The Claude adapter owns the scale factor. Screenshots it returns are half the viewport on each edge. A coordinate Claude sends is in that image, and the adapter multiplies it back up before `act`. The image pixel is stored as `provenance.space: "image"`. Replay does not read provenance, so an OpenAI login workflow and a Claude login workflow match apart from that field. `zoom` crops a viewport rectangle and does not change the coordinate space: the next click is still in full-screenshot pixels.
+
+`key` text `Return` is normalized to Playwright `Enter` before the step is recorded. Scroll and drag are performed and flagged unresolved, because this spike has no semantic target for a gesture. Move, wait, zoom, cursor position, and mouse down/up are reads. They are not steps.
+
 ## Open questions
 
 - Does interpret's "a read is whatever a later write consumed" miss reads a person still wants to see in the workflow, such as a price they only looked at?
 - Is the write gate a per-step allow, or one allow for the whole replay? A per-step gate is safer and tedious. A whole-run allow will get clicked through.
 - The spike 1 ranker is not `content.ts`. A proxy that stores selectors from the ranker will drift from the extension. Which ranker is the one the workflow is allowed to contain?
-- Claude `zoom` and OpenAI downscaling both change what "the pixel" means. The first spike uses an unscaled screenshot. Who owns the scale factor when a live model forces a resize?
+- Claude `zoom` and OpenAI downscaling both change what "the pixel" means. The Claude adapter spike answers it for this toolset: the adapter owns the scale, the executor stays in viewport pixels, and provenance records which space the vendor named. A live model that picks a different long-edge limit would change the factor, not the split.
 - Grok Bot's teach-by-demonstration ([Skills and routines](https://docs.x.ai/grok-bot/skills-routines-and-automations)) records a browser workflow for up to ten minutes and drafts a skill. If that skill is ever exportable, it might be a second interpret input. Today the docs do not say the recording leaves the cloud computer.

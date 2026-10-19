@@ -75,7 +75,14 @@ async function applyAction(action: ComputerAction, executor: Executor): Promise<
     return;
   }
   if (action.type === "click" && !(action.keys && action.keys.length > 0)) {
-    return executor.act({ op: "click", x: action.x, y: action.y, button: action.button }, origin(action));
+    // wheel, back, and forward are OpenAI buttons. They are not neutral buttons.
+    if (action.button === "left" || action.button === "right") {
+      return executor.act({ op: "click", x: action.x, y: action.y, button: action.button }, origin(action));
+    }
+    return executor.act(
+      { op: "unsupported", vendor: "openai", type: `${action.type}:${action.button}` },
+      origin(action),
+    );
   }
   if (action.type === "type") {
     return executor.act({ op: "type", text: action.text }, origin(action));

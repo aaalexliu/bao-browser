@@ -185,7 +185,7 @@ is still the source of truth for the extension.
   The typed card is withheld by `src/mask.ts` (the extension's T1 rule) and
   is absent from the trail. Capture writes a HAR linked to the open audit
   event, with cookies and auth headers removed. No call to the OpenAI API.
-  Claude is a type sketch in `desktop/src/proxy/claude.ts`.
+  Claude, on that branch, is a type sketch in `desktop/src/proxy/claude.ts`.
 - **2026-10-19 — Proxy focus (pass).** `npm run spike-proxy-focus` logs into
   the-internet (`tomsmith`) with scripted `computer_call`s. The executor tracks
   `document.activeElement` and the CDP partial AX tree of that node after each
@@ -195,6 +195,15 @@ is still the source of truth for the extension.
   withheld (`sensitive`, no value) from the workflow, trail, and transcript.
   Replay shifts the page 220px (y 350 → 570) and the flash reads
   "You logged into a secure area!" from the DOM. No call to the OpenAI API.
+- **2026-10-19 — Proxy Claude adapter (pass).** `npm run spike-proxy-claude`
+  runs that same login through `computer_toolset_20260801` and through the
+  OpenAI computer tool. Screenshots returned to Claude are half the viewport
+  (640×360 of 1280×720). The click coordinate is that image pixel (y 175);
+  the adapter scales it back to the field (y 350) before the executor acts.
+  `key` text `Return` becomes `Enter`. The two workflows are the same 7 steps
+  apart from provenance (`image` vs `viewport`). Both replays shift the page
+  and land on the secure-area flash without clicking the stored coordinate.
+  All 17 members map onto the neutral core. No call to Anthropic or OpenAI.
 
 ---
 
