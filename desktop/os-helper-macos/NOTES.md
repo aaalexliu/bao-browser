@@ -80,6 +80,30 @@ grant. A minimal `.app` bundle with its own bundle id, signed once and
 launched with `open`, is the way to make the next grant stick to an identity
 that does not change every rebuild.
 
+## BaoOSHelper.app, prompted once on 2026-10-20
+
+`package-app.sh` builds the release binary with `CC=/usr/bin/clang` and wraps it
+as `BaoOSHelper.app`. No codesigning identity was in the keychain (0 matches),
+so the bundle is ad-hoc. Nothing was added to the keychain.
+
+| Field | Value |
+| --- | --- |
+| Path | `/Users/alexliu/dev/bao-mac-spike/desktop/os-helper-macos/BaoOSHelper.app` |
+| Bundle id | `dev.bao.oshelper` |
+| Designated requirement | `identifier "dev.bao.oshelper"` |
+| cdhash | `d8083cd84abd98ad99c2bad6b39d1c4dcb8f97a5` |
+| Team ID | none |
+
+One LaunchServices launch (`open -n -W -g -a BaoOSHelper.app --args permissions --prompt`)
+ran. The process parent was launchd. The recheck inside that process was still
+false for both Accessibility and Screen Recording. System Settings was open on
+the Accessibility pane afterward. No separate Screen Recording dialog was on
+screen. Calculator and TextEdit were not launched, so the button walk is not
+verified yet. Do not rebuild this app until those two rows are enabled.
+
+Add `BaoOSHelper.app` with the + button if the row is missing. The path is the
+one in the table above.
+
 ## Process macOS treats as the parent
 
 The helper's parent chain on this machine ends at launchd, not at Cursor.app.

@@ -191,12 +191,19 @@ is still the source of truth for the extension.
   macOS executor. A scripted OpenAI `computer_call` click and a scripted Claude
   `left_click` are meant to resolve to an AX element (bundle, role, name, path).
   Replay calls `AXPress` or `AXValue` by that identity. The coordinate stays on
-  `provenance`.   On macOS 26.6.2 (25G83) Screen Recording for the existing ad-hoc binary later
+  `provenance`. On macOS 26.6.2 (25G83) Screen Recording for the existing ad-hoc binary later
   reported true, with no rebuild and no second prompt. The Calculator window
   was visible to CoreGraphics, but the AX walk contained only nested
   `AXApplication` and `AXMenuBar` nodes, and point hit-testing returned no
   element. The run stopped at `no AX button for 7`. TextEdit was not opened.
   Details are in [`desktop/os-helper-macos/NOTES.md`](desktop/os-helper-macos/NOTES.md).
+- **2026-10-20 - BaoOSHelper.app prompted once.** The walker follows
+  `AXWindows` before children and stops an `AXApplication` loop. `package-app.sh`
+  ad-hoc signs `desktop/os-helper-macos/BaoOSHelper.app` as `dev.bao.oshelper`
+  (no keychain identity existed). One LaunchServices launch asked for
+  Accessibility and Screen Recording. Both checks were still false. System
+  Settings was open on the Accessibility pane. The Calculator button check waits
+  until that bundle is granted. Do not rebuild the app before then.
 
 ---
 

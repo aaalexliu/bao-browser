@@ -570,11 +570,10 @@ button. Screenshot via ScreenCaptureKit. Same pass shape. Role strings, Retina
 coordinate space, and TCC make this a separate demo. A green AT-SPI run does not
 count as a Mac result.
 
-**Tried 2026-10-19, blocked on the AX tree.** `desktop/os-helper-macos` is that
-helper, and `npm run spike-macos` is the Calculator and TextEdit demo.
-Accessibility and Screen Recording are both granted for the existing ad-hoc
-binary. The walk did not see Calculator's buttons, so the 7 + 5 = replay did
-not run. What the tree contained is in
+**Tried 2026-10-20, waiting on a grant for the app bundle.** The helper is now
+`BaoOSHelper.app` (`dev.bao.oshelper`), and the walker follows `AXWindows`.
+One prompt ran. Accessibility and Screen Recording were still false, so the
+Calculator demo has not run. See
 [`desktop/os-helper-macos/NOTES.md`](../desktop/os-helper-macos/NOTES.md).
 
 Windows UIA is the same shape again (`ValuePattern` + `InvokePattern`) and needs
