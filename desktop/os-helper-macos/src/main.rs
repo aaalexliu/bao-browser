@@ -111,12 +111,20 @@ fn run(args: &[String]) -> Result<Value, String> {
     }
 }
 
+fn emit(args: &[String], value: &Value) {
+    let text = serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".into());
+    println!("{text}");
+    if let Some(path) = flag(args, "--result") {
+        let _ = std::fs::write(path, text);
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match run(&args) {
-        Ok(value) => println!("{}", serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())),
+        Ok(value) => emit(&args, &value),
         Err(err) => {
-            println!("{}", serde_json::to_string_pretty(&json!({"ok": false, "error": err})).unwrap());
+            emit(&args, &json!({"ok": false, "error": err}));
             std::process::exit(1);
         }
     }

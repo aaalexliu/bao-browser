@@ -42,8 +42,7 @@ fn adopt_leaf_name(node: &mut Node, leaf: &Node) {
     node.useful = true;
 }
 
-/// `AXUIElementCopyElementAtPosition` on the system-wide element.
-pub fn at_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Option<Node>), String> {
+fn copy_system(x: f64, y: f64) -> Result<Option<El>, String> {
     let sys = system_wide()?;
     let mut raw: AXUIElementRef = std::ptr::null_mut();
     let err = unsafe { AXUIElementCopyElementAtPosition(sys.0, x as f32, y as f32, &mut raw) };
@@ -51,14 +50,14 @@ pub fn at_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Opt
         return Err("accessibility is not trusted for this binary (kAXErrorAPIDisabled)".into());
     }
     if err != kAXErrorSuccess || raw.is_null() {
-        return Ok((false, "no accessibility element at point".into(), None));
+        return Ok(None);
     }
-    let leaf = El::adopt(raw).ok_or("element at point was null")?;
+    Ok(El::adopt(raw))
+}
+
+fn climb(leaf: El) -> Result<(bool, String, Option<Node>), String> {
     let pid = pid_of(&leaf);
     let bundle = bundle_id_for_pid(pid);
-    if !allow_bundle.is_empty() && bundle != allow_bundle {
-        return Ok((false, "point is outside the allowed app".into(), None));
-    }
     let geom = geom_for_pid(pid);
     let leaf_node = describe(&leaf, &ancestor_path(&leaf), &bundle, pid, &geom);
     let mut current = El::retain(leaf.0).ok_or("retain failed")?;
@@ -76,6 +75,54 @@ pub fn at_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Opt
     let useful = chosen.useful;
     let reason = if useful { String::new() } else { format!("hit {}, not an actionable control", chosen.role) };
     Ok((useful, reason, Some(chosen)))
+}
+
+fn contains(frame: &crate::model::Frame, x: f64, y: f64) -> bool {
+    x >= frame.x && y >= frame.y && x < frame.x + frame.w && y < frame.y + frame.h
+}
+
+/// Smallest useful element whose frame contains the point, else the smallest frame.
+fn walk_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Option<Node>), String> {
+    if allow_bundle.is_empty() {
+        return Ok((false, "no accessibility element at point".into(), None));
+    }
+    let (nodes, _, _) = crate::walk::tree(allow_bundle)?;
+    let mut best: Option<Node> = None;
+    let mut best_area = f64::MAX;
+    for node in nodes {
+        let Some(frame) = node.frame.as_ref() else { continue };
+        if !contains(frame, x, y) { continue; }
+        let area = frame.w * frame.h;
+        let replace = match &best {
+            None => true,
+            Some(cur) => (node.useful && !cur.useful) || (node.useful == cur.useful && area < best_area),
+        };
+        if replace {
+            best_area = area;
+            best = Some(node);
+        }
+    }
+    let Some(chosen) = best else {
+        return Ok((false, "no accessibility element at point".into(), None));
+    };
+    let useful = chosen.useful;
+    let reason = if useful {
+        "window-walk".into()
+    } else {
+        format!("window walk hit {}, not an actionable control", chosen.role)
+    };
+    Ok((useful, reason, Some(chosen)))
+}
+
+/// System-wide `AXUIElementCopyElementAtPosition`, then the allowed app's windows.
+pub fn at_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Option<Node>), String> {
+    if let Some(leaf) = copy_system(x, y)? {
+        let bundle = bundle_id_for_pid(pid_of(&leaf));
+        if allow_bundle.is_empty() || bundle == allow_bundle {
+            return climb(leaf);
+        }
+    }
+    walk_point(x, y, allow_bundle)
 }
 
 pub fn focused(allow_bundle: &str) -> Result<(bool, String, Option<Node>), String> {

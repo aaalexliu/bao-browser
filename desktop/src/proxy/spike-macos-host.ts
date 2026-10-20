@@ -9,7 +9,7 @@ import path from "node:path";
 export const CALC_BUNDLE = "com.apple.calculator";
 export const EDIT_BUNDLE = "com.apple.TextEdit";
 export const HELPER = process.env.BAO_OS_MACOS
-  || path.resolve("desktop/os-helper-macos/target/release/bao-os-macos");
+  || path.resolve("desktop/os-helper-macos/BaoOSHelper.app");
 
 const STORE = path.join(
   homedir(),

@@ -7,7 +7,10 @@ use accessibility_sys::{
 use core_graphics::display::CGDisplay;
 
 use crate::apps::pids_for_bundle;
-use crate::element::{actions, children, copy_attr, element_list, has_press, parent, raw_frame, role_of, set_bool, string_attr, El, IDENTIFIER};
+use crate::element::{
+    actions, children, copy_attr, element_attr, element_list, has_press, parent, raw_frame, role_of,
+    same_element, set_bool, string_attr, El, IDENTIFIER,
+};
 use crate::model::{Frame, Geom, Geometry, Node, Seg};
 use crate::win::main_window;
 
@@ -118,17 +121,64 @@ fn skip_children(role: &str) -> bool {
     is_text_role(role) || role == "AXStaticText" || role == "AXMenuBar"
 }
 
-fn walk(el: &El, ancestors: &[Seg], bundle: &str, pid: i32, geom: &Geom, out: &mut Vec<Node>, seen: &mut HashSet<usize>, depth: i32, budget: &mut i32) {
-    if *budget <= 0 || depth > MAX_DEPTH || !seen.insert(el.0 as usize) { return; }
-    *budget -= 1;
+/// Windows first, then children. A nested application is not walked again.
+fn follow(el: &El, role: &str) -> Vec<El> {
+    let mut out = Vec::new();
+    if role == "AXApplication" {
+        if let Some(win) = element_attr(el, "AXMainWindow") { out.push(win); }
+        if let Some(win) = element_attr(el, "AXFocusedWindow") { out.push(win); }
+        out.extend(ax_windows(el));
+    }
+    if !skip_children(role) {
+        out.extend(children(el));
+    }
+    out
+}
+
+fn shape_key(pid: i32, role: &str, frame: Option<Frame>) -> Option<String> {
+    if role == "AXApplication" || role == "AXMenuBar" {
+        return Some(format!("{pid}|{role}"));
+    }
+    let frame = frame?;
+    Some(format!("{pid}|{role}|{:.0}|{:.0}|{:.0}|{:.0}", frame.x, frame.y, frame.w, frame.h))
+}
+
+struct Seen {
+    ptrs: HashSet<usize>,
+    elems: Vec<El>,
+    shapes: HashSet<String>,
+}
+
+fn remember(el: &El, pid: i32, role: &str, frame: Option<Frame>, seen: &mut Seen) -> bool {
+    if seen.ptrs.contains(&(el.0 as usize)) || seen.elems.iter().any(|prev| same_element(prev, el)) {
+        return false;
+    }
+    if let Some(key) = shape_key(pid, role, frame) {
+        if seen.shapes.contains(&key) {
+            return false;
+        }
+        seen.shapes.insert(key);
+    }
+    seen.ptrs.insert(el.0 as usize);
+    if let Some(kept) = El::retain(el.0) {
+        seen.elems.push(kept);
+    }
+    true
+}
+
+fn walk(el: &El, ancestors: &[Seg], bundle: &str, pid: i32, geom: &Geom, out: &mut Vec<Node>, seen: &mut Seen, depth: i32, budget: &mut i32) {
+    if *budget <= 0 || depth > MAX_DEPTH { return; }
     let node = describe(el, ancestors, bundle, pid, geom);
+    if !remember(el, pid, &node.role, node.frame.clone(), seen) { return; }
+    *budget -= 1;
     let role = node.role.clone();
     let name = node.name.clone();
+    let descend = role != "AXApplication" || depth == 0;
     out.push(node);
-    if skip_children(&role) { return; }
+    if !descend || skip_children(&role) { return; }
     let mut next = ancestors.to_vec();
-    next.push(Seg { role, name });
-    for child in children(el) {
+    next.push(Seg { role: role.clone(), name });
+    for child in follow(el, &role) {
         walk(&child, &next, bundle, pid, geom, out, seen, depth + 1, budget);
     }
 }
@@ -137,7 +187,7 @@ pub fn tree(bundle: &str) -> Result<(Vec<Node>, Geometry, i32), String> {
     let (pid, app) = app_element(bundle)?;
     let geom = detect_geom(pid, &app);
     let mut out = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = Seen { ptrs: HashSet::new(), elems: Vec::new(), shapes: HashSet::new() };
     let mut budget = MAX_NODES;
     walk(&app, &[], bundle, pid, &geom, &mut out, &mut seen, 0, &mut budget);
     Ok((out, geom.report(), pid))

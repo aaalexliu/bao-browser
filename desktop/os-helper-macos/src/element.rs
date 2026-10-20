@@ -8,7 +8,7 @@ use accessibility_sys::{
     AXValueRef, AXUIElementRef,
 };
 use core_foundation::array::{CFArray, CFArrayRef};
-use core_foundation::base::{CFGetTypeID, CFRelease, CFRetain, CFType, CFTypeID, CFTypeRef, TCFType};
+use core_foundation::base::{CFEqual, CFGetTypeID, CFRelease, CFRetain, CFType, CFTypeID, CFTypeRef, TCFType};
 use core_foundation::boolean::CFBoolean;
 use core_foundation::number::{CFNumber, CFNumberRef};
 use core_foundation::string::{CFString, CFStringRef};
@@ -193,6 +193,19 @@ pub fn children(el: &El) -> Vec<El> {
     copy_attr(el, kAXChildrenAttribute)
         .map(|v| element_list(&v))
         .unwrap_or_default()
+}
+
+pub fn same_element(a: &El, b: &El) -> bool {
+    unsafe { CFEqual(a.0 as CFTypeRef, b.0 as CFTypeRef) != 0 }
+}
+
+pub fn element_attr(el: &El, name: &str) -> Option<El> {
+    let value = copy_attr(el, name)?;
+    let element_tid = unsafe { AXUIElementGetTypeID() };
+    if !type_is(&value, element_tid) {
+        return None;
+    }
+    El::retain(value.as_CFTypeRef() as AXUIElementRef)
 }
 
 pub fn parent(el: &El) -> Option<El> {

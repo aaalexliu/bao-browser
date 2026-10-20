@@ -2,6 +2,9 @@
 // They do not take a coordinate.
 
 import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { OsTarget } from "../../../src/types";
 
 export interface AxFrame {
@@ -50,7 +53,22 @@ export interface AxHit {
   windows?: { id: number; layer: number; x: number; y: number; w: number; h: number }[];
 }
 
-function run(bin: string, args: string[]): Promise<AxHit> {
+function parseHit(out: string, err: string, code: number | null): AxHit {
+  const line = out.trim();
+  if (!line) throw new Error(err.trim() || `os helper exit ${code}`);
+  let parsed: AxHit;
+  try {
+    parsed = JSON.parse(line) as AxHit;
+  } catch {
+    throw new Error(err.trim() || line);
+  }
+  if (code !== 0 || parsed.ok === false) {
+    throw new Error(parsed.error || err.trim() || `os helper exit ${code}`);
+  }
+  return parsed;
+}
+
+function runBin(bin: string, args: string[]): Promise<AxHit> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
@@ -64,25 +82,45 @@ function run(bin: string, args: string[]): Promise<AxHit> {
     }, 20000);
     child.on("close", (code) => {
       clearTimeout(timer);
-      const line = out.trim();
-      if (!line) {
-        reject(new Error(err.trim() || `os helper exit ${code}`));
-        return;
-      }
-      let parsed: AxHit;
-      try {
-        parsed = JSON.parse(line) as AxHit;
-      } catch {
-        reject(new Error(err.trim() || line));
-        return;
-      }
-      if (code !== 0 || parsed.ok === false) {
-        reject(new Error(parsed.error || err.trim() || `os helper exit ${code}`));
-        return;
-      }
-      resolve(parsed);
+      try { resolve(parseHit(out, err, code)); } catch (e) { reject(e); }
     });
   });
+}
+
+/** LaunchServices launch so TCC attributes the prompt to the app bundle. */
+async function runApp(app: string, args: string[]): Promise<AxHit> {
+  const dir = await mkdtemp(path.join(tmpdir(), "bao-os-"));
+  const stdout = path.join(dir, "out.json");
+  const stderr = path.join(dir, "err.txt");
+  const result = path.join(dir, "result.json");
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn("/usr/bin/open", [
+        "-n", "-W", "-g", "-a", app,
+        "--stdout", stdout, "--stderr", stderr,
+        "--args", ...args, "--result", result,
+      ], { stdio: "ignore" });
+      child.on("error", reject);
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error(`os helper timed out: ${args[0]}`));
+      }, 20000);
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new Error(`open exited ${code}`));
+      });
+    });
+    const out = await readFile(result, "utf8").catch(() => readFile(stdout, "utf8"));
+    const err = await readFile(stderr, "utf8").catch(() => "");
+    return parseHit(out, err, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+function run(bin: string, args: string[]): Promise<AxHit> {
+  return bin.endsWith(".app") ? runApp(bin, args) : runBin(bin, args);
 }
 
 function identity(target: OsTarget): string[] {
