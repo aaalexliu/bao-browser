@@ -248,6 +248,55 @@ is still the source of truth for the extension.
   The walker also follows navigation-order, contents, and visible children,
   and the depth cap is 30. One prompt after this rebuild reported Accessibility
   and Screen Recording true. The demo was not run.
+- **2026-10-20 - macOS Calculator replay passed.** Rebuilds signed with
+  `bao dev signing` kept the same designated requirement. Accessibility and
+  Screen Recording stayed true, and nothing prompted again. The walker samples
+  the window with `AXUIElementCopyElementAtPosition` because Calculator's keypad
+  is not in `AXChildren`. Scripted OpenAI and Claude loops each pressed
+  `AXButton` `7`, `Add`, `5`, and `Equals`. Replay after a relaunch and an
+  `AXPosition` move read `12` from the display. `AXSize` is rejected (`-25200`),
+  so the window moved and did not resize. One click outside the window stayed
+  unresolved. TextEdit opens an Open panel on launch; `New Document` creates
+  the untitled window, and `bao mac spike` was set and replayed by `AXValue`.
+  Window-cropped pngs and the two replay mp4s are under the agent artifact
+  store `bao-mac-spike/`.
+- **2026-10-20 - live Codex runs through bao.** A stdio MCP server exposes
+  `screenshot`, `click`, `type`, `key`, and `read_tree` for Calculator and
+  TextEdit only. Clicks are pixels in the window image and are mapped onto the
+  window before the accessibility lookup. Claude Code at
+  `/opt/homebrew/bin/claude` reported `loggedIn: false` (`authMethod: none`),
+  so that vendor was skipped and no browser login was opened. The Homebrew
+  Codex 0.151.0 rejected `gpt-6-astra`. The ChatGPT.app CLI 0.162.0-alpha.17.2
+  was logged in and ran both tasks with `approval_policy` `never`, sandbox
+  `read-only`, and `mcp_servers.bao.default_tools_approval_mode` `approve`.
+  `~/.codex/config.toml` was not edited. Codex Calculator clicked through to
+  display `12`. Interpret kept `{{a}}`, `Add`, `{{b}}`, `Equals`. Replay of
+  `3+4` and `8+1` read `7` and `9` with no coordinate flags. The window moved.
+  `AXSize` still returns `-25200`. Codex TextEdit set `hello from bao`.
+  Interpret kept one `osSetValue` of `{{text}}`. Replay wrote `alpha one` and
+  `beta two`. TextEdit's width changed. Its origin did not.
+- **2026-10-20 - macOS 26 accessibility fixtures.** Raw trees for Calculator,
+  TextEdit, a Finder window on a `/tmp` folder, a Safari private window on
+  `the-internet.herokuapp.com`, and a throwaway Electron app are in
+  `fixtures/ax/macos-26/`. Calculator keys are in the tree: description is the
+  visible label, identifier is the stable token. TextEdit's text area
+  identifier is `First Text View`. Safari navigated by `AXValue` plus
+  `AXConfirm` on the private address field. AX keyboard posting is accepted
+  and ignored. CGEvent posting opens TextEdit's Open panel when that app is
+  frontmost, and a CGEvent drag moves the pointer without starting a file drag.
+  Electron exposes `bao-button` only after `accessibilitySupportEnabled` is
+  set once the app is ready.
+- **2026-10-20 - v1 desktop mac build.** `origin/v1/desktop` at `4153139`
+  produced `Bao.app` and `Bao.dmg`, signed with `bao dev signing`. The app
+  identifier is `dev.bao.desktop`. The nested helper stays `dev.bao.oshelper`
+  with the same certificate leaf. `codesign --verify --deep --strict` passed.
+  A no-prompt permissions check on that helper copy stayed true for
+  Accessibility and Screen Recording. Copies are in the agent store under
+  `bao-mac-spike/v1/` and are not in git. `Bao.app` was not launched.
+  `docs/mac-test.md` is a clean-account pass and was not run. The live drift
+  test failed in 914ms because `desktop/src/launch.ts` confirms the owned
+  Chrome process by reading `/proc`, which macOS does not have. No drift
+  variant ran. The throwaway Chrome profile was deleted.
 - **2026-10-21 — Desktop v1 (in progress on `v1/desktop`).** One local app
   (`npm run bao -- serve`) records a browser session into workflow schema v2
   and replays it without a model. Identity scoring refuses a tie or a weak

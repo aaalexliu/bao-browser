@@ -4,6 +4,10 @@
 import type { Workflow } from "../../../src/types";
 import type { MacOsHelper } from "./os-macos";
 
+function isTextRole(role: string): boolean {
+  return role === "AXTextArea" || role === "AXTextField" || role === "AXTextView" || role === "AXSearchField" || role === "AXComboBox";
+}
+
 export async function replayOsWorkflow(
   helper: MacOsHelper,
   workflow: Workflow,
@@ -17,7 +21,16 @@ export async function replayOsWorkflow(
       continue;
     }
     if (step.action === "osClick") {
-      await helper.press(step.os.target);
+      if (isTextRole(step.os.target.role)) await helper.focusRole(step.os.target.app, step.os.target.role, step.os.target.name);
+      else await helper.press(step.os.target);
+      pressed++;
+      if (between) await between();
+      continue;
+    }
+    if (step.action === "osKey") {
+      const combo = step.os.key || step.os.target.name;
+      if (!combo) throw new Error("osKey has no combo");
+      await helper.key(step.os.target.app, combo);
       pressed++;
       if (between) await between();
       continue;
@@ -38,7 +51,7 @@ export async function replayOsWorkflow(
 export function replayUsedCoordinates(calls: string[][]): boolean {
   return calls.some((args) => {
     const cmd = args[0];
-    if (cmd !== "press" && cmd !== "set-value" && cmd !== "read") return false;
+    if (cmd !== "press" && cmd !== "set-value" && cmd !== "read" && cmd !== "key") return false;
     return args.includes("--x") || args.includes("--y");
   });
 }

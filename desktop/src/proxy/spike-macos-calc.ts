@@ -39,13 +39,19 @@ export function center(node: AxNode): { x: number; y: number } {
   return { x: Math.round(node.frame.x + node.frame.w / 2), y: Math.round(node.frame.y + node.frame.h / 2) };
 }
 
+function plain(raw: string): string {
+  return raw.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim();
+}
+
+function numericFields(node: AxNode): string[] {
+  return [node.value, node.title, node.description, node.name].map(plain).filter((s) => /^-?\d+(\.\d+)?\.?$/.test(s));
+}
+
 export function readout(nodes: AxNode[]): string {
-  const hit = nodes.find((n) => {
-    if (n.actions.includes("AXPress")) return false;
-    return [n.value, n.title, n.description, n.name].some((s) => /^-?\d+(\.\d+)?\.?$/.test(s.trim()));
-  });
-  if (!hit) return "";
-  return [hit.value, hit.title, hit.description, hit.name].find((s) => /^-?\d+/.test(s.trim()))?.trim() ?? "";
+  const hits = nodes.filter((n) => !n.actions.includes("AXPress") && numericFields(n).length > 0);
+  const display = hits.find((n) => n.role === "AXStaticText") ?? hits[0];
+  if (!display) return "";
+  return numericFields(display)[0] ?? "";
 }
 
 export function isTwelve(value: string): boolean {

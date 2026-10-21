@@ -18,6 +18,7 @@ dependencies = [
  "accessibility-sys",
  "core-foundation",
  "core-graphics",
+ "foreign-types",
  "libc",
  "objc2",
  "objc2-foundation",
