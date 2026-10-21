@@ -58,7 +58,7 @@ test("capture login, upload, and drop, then replay with two input sets", async (
       };
       assert.equal(run.status, "passed", JSON.stringify(run.failure));
       assert.ok(run.fileProof?.some((item) => item.action === "upload" && item.name === "note.txt" && item.via === "input.files"), JSON.stringify(run.fileProof));
-      assert.ok(run.fileProof?.some((item) => item.action === "drop" && item.name === "note.txt"), JSON.stringify(run.fileProof));
+      assert.ok(run.fileProof?.some((item) => item.action === "drop" && item.name === "note.txt" && item.via === "echo"), JSON.stringify(run.fileProof));
     }
     const uiProfile = mkdtempSync(path.join(tmpdir(), "bao-ui-"));
     const ui = await launchOwnedChrome({ userDataDir: uiProfile, headless: true });

@@ -95,11 +95,11 @@ export class BrowserDriver implements Driver {
       name: file.name,
       b64: readFileSync(file.path).toString("base64"),
     }));
+    const phrase = `Dropped file: ${want}`;
     const handle = this.handle(node);
-    const landed = await this.page.evaluate(({ handle, payload, want }) => {
+    const landed = await this.page.evaluate(({ handle, payload, phrase }) => {
       const el = document.querySelector(`[data-bao-i="${handle}"]`);
       if (!el) throw new Error("drop target missing");
-      const before = document.body.innerText || "";
       const dt = new DataTransfer();
       for (const file of payload) {
         const bin = atob(file.b64);
@@ -110,15 +110,25 @@ export class BrowserDriver implements Driver {
       for (const type of ["dragenter", "dragover", "drop"]) {
         el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
       }
-      const input = el instanceof HTMLInputElement && el.type === "file" ? el : null;
-      const fromInput = input?.files?.[0]?.name || "";
-      const after = document.body.innerText || "";
-      return { fromInput, echoed: after.includes(want) && after !== before };
-    }, { handle, payload, want });
-    if (landed.fromInput !== want && !landed.echoed) {
-      throw new Error(`drop did not land: wanted ${want}`);
+      const echo = document.querySelector("[data-testid='received-drop']");
+      if (echo instanceof HTMLElement) echo.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const text = echo instanceof HTMLElement ? (echo.innerText || "").replace(/\s+/g, " ").trim() : "";
+      const rect = echo instanceof HTMLElement ? echo.getBoundingClientRect() : null;
+      const visible = !!rect
+        && rect.width > 0
+        && rect.height > 0
+        && rect.top >= 0
+        && rect.left >= 0
+        && rect.bottom <= window.innerHeight + 1
+        && rect.right <= window.innerWidth + 1;
+      return { text, visible };
+    }, { handle, payload, phrase });
+    if (landed.text !== phrase || !landed.visible) {
+      const where = landed.text ? `"${landed.text}"` : "absent";
+      const place = landed.visible ? "" : " and offscreen";
+      throw new Error(`drop did not land: wanted visible "${phrase}", echo is ${where}${place}`);
     }
-    this.proofs.push({ action: "drop", name: want, via: landed.fromInput === want ? "input.files" : "echo" });
+    this.proofs.push({ action: "drop", name: want, via: "echo" });
   }
 
   async digits(): Promise<void> {

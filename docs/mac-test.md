@@ -69,7 +69,7 @@ The product window does not need Accessibility. The bundled browser is not the d
 What this pass found:
 
 - Start capture is an `AXButton` and the press works while the product window is the only `com.google.chrome.for.testing` process.
-- Stop and save is the same kind of button. `GET /api/pids` returns the product pid and the capture pid. `press --pid <product> --role AXButton --name "Stop and save"` targets that process. A bundle-wide press still reports `expected one process, found 2` while both windows are `com.google.chrome.for.testing`. The saved workflow has a typed input and a file input. The secret string and the `/tmp` path are absent. The file step's postcondition is the filename template, and the fixture shows `Received file:` or `Dropped file:` plus that name.
+- Stop and save is the same kind of button. `GET /api/pids` returns the product pid and the capture pid. `press --pid <product> --role AXButton --name "Stop and save"` targets that process. A bundle-wide press still reports `expected one process, found 2` while both windows are `com.google.chrome.for.testing`. The saved workflow has a typed input and a file input. The secret string and the `/tmp` path are absent. A drop step's postcondition is the visible phrase `Dropped file: {{drop}}`. The fixture paints that phrase in the sticky banner at the top of the page. `Waiting for a file` is the upload line and does not satisfy the drop. Replay fails when that banner text is missing or offscreen.
 - The saved start URL is the page URL at stop time. Log in on the fixture does `pushState` to `/secure`, so the workflow's `startUrl` was `/secure`. This server maps `/secure` back to the fixture HTML. On another site, stop on the page that replay should open.
 
 ## Replay twice

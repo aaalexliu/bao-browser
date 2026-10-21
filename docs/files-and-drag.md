@@ -38,4 +38,6 @@ A left-button `CGEvent` drag from a Finder icon to the TextEdit text area moved 
 
 A Finder drag onto the replay form in the product window is an ordinary web drop on the page Bao serves. The field's drop handler takes `dataTransfer.files`, assigns them to the file input when the engine allows it, and keeps the same `File` for Run. A synthetic `DataTransfer` drop of `dragged-note.txt` is the check for that handler. A person can drag a file from Finder onto that field the same way.
 
+On the fixture, the drop handler writes `Dropped file: <name>` into the banner at the top of the page. Replay fails unless that phrase is on screen. The upload line `Waiting for a file` is not the drop proof.
+
 A native `NSDraggingSession` onto a Mac app (TextEdit, Finder, or any window that is not this web form) stays out of v1. The helper still returns `fallback: "open-panel"` for that path.
