@@ -107,7 +107,10 @@
           cards.push(`<div class="card" id="import-done"><p>Imported ${esc(pending.audit.count)} cookies for ${esc(pending.audit.domain)}.</p></div>`);
         }
       }
-      if (state.loginWait) cards.push(`<div class="card ask" id="login-wait"><p class="ask-title">Sign in on the Experian window.</p><p>${esc(state.loginWait.message)}</p><p>Bao will not type your password or a code.</p></div>`);
+      if (state.loginWait) {
+        const title = state.loginWait.detail || "Sign in on the Experian window.";
+        cards.push(`<div class="card ask" id="login-wait"><p class="ask-title">${esc(title)}</p><p>${esc(state.loginWait.message)}</p><p>Bao will not type your password or a code, and it will not click the check.</p></div>`);
+      }
       if (state.humanConfirm) {
         const detail = state.humanConfirm.detail && state.humanConfirm.detail !== state.humanConfirm.message
           ? `<p>${esc(state.humanConfirm.detail)}</p>` : "";

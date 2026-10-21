@@ -59,7 +59,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
   let importing = false;
-  let loginWait: { message: string } | null = null;
+  let loginWait: { message: string; detail?: string } | null = null;
   let humanConfirm: { message: string; detail?: string } | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
   const prompts: PersonPrompts = {
@@ -139,7 +139,11 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
       }
       if (req.method === "POST" && url.pathname === "/api/prompt") {
         const body = await readBody(req) as { kind?: string; detail?: string };
-        if (body.kind === "login") loginWait = { message: "waiting for you to log in" };
+        if (body.kind === "login") {
+          const detail = typeof body.detail === "string" ? body.detail.replace(/\s+/g, " ").trim() : "";
+          if (detail && (detail.length > 120 || looksPersonal(detail))) return json(res, { error: "detail" }, 400);
+          loginWait = { message: "waiting for you to log in", ...(detail ? { detail } : {}) };
+        }
         else if (body.kind === "confirm") humanConfirm = { message: "confirm before applying", detail: body.detail };
         else { loginWait = null; humanConfirm = null; }
         return json(res, { loginWait, humanConfirm });
