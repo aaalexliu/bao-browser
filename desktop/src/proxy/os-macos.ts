@@ -47,6 +47,8 @@ export interface AxHit {
   prompted?: boolean;
   before?: AxFrame;
   after?: AxFrame;
+  resized?: boolean;
+  sizeError?: string | null;
   windowId?: number;
   width?: number;
   height?: number;
@@ -87,32 +89,37 @@ function runBin(bin: string, args: string[]): Promise<AxHit> {
   });
 }
 
-/** LaunchServices launch so TCC attributes the prompt to the app bundle. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** LaunchServices launch so TCC attributes the prompt to the app bundle.
+ * `open -W` can return before the helper finishes, so the result file is polled. */
 async function runApp(app: string, args: string[]): Promise<AxHit> {
   const dir = await mkdtemp(path.join(tmpdir(), "bao-os-"));
   const stdout = path.join(dir, "out.json");
   const stderr = path.join(dir, "err.txt");
   const result = path.join(dir, "result.json");
+  const started = Date.now();
   try {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn("/usr/bin/open", [
-        "-n", "-W", "-g", "-a", app,
-        "--stdout", stdout, "--stderr", stderr,
-        "--args", ...args, "--result", result,
-      ], { stdio: "ignore" });
-      child.on("error", reject);
-      const timer = setTimeout(() => {
-        child.kill("SIGKILL");
-        reject(new Error(`os helper timed out: ${args[0]}`));
-      }, 20000);
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        if (code === 0) resolve();
-        else reject(new Error(`open exited ${code}`));
-      });
-    });
-    const out = await readFile(result, "utf8").catch(() => readFile(stdout, "utf8"));
+    const child = spawn("/usr/bin/open", [
+      "-n", "-W", "-g", "-a", app,
+      "--stdout", stdout, "--stderr", stderr,
+      "--args", ...args, "--result", result,
+    ], { stdio: "ignore" });
+    let closed: number | null | undefined;
+    child.on("error", () => { closed = -1; });
+    child.on("close", (code) => { closed = code ?? -1; });
+    let out = "";
+    while (Date.now() - started < 45000) {
+      out = await readFile(result, "utf8").catch(() => "");
+      if (!out.trim()) out = await readFile(stdout, "utf8").catch(() => "");
+      if (out.trim()) break;
+      if (typeof closed === "number" && closed !== 0) break;
+      await sleep(80);
+    }
     const err = await readFile(stderr, "utf8").catch(() => "");
+    if (!out.trim()) throw new Error(err.trim() || `os helper produced no result for ${args[0]}`);
     return parseHit(out, err, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -160,6 +167,10 @@ export class MacOsHelper {
 
   press(target: OsTarget): Promise<AxHit> {
     return this.exec(["press", ...identity(target)]);
+  }
+
+  key(bundle: string, combo: string): Promise<AxHit> {
+    return this.exec(["key", "--bundle", bundle, "--combo", combo]);
   }
 
   setValue(target: OsTarget, value: string): Promise<AxHit> {

@@ -1,8 +1,8 @@
 use std::ffi::c_void;
 
 use accessibility_sys::{
-    kAXChildrenAttribute, kAXErrorSuccess, kAXPositionAttribute, kAXPressAction, kAXRoleAttribute,
-    kAXSizeAttribute, kAXValueTypeCGPoint, kAXValueTypeCGSize, AXError, AXUIElementCopyActionNames,
+    kAXErrorSuccess, kAXPositionAttribute, kAXPressAction, kAXRoleAttribute,
+    kAXSizeAttribute, kAXValueTypeCGPoint, kAXValueTypeCGSize,     AXError, AXUIElementCopyActionNames, AXUIElementCopyAttributeNames,
     AXUIElementCopyAttributeValue, AXUIElementGetPid, AXUIElementGetTypeID, AXUIElementSetAttributeValue,
     AXUIElementSetMessagingTimeout, AXValueCreate, AXValueGetType, AXValueGetTypeID, AXValueGetValue,
     AXValueRef, AXUIElementRef,
@@ -42,7 +42,11 @@ impl El {
     }
 
     pub fn timeout(&self) {
-        unsafe { AXUIElementSetMessagingTimeout(self.0, 4.0) };
+        self.timeout_secs(4.0);
+    }
+
+    pub fn timeout_secs(&self, secs: f32) {
+        unsafe { AXUIElementSetMessagingTimeout(self.0, secs) };
     }
 }
 
@@ -189,12 +193,6 @@ pub fn element_list(value: &CFType) -> Vec<El> {
     out
 }
 
-pub fn children(el: &El) -> Vec<El> {
-    copy_attr(el, kAXChildrenAttribute)
-        .map(|v| element_list(&v))
-        .unwrap_or_default()
-}
-
 pub fn same_element(a: &El, b: &El) -> bool {
     unsafe { CFEqual(a.0 as CFTypeRef, b.0 as CFTypeRef) != 0 }
 }
@@ -296,6 +294,86 @@ pub fn set_ax_size(el: &El, w: f64, h: f64) -> Result<(), String> {
 
 pub fn has_press(actions: &[String]) -> bool {
     actions.iter().any(|a| a == kAXPressAction || a == "AXConfirm")
+}
+
+pub fn attribute_names(el: &El) -> Vec<String> {
+    let mut names: CFArrayRef = std::ptr::null();
+    let err = unsafe { AXUIElementCopyAttributeNames(el.0, &mut names) };
+    if err != kAXErrorSuccess || names.is_null() {
+        return Vec::new();
+    }
+    let arr: CFArray<*const c_void> = unsafe { CFArray::wrap_under_create_rule(names) };
+    let mut out = Vec::new();
+    for ptr in arr.get_all_values() {
+        if ptr.is_null() || unsafe { CFGetTypeID(ptr as CFTypeRef) } != CFString::type_id() {
+            continue;
+        }
+        let s = unsafe { CFString::wrap_under_get_rule(ptr as CFStringRef) };
+        out.push(s.to_string());
+    }
+    out
+}
+
+/// A short numeric accessibility string, including a trailing dot (`12.`).
+pub fn is_number_token(raw: &str) -> bool {
+    let s = raw.trim();
+    if s.is_empty() || s.len() > 24 {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    if bytes[0] == b'-' || bytes[0] == b'+' {
+        i = 1;
+    }
+    if i >= bytes.len() {
+        return false;
+    }
+    let mut saw_digit = false;
+    let mut saw_dot = false;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c.is_ascii_digit() {
+            saw_digit = true;
+        } else if c == b'.' && !saw_dot {
+            saw_dot = true;
+        } else {
+            return false;
+        }
+        i += 1;
+    }
+    saw_digit
+}
+
+fn strip_marks(raw: &str) -> String {
+    raw.chars().filter(|c| !matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')).collect()
+}
+
+/// Numeric display text from value-like attributes only. Character counts are not the display.
+pub fn numeric_attribute(el: &El) -> String {
+    for name in ["AXValue", "AXTitle", "AXDescription", "AXHelp", "AXLabel", "AXValueDescription"] {
+        let value = strip_marks(string_attr(el, name).trim());
+        let value = value.trim();
+        if is_number_token(value) {
+            return value.to_string();
+        }
+    }
+    String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_number_token;
+
+    #[test]
+    fn number_tokens() {
+        assert!(is_number_token("12"));
+        assert!(is_number_token("12."));
+        assert!(is_number_token("0"));
+        assert!(is_number_token("-3.5"));
+        assert!(!is_number_token("Calculator"));
+        assert!(!is_number_token("12.3.4"));
+        assert!(!is_number_token("."));
+    }
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]

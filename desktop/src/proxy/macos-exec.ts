@@ -11,6 +11,8 @@ import type { ActResult, Executor, NeutralAction, Observation } from "./neutral"
 import { MacOsHelper, targetFrom, type AxNode } from "./os-macos";
 
 export class MacOsExecutor implements Executor {
+  private size: { w: number; h: number } | null = null;
+
   constructor(
     readonly trail: AuditTrail,
     private readonly helper: MacOsHelper,
@@ -41,6 +43,7 @@ export class MacOsExecutor implements Executor {
   async act(action: NeutralAction, origin: AuditOrigin): Promise<ActResult> {
     if (action.op === "type") return this.actType(action.text, origin);
     if (action.op === "click") return this.actClick(action.x, action.y, origin);
+    if (action.op === "keypress") return this.actKey(action.keys, origin);
     return this.miss(action.op, origin, `${action.op} is not performed on the macOS plane`, undefined);
   }
 
@@ -59,8 +62,11 @@ export class MacOsExecutor implements Executor {
     }
     const screen = await this.screen();
     const target = targetFrom(hit.element, screen);
+    const before = this.snap(await this.shot());
     try {
-      await this.helper.press(target);
+      if (hit.element.actions.includes("AXPress")) await this.helper.press(target);
+      else if (isTextRole(hit.element.role)) await this.helper.focusRole(this.bundle, hit.element.role, hit.element.name);
+      else return this.miss("osClick", origin, `${hit.element.role} has no AXPress`, provenance, hit.element);
     } catch (err) {
       return this.miss("osClick", origin, err instanceof Error ? err.message : String(err), provenance, hit.element);
     }
@@ -71,6 +77,7 @@ export class MacOsExecutor implements Executor {
       op: "osClick",
       source: origin.source,
       raw: origin.raw,
+      before,
       after: this.snap(png),
       provenance,
       os: osOf(hit.element),
@@ -78,9 +85,35 @@ export class MacOsExecutor implements Executor {
     return { unresolved: false };
   }
 
+  private async actKey(keys: string[], origin: AuditOrigin): Promise<ActResult> {
+    const combo = keys.join("+");
+    const before = this.snap(await this.shot());
+    try {
+      await this.helper.key(this.bundle, combo);
+    } catch (err) {
+      return this.miss("osKey", origin, err instanceof Error ? err.message : String(err), undefined);
+    }
+    await sleep(120);
+    this.trail.append({
+      kind: "act",
+      op: "osKey",
+      source: origin.source,
+      raw: origin.raw,
+      before,
+      after: this.snap(await this.shot()),
+      os: { app: this.bundle, role: "AXApplication", name: combo, path: [], key: combo },
+    });
+    return { unresolved: false };
+  }
+
   private async actType(text: string, origin: AuditOrigin): Promise<ActResult> {
     const secret = isSensitiveValue(text);
-    const hit = await this.helper.focused(this.bundle);
+    const before = this.snap(await this.shot());
+    let hit = await this.helper.focused(this.bundle);
+    if (!hit.useful || !hit.element) {
+      await this.helper.focusRole(this.bundle, "AXTextArea").catch(() => undefined);
+      hit = await this.helper.focused(this.bundle);
+    }
     if (!hit.useful || !hit.element) {
       return this.miss("osSetValue", origin, hit.reason || "type has no focused text control", undefined);
     }
@@ -97,6 +130,7 @@ export class MacOsExecutor implements Executor {
       op: "osSetValue",
       source: origin.source,
       raw: secret ? { type: "type" } : origin.raw,
+      before,
       after: this.snap(png),
       os: { ...osOf(hit.element), value: secret ? undefined : text },
       sensitive: secret || undefined,
@@ -133,8 +167,10 @@ export class MacOsExecutor implements Executor {
   }
 
   private async screen(): Promise<{ w: number; h: number }> {
+    if (this.size && this.size.w > 0) return this.size;
     const geom = (await this.helper.nodes(this.bundle)).geometry;
-    return { w: geom?.screen_w ?? 0, h: geom?.screen_h ?? 0 };
+    this.size = { w: geom?.screen_w ?? 0, h: geom?.screen_h ?? 0 };
+    return this.size;
   }
 
   private async shot(): Promise<Buffer> {
@@ -144,6 +180,10 @@ export class MacOsExecutor implements Executor {
     await rm(file, { force: true });
     return png;
   }
+}
+
+function isTextRole(role: string): boolean {
+  return role === "AXTextArea" || role === "AXTextField" || role === "AXTextView" || role === "AXSearchField" || role === "AXComboBox";
 }
 
 function osOf(node: AxNode) {

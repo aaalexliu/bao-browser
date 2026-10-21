@@ -133,6 +133,13 @@ pub fn focused(allow_bundle: &str) -> Result<(bool, String, Option<Node>), Strin
         copy_attr(&app, kAXFocusedUIElementAttribute)
     });
     let value = if from_app.is_some() { from_app } else { copy_attr(&sys, kAXFocusedUIElementAttribute) };
+    let value = if value.is_some() {
+        value
+    } else if !allow_bundle.is_empty() {
+        crate::walk::app_element(allow_bundle).ok().and_then(|(_pid, app)| copy_attr(&app, kAXFocusedUIElementAttribute))
+    } else {
+        None
+    };
     let Some(value) = value else {
         return Ok((false, "no focused accessibility element".into(), None));
     };

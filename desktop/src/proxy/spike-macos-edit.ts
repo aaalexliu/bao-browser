@@ -7,7 +7,7 @@ import { AuditTrail } from "./audit";
 import { MacOsExecutor } from "./macos-exec";
 import { replayOsWorkflow, replayUsedCoordinates } from "./macos-replay";
 import { handleComputerCall } from "./openai";
-import type { MacOsHelper, AxNode } from "./os-macos";
+import { targetFrom, type MacOsHelper, type AxNode } from "./os-macos";
 import {
   ARTIFACTS, EDIT_BUNDLE, TEXTEDIT_AUTOSAVE, cleanupNewAutosave, launchIfDown,
   namesIn, quitOwned, sleep, workDir,
@@ -29,8 +29,15 @@ async function waitUntitled(helper: MacOsHelper): Promise<AxNode[]> {
     const tree = await helper.nodes(EDIT_BUNDLE);
     const nodes = tree.nodes ?? [];
     const titles = windowTitles(nodes);
-    const foreign = titles.find((title) => !/^Untitled( \d+)?$/.test(title));
+    const foreign = titles.find((title) => title !== "Open" && !/^Untitled( \d+)?$/.test(title));
     if (foreign) throw new Error(`restored document ${foreign}; aborting without reading it`);
+    if (titles.includes("Open")) {
+      const create = nodes.find((n) => n.role === "AXButton" && n.name === "New Document" && n.actions.includes("AXPress"));
+      if (!create) throw new Error("TextEdit open panel has no New Document button");
+      await helper.press(targetFrom(create, { w: 0, h: 0 }));
+      await sleep(400);
+      continue;
+    }
     if (titles.length > 0) return nodes;
     await sleep(250);
   }

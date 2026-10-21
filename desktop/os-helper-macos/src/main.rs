@@ -6,8 +6,10 @@ mod act;
 mod apps;
 mod element;
 mod model;
+mod keys;
 mod perms;
 mod query;
+mod sample;
 mod walk;
 mod win;
 
@@ -54,7 +56,7 @@ fn hit_json(useful: bool, reason: String, node: Option<model::Node>) -> Value {
 fn run(args: &[String]) -> Result<Value, String> {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("help");
     match cmd {
-        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "move-window", "shot"]})),
+        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "move-window", "shot", "key"]})),
         "permissions" => Ok(perms::report(args.iter().any(|a| a == "--prompt"))),
         "nodes" => {
             let bundle = need(args, "--bundle")?;
@@ -95,8 +97,13 @@ fn run(args: &[String]) -> Result<Value, String> {
             Ok(json!({"ok": true, "pid": pids[0], "windows": wins.iter().map(|w| json!({"id": w.id, "layer": w.layer, "x": w.frame.x, "y": w.frame.y, "w": w.frame.w, "h": w.frame.h})).collect::<Vec<_>>()}))
         }
         "move-window" => {
-            let (before, after) = act::move_window(&need(args, "--bundle")?, num(args, "--x")?, num(args, "--y")?, num(args, "--w")?, num(args, "--h")?)?;
-            Ok(json!({"ok": true, "before": before, "after": after}))
+            let (before, after, size_error) = act::move_window(&need(args, "--bundle")?, num(args, "--x")?, num(args, "--y")?, num(args, "--w")?, num(args, "--h")?)?;
+            Ok(json!({"ok": true, "before": before, "after": after, "resized": size_error.is_none(), "sizeError": size_error}))
+        }
+        "key" => {
+            keys::post_combo(&need(args, "--bundle")?, &need(args, "--combo")?)?;
+            eprintln!("STRATEGY=ax-key");
+            Ok(json!({"ok": true, "strategy": "ax-key"}))
         }
         "shot" => {
             let bundle = need(args, "--bundle")?;

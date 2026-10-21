@@ -217,6 +217,33 @@ is still the source of truth for the extension.
   The walker also follows navigation-order, contents, and visible children,
   and the depth cap is 30. One prompt after this rebuild reported Accessibility
   and Screen Recording true. The demo was not run.
+- **2026-10-20 - macOS Calculator replay passed.** Rebuilds signed with
+  `bao dev signing` kept the same designated requirement. Accessibility and
+  Screen Recording stayed true, and nothing prompted again. The walker samples
+  the window with `AXUIElementCopyElementAtPosition` because Calculator's keypad
+  is not in `AXChildren`. Scripted OpenAI and Claude loops each pressed
+  `AXButton` `7`, `Add`, `5`, and `Equals`. Replay after a relaunch and an
+  `AXPosition` move read `12` from the display. `AXSize` is rejected (`-25200`),
+  so the window moved and did not resize. One click outside the window stayed
+  unresolved. TextEdit opens an Open panel on launch; `New Document` creates
+  the untitled window, and `bao mac spike` was set and replayed by `AXValue`.
+  Window-cropped pngs and the two replay mp4s are under the agent artifact
+  store `bao-mac-spike/`.
+- **2026-10-20 - live Codex runs through bao.** A stdio MCP server exposes
+  `screenshot`, `click`, `type`, `key`, and `read_tree` for Calculator and
+  TextEdit only. Clicks are pixels in the window image and are mapped onto the
+  window before the accessibility lookup. Claude Code at
+  `/opt/homebrew/bin/claude` reported `loggedIn: false` (`authMethod: none`),
+  so that vendor was skipped and no browser login was opened. The Homebrew
+  Codex 0.151.0 rejected `gpt-6-astra`. The ChatGPT.app CLI 0.162.0-alpha.17.2
+  was logged in and ran both tasks with `approval_policy` `never`, sandbox
+  `read-only`, and `mcp_servers.bao.default_tools_approval_mode` `approve`.
+  `~/.codex/config.toml` was not edited. Codex Calculator clicked through to
+  display `12`. Interpret kept `{{a}}`, `Add`, `{{b}}`, `Equals`. Replay of
+  `3+4` and `8+1` read `7` and `9` with no coordinate flags. The window moved.
+  `AXSize` still returns `-25200`. Codex TextEdit set `hello from bao`.
+  Interpret kept one `osSetValue` of `{{text}}`. Replay wrote `alpha one` and
+  `beta two`. TextEdit's width changed. Its origin did not.
 
 ---
 

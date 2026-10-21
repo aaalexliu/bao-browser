@@ -8,9 +8,10 @@ use core_graphics::display::CGDisplay;
 
 use crate::apps::pids_for_bundle;
 use crate::element::{
-    actions, copy_attr, element_attr, element_list, has_press, parent, raw_frame, role_of,
-    same_element, set_bool, string_attr, El, IDENTIFIER,
+    actions, attribute_names, copy_attr, element_attr, element_list, has_press, numeric_attribute,
+    parent, raw_frame, role_of, same_element, set_bool, string_attr, El, IDENTIFIER,
 };
+use crate::sample::{ancestor_chain, hits_in_window};
 use crate::model::{Frame, Geom, Geometry, Node, Seg};
 use crate::win::main_window;
 
@@ -160,6 +161,10 @@ fn shape_key(pid: i32, role: &str, frame: Option<Frame>) -> Option<String> {
     Some(format!("{pid}|{role}|{:.0}|{:.0}|{:.0}|{:.0}", frame.x, frame.y, frame.w, frame.h))
 }
 
+fn shape_dedupe(role: &str) -> bool {
+    role == "AXApplication" || role == "AXMenuBar"
+}
+
 struct Seen {
     ptrs: HashSet<usize>,
     elems: Vec<El>,
@@ -170,11 +175,13 @@ fn remember(el: &El, pid: i32, role: &str, frame: Option<Frame>, seen: &mut Seen
     if seen.ptrs.contains(&(el.0 as usize)) || seen.elems.iter().any(|prev| same_element(prev, el)) {
         return false;
     }
-    if let Some(key) = shape_key(pid, role, frame) {
-        if seen.shapes.contains(&key) {
-            return false;
+    if shape_dedupe(role) {
+        if let Some(key) = shape_key(pid, role, frame) {
+            if seen.shapes.contains(&key) {
+                return false;
+            }
+            seen.shapes.insert(key);
         }
-        seen.shapes.insert(key);
     }
     seen.ptrs.insert(el.0 as usize);
     if let Some(kept) = El::retain(el.0) {
@@ -183,31 +190,98 @@ fn remember(el: &El, pid: i32, role: &str, frame: Option<Frame>, seen: &mut Seen
     true
 }
 
-fn walk(el: &El, ancestors: &[Seg], bundle: &str, pid: i32, geom: &Geom, out: &mut Vec<Node>, seen: &mut Seen, depth: i32, budget: &mut i32) {
+fn walk(el: &El, ancestors: &[Seg], bundle: &str, pid: i32, geom: &Geom, out: &mut Vec<Node>, elems: &mut Vec<El>, seen: &mut Seen, depth: i32, budget: &mut i32) {
     if *budget <= 0 || depth > MAX_DEPTH { return; }
     let node = describe(el, ancestors, bundle, pid, geom);
     if !remember(el, pid, &node.role, node.frame.clone(), seen) { return; }
+    let Some(kept) = El::retain(el.0) else { return };
     *budget -= 1;
     let role = node.role.clone();
     let name = node.name.clone();
     let descend = role != "AXApplication" || depth == 0;
     out.push(node);
+    elems.push(kept);
     if !descend || skip_children(&role) { return; }
     let mut next = ancestors.to_vec();
     next.push(Seg { role: role.clone(), name });
     for child in follow(el, &role) {
-        walk(&child, &next, bundle, pid, geom, out, seen, depth + 1, budget);
+        walk(&child, &next, bundle, pid, geom, out, elems, seen, depth + 1, budget);
     }
 }
 
-pub fn tree(bundle: &str) -> Result<(Vec<Node>, Geometry, i32), String> {
+fn fill_numbers(nodes: &mut [Node], elems: &[El]) {
+    for (node, el) in nodes.iter_mut().zip(elems.iter()) {
+        if !node.value.is_empty() || has_press(&node.actions) {
+            continue;
+        }
+        let value = numeric_attribute(el);
+        if !value.is_empty() {
+            node.value = value;
+        }
+    }
+}
+
+fn dump_attrs(nodes: &[Node], elems: &[El]) {
+    for (node, el) in nodes.iter().zip(elems.iter()) {
+        if has_press(&node.actions) {
+            continue;
+        }
+        if !matches!(node.role.as_str(), "AXApplication" | "AXWindow" | "AXGroup" | "AXSplitGroup" | "AXStaticText" | "AXScrollArea" | "AXTextArea" | "AXLayoutArea") {
+            continue;
+        }
+        let bits: Vec<String> = attribute_names(el).into_iter().take(24).map(|name| {
+            let value: String = string_attr(el, &name).chars().take(48).collect();
+            format!("{name}={value}")
+        }).collect();
+        eprintln!("ATTRS role={} name={} {}", node.role, node.name, bits.join(" | "));
+    }
+}
+
+/// Nodes plus the live elements they were built from, in the same order.
+pub struct LiveTree {
+    pub nodes: Vec<Node>,
+    pub elems: Vec<El>,
+    pub geom: Geometry,
+    pub pid: i32,
+}
+
+pub fn harvest(bundle: &str) -> Result<LiveTree, String> {
     let (pid, app) = app_element(bundle)?;
     let geom = detect_geom(pid, &app);
     let mut out = Vec::new();
+    let mut elems = Vec::new();
     let mut seen = Seen { ptrs: HashSet::new(), elems: Vec::new(), shapes: HashSet::new() };
     let mut budget = MAX_NODES;
-    walk(&app, &[], bundle, pid, &geom, &mut out, &mut seen, 0, &mut budget);
-    Ok((out, geom.report(), pid))
+    walk(&app, &[], bundle, pid, &geom, &mut out, &mut elems, &mut seen, 0, &mut budget);
+    let mut expanded = HashSet::new();
+    for seed in hits_in_window(pid, &geom) {
+        if budget <= 0 {
+            break;
+        }
+        for el in ancestor_chain(seed, pid) {
+            let _ = set_bool(&el, "AXManualAccessibility", true);
+            let _ = set_bool(&el, "AXEnhancedUserInterface", true);
+            let role = role_of(&el);
+            let depth = if role == "AXApplication" { 1 } else { 0 };
+            walk(&el, &ancestor_path(&el), bundle, pid, &geom, &mut out, &mut elems, &mut seen, depth, &mut budget);
+            if expanded.insert(el.0 as usize) && !skip_children(&role) && role != "AXApplication" {
+                for child in follow(&el, &role) {
+                    let child_depth = if role_of(&child) == "AXApplication" { 1 } else { 0 };
+                    walk(&child, &ancestor_path(&child), bundle, pid, &geom, &mut out, &mut elems, &mut seen, child_depth, &mut budget);
+                }
+            }
+        }
+    }
+    fill_numbers(&mut out, &elems);
+    if std::env::var_os("BAO_OS_ATTRS").is_some() {
+        dump_attrs(&out, &elems);
+    }
+    Ok(LiveTree { nodes: out, elems, geom: geom.report(), pid })
+}
+
+pub fn tree(bundle: &str) -> Result<(Vec<Node>, Geometry, i32), String> {
+    let live = harvest(bundle)?;
+    Ok((live.nodes, live.geom, live.pid))
 }
 
 #[cfg(test)]

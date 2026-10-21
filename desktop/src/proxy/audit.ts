@@ -58,6 +58,7 @@ export interface AuditEvent {
     identifier?: string;
     path: { role: string; name?: string }[];
     value?: string;
+    key?: string;
   };
 }
 
@@ -144,8 +145,8 @@ export function deriveWorkflow(
   const steps: Step[] = [];
   for (const e of events) {
     if (e.kind !== "act") continue;
-    if (e.op === "osClick" || e.op === "osSetValue" || e.op === "osType") {
-      const action = e.op === "osClick" ? "osClick" : "osSetValue";
+    if (e.op === "osClick" || e.op === "osSetValue" || e.op === "osType" || e.op === "osKey") {
+      const action = e.op === "osKey" ? "osKey" : e.op === "osClick" ? "osClick" : "osSetValue";
       const base: Step = {
         ts: e.ts,
         action,
@@ -159,7 +160,7 @@ export function deriveWorkflow(
       }
       steps.push({
         ...base,
-        label: action === "osClick" ? `Press ${e.os.name || e.os.role}` : "Set value",
+        label: action === "osClick" ? `Press ${e.os.name || e.os.role}` : action === "osKey" ? `Key ${e.os.key || e.os.name}` : "Set value",
         os: {
           target: {
             platform: "macos",
@@ -173,6 +174,7 @@ export function deriveWorkflow(
             path: e.os.path,
           },
           value: e.sensitive ? undefined : e.os.value,
+          key: e.os.key,
         },
         sensitive: e.sensitive || undefined,
       });
