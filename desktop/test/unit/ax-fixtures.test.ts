@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { driftReport, macChangeApplicability } from "../../src/v1/drift";
+import { driftMarkdown, driftReport, macChangeApplicability } from "../../src/v1/drift";
 import { fromAxNode, lookup, normRole, type AxDumpNode } from "../../src/v1/identity";
 import type { Identity } from "../../src/v1/schema";
 
@@ -125,6 +125,15 @@ test("Calculator resize drift is n/a because AXSize returns -25200", () => {
   assert.equal(resize?.failed, 0);
   const move = report.summary.find((row) => row.change === "move");
   assert.equal(move?.passed, 1);
+  const step = report.steps.find((row) => row.stepId === "s");
+  assert.equal(step?.passed, 1);
+  assert.equal(step?.na, 1);
+  assert.equal(step?.failed, 0);
+  assert.equal(step?.rate, 1);
+  const md = driftMarkdown(report);
+  assert.match(md, /## Steps/);
+  assert.match(md, /\| s \| {2}\| 1 \| 0 \| 1 \| 100% \|/);
+  assert.match(md, /\| resize \| 0 \| 0 \| 1 \| 0% \|/);
 });
 
 function load(file: string): Identity[] {

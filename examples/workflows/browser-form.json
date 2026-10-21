@@ -1,177 +1,177 @@
 {
-  "createdAt": 1792546563430,
-  "id": "wf-1792546563709",
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792552972403",
+  "name": "Captured workflow",
+  "startUrl": "http://127.0.0.1:4787/fixture",
   "inputs": [
     {
-      "default": "ada",
-      "label": "username",
       "name": "username",
+      "type": "text",
       "required": true,
-      "type": "text"
+      "label": "username",
+      "default": "ada"
     },
     {
-      "label": "password",
       "name": "password",
+      "type": "secret",
       "required": true,
-      "type": "secret"
+      "label": "password"
     },
     {
-      "label": "file",
       "name": "file",
+      "type": "file",
       "required": true,
-      "type": "file"
+      "label": "file"
     },
     {
-      "label": "drop",
       "name": "drop",
+      "type": "file",
       "required": true,
-      "type": "file"
+      "label": "drop"
     }
   ],
-  "name": "Captured workflow",
-  "schema": "bao.workflow/v2",
-  "startUrl": "http://127.0.0.1:4787/fixture",
   "steps": [
     {
+      "id": "wf-1792552972403-0",
+      "index": 0,
       "action": "type",
-      "id": "wf-1792546563709-0",
+      "label": "Type {{username}}",
+      "surface": "dom",
       "identity": {
+        "surface": "dom",
+        "role": "input",
         "id": "username",
         "nameAttr": "username",
-        "path": [],
-        "role": "input",
-        "surface": "dom",
-        "tag": "input"
+        "tag": "input",
+        "path": []
       },
-      "index": 0,
+      "timeoutMs": 8000,
       "input": "username",
-      "label": "Type {{username}}",
+      "value": "{{username}}",
       "postcondition": {
         "kind": "value",
         "match": "{{username}}",
         "timeoutMs": 4000
-      },
-      "surface": "dom",
-      "timeoutMs": 8000,
-      "value": "{{username}}"
+      }
     },
     {
+      "id": "wf-1792552972403-1",
+      "index": 1,
       "action": "type",
-      "id": "wf-1792546563709-1",
+      "label": "Type secret",
+      "surface": "dom",
       "identity": {
+        "surface": "dom",
+        "role": "input",
         "id": "password",
         "nameAttr": "password",
-        "path": [],
-        "role": "input",
-        "surface": "dom",
-        "tag": "input"
+        "tag": "input",
+        "path": []
       },
-      "index": 1,
+      "timeoutMs": 8000,
       "input": "password",
-      "label": "Type secret",
+      "value": "{{password}}",
+      "sensitive": true,
       "postcondition": {
+        "kind": "element",
         "identity": {
+          "surface": "dom",
+          "role": "input",
           "id": "password",
           "nameAttr": "password",
-          "path": [],
-          "role": "input",
-          "surface": "dom",
-          "tag": "input"
+          "tag": "input",
+          "path": []
         },
-        "kind": "element",
         "timeoutMs": 4000
-      },
-      "sensitive": true,
-      "surface": "dom",
-      "timeoutMs": 8000,
-      "value": "{{password}}"
+      }
     },
     {
-      "action": "click",
-      "id": "wf-1792546563709-2",
-      "identity": {
-        "id": "login-btn",
-        "path": [],
-        "role": "button",
-        "surface": "dom",
-        "tag": "button",
-        "testId": "login",
-        "text": "Log in"
-      },
+      "id": "wf-1792552972403-2",
       "index": 2,
+      "action": "click",
       "label": "Click \"Log in\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "testId": "login",
+        "id": "login-btn",
+        "tag": "button",
+        "text": "Log in",
+        "path": []
+      },
+      "timeoutMs": 8000,
       "postcondition": {
         "kind": "url",
         "match": "/secure",
         "timeoutMs": 8000
-      },
-      "surface": "dom",
-      "timeoutMs": 8000
+      }
     },
     {
+      "id": "wf-1792552972403-3",
+      "index": 3,
       "action": "upload",
-      "id": "wf-1792546563709-3",
+      "label": "Upload file",
+      "surface": "dom",
       "identity": {
+        "surface": "dom",
+        "role": "input",
+        "testId": "file",
         "id": "file",
         "nameAttr": "file",
-        "path": [],
-        "role": "input",
-        "surface": "dom",
         "tag": "input",
-        "testId": "file"
+        "path": []
       },
-      "index": 3,
+      "timeoutMs": 8000,
       "input": "file",
-      "label": "Upload file",
+      "value": "{{file}}",
       "postcondition": {
+        "kind": "element",
         "identity": {
+          "surface": "dom",
+          "role": "input",
+          "testId": "file",
           "id": "file",
           "nameAttr": "file",
-          "path": [],
-          "role": "input",
-          "surface": "dom",
           "tag": "input",
-          "testId": "file"
+          "path": []
         },
-        "kind": "element",
         "timeoutMs": 4000
-      },
-      "surface": "dom",
-      "timeoutMs": 8000,
-      "value": "{{file}}"
+      }
     },
     {
-      "action": "drop",
-      "id": "wf-1792546563709-4",
-      "identity": {
-        "id": "drop",
-        "path": [],
-        "role": "div",
-        "surface": "dom",
-        "tag": "div",
-        "testId": "drop",
-        "text": "Drop a file here"
-      },
+      "id": "wf-1792552972403-4",
       "index": 4,
-      "input": "drop",
+      "action": "drop",
       "label": "Drop file",
-      "postcondition": {
-        "identity": {
-          "id": "drop",
-          "path": [],
-          "role": "div",
-          "surface": "dom",
-          "tag": "div",
-          "testId": "drop",
-          "text": "Drop a file here"
-        },
-        "kind": "element",
-        "timeoutMs": 4000
-      },
       "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "div",
+        "testId": "drop",
+        "id": "drop",
+        "tag": "div",
+        "text": "Drop a file here",
+        "path": []
+      },
       "timeoutMs": 8000,
-      "value": "{{drop}}"
+      "input": "drop",
+      "value": "{{drop}}",
+      "postcondition": {
+        "kind": "element",
+        "identity": {
+          "surface": "dom",
+          "role": "div",
+          "testId": "drop",
+          "id": "drop",
+          "tag": "div",
+          "text": "Drop a file here",
+          "path": []
+        },
+        "timeoutMs": 4000
+      }
     }
   ],
-  "version": 2
+  "createdAt": 1792552972127
 }

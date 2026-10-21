@@ -4,6 +4,7 @@ export interface DriftRow {
   workflow: string;
   change: string;
   stepId: string;
+  label?: string;
   passed: boolean;
   brokenAttr?: string;
   reason?: string;
@@ -13,6 +14,15 @@ export interface DriftRow {
 
 export interface DriftSummary {
   change: string;
+  passed: number;
+  failed: number;
+  na: number;
+  rate: number;
+}
+
+export interface DriftStepRate {
+  stepId: string;
+  label?: string;
   passed: number;
   failed: number;
   na: number;
@@ -29,35 +39,59 @@ export interface DriftReport {
   generatedAt: string;
   rows: DriftRow[];
   summary: DriftSummary[];
+  steps: DriftStepRate[];
 }
 
-export function driftReport(rows: DriftRow[], generatedAt: string): DriftReport {
-  const byChange = new Map<string, { passed: number; failed: number; na: number }>();
+function totals(rows: DriftRow[], key: (row: DriftRow) => string): { key: string; label?: string; passed: number; failed: number; na: number; rate: number }[] {
+  const buckets = new Map<string, { passed: number; failed: number; na: number; label?: string }>();
   for (const row of rows) {
-    const bucket = byChange.get(row.change) ?? { passed: 0, failed: 0, na: 0 };
+    const bucket = buckets.get(key(row)) ?? { passed: 0, failed: 0, na: 0 };
+    if (row.label) bucket.label = row.label;
     if (row.na) bucket.na += 1;
     else if (row.passed) bucket.passed += 1;
     else bucket.failed += 1;
-    byChange.set(row.change, bucket);
+    buckets.set(key(row), bucket);
   }
-  const summary = [...byChange.entries()].map(([change, bucket]) => {
+  return [...buckets.entries()].map(([name, bucket]) => {
     const total = bucket.passed + bucket.failed;
-    return { change, passed: bucket.passed, failed: bucket.failed, na: bucket.na, rate: total ? bucket.passed / total : 0 };
+    return { key: name, label: bucket.label, passed: bucket.passed, failed: bucket.failed, na: bucket.na, rate: total ? bucket.passed / total : 0 };
   });
-  return { generatedAt, rows, summary };
+}
+
+export function driftReport(rows: DriftRow[], generatedAt: string): DriftReport {
+  const summary = totals(rows, (row) => row.change).map((row) => ({
+    change: row.key,
+    passed: row.passed,
+    failed: row.failed,
+    na: row.na,
+    rate: row.rate,
+  }));
+  const steps = totals(rows, (row) => row.stepId).map((row) => ({
+    stepId: row.key,
+    label: row.label,
+    passed: row.passed,
+    failed: row.failed,
+    na: row.na,
+    rate: row.rate,
+  }));
+  return { generatedAt, rows, summary, steps };
 }
 
 export function driftMarkdown(report: DriftReport): string {
   const lines = [
     `# Drift report`,
     ``,
-    `Generated ${report.generatedAt}.`,
+    `Generated ${report.generatedAt}. Rates exclude n/a rows. Each failure lists the attribute that broke.`,
     ``,
     `| change | passed | failed | n/a | rate |`,
     `| --- | --- | --- | --- | --- |`,
   ];
   for (const row of report.summary) {
     lines.push(`| ${row.change} | ${row.passed} | ${row.failed} | ${row.na} | ${(row.rate * 100).toFixed(0)}% |`);
+  }
+  lines.push(``, `## Steps`, ``, `| step | label | passed | failed | n/a | rate |`, `| --- | --- | --- | --- | --- | --- |`);
+  for (const row of report.steps) {
+    lines.push(`| ${row.stepId} | ${row.label || ""} | ${row.passed} | ${row.failed} | ${row.na} | ${(row.rate * 100).toFixed(0)}% |`);
   }
   lines.push(``, `## Failures`, ``, `| workflow | change | step | attribute | reason |`, `| --- | --- | --- | --- | --- |`);
   for (const row of report.rows.filter((item) => !item.passed && !item.na)) {

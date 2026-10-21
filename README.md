@@ -318,6 +318,15 @@ is still the source of truth for the extension.
   script and not the user's Chrome. `bao mcp` on macOS is `mcp-bao.ts`.
   `drag-file` reports that a pointer drag is not a file drag and falls back
   to the Open panel.
+- **2026-10-21 — Linux evidence for the browser path, drift, and a live MCP run.**
+  The product window's replay form takes a typed value, a masked secret, and
+  a dropped file, then runs twice. A broken test id auto-heals (fixture
+  healer, audit event, OS notification) and the approve setting pauses.
+  Drift (`docs/drift-linux.md`) is 24/24, with a pass rate per change and
+  per step; the failures table is empty. A cursor-driven MCP session labeled
+  `live-model` logged into the-internet and uploaded a file; interpret
+  dropped the screenshots and the unresolved file click; replay had no model.
+  The GTK calculator capture of 7+5 replayed 7+7 and 5+7 on a moved window.
 
 ---
 

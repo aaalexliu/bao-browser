@@ -59,6 +59,8 @@ This is the login step from `examples/workflows/browser-form.json`, captured fro
 
 `examples/workflows/calculator.json` is the GTK calculator capture. Digit presses collapsed into `digits` steps with number inputs `a` and `b`. The equals step's postcondition is `{{a}}+{{b}}`.
 
+`examples/workflows/live-login.json` and `examples/workflows/live-upload.json` are interpret output from MCP trails whose `source.agent` is `live-model`. The login secret has no default. The upload step's value is `{{file}}`, not a path. Provenance coordinates are recorded and replay does not read them.
+
 ## Interpret
 
 `desktop/src/v1/interpret.ts` is deterministic. The same trail produces byte-identical JSON (`canonical`). It drops screenshot reads, moves, waits, and unresolved no-ops, merges consecutive typing into one field, and lifts every typed value into an input. A secret (password field, sensitive flag, or a known secret string) becomes a `secret` input with no default and no literal. A file event becomes a `file` input. A path on the trail is not copied. Consecutive digit presses on a calculator become one number input.
