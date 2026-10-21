@@ -204,6 +204,12 @@ is still the source of truth for the extension.
   Accessibility and Screen Recording. Both checks were still false. System
   Settings was open on the Accessibility pane. The Calculator button check waits
   until that bundle is granted. Do not rebuild the app before then.
+- **2026-10-20 - grant on, replay still blocked.** Both privacy checks are true
+  for the existing `BaoOSHelper.app`. A point inside Calculator resolves to
+  `AXButton` `7`, `Add`, `5`, and `Equals`. The tree walk does not include those
+  buttons, so `press` misses and will not fall back to a coordinate. The
+  OpenAI and Claude loops were not run. TextEdit was not opened. Fixing the
+  walk means a Rust rebuild, which was not done.
 
 ---
 

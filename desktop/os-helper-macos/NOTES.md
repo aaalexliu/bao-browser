@@ -104,6 +104,25 @@ verified yet. Do not rebuild this app until those two rows are enabled.
 Add `BaoOSHelper.app` with the + button if the row is missing. The path is the
 one in the table above.
 
+## 2026-10-20, grant is on, keypad is hit-test only
+
+A fresh launch of the same app, with no rebuild and no prompt, reported
+Accessibility true and Screen Recording true. Calculator was opened only for
+this check and then quit. TextEdit was not opened.
+
+`AXUIElementCopyElementAtPosition` inside the window returns the keypad:
+`AXButton` named `7`, `8`, `9`, `4`, `5`, `6`, `1`, `2`, `3`, `0`, `Add`,
+`Subtract`, `Multiply`, `Divide`, `Equals`, `All Clear`, `Delete`, `Percent`,
+`Change Sign`, and `Point`. The display row hit the application element, not a
+named readout.
+
+The tree walk still does not contain those buttons. It stops at the window
+chrome: toolbar (`Show Sidebar`, `Mode`), the traffic lights, and one
+`AXSplitGroup` named `main, SidebarNavigationSplitView`. `press` for
+`AXButton` / `7` returns `accessible lookup missed` and refuses a coordinate
+fallback. Replay cannot run until the walk records the elements the hit test
+already sees. That is a Rust change, so this app was not rebuilt.
+
 ## Process macOS treats as the parent
 
 The helper's parent chain on this machine ends at launchd, not at Cursor.app.
