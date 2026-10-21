@@ -88,13 +88,17 @@
             <p>If more than one Chrome profile is listed, pick the one that is signed in to Experian.</p>
             <div class="row"><button class="primary" id="import-yes">Import</button><button id="import-no">Cancel</button></div></div>`);
         } else if (pending.phase === "pick") {
-          const buttons = (pending.profiles || []).map((profile) => `<button data-import-profile="${esc(profile.directory)}">${esc(profile.name)}</button>`).join(" ");
+          const buttons = (pending.profiles || []).map((profile) => {
+            const label = profile.lastUsed ? `${profile.name} (last used)` : profile.name;
+            return `<button data-import-profile="${esc(profile.directory)}">${esc(label)}</button>`;
+          }).join(" ");
           cards.push(`<div class="card ask" id="import-pick"><p class="ask-title">Pick the Chrome profile that is signed in to Experian.</p><p>Chrome has more than one profile. Pick the one that is signed in to ${esc(pending.domain)}.</p>
             <div class="row">${buttons}</div><button id="import-no">Cancel</button></div>`);
         } else if (pending.phase === "running") {
           cards.push(`<div class="card ask" id="import-running"><p class="ask-title">Approve the keychain prompt.</p><p>Approve the macOS keychain prompt if it appears. Bao does not save that key.</p></div>`);
         } else if (pending.phase === "error") {
-          cards.push(`<div class="card ask" id="import-error"><p class="ask-title">Approve the keychain prompt if it appears.</p><p>${esc(pending.error || "import failed")}</p><p>The import did not finish. Bao does not save the key.</p></div>`);
+          const title = /keychain/i.test(pending.error || "") ? "Approve the keychain prompt." : "Import did not finish.";
+          cards.push(`<div class="card ask" id="import-error"><p class="ask-title">${esc(title)}</p><p>${esc(pending.error || "Import failed. Press Import again.")}</p></div>`);
         }
       } else if (pending && pending.phase === "done" && pending.audit) {
         if (pending.audit.count === 0) {

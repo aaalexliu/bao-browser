@@ -14,7 +14,9 @@ import {
   decryptSiteCookies,
   decryptV10,
   deriveChromeKey,
+  explainImportError,
   hostMatches,
+  lastUsedDirectory,
   importConfirmText,
   profilesFromLocalState,
   readSiteCookieRows,
@@ -102,6 +104,10 @@ test("a synthetic cookies database returns only that site, and the temp copy is 
     copied = copy;
     assert.equal(existsSync(copy), true);
     assert.equal(readSiteCookieRows(copy, "experian.com").length, 3);
+    writeFileSync(dbPath + "-journal", "journal-bytes");
+  });
+  await withCookiesCopy(dbPath, (copy) => {
+    assert.equal(existsSync(copy + "-journal"), true);
   });
   assert.equal(existsSync(copied), false);
   assert.equal(existsSync(path.dirname(copied)), false);
@@ -139,6 +145,13 @@ test("profile names come from info_cache and a tie is not guessed", () => {
   assert.equal(packed.includes("ada@example.test"), false);
   assert.equal(packed.includes("Ada Lovelace"), false);
   assert.deepEqual(profiles.map((profile) => profile.name), ["Fallback", "Personal", "Work"]);
+  const marked = JSON.parse(raw) as { profile: { last_used?: string } };
+  marked.profile.last_used = "Profile 1";
+  const withLast = profilesFromLocalState(JSON.stringify(marked)).map((profile) => (
+    profile.directory === lastUsedDirectory(JSON.stringify(marked)) ? { ...profile, lastUsed: true } : profile
+  ));
+  assert.equal(withLast.find((profile) => profile.directory === "Profile 1")?.lastUsed, true);
+  assert.equal(JSON.stringify(withLast).includes("work@example.test"), false);
   const choice = chooseProfile(profiles);
   assert.equal(choice.ok, false);
   if (!choice.ok) assert.equal(choice.reason, "pick");
@@ -154,9 +167,24 @@ test("confirm copy, audit line, and errors omit cookie material", () => {
   assert.equal(line, "{\"domain\":\"experian.com\",\"count\":2,\"at\":10}");
   assert.equal(chromeExpiresToUnix(0), undefined);
   const key = deriveChromeKey("k");
-  assert.throws(() => decryptV10(Buffer.from("v11abcdefghijklmnop"), key), /could not decrypt cookies/);
-  assert.equal(safeImportError(new Error("cookie=site-token")), "import failed");
-  assert.equal(safeImportError(new Error("keychain prompt was not approved")), "keychain prompt was not approved");
+  assert.throws(() => decryptV10(Buffer.from("v11abcdefghijklmnop"), key), /unsupported cookie encryption/);
+  assert.equal(safeImportError(new Error("cookie=site-token")), "Import failed. Press Import again.");
+  assert.equal(explainImportError(new Error("cookie=site-token")).includes("site-token"), false);
+  assert.equal(safeImportError(new Error("keychain prompt was not approved")), "The keychain prompt was not approved. Press Import and choose Allow.");
+  assert.equal(
+    explainImportError(new Error("zero matching cookies"), "Profile 1"),
+    "Profile Profile 1 has no cookies for this site. Press Import and pick the Chrome profile that is signed in.",
+  );
+  const failure = auditLine({
+    domain: "experian.com",
+    count: 0,
+    at: 10,
+    reason: explainImportError(new Error("could not import cookies")),
+    profile: "Default",
+  });
+  assert.equal(failure.includes("site-token"), false);
+  assert.equal(failure.includes("The browser rejected every cookie"), true);
+  assert.equal(failure.includes("\"profile\":\"Default\""), true);
 });
 
 test("import-login stays on the confirm step and does not read Chrome", async () => {

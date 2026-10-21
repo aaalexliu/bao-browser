@@ -2,7 +2,7 @@
 // Nothing is recorded unless a session was started.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -381,14 +381,11 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     importing = true;
     try {
       const userData = chromeUserDataDir();
+      if (!existsSync(path.join(userData, "Local State"))) throw new Error("Chrome was not found");
       const profiles = readProfileNames(path.join(userData, "Local State"));
       const choice = chooseProfile(profiles, pending.profile);
       if (!choice.ok) {
-        if (choice.reason === "none") {
-          pending.phase = "error";
-          pending.error = "Chrome has no profiles";
-          return;
-        }
+        if (choice.reason === "none") throw new Error("Chrome has no profiles");
         pending.profile = undefined;
         pending.profiles = profiles;
         pending.phase = "pick";
@@ -403,25 +400,25 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         password,
       });
       let count = loaded.cookies.length;
-      if (loaded.cookies.length > 0) {
-        const page = await sitePage();
-        try {
-          count = await injectCookies(page, loaded.cookies);
-        } finally {
-          for (const cookie of loaded.cookies) cookie.value = "";
-        }
+      const page = await sitePage();
+      try {
+        count = await injectCookies(page, loaded.cookies);
+      } finally {
+        for (const cookie of loaded.cookies) cookie.value = "";
       }
       const audit = { ...loaded.audit, count };
-      const auditDir = path.join(opts.home, "audit");
-      mkdirSync(auditDir, { recursive: true });
-      appendFileSync(path.join(auditDir, "import-login.jsonl"), `${auditLine(audit)}\n`);
+      writeImportAudit(opts.home, audit);
       pending.audit = audit;
       pending.phase = "done";
       pending.profiles = undefined;
     } catch (err) {
       if (pending) {
+        const profile = pending.profile;
         pending.phase = "error";
-        pending.error = safeImportError(err);
+        pending.error = safeImportError(err, profile);
+        const audit = { domain: pending.domain, count: 0, at: Date.now(), reason: pending.error, profile };
+        writeImportAudit(opts.home, audit);
+        pending.audit = audit;
       }
     } finally {
       importing = false;
@@ -579,13 +576,19 @@ interface PendingImport {
   audit?: ImportAudit;
 }
 
+function writeImportAudit(home: string, audit: ImportAudit): void {
+  const auditDir = path.join(home, "audit");
+  mkdirSync(auditDir, { recursive: true });
+  appendFileSync(path.join(auditDir, "import-login.jsonl"), `${auditLine(audit)}\n`);
+}
+
 function publicPending(pending: PendingImport) {
   return {
     id: pending.id,
     domain: pending.domain,
     phase: pending.phase,
     message: pending.message,
-    profiles: pending.profiles?.map((profile) => ({ directory: profile.directory, name: profile.name })),
+    profiles: pending.profiles?.map((profile) => ({ directory: profile.directory, name: profile.name, lastUsed: profile.lastUsed === true })),
     error: pending.error,
     audit: pending.audit,
   };
