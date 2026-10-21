@@ -379,6 +379,29 @@ test("a login step never types", async () => {
   assert.equal(validate(doc), true);
 });
 
+test("a confirm step times out without clicking and says nothing was applied", async () => {
+  const apply = id({ name: "Apply", role: "button" });
+  const d = driver([apply], { texts: ["Waiting to apply"] });
+  const doc = workflow(apply);
+  doc.name = "upload note";
+  doc.steps[0] = {
+    id: "c",
+    index: 0,
+    action: "confirm",
+    human: true,
+    label: 'you press "Apply"',
+    surface: "dom",
+    identity: apply,
+    timeoutMs: 40,
+    postcondition: { kind: "text", match: "Applied", timeoutMs: 40 },
+  };
+  const result = await replay(doc, {}, d);
+  assert.equal(result.status, "failed");
+  assert.equal(result.failure?.reason, "nothing applied");
+  assert.equal(d.clicks, 0);
+  assert.equal(result.modelCalls, 0);
+});
+
 test("value postcondition reads the live text", () => {
   const ok = holds(
     { kind: "value", match: "{{a}}+{{b}}", timeoutMs: 1 },

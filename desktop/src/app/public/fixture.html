@@ -38,6 +38,11 @@
     <p id="files" data-testid="received-file">Waiting for a file</p>
     <div id="drop" data-testid="drop" data-bao-drop="1">Drop a file here</div>
   </section>
+  <section id="apply-panel">
+    <p id="apply-status" data-testid="apply-status">Waiting to apply</p>
+    <button id="apply-btn" type="button" data-testid="apply">Apply</button>
+  </section>
+  <div id="drift"></div>
   <ul id="rows">
     <li data-testid="row" data-name="Ada">Ada</li>
     <li data-testid="row" data-name="Grace">Grace</li>
@@ -78,6 +83,12 @@
       const file = event.dataTransfer && event.dataTransfer.files[0];
       document.getElementById("dropped").textContent = file ? "Dropped file: " + file.name : "";
     });
+    document.getElementById("apply-btn").addEventListener("click", () => {
+      document.getElementById("apply-status").textContent = "Applied";
+    });
+    if (params.get("drift") === "1") {
+      document.getElementById("drift").innerHTML = '<button id="file-submit" type="button">Upload file</button> <button id="other-upload" type="button">Upload</button>';
+    }
     document.getElementById("rows").addEventListener("click", (event) => {
       const li = event.target.closest("li");
       if (!li) return;

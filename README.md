@@ -327,6 +327,20 @@ is still the source of truth for the extension.
   `live-model` logged into the-internet and uploaded a file; interpret
   dropped the screenshots and the unresolved file click; replay had no model.
   The GTK calculator capture of 7+5 replayed 7+7 and 5+7 on a moved window.
+- **2026-10-21 — Desktop window: sidebar, act bar, run viewer, heal review.**
+  First UI pass. The five top tabs are a left rail (Library, Capture, Runs,
+  Heals, Settings) with recording, helper, model, and a count of items waiting
+  on the person. Trail is a tab on Capture and on a run. A confirm step shows
+  an act bar that names the site button and the window and counts down; Bao
+  does not press that button. On the fixture page, pressing Apply satisfies
+  the postcondition and the run passes with `0 model calls`. A drifted Upload
+  button stops as `click Upload` with scores 80 and 70 (lead 10) and the name
+  change `Upload` → `Upload file`. Keep and Revert append decisions and leave
+  the heal JSON unchanged. Import failures render `code`, `cause`, and `hint`
+  (`ImportLoginError` in `desktop/src/v1/import-login-error.ts`); the import
+  backend is unchanged. Linux: desktop unit tests 61 pass, and the live
+  browser capture, replay, heal, and replay drop zone passed. One MCP
+  `tools/list` wait of 300ms missed once under load and passed on the next run.
 
 ---
 

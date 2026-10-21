@@ -19,6 +19,12 @@ export interface StoredRun {
   decisions?: { ts: number; healId: string; decision: "keep" | "revert" }[];
   failure?: unknown;
   steps: unknown[];
+  /** Heal proposals that named a model. */
+  modelCalls?: number;
+  /** Secrets are masked. File values are names, not paths. */
+  inputs?: Record<string, string>;
+  video?: string;
+  videoStartedAt?: number;
 }
 
 const DEFAULT_SETTINGS: Settings = { heal: "auto" };

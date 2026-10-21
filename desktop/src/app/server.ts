@@ -2,13 +2,16 @@
 // Nothing is recorded unless a session was started.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome, pidsForDataDir } from "../launch";
-import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, notifyOs, type PersonPrompts } from "../v1/browser-driver";
+import { makeAsk, type HumanAsk } from "../v1/human-ask";
+import { ensureTrailTimes } from "../v1/trail-time";
 import {
   auditLine,
   chooseProfile,
@@ -40,6 +43,8 @@ export interface App {
   library: Library;
   port: number;
   notices: Notice[];
+  /** OS notifications the window asked for. The spawn can still fail. */
+  notifications: { title: string; body: string }[];
   recording: boolean;
   close(): Promise<void>;
 }
@@ -60,12 +65,41 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   let importing = false;
   let loginWait: { message: string } | null = null;
   let humanConfirm: { message: string; detail?: string } | null = null;
+  let activeAsk: HumanAsk | null = null;
+  let stopRun = false;
+  let loginContinued = false;
+  const notifications: { title: string; body: string }[] = [];
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
+  const note = (title: string, body: string) => {
+    notifications.push({ title, body });
+    void notifyOs(title, body);
+  };
   const prompts: PersonPrompts = {
-    showConfirm(label) { humanConfirm = { message: "confirm before applying", detail: label }; },
-    clearConfirm() { humanConfirm = null; },
-    showLoginWait() { loginWait = { message: "waiting for you to log in" }; },
-    clearLoginWait() { loginWait = null; },
+    showConfirm(label) {
+      if (activeAsk?.kind === "confirm") return;
+      humanConfirm = { message: `Press ${label} in the Bao Chrome window. bao will not press it.`, detail: label };
+    },
+    clearConfirm() {
+      humanConfirm = null;
+      if (activeAsk?.kind === "confirm") activeAsk = null;
+    },
+    showLoginWait() {
+      if (activeAsk?.kind === "login") return;
+      loginWait = { message: "Sign in in the Bao Chrome window. bao is not recording keystrokes in password fields." };
+    },
+    clearLoginWait() {
+      loginWait = null;
+      loginContinued = false;
+      if (activeAsk?.kind === "login") activeAsk = null;
+    },
+    showAsk(ask) {
+      activeAsk = ask;
+      if (ask.kind === "confirm") humanConfirm = { message: ask.instruction, detail: ask.button || ask.label };
+      else loginWait = { message: ask.instruction };
+      note("You need to act", ask.instruction);
+    },
+    shouldStop: () => stopRun,
+    loginContinued: () => loginContinued,
   };
   let helperReport: unknown;
   if (process.platform === "darwin" && bundledHelperApp()) {
@@ -81,6 +115,12 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
         return sendFile(res, path.join(publicDir, "index.html"), "text/html");
       }
+      if (req.method === "GET" && url.pathname === "/app.js") {
+        const js = await browserScript();
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+        res.end(js);
+        return;
+      }
       if (req.method === "GET" && (url.pathname === "/fixture" || url.pathname === "/secure")) {
         return sendFile(res, path.join(publicDir, "fixture.html"), "text/html");
       }
@@ -91,12 +131,25 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           settings: library.settings(),
           workflows: library.list().map(summary),
           trails: library.listTrails(),
-          runs: library.listRuns(),
-          helper: bundledHelperApp() || null,
+          runs: library.listRuns().map(slimRun),
+          helper: helperStatus(helperReport),
+          model: modelStatus(),
           pendingImport: pending ? publicPending(pending) : null,
           loginWait,
           humanConfirm,
+          activeAsk,
         });
+      }
+      const runVideo = url.pathname.match(/^\/api\/runs\/([^/]+)\/video$/);
+      if (req.method === "GET" && runVideo) {
+        const id = decodeURIComponent(runVideo[1] || "");
+        const file = path.join(opts.home, "videos", `${id}.webm`);
+        if (!existsSync(file)) return json(res, { error: "no video" }, 404);
+        return sendFile(res, file, "video/webm");
+      }
+      const runOne = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
+      if (req.method === "GET" && runOne) {
+        return json(res, library.readRun(decodeURIComponent(runOne[1] || "")));
       }
       if (req.method === "GET" && url.pathname === "/api/import-login") {
         if (!pending || pending.id !== url.searchParams.get("id")) return json(res, { error: "no import" }, 404);
@@ -118,6 +171,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           phase: "confirm",
           message: importConfirmText(domain),
         };
+        note("You need to act", `Press Import in this window to copy cookies for ${domain}, or Cancel. Nothing is read until you do.`);
         return json(res, publicPending(pending));
       }
       if (req.method === "POST" && url.pathname === "/api/import-login/answer") {
@@ -134,11 +188,47 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         return json(res, publicPending(pending));
       }
       if (req.method === "POST" && url.pathname === "/api/prompt") {
-        const body = await readBody(req) as { kind?: string; detail?: string };
-        if (body.kind === "login") loginWait = { message: "waiting for you to log in" };
-        else if (body.kind === "confirm") humanConfirm = { message: "confirm before applying", detail: body.detail };
-        else { loginWait = null; humanConfirm = null; }
-        return json(res, { loginWait, humanConfirm });
+        const body = await readBody(req) as {
+          kind?: string;
+          detail?: string;
+          workflowName?: string;
+          stepIndex?: number;
+          stepCount?: number;
+          button?: string;
+          timeoutMs?: number;
+        };
+        if (body.kind === "login" || body.kind === "confirm") {
+          prompts.showAsk?.(makeAsk({
+            kind: body.kind,
+            workflowId: "prompt",
+            workflowName: body.workflowName || "workflow",
+            stepId: "prompt",
+            stepIndex: body.stepIndex || 1,
+            stepCount: body.stepCount || 1,
+            label: body.detail || body.kind,
+            button: body.button || body.detail,
+            timeoutMs: body.timeoutMs ?? 120000,
+          }));
+        } else {
+          loginWait = null;
+          humanConfirm = null;
+          activeAsk = null;
+        }
+        return json(res, { loginWait, humanConfirm, activeAsk });
+      }
+      if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
+        loginContinued = true;
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
+        stopRun = true;
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/replay/show") {
+        const session = [...replays.values()].find((item) => !item.page.isClosed());
+        if (!session) return json(res, { error: "replay window is not open" }, 409);
+        await session.page.bringToFront().catch(() => undefined);
+        return json(res, { ok: true });
       }
       if (req.method === "GET" && url.pathname === "/api/site") {
         if (!site || site.page.isClosed()) return json(res, { open: false });
@@ -206,7 +296,12 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/trails/")) {
-        return json(res, library.readTrail(decodeURIComponent(url.pathname.split("/")[3] || "")));
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const raw = library.readTrail(id);
+        if (!Array.isArray(raw)) return json(res, raw);
+        const timed = ensureTrailTimes(raw as { ts?: number }[]);
+        if (timed.filled) library.saveTrail(id, timed.events);
+        return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
         const body = await readBody(req) as { heal?: HealMode };
@@ -267,7 +362,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const startUrl = page ? page.url() : "";
         const workflow = interpret(events, { id, name: "Captured workflow", startUrl, secrets: [] });
         library.save(workflow);
-        library.saveTrail(id, events);
+        library.saveTrail(id, ensureTrailTimes(events).events);
         await stopBrowser();
         return json(res, workflow);
       }
@@ -276,8 +371,18 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
+        stopRun = false;
+        loginContinued = false;
         const run = await runWorkflow(library, workflow, args, notices, replays, prompts);
         return json(res, run);
+      }
+      if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/press") {
+        const body = await readBody(req) as { name?: string; fill?: { selector: string; value: string } };
+        const session = [...replays.values()].find((item) => !item.page.isClosed());
+        if (!session) return json(res, { error: "replay window is not open" }, 409);
+        if (body.fill) await session.page.fill(body.fill.selector, body.fill.value);
+        if (body.name) await session.page.getByRole("button", { name: body.name, exact: true }).click();
+        return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/replay/place") {
         const body = await readBody(req) as { id?: string; x?: number; y?: number; width?: number; height?: number };
@@ -422,6 +527,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     library,
     port,
     notices,
+    notifications,
     get recording() { return recording; },
     async close() {
       await stopBrowser();
@@ -445,8 +551,12 @@ async function runWorkflow(
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
   prompts?: PersonPrompts,
 ) {
-  const session = await openReplay(library, workflow.id, replays);
+  const recordVideo = process.env.BAO_RUN_VIDEO === "1";
+  const videoDir = recordVideo ? path.join(library.root, "videos", workflow.id) : undefined;
+  if (videoDir) mkdirSync(videoDir, { recursive: true });
+  const session = await openReplay(library, workflow.id, replays, videoDir);
   const page = session.page;
+  const videoStartedAt = recordVideo ? Date.now() : undefined;
   if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
   const driver = new BrowserDriver(page, (notice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
@@ -456,7 +566,20 @@ async function runWorkflow(
     settings: library.settings(),
     heal,
     now: () => Date.now(),
+    shots: true,
   } satisfies ReplayOptions);
+  let video: string | undefined;
+  if (recordVideo && page.video()) {
+    const clip = page.video()!;
+    const dest = path.join(library.root, "videos", `${result.runId}.webm`);
+    mkdirSync(path.dirname(dest), { recursive: true });
+    await page.close().catch(() => undefined);
+    await clip.saveAs(dest).catch(() => undefined);
+    await session.context.close().catch(() => undefined);
+    replays.delete(workflow.id);
+    if (existsSync(dest)) video = `${result.runId}.webm`;
+  }
+  const inputs = maskedInputs(workflow, args);
   library.saveRun({
     id: result.runId,
     workflowId: workflow.id,
@@ -465,19 +588,24 @@ async function runWorkflow(
     heals: result.heals,
     failure: result.failure,
     steps: result.steps,
+    modelCalls: result.modelCalls,
+    inputs,
+    video,
+    videoStartedAt,
   });
   const bounds = await readOwnedWindow(page).catch(() => null);
   if (bounds) library.writeBounds(workflow.id, bounds);
-  return { ...result, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds };
+  return { ...result, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds, inputs, video, videoStartedAt };
 }
 
 async function openReplay(
   library: Library,
   id: string,
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  videoDir?: string,
 ): Promise<{ context: BrowserContext; page: Page; profile: string }> {
   const existing = replays.get(id);
-  if (existing && !existing.page.isClosed()) return existing;
+  if (existing && !existing.page.isClosed() && !videoDir) return existing;
   if (existing) {
     await existing.context.close().catch(() => undefined);
     await rm(existing.profile, { recursive: true, force: true }).catch(() => undefined);
@@ -487,6 +615,7 @@ async function openReplay(
   const context = await launchOwnedChrome({
     userDataDir: profile,
     headless: process.env.BAO_HEADED !== "1",
+    videoDir,
   });
   const page = context.pages()[0] || await context.newPage();
   const saved = library.readBounds(id);
@@ -660,7 +789,68 @@ function summary(doc: WorkflowV2) {
     heal: doc.heal,
     heals: doc.steps.filter((step) => step.label.startsWith("healed")).length,
     replayed: doc.replayed,
+    waits: doc.steps.filter((step) => step.action === "login" || step.action === "confirm").length,
   };
+}
+
+function slimRun(run: ReturnType<Library["readRun"]>) {
+  const steps = Array.isArray(run.steps) ? run.steps.map((step) => {
+    const row = step as { beforeShot?: string; afterShot?: string };
+    const { beforeShot, afterShot, ...rest } = row;
+    void beforeShot;
+    void afterShot;
+    return rest;
+  }) : [];
+  const failure = run.failure && typeof run.failure === "object"
+    ? { ...(run.failure as Record<string, unknown>), snapshot: undefined, beforeShot: undefined }
+    : run.failure;
+  const heals = Array.isArray(run.heals) ? run.heals.map((heal) => {
+    const row = heal as { snapshot?: unknown; beforeShot?: string };
+    return { ...row, snapshot: undefined, beforeShot: undefined };
+  }) : [];
+  return { ...run, steps, failure, heals };
+}
+
+function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const input of workflow.inputs) {
+    const value = args[input.name];
+    if (input.type === "secret") out[input.name] = value ? "••••" : "";
+    else if (value && typeof value === "object" && !Array.isArray(value) && "name" in value) out[input.name] = String(value.name);
+    else if (Array.isArray(value)) out[input.name] = value.map((file) => file.name).filter(Boolean).join(", ");
+    else out[input.name] = value === undefined ? "" : String(value);
+  }
+  return out;
+}
+
+function helperStatus(report: unknown): { label: string } {
+  if (process.platform !== "darwin" || !bundledHelperApp()) return { label: "helper off" };
+  const row = report as { accessibility?: boolean; screenCapture?: boolean; ok?: boolean } | undefined;
+  if (row && row.accessibility && row.screenCapture) return { label: "helper ok" };
+  return { label: "helper needs permission" };
+}
+
+function modelStatus(): { label: string } {
+  if (process.env.BAO_HEAL_FIXTURE === "1") return { label: "fixture model" };
+  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) return { label: "model ready" };
+  return { label: "no model" };
+}
+
+let bundledAppJs: string | undefined;
+
+async function browserScript(): Promise<string> {
+  if (bundledAppJs) return bundledAppJs;
+  const result = await esbuild.build({
+    entryPoints: [path.join(process.cwd(), "desktop/src/app/client.ts")],
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    write: false,
+    target: "es2022",
+    legalComments: "none",
+  });
+  bundledAppJs = result.outputFiles[0]?.text || "";
+  return bundledAppJs;
 }
 
 function recorderSource(): string {

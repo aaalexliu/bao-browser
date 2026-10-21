@@ -2,7 +2,10 @@
 // unless a heal provider is available. Auto applies the patch without waiting.
 // Approve returns a pause. The saved workflow is not edited here.
 
+import { confirmButton, makeAsk, type HumanAsk } from "./human-ask";
 import { lookup } from "./identity";
+import { identityView } from "./run-trace";
+import type { IdentityView } from "../app/view-types";
 import {
   applyPatch,
   effectiveMode,
@@ -56,16 +59,32 @@ export interface Driver {
   clearConfirm?(): void | Promise<void>;
   showLoginWait?(label: string): void | Promise<void>;
   clearLoginWait?(): void | Promise<void>;
+  /** Richer than showConfirm: the bar, the countdown, and the notification. */
+  showAsk?(ask: HumanAsk): void | Promise<void>;
+  shouldStop?(): boolean;
+  /** Login only. The person said they are signed in. Confirm has no equivalent. */
+  loginContinued?(): boolean;
 }
 
 export interface RunResult {
   runId: string;
   status: "passed" | "failed" | "paused";
-  steps: { id: string; status: "passed" | "failed" | "paused" | "pending"; reason?: string }[];
+  steps: {
+    id: string;
+    status: "passed" | "failed" | "paused" | "pending";
+    reason?: string;
+    startedAt?: number;
+    endedAt?: number;
+    identity?: IdentityView;
+    beforeShot?: string;
+    afterShot?: string;
+  }[];
   failure?: StepFailure;
   heals: HealRecord[];
   proposal?: HealProposal;
   pausedStepId?: string;
+  /** Heal proposals that named a model. A pass with no miss is 0. */
+  modelCalls: number;
 }
 
 export interface ReplayOptions {
@@ -74,6 +93,8 @@ export interface ReplayOptions {
   secrets?: string[];
   settings?: HealSettings;
   heal?: HealProvider;
+  /** Capture a screenshot at the start of each step. Kept only if the step stops. */
+  shots?: boolean;
 }
 
 let seq = 0;
@@ -84,7 +105,7 @@ export async function replay(
   driver: Driver,
   opts: ReplayOptions = {},
 ): Promise<RunResult> {
-  const runId = opts.runId || `run-${++seq}`;
+  const runId = opts.runId || `run-${++seq}-${Date.now().toString(36)}`;
   const now = opts.now ?? (() => 0);
   const settings = opts.settings ?? {};
   const heal = opts.heal;
@@ -92,23 +113,35 @@ export async function replay(
   const mode = effectiveMode(workflow, settings);
   const steps: RunResult["steps"] = workflow.steps.map((step) => ({ id: step.id, status: "pending" }));
   const heals: HealRecord[] = [];
+  const calls = (): number => heals.filter((item) => item.model).length;
 
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
+    const startedAt = Date.now();
     if (step.unresolved) {
       const failure = await fail(driver, step, "unresolved step", undefined, secrets);
-      steps[i] = { id: step.id, status: "failed", reason: failure.reason };
-      return { runId, status: "failed", steps, failure, heals };
+      steps[i] = { id: step.id, status: "failed", reason: failure.reason, startedAt, endedAt: Date.now() };
+      return { runId, status: "failed", steps, failure, heals, modelCalls: calls() };
     }
-    const outcome = await runStep(workflow, step, args, driver, secrets);
+    const outcome = await runStep(workflow, step, args, driver, secrets, !!opts.shots);
     if (outcome.ok) {
-      steps[i] = { id: step.id, status: "passed" };
+      steps[i] = { id: step.id, status: "passed", startedAt, endedAt: Date.now(), identity: outcome.identity };
       continue;
     }
     const failure = outcome.failure;
+    const stopped = {
+      id: step.id,
+      status: "failed" as const,
+      reason: failure.reason,
+      startedAt,
+      endedAt: Date.now(),
+      identity: failure.identity,
+      beforeShot: failure.beforeShot,
+      afterShot: failure.snapshot.screenshot,
+    };
     if (!heal || !heal.available()) {
-      steps[i] = { id: step.id, status: "failed", reason: failure.reason };
-      return { runId, status: "failed", steps, failure, heals };
+      steps[i] = stopped;
+      return { runId, status: "failed", steps, failure, heals, modelCalls: calls() };
     }
     const proposal = await heal.propose(failure, step);
     const prompt = proposal?.prompt || "";
@@ -131,11 +164,13 @@ export async function replay(
         : undefined,
       rawResponse: proposal ? maskText(proposal.rawResponse, secrets) : undefined,
       proposedPatch: proposal?.patch,
+      beforeShot: failure.beforeShot,
+      identity: failure.identity,
     };
     if (!proposal) {
       heals.push(record);
-      steps[i] = { id: step.id, status: "failed", reason: failure.reason };
-      return { runId, status: "failed", steps, failure, heals };
+      steps[i] = stopped;
+      return { runId, status: "failed", steps, failure, heals, modelCalls: calls() };
     }
     await driver.notify({
       title: mode === "auto" ? "Bao healed a step" : "Bao needs approval",
@@ -146,21 +181,26 @@ export async function replay(
     });
     if (mode === "approve") {
       heals.push(record);
-      steps[i] = { id: step.id, status: "paused", reason: "approve" };
-      return { runId, status: "paused", steps, failure, heals, proposal, pausedStepId: step.id };
+      steps[i] = { ...stopped, status: "paused", reason: "approve" };
+      return { runId, status: "paused", steps, failure, heals, proposal, pausedStepId: step.id, modelCalls: calls() };
     }
     const patched = applyPatch(step, proposal.patch);
-    const retried = await runStep(workflow, patched, args, driver, secrets);
+    const retried = await runStep(workflow, patched, args, driver, secrets, !!opts.shots);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok) {
-      steps[i] = { id: step.id, status: "failed", reason: retried.failure.reason };
-      return { runId, status: "failed", steps, failure: retried.failure, heals };
+      steps[i] = {
+        ...stopped,
+        reason: retried.failure.reason,
+        identity: retried.failure.identity || stopped.identity,
+        endedAt: Date.now(),
+      };
+      return { runId, status: "failed", steps, failure: retried.failure, heals, modelCalls: calls() };
     }
-    steps[i] = { id: step.id, status: "passed" };
+    steps[i] = { id: step.id, status: "passed", startedAt, endedAt: Date.now(), identity: retried.identity };
   }
-  return { runId, status: "passed", steps, heals };
+  return { runId, status: "passed", steps, heals, modelCalls: calls() };
 }
 
 async function runStep(
@@ -169,14 +209,21 @@ async function runStep(
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
-): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
-  if (step.action === "confirm") return runConfirm(step, args, driver, secrets);
-  if (step.action === "login") return runLogin(step, args, driver, secrets);
+  shots: boolean,
+): Promise<{ ok: true; identity?: IdentityView } | { ok: false; failure: StepFailure }> {
+  if (step.action === "confirm") return runConfirm(workflow, step, args, driver, secrets);
+  if (step.action === "login") return runLogin(workflow, step, args, driver, secrets);
+  const beforeShot = shots ? (await maskSnapshot(await driver.snapshot(), secrets)).screenshot : undefined;
+  const decorate = async (failure: StepFailure, view?: IdentityView): Promise<StepFailure> => ({
+    ...failure,
+    identity: view || failure.identity,
+    beforeShot: beforeShot || failure.beforeShot,
+  });
   if (step.action === "key" && !step.identity) {
     await driver.key(step.key || "Enter");
     const tree = await driver.tree();
     if (step.postcondition && !holds(step.postcondition, tree, args)) {
-      return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+      return { ok: false, failure: await decorate(await fail(driver, step, "postcondition", undefined, secrets)) };
     }
     return { ok: true };
   }
@@ -185,51 +232,67 @@ async function runStep(
     await driver.digits(step.identity?.app, step.identity?.role || "button", text);
     const tree = await driver.tree();
     if (step.postcondition && !holds(step.postcondition, tree, args)) {
-      return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+      return { ok: false, failure: await decorate(await fail(driver, step, "postcondition", undefined, secrets)) };
     }
     return { ok: true };
   }
   const found = await poll(step, args, driver);
+  const view = step.identity ? identityView(step.identity, found.nodes, found.hit) : undefined;
   if (!found.hit.ok || found.hit.index == null) {
     return {
       ok: false,
-      failure: await fail(driver, step, found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets),
+      failure: await decorate(await fail(driver, step, found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets), view),
     };
   }
   const node = found.nodes[found.hit.index];
   if (!node) {
-    return { ok: false, failure: await fail(driver, step, "lookup miss", found.hit.brokenAttr, secrets) };
+    return { ok: false, failure: await decorate(await fail(driver, step, "lookup miss", found.hit.brokenAttr, secrets), view) };
   }
   try {
     await act(step, node, args, driver);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    return { ok: false, failure: await fail(driver, step, reason, found.hit.brokenAttr, secrets) };
+    return { ok: false, failure: await decorate(await fail(driver, step, reason, found.hit.brokenAttr, secrets), view) };
   }
   const after = await driver.tree();
   if (step.postcondition && !holds(step.postcondition, after, args)) {
-    return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+    return { ok: false, failure: await decorate(await fail(driver, step, "postcondition", undefined, secrets), view) };
   }
-  return { ok: true };
+  return { ok: true, identity: view };
 }
 
 async function runConfirm(
+  workflow: WorkflowV2,
   step: WorkflowStep,
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
-): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+): Promise<{ ok: true; identity?: IdentityView } | { ok: false; failure: StepFailure }> {
+  const ask = makeAsk({
+    kind: "confirm",
+    workflowId: workflow.id,
+    workflowName: workflow.name,
+    stepId: step.id,
+    stepIndex: step.index + 1,
+    stepCount: workflow.steps.length,
+    label: step.label,
+    button: confirmButton(step),
+    timeoutMs: step.timeoutMs ?? 0,
+  });
+  await driver.showAsk?.(ask);
   await driver.showConfirm?.(step.label);
   try {
     const timeout = step.timeoutMs ?? 0;
     const start = Date.now();
     let seen = await driver.tree();
     while (step.postcondition && !holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
+      if (driver.shouldStop?.()) break;
       await (driver.sleep ? driver.sleep(200) : sleep(200));
       seen = await driver.tree();
     }
     if (step.postcondition && !holds(step.postcondition, seen, args)) {
-      return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+      const reason = driver.shouldStop?.() ? "cancelled" : "nothing applied";
+      return { ok: false, failure: await fail(driver, step, reason, undefined, secrets) };
     }
     return { ok: true };
   } finally {
@@ -238,22 +301,37 @@ async function runConfirm(
 }
 
 async function runLogin(
+  workflow: WorkflowV2,
   step: WorkflowStep,
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
-): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+): Promise<{ ok: true; identity?: IdentityView } | { ok: false; failure: StepFailure }> {
+  const ask = makeAsk({
+    kind: "login",
+    workflowId: workflow.id,
+    workflowName: workflow.name,
+    stepId: step.id,
+    stepIndex: step.index + 1,
+    stepCount: workflow.steps.length,
+    label: step.label,
+    timeoutMs: step.timeoutMs ?? 0,
+  });
+  await driver.showAsk?.(ask);
   await driver.showLoginWait?.(step.label);
   try {
     const timeout = step.timeoutMs ?? 0;
     const start = Date.now();
     let seen = await driver.tree();
-    while (step.postcondition && !holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
+    while (step.postcondition && !holds(step.postcondition, seen, args) && !driver.loginContinued?.() && Date.now() - start < timeout) {
+      if (driver.shouldStop?.()) break;
       await (driver.sleep ? driver.sleep(200) : sleep(200));
       seen = await driver.tree();
     }
+    if (driver.loginContinued?.()) return { ok: true };
     if (step.postcondition && !holds(step.postcondition, seen, args)) {
-      return { ok: false, failure: await fail(driver, step, "waiting for you to log in", undefined, secrets) };
+      const reason = driver.shouldStop?.() ? "cancelled" : "waiting for you to log in";
+      return { ok: false, failure: await fail(driver, step, reason, undefined, secrets) };
     }
     return { ok: true };
   } finally {

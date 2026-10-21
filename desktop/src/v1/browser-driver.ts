@@ -6,6 +6,7 @@ import type { Page } from "playwright";
 import { dumpPage, type DomDump } from "./dom-page";
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
+import type { HumanAsk } from "./human-ask";
 import type { Driver, HealNotice, LiveTree } from "./replay";
 import type { FileArg, Identity } from "./schema";
 
@@ -20,6 +21,9 @@ export interface PersonPrompts {
   clearConfirm?(): void;
   showLoginWait?(label: string): void;
   clearLoginWait?(): void;
+  showAsk?(ask: HumanAsk): void;
+  shouldStop?(): boolean;
+  loginContinued?(): boolean;
 }
 
 export class BrowserDriver implements Driver {
@@ -156,6 +160,7 @@ export class BrowserDriver implements Driver {
 
   clearConfirm(): void {
     this.prompts?.clearConfirm?.();
+    void this.clearStrip();
   }
 
   showLoginWait(label: string): void {
@@ -164,6 +169,49 @@ export class BrowserDriver implements Driver {
 
   clearLoginWait(): void {
     this.prompts?.clearLoginWait?.();
+    void this.clearStrip();
+  }
+
+  shouldStop(): boolean {
+    return this.prompts?.shouldStop?.() ?? false;
+  }
+
+  loginContinued(): boolean {
+    return this.prompts?.loginContinued?.() ?? false;
+  }
+
+  showAsk(ask: HumanAsk): void {
+    this.prompts?.showAsk?.(ask);
+    const text = ask.kind === "confirm"
+      ? `You're in control. ${ask.instruction}`
+      : "You're in control. Sign in on this page. bao isn't recording keystrokes in password fields.";
+    void this.injectStrip(ask.kind, text);
+  }
+
+  private async injectStrip(kind: HumanAsk["kind"], text: string): Promise<void> {
+    await this.page.evaluate(({ kind, text }) => {
+      document.getElementById("bao-control-strip")?.remove();
+      const bar = document.createElement("div");
+      bar.id = "bao-control-strip";
+      bar.setAttribute("data-bao-strip", kind);
+      bar.style.cssText = "position:fixed;z-index:2147483646;left:0;right:0;top:0;background:#1d1d1f;color:#fff;font:13px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;display:flex;gap:12px;align-items:center";
+      const note = document.createElement("p");
+      note.textContent = text;
+      note.style.margin = "0";
+      bar.appendChild(note);
+      if (kind === "login") {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "I'm signed in, continue";
+        button.onclick = () => { void fetch("/api/prompt/continue", { method: "POST" }); };
+        bar.appendChild(button);
+      }
+      document.documentElement.appendChild(bar);
+    }, { kind, text }).catch(() => undefined);
+  }
+
+  private async clearStrip(): Promise<void> {
+    await this.page.evaluate(() => { document.getElementById("bao-control-strip")?.remove(); }).catch(() => undefined);
   }
 
   async notify(notice: HealNotice): Promise<void> {
