@@ -28,6 +28,19 @@ static void nap_ms(int ms) {
   nanosleep(&ts, NULL);
 }
 
+/* Playwright's mac download is "Google Chrome for Testing.app". The bundle
+ * is copied to Chromium.app, and the inner executable keeps that name. */
+static int find_browser(char *out, size_t n, const char *resources) {
+  char dir[4096];
+  const char *names[] = {"Chromium", "Google Chrome for Testing", "chrome"};
+  snprintf(dir, sizeof dir, "%s/Chromium.app/Contents/MacOS", resources);
+  for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+    snprintf(out, n, "%s/%s", dir, names[i]);
+    if (access(out, X_OK) == 0) return 1;
+  }
+  return 0;
+}
+
 int main(void) {
   char exe[4096];
   uint32_t size = sizeof exe;
@@ -44,8 +57,13 @@ int main(void) {
   char public_dir[4096];
   snprintf(resources, sizeof resources, "%s/Resources", resolved);
   snprintf(root, sizeof root, "%s/bao", resources);
-  snprintf(browser, sizeof browser, "%s/Chromium.app/Contents/MacOS/Chromium", resources);
   snprintf(public_dir, sizeof public_dir, "%s/public", root);
+  if (!find_browser(browser, sizeof browser, resources)) {
+    fprintf(stderr, "bao: bundled browser executable was not found under Resources/Chromium.app\n");
+    return 1;
+  }
+  /* Capture and replay use this binary too, not an installed Chrome. */
+  setenv("BAO_BROWSER", browser, 1);
 
   const char *home = getenv("HOME");
   if (!home || !home[0]) home = "/tmp";
@@ -56,13 +74,18 @@ int main(void) {
 
   const char *port = getenv("BAO_PORT");
   if (!port || !port[0]) port = "4787";
+  /* A Finder launch does not inherit the shell PATH. BAO_NODE is an absolute node. */
+  const char *node_bin = getenv("BAO_NODE");
+  if (!node_bin || !node_bin[0]) node_bin = "node";
+  /* The capture browser stays hidden unless this is set. The documented test types into it. */
+  if (!getenv("BAO_HEADED")) setenv("BAO_HEADED", "1", 0);
 
   pid_t node = fork();
   if (node < 0) return 1;
   if (node == 0) {
     setenv("BAO_PUBLIC", public_dir, 1);
     if (chdir(root) != 0) _exit(127);
-    execlp("node", "node", "src/app/cli.js", "serve", "--home", bao_home, "--port", port, (char *)NULL);
+    execlp(node_bin, "node", "src/app/cli.js", "serve", "--home", bao_home, "--port", port, (char *)NULL);
     _exit(127);
   }
 
@@ -83,6 +106,7 @@ int main(void) {
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-sync",
+      "--force-renderer-accessibility",
       (char *)NULL
     );
     _exit(127);

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome } from "../launch";
 import { BrowserDriver } from "../v1/browser-driver";
-import { effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
+import { cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, type TrailEvent } from "../v1/interpret";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
@@ -253,6 +253,10 @@ function healProvider(): HealProvider {
       prompt: "The login control's test id is login. Propose that identity. No coordinates.",
       rawResponse: "{\"identity\":{\"surface\":\"dom\",\"role\":\"button\",\"testId\":\"login\",\"path\":[]}}",
     });
+  }
+  const cursorResponse = process.env.BAO_HEAL_CURSOR_RESPONSE;
+  if (cursorResponse && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+    return cursorSessionHeal(() => readFileSync(cursorResponse, "utf8"));
   }
   return llmHealFromEnv();
 }

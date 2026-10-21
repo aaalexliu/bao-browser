@@ -169,6 +169,30 @@ export function unavailableHeal(): HealProvider {
   return { available: () => false, propose: async () => null };
 }
 
+/** No vendor key. The proposal text was written by the Cursor session that is
+ * already running. This does not open a login and does not call OpenAI or Anthropic. */
+export function cursorSessionHeal(readResponse: () => string): HealProvider {
+  return {
+    available: () => true,
+    async propose(failure, step) {
+      const prompt = buildPrompt(failure, step, []);
+      let raw = "";
+      try {
+        raw = readResponse();
+      } catch {
+        return null;
+      }
+      if (!raw.trim()) return null;
+      return {
+        patch: patchFromText(raw),
+        model: { provider: "cursor", name: "cursor-session", version: "1" },
+        prompt,
+        rawResponse: raw,
+      };
+    },
+  };
+}
+
 function patchFromText(raw: string): HealProposal["patch"] {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");

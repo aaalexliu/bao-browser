@@ -134,13 +134,18 @@ fn run(args: &[String]) -> Result<Value, String> {
         "drag" => drag::drag(num(args, "--from-x")?, num(args, "--from-y")?, num(args, "--to-x")?, num(args, "--to-y")?),
         "drag-file" => Ok(drag::file_drag_fallback(&need(args, "--path")?)),
         "shot" => {
-            let bundle = need(args, "--bundle")?;
             let out = PathBuf::from(need(args, "--out")?);
+            if let Some(id) = flag(args, "--id") {
+                let id: u32 = id.parse().map_err(|_| "window id is not a number".to_string())?;
+                let (w, h) = win::capture_window(id, &out)?;
+                return Ok(json!({"ok": true, "windowId": id, "width": w, "height": h}));
+            }
+            let bundle = need(args, "--bundle")?;
             let pids = apps::pids_for_bundle(&bundle);
             if pids.len() != 1 { return Err(format!("expected one process for {bundle}, found {}", pids.len())); }
             let win = win::main_window(pids[0])?;
             let (w, h) = win::capture_window(win.id, &out)?;
-            Ok(json!({"ok": true, "windowId": win.id, "width": w, "height": h, "path": out}))
+            Ok(json!({"ok": true, "windowId": win.id, "width": w, "height": h}))
         }
         other => Err(format!("unknown command {other}")),
     }

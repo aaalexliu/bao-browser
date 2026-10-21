@@ -10,6 +10,12 @@ import { assertNotDailyChrome } from "./profile";
 
 const LAUNCH_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
 
+/** macOS Accessibility only sees the page when the renderer publishes it. */
+function ownedLaunchArgs(extra: string[] | undefined): string[] {
+  const mac = process.platform === "darwin" ? ["--force-renderer-accessibility"] : [];
+  return [...LAUNCH_ARGS, ...mac, ...(extra ?? [])];
+}
+
 const DAILY_DIR = [
   "/.config/google-chrome",
   "/.config/chromium",
@@ -27,13 +33,15 @@ export async function launchOwnedChrome(opts: {
   channel?: "chrome";
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
+  const bundled = opts.channel ? undefined : process.env.BAO_BROWSER;
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     channel: opts.channel,
+    executablePath: bundled || undefined,
     headless: opts.headless ?? true,
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: opts.deviceScaleFactor,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: [...LAUNCH_ARGS, ...(opts.args ?? [])],
+    args: ownedLaunchArgs(opts.args),
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);
