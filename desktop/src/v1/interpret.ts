@@ -135,6 +135,20 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: post(event, undefined, meta.secrets ?? []),
     };
   }
+  if (event.op === "verify") {
+    const read = post(event, undefined, meta.secrets ?? []);
+    const match = scrub(event.afterText, meta.secrets ?? []);
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: "verify",
+      label: "re-read the status",
+      surface: "dom",
+      timeoutMs: 8000,
+      expect: match ? { kind: "text", match, timeoutMs: 8000 } : undefined,
+      postcondition: read,
+    };
+  }
   if (event.op === "keypress" || event.op === "key") {
     return {
       ...step,

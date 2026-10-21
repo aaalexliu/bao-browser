@@ -358,6 +358,30 @@ test("interpret keeps login and confirm as human steps with no coordinates", () 
   assert.equal(doc.steps[2]?.postcondition?.match, "Security freeze is off");
 });
 
+test("interpret turns a status re-read into a verify step", () => {
+  const doc = interpret([
+    {
+      id: "open", ts: 1, kind: "act", op: "click",
+      identity: id({ role: "radio", name: "Open" }),
+    },
+    {
+      id: "apply", ts: 2, kind: "act", op: "confirm",
+    },
+    {
+      id: "status", ts: 3, kind: "act", op: "verify",
+      afterText: "Open",
+      provenance: { x: 1, y: 2, space: "viewport" },
+    },
+  ], { id: "wf-verify", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  assert.equal(validateWorkflow(doc).length, 0);
+  assert.equal(doc.steps[2]?.action, "verify");
+  assert.equal(doc.steps[2]?.label, "re-read the status");
+  assert.equal(doc.steps[2]?.human, undefined);
+  assert.equal(doc.steps[2]?.provenance, undefined);
+  assert.equal(doc.steps[2]?.expect?.kind, "text");
+  assert.equal(doc.steps[2]?.expect?.match, "Open");
+});
+
 test("a confirm step waits for a person and does not click", async () => {
   let shown = "";
   const apply = id({ name: "Apply", role: "button" });
