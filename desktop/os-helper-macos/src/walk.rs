@@ -8,14 +8,20 @@ use core_graphics::display::CGDisplay;
 
 use crate::apps::pids_for_bundle;
 use crate::element::{
-    actions, children, copy_attr, element_attr, element_list, has_press, parent, raw_frame, role_of,
+    actions, copy_attr, element_attr, element_list, has_press, parent, raw_frame, role_of,
     same_element, set_bool, string_attr, El, IDENTIFIER,
 };
 use crate::model::{Frame, Geom, Geometry, Node, Seg};
 use crate::win::main_window;
 
 const MAX_NODES: i32 = 1500;
-const MAX_DEPTH: i32 = 20;
+const MAX_DEPTH: i32 = 30;
+
+/// Child lists SwiftUI actually fills. `AXChildren` on a split group can be empty
+/// while navigation order or contents still holds the keypad.
+pub(crate) fn child_attribute_names() -> &'static [&'static str] {
+    &["AXChildrenInNavigationOrder", "AXContents", "AXVisibleChildren", "AXChildren"]
+}
 
 pub fn best_name(title: &str, description: &str, identifier: &str) -> String {
     if !title.is_empty() { title.to_string() } else if !description.is_empty() { description.to_string() } else { identifier.to_string() }
@@ -121,7 +127,18 @@ fn skip_children(role: &str) -> bool {
     is_text_role(role) || role == "AXStaticText" || role == "AXMenuBar"
 }
 
-/// Windows first, then children. A nested application is not walked again.
+fn linked_children(el: &El) -> Vec<El> {
+    let mut out = Vec::new();
+    for name in child_attribute_names() {
+        if let Some(value) = copy_attr(el, name) {
+            out.extend(element_list(&value));
+        }
+    }
+    out
+}
+
+/// Windows first, then every child list. Groups, split groups, and scroll areas
+/// are not skipped. A nested application is not walked again.
 fn follow(el: &El, role: &str) -> Vec<El> {
     let mut out = Vec::new();
     if role == "AXApplication" {
@@ -130,7 +147,7 @@ fn follow(el: &El, role: &str) -> Vec<El> {
         out.extend(ax_windows(el));
     }
     if !skip_children(role) {
-        out.extend(children(el));
+        out.extend(linked_children(el));
     }
     out
 }
@@ -191,4 +208,40 @@ pub fn tree(bundle: &str) -> Result<(Vec<Node>, Geometry, i32), String> {
     let mut budget = MAX_NODES;
     walk(&app, &[], bundle, pid, &geom, &mut out, &mut seen, 0, &mut budget);
     Ok((out, geom.report(), pid))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn depth_cap_and_group_descent() {
+        assert_eq!(MAX_DEPTH, 30);
+        assert!(!skip_children("AXSplitGroup"));
+        assert!(!skip_children("AXGroup"));
+        assert!(!skip_children("AXScrollArea"));
+        assert!(!skip_children("AXWindow"));
+        assert!(skip_children("AXMenuBar"));
+        assert!(skip_children("AXStaticText"));
+        assert!(skip_children("AXTextArea"));
+    }
+
+    #[test]
+    fn child_lists_include_navigation_order() {
+        let names = child_attribute_names();
+        assert_eq!(names[0], "AXChildrenInNavigationOrder");
+        assert!(names.contains(&"AXContents"));
+        assert!(names.contains(&"AXVisibleChildren"));
+        assert!(names.contains(&"AXChildren"));
+    }
+
+    #[test]
+    fn same_role_and_frame_dedupes() {
+        let frame = Frame { x: 10.0, y: 20.0, w: 30.0, h: 40.0 };
+        let button = shape_key(1, "AXButton", Some(frame.clone()));
+        assert_eq!(button, shape_key(1, "AXButton", Some(frame.clone())));
+        assert_ne!(button, shape_key(1, "AXGroup", Some(frame)));
+        assert_eq!(shape_key(4, "AXApplication", None), Some("4|AXApplication".into()));
+        assert_ne!(shape_key(4, "AXApplication", None), shape_key(4, "AXMenuBar", None));
+    }
 }
