@@ -102,6 +102,11 @@
         "path": []
       },
       "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "/secure",
+        "timeoutMs": 2000
+      },
       "postcondition": {
         "kind": "url",
         "match": "/secure",
@@ -170,6 +175,19 @@
           "path": []
         },
         "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792552972403-5",
+      "index": 5,
+      "action": "verify",
+      "label": "Verify secure URL",
+      "surface": "dom",
+      "timeoutMs": 2000,
+      "expect": {
+        "kind": "url",
+        "match": "/secure",
+        "timeoutMs": 2000
       }
     }
   ],

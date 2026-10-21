@@ -25,11 +25,12 @@ import {
 } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
-import { cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
+import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, type TrailEvent } from "../v1/interpret";
+import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
-import type { HealMode, ReplayArgs, WorkflowV2 } from "../v1/schema";
+import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
 
 export interface Notice extends HealNotice {
   id: string;
@@ -83,6 +84,9 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
       }
       if (req.method === "GET" && (url.pathname === "/fixture" || url.pathname === "/secure")) {
         return sendFile(res, path.join(publicDir, "fixture.html"), "text/html");
+      }
+      if (req.method === "GET" && url.pathname === "/freeze") {
+        return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
         return json(res, {
@@ -289,6 +293,11 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         if (placed.applied && placed.after) library.writeBounds(id, placed.after);
         return json(res, placed);
       }
+      if (req.method === "POST" && url.pathname === "/api/promotions/check") {
+        const body = await readBody(req) as { id?: string };
+        const checked = await checkPromotion(library, body.id || "", notices);
+        return json(res, checked);
+      }
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
         const body = await readBody(req) as { id: string; stepId: string; patch: HealProposal["patch"]; runId?: string; healId?: string };
         const next = keepPatch(library.read(body.id), body.stepId, body.patch);
@@ -457,6 +466,10 @@ async function runWorkflow(
     heal,
     now: () => Date.now(),
   } satisfies ReplayOptions);
+  for (const repair of result.repairs) {
+    library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
+  }
+  const promotion = recordProvisional(library, workflow, result.heals);
   library.saveRun({
     id: result.runId,
     workflowId: workflow.id,
@@ -465,10 +478,14 @@ async function runWorkflow(
     heals: result.heals,
     failure: result.failure,
     steps: result.steps,
+    repairs: result.repairs,
+    promotion,
   });
+  const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
+  if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
   const bounds = await readOwnedWindow(page).catch(() => null);
   if (bounds) library.writeBounds(workflow.id, bounds);
-  return { ...result, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds };
+  return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds };
 }
 
 async function openReplay(
@@ -532,6 +549,9 @@ async function placeReplayWindow(page: Page, profile: string, want: WindowBounds
 }
 
 function healProvider(): HealProvider {
+  if (process.env.BAO_HEAL_CURSOR === "1") {
+    return cursorHeal(process.env.BAO_HEAL_DIR || process.env.BAO_HOME || path.join(tmpdir(), "bao-heal"));
+  }
   if (process.env.BAO_HEAL_FIXTURE === "1") {
     return scriptedHeal({
       patch: { identity: { surface: "dom", role: "button", testId: "login", path: [] } },
@@ -649,6 +669,114 @@ async function clipForPhrase(page: Page, phrase: string): Promise<{ x: number; y
     width: box.width,
     height: box.height,
   };
+}
+
+function recordProvisional(library: Library, workflow: WorkflowV2, heals: HealRecord[]): Promotion | undefined {
+  const heal = [...heals].reverse().find((item) => item.postconditionPassed && item.proposedPatch);
+  if (!heal?.proposedPatch) return undefined;
+  const before = workflow.steps.find((step) => step.id === heal.failedStep.id) || heal.failedStep;
+  const promotion = openProvisional({
+    healId: heal.id,
+    workflowId: workflow.id,
+    stepId: heal.failedStep.id,
+    patch: heal.proposedPatch,
+    before,
+  });
+  library.save(keepPatch(workflow, heal.failedStep.id, heal.proposedPatch));
+  library.savePromotion(promotion);
+  library.appendTrail(workflow.id, promotionEvent(promotion, Date.now()));
+  return promotion;
+}
+
+async function checkPromotion(library: Library, id: string, notices: Notice[]): Promise<Promotion> {
+  const current = library.readPromotion(id) as Promotion | undefined;
+  if (!current || current.status !== "provisional") throw new Error("no provisional heal");
+  const workflow = library.read(id);
+  const args = defaultArgs(workflow);
+  let driftOk = true;
+  for (const change of driftChanges) {
+    if (!await replayChanged(workflow, args, change)) {
+      driftOk = false;
+      break;
+    }
+  }
+  let promotion = noteDrift(current, driftOk);
+  library.savePromotion(promotion);
+  library.appendTrail(id, promotionEvent(promotion, Date.now()));
+  if (promotion.status === "reverted") {
+    library.save(revertPatch(workflow, promotion.before));
+    return promotion;
+  }
+  for (let i = 0; i < 2 && promotion.status === "provisional"; i++) {
+    const passed = await replayChanged(library.read(id), args, { query: "" });
+    promotion = noteReplay(promotion, passed);
+    library.savePromotion(promotion);
+    library.appendTrail(id, promotionEvent(promotion, Date.now()));
+    if (promotion.status === "reverted") library.save(revertPatch(library.read(id), promotion.before));
+  }
+  notices.unshift({
+    id: `n-${notices.length + 1}`,
+    at: Date.now(),
+    title: promotion.status === "promoted" ? "Bao promoted a heal" : "Bao reverted a heal",
+    body: `${workflow.name}: ${promotion.status}`,
+    workflowId: id,
+    runId: promotion.healId,
+    stepId: promotion.stepId,
+  });
+  return promotion;
+}
+
+const driftChanges: { name: string; query: string; slow?: boolean; scale?: number }[] = [
+  { name: "shift", query: "shift=1" },
+  { name: "theme", query: "theme=dark" },
+  { name: "font", query: "font=big" },
+  { name: "order", query: "order=flip" },
+  { name: "slow", query: "", slow: true },
+  { name: "scale-2x", query: "", scale: 2 },
+];
+
+function defaultArgs(workflow: WorkflowV2): ReplayArgs {
+  const args: ReplayArgs = {};
+  for (const input of workflow.inputs) {
+    if (input.type === "secret" || input.type === "file" || !input.default) continue;
+    args[input.name] = input.type === "number" ? Number(input.default) : input.default;
+  }
+  return args;
+}
+
+async function replayChanged(
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  change: { query: string; slow?: boolean; scale?: number },
+): Promise<boolean> {
+  const profile = await mkdtemp(path.join(tmpdir(), "bao-promote-"));
+  const context = await launchOwnedChrome({
+    userDataDir: profile,
+    headless: true,
+    deviceScaleFactor: change.scale,
+  });
+  try {
+    const page = context.pages()[0] || await context.newPage();
+    if (change.slow) {
+      await page.route("**/*", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await route.continue();
+      });
+    }
+    const startUrl = withChange(workflow.startUrl, change.query);
+    await page.goto(startUrl);
+    const result = await replay({ ...workflow, startUrl }, args, new BrowserDriver(page), { heal: unavailableHeal() });
+    return result.status === "passed";
+  } finally {
+    await context.close().catch(() => undefined);
+    await rm(profile, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+function withChange(startUrl: string, query: string): string {
+  const url = new URL(startUrl);
+  if (query) new URLSearchParams(query).forEach((value, key) => url.searchParams.set(key, value));
+  return url.toString();
 }
 
 function summary(doc: WorkflowV2) {

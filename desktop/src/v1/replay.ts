@@ -13,8 +13,10 @@ import {
   type HealProvider,
   type HealRecord,
   type HealSettings,
+  type ReplayPhase,
   type StepFailure,
 } from "./heal";
+import { anchorCandidate, labelCandidate, overlayClose, type RepairLog } from "./repair";
 import {
   subst,
   type FileArg,
@@ -29,6 +31,8 @@ export interface LiveTree {
   url?: string;
   texts: string[];
   values: { identity: Identity; value: string }[];
+  boxes?: { x: number; y: number; w: number; h: number }[];
+  flags?: { checked?: boolean; enabled?: boolean }[];
 }
 
 export interface HealNotice {
@@ -51,6 +55,7 @@ export interface Driver {
   check(node: Identity, checked: boolean): Promise<void>;
   notify(notice: HealNotice): Promise<void>;
   sleep?(ms: number): Promise<void>;
+  waitIdle?(timeoutMs: number): Promise<void>;
   /** Shown in the Bao window. Replay does not click Apply. */
   showConfirm?(label: string): void | Promise<void>;
   clearConfirm?(): void | Promise<void>;
@@ -64,6 +69,7 @@ export interface RunResult {
   steps: { id: string; status: "passed" | "failed" | "paused" | "pending"; reason?: string }[];
   failure?: StepFailure;
   heals: HealRecord[];
+  repairs: RepairLog[];
   proposal?: HealProposal;
   pausedStepId?: string;
 }
@@ -92,23 +98,25 @@ export async function replay(
   const mode = effectiveMode(workflow, settings);
   const steps: RunResult["steps"] = workflow.steps.map((step) => ({ id: step.id, status: "pending" }));
   const heals: HealRecord[] = [];
+  const repairs: RepairLog[] = [];
 
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     if (step.unresolved) {
-      const failure = await fail(driver, step, "unresolved step", undefined, secrets);
-      steps[i] = { id: step.id, status: "failed", reason: failure.reason };
-      return { runId, status: "failed", steps, failure, heals };
+      const failure = await fail(driver, step, "locate", "unresolved step", undefined, secrets);
+      steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure) };
+      return { runId, status: "failed", steps, failure, heals, repairs };
     }
     const outcome = await runStep(workflow, step, args, driver, secrets);
+    repairs.push(...outcome.repairs);
     if (outcome.ok) {
       steps[i] = { id: step.id, status: "passed" };
       continue;
     }
     const failure = outcome.failure;
     if (!heal || !heal.available()) {
-      steps[i] = { id: step.id, status: "failed", reason: failure.reason };
-      return { runId, status: "failed", steps, failure, heals };
+      steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure) };
+      return { runId, status: "failed", steps, failure, heals, repairs };
     }
     const proposal = await heal.propose(failure, step);
     const prompt = proposal?.prompt || "";
@@ -134,8 +142,8 @@ export async function replay(
     };
     if (!proposal) {
       heals.push(record);
-      steps[i] = { id: step.id, status: "failed", reason: failure.reason };
-      return { runId, status: "failed", steps, failure, heals };
+      steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure) };
+      return { runId, status: "failed", steps, failure, heals, repairs };
     }
     await driver.notify({
       title: mode === "auto" ? "Bao healed a step" : "Bao needs approval",
@@ -147,21 +155,24 @@ export async function replay(
     if (mode === "approve") {
       heals.push(record);
       steps[i] = { id: step.id, status: "paused", reason: "approve" };
-      return { runId, status: "paused", steps, failure, heals, proposal, pausedStepId: step.id };
+      return { runId, status: "paused", steps, failure, heals, repairs, proposal, pausedStepId: step.id };
     }
     const patched = applyPatch(step, proposal.patch);
     const retried = await runStep(workflow, patched, args, driver, secrets);
+    repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok) {
-      steps[i] = { id: step.id, status: "failed", reason: retried.failure.reason };
-      return { runId, status: "failed", steps, failure: retried.failure, heals };
+      steps[i] = { id: step.id, status: "failed", reason: phaseReason(retried.failure) };
+      return { runId, status: "failed", steps, failure: retried.failure, heals, repairs };
     }
     steps[i] = { id: step.id, status: "passed" };
   }
-  return { runId, status: "passed", steps, heals };
+  return { runId, status: "passed", steps, heals, repairs };
 }
+
+type StepOutcome = { ok: true; repairs: RepairLog[] } | { ok: false; failure: StepFailure; repairs: RepairLog[] };
 
 async function runStep(
   workflow: WorkflowV2,
@@ -169,48 +180,119 @@ async function runStep(
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
-): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+): Promise<StepOutcome> {
+  const repairs: RepairLog[] = [];
   if (step.action === "confirm") return runConfirm(step, args, driver, secrets);
   if (step.action === "login") return runLogin(step, args, driver, secrets);
+  if (step.action === "verify") {
+    const held = await readExpect(step, args, driver, repairs);
+    if (!held) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    return { ok: true, repairs };
+  }
   if (step.action === "key" && !step.identity) {
-    await driver.key(step.key || "Enter");
-    const tree = await driver.tree();
-    if (step.postcondition && !holds(step.postcondition, tree, args)) {
-      return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+    try {
+      await driver.key(step.key || "Enter");
+    } catch (err) {
+      return { ok: false, repairs, failure: await fail(driver, step, "act", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
-    return { ok: true };
+    if (!await readExpect(step, args, driver, repairs)) {
+      return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    }
+    return { ok: true, repairs };
   }
   if (step.action === "digits") {
     const text = String(args[step.input || ""] ?? subst(step.value || "", args));
-    await driver.digits(step.identity?.app, step.identity?.role || "button", text);
-    const tree = await driver.tree();
-    if (step.postcondition && !holds(step.postcondition, tree, args)) {
-      return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+    try {
+      await driver.digits(step.identity?.app, step.identity?.role || "button", text);
+    } catch (err) {
+      return { ok: false, repairs, failure: await fail(driver, step, "act", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
-    return { ok: true };
+    if (!await readExpect(step, args, driver, repairs)) {
+      return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    }
+    return { ok: true, repairs };
   }
-  const found = await poll(step, args, driver);
+  const found = await findTarget(step, args, driver, repairs);
   if (!found.hit.ok || found.hit.index == null) {
     return {
       ok: false,
-      failure: await fail(driver, step, found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets),
+      repairs,
+      failure: await fail(driver, step, "locate", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets),
     };
   }
   const node = found.nodes[found.hit.index];
   if (!node) {
-    return { ok: false, failure: await fail(driver, step, "lookup miss", found.hit.brokenAttr, secrets) };
+    return { ok: false, repairs, failure: await fail(driver, step, "locate", "lookup miss", found.hit.brokenAttr, secrets) };
   }
   try {
     await act(step, node, args, driver);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    return { ok: false, failure: await fail(driver, step, reason, found.hit.brokenAttr, secrets) };
+    return { ok: false, repairs, failure: await fail(driver, step, "act", reason, found.hit.brokenAttr, secrets) };
   }
-  const after = await driver.tree();
-  if (step.postcondition && !holds(step.postcondition, after, args)) {
-    return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+  if (!await readExpect(step, args, driver, repairs)) {
+    return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
   }
-  return { ok: true };
+  return { ok: true, repairs };
+}
+
+async function findTarget(
+  step: WorkflowStep,
+  args: ReplayArgs,
+  driver: Driver,
+  repairs: RepairLog[],
+): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup> }> {
+  let tree = await driver.tree();
+  const close = overlayClose(tree.nodes);
+  if (close) {
+    await driver.click(close);
+    repairs.push({ stepId: step.id, repair: "overlay", detail: close.text || close.name || "overlay" });
+    tree = await driver.tree();
+  }
+  let located = locate(step, tree, args);
+  if (located.hit.ok) return located;
+  const labeled = labelCandidate(step, tree.nodes);
+  if (labeled) {
+    repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
+    return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] } };
+  }
+  const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
+  if (anchored) {
+    repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
+    return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] } };
+  }
+  if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
+  const waited = await poll(step, args, driver);
+  if (waited.hit.ok) {
+    repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
+    return waited;
+  }
+  return waited;
+}
+
+async function readExpect(step: WorkflowStep, args: ReplayArgs, driver: Driver, repairs: RepairLog[]): Promise<boolean> {
+  if (await expectationsHold(step, await driver.tree(), args)) return true;
+  if (!step.expect && !step.postcondition) return true;
+  if (driver.waitIdle) await driver.waitIdle(Math.min(step.expect?.timeoutMs || step.timeoutMs || 1000, 2000));
+  await (driver.sleep ? driver.sleep(50) : sleep(50));
+  if (await expectationsHold(step, await driver.tree(), args)) {
+    repairs.push({ stepId: step.id, repair: "wait", detail: "expect became true" });
+    return true;
+  }
+  const tree = await driver.tree();
+  const close = overlayClose(tree.nodes);
+  if (close) {
+    await driver.click(close);
+    repairs.push({ stepId: step.id, repair: "overlay", detail: close.text || close.name || "overlay" });
+    if (await expectationsHold(step, await driver.tree(), args)) return true;
+  }
+  return false;
+}
+
+async function expectationsHold(step: WorkflowStep, tree: LiveTree, args: ReplayArgs): Promise<boolean> {
+  if (step.expect && !holdsExpect(step.expect, tree, args)) return false;
+  if (step.postcondition && !holds(step.postcondition, tree, args)) return false;
+  return true;
 }
 
 async function runConfirm(
@@ -218,7 +300,7 @@ async function runConfirm(
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
-): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+): Promise<StepOutcome> {
   await driver.showConfirm?.(step.label);
   try {
     const timeout = step.timeoutMs ?? 0;
@@ -229,9 +311,9 @@ async function runConfirm(
       seen = await driver.tree();
     }
     if (step.postcondition && !holds(step.postcondition, seen, args)) {
-      return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+      return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "postcondition", undefined, secrets) };
     }
-    return { ok: true };
+    return { ok: true, repairs: [] };
   } finally {
     await driver.clearConfirm?.();
   }
@@ -242,7 +324,7 @@ async function runLogin(
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
-): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+): Promise<StepOutcome> {
   await driver.showLoginWait?.(step.label);
   try {
     const timeout = step.timeoutMs ?? 0;
@@ -253,9 +335,9 @@ async function runLogin(
       seen = await driver.tree();
     }
     if (step.postcondition && !holds(step.postcondition, seen, args)) {
-      return { ok: false, failure: await fail(driver, step, "waiting for you to log in", undefined, secrets) };
+      return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "waiting for you to log in", undefined, secrets) };
     }
-    return { ok: true };
+    return { ok: true, repairs: [] };
   } finally {
     await driver.clearLoginWait?.();
   }
@@ -320,6 +402,24 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
   await driver.click(node);
 }
 
+export function holdsExpect(expect: NonNullable<WorkflowStep["expect"]>, tree: LiveTree, args: ReplayArgs): boolean {
+  if (expect.kind === "url") return (tree.url || "").includes(expectedText(expect.match || "", args));
+  if (expect.kind === "text") {
+    const want = expectedText(expect.match || "", args);
+    return tree.texts.some((text) => text.includes(want));
+  }
+  const identity = expect.identity || undefined;
+  if (!identity) return false;
+  const hit = lookup(identity, tree.nodes);
+  if (!hit.ok || hit.index == null) return false;
+  const flag = tree.flags?.[hit.index];
+  if (expect.state === "checked") return !!flag?.checked;
+  if (expect.state === "unchecked") return !flag?.checked;
+  if (expect.state === "disabled") return flag?.enabled === false;
+  if (expect.state === "enabled") return flag?.enabled !== false;
+  return true;
+}
+
 export function holds(post: NonNullable<WorkflowStep["postcondition"]>, tree: LiveTree, args: ReplayArgs): boolean {
   if (post.kind === "element") {
     const identity = post.identity;
@@ -369,9 +469,21 @@ function secretValues(workflow: WorkflowV2, args: ReplayArgs): string[] {
   return out;
 }
 
+function phaseReason(failure: StepFailure): string {
+  return `${failure.phase}: ${failure.reason}`;
+}
+
+function expectReason(step: WorkflowStep): string {
+  if (step.expect?.kind === "text" || step.expect?.kind === "url") return step.expect.match || step.expect.kind;
+  if (step.expect?.state) return step.expect.state;
+  if (step.postcondition) return "postcondition";
+  return "expect";
+}
+
 async function fail(
   driver: Driver,
   step: WorkflowStep,
+  phase: ReplayPhase,
   reason: string,
   brokenAttr: string | undefined,
   secrets: string[],
@@ -380,7 +492,8 @@ async function fail(
   return {
     stepId: step.id,
     index: step.index,
-    intent: step.label,
+    intent: step.intent || step.label,
+    phase,
     reason,
     brokenAttr,
     snapshot,

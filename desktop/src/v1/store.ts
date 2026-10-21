@@ -19,6 +19,8 @@ export interface StoredRun {
   decisions?: { ts: number; healId: string; decision: "keep" | "revert" }[];
   failure?: unknown;
   steps: unknown[];
+  repairs?: unknown[];
+  promotion?: unknown;
 }
 
 const DEFAULT_SETTINGS: Settings = { heal: "auto" };
@@ -29,6 +31,7 @@ export class Library {
     mkdirSync(path.join(root, "trails"), { recursive: true });
     mkdirSync(path.join(root, "runs"), { recursive: true });
     mkdirSync(path.join(root, "shots"), { recursive: true });
+    mkdirSync(path.join(root, "promotions"), { recursive: true });
   }
 
   list(): WorkflowV2[] {
@@ -76,6 +79,33 @@ export class Library {
 
   saveTrail(id: string, events: unknown): void {
     writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(events, null, 2));
+  }
+
+  appendTrail(id: string, event: unknown): unknown[] {
+    const file = path.join(this.root, "trails", `${id}.json`);
+    let events: unknown[] = [];
+    try {
+      const current = JSON.parse(readFileSync(file, "utf8")) as unknown;
+      events = Array.isArray(current) ? current : [current];
+    } catch { /* first event */ }
+    events.push(event);
+    writeFileSync(file, JSON.stringify(events, null, 2));
+    return events;
+  }
+
+  savePromotion(promotion: unknown & { workflowId: string }): void {
+    mkdirSync(path.join(this.root, "promotions"), { recursive: true });
+    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(promotion, null, 2));
+  }
+
+  readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string } | undefined {
+    try {
+      return JSON.parse(readFileSync(path.join(this.root, "promotions", `${workflowId}.json`), "utf8")) as {
+        workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string;
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   readTrail(id: string): unknown {

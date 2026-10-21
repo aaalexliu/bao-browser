@@ -261,6 +261,7 @@ test("the prompt text leaves the screenshot bytes on the audit snapshot", () => 
   const prompt = buildPrompt({
     stepId: "s0",
     index: 0,
+    phase: "locate",
     intent: "Click login",
     reason: "below-threshold",
     snapshot: { screenshot: "AAAASECRETBYTES", screenshotRef: "png:16", dom: [{ testId: "login" }], ax: "button login" },
@@ -293,7 +294,7 @@ test("llm provider is unavailable without a key and does not fetch", async () =>
   const heal = llmHealFromEnv({}, (async () => { fetched += 1; return new Response("{}"); }) as typeof fetch);
   assert.equal(heal.available(), false);
   assert.equal(await heal.propose({
-    stepId: "s", index: 0, intent: "x", reason: "miss", snapshot: {},
+    stepId: "s", index: 0, phase: "locate", intent: "x", reason: "miss", snapshot: {},
   }, workflow(id({ testId: "a" })).steps[0]!), null);
   assert.equal(fetched, 0);
   assert.equal(unavailableHeal().available(), false);

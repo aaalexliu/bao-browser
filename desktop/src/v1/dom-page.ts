@@ -14,6 +14,10 @@ export interface DomDump {
   cssPath?: string;
   path: { role: string; name?: string }[];
   value?: string;
+  bbox?: { x: number; y: number; w: number; h: number };
+  checked?: boolean;
+  enabled?: boolean;
+  overlay?: boolean;
 }
 
 export interface PageDump {
@@ -40,6 +44,7 @@ export function dumpPage(): PageDump {
     if (tag === "select") return "listbox";
     if (el instanceof HTMLInputElement) {
       if (el.type === "checkbox") return "checkbox";
+      if (el.type === "radio") return "radio";
       if (el.type === "file" || el.type === "text" || el.type === "password" || el.type === "email") return "textbox";
       if (el.type === "submit" || el.type === "button") return "button";
     }
@@ -88,6 +93,7 @@ export function dumpPage(): PageDump {
   let n = 0;
   document.querySelectorAll("body *").forEach((el) => {
     if (!(el instanceof HTMLElement) || !interesting(el)) return;
+    if (el.hidden || el.closest("[hidden]")) return;
     const handle = String(n++);
     el.setAttribute("data-bao-i", handle);
     const text = norm(el.innerText || el.textContent || "").slice(0, 80);
@@ -116,6 +122,13 @@ export function dumpPage(): PageDump {
       cssPath: cssPath(el),
       path,
       value: input && input.type !== "password" ? input.value : undefined,
+      bbox: (() => {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, w: rect.width, h: rect.height };
+      })(),
+      checked: input instanceof HTMLInputElement && (input.type === "radio" || input.type === "checkbox") ? input.checked : undefined,
+      enabled: !el.hasAttribute("disabled"),
+      overlay: el.getAttribute("role") === "dialog" || el.hasAttribute("data-bao-overlay") || el.getAttribute("data-testid") === "overlay-close" || undefined,
     });
   });
   return { url: location.href, title: document.title, nodes, texts, values };

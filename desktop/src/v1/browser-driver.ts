@@ -43,7 +43,18 @@ export class BrowserDriver implements Driver {
       const identity = nodes.find((node) => this.handles.get(node) === item.handle);
       return identity ? [{ identity, value: item.value }] : [];
     });
-    return { nodes, url: dump.url, texts: dump.texts, values };
+    return {
+      nodes,
+      url: dump.url,
+      texts: dump.texts,
+      values,
+      boxes: dump.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 }),
+      flags: dump.nodes.map((node) => ({ checked: node.checked, enabled: node.enabled })),
+    };
+  }
+
+  async waitIdle(timeoutMs: number): Promise<void> {
+    await this.page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => undefined);
   }
 
   async snapshot(): Promise<FailureSnapshot> {

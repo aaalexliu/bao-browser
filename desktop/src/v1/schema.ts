@@ -9,7 +9,7 @@ export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 export type InputType = "text" | "secret" | "number" | "choice" | "file";
 export type HealMode = "auto" | "approve";
 export type Surface = "dom" | "ax" | "atspi";
-export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login";
+export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify";
 
 export interface WorkflowInput {
   name: string;
@@ -65,6 +65,21 @@ export interface Postcondition {
   timeoutMs: number;
 }
 
+/** Re-read after the action. A verify step has no action of its own. */
+export interface Expectation {
+  kind: "text" | "url" | "state";
+  match?: string;
+  state?: "checked" | "unchecked" | "enabled" | "disabled" | "visible";
+  identity?: Identity;
+  timeoutMs: number;
+}
+
+/** Where the target sits relative to a stable element. Coordinates are not stored. */
+export interface Anchor {
+  identity: Identity;
+  relation: "below" | "above" | "right" | "left";
+}
+
 export interface WorkflowStep {
   id: string;
   index: number;
@@ -81,7 +96,11 @@ export interface WorkflowStep {
   sensitive?: boolean;
   /** A confirm or login step is done by the person. Replay does not click or type it. */
   human?: boolean;
+  /** Recorded purpose of the step. Repairs compare this to the live label. */
+  intent?: string;
   postcondition?: Postcondition;
+  expect?: Expectation;
+  anchor?: Anchor;
   timeoutMs: number;
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
   unresolved?: { reason: string };
@@ -157,6 +176,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if ((step.action === "confirm" || step.action === "login") && step.provenance) {
       errors.push(`coordinates ${step.id}`);
     }
+    if (step.action === "verify" && !step.expect && !step.postcondition) errors.push(`verify ${step.id}`);
   });
   return errors;
 }

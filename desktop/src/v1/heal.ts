@@ -12,10 +12,14 @@ export interface FailureSnapshot {
   ax?: unknown;
 }
 
+export type ReplayPhase = "locate" | "act" | "expect";
+
 export interface StepFailure {
   stepId: string;
   index: number;
   intent: string;
+  /** locate, act, or expect. The reason is what failed inside that phase. */
+  phase: ReplayPhase;
   reason: string;
   brokenAttr?: string;
   snapshot: FailureSnapshot;
@@ -92,6 +96,7 @@ export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: s
   const body = [
     "A replay step missed its target or its postcondition.",
     `Intent: ${failure.intent}`,
+    `Phase: ${failure.phase}`,
     `Reason: ${failure.reason}`,
     failure.brokenAttr ? `Attribute that broke: ${failure.brokenAttr}` : "",
     `Step: ${JSON.stringify(step)}`,
@@ -189,6 +194,55 @@ export function cursorSessionHeal(readResponse: () => string): HealProvider {
         prompt,
         rawResponse: raw,
       };
+    },
+  };
+}
+
+/**
+ * Live Cursor heal. Writes the failure and waits for a response file.
+ * This process does not invent the patch.
+ */
+export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env): HealProvider {
+  return {
+    available: () => true,
+    async propose(failure, step) {
+      const { mkdirSync, readFileSync, unlinkSync, writeFileSync } = await import("node:fs");
+      const path = await import("node:path");
+      mkdirSync(dir, { recursive: true });
+      if (failure.snapshot.screenshot) {
+        writeFileSync(path.join(dir, "heal-shot.png"), Buffer.from(failure.snapshot.screenshot, "base64"));
+      }
+      const prompt = buildPrompt(failure, step, []);
+      writeFileSync(path.join(dir, "heal-request.json"), JSON.stringify({
+        intent: failure.intent,
+        phase: failure.phase,
+        reason: failure.reason,
+        step,
+        dom: failure.snapshot.dom,
+        prompt,
+      }, null, 2));
+      const responsePath = path.join(dir, "heal-response.json");
+      try { unlinkSync(responsePath); } catch { /* first request */ }
+      const deadline = Date.now() + Number(env.BAO_HEAL_WAIT_MS || 180000);
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        let raw = "";
+        try { raw = readFileSync(responsePath, "utf8"); } catch { continue; }
+        if (!raw.trim()) continue;
+        try {
+          const parsed = JSON.parse(raw) as { identity?: Identity; note?: string };
+          if (!parsed.identity) return null;
+          return {
+            patch: { identity: parsed.identity },
+            model: { provider: "cursor", name: "cursor", version: "live" },
+            prompt,
+            rawResponse: raw,
+          };
+        } catch {
+          continue;
+        }
+      }
+      return null;
     },
   };
 }

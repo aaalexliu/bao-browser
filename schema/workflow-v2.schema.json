@@ -76,6 +76,27 @@
         "siblingIndex": { "type": "number" }
       }
     },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "timeoutMs"],
+      "properties": {
+        "kind": { "enum": ["text", "url", "state"] },
+        "match": { "type": "string" },
+        "state": { "enum": ["checked", "unchecked", "enabled", "disabled", "visible"] },
+        "identity": { "$ref": "#/$defs/identity" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "relation"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/identity" },
+        "relation": { "enum": ["below", "above", "right", "left"] }
+      }
+    },
     "postcondition": {
       "type": "object",
       "additionalProperties": false,
@@ -94,7 +115,7 @@
       "properties": {
         "id": { "type": "string" },
         "index": { "type": "number" },
-        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login"] },
+        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login", "verify"] },
         "label": { "type": "string" },
         "surface": { "enum": ["dom", "os"] },
         "identity": { "$ref": "#/$defs/identity" },
@@ -113,7 +134,10 @@
         "checked": { "type": "boolean" },
         "sensitive": { "type": "boolean" },
         "human": { "type": "boolean" },
+        "intent": { "type": "string" },
         "postcondition": { "$ref": "#/$defs/postcondition" },
+        "expect": { "$ref": "#/$defs/expect" },
+        "anchor": { "$ref": "#/$defs/anchor" },
         "timeoutMs": { "type": "number" },
         "provenance": {
           "type": "object",

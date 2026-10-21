@@ -327,6 +327,19 @@ is still the source of truth for the extension.
   `live-model` logged into the-internet and uploaded a file; interpret
   dropped the screenshots and the unresolved file click; replay had no model.
   The GTK calculator capture of 7+5 replayed 7+7 and 5+7 on a moved window.
+- **2026-10-21 — Expect, cheap repair, and provisional heal.** A step can
+  declare `expect` (text, state, or URL). A trailing `verify` step re-reads
+  it. A miss names the phase: locate, act, or expect. The local credit-freeze
+  fixture (`/freeze`) has Frozen and Open radios and Apply. The saved workflow
+  checks the radio and verifies `Status: Frozen`. Before any model call,
+  replay tries label similarity, an anchor, closing a known overlay, and a
+  wait, and logs which one ran. A model heal stays provisional until the
+  drift suite and the next two replays pass, and reverts if either fails.
+  Those states are promotion events on the trail. Drift stayed 24/24
+  (`docs/drift-linux.md`). A Cursor-billed heal, not a vendor API call,
+  patched the renamed Apply button from the failure screenshot and was
+  promoted. `BAO_HEAL_FIXTURE` is still the canned stand-in and was not used
+  for that run.
 
 ---
 

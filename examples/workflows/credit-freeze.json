@@ -1,0 +1,71 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-credit-freeze",
+  "name": "Credit freeze",
+  "startUrl": "http://127.0.0.1:4787/freeze",
+  "createdAt": 1,
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-credit-freeze-0",
+      "index": 0,
+      "action": "click",
+      "label": "Click Frozen",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "frozen",
+        "nameAttr": "freeze",
+        "path": []
+      },
+      "timeoutMs": 4000,
+      "expect": {
+        "kind": "state",
+        "state": "checked",
+        "timeoutMs": 2000,
+        "identity": {
+          "surface": "dom",
+          "role": "radio",
+          "id": "frozen",
+          "path": []
+        }
+      }
+    },
+    {
+      "id": "wf-credit-freeze-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click Apply",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "apply",
+        "testId": "apply",
+        "text": "Apply",
+        "path": []
+      },
+      "timeoutMs": 4000,
+      "expect": {
+        "kind": "text",
+        "match": "Status: Frozen",
+        "timeoutMs": 2000
+      }
+    },
+    {
+      "id": "wf-credit-freeze-2",
+      "index": 2,
+      "action": "verify",
+      "label": "Verify freeze status",
+      "surface": "dom",
+      "timeoutMs": 2000,
+      "expect": {
+        "kind": "text",
+        "match": "Status: Frozen",
+        "timeoutMs": 2000
+      }
+    }
+  ]
+}

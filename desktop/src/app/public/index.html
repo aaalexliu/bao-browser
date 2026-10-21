@@ -179,7 +179,7 @@
           <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
           <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
         </select></label>
-        <p>Auto is the default. Healing runs only when a model key is set, or when this build is started with the fixture healer for a demo. Otherwise replay stops on the failed step.</p>
+        <p>Auto is the default. A miss tries a cheap repair first. A model heal runs only after those fail, and only when a model key is set or this process is waiting on a Cursor heal. Otherwise replay stops and names the phase: locate, act, or expect.</p>
         <button id="save-settings">Save</button></section>`;
     }
 
@@ -246,6 +246,8 @@
       };
       const run = document.getElementById("run");
       if (run) run.onclick = runReplay;
+      const check = document.getElementById("check-promotion");
+      if (check) check.onclick = checkPromotion;
       document.querySelectorAll("[data-keep]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.keep, "keep"));
       document.querySelectorAll("[data-revert]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.revert, "revert"));
       const importYes = document.getElementById("import-yes");
@@ -308,9 +310,12 @@
     function renderRun(run) {
       const healed = (run.heals || []).length > 0;
       const lines = (run.steps || []).map((step) => `<div class="${esc(step.status)}">${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`).join("");
+      const repairs = (run.repairs || []).map((item) => `<div id="repair-${esc(item.repair)}">repair ${esc(item.repair)}: ${esc(item.detail)}</div>`).join("");
+      const promo = run.promotion;
+      const promoHtml = promo ? `<div class="row" id="promotion" data-status="${esc(promo.status)}"><span class="badge">${esc(promo.status)}</span><span>drift ${esc(promo.drift)} · replays ${esc(promo.replays)}${promo.reason ? " · " + esc(promo.reason) : ""}</span></div>${promo.status === "provisional" ? '<button id="check-promotion" class="primary">Check promotion</button>' : ""}` : "";
       const heals = (run.heals || []).map((item) => reviewHeal(run, item)).join("");
-      const failure = run.failure ? `<pre>${esc(JSON.stringify(publicFailure(run.failure), null, 2))}</pre>` : "";
-      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${heals}${failure}`;
+      const failure = run.failure ? `<p id="failure-phase"><strong>phase ${esc(run.failure.phase)}</strong> ${esc(run.failure.reason)}</p><pre id="failure" style="max-height:8rem; overflow:auto">${esc(JSON.stringify(publicFailure(run.failure), null, 2))}</pre>` : "";
+      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${repairs}${promoHtml}${heals}${failure}`;
     }
 
     function reviewHeal(run, item) {
@@ -366,6 +371,20 @@
         title: decision === "keep" ? "Patch kept" : "Patch reverted",
         body: decision === "keep" ? "Kept the heal in the saved workflow." : "Reverted the saved workflow to the failed step.",
       };
+      refresh();
+    }
+
+    async function checkPromotion() {
+      const id = document.getElementById("wf").value;
+      const button = document.getElementById("check-promotion");
+      if (button) button.textContent = "Checking drift and two replays…";
+      const res = await fetch("/api/promotions/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const promotion = await res.json();
+      if (lastRun) lastRun.promotion = promotion;
       refresh();
     }
 

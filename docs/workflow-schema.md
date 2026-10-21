@@ -22,13 +22,15 @@ A step refers to an input with `input` and a template `value` such as `"{{userna
 
 ## Steps
 
-`action` is `click`, `type`, `key`, `upload`, `drop`, `digits`, or `check`. `surface` is `dom` or `os`.
+`action` is `click`, `type`, `key`, `upload`, `drop`, `digits`, `check`, `confirm`, `login`, or `verify`. `surface` is `dom` or `os`. A `confirm` or `login` step waits for the person. Replay does not click or type it. A `verify` step has no target. It re-reads an `expect` after the earlier steps.
 
 `identity` is the recorded element. See `docs/element-identity.md`. There is no coordinate field on it. `provenance` may hold the pixel the vendor asked for, with `space` of `viewport`, `image`, or `screen`. Replay does not read it.
 
 `selection` is optional: `{ "by": "name" | "title" | "text" | "value", "input": "row" }`. Candidates are filtered to that attribute before scoring, so a row click can mean "the row whose name is `{{row}}`" rather than the instance that was on screen.
 
 `postcondition` is `url`, `text`, `value`, `element`, or `absent`, with `timeoutMs`. A `value` match of `{{a}}+{{b}}` is evaluated as arithmetic of number inputs and compared to the live text. Any other match is text, after `{{input}}` substitution. `timeoutMs` on the step is how long lookup polls. The postcondition has its own timeout.
+
+`expect` is read after the action, and again by a trailing `verify` step. `kind` is `text`, `url`, or `state` (`checked`, `unchecked`, `enabled`, `disabled`, `visible`). A miss stops in a named phase: `locate`, `act`, or `expect`. `intent` is the recorded phrase cheap repairs match. `anchor` is `{ identity, relation }` with `relation` of `below`, `above`, `right`, or `left`.
 
 `unresolved` steps are stored so the miss is visible. Replay stops on them instead of skipping.
 
@@ -60,6 +62,8 @@ This is the login step from `examples/workflows/browser-form.json`, captured fro
 `examples/workflows/calculator.json` is the GTK calculator capture. Digit presses collapsed into `digits` steps with number inputs `a` and `b`. The equals step's postcondition is `{{a}}+{{b}}`.
 
 `examples/workflows/live-login.json` and `examples/workflows/live-upload.json` are interpret output from MCP trails whose `source.agent` is `live-model`. The login secret has no default. The upload step's value is `{{file}}`, not a path. Provenance coordinates are recorded and replay does not read them.
+
+`examples/workflows/browser-form.json` expects the URL `/secure` after Log in, then a `verify` step reads that URL again. `examples/workflows/credit-freeze.json` is the local fixture at `/freeze`: click Frozen (the radio must be checked), click Apply (the status text must read `Status: Frozen`), then `verify` reads that status again. The page is fake. It is not a credit bureau.
 
 ## Interpret
 
