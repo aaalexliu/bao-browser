@@ -1,0 +1,941 @@
+{
+  "multi": {
+    "generatedAt": "2026-10-21T18:58:24.469Z",
+    "rows": [
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role ="
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role ="
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role ="
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "lang",
+        "stepId": "lang",
+        "passed": false,
+        "na": true,
+        "reason": "only en_US.utf8 is installed"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "slow",
+        "stepId": "slow",
+        "passed": false,
+        "na": true,
+        "reason": "a desktop app has no page network"
+      },
+      {
+        "workflow": "gedit",
+        "change": "baseline",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "move",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "resize",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "scale",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "theme-dark",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "theme-light",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "font",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "lang",
+        "stepId": "lang",
+        "passed": false,
+        "na": true,
+        "reason": "only en_US.utf8 is installed"
+      },
+      {
+        "workflow": "gedit",
+        "change": "slow",
+        "stepId": "slow",
+        "passed": false,
+        "na": true,
+        "reason": "a desktop app has no page network"
+      }
+    ],
+    "summary": [
+      {
+        "change": "baseline",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "move",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "resize",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "scale",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-dark",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-light",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "font",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "lang",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      },
+      {
+        "change": "slow",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      }
+    ],
+    "steps": [
+      {
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "lang",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      },
+      {
+        "stepId": "slow",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      },
+      {
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ],
+    "workflows": [
+      {
+        "workflow": "gnome-calculator",
+        "passed": 28,
+        "failed": 0,
+        "na": 2,
+        "rate": 1
+      },
+      {
+        "workflow": "gedit",
+        "passed": 7,
+        "failed": 0,
+        "na": 2,
+        "rate": 1
+      }
+    ]
+  },
+  "primary": {
+    "generatedAt": "2026-10-21T18:58:24.469Z",
+    "rows": [
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "baseline",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role ="
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "move",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role ="
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "resize",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role ="
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "scale",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-dark",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "theme-light",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role +"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": true
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "font",
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "locator": "role",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "lang",
+        "stepId": "lang",
+        "passed": false,
+        "na": true,
+        "reason": "only en_US.utf8 is installed"
+      },
+      {
+        "workflow": "gnome-calculator",
+        "change": "slow",
+        "stepId": "slow",
+        "passed": false,
+        "na": true,
+        "reason": "a desktop app has no page network"
+      },
+      {
+        "workflow": "gedit",
+        "change": "baseline",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "move",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "resize",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "scale",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "theme-dark",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "theme-light",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "font",
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role text"
+      },
+      {
+        "workflow": "gedit",
+        "change": "lang",
+        "stepId": "lang",
+        "passed": false,
+        "na": true,
+        "reason": "only en_US.utf8 is installed"
+      },
+      {
+        "workflow": "gedit",
+        "change": "slow",
+        "stepId": "slow",
+        "passed": false,
+        "na": true,
+        "reason": "a desktop app has no page network"
+      }
+    ],
+    "summary": [
+      {
+        "change": "baseline",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "move",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "resize",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "scale",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-dark",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-light",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "font",
+        "passed": 5,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "lang",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      },
+      {
+        "change": "slow",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      }
+    ],
+    "steps": [
+      {
+        "stepId": "wf-gnome-calculator-0",
+        "label": "Enter {{a}}",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-gnome-calculator-1",
+        "label": "Click \"+\"",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-gnome-calculator-2",
+        "label": "Enter {{b}}",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-gnome-calculator-3",
+        "label": "Click \"=\"",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "lang",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      },
+      {
+        "stepId": "slow",
+        "passed": 0,
+        "failed": 0,
+        "na": 2,
+        "rate": 0
+      },
+      {
+        "stepId": "wf-gedit-0",
+        "label": "Type {{text}}",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ],
+    "workflows": [
+      {
+        "workflow": "gnome-calculator",
+        "passed": 28,
+        "failed": 0,
+        "na": 2,
+        "rate": 1
+      },
+      {
+        "workflow": "gedit",
+        "passed": 7,
+        "failed": 0,
+        "na": 2,
+        "rate": 1
+      }
+    ]
+  },
+  "notes": []
+}

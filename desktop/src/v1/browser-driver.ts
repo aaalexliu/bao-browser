@@ -33,7 +33,7 @@ export class BrowserDriver implements Driver {
   ) {}
 
   async tree(): Promise<LiveTree> {
-    const dump = await this.page.evaluate(dumpPage);
+    const dump = await this.evaluateDump();
     const nodes = assignSiblingIndex(dump.nodes.map((node) => toIdentity(node)));
     nodes.forEach((node, index) => {
       const handle = dump.nodes[index]?.handle;
@@ -57,9 +57,20 @@ export class BrowserDriver implements Driver {
     await this.page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => undefined);
   }
 
+  private async evaluateDump() {
+    try {
+      return await this.page.evaluate(dumpPage);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/context was destroyed|Execution context/i.test(message)) throw err;
+      await this.page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => undefined);
+      return await this.page.evaluate(dumpPage);
+    }
+  }
+
   async snapshot(): Promise<FailureSnapshot> {
     const png = await this.page.screenshot({ type: "png" });
-    const dump = await this.page.evaluate(dumpPage);
+    const dump = await this.evaluateDump();
     let ax: string | undefined;
     try {
       ax = await this.page.locator("body").ariaSnapshot();
@@ -217,6 +228,7 @@ function toIdentity(node: DomDump): Identity {
     label: node.label,
     text: node.text,
     cssPath: node.cssPath,
+    xpath: node.xpath,
     path: node.path,
     value: node.value,
   };

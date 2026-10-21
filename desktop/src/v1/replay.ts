@@ -16,15 +16,25 @@ import {
   type ReplayPhase,
   type StepFailure,
 } from "./heal";
+import { matchLocator } from "./locators";
 import { anchorCandidate, labelCandidate, overlayClose, type RepairLog } from "./repair";
 import {
   subst,
   type FileArg,
   type Identity,
   type ReplayArgs,
+  type StepLocator,
   type WorkflowStep,
   type WorkflowV2,
 } from "./schema";
+
+export interface LocatorHit {
+  stepId: string;
+  kind: string;
+  detail: string;
+}
+
+export type LocatorMode = "all" | "primary";
 
 export interface LiveTree {
   nodes: Identity[];
@@ -70,6 +80,7 @@ export interface RunResult {
   failure?: StepFailure;
   heals: HealRecord[];
   repairs: RepairLog[];
+  locatorHits: LocatorHit[];
   proposal?: HealProposal;
   pausedStepId?: string;
 }
@@ -80,6 +91,8 @@ export interface ReplayOptions {
   secrets?: string[];
   settings?: HealSettings;
   heal?: HealProvider;
+  /** `all` tries every stored locator. `primary` tries the first one. Absent uses `all` when the step has locators. */
+  locators?: LocatorMode;
 }
 
 let seq = 0;
@@ -99,15 +112,17 @@ export async function replay(
   const steps: RunResult["steps"] = workflow.steps.map((step) => ({ id: step.id, status: "pending" }));
   const heals: HealRecord[] = [];
   const repairs: RepairLog[] = [];
+  const locatorHits: LocatorHit[] = [];
+  const locatorMode = opts.locators ?? "all";
 
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     if (step.unresolved) {
       const failure = await fail(driver, step, "locate", "unresolved step", undefined, secrets);
       steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure) };
-      return { runId, status: "failed", steps, failure, heals, repairs };
+      return { runId, status: "failed", steps, failure, heals, repairs, locatorHits };
     }
-    const outcome = await runStep(workflow, step, args, driver, secrets);
+    const outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode);
     repairs.push(...outcome.repairs);
     if (outcome.ok) {
       steps[i] = { id: step.id, status: "passed" };
@@ -116,7 +131,7 @@ export async function replay(
     const failure = outcome.failure;
     if (!heal || !heal.available()) {
       steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure) };
-      return { runId, status: "failed", steps, failure, heals, repairs };
+      return { runId, status: "failed", steps, failure, heals, repairs, locatorHits };
     }
     const proposal = await heal.propose(failure, step);
     const prompt = proposal?.prompt || "";
@@ -143,7 +158,7 @@ export async function replay(
     if (!proposal) {
       heals.push(record);
       steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure) };
-      return { runId, status: "failed", steps, failure, heals, repairs };
+      return { runId, status: "failed", steps, failure, heals, repairs, locatorHits };
     }
     await driver.notify({
       title: mode === "auto" ? "Bao healed a step" : "Bao needs approval",
@@ -155,21 +170,21 @@ export async function replay(
     if (mode === "approve") {
       heals.push(record);
       steps[i] = { id: step.id, status: "paused", reason: "approve" };
-      return { runId, status: "paused", steps, failure, heals, repairs, proposal, pausedStepId: step.id };
+      return { runId, status: "paused", steps, failure, heals, repairs, locatorHits, proposal, pausedStepId: step.id };
     }
     const patched = applyPatch(step, proposal.patch);
-    const retried = await runStep(workflow, patched, args, driver, secrets);
+    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok) {
       steps[i] = { id: step.id, status: "failed", reason: phaseReason(retried.failure) };
-      return { runId, status: "failed", steps, failure: retried.failure, heals, repairs };
+      return { runId, status: "failed", steps, failure: retried.failure, heals, repairs, locatorHits };
     }
     steps[i] = { id: step.id, status: "passed" };
   }
-  return { runId, status: "passed", steps, heals, repairs };
+  return { runId, status: "passed", steps, heals, repairs, locatorHits };
 }
 
 type StepOutcome = { ok: true; repairs: RepairLog[] } | { ok: false; failure: StepFailure; repairs: RepairLog[] };
@@ -180,6 +195,8 @@ async function runStep(
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
+  locatorHits: LocatorHit[],
+  locatorMode: LocatorMode,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
   if (step.action === "confirm") return runConfirm(step, args, driver, secrets);
@@ -212,7 +229,7 @@ async function runStep(
     }
     return { ok: true, repairs };
   }
-  const found = await findTarget(step, args, driver, repairs);
+  const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode);
   if (!found.hit.ok || found.hit.index == null) {
     return {
       ok: false,
@@ -241,6 +258,8 @@ async function findTarget(
   args: ReplayArgs,
   driver: Driver,
   repairs: RepairLog[],
+  locatorHits: LocatorHit[],
+  locatorMode: LocatorMode,
 ): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup> }> {
   let tree = await driver.tree();
   const close = overlayClose(tree.nodes);
@@ -249,9 +268,12 @@ async function findTarget(
     repairs.push({ stepId: step.id, repair: "overlay", detail: close.text || close.name || "overlay" });
     tree = await driver.tree();
   }
-  let located = locate(step, tree, args);
-  if (located.hit.ok) return located;
-  const labeled = labelCandidate(step, tree.nodes);
+  let located = locate(step, tree, args, locatorMode);
+  if (located.hit.ok) {
+    if (located.via) locatorHits.push(located.via);
+    return located;
+  }
+  const labeled = labelCandidate(step, tree.nodes, tree.boxes);
   if (labeled) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] } };
@@ -262,9 +284,10 @@ async function findTarget(
     return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] } };
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
-  const waited = await poll(step, args, driver);
+  const waited = await poll(step, args, driver, locatorMode);
   if (waited.hit.ok) {
     repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
+    if (waited.via) locatorHits.push(waited.via);
     return waited;
   }
   return waited;
@@ -273,12 +296,17 @@ async function findTarget(
 async function readExpect(step: WorkflowStep, args: ReplayArgs, driver: Driver, repairs: RepairLog[]): Promise<boolean> {
   if (await expectationsHold(step, await driver.tree(), args)) return true;
   if (!step.expect && !step.postcondition) return true;
-  if (driver.waitIdle) await driver.waitIdle(Math.min(step.expect?.timeoutMs || step.timeoutMs || 1000, 2000));
-  await (driver.sleep ? driver.sleep(50) : sleep(50));
-  if (await expectationsHold(step, await driver.tree(), args)) {
-    repairs.push({ stepId: step.id, repair: "wait", detail: "expect became true" });
-    return true;
+  const timeout = step.expect?.timeoutMs || step.postcondition?.timeoutMs || 0;
+  const start = Date.now();
+  if (driver.waitIdle) await driver.waitIdle(Math.min(timeout || step.timeoutMs || 1000, 2000));
+  while (Date.now() - start < timeout) {
+    await (driver.sleep ? driver.sleep(100) : sleep(100));
+    if (await expectationsHold(step, await driver.tree(), args)) {
+      repairs.push({ stepId: step.id, repair: "wait", detail: "expect became true" });
+      return true;
+    }
   }
+  if (timeout === 0 && await expectationsHold(step, await driver.tree(), args)) return true;
   const tree = await driver.tree();
   const close = overlayClose(tree.nodes);
   if (close) {
@@ -347,13 +375,14 @@ async function poll(
   step: WorkflowStep,
   args: ReplayArgs,
   driver: Driver,
-): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup> }> {
+  locatorMode: LocatorMode,
+): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; via?: LocatorHit }> {
   const timeout = step.timeoutMs ?? 0;
   const start = Date.now();
-  let located = locate(step, await driver.tree(), args);
+  let located = locate(step, await driver.tree(), args, locatorMode);
   while (!located.hit.ok && Date.now() - start < timeout) {
     await (driver.sleep ? driver.sleep(50) : sleep(50));
-    located = locate(step, await driver.tree(), args);
+    located = locate(step, await driver.tree(), args, locatorMode);
   }
   return located;
 }
@@ -362,10 +391,8 @@ function locate(
   step: WorkflowStep,
   tree: LiveTree,
   args: ReplayArgs,
-): { nodes: Identity[]; hit: ReturnType<typeof lookup> } {
-  if (!step.identity) {
-    return { nodes: [], hit: { ok: false, reason: "no-candidates", brokenAttr: "identity", ranked: [] } };
-  }
+  locatorMode: LocatorMode,
+): { nodes: Identity[]; hit: ReturnType<typeof lookup>; via?: LocatorHit } {
   let nodes = tree.nodes;
   if (step.selection) {
     const want = String(args[step.selection.input] ?? "");
@@ -374,7 +401,32 @@ function locate(
       return typeof got === "string" && got.replace(/\s+/g, " ").trim() === want;
     });
   }
+  const list = locatorList(step, locatorMode);
+  if (list) {
+    for (const locator of list) {
+      const found = matchLocator(locator, nodes, tree.boxes);
+      if (!found) continue;
+      return {
+        nodes,
+        hit: { ok: true, index: found.index, ranked: [] },
+        via: { stepId: step.id, kind: locator.kind, detail: found.detail },
+      };
+    }
+    return {
+      nodes,
+      hit: { ok: false, reason: "below-threshold", brokenAttr: list[0]?.kind || "locator", ranked: [] },
+    };
+  }
+  if (!step.identity) {
+    return { nodes: [], hit: { ok: false, reason: "no-candidates", brokenAttr: "identity", ranked: [] } };
+  }
   return { nodes, hit: lookup(step.identity, nodes) };
+}
+
+function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | undefined {
+  const list = step.locators;
+  if (!list || list.length === 0) return undefined;
+  return mode === "primary" ? list.slice(0, 1) : list;
 }
 
 async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver: Driver): Promise<void> {

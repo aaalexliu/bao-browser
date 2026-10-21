@@ -69,6 +69,7 @@
         "label": { "type": "string" },
         "text": { "type": "string" },
         "cssPath": { "type": "string" },
+        "xpath": { "type": "string" },
         "windowTitle": { "type": "string" },
         "bundleId": { "type": "string" },
         "app": { "type": "string" },
@@ -95,6 +96,19 @@
       "properties": {
         "identity": { "$ref": "#/$defs/identity" },
         "relation": { "enum": ["below", "above", "right", "left"] }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["role", "text", "testid", "css", "xpath", "anchor"] },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "relation": { "enum": ["below", "above", "right", "left"] },
+        "anchor": { "$ref": "#/$defs/identity" }
       }
     },
     "postcondition": {
@@ -138,6 +152,10 @@
         "postcondition": { "$ref": "#/$defs/postcondition" },
         "expect": { "$ref": "#/$defs/expect" },
         "anchor": { "$ref": "#/$defs/anchor" },
+        "locators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/locator" }
+        },
         "timeoutMs": { "type": "number" },
         "provenance": {
           "type": "object",

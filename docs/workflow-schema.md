@@ -32,6 +32,8 @@ A step refers to an input with `input` and a template `value` such as `"{{userna
 
 `expect` is read after the action, and again by a trailing `verify` step. `kind` is `text`, `url`, or `state` (`checked`, `unchecked`, `enabled`, `disabled`, `visible`). A miss stops in a named phase: `locate`, `act`, or `expect`. `intent` is the recorded phrase cheap repairs match. `anchor` is `{ identity, relation }` with `relation` of `below`, `above`, `right`, or `left`.
 
+`locators` is an ordered list tried after a known overlay is closed and before label, anchor, and wait repairs. Each item is `role` (role plus accessible name), `text`, `testid`, `css`, `xpath`, or `anchor`. A locator is used only when exactly one node matches and that node still has a box. The hit is logged. `primary` replay tries the first locator only. `identity.xpath` is stored for that locator and is not a score. An unnamed text view may use a role locator whose name is empty, which means the only unnamed control of that role. One-way export to Chrome DevTools Recorder JSON is `toPuppeteerReplay`. Anchor locators are omitted. Click steps set `offsetX` and `offsetY` to 1 because `@puppeteer/replay` 4.0.2 forwards a missing offset as `undefined`, and Puppeteer 25 then waits until timeout.
+
 `unresolved` steps are stored so the miss is visible. Replay stops on them instead of skipping.
 
 ## Example

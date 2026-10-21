@@ -1,0 +1,82 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "internet-dynamic",
+  "name": "Dynamic loading",
+  "startUrl": "https://the-internet.herokuapp.com/dynamic_loading/1",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-dynamic-0",
+      "index": 0,
+      "action": "click",
+      "label": "Click \"Start\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Start",
+        "cssPath": "#start > button:nth-of-type(1)",
+        "xpath": "/body[1]/div[2]/div[1]/div[1]/div[1]/button[1]",
+        "path": [
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          }
+        ],
+        "siblingIndex": 0
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Start"
+        },
+        {
+          "kind": "text",
+          "value": "Start"
+        },
+        {
+          "kind": "css",
+          "value": "#start > button:nth-of-type(1)"
+        },
+        {
+          "kind": "xpath",
+          "value": "/body[1]/div[2]/div[1]/div[1]/div[1]/button[1]"
+        },
+        {
+          "kind": "anchor",
+          "role": "button",
+          "relation": "left",
+          "anchor": {
+            "surface": "dom",
+            "role": "heading",
+            "text": "Example 1: Element on page that is hidden",
+            "path": []
+          }
+        }
+      ],
+      "timeoutMs": 15000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Hello World!",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Hello World!",
+        "timeoutMs": 15000
+      }
+    }
+  ],
+  "createdAt": 1
+}

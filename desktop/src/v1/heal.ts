@@ -2,6 +2,7 @@
 // The default policy is auto: apply the patch and keep going.
 // approve pauses at the proposal. The saved workflow changes only if the user keeps the patch.
 
+import { locatorsFromIdentity } from "./locators";
 import type { HealMode, Identity, WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface FailureSnapshot {
@@ -261,11 +262,12 @@ function patchFromText(raw: string): HealProposal["patch"] {
 }
 
 export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): WorkflowStep {
-  return {
-    ...step,
-    ...patch,
-    identity: patch.identity ? { ...step.identity, ...patch.identity, path: patch.identity.path || step.identity?.path || [] } : step.identity,
-  };
+  const identity = patch.identity
+    ? { ...patch.identity, path: patch.identity.path || [] }
+    : step.identity;
+  const next: WorkflowStep = { ...step, ...patch, identity };
+  if (patch.identity) next.locators = locatorsFromIdentity(identity);
+  return next;
 }
 
 export function keepPatch(workflow: WorkflowV2, stepId: string, patch: HealProposal["patch"]): WorkflowV2 {

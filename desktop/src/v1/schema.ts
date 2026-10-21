@@ -46,6 +46,8 @@ export interface Identity {
   label?: string;
   text?: string;
   cssPath?: string;
+  /** Attribute or positional path. The scorer does not read it. Locators do. */
+  xpath?: string;
   windowTitle?: string;
   bundleId?: string;
   app?: string;
@@ -80,6 +82,21 @@ export interface Anchor {
   relation: "below" | "above" | "right" | "left";
 }
 
+/** One selector. Replay tries `locators` in order, before the repair tiers. */
+export type LocatorKind = "role" | "text" | "testid" | "css" | "xpath" | "anchor";
+
+export interface StepLocator {
+  kind: LocatorKind;
+  role?: string;
+  /** Accessible name for `role`. */
+  name?: string;
+  /** Text, test id, css, or xpath. */
+  value?: string;
+  relation?: Anchor["relation"];
+  /** The stable neighbor. The target's role is `role`. */
+  anchor?: Identity;
+}
+
 export interface WorkflowStep {
   id: string;
   index: number;
@@ -101,6 +118,8 @@ export interface WorkflowStep {
   postcondition?: Postcondition;
   expect?: Expectation;
   anchor?: Anchor;
+  /** Tried in order. Absent means the identity scorer is the only locator. */
+  locators?: StepLocator[];
   timeoutMs: number;
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
   unresolved?: { reason: string };
@@ -177,6 +196,11 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
       errors.push(`coordinates ${step.id}`);
     }
     if (step.action === "verify" && !step.expect && !step.postcondition) errors.push(`verify ${step.id}`);
+    for (const locator of step.locators ?? []) {
+      if (locator.kind === "role" && (!locator.role || locator.name == null)) errors.push(`role locator ${step.id}`);
+      if (locator.kind === "anchor" && (!locator.relation || !locator.anchor)) errors.push(`anchor locator ${step.id}`);
+      if (locator.kind !== "role" && locator.kind !== "anchor" && !locator.value) errors.push(`locator value ${step.id}`);
+    }
   });
   return errors;
 }

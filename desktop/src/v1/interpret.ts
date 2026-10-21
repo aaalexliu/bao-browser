@@ -2,7 +2,8 @@
 // Secrets become inputs. File paths are dropped. No model is required.
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
-import type { Identity, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { locatorsFromIdentity } from "./locators";
+import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
 
 export interface TrailEvent {
@@ -20,6 +21,7 @@ export interface TrailEvent {
   checked?: boolean;
   provenance?: WorkflowStep["provenance"];
   identity?: Identity;
+  locators?: StepLocator[];
   beforeUrl?: string;
   afterUrl?: string;
   afterText?: string;
@@ -111,13 +113,15 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
 
 function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[]): WorkflowStep {
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
+  const identity = stripSecretValue(event.identity, meta.secrets ?? []);
   const step: WorkflowStep = {
     id: `${meta.id}-${index}`,
     index,
     action: "click",
     label: event.op,
     surface,
-    identity: stripSecretValue(event.identity, meta.secrets ?? []),
+    identity,
+    locators: scrubLocators(event.locators?.length ? event.locators : locatorsFromIdentity(identity), meta.secrets ?? []),
     timeoutMs: 8000,
     provenance: event.provenance,
   };
@@ -268,6 +272,16 @@ function addInput(inputs: WorkflowInput[], type: WorkflowInput["type"], hint: st
   return input;
 }
 
+function scrubLocators(list: StepLocator[] | undefined, secrets: string[]): StepLocator[] | undefined {
+  if (!list || list.length === 0) return undefined;
+  const out = list.flatMap((locator) => {
+    const blob = `${locator.name || ""} ${locator.value || ""}`;
+    if (secrets.some((secret) => secret && blob.includes(secret))) return [];
+    return [locator];
+  });
+  return out.length ? out : undefined;
+}
+
 function stripSecretValue(identity: Identity | undefined, secrets: string[]): Identity | undefined {
   if (!identity) return undefined;
   const copy = { ...identity, path: identity.path.map((seg) => ({ ...seg })) };
@@ -297,6 +311,7 @@ function parameterizeDigits(steps: WorkflowStep[], inputs: WorkflowInput[]): Wor
       value: `{{${input.name}}}`,
       label: `Enter {{${input.name}}}`,
       identity: sample.identity ? { ...sample.identity, name: undefined, text: undefined, title: undefined } : undefined,
+      locators: undefined,
       postcondition: { kind: "element", timeoutMs: 4000 },
     });
     i += run.length;

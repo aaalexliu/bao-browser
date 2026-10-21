@@ -38,12 +38,20 @@ export function textScore(a: string, b: string): number {
   return (2 * shared) / (left.size + right.size);
 }
 
-/** A unique label close to the step's intent. Ties and weak scores are refused. */
-export function labelCandidate(step: WorkflowStep, nodes: Identity[]): { index: number; detail: string } | undefined {
+/** A unique label close to the step's intent. Ties, weak scores, and collapsed boxes are refused. */
+export function labelCandidate(
+  step: WorkflowStep,
+  nodes: Identity[],
+  boxes?: Box[],
+): { index: number; detail: string } | undefined {
   const want = intentText(step);
   if (!want) return undefined;
   const ranked = nodes.map((node, index) => ({ index, score: scoreNode(want, node, step) }))
     .filter((item) => item.score >= ACCEPT)
+    .filter((item) => {
+      const box = boxes?.[item.index];
+      return !box || box.w > 0 || box.h > 0;
+    })
     .sort((a, b) => b.score - a.score);
   const best = ranked[0];
   const second = ranked[1];

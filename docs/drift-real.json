@@ -1,0 +1,1252 @@
+{
+  "primary": {
+    "generatedAt": "2026-10-21T18:42:48.014Z",
+    "rows": [
+      {
+        "workflow": "wikipedia-search",
+        "change": "move",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "move",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "move",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "move",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "move",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "move",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "resize",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": false,
+        "brokenAttr": "role",
+        "fixedBy": "none",
+        "reason": "locate: below-threshold"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "resize",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": false,
+        "reason": "not reached",
+        "na": true
+      },
+      {
+        "workflow": "python-search",
+        "change": "resize",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "resize",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "resize",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "resize",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "scale",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "scale",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "scale",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "scale",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "scale",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "scale",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-dark",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-dark",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-dark",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-dark",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-dark",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "theme-dark",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-light",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-light",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-light",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-light",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-light",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "theme-light",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "font",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "font",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "font",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "font",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "font",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "font",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "lang",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": false,
+        "brokenAttr": "role",
+        "fixedBy": "none",
+        "reason": "locate: below-threshold"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "lang",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": false,
+        "reason": "not reached",
+        "na": true
+      },
+      {
+        "workflow": "python-search",
+        "change": "lang",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": false,
+        "brokenAttr": "role",
+        "fixedBy": "none",
+        "reason": "locate: below-threshold"
+      },
+      {
+        "workflow": "python-search",
+        "change": "lang",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": false,
+        "reason": "not reached",
+        "na": true
+      },
+      {
+        "workflow": "python-search",
+        "change": "lang",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": false,
+        "reason": "not reached",
+        "na": true
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "lang",
+        "stepId": "lang",
+        "passed": false,
+        "na": true,
+        "reason": "this site has no second language"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "slow",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "slow",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "slow",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "slow",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "slow",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "slow",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "internet-add",
+        "change": "stale-label",
+        "stepId": "wf-add-0",
+        "label": "Click \"Add Element\"",
+        "passed": true,
+        "brokenAttr": "role",
+        "fixedBy": "label",
+        "reason": "Add Element ~ Add Element (1.00)"
+      }
+    ],
+    "summary": [
+      {
+        "change": "move",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "resize",
+        "passed": 4,
+        "failed": 1,
+        "na": 1,
+        "rate": 0.8
+      },
+      {
+        "change": "scale",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-dark",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-light",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "font",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "lang",
+        "passed": 0,
+        "failed": 2,
+        "na": 4,
+        "rate": 0
+      },
+      {
+        "change": "slow",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "stale-label",
+        "passed": 1,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ],
+    "steps": [
+      {
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": 6,
+        "failed": 2,
+        "na": 0,
+        "rate": 0.75
+      },
+      {
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": 6,
+        "failed": 0,
+        "na": 2,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": 7,
+        "failed": 1,
+        "na": 0,
+        "rate": 0.875
+      },
+      {
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": 7,
+        "failed": 0,
+        "na": 1,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": 7,
+        "failed": 0,
+        "na": 1,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "lang",
+        "passed": 0,
+        "failed": 0,
+        "na": 1,
+        "rate": 0
+      },
+      {
+        "stepId": "wf-add-0",
+        "label": "Click \"Add Element\"",
+        "passed": 1,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ],
+    "workflows": [
+      {
+        "workflow": "wikipedia-search",
+        "passed": 12,
+        "failed": 2,
+        "na": 2,
+        "rate": 0.8571428571428571
+      },
+      {
+        "workflow": "python-search",
+        "passed": 21,
+        "failed": 1,
+        "na": 2,
+        "rate": 0.9545454545454546
+      },
+      {
+        "workflow": "internet-dynamic",
+        "passed": 7,
+        "failed": 0,
+        "na": 1,
+        "rate": 1
+      },
+      {
+        "workflow": "internet-add",
+        "passed": 1,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ]
+  },
+  "multi": {
+    "generatedAt": "2026-10-21T18:42:48.014Z",
+    "rows": [
+      {
+        "workflow": "wikipedia-search",
+        "change": "move",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "move",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "move",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "move",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "move",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "move",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "resize",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": false,
+        "brokenAttr": "role",
+        "fixedBy": "none",
+        "reason": "locate: below-threshold"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "resize",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": false,
+        "reason": "not reached",
+        "na": true
+      },
+      {
+        "workflow": "python-search",
+        "change": "resize",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "resize",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "resize",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "resize",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "scale",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "scale",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "scale",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "scale",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "scale",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "scale",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-dark",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-dark",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-dark",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-dark",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-dark",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "theme-dark",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-light",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "theme-light",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-light",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-light",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "theme-light",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "theme-light",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "font",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "font",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "font",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "font",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "font",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "font",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "lang",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "brokenAttr": "role",
+        "fixedBy": "locator:css",
+        "locator": "css",
+        "reason": "css Buscar en Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "lang",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "lang",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "brokenAttr": "role",
+        "fixedBy": "locator:css",
+        "locator": "css",
+        "reason": "css Búsqueda"
+      },
+      {
+        "workflow": "python-search",
+        "change": "lang",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "brokenAttr": "role",
+        "fixedBy": "locator:css",
+        "locator": "css",
+        "reason": "css Búsqueda"
+      },
+      {
+        "workflow": "python-search",
+        "change": "lang",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "lang",
+        "stepId": "lang",
+        "passed": false,
+        "na": true,
+        "reason": "this site has no second language"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "slow",
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search Wikipedia"
+      },
+      {
+        "workflow": "wikipedia-search",
+        "change": "slow",
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "python-search",
+        "change": "slow",
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "slow",
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Search"
+      },
+      {
+        "workflow": "python-search",
+        "change": "slow",
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": true,
+        "brokenAttr": "expect",
+        "fixedBy": "wait",
+        "reason": "expect became true"
+      },
+      {
+        "workflow": "internet-dynamic",
+        "change": "slow",
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": true,
+        "locator": "role",
+        "reason": "role Start"
+      },
+      {
+        "workflow": "internet-add",
+        "change": "stale-label",
+        "stepId": "wf-add-0",
+        "label": "Click \"Add Element\"",
+        "passed": true,
+        "brokenAttr": "role",
+        "fixedBy": "label",
+        "reason": "Add Element ~ Add Element (1.00)"
+      }
+    ],
+    "summary": [
+      {
+        "change": "move",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "resize",
+        "passed": 4,
+        "failed": 1,
+        "na": 1,
+        "rate": 0.8
+      },
+      {
+        "change": "scale",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-dark",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "theme-light",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "font",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "lang",
+        "passed": 5,
+        "failed": 0,
+        "na": 1,
+        "rate": 1
+      },
+      {
+        "change": "slow",
+        "passed": 6,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "change": "stale-label",
+        "passed": 1,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ],
+    "steps": [
+      {
+        "stepId": "wf-wikipedia-0",
+        "label": "Type {{search}}",
+        "passed": 7,
+        "failed": 1,
+        "na": 0,
+        "rate": 0.875
+      },
+      {
+        "stepId": "wf-wikipedia-1",
+        "label": "Press Enter",
+        "passed": 7,
+        "failed": 0,
+        "na": 1,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-python-0",
+        "label": "Click \"Search\"",
+        "passed": 8,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-python-1",
+        "label": "Type {{q}}",
+        "passed": 8,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-python-2",
+        "label": "Press Enter",
+        "passed": 8,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "wf-dynamic-0",
+        "label": "Click \"Start\"",
+        "passed": 7,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "stepId": "lang",
+        "passed": 0,
+        "failed": 0,
+        "na": 1,
+        "rate": 0
+      },
+      {
+        "stepId": "wf-add-0",
+        "label": "Click \"Add Element\"",
+        "passed": 1,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ],
+    "workflows": [
+      {
+        "workflow": "wikipedia-search",
+        "passed": 14,
+        "failed": 1,
+        "na": 1,
+        "rate": 0.9333333333333333
+      },
+      {
+        "workflow": "python-search",
+        "passed": 24,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      },
+      {
+        "workflow": "internet-dynamic",
+        "passed": 7,
+        "failed": 0,
+        "na": 1,
+        "rate": 1
+      },
+      {
+        "workflow": "internet-add",
+        "passed": 1,
+        "failed": 0,
+        "na": 0,
+        "rate": 1
+      }
+    ]
+  }
+}
