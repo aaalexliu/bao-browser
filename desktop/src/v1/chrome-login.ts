@@ -255,6 +255,24 @@ function asBytes(value: Uint8Array | Buffer | null | undefined): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value);
 }
 
+const BOT_MANAGER_EXACT = new Set([
+  "_abck", "bm_sz", "bm_sv", "bm_mi", "bm_so", "ak_bmsc", "sec_cpt",
+  "reese84", "datadome", "_dd_s", "_dd_s_v2",
+]);
+
+/** Akamai, Imperva, and DataDome names. The site should mint a fresh one for this browser. */
+export function isBotManagerCookie(name: string): boolean {
+  const normalized = name.toLowerCase();
+  if (BOT_MANAGER_EXACT.has(normalized)) return true;
+  if (normalized.startsWith("bm_") || normalized.startsWith("ak_bm")) return true;
+  if (normalized.startsWith("visid_incap_") || normalized.startsWith("incap_ses_") || normalized.startsWith("incap_sh_") || normalized.startsWith("nlbi_")) return true;
+  return false;
+}
+
+export function withoutBotManagerCookies<T extends { name: string }>(cookies: readonly T[]): T[] {
+  return cookies.filter((cookie) => !isBotManagerCookie(cookie.name));
+}
+
 export function decryptSiteCookies(rows: readonly CookieRow[], key: Buffer, domain: string): SiteCookie[] {
   const out: SiteCookie[] = [];
   for (const row of rows) {
@@ -345,7 +363,7 @@ export async function loadChromeSiteCookies(opts: {
     const cookies = await withCookiesCopy(source, (dbPath) => {
       const rows = readSiteCookieRows(dbPath, domain);
       if (rows.length === 0) throw new Error("zero matching cookies");
-      return decryptSiteCookies(rows, key, domain);
+      return withoutBotManagerCookies(decryptSiteCookies(rows, key, domain));
     });
     if (cookies.length === 0) throw new Error("could not decrypt cookies");
     return { cookies, audit: auditRecord(domain, cookies.length) };

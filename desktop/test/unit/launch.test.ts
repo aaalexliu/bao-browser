@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { assessOwnedCommand, browserPidFromLauncher, readOwnedCommand } from "../../src/launch";
+import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -44,6 +44,24 @@ test("a user-data-dir inside the daily profile is refused even when the binary i
   const verdict = assessOwnedCommand(daily, "/Users/alex/Library/Application Support/Google/Chrome");
   assert.equal(verdict.ok, false);
   assert.match(verdict.reason || "", /daily profile/);
+});
+
+test("an account browser uses installed Chrome and skips Playwright automation switches", () => {
+  const args = accountLaunchArgs(9333);
+  assert.match(args.join(" "), /--remote-debugging-port=9333/);
+  assert.equal(args.includes("--enable-automation"), false);
+  assert.equal(args.includes("--disable-extensions"), false);
+  assert.equal(args.includes("--use-mock-keychain"), false);
+  assert.equal(args.includes("--password-store=basic"), false);
+  assert.equal(args.includes("--no-sandbox"), false);
+  assert.throws(() => accountLaunchArgs(9222), /9222/);
+  const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  const bundled = "/tmp/Bao.app/Chromium";
+  if (process.platform === "darwin") {
+    assert.equal(resolveAccountChrome((file) => file === chrome, {}), chrome);
+  }
+  assert.equal(resolveAccountChrome((file) => file === bundled, { BAO_BROWSER: bundled }), bundled);
+  assert.throws(() => resolveAccountChrome(() => false, {}), /Chrome was not found/);
 });
 
 test("remote debugging port 9222 is refused", () => {

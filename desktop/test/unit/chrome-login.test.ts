@@ -22,8 +22,10 @@ import {
   readSiteCookieRows,
   safeImportError,
   injectCookies,
+  isBotManagerCookie,
   toCdpCookies,
   withCookiesCopy,
+  withoutBotManagerCookies,
 } from "../../src/v1/chrome-login";
 
 const OTHER = "SHOULD-NOT-LEAK";
@@ -111,6 +113,24 @@ test("a synthetic cookies database returns only that site, and the temp copy is 
   });
   assert.equal(existsSync(copied), false);
   assert.equal(existsSync(path.dirname(copied)), false);
+});
+
+test("bot-manager cookie names are skipped and a session cookie is kept", () => {
+  assert.equal(isBotManagerCookie("_abck"), true);
+  assert.equal(isBotManagerCookie("bm_sz"), true);
+  assert.equal(isBotManagerCookie("ak_bmsc"), true);
+  assert.equal(isBotManagerCookie("visid_incap_1"), true);
+  assert.equal(isBotManagerCookie("incap_ses_1_2"), true);
+  assert.equal(isBotManagerCookie("reese84"), true);
+  assert.equal(isBotManagerCookie("_dd_s"), true);
+  assert.equal(isBotManagerCookie("session_id"), false);
+  assert.equal(isBotManagerCookie("frozen-status-cookie"), false);
+  const kept = withoutBotManagerCookies([
+    { name: "_abck", value: "bot-token" },
+    { name: "session_id", value: "site-token" },
+  ]);
+  assert.deepEqual(kept.map((cookie) => cookie.name), ["session_id"]);
+  assert.equal(JSON.stringify(kept).includes("bot-token"), false);
 });
 
 test("a host hash prefix is removed and a raw value is left as-is", () => {

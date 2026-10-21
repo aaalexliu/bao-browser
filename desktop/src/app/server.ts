@@ -7,7 +7,7 @@ import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome, pidsForDataDir } from "../launch";
+import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import {
   auditLine,
@@ -370,7 +370,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     if (site && !site.page.isClosed()) return site.page;
     const profile = path.join(opts.home, "site-profile");
     mkdirSync(profile, { recursive: true });
-    const context = await launchOwnedChrome({
+    const context = await launchAccountChrome({
       userDataDir: profile,
       headless: process.env.BAO_HEADED !== "1",
     });
