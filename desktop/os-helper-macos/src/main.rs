@@ -4,7 +4,9 @@
 
 mod act;
 mod apps;
+mod drag;
 mod element;
+mod fixture;
 mod model;
 mod keys;
 mod perms;
@@ -56,7 +58,7 @@ fn hit_json(useful: bool, reason: String, node: Option<model::Node>) -> Value {
 fn run(args: &[String]) -> Result<Value, String> {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("help");
     match cmd {
-        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "move-window", "shot", "key"]})),
+        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "windows-brief", "move-window", "shot", "key", "type-keys", "fixture", "close-window", "drag"]})),
         "permissions" => Ok(perms::report(args.iter().any(|a| a == "--prompt"))),
         "nodes" => {
             let bundle = need(args, "--bundle")?;
@@ -105,6 +107,31 @@ fn run(args: &[String]) -> Result<Value, String> {
             eprintln!("STRATEGY=ax-key");
             Ok(json!({"ok": true, "strategy": "ax-key"}))
         }
+        "type-keys" => {
+            keys::post_text(&need(args, "--bundle")?, &need(args, "--text")?)?;
+            eprintln!("STRATEGY=ax-type");
+            Ok(json!({"ok": true, "strategy": "ax-type"}))
+        }
+        "cg-key" => {
+            keys::post_cg_combo(&need(args, "--bundle")?, &need(args, "--combo")?)?;
+            eprintln!("STRATEGY=cg-key");
+            Ok(json!({"ok": true, "strategy": "cg-key"}))
+        }
+        "cg-type" => {
+            keys::post_cg_text(&need(args, "--bundle")?, &need(args, "--text")?)?;
+            eprintln!("STRATEGY=cg-type");
+            Ok(json!({"ok": true, "strategy": "cg-type"}))
+        }
+        "fixture" => {
+            let manual = flag(args, "--manual").map(|v| v != "off").unwrap_or(true);
+            fixture::write_fixture(&need(args, "--bundle")?, &need(args, "--out")?, &flag(args, "--title").unwrap_or_default(), args.iter().any(|a| a == "--focused"), manual)
+        }
+        "windows-brief" => fixture::windows_brief(&need(args, "--bundle")?, &flag(args, "--allow").unwrap_or_default()),
+        "close-window" => fixture::close_matching(&need(args, "--bundle")?, &need(args, "--title")?),
+        "raise-window" => fixture::raise_matching(&need(args, "--bundle")?, &need(args, "--title")?),
+        "set-window-text" => fixture::set_window_text(&need(args, "--bundle")?, &need(args, "--title")?, &need(args, "--text")?),
+        "confirm-text" => fixture::confirm_containing(&need(args, "--bundle")?, &need(args, "--title")?, &need(args, "--text")?),
+        "drag" => drag::drag(num(args, "--from-x")?, num(args, "--from-y")?, num(args, "--to-x")?, num(args, "--to-y")?),
         "shot" => {
             let bundle = need(args, "--bundle")?;
             let out = PathBuf::from(need(args, "--out")?);

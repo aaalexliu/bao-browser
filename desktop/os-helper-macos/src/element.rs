@@ -131,6 +131,53 @@ pub fn stringify(value: &CFType) -> String {
     attributed(value).unwrap_or_default()
 }
 
+/// One attribute value for a fixture dump. Element references stay opaque.
+/// Points and sizes are rounded. Long lists are capped.
+pub fn describe_attr(value: &CFType) -> String {
+    if let Some((x, y)) = ax_value_point(value) {
+        return format!("{},{}", x.round() as i64, y.round() as i64);
+    }
+    if let Some((w, h)) = ax_value_size(value) {
+        return format!("{},{}", w.round() as i64, h.round() as i64);
+    }
+    let ax_tid = unsafe { AXValueGetTypeID() };
+    if type_is(value, ax_tid) {
+        return "axvalue".into();
+    }
+    let element_tid = unsafe { AXUIElementGetTypeID() };
+    if type_is(value, element_tid) {
+        return "element".into();
+    }
+    if type_is(value, CFArray::<*const c_void>::type_id()) {
+        let arr: CFArray<*const c_void> = unsafe { CFArray::wrap_under_get_rule(value.as_CFTypeRef() as CFArrayRef) };
+        let vals = arr.get_all_values();
+        let n = vals.len();
+        let has_element = vals.iter().any(|ptr| {
+            !ptr.is_null() && unsafe { CFGetTypeID(*ptr as CFTypeRef) } == element_tid
+        });
+        if has_element {
+            return format!("elements:{n}");
+        }
+        let mut parts = Vec::new();
+        for ptr in vals.into_iter().take(8) {
+            if ptr.is_null() {
+                continue;
+            }
+            let item = unsafe { CFType::wrap_under_get_rule(ptr as CFTypeRef) };
+            let text = stringify(&item);
+            if !text.is_empty() {
+                parts.push(text);
+            }
+        }
+        let mut joined = parts.join(" | ");
+        if n > 8 {
+            joined.push_str(" | ...");
+        }
+        return joined;
+    }
+    stringify(value)
+}
+
 pub fn string_attr(el: &El, name: &str) -> String {
     copy_attr(el, name).map(|v| stringify(&v)).unwrap_or_default()
 }

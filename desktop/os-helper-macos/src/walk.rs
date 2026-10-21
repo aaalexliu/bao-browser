@@ -2,8 +2,10 @@ use std::collections::HashSet;
 
 use accessibility_sys::{
     kAXDescriptionAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXValueAttribute,
-    kAXWindowsAttribute, AXUIElementCreateApplication,
+    kAXWindowsAttribute, AXUIElementCreateApplication, AXUIElementPerformAction,
 };
+use core_foundation::base::TCFType;
+use core_foundation::string::CFString;
 use core_graphics::display::CGDisplay;
 
 use crate::apps::pids_for_bundle;
@@ -54,6 +56,10 @@ pub fn screen_size() -> (f64, f64) {
 }
 
 pub fn app_element(bundle: &str) -> Result<(i32, El), String> {
+    app_element_opts(bundle, true)
+}
+
+pub fn app_element_opts(bundle: &str, manual: bool) -> Result<(i32, El), String> {
     let pids = pids_for_bundle(bundle);
     if pids.len() != 1 {
         return Err(format!("expected one process for {bundle}, found {} ({pids:?})", pids.len()));
@@ -61,8 +67,10 @@ pub fn app_element(bundle: &str) -> Result<(i32, El), String> {
     let el = El::adopt(unsafe { AXUIElementCreateApplication(pids[0]) })
         .ok_or_else(|| format!("AXUIElementCreateApplication returned null for {}", pids[0]))?;
     el.timeout();
-    let _ = set_bool(&el, "AXManualAccessibility", true);
-    let _ = set_bool(&el, "AXEnhancedUserInterface", true);
+    if manual {
+        let _ = set_bool(&el, "AXManualAccessibility", true);
+        let _ = set_bool(&el, "AXEnhancedUserInterface", true);
+    }
     Ok((pids[0], el))
 }
 
@@ -190,8 +198,32 @@ fn remember(el: &El, pid: i32, role: &str, frame: Option<Frame>, seen: &mut Seen
     true
 }
 
-fn walk(el: &El, ancestors: &[Seg], bundle: &str, pid: i32, geom: &Geom, out: &mut Vec<Node>, elems: &mut Vec<El>, seen: &mut Seen, depth: i32, budget: &mut i32) {
+struct WalkOpts<'a> {
+    title: &'a str,
+    skip_menu: bool,
+}
+
+fn rejected_window(el: &El, opts: &WalkOpts) -> bool {
+    if opts.title.is_empty() {
+        return false;
+    }
+    let role = role_of(el);
+    if role != "AXWindow" {
+        return false;
+    }
+    let name = best_name(&string_attr(el, kAXTitleAttribute), &string_attr(el, kAXDescriptionAttribute), &string_attr(el, IDENTIFIER));
+    !name.contains(opts.title)
+}
+
+fn walk(el: &El, ancestors: &[Seg], bundle: &str, pid: i32, geom: &Geom, out: &mut Vec<Node>, elems: &mut Vec<El>, seen: &mut Seen, depth: i32, budget: &mut i32, opts: &WalkOpts) {
     if *budget <= 0 || depth > MAX_DEPTH { return; }
+    let role_now = role_of(el);
+    if opts.skip_menu && (role_now == "AXMenuBar" || role_now == "AXMenuBarItem") {
+        return;
+    }
+    if rejected_window(el, opts) {
+        return;
+    }
     let node = describe(el, ancestors, bundle, pid, geom);
     if !remember(el, pid, &node.role, node.frame.clone(), seen) { return; }
     let Some(kept) = El::retain(el.0) else { return };
@@ -205,7 +237,7 @@ fn walk(el: &El, ancestors: &[Seg], bundle: &str, pid: i32, geom: &Geom, out: &m
     let mut next = ancestors.to_vec();
     next.push(Seg { role: role.clone(), name });
     for child in follow(el, &role) {
-        walk(&child, &next, bundle, pid, geom, out, elems, seen, depth + 1, budget);
+        walk(&child, &next, bundle, pid, geom, out, elems, seen, depth + 1, budget, opts);
     }
 }
 
@@ -246,28 +278,53 @@ pub struct LiveTree {
 }
 
 pub fn harvest(bundle: &str) -> Result<LiveTree, String> {
-    let (pid, app) = app_element(bundle)?;
-    let geom = detect_geom(pid, &app);
+    harvest_opts(bundle, true)
+}
+
+pub fn harvest_opts(bundle: &str, manual: bool) -> Result<LiveTree, String> {
+    harvest_filtered(bundle, manual, "", false)
+}
+
+/// `title` keeps one window. Other windows are not described and their values
+/// are not copied. `skip_menu` drops the menu bar before its items are read.
+pub fn harvest_filtered(bundle: &str, manual: bool, title: &str, skip_menu: bool) -> Result<LiveTree, String> {
+    let (pid, app) = app_element_opts(bundle, manual)?;
+    let mut geom = detect_geom(pid, &app);
     let mut out = Vec::new();
     let mut elems = Vec::new();
     let mut seen = Seen { ptrs: HashSet::new(), elems: Vec::new(), shapes: HashSet::new() };
     let mut budget = MAX_NODES;
-    walk(&app, &[], bundle, pid, &geom, &mut out, &mut elems, &mut seen, 0, &mut budget);
+    let opts = WalkOpts { title, skip_menu };
+    walk(&app, &[], bundle, pid, &geom, &mut out, &mut elems, &mut seen, 0, &mut budget, &opts);
+    if !title.is_empty() {
+        let matched = out.iter().zip(elems.iter()).find(|(node, _)| {
+            (node.role == "AXWindow" || node.role == "AXSheet") && node.name.contains(title)
+        });
+        if let Some((node, el)) = matched {
+            let action = CFString::new("AXRaise");
+            let _ = unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) };
+            geom.ax_window = node.ax_frame.clone();
+        } else {
+            geom.ax_window = None;
+        }
+    }
     let mut expanded = HashSet::new();
     for seed in hits_in_window(pid, &geom) {
         if budget <= 0 {
             break;
         }
         for el in ancestor_chain(seed, pid) {
-            let _ = set_bool(&el, "AXManualAccessibility", true);
-            let _ = set_bool(&el, "AXEnhancedUserInterface", true);
+            if manual {
+                let _ = set_bool(&el, "AXManualAccessibility", true);
+                let _ = set_bool(&el, "AXEnhancedUserInterface", true);
+            }
             let role = role_of(&el);
             let depth = if role == "AXApplication" { 1 } else { 0 };
-            walk(&el, &ancestor_path(&el), bundle, pid, &geom, &mut out, &mut elems, &mut seen, depth, &mut budget);
+            walk(&el, &ancestor_path(&el), bundle, pid, &geom, &mut out, &mut elems, &mut seen, depth, &mut budget, &opts);
             if expanded.insert(el.0 as usize) && !skip_children(&role) && role != "AXApplication" {
                 for child in follow(&el, &role) {
                     let child_depth = if role_of(&child) == "AXApplication" { 1 } else { 0 };
-                    walk(&child, &ancestor_path(&child), bundle, pid, &geom, &mut out, &mut elems, &mut seen, child_depth, &mut budget);
+                    walk(&child, &ancestor_path(&child), bundle, pid, &geom, &mut out, &mut elems, &mut seen, child_depth, &mut budget, &opts);
                 }
             }
         }

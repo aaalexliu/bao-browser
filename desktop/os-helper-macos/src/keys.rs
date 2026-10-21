@@ -7,8 +7,16 @@ use std::time::Duration;
 use accessibility_sys::{AXUIElementPerformAction, AXUIElementPostKeyboardEvent};
 use core_foundation::base::TCFType;
 use core_foundation::string::CFString;
+use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, EventField};
+use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+use foreign_types::ForeignType;
 
-use crate::element::{ax_ok, copy_attr, element_list, set_bool, El};
+use crate::element::{ax_ok, copy_attr, element_list, set_bool, string_attr, El};
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGEventSourceSetLocalEventsSuppressionInterval(source: *mut std::ffi::c_void, seconds: f64);
+}
 use crate::walk::app_element;
 
 const CMD: u16 = 0x37;
@@ -31,7 +39,8 @@ fn key_code(name: &str) -> Result<u16, String> {
         "p" => 0x23, "return" | "enter" => 0x24, "l" => 0x25, "j" => 0x26,
         "k" => 0x28, "n" => 0x2D, "m" => 0x2E, "tab" => 0x30, "space" => 0x31,
         "delete" | "backspace" => 0x33, "escape" | "esc" => 0x35,
-        "plus" | "equals" => 0x18, "minus" => 0x1B, "period" | "point" => 0x2F,
+        "plus" | "equals" => 0x18, "minus" | "hyphen" => 0x1B, "period" | "point" => 0x2F,
+        "slash" => 0x2C, "semicolon" => 0x29, "comma" => 0x2B,
         "left" => 0x7B, "right" => 0x7C, "down" => 0x7D, "up" => 0x7E,
         "cmd" | "command" | "meta" => CMD,
         "shift" => SHIFT,
@@ -78,6 +87,124 @@ fn post(app: &El, code: u16, down: bool) -> Result<(), String> {
     ax_ok(unsafe { AXUIElementPostKeyboardEvent(app.0, 0, code, down) }, "AXUIElementPostKeyboardEvent")
 }
 
+/// US ANSI. `shift` is true when the character needs the shift modifier.
+pub fn text_key(ch: char) -> Result<(u16, bool), String> {
+    match ch {
+        'a'..='z' | '0'..='9' => Ok((key_code(&ch.to_string())?, false)),
+        'A'..='Z' => Ok((key_code(&ch.to_ascii_lowercase().to_string())?, true)),
+        ' ' => Ok((key_code("space")?, false)),
+        '.' => Ok((key_code("period")?, false)),
+        '/' => Ok((key_code("slash")?, false)),
+        '-' => Ok((key_code("hyphen")?, false)),
+        '_' => Ok((key_code("hyphen")?, true)),
+        ':' => Ok((key_code("semicolon")?, true)),
+        ';' => Ok((key_code("semicolon")?, false)),
+        ',' => Ok((key_code("comma")?, false)),
+        '\n' => Ok((key_code("return")?, false)),
+        _ => Err(format!("unsupported text character {ch}")),
+    }
+}
+
+pub fn post_text(bundle: &str, text: &str) -> Result<(), String> {
+    let (_pid, app) = app_element(bundle)?;
+    raise(&app);
+    thread::sleep(Duration::from_millis(80));
+    for ch in text.chars() {
+        let (code, shift) = text_key(ch)?;
+        if shift {
+            post(&app, SHIFT, true)?;
+        }
+        post(&app, code, true)?;
+        post(&app, code, false)?;
+        if shift {
+            post(&app, SHIFT, false)?;
+        }
+        thread::sleep(Duration::from_millis(12));
+    }
+    Ok(())
+}
+
+fn frontmost(app: &El) -> bool {
+    matches!(string_attr(app, "AXFrontmost").as_str(), "true" | "1")
+}
+
+fn cg_source() -> Result<CGEventSource, String> {
+    let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState).map_err(|_| "CGEventSourceCreate failed".to_string())?;
+    unsafe { CGEventSourceSetLocalEventsSuppressionInterval(src.as_ptr() as *mut _, 0.0) };
+    Ok(src)
+}
+
+fn cg_flags(mods: &[u16]) -> CGEventFlags {
+    let mut flags = CGEventFlags::empty();
+    for modifier in mods {
+        flags |= match *modifier {
+            CMD => CGEventFlags::CGEventFlagCommand,
+            SHIFT => CGEventFlags::CGEventFlagShift,
+            OPTION => CGEventFlags::CGEventFlagAlternate,
+            CTRL => CGEventFlags::CGEventFlagControl,
+            _ => CGEventFlags::empty(),
+        };
+    }
+    flags
+}
+
+fn cg_key(src: &CGEventSource, code: u16, down: bool, flags: CGEventFlags) -> Result<(), String> {
+    let event = CGEvent::new_keyboard_event(src.clone(), code, down).map_err(|_| "CGEventCreateKeyboardEvent failed".to_string())?;
+    event.set_flags(flags);
+    if down {
+        event.set_integer_value_field(EventField::KEYBOARD_EVENT_AUTOREPEAT, 0);
+    }
+    event.post(CGEventTapLocation::HID);
+    Ok(())
+}
+
+/// Posts a combo through CGEvent only after the target app is frontmost.
+/// A key is not posted when AXFrontmost stays false.
+pub fn post_cg_combo(bundle: &str, combo: &str) -> Result<(), String> {
+    let (key, mods) = parse_combo(combo)?;
+    let (_pid, app) = app_element(bundle)?;
+    raise(&app);
+    thread::sleep(Duration::from_millis(150));
+    if !frontmost(&app) {
+        return Err("app did not become frontmost; key was not posted".into());
+    }
+    let src = cg_source()?;
+    let flags = cg_flags(&mods);
+    for modifier in &mods {
+        cg_key(&src, *modifier, true, flags)?;
+    }
+    cg_key(&src, key, true, flags)?;
+    cg_key(&src, key, false, flags)?;
+    for modifier in mods.iter().rev() {
+        cg_key(&src, *modifier, false, CGEventFlags::empty())?;
+    }
+    Ok(())
+}
+
+pub fn post_cg_text(bundle: &str, text: &str) -> Result<(), String> {
+    let (_pid, app) = app_element(bundle)?;
+    raise(&app);
+    thread::sleep(Duration::from_millis(150));
+    if !frontmost(&app) {
+        return Err("app did not become frontmost; text was not posted".into());
+    }
+    let src = cg_source()?;
+    for ch in text.chars() {
+        let (code, shift) = text_key(ch)?;
+        let flags = if shift { CGEventFlags::CGEventFlagShift } else { CGEventFlags::empty() };
+        if shift {
+            cg_key(&src, SHIFT, true, flags)?;
+        }
+        cg_key(&src, code, true, flags)?;
+        cg_key(&src, code, false, flags)?;
+        if shift {
+            cg_key(&src, SHIFT, false, CGEventFlags::empty())?;
+        }
+        thread::sleep(Duration::from_millis(12));
+    }
+    Ok(())
+}
+
 pub fn post_combo(bundle: &str, combo: &str) -> Result<(), String> {
     let (key, mods) = parse_combo(combo)?;
     let (_pid, app) = app_element(bundle)?;
@@ -107,5 +234,9 @@ mod tests {
         assert_eq!(mods, vec![0x37, 0x38]);
         assert!(parse_combo("cmd").is_err());
         assert!(parse_combo("").is_err());
+        assert_eq!(super::text_key('/').unwrap(), (0x2C, false));
+        assert_eq!(super::text_key(':').unwrap(), (0x29, true));
+        assert_eq!(super::text_key('-').unwrap(), (0x1B, false));
+        assert_eq!(super::parse_combo("cmd+shift+g").unwrap().0, 0x05);
     }
 }

@@ -244,6 +244,17 @@ is still the source of truth for the extension.
   `AXSize` still returns `-25200`. Codex TextEdit set `hello from bao`.
   Interpret kept one `osSetValue` of `{{text}}`. Replay wrote `alpha one` and
   `beta two`. TextEdit's width changed. Its origin did not.
+- **2026-10-20 - macOS 26 accessibility fixtures.** Raw trees for Calculator,
+  TextEdit, a Finder window on a `/tmp` folder, a Safari private window on
+  `the-internet.herokuapp.com`, and a throwaway Electron app are in
+  `fixtures/ax/macos-26/`. Calculator keys are in the tree: description is the
+  visible label, identifier is the stable token. TextEdit's text area
+  identifier is `First Text View`. Safari navigated by `AXValue` plus
+  `AXConfirm` on the private address field. AX keyboard posting is accepted
+  and ignored. CGEvent posting opens TextEdit's Open panel when that app is
+  frontmost, and a CGEvent drag moves the pointer without starting a file drag.
+  Electron exposes `bao-button` only after `accessibilitySupportEnabled` is
+  set once the app is ready.
 
 ---
 

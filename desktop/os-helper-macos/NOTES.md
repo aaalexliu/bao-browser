@@ -229,3 +229,25 @@ width. It did not on Calculator.
 
 Listing TextEdit's autosave directory hung in this session, so new Untitled
 autosave files were not deleted. Their contents were not read.
+
+## 2026-10-20, fixtures
+
+`fixture` writes one window: role, subrole, identifier, title, description,
+label, value, frame, enabled, focused, actions, child order, and the other
+attribute names. Element references are the word `element`. A title filter
+skips every other window before its value is copied. The menu bar is skipped.
+`type-keys` posts US ANSI characters, including `/`. `cg-key` and `cg-type`
+post the same chords through CGEvent only after `AXFrontmost` is true.
+`drag` posts a left-button drag and records whether the pointer moved.
+
+On this machine CGEvent mouse positions match accessibility top-left points.
+A drag from a Finder file icon onto TextEdit moved the pointer and did not
+change the document value. AX keyboard posting is accepted and TextEdit
+ignores it. CGEvent posting opens the Open panel and the Go to Folder sheet
+when TextEdit is frontmost. The sheet field exposes `AXConfirm`.
+
+Calculator keys are in `AXChildren` in this dump. Description is the visible
+label and identifier is the stable token (`Seven`, `AllClear`). TextEdit's
+text area identifier is `First Text View`. Safari's private-window address
+field accepts `AXValue` plus `AXConfirm`. An Electron window stays one empty
+role until `app.accessibilitySupportEnabled` is set after `app.whenReady`.

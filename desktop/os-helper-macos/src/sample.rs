@@ -16,6 +16,12 @@ pub fn sample_step(w: f64, h: f64) -> f64 {
     step
 }
 
+pub fn element_at_point(x: f64, y: f64) -> Option<El> {
+    let sys = El::adopt(unsafe { AXUIElementCreateSystemWide() })?;
+    sys.timeout_secs(0.35);
+    element_at(&sys, x, y)
+}
+
 fn element_at(sys: &El, x: f64, y: f64) -> Option<El> {
     let mut raw: AXUIElementRef = std::ptr::null_mut();
     let err = unsafe { AXUIElementCopyElementAtPosition(sys.0, x as f32, y as f32, &mut raw) };
