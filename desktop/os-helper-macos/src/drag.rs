@@ -118,8 +118,22 @@ pub fn drag(from_x: f64, from_y: f64, to_x: f64, to_y: f64) -> Result<Value, Str
         "cursorAfter": point(after),
         "from": {"x": from_x.round() as i64, "y": from_y.round() as i64},
         "to": {"x": to_x.round() as i64, "y": to_y.round() as i64},
+        "fileDrag": false,
+        "fallback": "open-panel",
         "note": "A moved cursor is not a Finder file drag. The destination value has to change before the drag counts as opening the file.",
     }))
+}
+
+/// A helper process cannot start an NSDraggingSession for another app.
+/// Replay fills the Open panel instead of pretending the pointer drag dropped a file.
+pub fn file_drag_fallback(path: &str) -> Value {
+    json!({
+        "ok": false,
+        "fileDrag": false,
+        "fallback": "open-panel",
+        "path": path,
+        "reason": "NSDraggingSession has to start in the source app. A CGEvent drag from this helper moves the pointer and does not offer the file. Use the Open panel: CGEvent keys only while the app is frontmost, then AXConfirm on the Go to Folder sheet.",
+    })
 }
 
 #[cfg(test)]
@@ -130,5 +144,14 @@ mod tests {
     fn flips_a_top_origin_against_the_display_height() {
         assert_eq!(bottom_left_y(1117.0, 0.0), 1117.0);
         assert_eq!(bottom_left_y(1117.0, 100.0), 1017.0);
+    }
+
+    #[test]
+    fn file_drag_falls_back_to_the_open_panel() {
+        let value = super::file_drag_fallback("/tmp/note.txt");
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["fileDrag"], false);
+        assert_eq!(value["fallback"], "open-panel");
+        assert_eq!(value["path"], "/tmp/note.txt");
     }
 }

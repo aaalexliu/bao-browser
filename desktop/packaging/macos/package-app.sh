@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build Bao.app and a dmg on a Mac. Signing identity defaults to "bao dev signing".
 # No notarization. The OS helper is a separate bundle copied into Resources.
+# The product window is Playwright's Chromium copied into the app.
+# An installed Chrome is not launched.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
@@ -16,20 +18,21 @@ cp -a desktop/src/app/public "$APP/Contents/Resources/bao/public"
 if [[ -d desktop/os-helper-macos/BaoOSHelper.app ]]; then
   cp -a desktop/os-helper-macos/BaoOSHelper.app "$APP/Contents/Resources/BaoOSHelper.app"
 fi
-cat > "$APP/Contents/MacOS/bao" <<'EOF'
-#!/bin/bash
-ROOT="$(cd "$(dirname "$0")/../Resources/bao" && pwd)"
-export BAO_PUBLIC="$ROOT/public"
-export BAO_HOME="${BAO_HOME:-$HOME/Library/Application Support/bao}"
-PORT="${BAO_PORT:-4787}"
-cd "$ROOT"
-node src/app/cli.js serve --home "$BAO_HOME" --port "$PORT" &
-sleep 0.5
-open -na "Google Chrome" --args --app="http://127.0.0.1:${PORT}" --user-data-dir="$BAO_HOME/ui-profile" --no-first-run
-wait
-EOF
-chmod +x "$APP/Contents/MacOS/bao"
-codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
+
+BROWSER="$(node -e "const {chromium}=require('playwright'); process.stdout.write(chromium.executablePath())")"
+if [[ ! -x "$BROWSER" ]]; then
+  npx playwright install chromium
+  BROWSER="$(node -e "const {chromium}=require('playwright'); process.stdout.write(chromium.executablePath())")"
+fi
+if [[ "$BROWSER" != *".app/"* ]]; then
+  echo "package-app.sh bundles Playwright Chromium.app and must run on macOS (got $BROWSER)" >&2
+  exit 1
+fi
+CHROMIUM_APP="$(cd "$(dirname "$BROWSER")/../.." && pwd)"
+cp -a "$CHROMIUM_APP" "$APP/Contents/Resources/Chromium.app"
+
+clang -O2 -o "$APP/Contents/MacOS/bao" desktop/packaging/macos/bao-main.c
+codesign --force --deep --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"
 echo "WROTE $APP"
 echo "WROTE $DIST/Bao.dmg"

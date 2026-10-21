@@ -15,9 +15,9 @@ bash desktop/os-helper-macos/package-app.sh
 bash desktop/packaging/macos/package-app.sh
 ```
 
-`package-app.sh` for the helper builds `desktop/os-helper-macos/BaoOSHelper.app` (`dev.bao.oshelper`). The desktop script builds `desktop/packaging/macos/dist/Bao.app` (`dev.bao.desktop`) and a dmg next to it. Both are signed with `BAO_SIGN_IDENTITY`. There is no notarization step.
+`package-app.sh` for the helper builds `desktop/os-helper-macos/BaoOSHelper.app` (`dev.bao.oshelper`). The desktop script builds `desktop/packaging/macos/dist/Bao.app` (`dev.bao.desktop`) and a dmg next to it. Both are signed with `BAO_SIGN_IDENTITY`. There is no notarization step. The desktop script compiles `bao-main.c` into `Contents/MacOS/bao` and copies Playwright's Chromium into `Contents/Resources`. It does not open Google Chrome. `npx playwright install chromium` runs first if that browser is not already downloaded.
 
-Open `Bao.app`. If it is a script bundle, Gatekeeper may say it is from an unidentified developer. Right-click → Open once. Do not rebuild the helper after the grant, or the signature changes and macOS asks again.
+Open `Bao.app`. Gatekeeper may say it is from an unidentified developer. Right-click → Open once. Do not rebuild the helper after the grant, or the signature changes and macOS asks again.
 
 ## Permissions
 
@@ -26,7 +26,7 @@ Open `Bao.app`. If it is a script bundle, Gatekeeper may say it is from an unide
 3. Same pane, Screen Recording → enable `BaoOSHelper`.
 4. Quit and relaunch the helper. `BaoOSHelper.app/Contents/MacOS/bao-os-macos permissions` should report both true.
 
-The app itself does not need Accessibility. Chrome will ask for nothing beyond a normal window.
+The app itself does not need Accessibility. The bundled Chromium is a normal window. It is not the Chrome profile you use for daily browsing.
 
 ## Record
 
@@ -40,22 +40,19 @@ The app itself does not need Accessibility. Chrome will ask for nothing beyond a
 
 1. Replay. The form lists every input before Run. Fill a different username and a different file than the capture.
 2. Run. Each step goes pass or fail. The fixture page shows the new username.
-3. Move and resize the Chrome window.
+3. Move the browser window. Calculator cannot be resized: `AXSize` returns `-25200`, and that drift row is n/a.
 4. Run again with a third username. It should pass without using the old coordinates.
 5. Optional: Settings → Approve before applying. Break a step's `testId` in the library editor, run again. With no API key the run stops on that step and shows the snapshot. With a key and the setting on approve, it pauses on the proposal. Auto (the default) continues only when a key is set.
 
-## Calculator, after the walk is fixed
+## Calculator and TextEdit
 
-The 2026-10-20 spike could hit-test Calculator's `7`, `Add`, `5`, and `Equals`, but the tree walk did not contain them, so press-by-name missed. Do not paper over that with a click at the stored point.
+The macOS 26 dumps are already in `fixtures/ax/macos-26/`. Calculator keys are in the tree: description is the visible label (`7`, `Add`), identifier is the stable token (`Seven`, `Add`). Do not click a stored point.
 
-When `bao-os-macos nodes --bundle com.apple.calculator` includes those buttons:
+A live Codex run through `bao mcp` (`desktop/src/proxy/mcp-bao.ts`) pressed Clear / All Clear three times, then `7 + 5`, and the display read `12`. Interpret kept `{{a}}`, `Add`, `{{b}}`, `Equals`. Replay of `3+4` and `8+1` read `7` and `9` after the window moved. Resize did not run.
 
-```sh
-# Capture fixtures for the scorer. Commit the dumps.
-bash -c 'see fixtures/ax/macos-26/README.md'
-```
+TextEdit's body is the text area `First Text View`. Interpret kept one `osSetValue` of `{{text}}`. Replay wrote two different strings. The window title may be `Untitled` or `Untitled.rtf`.
 
-Then replay `examples/workflows/calculator.json` with two pairs, for example `a=7 b=5` and `a=5 b=7`, after moving the Calculator window. The label should match the sum. The press command in the helper log must not contain an x,y.
+A file does not drag from this helper. Use the Open panel path in `docs/files-and-drag.md`.
 
 ## Done
 

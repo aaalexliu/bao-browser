@@ -4,6 +4,7 @@
 
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { LiveSession } from "./live";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -24,8 +25,11 @@ export async function mcpMain(): Promise<void> {
   const home = process.env.BAO_HOME || path.join(process.cwd(), ".bao-mcp");
   mkdirSync(home, { recursive: true });
   const trail = path.join(home, "trail.jsonl");
+  const live = process.env.BAO_MCP_LIVE === "1";
+  let session: LiveSession | undefined;
   const input = process.stdin;
   let buf = Buffer.alloc(0);
+  let chain: Promise<void> = Promise.resolve();
   input.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
@@ -39,16 +43,24 @@ export async function mcpMain(): Promise<void> {
       if (buf.length < start + length) return;
       const body = buf.slice(start, start + length).toString("utf8");
       buf = buf.slice(start + length);
-      handle(body, trail);
+      chain = chain.then(() => handle(body, trail, live, () => session, (next) => { session = next; })).catch((err) => {
+        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      });
     }
   });
   await new Promise(() => {});
 }
 
-function handle(body: string, trail: string): void {
+async function handle(
+  body: string,
+  trail: string,
+  live: boolean,
+  getSession: () => LiveSession | undefined,
+  setSession: (session: LiveSession) => void,
+): Promise<void> {
   const msg = JSON.parse(body) as Rpc;
   if (msg.method === "initialize") {
-    return send({
+    send({
       jsonrpc: "2.0",
       id: msg.id,
       result: {
@@ -57,27 +69,45 @@ function handle(body: string, trail: string): void {
         serverInfo: { name: "bao", version: "0.1.0" },
       },
     });
+    return;
   }
   if (msg.method === "notifications/initialized") return;
   if (msg.method === "tools/list") {
-    return send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
+    send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
+    return;
   }
   if (msg.method === "tools/call") {
     const name = msg.params?.name || "";
     const args = msg.params?.arguments || {};
+    if (live) {
+      try {
+        const session = getSession() || await LiveSession.start();
+        setSession(session);
+        const result = await session.call(name, args);
+        send({ jsonrpc: "2.0", id: msg.id, result: { content: result.content, isError: result.isError } });
+      } catch (err) {
+        send({
+          jsonrpc: "2.0",
+          id: msg.id,
+          result: { content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }], isError: true },
+        });
+      }
+      return;
+    }
     const event = {
       kind: name === "screenshot" ? "read" : "act",
       op: name,
       args,
       ts: Date.now(),
-      source: { agent: "mcp", vendor: "bao", adapter: "stdio" },
+      source: { agent: "scripted-driver", vendor: "bao", adapter: "stdio" },
     };
     appendFileSync(trail, JSON.stringify(event) + "\n");
-    return send({
+    send({
       jsonrpc: "2.0",
       id: msg.id,
       result: { content: [{ type: "text", text: name === "screenshot" ? "screenshot recorded" : "OK" }], isError: false },
     });
+    return;
   }
   if (msg.id !== undefined) {
     send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });

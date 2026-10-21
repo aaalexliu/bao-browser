@@ -307,6 +307,17 @@ is still the source of truth for the extension.
   snapshot; the GTK calculator replays `{{a}}+{{b}}` after a move; drift is
   24/24 (`docs/drift-linux.md`); a scripted MCP client writes a click into
   the trail. macOS install steps are `docs/mac-test.md`.
+- **2026-10-21 — macOS 26 fixtures scored, owned browser check fixed.**
+  `fixtures/ax/macos-26/` is the alex-jxp dump set. The scorer treats Calculator
+  descriptions as the visible labels, strips a leading LRM on the display,
+  and treats `Untitled` and `Untitled.rtf` as one window. Calculator resize
+  stays n/a (`AXSize` `-25200`). `launch.ts` reads the launcher pid and
+  `ps -o command=` on macOS, and matches `--user-data-dir` rather than the
+  `Google Chrome.app` binary path. A failed check closes the context.
+  `Bao.app`'s entry is `bao-main.c` plus Playwright's Chromium, not a bash
+  script and not the user's Chrome. `bao mcp` on macOS is `mcp-bao.ts`.
+  `drag-file` reports that a pointer drag is not a file drag and falls back
+  to the Open panel.
 
 ---
 

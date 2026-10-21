@@ -2,11 +2,13 @@
 
 import { startApp } from "./server";
 import { mcpMain } from "../mcp/server";
+import { mcpBaoMain } from "../proxy/mcp-bao";
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (cmd === "mcp") {
-    await mcpMain();
+    if (process.platform === "darwin") await mcpBaoMain();
+    else await mcpMain();
     return;
   }
   if (cmd === "serve" || !cmd) {

@@ -58,7 +58,7 @@ fn hit_json(useful: bool, reason: String, node: Option<model::Node>) -> Value {
 fn run(args: &[String]) -> Result<Value, String> {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("help");
     match cmd {
-        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "windows-brief", "move-window", "shot", "key", "type-keys", "fixture", "close-window", "drag"]})),
+        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "windows-brief", "move-window", "shot", "key", "type-keys", "fixture", "close-window", "drag", "drag-file"]})),
         "permissions" => Ok(perms::report(args.iter().any(|a| a == "--prompt"))),
         "nodes" => {
             let bundle = need(args, "--bundle")?;
@@ -132,6 +132,7 @@ fn run(args: &[String]) -> Result<Value, String> {
         "set-window-text" => fixture::set_window_text(&need(args, "--bundle")?, &need(args, "--title")?, &need(args, "--text")?),
         "confirm-text" => fixture::confirm_containing(&need(args, "--bundle")?, &need(args, "--title")?, &need(args, "--text")?),
         "drag" => drag::drag(num(args, "--from-x")?, num(args, "--from-y")?, num(args, "--to-x")?, num(args, "--to-y")?),
+        "drag-file" => Ok(drag::file_drag_fallback(&need(args, "--path")?)),
         "shot" => {
             let bundle = need(args, "--bundle")?;
             let out = PathBuf::from(need(args, "--out")?);

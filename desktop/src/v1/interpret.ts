@@ -10,6 +10,8 @@ export interface TrailEvent {
   ts: number;
   kind: "read" | "act";
   op: string;
+  /** live-model marks a person or model driving MCP. Scripted drivers use another label. */
+  source?: { agent: string; vendor: string; adapter: string };
   unresolved?: { reason: string };
   sensitive?: boolean;
   value?: string;

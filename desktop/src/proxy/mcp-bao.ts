@@ -341,7 +341,7 @@ function drain(): void {
   }
 }
 
-async function main(): Promise<void> {
+export async function mcpBaoMain(): Promise<void> {
   await mkdir(work, { recursive: true });
   if (shotDir) await mkdir(shotDir, { recursive: true });
   if (ownedPath) {
@@ -354,7 +354,9 @@ async function main(): Promise<void> {
   log("bao mcp ready");
 }
 
-main().catch((err) => {
-  log(err instanceof Error ? err.stack ?? err.message : String(err));
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  mcpBaoMain().catch((err) => {
+    log(err instanceof Error ? err.stack ?? err.message : String(err));
+    process.exitCode = 1;
+  });
+}

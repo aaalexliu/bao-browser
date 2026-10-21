@@ -51,12 +51,28 @@ export function normRole(role: string): string {
 }
 
 export function normText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return value
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function eq(a?: string, b?: string): boolean {
   if (!a || !b) return false;
-  return normText(a) === normText(b);
+  const left = normText(a);
+  const right = normText(b);
+  if (!left || !right) return false;
+  return left === right;
+}
+
+/** TextEdit's untitled window is `Untitled` on one launch and `Untitled.rtf` on the next. */
+export function sameWindowTitle(a?: string, b?: string): boolean {
+  if (eq(a, b)) return true;
+  if (!a || !b) return false;
+  const strip = (value: string) => normText(value).replace(/\.rtf$/i, "");
+  const left = strip(a);
+  const right = strip(b);
+  return left.length > 0 && left === right;
 }
 
 export function unstableId(id: string): boolean {
@@ -84,9 +100,9 @@ function pathEq(a: PathSeg[], b: PathSeg[]): boolean {
 }
 
 function namesMatch(query: Identity, candidate: Identity): boolean {
-  const want = query.name || query.title;
+  const want = query.name || query.title || query.description;
   if (!want) return false;
-  return eq(want, candidate.name) || eq(want, candidate.title) || eq(want, candidate.text);
+  return eq(want, candidate.name) || eq(want, candidate.title) || eq(want, candidate.description) || eq(want, candidate.text);
 }
 
 export function scoreIdentity(query: Identity, candidate: Identity): Omit<Score, "index"> {
@@ -115,9 +131,11 @@ export function scoreIdentity(query: Identity, candidate: Identity): Omit<Score,
     if (query.name) add("name", 50, namesMatch(query, candidate));
     if (query.title && !eq(query.title, query.name)) add("title", 40, eq(query.title, candidate.title) || eq(query.title, candidate.name));
     if (query.description) add("description", 25, eq(query.description, candidate.description));
-    if (query.value && normRole(query.role) === "statictext") add("value", 55, eq(query.value, candidate.value) || eq(query.value, candidate.name));
+    if (query.value && normRole(query.role) === "statictext") {
+      add("value", 55, normRole(candidate.role) === "statictext" && (eq(query.value, candidate.value) || eq(query.value, candidate.name)));
+    }
     if (query.path.length > 0) add("path", 20, pathEq(query.path, candidate.path));
-    if (query.windowTitle) add("windowTitle", 10, eq(query.windowTitle, candidate.windowTitle));
+    if (query.windowTitle) add("windowTitle", 10, sameWindowTitle(query.windowTitle, candidate.windowTitle));
     if (query.siblingIndex != null) add("siblingIndex", 8, query.siblingIndex === candidate.siblingIndex);
   }
 
@@ -187,6 +205,13 @@ export function lookup(query: Identity, candidates: Identity[]): Lookup {
     };
   }
   if (second && margin < MARGIN) {
+    const left = candidates[best.index];
+    const right = candidates[second.index];
+    // The mac dumps list one AX element twice (nested, then with its attributes).
+    // The same identifier is one control. Two Save buttons with no identifier stay a tie.
+    if (left && right && sameAxIdentifier(left, right)) {
+      return { ok: true, index: best.index, score: best.score, margin, ranked };
+    }
     return {
       ok: false,
       reason: "tie",
@@ -223,21 +248,41 @@ export interface AxDumpNode {
   app?: string;
 }
 
+function present(value?: string): string | undefined {
+  if (!value) return undefined;
+  return normText(value) || undefined;
+}
+
 export function fromAxNode(node: AxDumpNode, extra?: { bundleId?: string; windowTitle?: string }): Identity {
+  const title = present(node.title);
+  const description = present(node.description);
+  const value = present(node.value);
+  // Calculator's AXTitle is empty. AXDescription is the visible label.
+  // Finder file names are the AXValue of an AXTextField, and that value is not a path.
+  let name = present(node.name) || title || description;
+  if (!name && value && normRole(node.role) === "textbox" && !value.startsWith("/") && !value.includes("\\")) {
+    name = value;
+  }
   return {
     surface: "ax",
     role: node.role,
     subrole: node.subrole || undefined,
-    identifier: node.identifier || undefined,
-    name: node.name || node.title || undefined,
-    title: node.title || undefined,
-    description: node.description || undefined,
-    value: node.value || undefined,
+    identifier: present(node.identifier),
+    name,
+    title,
+    description,
+    value,
     app: node.app,
     bundleId: extra?.bundleId,
     windowTitle: extra?.windowTitle,
     path: node.path || [],
   };
+}
+
+function sameAxIdentifier(a: Identity, b: Identity): boolean {
+  if (a.surface === "dom" || b.surface === "dom") return false;
+  if (!a.identifier || !b.identifier) return false;
+  return eq(a.identifier, b.identifier) && normRole(a.role) === normRole(b.role) && sameApp(a, b);
 }
 
 export interface AtspiDumpNode {
