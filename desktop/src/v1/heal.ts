@@ -13,14 +13,14 @@ export interface FailureSnapshot {
   ax?: unknown;
 }
 
-/** wait_for, then find, then action, then expect. `gone` fails in expect. */
-export type ReplayPhase = "wait_for" | "find" | "action" | "expect";
+/** wait_for, then find, then action, then expect. `gone` fails in expect. `auth` is a login redirect and is not healed. */
+export type ReplayPhase = "wait_for" | "find" | "action" | "expect" | "auth";
 
 export interface StepFailure {
   stepId: string;
   index: number;
   intent: string;
-  /** wait_for, find, action, or expect. The reason is what failed inside that phase. */
+  /** wait_for, find, action, expect, or auth. The reason is what failed inside that phase. */
   phase: ReplayPhase;
   reason: string;
   brokenAttr?: string;

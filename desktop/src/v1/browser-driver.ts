@@ -3,7 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
-import { dumpPage, type DomDump } from "./dom-page";
+import { dumpPage, maskPasswordFields, unmaskPasswordFields, type DomDump } from "./dom-page";
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { Driver, HealNotice, LiveTree } from "./replay";
@@ -70,13 +70,22 @@ export class BrowserDriver implements Driver {
   }
 
   async snapshot(): Promise<FailureSnapshot> {
-    const png = await this.page.screenshot({ type: "png" });
-    const dump = await this.evaluateDump();
-    let ax: string | undefined;
+    await this.page.evaluate(maskPasswordFields).catch(() => undefined);
+    let png: Buffer;
     try {
-      ax = await this.page.locator("body").ariaSnapshot();
-    } catch {
-      ax = undefined;
+      png = await this.page.screenshot({ type: "png" });
+    } finally {
+      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
+    }
+    const dump = await this.evaluateDump();
+    const secretField = dump.nodes.some((node) => node.id === "password" || node.nameAttr === "password");
+    let ax: string | undefined;
+    if (!secretField) {
+      try {
+        ax = await this.page.locator("body").ariaSnapshot();
+      } catch {
+        ax = undefined;
+      }
     }
     return {
       screenshot: png.toString("base64"),
@@ -96,8 +105,23 @@ export class BrowserDriver implements Driver {
     await this.page.locator(this.sel(node)).click();
   }
 
-  async fill(node: Identity, text: string): Promise<void> {
-    await this.page.locator(this.sel(node)).fill(text);
+  async fill(node: Identity, text: string, secret = false): Promise<void> {
+    const loc = this.page.locator(this.sel(node));
+    if (!secret) {
+      await loc.fill(text);
+      return;
+    }
+    try {
+      await loc.evaluate((el, value) => {
+        if (!(el instanceof HTMLInputElement)) throw new Error("not a field");
+        el.focus();
+        el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }, text);
+    } catch {
+      throw new Error("could not fill the secret field");
+    }
   }
 
   async key(key: string): Promise<void> {

@@ -9,6 +9,22 @@ import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
 import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
+import { maskPasswordFields, unmaskPasswordFields } from "../v1/dom-page";
+import {
+  cookieHeader,
+  loginDocument,
+  loginRedirect,
+  newToken,
+  PENDING_COOKIE,
+  readCookie,
+  safeNext,
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  sessionExpiry,
+  sessionStatus,
+  type FreezeSession,
+} from "../v1/freeze-session";
+import { recorderSource } from "../v1/recorder";
 import {
   auditLine,
   chooseProfile,
@@ -25,7 +41,7 @@ import {
 } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
-import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
+import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, type TrailEvent } from "../v1/interpret";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { ReceiptLog } from "../v1/receipt";
@@ -64,11 +80,19 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   let humanConfirm: { message: string; detail?: string } | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
   const prompts: PersonPrompts = {
-    showConfirm(label) { humanConfirm = { message: "confirm before applying", detail: label }; },
+    showConfirm(_label) {
+      humanConfirm = { message: "confirm before applying", detail: "Press Apply on the site window." };
+    },
     clearConfirm() { humanConfirm = null; },
-    showLoginWait() { loginWait = { message: "waiting for you to log in" }; },
+    showLoginWait(label) {
+      const detail = label && label.length <= 120 ? label : "Sign in on the site window";
+      loginWait = { message: "waiting for you to log in", detail };
+    },
     clearLoginWait() { loginWait = null; },
   };
+  const sessions = new Map<string, FreezeSession>();
+  const pendings = new Map<string, { user: string; exp: number }>();
+  let applyClicks = 0;
   let helperReport: unknown;
   if (process.platform === "darwin" && bundledHelperApp()) {
     helperReport = await new MacOsHelper(bundledHelperApp()!).permissions(false).catch((err) => ({
@@ -86,7 +110,33 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
       if (req.method === "GET" && (url.pathname === "/fixture" || url.pathname === "/secure")) {
         return sendFile(res, path.join(publicDir, "fixture.html"), "text/html");
       }
+      if (req.method === "GET" && url.pathname === "/login") {
+        const verify = url.searchParams.get("verify") === "1";
+        const html = loginDocument(readFileSync(path.join(publicDir, "login.html"), "utf8"), verify);
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(html);
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/login") {
+        return answerLogin(req, res);
+      }
+      if (req.method === "POST" && url.pathname === "/freeze/applied") {
+        applyClicks += 1;
+        return json(res, { ok: true });
+      }
+      if (req.method === "GET" && url.pathname === "/api/fixture/apply-count") {
+        return json(res, { count: applyClicks });
+      }
       if (req.method === "GET" && url.pathname === "/freeze") {
+        const token = readCookie(req.headers.cookie, SESSION_COOKIE);
+        const status = sessionStatus(token, sessions, Date.now());
+        if (status !== "ok") {
+          const next = `${url.pathname}${url.search}`;
+          const dest = loginRedirect(next, url.searchParams.get("verify") === "1");
+          res.writeHead(302, { location: dest, "cache-control": "no-store" });
+          res.end();
+          return;
+        }
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
@@ -145,7 +195,9 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           if (detail && (detail.length > 120 || looksPersonal(detail))) return json(res, { error: "detail" }, 400);
           loginWait = { message: "waiting for you to log in", ...(detail ? { detail } : {}) };
         }
-        else if (body.kind === "confirm") humanConfirm = { message: "confirm before applying", detail: body.detail };
+        else if (body.kind === "confirm") {
+          humanConfirm = { message: "confirm before applying", detail: body.detail || "Press Apply on the site window." };
+        }
         else { loginWait = null; humanConfirm = null; }
         return json(res, { loginWait, humanConfirm });
       }
@@ -274,9 +326,15 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         recording = false;
         const id = `wf-${Date.now()}`;
         const startUrl = page ? page.url() : "";
-        const workflow = interpret(events, { id, name: "Captured workflow", startUrl, secrets: [] });
+        const clean = events.map((event) => {
+          if (!event.sensitive && event.identity?.role !== "password") return event;
+          const copy = { ...event, sensitive: true };
+          delete copy.value;
+          return copy;
+        });
+        const workflow = interpret(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
         library.save(workflow);
-        library.saveTrail(id, events);
+        library.saveTrail(id, clean);
         await stopBrowser();
         return json(res, workflow);
       }
@@ -287,6 +345,45 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const args = await materializeFiles(body.args || {});
         const run = await runWorkflow(library, workflow, args, notices, replays, prompts);
         return json(res, run);
+      }
+      if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
+        const session = replays.get(url.searchParams.get("id") || "");
+        if (!session || session.page.isClosed()) return json(res, { open: false }, 404);
+        const current = new URL(session.page.url());
+        const hasPassword = await session.page.locator("input[type=password]:visible").count().then((count) => count > 0).catch(() => false);
+        const status = await session.page.locator("#status").innerText().catch(() => "");
+        return json(res, { open: true, pathname: current.pathname, hasPassword, status });
+      }
+      if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/drive") {
+        const body = await readBody(req) as { id?: string; fill?: { selector?: string; value?: string }; click?: string };
+        const session = replays.get(body.id || "");
+        if (!session || session.page.isClosed()) return json(res, { error: "replay window is not open" }, 409);
+        const fill = body.fill;
+        if (fill) {
+          if (!fill.selector || !/^#[A-Za-z][\w-]*$/.test(fill.selector)) return json(res, { error: "selector" }, 400);
+          await session.page.locator(fill.selector).fill(fill.value ?? "");
+        }
+        if (body.click) {
+          if (!/^#[A-Za-z][\w-]*$/.test(body.click)) return json(res, { error: "selector" }, 400);
+          await session.page.locator(body.click).click();
+        }
+        return json(res, { ok: true });
+      }
+      if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/shot") {
+        const body = await readBody(req) as { id?: string; file?: string };
+        const session = replays.get(body.id || "");
+        if (!session || session.page.isClosed()) return json(res, { error: "replay window is not open" }, 409);
+        const base = path.basename(body.file || "replay.png");
+        if (!/^[\w.-]+$/.test(base)) return json(res, { error: "file" }, 400);
+        const shots = path.join(opts.home, "shots");
+        mkdirSync(shots, { recursive: true });
+        await session.page.evaluate(maskPasswordFields);
+        try {
+          await session.page.screenshot({ path: path.join(shots, base), type: "png" });
+        } finally {
+          await session.page.evaluate(unmaskPasswordFields).catch(() => undefined);
+        }
+        return json(res, { file: base });
       }
       if (req.method === "POST" && url.pathname === "/api/replay/place") {
         const body = await readBody(req) as { id?: string; x?: number; y?: number; width?: number; height?: number };
@@ -430,6 +527,51 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     }
   }
 
+  async function answerLogin(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readBody(req) as {
+      username?: string;
+      password?: string;
+      code?: string;
+      next?: string;
+      verify?: boolean;
+      ttlMs?: number;
+    };
+    const next = safeNext(typeof body.next === "string" ? body.next : undefined);
+    const now = Date.now();
+    const pendingToken = readCookie(req.headers.cookie, PENDING_COOKIE);
+    const pending = pendingToken ? pendings.get(pendingToken) : undefined;
+    if (typeof body.code === "string") {
+      if (!pending || pending.exp <= now || !body.code.trim()) return json(res, { error: "code" }, 401);
+      pendings.delete(pendingToken || "");
+      const session = issueSession(pending.user, now, typeof body.ttlMs === "number" ? body.ttlMs : SESSION_TTL_MS);
+      writeLogin(res, { ok: true, next }, [
+        cookieHeader(SESSION_COOKIE, session.token, Math.max(0, Math.ceil((session.exp - now) / 1000))),
+        cookieHeader(PENDING_COOKIE, "", 0),
+      ]);
+      return;
+    }
+    const username = typeof body.username === "string" ? body.username.trim().slice(0, 80) : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!username) return json(res, { error: "username" }, 400);
+    if (!password) return json(res, { error: "password" }, 400);
+    if (body.verify === true) {
+      const token = newToken();
+      pendings.set(token, { user: username, exp: now + 5 * 60 * 1000 });
+      writeLogin(res, { ok: false, stage: "code" }, [cookieHeader(PENDING_COOKIE, token, 300)]);
+      return;
+    }
+    const session = issueSession(username, now, typeof body.ttlMs === "number" ? body.ttlMs : SESSION_TTL_MS);
+    const maxAge = session.exp <= now ? 0 : Math.ceil((session.exp - now) / 1000);
+    writeLogin(res, { ok: true, next }, [cookieHeader(SESSION_COOKIE, session.token, maxAge)]);
+  }
+
+  function issueSession(user: string, now: number, ttlMs: number): FreezeSession {
+    const token = newToken();
+    const session = { token, user, exp: sessionExpiry(now, ttlMs) };
+    sessions.set(token, session);
+    return session;
+  }
+
   return {
     library,
     port,
@@ -478,7 +620,12 @@ async function runWorkflow(
     library.appendTrail(workflow.id, receipt);
   }
   const promotion = recordProvisional(library, workflow, result.heals);
-  library.saveRun({
+  const secretList = workflow.inputs.flatMap((input) => {
+    if (input.type !== "secret") return [];
+    const value = args[input.name];
+    return typeof value === "string" && value ? [value] : [];
+  });
+  const saved = JSON.parse(maskText(JSON.stringify({
     id: result.runId,
     workflowId: workflow.id,
     status: result.status,
@@ -488,8 +635,11 @@ async function runWorkflow(
     steps: result.steps,
     repairs: result.repairs,
     receipts: result.receipts,
+    trail: result.trail,
+    precondition: result.precondition,
     promotion,
-  });
+  }), secretList)) as Parameters<Library["saveRun"]>[0];
+  library.saveRun(saved);
   const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
   if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
   const bounds = await readOwnedWindow(page).catch(() => null);
@@ -806,46 +956,6 @@ function summary(doc: WorkflowV2) {
   };
 }
 
-function recorderSource(): string {
-  return `(() => {
-    const norm = (v) => (v || "").replace(/\\s+/g, " ").trim();
-    const send = (payload) => { if (window.__baoRecord) window.__baoRecord(payload); };
-    const ident = (el) => ({
-      surface: "dom",
-      role: el.getAttribute("role") || el.tagName.toLowerCase(),
-      testId: el.getAttribute("data-testid") || undefined,
-      id: el.id || undefined,
-      nameAttr: el.getAttribute("name") || undefined,
-      tag: el.tagName.toLowerCase(),
-      label: el.getAttribute("aria-label") || undefined,
-      text: norm(el.innerText || el.textContent || "").slice(0, 80) || undefined,
-      path: [],
-    });
-    document.addEventListener("click", (event) => {
-      const el = event.target && event.target.closest ? event.target.closest("button,a,input,textarea,select,li,[data-testid]") : event.target;
-      if (!el) return;
-      const before = location.href;
-      setTimeout(() => send({ kind: "act", op: "click", identity: ident(el), beforeUrl: before, afterUrl: location.href }), 0);
-    }, true);
-    document.addEventListener("change", (event) => {
-      const el = event.target;
-      if (!el) return;
-      if (el.type === "file") {
-        const file = el.files && el.files[0];
-        send({ kind: "act", op: "upload", identity: ident(el), fileName: file && file.name });
-        return;
-      }
-      const secret = el.type === "password";
-      send({ kind: "act", op: "type", identity: ident(el), value: secret ? undefined : el.value, sensitive: secret || undefined });
-    }, true);
-    document.addEventListener("drop", (event) => {
-      const el = event.target;
-      const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-      send({ kind: "act", op: "drop", identity: ident(el), fileName: file && file.name });
-    }, true);
-  })();`;
-}
-
 async function materializeFiles(args: ReplayArgs): Promise<ReplayArgs> {
   const out: ReplayArgs = { ...args };
   for (const [key, value] of Object.entries(out)) {
@@ -857,6 +967,15 @@ async function materializeFiles(args: ReplayArgs): Promise<ReplayArgs> {
     out[key] = { name: file.name, path: dest };
   }
   return out;
+}
+
+function writeLogin(res: ServerResponse, body: unknown, cookies: string[]): void {
+  res.writeHead(200, {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "set-cookie": cookies,
+  });
+  res.end(JSON.stringify(body));
 }
 
 function sendFile(res: ServerResponse, file: string, type: string): void {

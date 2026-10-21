@@ -5,11 +5,28 @@
   "name": "Credit freeze",
   "startUrl": "http://127.0.0.1:4787/freeze",
   "createdAt": 1,
-  "inputs": [],
+  "precondition": { "kind": "url", "match": "/freeze", "phase": "auth" },
+  "inputs": [
+    { "name": "username", "type": "text", "label": "Username", "default": "ada" },
+    { "name": "password", "type": "secret", "label": "Password" }
+  ],
   "steps": [
     {
       "id": "wf-credit-freeze-0",
       "index": 0,
+      "action": "login",
+      "label": "Sign in on the site window",
+      "surface": "dom",
+      "human": true,
+      "input": "password",
+      "value": "{{password}}",
+      "sensitive": true,
+      "timeoutMs": 8000,
+      "postcondition": { "kind": "url", "match": "/freeze", "timeoutMs": 8000 }
+    },
+    {
+      "id": "wf-credit-freeze-1",
+      "index": 1,
       "action": "click",
       "label": "Click Frozen",
       "surface": "dom",
@@ -31,46 +48,21 @@
           "id": "frozen",
           "path": []
         }
-      }
-    },
-    {
-      "id": "wf-credit-freeze-1",
-      "index": 1,
-      "action": "click",
-      "label": "Click Apply",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "button",
-        "id": "apply",
-        "testId": "apply",
-        "text": "Apply",
-        "path": []
-      },
-      "timeoutMs": 4000,
-      "expect": {
-        "kind": "text",
-        "match": "Status: Frozen",
-        "timeoutMs": 2000
       },
       "readBack": {
         "source": "text",
-        "match": "Status: Frozen",
+        "match": "Status: none",
         "timeoutMs": 2000
       }
     },
     {
       "id": "wf-credit-freeze-2",
       "index": 2,
-      "action": "verify",
-      "label": "Verify freeze status",
+      "action": "confirm",
+      "label": "Confirm before Apply",
       "surface": "dom",
-      "timeoutMs": 2000,
-      "expect": {
-        "kind": "text",
-        "match": "Status: Frozen",
-        "timeoutMs": 2000
-      }
+      "human": true,
+      "timeoutMs": 0
     }
   ]
 }

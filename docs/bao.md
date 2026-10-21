@@ -92,3 +92,35 @@ Reports: [drift-real.md](drift-real.md), [drift-real-before.md](drift-real-befor
 - `/opt/cursor/artifacts/wikipedia-880-reveal-repair.mp4` — Wikipedia at 880×560. The search toggle opens, the article is Ada Lovelace, and the trail shows `repair: reveal` / `recorded role Search`.
 - `/opt/cursor/artifacts/run-viewer-receipt.png` — fixture note replay. Receipt pass, expected Ada Lovelace, read Ada Lovelace.
 - `/opt/cursor/artifacts/run-viewer-phase-failure.png` — a `wait_for` miss on a banner the fixture never shows.
+
+## 2026-10-21 — Logged-out replay and a masked password
+
+Local fixture only. `GET /freeze` redirects to `/login` when the `bao_freeze` cookie is missing or expired. The login page asks for a username, then a `type=password` field. `?verify=1` adds a "Verify it's you" code stage. The cookie is a random token. The password is not stored. Profiles were throwaway directories. No real site, account, or credential.
+
+The credit-freeze workflow's precondition is `{ kind: "url", match: "/freeze", phase: "auth" }`. A replay that lands on `/login` fails that check in phase `auth`. It does not call a model, including when a heal provider is available. Cheap repairs still run for locate misses. Auth is not one of those.
+
+The login step has two paths. With no secret, replay shows the same confirm-style banner, title "Sign in on the site window", and waits. With the password supplied on the upfront secret input, replay fills the masked field and does not show that banner. Either way it continues on `/freeze`, clicks Frozen, re-reads `Status: none`, and pauses on the confirm step. The workflow has no Apply click. A confirm step with no postcondition pauses and does not write a `human-confirm` trail event. While that event is absent, replay refuses Apply clicks from the step, from a repair, and from a heal. The fixture counts Apply posts. The count stayed 0.
+
+A password field recorded in a capture session becomes a `secret` input with no default. The page script does not read the field's value. Interpret drops a leaked password string. Saved runs are masked. Screenshots cover `input[type=password]` with a black bar before the PNG is taken, and the accessibility snapshot is omitted while that field is on the page.
+
+### What passed
+
+`tsc -p tsconfig.desktop.json --noEmit` was clean. Desktop unit tests: 98 passed, 0 failed, including the fast-check property that replays a logged-out workflow and scans the written workflow, run, trail, receipts, and log. The headed fixture runs below also scanned the library directory and the PNGs. Match count was 0.
+
+- `/opt/cursor/artifacts/auth-logged-out-human-handoff.mp4` — logged-out replay. The banner "Sign in on the site window" is up, a scripted human signs in on the fixture, the password field is bullets, replay resumes, and it stops on "Press Apply on the site window." Status stays `Status: none`.
+- `/opt/cursor/artifacts/auth-logged-out-secret-fill.mp4` — the same replay with the secret typed into the upfront password field (bullets). The site field is bullets. No sign-in banner. Stops at the confirm banner. Apply is not pressed.
+- `/opt/cursor/artifacts/auth-logged-out-artifact-grep.mp4` — artifact grep of the stills, both videos, and the two library directories. `matches: 0`. The needle is not printed.
+- `/opt/cursor/artifacts/auth-logged-out/a-login-banner.png` — the sign-in banner next to the fixture login page.
+- `/opt/cursor/artifacts/auth-logged-out/a-password-masked.png` — human path, password stage, bullets.
+- `/opt/cursor/artifacts/auth-logged-out/a-confirm-stop.png` — paused confirm, receipt pass, `Status: none`.
+- `/opt/cursor/artifacts/auth-logged-out/b-form-masked.png` — upfront secret field, bullets.
+- `/opt/cursor/artifacts/auth-logged-out/b-site-masked-hold.png` — site password field, bullets, during the fill hold.
+- `/opt/cursor/artifacts/auth-logged-out/b-secret-field-masked.png` — PNG taken while the field was covered. Black bar and dots. The file bytes do not contain the secret.
+- `/opt/cursor/artifacts/auth-logged-out/b-confirm-stop.png` — secret path stopped at confirm.
+- `/opt/cursor/artifacts/auth-logged-out/c-grep.png` — the grep page, matches 0.
+
+### What failed
+
+`desktop/test/live/browser.test.ts` ("capture login, upload, and drop, then replay with two input sets") still fails on the parent commit `346ac1b`, before these edits. The login step's stored locators include `testid` `login`. Replacing the identity with `missing-login` does not remove those locators, so replay passes with `heals` empty and the assertion wants model name `bao-heal-fixture`. This spike did not change that.
+
+The replay form used to rebuild on each state change and drop a password that had been typed but not submitted. It now puts those typed values back, including the secret field. The secret is still not written to the library.

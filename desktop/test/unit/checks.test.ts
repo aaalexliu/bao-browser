@@ -271,7 +271,10 @@ test("the drift report shows the failure phase", () => {
 test("credit freeze read-back is the status text and validates", () => {
   const freeze = JSON.parse(readFileSync("examples/workflows/credit-freeze.json", "utf8")) as WorkflowV2;
   assert.deepEqual(validateWorkflow(freeze), []);
-  const apply = freeze.steps.find((item) => item.label === "Click Apply");
-  assert.equal(apply?.readBack?.source, "text");
-  assert.equal(apply?.readBack?.match, "Status: Frozen");
+  const frozen = freeze.steps.find((item) => item.label === "Click Frozen");
+  assert.equal(frozen?.readBack?.source, "text");
+  assert.equal(frozen?.readBack?.match, "Status: none");
+  assert.equal(freeze.steps.some((item) => item.action === "click" && item.identity?.id === "apply"), false);
+  assert.equal(freeze.steps.at(-1)?.action, "confirm");
+  assert.equal(freeze.precondition?.phase, "auth");
 });

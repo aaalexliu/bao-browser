@@ -170,3 +170,33 @@ export function dumpPage(): PageDump {
   });
   return { url: location.href, title: document.title, nodes, texts, values };
 }
+
+/** Cover password fields before a screenshot. Does not read the field value. */
+export function maskPasswordFields(): void {
+  document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
+  for (const el of document.querySelectorAll("input[type=password]")) {
+    if (!(el instanceof HTMLInputElement)) continue;
+    const rect = el.getBoundingClientRect();
+    const cover = document.createElement("div");
+    cover.setAttribute("data-bao-mask", "1");
+    cover.setAttribute("aria-hidden", "true");
+    cover.style.position = "fixed";
+    cover.style.left = `${rect.x}px`;
+    cover.style.top = `${rect.y}px`;
+    cover.style.width = `${Math.max(rect.width, 8)}px`;
+    cover.style.height = `${Math.max(rect.height, 8)}px`;
+    cover.style.background = "#1d1a16";
+    cover.style.color = "#f4f0e8";
+    cover.style.zIndex = "2147483647";
+    cover.style.display = "flex";
+    cover.style.alignItems = "center";
+    cover.style.padding = "0 8px";
+    cover.style.font = "16px sans-serif";
+    cover.textContent = "••••••••";
+    document.body.appendChild(cover);
+  }
+}
+
+export function unmaskPasswordFields(): void {
+  document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
+}

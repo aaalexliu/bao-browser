@@ -59,6 +59,7 @@
       apply.hidden = false;
     });
     apply.addEventListener("click", () => {
+      fetch("/freeze/applied", { method: "POST" }).catch(() => undefined);
       if (params.get("stuck") === "1") return;
       const choice = document.querySelector("input[name=freeze]:checked");
       if (!choice) {

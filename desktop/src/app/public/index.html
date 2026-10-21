@@ -76,10 +76,22 @@
       render();
     }
 
+    function typedArgs() {
+      const form = document.getElementById("args");
+      if (!form) return null;
+      const values = {};
+      for (const el of form.querySelectorAll("input[name], textarea[name], select[name]")) {
+        if (el.type === "file" || !el.value) continue;
+        values[el.name] = el.value;
+      }
+      return values;
+    }
+
     function render() {
+      const kept = typedArgs();
       const views = { sessions, trail, library, replay, settings };
       main.innerHTML = promptCards() + notices() + views[screen]();
-      bind();
+      bind(kept);
     }
 
     function promptCards() {
@@ -115,9 +127,8 @@
         cards.push(`<div class="card ask" id="login-wait"><p class="ask-title">${esc(title)}</p><p>${esc(state.loginWait.message)}</p><p>Bao will not type your password or a code, and it will not click the check.</p></div>`);
       }
       if (state.humanConfirm) {
-        const detail = state.humanConfirm.detail && state.humanConfirm.detail !== state.humanConfirm.message
-          ? `<p>${esc(state.humanConfirm.detail)}</p>` : "";
-        cards.push(`<div class="card ask" id="human-confirm"><p class="ask-title">Press Apply on the Experian page.</p><p>${esc(state.humanConfirm.message)}</p>${detail}<p>Bao will not press Apply.</p></div>`);
+        const title = state.humanConfirm.detail || "Press Apply on the site window.";
+        cards.push(`<div class="card ask" id="human-confirm"><p class="ask-title">${esc(title)}</p><p>${esc(state.humanConfirm.message)}</p><p>Bao will not press Apply.</p></div>`);
       }
       return cards.join("");
     }
@@ -196,7 +207,7 @@
           <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
           <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
         </select></label>
-        <p>Auto is the default. A miss tries a cheap repair first. A model heal runs only after those fail, and only when a model key is set or this process is waiting on a Cursor heal. Otherwise replay stops and names the phase: wait_for, find, action, or expect.</p>
+        <p>Auto is the default. A miss tries a cheap repair first. A model heal runs only after those fail, and only when a model key is set or this process is waiting on a Cursor heal. Otherwise replay stops and names the phase: wait_for, find, action, expect, or auth. An auth miss is a login redirect and is not sent to a model.</p>
         <button id="save-settings">Save</button></section>`;
     }
 
@@ -209,7 +220,7 @@
       return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
     }
 
-    function bind() {
+    function bind(kept) {
       document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; render(); });
       const start = document.getElementById("start");
       if (start) start.onclick = async () => {
@@ -250,7 +261,7 @@
       const wf = document.getElementById("wf");
       if (wf) {
         wf.onchange = () => { lastWf = wf.value; refresh(); };
-        if (wf.value) fillArgs(wf.value);
+        if (wf.value) fillArgs(wf.value, kept);
       }
       const wfHeal = document.getElementById("wf-heal");
       if (wfHeal) wfHeal.onchange = async () => {
@@ -293,10 +304,16 @@
       };
     }
 
-    async function fillArgs(id) {
+    async function fillArgs(id, kept) {
       const doc = await (await fetch("/api/workflows/" + id)).json();
       const form = document.getElementById("args");
       form.innerHTML = doc.inputs.map((input) => field(input)).join("") || "<p>This workflow has no inputs.</p>";
+      if (kept) {
+        for (const el of form.querySelectorAll("input[name], textarea[name], select[name]")) {
+          const value = kept[el.name];
+          if (typeof value === "string" && value) el.value = value;
+        }
+      }
       form.querySelectorAll(".drop").forEach((zone) => {
         zone.ondragover = (event) => { event.preventDefault(); zone.classList.add("over"); };
         zone.ondragleave = () => zone.classList.remove("over");

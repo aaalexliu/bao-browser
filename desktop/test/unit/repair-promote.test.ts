@@ -75,7 +75,7 @@ test("credit freeze example validates and names the expect phase", () => {
   assert.deepEqual(validateWorkflow(freeze), []);
   assert.equal(validate(freeze), true);
   assert.equal(validate(form), true);
-  assert.equal(freeze.steps.at(-1)?.action, "verify");
+  assert.equal(freeze.steps.at(-1)?.action, "confirm");
   assert.equal(form.steps.at(-1)?.action, "verify");
 });
 

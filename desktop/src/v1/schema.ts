@@ -97,6 +97,16 @@ export interface ReadBack {
   timeoutMs: number;
 }
 
+/**
+ * Must hold before a step is located.
+ * `auth` means the live page is a login redirect. Replay does not send that miss to a model.
+ */
+export interface Precondition {
+  kind: "url";
+  match: string;
+  phase: "auth";
+}
+
 /** Where the target sits relative to a stable element. Coordinates are not stored. */
 export interface Anchor {
   identity: Identity;
@@ -170,6 +180,8 @@ export interface WorkflowV2 {
   replayed?: boolean;
   /** Re-read once after the last step. Same receipt as a step read-back. */
   readBack?: ReadBack;
+  /** Checked against the live URL before locate. A login redirect is phase `auth`. */
+  precondition?: Precondition;
 }
 
 export interface ReplayArgs {
@@ -214,6 +226,10 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     }
   }
   if (doc.readBack) errors.push(...readBackErrors(doc.readBack, "workflow", names));
+  if (doc.precondition) {
+    if (doc.precondition.kind !== "url" || !doc.precondition.match) errors.push("precondition");
+    if (doc.precondition.phase !== "auth") errors.push("precondition phase");
+  }
   doc.steps.forEach((step, i) => {
     if (step.index !== i) errors.push(`index ${step.id}`);
     if (step.input && !names.has(step.input)) errors.push(`unknown input ${step.input}`);

@@ -46,10 +46,12 @@ const DIGIT = /^[0-9]$/;
 const OP = new Set(["+", "-", "*", "/", "×", "÷", "="]);
 
 export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
+  const secrets = secretStrings(events, meta.secrets ?? []);
+  const seen: InterpretMeta = { ...meta, secrets };
   const kept = events.filter(keep);
   const merged = mergeTyping(kept);
   const inputs: WorkflowInput[] = [];
-  let steps = merged.map((event, index) => toStep(event, index, meta, inputs));
+  let steps = merged.map((event, index) => toStep(event, index, seen, inputs));
   steps = parameterizeDigits(steps, inputs);
   steps = steps.map((step, index) => ({ ...step, index, id: `${meta.id}-${index}` }));
   const doc: WorkflowV2 = {
@@ -62,8 +64,20 @@ export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): W
     steps,
     createdAt: events[0]?.ts ?? 0,
   };
-  assertClean(doc, meta.secrets ?? []);
+  assertClean(doc, secrets);
   return doc;
+}
+
+/** A password field's typed text is a secret even when the caller did not list it. */
+function secretStrings(events: readonly TrailEvent[], listed: string[]): string[] {
+  const out = [...listed];
+  for (const event of events) {
+    const password = event.sensitive || event.identity?.role === "password";
+    const value = event.value;
+    if (!password || !value || value.length < 8 || out.includes(value)) continue;
+    out.push(value);
+  }
+  return out;
 }
 
 function keep(event: TrailEvent): boolean {
@@ -285,7 +299,13 @@ function scrubLocators(list: StepLocator[] | undefined, secrets: string[]): Step
 function stripSecretValue(identity: Identity | undefined, secrets: string[]): Identity | undefined {
   if (!identity) return undefined;
   const copy = { ...identity, path: identity.path.map((seg) => ({ ...seg })) };
-  if (copy.value && (secrets.includes(copy.value) || isSensitiveValue(copy.value))) delete copy.value;
+  for (const key of ["value", "text", "name", "label", "title"] as const) {
+    const current = copy[key];
+    if (typeof current !== "string") continue;
+    if (secrets.some((secret) => secret && current.includes(secret)) || (key === "value" && isSensitiveValue(current))) {
+      delete copy[key];
+    }
+  }
   return copy;
 }
 

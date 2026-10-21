@@ -16,6 +16,7 @@
     "heal": { "enum": ["auto", "approve"] },
     "replayed": { "type": "boolean" },
     "readBack": { "$ref": "#/$defs/readBack" },
+    "precondition": { "$ref": "#/$defs/precondition" },
     "inputs": {
       "type": "array",
       "items": { "$ref": "#/$defs/input" }
@@ -132,6 +133,16 @@
         "match": { "type": "string" },
         "identity": { "$ref": "#/$defs/identity" },
         "timeoutMs": { "type": "number" }
+      }
+    },
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "match", "phase"],
+      "properties": {
+        "kind": { "const": "url" },
+        "match": { "type": "string", "minLength": 1 },
+        "phase": { "const": "auth" }
       }
     },
     "readBack": {
