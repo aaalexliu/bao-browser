@@ -327,6 +327,37 @@ test("a drop postcondition is the visible echo and a bare filename does not pass
   assert.equal(holds(step!.postcondition!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
 });
 
+test("interpret keeps login and confirm as human steps with no coordinates", () => {
+  const doc = interpret([
+    {
+      id: "login", ts: 1, kind: "act", op: "login",
+      provenance: { x: 4, y: 5, space: "viewport" },
+    },
+    {
+      id: "open", ts: 2, kind: "act", op: "click",
+      identity: id({ role: "radio", name: "Open" }),
+      afterText: "Open",
+    },
+    {
+      id: "apply", ts: 3, kind: "act", op: "confirm",
+      provenance: { x: 9, y: 9, space: "screen" },
+      afterText: "Security freeze is off",
+    },
+  ], { id: "wf-human", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  assert.equal(validateWorkflow(doc).length, 0);
+  assert.equal(doc.steps[0]?.action, "login");
+  assert.equal(doc.steps[0]?.human, true);
+  assert.equal(doc.steps[0]?.provenance, undefined);
+  assert.equal(doc.steps[0]?.label, "ensure logged in (import from chrome, else wait for user)");
+  assert.equal(doc.steps[1]?.action, "click");
+  assert.equal(doc.steps[1]?.identity?.name, "Open");
+  assert.equal(doc.steps[2]?.action, "confirm");
+  assert.equal(doc.steps[2]?.human, true);
+  assert.equal(doc.steps[2]?.provenance, undefined);
+  assert.equal(doc.steps[2]?.label, "confirm before applying");
+  assert.equal(doc.steps[2]?.postcondition?.match, "Security freeze is off");
+});
+
 test("a confirm step waits for a person and does not click", async () => {
   let shown = "";
   const apply = id({ name: "Apply", role: "button" });

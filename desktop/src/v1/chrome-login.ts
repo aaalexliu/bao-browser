@@ -3,7 +3,7 @@
 // domain. The keychain password and cookie values stay in memory for the
 // inject call. They are not written to the audit file or to logs.
 
-import { createDecipheriv, pbkdf2Sync } from "node:crypto";
+import { createDecipheriv, createHash, pbkdf2Sync } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { copyFile, mkdtemp, rm } from "node:fs/promises";
@@ -149,7 +149,18 @@ export function readChromeSafeStoragePassword(): string {
   }
 }
 
-export function decryptV10(encrypted: Uint8Array, key: Buffer): string {
+/** Chrome prepends SHA-256(host_key) to the cookie value before encrypting. */
+export function cookieValueFromPlain(plain: Buffer, hostKey?: string): string {
+  if (hostKey) {
+    const hash = createHash("sha256").update(hostKey).digest();
+    if (plain.length > hash.length && plain.subarray(0, hash.length).equals(hash)) {
+      return plain.subarray(hash.length).toString("utf8");
+    }
+  }
+  return plain.toString("utf8");
+}
+
+export function decryptV10(encrypted: Uint8Array, key: Buffer, hostKey?: string): string {
   if (encrypted.byteLength < 4) throw new Error("could not decrypt cookies");
   const prefix = Buffer.from(encrypted.subarray(0, 3)).toString("latin1");
   if (prefix !== "v10") throw new Error("could not decrypt cookies");
@@ -157,7 +168,7 @@ export function decryptV10(encrypted: Uint8Array, key: Buffer): string {
     const iv = Buffer.alloc(16, " ");
     const decipher = createDecipheriv("aes-128-cbc", key, iv);
     const plain = Buffer.concat([decipher.update(Buffer.from(encrypted.subarray(3))), decipher.final()]);
-    return plain.toString("utf8");
+    return cookieValueFromPlain(plain, hostKey);
   } catch {
     throw new Error("could not decrypt cookies");
   }
@@ -235,7 +246,7 @@ export function decryptSiteCookies(rows: readonly CookieRow[], key: Buffer, doma
     if (!hostMatches(String(row.host_key), domain)) continue;
     const encrypted = asBytes(row.encrypted_value);
     let value = "";
-    if (encrypted.byteLength > 0) value = decryptV10(encrypted, key);
+    if (encrypted.byteLength > 0) value = decryptV10(encrypted, key, String(row.host_key));
     else value = String(row.value || "");
     if (!value) continue;
     const host = String(row.host_key);
@@ -262,7 +273,7 @@ export function toCdpCookies(cookies: readonly SiteCookie[]): CdpCookie[] {
     const cdp: CdpCookie = {
       name: cookie.name,
       value: cookie.value,
-      path: cookie.path || "/",
+      path: cookie.path.startsWith("/") ? cookie.path : "/",
       secure: cookie.secure,
       httpOnly: cookie.httpOnly,
       url: `https://${cookie.domain}/`,
@@ -324,16 +335,26 @@ export interface CdpSession {
 export async function injectCookies(
   page: { context(): { newCDPSession(page: unknown): Promise<CdpSession> } },
   cookies: readonly SiteCookie[],
-): Promise<void> {
-  if (cookies.length === 0) return;
+): Promise<number> {
+  const batch = toCdpCookies(cookies).filter((cookie) => cookie.name && cookie.value && !/[\s;]/.test(cookie.name));
+  if (batch.length === 0) return 0;
   const client = await page.context().newCDPSession(page);
+  let injected = 0;
   try {
-    await client.send("Network.setCookies", { cookies: toCdpCookies(cookies) });
-  } catch {
-    throw new Error("could not import cookies");
+    // One invalid cookie makes Network.setCookies reject the whole batch.
+    for (const cookie of batch) {
+      try {
+        await client.send("Network.setCookies", { cookies: [cookie] });
+        injected += 1;
+      } catch {
+        // Skip the cookie CDP rejected. The value is not logged.
+      }
+    }
   } finally {
     await client.detach().catch(() => undefined);
   }
+  if (injected === 0) throw new Error("could not import cookies");
+  return injected;
 }
 
 export function safeImportError(err: unknown): string {

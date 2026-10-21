@@ -402,15 +402,16 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         domain: pending.domain,
         password,
       });
+      let count = loaded.cookies.length;
       if (loaded.cookies.length > 0) {
         const page = await sitePage();
         try {
-          await injectCookies(page, loaded.cookies);
+          count = await injectCookies(page, loaded.cookies);
         } finally {
           for (const cookie of loaded.cookies) cookie.value = "";
         }
       }
-      const audit = loaded.audit;
+      const audit = { ...loaded.audit, count };
       const auditDir = path.join(opts.home, "audit");
       mkdirSync(auditDir, { recursive: true });
       appendFileSync(path.join(auditDir, "import-login.jsonl"), `${auditLine(audit)}\n`);

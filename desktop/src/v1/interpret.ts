@@ -121,6 +121,20 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     timeoutMs: 8000,
     provenance: event.provenance,
   };
+  if (event.op === "login" || event.op === "confirm") {
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: event.op,
+      label: event.op === "login"
+        ? "ensure logged in (import from chrome, else wait for user)"
+        : "confirm before applying",
+      surface: "dom",
+      human: true,
+      timeoutMs: 8000,
+      postcondition: post(event, undefined, meta.secrets ?? []),
+    };
+  }
   if (event.op === "keypress" || event.op === "key") {
     return {
       ...step,

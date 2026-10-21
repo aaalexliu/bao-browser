@@ -17,6 +17,8 @@
     .dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #ccc; }
     .dot.on { background: var(--accent); box-shadow: 0 0 0 4px rgba(154, 52, 18, 0.2); }
     .card { border: 1px solid var(--line); background: white; padding: 0.9rem; margin: 0.7rem 0; }
+    .card.ask { border: 3px solid var(--accent); background: #fff7ed; }
+    .ask-title { font-size: 1.7rem; line-height: 1.2; font-weight: 700; margin: 0 0 0.5rem; }
     label { display: grid; gap: 0.25rem; margin: 0.4rem 0; }
     input, select, textarea { padding: 0.4rem; border: 1px solid var(--line); width: 100%; background: white; }
     .drop { outline: 1px dashed var(--line); padding: 0.6rem; }
@@ -82,25 +84,30 @@
       const cards = [];
       if (pending && pending.phase !== "done" && pending.phase !== "cancelled") {
         if (pending.phase === "confirm") {
-          cards.push(`<div class="card" id="import-confirm"><p>${esc(pending.message)}</p>
+          cards.push(`<div class="card ask" id="import-confirm"><p class="ask-title">Press Import, then approve the keychain prompt.</p><p>${esc(pending.message)}</p>
+            <p>If more than one Chrome profile is listed, pick the one that is signed in to Experian.</p>
             <div class="row"><button class="primary" id="import-yes">Import</button><button id="import-no">Cancel</button></div></div>`);
         } else if (pending.phase === "pick") {
           const buttons = (pending.profiles || []).map((profile) => `<button data-import-profile="${esc(profile.directory)}">${esc(profile.name)}</button>`).join(" ");
-          cards.push(`<div class="card" id="import-pick"><p>Chrome has more than one profile. Pick one for ${esc(pending.domain)}.</p>
+          cards.push(`<div class="card ask" id="import-pick"><p class="ask-title">Pick the Chrome profile that is signed in to Experian.</p><p>Chrome has more than one profile. Pick the one that is signed in to ${esc(pending.domain)}.</p>
             <div class="row">${buttons}</div><button id="import-no">Cancel</button></div>`);
         } else if (pending.phase === "running") {
-          cards.push(`<div class="card" id="import-running"><p>Approve the macOS keychain prompt if it appears. Bao does not save that key.</p></div>`);
+          cards.push(`<div class="card ask" id="import-running"><p class="ask-title">Approve the keychain prompt.</p><p>Approve the macOS keychain prompt if it appears. Bao does not save that key.</p></div>`);
         } else if (pending.phase === "error") {
-          cards.push(`<div class="card" id="import-error"><p>${esc(pending.error || "import failed")}</p></div>`);
+          cards.push(`<div class="card ask" id="import-error"><p class="ask-title">Approve the keychain prompt if it appears.</p><p>${esc(pending.error || "import failed")}</p><p>The import did not finish. Bao does not save the key.</p></div>`);
         }
       } else if (pending && pending.phase === "done" && pending.audit) {
-        cards.push(`<div class="card" id="import-done"><p>Imported ${esc(pending.audit.count)} cookies for ${esc(pending.audit.domain)}.</p></div>`);
+        if (pending.audit.count === 0) {
+          cards.push(`<div class="card ask" id="import-done"><p class="ask-title">That profile had no ${esc(pending.audit.domain)} cookies.</p><p>Press Import and pick the Chrome profile that is signed in to Experian.</p></div>`);
+        } else {
+          cards.push(`<div class="card" id="import-done"><p>Imported ${esc(pending.audit.count)} cookies for ${esc(pending.audit.domain)}.</p></div>`);
+        }
       }
-      if (state.loginWait) cards.push(`<div class="card" id="login-wait"><p>${esc(state.loginWait.message)}</p></div>`);
+      if (state.loginWait) cards.push(`<div class="card ask" id="login-wait"><p class="ask-title">Sign in on the Experian window.</p><p>${esc(state.loginWait.message)}</p><p>Bao will not type your password or a code.</p></div>`);
       if (state.humanConfirm) {
         const detail = state.humanConfirm.detail && state.humanConfirm.detail !== state.humanConfirm.message
           ? `<p>${esc(state.humanConfirm.detail)}</p>` : "";
-        cards.push(`<div class="card" id="human-confirm"><p>${esc(state.humanConfirm.message)}</p>${detail}</div>`);
+        cards.push(`<div class="card ask" id="human-confirm"><p class="ask-title">Press Apply on the Experian page.</p><p>${esc(state.humanConfirm.message)}</p>${detail}<p>Bao will not press Apply.</p></div>`);
       }
       return cards.join("");
     }

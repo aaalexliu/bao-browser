@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createCipheriv } from "node:crypto";
+import { createCipheriv, createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,6 +10,7 @@ import {
   auditLine,
   chooseProfile,
   chromeExpiresToUnix,
+  cookieValueFromPlain,
   decryptSiteCookies,
   decryptV10,
   deriveChromeKey,
@@ -18,6 +19,7 @@ import {
   profilesFromLocalState,
   readSiteCookieRows,
   safeImportError,
+  injectCookies,
   toCdpCookies,
   withCookiesCopy,
 } from "../../src/v1/chrome-login";
@@ -103,6 +105,21 @@ test("a synthetic cookies database returns only that site, and the temp copy is 
   });
   assert.equal(existsSync(copied), false);
   assert.equal(existsSync(path.dirname(copied)), false);
+});
+
+test("a host hash prefix is removed and a raw value is left as-is", () => {
+  const host = ".experian.com";
+  const key = deriveChromeKey("test-password-not-a-keychain-secret");
+  const hash = createHash("sha256").update(host).digest();
+  const prefixed = Buffer.concat([hash, Buffer.from("session")]);
+  assert.equal(cookieValueFromPlain(prefixed, host), "session");
+  assert.equal(cookieValueFromPlain(Buffer.from("session"), host), "session");
+  assert.notEqual(cookieValueFromPlain(prefixed, "usa.experian.com"), "session");
+  const iv = Buffer.alloc(16, " ");
+  const cipher = createCipheriv("aes-128-cbc", key, iv);
+  const encrypted = Buffer.concat([Buffer.from("v10"), cipher.update(prefixed), cipher.final()]);
+  assert.equal(decryptV10(encrypted, key, host), "session");
+  assert.notEqual(decryptV10(encrypted, key), "session");
 });
 
 test("profile names come from info_cache and a tie is not guessed", () => {
@@ -212,4 +229,32 @@ test("after confirm, several Chrome profiles are listed and cookies stay unread"
     else process.env.BAO_CHROME_USER_DATA = previous;
     await app.close();
   }
+});
+
+test("a rejected cookie does not drop the rest of the import", async () => {
+  const sent: string[] = [];
+  const page = {
+    context() {
+      return {
+        async newCDPSession() {
+          return {
+            async send(_method: string, params: { cookies: { name: string; path: string }[] }) {
+              const cookie = params.cookies[0];
+              if (cookie.name === "bad") throw new Error("Invalid cookie fields");
+              sent.push(`${cookie.name}:${cookie.path}`);
+            },
+            async detach() {},
+          };
+        },
+      };
+    },
+  };
+  const count = await injectCookies(page, [
+    { name: "good", value: "ok", domain: "experian.com", hostOnly: true, path: "noslash", secure: true, httpOnly: true },
+    { name: "bad name", value: "nope", domain: "experian.com", hostOnly: true, path: "/", secure: true, httpOnly: true },
+    { name: "bad", value: "nope", domain: "experian.com", hostOnly: true, path: "/", secure: true, httpOnly: true },
+  ]);
+  assert.equal(count, 1);
+  assert.deepEqual(sent, ["good:/"]);
+  assert.equal(sent.join(" ").includes("nope"), false);
 });
