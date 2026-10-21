@@ -21,3 +21,6 @@ dist/
 desktop/os-helper/target/
 desktop/os-helper-macos/target/
 desktop/os-helper-macos/BaoOSHelper.app/
+
+# Packaged binaries stay out of git. The build writes them under artifacts.
+*.AppImage

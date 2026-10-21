@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bao</title>
+  <style>
+    :root { color-scheme: light; --bg: #f4f0e8; --ink: #1d1a16; --line: #d9d1c4; --accent: #9a3412; --ok: #166534; --bad: #991b1b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.45 "Iowan Old Style", Palatino, serif; background: var(--bg); color: var(--ink); }
+    header { display: flex; gap: 1rem; align-items: center; padding: 0.8rem 1.2rem; border-bottom: 1px solid var(--line); }
+    nav { display: flex; gap: 0.4rem; }
+    button, input, select, textarea { font: inherit; }
+    button { background: white; border: 1px solid var(--line); padding: 0.35rem 0.7rem; cursor: pointer; }
+    button.primary { background: var(--ink); color: white; border-color: var(--ink); }
+    main { padding: 1.2rem; max-width: 52rem; }
+    .rec { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; }
+    .dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #ccc; }
+    .dot.on { background: var(--accent); box-shadow: 0 0 0 4px rgba(154, 52, 18, 0.2); }
+    .card { border: 1px solid var(--line); background: white; padding: 0.9rem; margin: 0.7rem 0; }
+    label { display: grid; gap: 0.25rem; margin: 0.4rem 0; }
+    input, select, textarea { padding: 0.4rem; border: 1px solid var(--line); width: 100%; background: white; }
+    .drop { outline: 1px dashed var(--line); padding: 0.6rem; }
+    .drop.over { outline-color: var(--accent); }
+    .pass { color: var(--ok); } .fail, .paused { color: var(--bad); }
+    .badge { display: inline-block; background: var(--accent); color: white; padding: 0.05rem 0.4rem; font-size: 0.8rem; }
+    .notice { background: #fff7ed; border: 1px solid #fdba74; padding: 0.6rem; margin: 0.4rem 0; }
+    pre { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
+    .row { display: flex; gap: 0.5rem; align-items: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Bao</strong>
+    <nav>
+      <button data-screen="sessions">Sessions</button>
+      <button data-screen="trail">Trail</button>
+      <button data-screen="library">Library</button>
+      <button data-screen="replay">Replay</button>
+      <button data-screen="settings">Settings</button>
+    </nav>
+    <div class="rec"><span class="dot" id="dot"></span><span id="rec-label">Idle</span></div>
+  </header>
+  <main id="main"></main>
+  <script>
+    const main = document.getElementById("main");
+    let state = { recording: false, notices: [], settings: { heal: "auto" }, workflows: [], trails: [], runs: [] };
+    let screen = "sessions";
+    let lastRun = null;
+    let lastWf = "";
+    let banner = null;
+
+    async function refresh() {
+      state = await (await fetch("/api/state")).json();
+      document.getElementById("dot").classList.toggle("on", state.recording);
+      document.getElementById("rec-label").textContent = state.recording ? "Recording" : "Idle";
+      render();
+    }
+
+    function render() {
+      const views = { sessions, trail, library, replay, settings };
+      main.innerHTML = notices() + views[screen]();
+      bind();
+    }
+
+    function sessions() {
+      return `<section>
+        <h2>Sessions</h2>
+        <p>Nothing is recorded until you start a session. The capture browser uses an app-owned profile, not your daily Chrome.</p>
+        <div class="card">
+          <h3>Browser</h3>
+          <label>Start URL <input id="start-url" value="${location.origin}/fixture"></label>
+          <button class="primary" id="start">Start capture</button>
+          <button id="stop">Stop and save</button>
+        </div>
+        <div class="card">
+          <h3>Desktop</h3>
+          <p>On macOS, start <code>BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>) and grant Accessibility and Screen Recording. On Linux the AT-SPI helper is <code>bao-os-helper</code>. Computer-use clicks land through the proxy or the MCP server, and the trail is the record.</p>
+        </div>
+        <div class="card">
+          <h3>Proxy and MCP</h3>
+          <p>The OpenAI and Claude computer-use executors live in the desktop proxy code from the spikes. This server does not mount those HTTP routes. MCP is a stdio process, <code>bao mcp</code>, and it records screenshot, click, type, key, and scroll into the local trail. No call leaves the machine unless you set a model key for healing.</p>
+        </div>
+      </section>`;
+    }
+
+    function trail() {
+      const ids = state.trails.map((id) => `<option value="${id}">${id}</option>`).join("");
+      return `<section><h2>Audit trail</h2>
+        <label>Trail <select id="trail-id">${ids}</select></label>
+        <button id="load-trail">Load</button>
+        <pre id="trail-view">Values are masked. File paths are not stored.</pre>
+      </section>`;
+    }
+
+    function library() {
+      const cards = state.workflows.map((wf) => {
+        const healed = state.runs.some((run) => run.workflowId === wf.id && run.heals && run.heals.length);
+        return `<div class="card"><div class="row"><strong>${esc(wf.name)}</strong> ${healed ? '<span class="badge" data-workflow-heal="' + esc(wf.id) + '">healed</span>' : ""}</div>
+          <div>${wf.steps} steps</div>
+          <div class="row">
+            <button data-open="${wf.id}">Edit</button>
+            <button data-export="${wf.id}">Export</button>
+            <button data-rename="${wf.id}">Rename</button>
+            <button data-delete="${wf.id}">Delete</button>
+          </div></div>`;
+      }).join("");
+      return `<section><h2>Library</h2>${cards || "<p>No workflows yet.</p>"}
+        <div class="card"><h3>Import</h3><textarea id="import-json" rows="4"></textarea><button id="import">Import JSON</button></div>
+        <div id="editor"></div></section>`;
+    }
+
+    function replay() {
+      const selected = lastWf || (state.workflows[0] && state.workflows[0].id) || "";
+      const current = state.workflows.find((wf) => wf.id === selected);
+      const mode = (current && current.heal) || "";
+      const globalHeal = (state.settings && state.settings.heal) || "auto";
+      const options = state.workflows.map((wf) => `<option value="${esc(wf.id)}" ${wf.id === selected ? "selected" : ""}>${esc(wf.name)}</option>`).join("");
+      return `<section><h2>Replay</h2>
+        <label>Workflow <select id="wf">${options}</select></label>
+        <label>Healing for this workflow <select id="wf-heal">
+          <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
+          <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
+          <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
+        </select></label>
+        <form id="args"></form>
+        <button class="primary" id="run">Run</button>
+        <div id="live">${lastRun ? renderRun(lastRun) : ""}</div>
+      </section>`;
+    }
+
+    function settings() {
+      const heal = state.settings.heal || "auto";
+      return `<section><h2>Settings</h2>
+        <label>When a step misses <select id="heal">
+          <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
+          <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
+        </select></label>
+        <p>Auto is the default. Healing runs only when a model key is set, or when this build is started with the fixture healer for a demo. Otherwise replay stops on the failed step.</p>
+        <button id="save-settings">Save</button></section>`;
+    }
+
+    function notices() {
+      const items = banner ? [banner, ...(state.notices || [])] : (state.notices || []);
+      return items.map((n) => `<div class="notice" data-notice="${esc(n.title)}"><strong>${esc(n.title)}</strong><div>${esc(n.body)}</div></div>`).join("");
+    }
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    }
+
+    function bind() {
+      document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; render(); });
+      const start = document.getElementById("start");
+      if (start) start.onclick = async () => {
+        await fetch("/api/sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: document.getElementById("start-url").value }) });
+        refresh();
+      };
+      const stop = document.getElementById("stop");
+      if (stop) stop.onclick = async () => { await fetch("/api/sessions/stop", { method: "POST" }); refresh(); };
+      const load = document.getElementById("load-trail");
+      if (load) load.onclick = async () => {
+        const id = document.getElementById("trail-id").value;
+        const trail = await (await fetch("/api/trails/" + encodeURIComponent(id))).json();
+        document.getElementById("trail-view").textContent = JSON.stringify(trail, null, 2);
+      };
+      document.querySelectorAll("[data-rename]").forEach((btn) => btn.onclick = async () => {
+        const name = prompt("Name");
+        if (!name) return;
+        await fetch("/api/workflows/" + btn.dataset.rename, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+        refresh();
+      });
+      document.querySelectorAll("[data-delete]").forEach((btn) => btn.onclick = async () => {
+        if (!confirm("Delete this workflow?")) return;
+        await fetch("/api/workflows/" + btn.dataset.delete, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
+        refresh();
+      });
+      document.querySelectorAll("[data-export]").forEach((btn) => btn.onclick = async () => {
+        const doc = await (await fetch("/api/workflows/" + btn.dataset.export)).json();
+        document.getElementById("import-json").value = JSON.stringify(doc, null, 2);
+      });
+      document.querySelectorAll("[data-open]").forEach((btn) => btn.onclick = () => openEditor(btn.dataset.open));
+      const imp = document.getElementById("import");
+      if (imp) imp.onclick = async () => {
+        await fetch("/api/workflows/import", { method: "POST", headers: { "content-type": "application/json" }, body: document.getElementById("import-json").value });
+        refresh();
+      };
+      const wf = document.getElementById("wf");
+      if (wf) {
+        wf.onchange = () => { lastWf = wf.value; refresh(); };
+        if (wf.value) fillArgs(wf.value);
+      }
+      const wfHeal = document.getElementById("wf-heal");
+      if (wfHeal) wfHeal.onchange = async () => {
+        const id = document.getElementById("wf").value;
+        const heal = wfHeal.value || null;
+        await fetch("/api/workflows/" + encodeURIComponent(id), {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ heal }),
+        });
+        refresh();
+      };
+      const run = document.getElementById("run");
+      if (run) run.onclick = runReplay;
+      document.querySelectorAll("[data-keep]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.keep, "keep"));
+      document.querySelectorAll("[data-revert]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.revert, "revert"));
+      const save = document.getElementById("save-settings");
+      if (save) save.onclick = async () => {
+        await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ heal: document.getElementById("heal").value }) });
+        refresh();
+      };
+    }
+
+    async function openEditor(id) {
+      const doc = await (await fetch("/api/workflows/" + id)).json();
+      document.getElementById("editor").innerHTML = `<div class="card"><h3>Edit ${doc.name}</h3><textarea id="edit-json" rows="16">${JSON.stringify(doc, null, 2)}</textarea><button id="save-edit">Save steps</button></div>`;
+      document.getElementById("save-edit").onclick = async () => {
+        const workflow = JSON.parse(document.getElementById("edit-json").value);
+        await fetch("/api/workflows/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ workflow }) });
+        refresh();
+      };
+    }
+
+    async function fillArgs(id) {
+      const doc = await (await fetch("/api/workflows/" + id)).json();
+      const form = document.getElementById("args");
+      form.innerHTML = doc.inputs.map((input) => field(input)).join("") || "<p>This workflow has no inputs.</p>";
+      form.querySelectorAll(".drop").forEach((zone) => {
+        zone.ondragover = (event) => { event.preventDefault(); zone.classList.add("over"); };
+        zone.ondragleave = () => zone.classList.remove("over");
+        zone.ondrop = (event) => {
+          event.preventDefault();
+          zone.classList.remove("over");
+          const file = event.dataTransfer.files[0];
+          zone.querySelector("input").files = event.dataTransfer.files;
+          zone.querySelector("span").textContent = file ? file.name : "";
+        };
+      });
+    }
+
+    function field(input) {
+      if (input.type === "secret") return `<label>${input.label || input.name} <input name="${input.name}" type="password" autocomplete="off"></label>`;
+      if (input.type === "number") return `<label>${input.label || input.name} <input name="${input.name}" type="number" value="${input.default || ""}"></label>`;
+      if (input.type === "choice") {
+        const opts = (input.choices || []).map((c) => `<option>${c}</option>`).join("");
+        return `<label>${input.label || input.name} <select name="${input.name}">${opts}</select></label>`;
+      }
+      if (input.type === "file") return `<label class="drop">${input.label || input.name} <input name="${input.name}" type="file" ${input.multiple ? "multiple" : ""}> <span>Drop a file here, or choose one.</span></label>`;
+      return `<label>${input.label || input.name} <textarea name="${input.name}" rows="2">${input.default || ""}</textarea></label>`;
+    }
+
+    function renderRun(run) {
+      const healed = (run.heals || []).length > 0;
+      const lines = (run.steps || []).map((step) => `<div class="${esc(step.status)}">${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`).join("");
+      const heals = (run.heals || []).map((item) => reviewHeal(run, item)).join("");
+      const failure = run.failure ? `<pre>${esc(JSON.stringify(publicFailure(run.failure), null, 2))}</pre>` : "";
+      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${heals}${failure}`;
+    }
+
+    function reviewHeal(run, item) {
+      const shot = item.snapshot && item.snapshot.screenshot;
+      const img = shot ? `<img alt="Snapshot sent with the heal" src="data:image/png;base64,${shot}" style="max-width:100%; max-height:140px; object-fit:contain; border:1px solid var(--line)">` : "";
+      const audit = {
+        intent: item.intent,
+        model: item.model,
+        prompt: item.prompt,
+        rawResponse: item.rawResponse,
+        proposedPatch: item.proposedPatch,
+        executed: item.executed,
+        postconditionPassed: item.postconditionPassed,
+        snapshot: item.snapshot ? { screenshotRef: item.snapshot.screenshotRef, dom: item.snapshot.dom, ax: item.snapshot.ax } : undefined,
+      };
+      return `<div class="notice">
+        <div class="row"><span class="badge">heal</span> <span>${esc(item.intent || "")}</span></div>
+        <div>model ${esc(item.model && item.model.name)} version ${esc(item.model && item.model.version)} · postcondition ${esc(item.postconditionPassed === undefined ? "waiting" : item.postconditionPassed)}</div>
+        <div class="row">
+          <button data-keep="${esc(item.id)}">Keep patch</button>
+          <button data-revert="${esc(item.id)}">Revert</button>
+        </div>
+        ${img}
+        <pre style="max-height:9rem; overflow:auto">${esc(JSON.stringify(audit, null, 2))}</pre>
+      </div>`;
+    }
+
+    function publicFailure(failure) {
+      if (!failure || !failure.snapshot) return failure;
+      const snap = failure.snapshot;
+      return { ...failure, snapshot: { screenshotRef: snap.screenshotRef, dom: snap.dom, ax: snap.ax } };
+    }
+
+    async function decideHeal(healId, decision) {
+      if (!lastRun) return;
+      const item = (lastRun.heals || []).find((heal) => heal.id === healId);
+      if (!item) return;
+      const id = document.getElementById("wf").value;
+      if (decision === "keep") {
+        await fetch("/api/heal/keep", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id, stepId: item.failedStep.id, patch: item.proposedPatch, runId: lastRun.runId, healId }),
+        });
+      } else {
+        await fetch("/api/heal/revert", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id, runId: lastRun.runId, healId }),
+        });
+      }
+      banner = {
+        title: decision === "keep" ? "Patch kept" : "Patch reverted",
+        body: decision === "keep" ? "Kept the heal in the saved workflow." : "Reverted the saved workflow to the failed step.",
+      };
+      refresh();
+    }
+
+    async function runReplay() {
+      const id = document.getElementById("wf").value;
+      lastWf = id;
+      const form = document.getElementById("args");
+      const args = {};
+      for (const el of form.querySelectorAll("[name]")) {
+        if (el.type === "file") {
+          const file = el.files[0];
+          if (!file) continue;
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          let bin = "";
+          for (const b of bytes) bin += String.fromCharCode(b);
+          args[el.name] = { name: file.name, base64: btoa(bin) };
+        } else if (el.type === "number") args[el.name] = Number(el.value);
+        else args[el.name] = el.value;
+      }
+      document.getElementById("live").textContent = "Running…";
+      const res = await fetch("/api/replay", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, args }) });
+      lastRun = await res.json();
+      refresh();
+    }
+
+    document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; render(); });
+    refresh();
+  </script>
+</body>
+</html>

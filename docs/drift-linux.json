@@ -1,0 +1,187 @@
+{
+  "generatedAt": "2026-10-21T01:36:06.494Z",
+  "rows": [
+    {
+      "workflow": "browser-form",
+      "change": "shift",
+      "stepId": "wf-1792546563666-0",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "shift",
+      "stepId": "wf-1792546563666-1",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "shift",
+      "stepId": "wf-1792546563666-2",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "shift",
+      "stepId": "wf-1792546563666-3",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "theme",
+      "stepId": "wf-1792546563666-0",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "theme",
+      "stepId": "wf-1792546563666-1",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "theme",
+      "stepId": "wf-1792546563666-2",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "theme",
+      "stepId": "wf-1792546563666-3",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "font",
+      "stepId": "wf-1792546563666-0",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "font",
+      "stepId": "wf-1792546563666-1",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "font",
+      "stepId": "wf-1792546563666-2",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "font",
+      "stepId": "wf-1792546563666-3",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "order",
+      "stepId": "wf-1792546563666-0",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "order",
+      "stepId": "wf-1792546563666-1",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "order",
+      "stepId": "wf-1792546563666-2",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "order",
+      "stepId": "wf-1792546563666-3",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "slow",
+      "stepId": "wf-1792546563666-0",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "slow",
+      "stepId": "wf-1792546563666-1",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "slow",
+      "stepId": "wf-1792546563666-2",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "slow",
+      "stepId": "wf-1792546563666-3",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "scale-2x",
+      "stepId": "wf-1792546563666-0",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "scale-2x",
+      "stepId": "wf-1792546563666-1",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "scale-2x",
+      "stepId": "wf-1792546563666-2",
+      "passed": true
+    },
+    {
+      "workflow": "browser-form",
+      "change": "scale-2x",
+      "stepId": "wf-1792546563666-3",
+      "passed": true
+    }
+  ],
+  "summary": [
+    {
+      "change": "shift",
+      "passed": 4,
+      "failed": 0,
+      "rate": 1
+    },
+    {
+      "change": "theme",
+      "passed": 4,
+      "failed": 0,
+      "rate": 1
+    },
+    {
+      "change": "font",
+      "passed": 4,
+      "failed": 0,
+      "rate": 1
+    },
+    {
+      "change": "order",
+      "passed": 4,
+      "failed": 0,
+      "rate": 1
+    },
+    {
+      "change": "slow",
+      "passed": 4,
+      "failed": 0,
+      "rate": 1
+    },
+    {
+      "change": "scale-2x",
+      "passed": 4,
+      "failed": 0,
+      "rate": 1
+    }
+  ]
+}

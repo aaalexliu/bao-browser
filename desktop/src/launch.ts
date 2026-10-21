@@ -12,12 +12,14 @@ export async function launchOwnedChrome(opts: {
   videoDir?: string;
   headless?: boolean;
   args?: string[];
+  deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     channel: "chrome",
     headless: opts.headless ?? true,
     viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: opts.deviceScaleFactor,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
     args: [...LAUNCH_ARGS, ...(opts.args ?? [])],
   });

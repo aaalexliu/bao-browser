@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Bao
+Exec=bao
+Icon=bao
+Type=Application
+Categories=Utility;
+Comment=Record a workflow and replay it locally

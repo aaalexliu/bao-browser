@@ -241,6 +241,16 @@ is still the source of truth for the extension.
   buttons, so `press` misses and will not fall back to a coordinate. The
   OpenAI and Claude loops were not run. TextEdit was not opened. Fixing the
   walk means a Rust rebuild, which was not done.
+- **2026-10-21 — Desktop v1 (in progress on `v1/desktop`).** One local app
+  (`npm run bao -- serve`) records a browser session into workflow schema v2
+  and replays it without a model. Identity scoring refuses a tie or a weak
+  match (`docs/element-identity.md`). Secrets and file paths are inputs.
+  Healing is off unless a model key is set; the default policy is then auto,
+  with a per-workflow switch to approve. Linux evidence: fixture login plus
+  file upload and drop, replayed twice; a broken test id stops with a
+  snapshot; the GTK calculator replays `{{a}}+{{b}}` after a move; drift is
+  24/24 (`docs/drift-linux.md`); a scripted MCP client writes a click into
+  the trail. macOS install steps are `docs/mac-test.md`.
 
 ---
 

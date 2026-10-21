@@ -352,6 +352,16 @@ fn target(app: &str, hit: &Hit, bbox: Option<BBox>) -> OsTarget {
     }
 }
 
+async fn set_text_quiet(conn: &AccessibilityConnection, hit: &Hit, value: &str) -> Res<()> {
+    let acc = reopen(conn, hit).await?;
+    let edit = editable_of(&acc).await?;
+    let ok = edit.set_text_contents(value).await?;
+    if !ok {
+        return Err("EditableText.SetTextContents returned false".into());
+    }
+    Ok(())
+}
+
 async fn set_value(conn: &AccessibilityConnection, hit: &Hit, value: &str) -> Res<()> {
     let acc = reopen(conn, hit).await?;
     let text = text_of(&acc).await?;
@@ -444,7 +454,7 @@ async fn main() -> Res<()> {
     let opts = parse()?;
     if opts.cmd == "help" || opts.cmd == "--help" {
         eprintln!(
-            "usage: bao-os-helper dump|record|confirm|replay|nodes|hit|focus|press|read\n  \
+            "usage: bao-os-helper dump|record|confirm|replay|nodes|hit|focus|press|read|set-text\n  \
              record --value FILENAME --out workflow.json [--dump tree.txt]\n  \
              confirm|replay --workflow workflow.json\n  \
              hit --x N --y N\n  \
@@ -587,6 +597,29 @@ async fn main() -> Res<()> {
             let button = lookup(&hits, &confirm_want)?.clone();
             press(&conn, &button).await?;
             println!("APPLIED={}", opts.cmd);
+        }
+        "set-text" => {
+            let value = opts.value.clone().ok_or("--value is required")?;
+            let geoms = collect_geoms(&conn, opts.screen).await?;
+            let geom = unique_geom(&geoms, &opts.app, &opts.entry)?;
+            let hit = Hit {
+                role: geom.role.clone(),
+                name: geom.name.clone(),
+                path: geom.path.clone(),
+                dest: geom.dest.clone(),
+                obj_path: geom.obj_path.clone(),
+            };
+            set_text_quiet(&conn, &hit, &value).await?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "ok": true,
+                    "strategy": "atspi-editable-text",
+                    "app": geom.app,
+                    "role": geom.role,
+                    "name": geom.name,
+                })
+            );
         }
         "nodes" => {
             let geoms = collect_geoms(&conn, opts.screen).await?;

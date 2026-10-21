@@ -65,3 +65,9 @@ export function osPress(bin: string, screen: string, app: string, role: string, 
 export function osRead(bin: string, screen: string, app: string, role: string): Promise<{ ok: boolean; names: string[] }> {
   return run(bin, ["read", "--screen", screen, "--app", app, "--entry-role", role]) as Promise<{ ok: boolean; names: string[] }>;
 }
+
+export function osSetText(bin: string, screen: string, app: string, role: string, name: string, value: string): Promise<{ ok: boolean }> {
+  return run(bin, [
+    "set-text", "--screen", screen, "--app", app, "--entry-role", role, "--entry-name", name, "--value", value,
+  ]) as Promise<{ ok: boolean }>;
+}
