@@ -217,6 +217,30 @@ is still the source of truth for the extension.
   case: its buttons are named, but every extent is origin `(0, 0)`, so the
   helper does not store a button. An image template match of the crop is
   the documented last resort, not implemented. No call to Anthropic or OpenAI.
+- **2026-10-19 — macOS Accessibility spike (blocked on privacy permission).**
+  `npm run spike-macos` adds `desktop/os-helper-macos` (`bao-os-macos`) and a
+  macOS executor. A scripted OpenAI `computer_call` click and a scripted Claude
+  `left_click` are meant to resolve to an AX element (bundle, role, name, path).
+  Replay calls `AXPress` or `AXValue` by that identity. The coordinate stays on
+  `provenance`. On macOS 26.6.2 (25G83) Screen Recording for the existing ad-hoc binary later
+  reported true, with no rebuild and no second prompt. The Calculator window
+  was visible to CoreGraphics, but the AX walk contained only nested
+  `AXApplication` and `AXMenuBar` nodes, and point hit-testing returned no
+  element. The run stopped at `no AX button for 7`. TextEdit was not opened.
+  Details are in [`desktop/os-helper-macos/NOTES.md`](desktop/os-helper-macos/NOTES.md).
+- **2026-10-20 — BaoOSHelper.app prompted once.** The walker follows
+  `AXWindows` before children and stops an `AXApplication` loop. `package-app.sh`
+  ad-hoc signs `desktop/os-helper-macos/BaoOSHelper.app` as `dev.bao.oshelper`
+  (no keychain identity existed). One LaunchServices launch asked for
+  Accessibility and Screen Recording. Both checks were still false. System
+  Settings was open on the Accessibility pane. The Calculator button check waits
+  until that bundle is granted. Do not rebuild the app before then.
+- **2026-10-20 — grant on, replay still blocked.** Both privacy checks are true
+  for the existing `BaoOSHelper.app`. A point inside Calculator resolves to
+  `AXButton` `7`, `Add`, `5`, and `Equals`. The tree walk does not include those
+  buttons, so `press` misses and will not fall back to a coordinate. The
+  OpenAI and Claude loops were not run. TextEdit was not opened. Fixing the
+  walk means a Rust rebuild, which was not done.
 
 ---
 

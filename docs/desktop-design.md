@@ -570,6 +570,12 @@ button. Screenshot via ScreenCaptureKit. Same pass shape. Role strings, Retina
 coordinate space, and TCC make this a separate demo. A green AT-SPI run does not
 count as a Mac result.
 
+**Tried 2026-10-20, grant on, keypad not in the walk.** `BaoOSHelper.app` is
+trusted for Accessibility and Screen Recording. Hit-testing Calculator returns
+`AXButton` `7`. The tree walk does not, so replay cannot press it without a
+Rust change. See
+[`desktop/os-helper-macos/NOTES.md`](../desktop/os-helper-macos/NOTES.md).
+
 Windows UIA is the same shape again (`ValuePattern` + `InvokePattern`) and needs
 a Windows runner. Not this VM.
 

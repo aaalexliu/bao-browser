@@ -46,12 +46,18 @@ export interface AuditEvent {
   unresolved?: { reason: string };
   sensitive?: boolean;
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
-  /** Set when the act resolved against the OS accessibility tree. */
+  /** Set when the act resolved against an OS accessibility element. */
   os?: {
+    platform?: "linux" | "macos";
     app: string;
     role: string;
+    subrole?: string;
     name: string;
-    path: { role: string; name: string }[];
+    title?: string;
+    description?: string;
+    identifier?: string;
+    path: { role: string; name?: string }[];
+    value?: string;
   };
   /** sha256 of a screenshot crop kept for an unresolved pixel. */
   crop?: string;
@@ -170,6 +176,27 @@ function targetOf(e: AuditEvent): Step["target"] {
   };
 }
 
+function osAction(op: string): Step["action"] {
+  if (op === "osClick") return "osClick";
+  if (op === "osSetValue") return "osSetValue";
+  return "osType";
+}
+
+function osPlatform(e: AuditEvent): "linux" | "macos" {
+  if (e.os?.platform) return e.os.platform;
+  if (e.os?.subrole || e.os?.identifier || e.os?.title || e.os?.description) return "macos";
+  return "linux";
+}
+
+function osLabel(e: AuditEvent, action: Step["action"]): string {
+  if (action === "osSetValue") return "Set value";
+  if (action === "osType") return "Type";
+  const name = e.os?.name;
+  const role = e.os?.role || "control";
+  if (osPlatform(e) === "macos") return `Press ${name || role}`;
+  return name ? `Click "${name}"` : `Click ${role}`;
+}
+
 /** Workflow version 2, from act events only. Reads are not steps. */
 export function deriveWorkflow(
   events: readonly AuditEvent[],
@@ -180,10 +207,11 @@ export function deriveWorkflow(
   const steps: Step[] = [];
   for (const e of events) {
     if (e.kind !== "act") continue;
-    if (e.op === "osClick" || e.op === "osType") {
+    if (e.op === "osClick" || e.op === "osType" || e.op === "osSetValue") {
+      const action = osAction(e.op);
       const osBase: Step = {
         ts: e.ts,
-        action: e.op === "osType" ? "osType" : "osClick",
+        action,
         label: e.op,
         surface: "os",
         provenance: e.provenance,
@@ -196,18 +224,25 @@ export function deriveWorkflow(
         });
         continue;
       }
+      const platform = osPlatform(e);
       steps.push({
         ...osBase,
-        label: e.op === "osType" ? "Type" : (e.os.name ? `Click "${e.os.name}"` : `Click ${e.os.role}`),
+        label: osLabel(e, action),
         os: {
           target: {
-            platform: "linux",
+            platform,
             app: e.os.app,
             role: e.os.role,
+            subrole: e.os.subrole,
             name: e.os.name,
+            title: e.os.title,
+            description: e.os.description,
+            identifier: e.os.identifier,
             path: e.os.path,
           },
+          value: e.sensitive ? undefined : e.os.value,
         },
+        sensitive: e.sensitive || undefined,
       });
       continue;
     }

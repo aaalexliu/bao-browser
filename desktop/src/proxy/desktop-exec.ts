@@ -44,6 +44,7 @@ async function pointerClick(x: number, y: number): Promise<void> {
 
 function osOf(hit: OsHit) {
   return {
+    platform: "linux" as const,
     app: hit.app || "",
     role: hit.role || "",
     name: hit.name || "",

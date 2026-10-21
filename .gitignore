@@ -19,3 +19,5 @@ dist/
 
 # Rust helper build
 desktop/os-helper/target/
+desktop/os-helper-macos/target/
+desktop/os-helper-macos/BaoOSHelper.app/
