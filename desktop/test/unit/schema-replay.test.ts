@@ -96,6 +96,10 @@ test("interpret is deterministic and lifts a secret and a file without storing e
   assert.equal(blob.includes("taxes.pdf"), false);
   assert.equal(once.inputs.find((item) => item.type === "secret")?.name, "password");
   assert.equal(once.inputs.some((item) => item.type === "file"), true);
+  const upload = once.steps.find((step) => step.action === "upload");
+  assert.equal(upload?.postcondition?.kind, "text");
+  assert.equal(upload?.postcondition?.match, "{{file}}");
+  assert.equal(JSON.stringify(upload).includes("taxes.pdf"), false);
   assert.equal(once.steps.some((step) => step.unresolved), false);
   const typed = once.steps.find((step) => step.input === "username");
   assert.equal(typed?.value, "{{username}}");

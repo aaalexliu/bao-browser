@@ -33,3 +33,9 @@ Replay of a file input on macOS:
 4. If the app will not come front, stop. Do not click the center of the dialog.
 
 A left-button `CGEvent` drag from a Finder icon to the TextEdit text area moved the pointer in top-left screen points (the same space as the accessibility frames). The text area value did not become the file. macOS does not start a file drag from another process's mouse events. An `NSDraggingSession` has to begin in the source app, with a pasteboard the destination accepts. This helper cannot start that session. `bao-os-macos drag-file --path <file>` returns `ok: false`, `fileDrag: false`, and `fallback: "open-panel"`. The pointer `drag` command still moves the cursor and sets `fileDrag: false` so a moved pointer is not counted as a drop. Use the Open panel.
+
+## v1 scope
+
+A Finder drag onto the replay form in the product window is an ordinary web drop on the page Bao serves. The field's drop handler takes `dataTransfer.files`, assigns them to the file input when the engine allows it, and keeps the same `File` for Run. A synthetic `DataTransfer` drop of `dragged-note.txt` is the check for that handler. A person can drag a file from Finder onto that field the same way.
+
+A native `NSDraggingSession` onto a Mac app (TextEdit, Finder, or any window that is not this web form) stays out of v1. The helper still returns `fallback: "open-panel"` for that path.

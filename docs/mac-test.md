@@ -22,7 +22,15 @@ The desktop executable is a Mach-O arm64 binary compiled from `bao-main.c`, not 
 
 The server also needs `src/mask.js` and the `playwright` package. The script copies both into the app. A copy of `Bao.app` that sits outside the checkout still starts. `Contents/MacOS/bao` is Mach-O. Check it with `file`.
 
-On a clean account, Gatekeeper may say the app is from an unidentified developer. Right-click, then Open, once. Rebuilding the standalone helper with the same certificate kept the designated requirement on this machine, and both privacy checks stayed true for `desktop/os-helper-macos/BaoOSHelper.app`. The copy at `Bao.app/Contents/Resources/BaoOSHelper.app` had the same cdhash and reported Screen Recording false. Accessibility on that copy stayed true. Do not pass `--prompt` to try again.
+The helper Bao launches is `Bao.app/Contents/Resources/BaoOSHelper.app` (`dev.bao.oshelper`). `package-app.sh` copies the built helper there and the entry point sets `BAO_OS_HELPER` to that path. There is not a second helper to grant.
+
+On a clean account the first launch shows these dialogs, in order:
+
+1. Gatekeeper, from Finder: "Bao.app" cannot be opened because the developer cannot be verified. Right-click `Bao.app`, choose Open, then Open on "macOS cannot verify the developer of Bao.app. Are you sure you want to open it?"
+2. Accessibility, the first time Bao launches the nested helper: BaoOSHelper would like to control this computer using accessibility features. Open System Settings and enable BaoOSHelper. The usage string is "BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name."
+3. Screen Recording, same launch: BaoOSHelper would like to record this computer's screen. Enable BaoOSHelper, then quit and relaunch Bao so the grant applies. The usage string is "BaoOSHelper captures one throwaway window so the spike can show the control it pressed."
+
+Do not pass `--prompt` on a machine that already has a grant. This pass did not show a dialog. Accessibility for the nested helper was true (`prompted` false, parent launchd). Screen Recording for that same nested path was false. The standalone helper at `desktop/os-helper-macos/BaoOSHelper.app` reported Screen Recording true with the same cdhash (`e2ad7477d8f989484c3d0ef8a2598561844127bf`). The grant on this Mac is tied to that path. A clean account grants the nested copy when Bao launches it the first time. Do not pass `--prompt` to move the grant.
 
 ## Launch
 
@@ -43,10 +51,10 @@ Do not `open` the app a second time while that process is already running. Launc
 
 ## Permissions
 
-1. Launch the standalone `BaoOSHelper.app` once so the prompt appears. On a clean account this is the first grant. This pass did not prompt.
-2. System Settings, Privacy and Security, Accessibility, enable `BaoOSHelper`.
+1. Launch `Bao.app`. That starts `Contents/Resources/BaoOSHelper.app`. On a clean account the two prompts above appear. This pass did not prompt.
+2. System Settings, Privacy and Security, Accessibility, enable `BaoOSHelper` if the dialog did not already send you there.
 3. Same pane, Screen Recording, enable `BaoOSHelper`.
-4. Quit and relaunch the helper. `BaoOSHelper.app/Contents/MacOS/BaoOSHelper permissions` with no `--prompt` should report both true, `prompted` false, and parent launchd.
+4. Quit Bao and launch it again. `GET /api/pids` reports the helper path inside `Bao.app`. A permissions check of that bundle with no `--prompt` reports Accessibility true. Screen Recording stays false on a Mac whose grant was recorded for a different path of the same cdhash. On a clean account, after the Screen Recording toggle and a relaunch, both are true, `prompted` is false, and the parent is launchd.
 
 The product window does not need Accessibility. The bundled browser is not the daily Chrome profile.
 
@@ -61,16 +69,16 @@ The product window does not need Accessibility. The bundled browser is not the d
 What this pass found:
 
 - Start capture is an `AXButton` and the press works while the product window is the only `com.google.chrome.for.testing` process.
-- Stop and save is the same kind of button, and the helper then reports `expected one process, found 2`. The product window and the capture window share that bundle id, so a bundle-wide command cannot see one of them. A click on the button in the product window still saves. The saved workflow had `username` (text, default `ada`), `password` (secret), and `file`. The secret string and the `/tmp` path were absent.
+- Stop and save is the same kind of button. `GET /api/pids` returns the product pid and the capture pid. `press --pid <product> --role AXButton --name "Stop and save"` targets that process. A bundle-wide press still reports `expected one process, found 2` while both windows are `com.google.chrome.for.testing`. The saved workflow has a typed input and a file input. The secret string and the `/tmp` path are absent. The file step's postcondition is the filename template, and the fixture shows `Received file:` or `Dropped file:` plus that name.
 - The saved start URL is the page URL at stop time. Log in on the fixture does `pushState` to `/secure`, so the workflow's `startUrl` was `/secure`. This server maps `/secure` back to the fixture HTML. On another site, stop on the page that replay should open.
 
 ## Replay twice
 
 1. Replay. The form lists every input before Run. Fill a different username and a different file than the capture. The password field is on the form too.
 2. Run. Each step goes pass or fail. The fixture page shows `Welcome` plus the new username, and the file name.
-3. The replay browser closes when the run returns, so there is no browser window to move between runs. During a run, `move-window` by bundle fails with two processes. `AXSize` on the product window did resize it (`1200x1040` to `1100x760`). `AXPosition` on the replay browser, asked for `48,72` while it was the only test browser, left the origin at `22,55`. Calculator still rejects `AXSize` with `-25200`. That is a calculator limit, not a limit of this browser.
-4. Run again with a third username and a third file. Both replays passed all four steps. The press log has no x,y.
-5. The file button on the form opens an Open panel (`AXSheet` title `open`). `AXUIElementPostKeyboardEvent` for Go to Folder reported success and did not open the sheet. `CGEvent` was not posted: `AXFrontmost` stayed false, and the helper refuses the key in that case. The replays in this pass sent the file as the upfront file argument.
+3. The replay window stays open after the run. Move and resize it before the second run (`POST /api/replay/place`, or drag the window). The next run reuses that window, and the bounds are stored per workflow so a later launch opens at the same place. Chrome for Testing is moved with CDP `Browser.setWindowBounds`. The helper is also tried with `--pid` and `--frontmost`. If neither one changes the origin, the drift row is `n/a-harness` and the replay steps are not counted as failures. A step failure counts only after the requested bounds landed. Calculator still rejects `AXSize` with `-25200`.
+4. Run again with a third username and a third file. The fixture line `Received file:` or `Dropped file:` shows the new name. The press log has no x,y.
+5. Dropping a file from Finder onto the replay form is a normal web drop. The form keeps that file for Run. A synthetic `DataTransfer` drop is the automated check. The file button can also open an Open panel. `AXUIElementPostKeyboardEvent` for Go to Folder reports success and does not open the sheet. Native `NSDraggingSession` onto another Mac app is out of v1 scope (`docs/files-and-drag.md`).
 
 ## Auto-heal
 
@@ -84,8 +92,8 @@ Settings, Approve before applying, was not the path under test. Auto is the defa
 
 Page theme (`?theme=dark` and the default light page) does not change the system appearance. Leave System Settings alone. That row is n/a. Font size for this pass was `document.body.style.zoom = "1.6"`. List order was `?order=flip`. Slow network was a 250ms delay on each request. Retina was `deviceScaleFactor` 2 against 1. Content shift was `?shift=1`.
 
-Every replay step passed for those changes. The window resize passed and the four steps passed in the resized window. The window move failed on `AXPosition`.
+Every replay step passed for those page changes. Window resize counts when the bounds change and the steps pass. Window move counts the same way. A move that stays put is `n/a-harness`, not a failed step.
 
 ## Done
 
-Install the build, point `BAO_HOME` and `BAO_NODE` at throwaway values, record a typed input and a file input, save, and replay twice with different upfront inputs. The browser window is a new process per run, and bundle-wide helper commands cannot see it while the product window is open.
+Install the build, point `BAO_HOME` and `BAO_NODE` at throwaway values, record a typed input and a dragged-in file, save, and replay twice with different upfront inputs. Move and resize the replay window between the two runs. Helper commands that must see one Chrome for Testing window take `--pid` from `GET /api/pids`.

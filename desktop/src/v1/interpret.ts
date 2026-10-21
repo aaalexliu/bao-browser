@@ -138,7 +138,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       input: input.name,
       value: `{{${input.name}}}`,
       label: event.op === "drop" ? "Drop file" : "Upload file",
-      postcondition: post(event, undefined, meta.secrets ?? []),
+      postcondition: { kind: "text", match: `{{${input.name}}}`, timeoutMs: 4000 },
     };
   }
   if (isType(event)) {

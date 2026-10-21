@@ -64,6 +64,10 @@ int main(void) {
   }
   /* Capture and replay use this binary too, not an installed Chrome. */
   setenv("BAO_BROWSER", browser, 1);
+  /* v1 launches the helper inside this app, not a second copy on disk. */
+  char helper[4096];
+  snprintf(helper, sizeof helper, "%s/BaoOSHelper.app", resources);
+  if (access(helper, F_OK) == 0) setenv("BAO_OS_HELPER", helper, 1);
 
   const char *home = getenv("HOME");
   if (!home || !home[0]) home = "/tmp";

@@ -35,6 +35,57 @@ export function macChangeApplicability(change: string, bundleId: string): "run" 
   return "run";
 }
 
+export interface WindowStepResult {
+  id: string;
+  label?: string;
+  passed: boolean;
+  brokenAttr?: string;
+  reason?: string;
+}
+
+/**
+ * A move that never landed is a harness miss. Replay steps count only after
+ * the window bounds match the request.
+ */
+export function windowChangeRows(opts: {
+  workflow: string;
+  change: string;
+  applied: boolean;
+  reason: string;
+  steps?: WindowStepResult[];
+}): DriftRow[] {
+  if (!opts.applied) {
+    const reason = opts.reason.startsWith("n/a-harness") ? opts.reason : `n/a-harness: ${opts.reason}`;
+    return [{
+      workflow: opts.workflow,
+      change: opts.change,
+      stepId: "window",
+      passed: false,
+      na: true,
+      reason,
+    }];
+  }
+  const rows: DriftRow[] = [{
+    workflow: opts.workflow,
+    change: opts.change,
+    stepId: "window",
+    passed: true,
+    reason: opts.reason,
+  }];
+  for (const step of opts.steps ?? []) {
+    rows.push({
+      workflow: opts.workflow,
+      change: opts.change,
+      stepId: step.id,
+      label: step.label,
+      passed: step.passed,
+      brokenAttr: step.passed ? undefined : step.brokenAttr,
+      reason: step.reason,
+    });
+  }
+  return rows;
+}
+
 export interface DriftReport {
   generatedAt: string;
   rows: DriftRow[];
@@ -98,6 +149,11 @@ export function driftMarkdown(report: DriftReport): string {
     lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.brokenAttr || ""} | ${row.reason || ""} |`);
   }
   if (!report.rows.some((row) => !row.passed && !row.na)) lines.push(`| | | | | none |`);
+  const harness = report.rows.filter((row) => row.na && (row.reason || "").includes("n/a-harness"));
+  if (harness.length) {
+    lines.push(``, `## Harness`, ``, `These rows are n/a. The window never reached the requested bounds, so the replay steps were not scored.`, ``, `| workflow | change | reason |`, `| --- | --- | --- |`);
+    for (const row of harness) lines.push(`| ${row.workflow} | ${row.change} | ${row.reason || ""} |`);
+  }
   lines.push("");
   return lines.join("\n");
 }

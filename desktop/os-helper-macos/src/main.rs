@@ -32,6 +32,23 @@ fn num(args: &[String], name: &str) -> Result<f64, String> {
     need(args, name)?.parse().map_err(|_| format!("{name} is not a number"))
 }
 
+fn pid_flag(args: &[String]) -> Result<Option<i32>, String> {
+    match flag(args, "--pid") {
+        None => Ok(None),
+        Some(raw) => raw.parse::<i32>().map(Some).map_err(|_| "--pid is not a number".to_string()),
+    }
+}
+
+fn bundle_or_pid(args: &[String]) -> Result<String, String> {
+    if let Some(bundle) = flag(args, "--bundle") {
+        return Ok(bundle);
+    }
+    if pid_flag(args)?.is_some() {
+        return Ok(String::new());
+    }
+    Err("--bundle or --pid is required".into())
+}
+
 fn path_arg(args: &[String]) -> Result<Vec<Seg>, String> {
     match flag(args, "--path") {
         None => Ok(Vec::new()),
@@ -61,8 +78,8 @@ fn run(args: &[String]) -> Result<Value, String> {
         "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "windows-brief", "move-window", "shot", "key", "type-keys", "fixture", "close-window", "drag", "drag-file"]})),
         "permissions" => Ok(perms::report(args.iter().any(|a| a == "--prompt"))),
         "nodes" => {
-            let bundle = need(args, "--bundle")?;
-            let (nodes, geom, pid) = walk::tree(&bundle)?;
+            let bundle = bundle_or_pid(args)?;
+            let (nodes, geom, pid) = walk::tree_pid(&bundle, pid_flag(args)?)?;
             Ok(json!({"ok": true, "pid": pid, "geometry": geom, "nodes": nodes}))
         }
         "hit" => {
@@ -74,17 +91,17 @@ fn run(args: &[String]) -> Result<Value, String> {
             Ok(hit_json(useful, reason, node))
         }
         "press" => {
-            let node = act::press(&need(args, "--bundle")?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?)?;
+            let node = act::press(&bundle_or_pid(args)?, pid_flag(args)?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?)?;
             eprintln!("STRATEGY=ax-press");
-            Ok(json!({"ok": true, "strategy": "ax-press", "element": node}))
+            Ok(json!({"ok": true, "strategy": "ax-press", "pid": pid_flag(args)?, "element": node}))
         }
         "set-value" => {
-            let node = act::set_value(&need(args, "--bundle")?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?, &need(args, "--value")?)?;
+            let node = act::set_value(&bundle_or_pid(args)?, pid_flag(args)?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?, &need(args, "--value")?)?;
             eprintln!("STRATEGY=ax-set-value");
             Ok(json!({"ok": true, "strategy": "ax-set-value", "element": node}))
         }
         "read" => {
-            let (node, value) = act::read_value(&need(args, "--bundle")?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?)?;
+            let (node, value) = act::read_value(&bundle_or_pid(args)?, pid_flag(args)?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?)?;
             Ok(json!({"ok": true, "value": value, "element": node}))
         }
         "focus-role" => {
@@ -92,15 +109,21 @@ fn run(args: &[String]) -> Result<Value, String> {
             Ok(json!({"ok": true, "strategy": "ax-focus", "element": node}))
         }
         "windows" => {
-            let bundle = need(args, "--bundle")?;
-            let pids = apps::pids_for_bundle(&bundle);
-            if pids.len() != 1 { return Err(format!("expected one process for {bundle}, found {}", pids.len())); }
-            let wins = win::windows_for_pid(pids[0]);
-            Ok(json!({"ok": true, "pid": pids[0], "windows": wins.iter().map(|w| json!({"id": w.id, "layer": w.layer, "x": w.frame.x, "y": w.frame.y, "w": w.frame.w, "h": w.frame.h})).collect::<Vec<_>>()}))
+            let pid = match pid_flag(args)? {
+                Some(pid) => pid,
+                None => {
+                    let bundle = need(args, "--bundle")?;
+                    let pids = apps::pids_for_bundle(&bundle);
+                    if pids.len() != 1 { return Err(format!("expected one process for {bundle}, found {}", pids.len())); }
+                    pids[0]
+                }
+            };
+            let wins = win::windows_for_pid(pid);
+            Ok(json!({"ok": true, "pid": pid, "windows": wins.iter().map(|w| json!({"id": w.id, "layer": w.layer, "x": w.frame.x, "y": w.frame.y, "w": w.frame.w, "h": w.frame.h})).collect::<Vec<_>>()}))
         }
         "move-window" => {
-            let (before, after, size_error) = act::move_window(&need(args, "--bundle")?, num(args, "--x")?, num(args, "--y")?, num(args, "--w")?, num(args, "--h")?)?;
-            Ok(json!({"ok": true, "before": before, "after": after, "resized": size_error.is_none(), "sizeError": size_error}))
+            let (before, after, size_error) = act::move_window(&bundle_or_pid(args)?, pid_flag(args)?, args.iter().any(|a| a == "--frontmost"), num(args, "--x")?, num(args, "--y")?, num(args, "--w")?, num(args, "--h")?)?;
+            Ok(json!({"ok": true, "before": before, "after": after, "resized": size_error.is_none(), "sizeError": size_error, "frontmost": args.iter().any(|a| a == "--frontmost")}))
         }
         "key" => {
             keys::post_combo(&need(args, "--bundle")?, &need(args, "--combo")?)?;
@@ -140,10 +163,16 @@ fn run(args: &[String]) -> Result<Value, String> {
                 let (w, h) = win::capture_window(id, &out)?;
                 return Ok(json!({"ok": true, "windowId": id, "width": w, "height": h}));
             }
-            let bundle = need(args, "--bundle")?;
-            let pids = apps::pids_for_bundle(&bundle);
-            if pids.len() != 1 { return Err(format!("expected one process for {bundle}, found {}", pids.len())); }
-            let win = win::main_window(pids[0])?;
+            let pid = match pid_flag(args)? {
+                Some(pid) => pid,
+                None => {
+                    let bundle = need(args, "--bundle")?;
+                    let pids = apps::pids_for_bundle(&bundle);
+                    if pids.len() != 1 { return Err(format!("expected one process for {bundle}, found {}", pids.len())); }
+                    pids[0]
+                }
+            };
+            let win = win::main_window(pid)?;
             let (w, h) = win::capture_window(win.id, &out)?;
             Ok(json!({"ok": true, "windowId": win.id, "width": w, "height": h}))
         }

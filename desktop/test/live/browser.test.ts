@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
+import { launchOwnedChrome } from "../../src/launch";
 
 process.env.BAO_DRIVE = "1";
 
@@ -50,8 +51,39 @@ test("capture login, upload, and drop, then replay with two input sets", async (
         [secret.name]: "another-secret",
       };
       for (const input of files) args[input.name] = { name: "note.txt", path: file };
-      const run = await post(app.port, "/api/replay", { id: workflow.id, args }) as { status: string; failure?: { reason: string; stepId: string } };
+      const run = await post(app.port, "/api/replay", { id: workflow.id, args }) as {
+        status: string;
+        failure?: { reason: string; stepId: string };
+        fileProof?: { action: string; name: string; via: string }[];
+      };
       assert.equal(run.status, "passed", JSON.stringify(run.failure));
+      assert.ok(run.fileProof?.some((item) => item.action === "upload" && item.name === "note.txt" && item.via === "input.files"), JSON.stringify(run.fileProof));
+      assert.ok(run.fileProof?.some((item) => item.action === "drop" && item.name === "note.txt"), JSON.stringify(run.fileProof));
+    }
+    const uiProfile = mkdtempSync(path.join(tmpdir(), "bao-ui-"));
+    const ui = await launchOwnedChrome({ userDataDir: uiProfile, headless: true });
+    try {
+      const uiPage = ui.pages()[0] || await ui.newPage();
+      await uiPage.goto(`http://127.0.0.1:${app.port}/`);
+      await uiPage.click("button[data-screen=replay]");
+      await uiPage.waitForSelector(".drop");
+      const dropped = await uiPage.evaluate(() => {
+        const zone = document.querySelector(".drop");
+        if (!zone) return { span: "", name: "" };
+        const dt = new DataTransfer();
+        dt.items.add(new File(["hello"], "dragged-note.txt", { type: "text/plain" }));
+        zone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+        const input = zone.querySelector("input") as HTMLInputElement | null;
+        const span = zone.querySelector("span");
+        return {
+          span: span ? span.textContent || "" : "",
+          name: input && input.files && input.files[0] ? input.files[0].name : "",
+        };
+      });
+      assert.equal(dropped.span, "dragged-note.txt");
+      assert.equal(dropped.name, "dragged-note.txt");
+    } finally {
+      await ui.close();
     }
     if (process.env.BAO_WRITE_EXAMPLES === "1") {
       const { writeFileSync: writeExample } = await import("node:fs");
@@ -72,9 +104,11 @@ test("capture login, upload, and drop, then replay with two input sets", async (
     assert.ok(broken.failure?.snapshot);
     assert.equal(JSON.stringify(broken).includes("another-secret"), false);
     process.env.BAO_HEAL_FIXTURE = "1";
+    const healedArgs: Record<string, unknown> = { [user.name]: "ada", [secret.name]: "another-secret" };
+    for (const input of files) healedArgs[input.name] = { name: "note.txt", path: file };
     const healed = await post(app.port, "/api/replay", {
       id: workflow.id,
-      args: { [user.name]: "ada", [secret.name]: "another-secret" },
+      args: healedArgs,
     }) as { status: string; heals?: { model?: { name?: string }; postconditionPassed?: boolean }[] };
     assert.equal(healed.status, "passed", JSON.stringify(healed));
     assert.equal(healed.heals?.[0]?.model?.name, "bao-heal-fixture");

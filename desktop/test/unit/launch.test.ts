@@ -61,9 +61,10 @@ test("a mismatched user-data-dir is refused", () => {
 test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () => {
   const script = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/package-app.sh"), "utf8");
   const main = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/bao-main.c"), "utf8");
-  assert.equal(script.includes("Google Chrome"), false);
+  assert.equal(script.includes("/Applications/Google Chrome.app"), false);
   assert.match(script, /bao-main\.c/);
   assert.match(script, /Chromium\.app/);
-  assert.equal(main.includes("Google Chrome"), false);
+  assert.equal(main.includes("/Applications/Google Chrome.app"), false);
+  assert.match(main, /Google Chrome for Testing/);
   assert.match(main, /Chromium\.app/);
 });

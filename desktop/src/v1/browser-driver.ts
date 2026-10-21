@@ -9,8 +9,15 @@ import type { FailureSnapshot } from "./heal";
 import type { Driver, HealNotice, LiveTree } from "./replay";
 import type { FileArg, Identity } from "./schema";
 
+export interface FileProof {
+  action: "upload" | "drop";
+  name: string;
+  via: "input.files" | "echo";
+}
+
 export class BrowserDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
+  readonly proofs: FileProof[] = [];
 
   constructor(private readonly page: Page, private readonly onNotify?: (notice: HealNotice) => void) {}
 
@@ -64,18 +71,35 @@ export class BrowserDriver implements Driver {
   }
 
   async upload(node: Identity, files: FileArg[]): Promise<void> {
-    await this.page.locator(this.sel(node)).setInputFiles(files.map((file) => file.path));
+    const want = files[0]?.name || "";
+    if (!want) throw new Error("upload has no file");
+    const loc = this.page.locator(this.sel(node));
+    await loc.setInputFiles(files.map((file) => file.path));
+    const got = await loc.evaluate((el, name) => {
+      const input = el instanceof HTMLInputElement && el.type === "file"
+        ? el
+        : el.querySelector("input[type=file]");
+      const field = input instanceof HTMLInputElement ? input : null;
+      const file = field?.files?.[0];
+      if (field && file && file.name === name) field.dispatchEvent(new Event("change", { bubbles: true }));
+      return file?.name || "";
+    }, want);
+    if (got !== want) throw new Error(`upload did not land: wanted ${want}, input.files[0].name is ${got || "empty"}`);
+    this.proofs.push({ action: "upload", name: got, via: "input.files" });
   }
 
   async drop(node: Identity, files: FileArg[]): Promise<void> {
+    const want = files[0]?.name || "";
+    if (!want) throw new Error("drop has no file");
     const payload = files.map((file) => ({
       name: file.name,
       b64: readFileSync(file.path).toString("base64"),
     }));
     const handle = this.handle(node);
-    await this.page.evaluate(({ handle, payload }) => {
+    const landed = await this.page.evaluate(({ handle, payload, want }) => {
       const el = document.querySelector(`[data-bao-i="${handle}"]`);
       if (!el) throw new Error("drop target missing");
+      const before = document.body.innerText || "";
       const dt = new DataTransfer();
       for (const file of payload) {
         const bin = atob(file.b64);
@@ -86,7 +110,15 @@ export class BrowserDriver implements Driver {
       for (const type of ["dragenter", "dragover", "drop"]) {
         el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
       }
-    }, { handle, payload });
+      const input = el instanceof HTMLInputElement && el.type === "file" ? el : null;
+      const fromInput = input?.files?.[0]?.name || "";
+      const after = document.body.innerText || "";
+      return { fromInput, echoed: after.includes(want) && after !== before };
+    }, { handle, payload, want });
+    if (landed.fromInput !== want && !landed.echoed) {
+      throw new Error(`drop did not land: wanted ${want}`);
+    }
+    this.proofs.push({ action: "drop", name: want, via: landed.fromInput === want ? "input.files" : "echo" });
   }
 
   async digits(): Promise<void> {

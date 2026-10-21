@@ -29,8 +29,8 @@ fn matches_target(node: &Node, role: &str, name: &str, subrole: &str, path: &[Se
 
 /// One harvest. The returned element is the live control, including controls
 /// that were found by sampling the window rather than by AXChildren.
-fn take_one(bundle: &str, role: &str, name: &str, subrole: &str, path: &[Seg]) -> Result<(Node, El), String> {
-    let live = harvest(bundle)?;
+fn take_one(bundle: &str, pid: Option<i32>, role: &str, name: &str, subrole: &str, path: &[Seg]) -> Result<(Node, El), String> {
+    let live = crate::walk::harvest_pid(bundle, pid)?;
     let hits: Vec<usize> = live.nodes.iter().enumerate()
         .filter(|(_, node)| matches_target(node, role, name, subrole, path))
         .map(|(i, _)| i)
@@ -60,8 +60,8 @@ fn raise_window(el: &El) {
     }
 }
 
-pub fn press(bundle: &str, role: &str, name: &str, subrole: &str, path: &[Seg]) -> Result<Node, String> {
-    let (node, el) = take_one(bundle, role, name, subrole, path)?;
+pub fn press(bundle: &str, pid: Option<i32>, role: &str, name: &str, subrole: &str, path: &[Seg]) -> Result<Node, String> {
+    let (node, el) = take_one(bundle, pid, role, name, subrole, path)?;
     if !node.actions.iter().any(|a| a == kAXPressAction) {
         return Err(format!("control {:?} has no AXPress action; refusing coordinate fallback", node.name));
     }
@@ -71,15 +71,15 @@ pub fn press(bundle: &str, role: &str, name: &str, subrole: &str, path: &[Seg]) 
     Ok(node)
 }
 
-pub fn set_value(bundle: &str, role: &str, name: &str, subrole: &str, path: &[Seg], value: &str) -> Result<Node, String> {
-    let (node, el) = take_one(bundle, role, name, subrole, path)?;
+pub fn set_value(bundle: &str, pid: Option<i32>, role: &str, name: &str, subrole: &str, path: &[Seg], value: &str) -> Result<Node, String> {
+    let (node, el) = take_one(bundle, pid, role, name, subrole, path)?;
     let _ = set_bool(&el, "AXFocused", true);
     set_string(&el, kAXValueAttribute, value)?;
     Ok(node)
 }
 
-pub fn read_value(bundle: &str, role: &str, name: &str, subrole: &str, path: &[Seg]) -> Result<(Node, String), String> {
-    let (node, el) = take_one(bundle, role, name, subrole, path)?;
+pub fn read_value(bundle: &str, pid: Option<i32>, role: &str, name: &str, subrole: &str, path: &[Seg]) -> Result<(Node, String), String> {
+    let (node, el) = take_one(bundle, pid, role, name, subrole, path)?;
     Ok((node, string_attr(&el, kAXValueAttribute)))
 }
 
@@ -101,8 +101,14 @@ pub fn focus_role(bundle: &str, role: &str, name: &str) -> Result<Node, String> 
     Ok(node)
 }
 
-pub fn move_window(bundle: &str, x: f64, y: f64, w: f64, h: f64) -> Result<(Frame, Frame, Option<String>), String> {
-    let (pid, app) = app_element(bundle)?;
+pub fn move_window(bundle: &str, pid: Option<i32>, frontmost: bool, x: f64, y: f64, w: f64, h: f64) -> Result<(Frame, Frame, Option<String>), String> {
+    let (pid, app) = match pid {
+        Some(pid) => crate::walk::app_from_pid(pid, true)?,
+        None => app_element(bundle)?,
+    };
+    if frontmost {
+        crate::apps::activate_pid(pid)?;
+    }
     let geom = detect_geom(pid, &app);
     let wins = crate::element::copy_attr(&app, "AXWindows").map(|v| crate::element::element_list(&v)).unwrap_or_default();
     let win = wins.into_iter().max_by(|a, b| {

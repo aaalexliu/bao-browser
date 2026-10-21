@@ -2,10 +2,20 @@
 // They do not take a coordinate.
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { OsTarget } from "../../../src/types";
+
+/** The helper Bao.app launches. A dev checkout has no nested bundle until package-app.sh copies one. */
+export function bundledHelperApp(): string | undefined {
+  const fromEnv = process.env.BAO_OS_HELPER;
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  const nested = path.resolve(process.cwd(), "..", "BaoOSHelper.app");
+  if (existsSync(path.join(nested, "Contents", "MacOS", "BaoOSHelper"))) return nested;
+  return undefined;
+}
 
 export interface AxFrame {
   x: number;
@@ -165,8 +175,10 @@ export class MacOsHelper {
     return this.exec(["focus", "--allow-bundle", bundle]);
   }
 
-  press(target: OsTarget): Promise<AxHit> {
-    return this.exec(["press", ...identity(target)]);
+  press(target: OsTarget, pid?: number): Promise<AxHit> {
+    const args = ["press", ...identity(target)];
+    if (pid) args.push("--pid", String(pid));
+    return this.exec(args);
   }
 
   key(bundle: string, combo: string): Promise<AxHit> {
@@ -191,11 +203,13 @@ export class MacOsHelper {
     return this.exec(["windows", "--bundle", bundle]);
   }
 
-  moveWindow(bundle: string, frame: AxFrame): Promise<AxHit> {
-    return this.exec([
-      "move-window", "--bundle", bundle,
-      "--x", String(frame.x), "--y", String(frame.y), "--w", String(frame.w), "--h", String(frame.h),
-    ]);
+  moveWindow(bundle: string, frame: AxFrame, opts?: { pid?: number; frontmost?: boolean }): Promise<AxHit> {
+    const args = ["move-window"];
+    if (bundle) args.push("--bundle", bundle);
+    if (opts?.pid) args.push("--pid", String(opts.pid));
+    if (opts?.frontmost) args.push("--frontmost");
+    args.push("--x", String(frame.x), "--y", String(frame.y), "--w", String(frame.w), "--h", String(frame.h));
+    return this.exec(args);
   }
 
   shot(bundle: string, out: string): Promise<AxHit> {

@@ -127,6 +127,16 @@ function defaultPs(pid: number): string {
   return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
 }
 
+/** Chrome processes whose --user-data-dir is this profile. */
+export function pidsForDataDir(userDataDir: string): number[] {
+  const resolved = path.resolve(userDataDir);
+  return listProcesses().flatMap((row) => {
+    if (!/chrome|chromium/i.test(row.command)) return [];
+    const dir = userDataDirArg(row.command);
+    return dir && path.resolve(dir) === resolved ? [row.pid] : [];
+  });
+}
+
 function listProcesses(): ProcessRow[] {
   const out = execFileSync("ps", ["-axww", "-o", "pid=,ppid=,command="], { encoding: "utf8" });
   const rows: ProcessRow[] = [];

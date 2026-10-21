@@ -17,6 +17,7 @@
       min-height: 3rem;
     }
     #flash, #files, #dropped { font-weight: 600; }
+    #files, #dropped { font-size: 1.5rem; min-height: 2.2rem; background: #efe7d2; padding: 0.45rem 0.7rem; }
     ul { padding-left: 1.2rem; }
     li { padding: 0.2rem 0; }
   </style>
@@ -31,9 +32,9 @@
   <p id="flash"></p>
   <section>
     <label>Upload <input id="file" name="file" type="file" data-testid="file"></label>
-    <p id="files"></p>
+    <p id="files" data-testid="received-file">Waiting for a file</p>
     <div id="drop" data-testid="drop" data-bao-drop="1">Drop a file here</div>
-    <p id="dropped"></p>
+    <p id="dropped" data-testid="received-drop"></p>
   </section>
   <ul id="rows">
     <li data-testid="row" data-name="Ada">Ada</li>
@@ -62,16 +63,18 @@
       flash.textContent = "Welcome " + user;
       history.pushState({}, "", "/secure");
     });
-    document.getElementById("file").addEventListener("change", (event) => {
-      const file = event.target.files && event.target.files[0];
-      document.getElementById("files").textContent = file ? file.name : "";
-    });
+    const showFile = (file) => {
+      document.getElementById("files").textContent = file ? "Received file: " + file.name : "Waiting for a file";
+    };
+    const fileInput = document.getElementById("file");
+    fileInput.addEventListener("change", (event) => showFile(event.target.files && event.target.files[0]));
+    fileInput.addEventListener("input", (event) => showFile(event.target.files && event.target.files[0]));
     const drop = document.getElementById("drop");
     drop.addEventListener("dragover", (event) => event.preventDefault());
     drop.addEventListener("drop", (event) => {
       event.preventDefault();
       const file = event.dataTransfer && event.dataTransfer.files[0];
-      document.getElementById("dropped").textContent = file ? file.name : "";
+      document.getElementById("dropped").textContent = file ? "Dropped file: " + file.name : "";
     });
     document.getElementById("rows").addEventListener("click", (event) => {
       const li = event.target.closest("li");

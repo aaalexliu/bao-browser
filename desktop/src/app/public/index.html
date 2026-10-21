@@ -74,7 +74,7 @@
         </div>
         <div class="card">
           <h3>Desktop</h3>
-          <p>On macOS, start <code>BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>) and grant Accessibility and Screen Recording. On Linux the AT-SPI helper is <code>bao-os-helper</code>. Computer-use clicks land through the proxy or the MCP server, and the trail is the record.</p>
+          <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). Bao launches that copy. The first launch on a clean account asks for Accessibility and Screen Recording for BaoOSHelper. On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
         </div>
         <div class="card">
           <h3>Proxy and MCP</h3>
@@ -231,9 +231,14 @@
         zone.ondrop = (event) => {
           event.preventDefault();
           zone.classList.remove("over");
-          const file = event.dataTransfer.files[0];
-          zone.querySelector("input").files = event.dataTransfer.files;
-          zone.querySelector("span").textContent = file ? file.name : "";
+          const list = event.dataTransfer && event.dataTransfer.files;
+          const file = list && list[0];
+          const input = zone.querySelector("input");
+          if (input && list && list.length) {
+            try { input.files = list; } catch (err) { /* some engines reject the assignment */ }
+          }
+          zone._baoFile = file || null;
+          zone.querySelector("span").textContent = file ? file.name : "Drop a file here, or choose one.";
         };
       });
     }
@@ -320,7 +325,8 @@
       const args = {};
       for (const el of form.querySelectorAll("[name]")) {
         if (el.type === "file") {
-          const file = el.files[0];
+          const zone = el.closest(".drop");
+          const file = el.files[0] || (zone && zone._baoFile);
           if (!file) continue;
           const bytes = new Uint8Array(await file.arrayBuffer());
           let bin = "";

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { driftMarkdown, driftReport, macChangeApplicability } from "../../src/v1/drift";
+import { driftMarkdown, driftReport, macChangeApplicability, windowChangeRows } from "../../src/v1/drift";
+import { boundsApplied } from "../../src/v1/window-bounds";
 import { fromAxNode, lookup, normRole, type AxDumpNode } from "../../src/v1/identity";
 import type { Identity } from "../../src/v1/schema";
 
@@ -134,6 +135,38 @@ test("Calculator resize drift is n/a because AXSize returns -25200", () => {
   assert.match(md, /## Steps/);
   assert.match(md, /\| s \| {2}\| 1 \| 0 \| 1 \| 100% \|/);
   assert.match(md, /\| resize \| 0 \| 0 \| 1 \| 0% \|/);
+});
+
+test("a window move that never applied is n/a-harness", () => {
+  assert.equal(boundsApplied({ x: 22, y: 55, width: 1282, height: 846 }, { x: 48, y: 72, width: 980, height: 640 }), false);
+  assert.equal(boundsApplied({ x: 48, y: 72, width: 980, height: 640 }, { x: 48, y: 72, width: 980, height: 640 }), true);
+  const missed = windowChangeRows({
+    workflow: "browser-form",
+    change: "window-move",
+    applied: false,
+    reason: "requested 48,72; origin stayed 22,55",
+    steps: [{ id: "s", passed: false, brokenAttr: "testId", reason: "should not count" }],
+  });
+  assert.equal(missed.length, 1);
+  assert.equal(missed[0]?.na, true);
+  const missedReport = driftReport(missed, "t");
+  assert.equal(missedReport.summary[0]?.failed, 0);
+  assert.equal(missedReport.summary[0]?.na, 1);
+  const missedMd = driftMarkdown(missedReport);
+  assert.match(missedMd, /n\/a-harness/);
+  assert.match(missedMd, /none/);
+  const hit = windowChangeRows({
+    workflow: "browser-form",
+    change: "window-move",
+    applied: true,
+    reason: "48,72",
+    steps: [{ id: "s", label: "Type", passed: false, brokenAttr: "testId", reason: "below-threshold" }],
+  });
+  assert.equal(hit[0]?.passed, true);
+  assert.equal(hit[1]?.brokenAttr, "testId");
+  const hitReport = driftReport(hit, "t");
+  assert.equal(hitReport.summary[0]?.failed, 1);
+  assert.match(driftMarkdown(hitReport), /testId/);
 });
 
 function load(file: string): Identity[] {

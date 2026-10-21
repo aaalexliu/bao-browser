@@ -7,8 +7,10 @@ import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, pidsForDataDir } from "../launch";
 import { BrowserDriver } from "../v1/browser-driver";
+import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
+import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, type TrailEvent } from "../v1/interpret";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
@@ -39,6 +41,14 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   let page: Page | undefined;
   let profile: string | undefined;
   const events: TrailEvent[] = [];
+  const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
+  let helperReport: unknown;
+  if (process.platform === "darwin" && bundledHelperApp()) {
+    helperReport = await new MacOsHelper(bundledHelperApp()!).permissions(false).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    }));
+  }
 
   const server = createServer(async (req, res) => {
     try {
@@ -57,7 +67,18 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           workflows: library.list().map(summary),
           trails: library.listTrails(),
           runs: library.listRuns(),
+          helper: bundledHelperApp() || null,
         });
+      }
+      if (req.method === "GET" && url.pathname === "/api/pids") {
+        const product = pidsForDataDir(path.join(opts.home, "ui-profile"))[0] ?? null;
+        const capture = profile ? pidsForDataDir(profile)[0] ?? null : null;
+        const replay: Record<string, number> = {};
+        for (const [id, session] of replays) {
+          const pid = pidsForDataDir(session.profile)[0];
+          if (pid) replay[id] = pid;
+        }
+        return json(res, { helper: bundledHelperApp() || null, helperReport, product, capture, replay });
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
@@ -133,8 +154,18 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
-        const run = await runWorkflow(library, workflow, args, notices);
+        const run = await runWorkflow(library, workflow, args, notices, replays);
         return json(res, run);
+      }
+      if (req.method === "POST" && url.pathname === "/api/replay/place") {
+        const body = await readBody(req) as { id?: string; x?: number; y?: number; width?: number; height?: number };
+        const id = body.id || "";
+        const session = replays.get(id);
+        if (!session || session.page.isClosed()) return json(res, { error: "replay window is not open" }, 409);
+        const want: WindowBounds = { x: Number(body.x), y: Number(body.y), width: Number(body.width), height: Number(body.height) };
+        const placed = await placeReplayWindow(session.page, session.profile, want);
+        if (placed.applied && placed.after) library.writeBounds(id, placed.after);
+        return json(res, placed);
       }
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
         const body = await readBody(req) as { id: string; stepId: string; patch: HealProposal["patch"]; runId?: string; healId?: string };
@@ -206,43 +237,107 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     get recording() { return recording; },
     async close() {
       await stopBrowser();
+      for (const session of replays.values()) {
+        await session.context.close().catch(() => undefined);
+        await rm(session.profile, { recursive: true, force: true }).catch(() => undefined);
+      }
+      replays.clear();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
   };
 }
 
-async function runWorkflow(library: Library, workflow: WorkflowV2, args: ReplayArgs, notices: Notice[]) {
+async function runWorkflow(
+  library: Library,
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  notices: Notice[],
+  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+) {
+  const session = await openReplay(library, workflow.id, replays);
+  const page = session.page;
+  if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
+  const driver = new BrowserDriver(page, (notice) => {
+    notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
+  });
+  const heal = healProvider();
+  const result = await replay(workflow, args, driver, {
+    settings: library.settings(),
+    heal,
+    now: () => Date.now(),
+  } satisfies ReplayOptions);
+  library.saveRun({
+    id: result.runId,
+    workflowId: workflow.id,
+    status: result.status,
+    at: Date.now(),
+    heals: result.heals,
+    failure: result.failure,
+    steps: result.steps,
+  });
+  const bounds = await readOwnedWindow(page).catch(() => null);
+  if (bounds) library.writeBounds(workflow.id, bounds);
+  return { ...result, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds };
+}
+
+async function openReplay(
+  library: Library,
+  id: string,
+  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+): Promise<{ context: BrowserContext; page: Page; profile: string }> {
+  const existing = replays.get(id);
+  if (existing && !existing.page.isClosed()) return existing;
+  if (existing) {
+    await existing.context.close().catch(() => undefined);
+    await rm(existing.profile, { recursive: true, force: true }).catch(() => undefined);
+    replays.delete(id);
+  }
   const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
   const context = await launchOwnedChrome({
     userDataDir: profile,
     headless: process.env.BAO_HEADED !== "1",
   });
+  const page = context.pages()[0] || await context.newPage();
+  const saved = library.readBounds(id);
+  if (saved) await moveOwnedWindow(page, saved).catch(() => undefined);
+  const session = { context, page, profile };
+  replays.set(id, session);
+  return session;
+}
+
+async function placeReplayWindow(page: Page, profile: string, want: WindowBounds) {
+  const attempts: { method: string; applied: boolean; error?: string; after?: unknown }[] = [];
   try {
-    const page = context.pages()[0] || await context.newPage();
-    if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
-    const driver = new BrowserDriver(page, (notice) => {
-      notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
-    });
-    const heal = healProvider();
-    const result = await replay(workflow, args, driver, {
-      settings: library.settings(),
-      heal,
-      now: () => Date.now(),
-    } satisfies ReplayOptions);
-    library.saveRun({
-      id: result.runId,
-      workflowId: workflow.id,
-      status: result.status,
-      at: Date.now(),
-      heals: result.heals,
-      failure: result.failure,
-      steps: result.steps,
-    });
-    return { ...result, mode: effectiveMode(workflow, library.settings()) };
-  } finally {
-    await context.close().catch(() => undefined);
-    await rm(profile, { recursive: true, force: true }).catch(() => undefined);
+    const cdp = await moveOwnedWindow(page, want);
+    attempts.push({ method: "cdp", applied: cdp.applied, after: cdp.after });
+  } catch (err) {
+    attempts.push({ method: "cdp", applied: false, error: err instanceof Error ? err.message : String(err) });
   }
+  const helper = process.platform === "darwin" ? bundledHelperApp() : undefined;
+  const pid = pidsForDataDir(profile)[0];
+  if (helper && pid) {
+    try {
+      const ax = await new MacOsHelper(helper).moveWindow("", {
+        x: want.x, y: want.y, w: want.width, h: want.height,
+      }, { pid, frontmost: true });
+      const after = ax.after
+        ? { x: ax.after.x, y: ax.after.y, width: ax.after.w, height: ax.after.h }
+        : null;
+      attempts.push({ method: "ax-frontmost", applied: boundsApplied(after, want), after });
+    } catch (err) {
+      attempts.push({ method: "ax-frontmost", applied: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  const after = await readOwnedWindow(page).catch(() => null);
+  const applied = boundsApplied(after, want);
+  return {
+    applied,
+    after,
+    attempts,
+    reason: applied
+      ? `window at ${after?.x},${after?.y} ${after?.width}x${after?.height}`
+      : `n/a-harness: requested ${want.x},${want.y} ${want.width}x${want.height}; stayed ${after ? `${after.x},${after.y} ${after.width}x${after.height}` : "unread"}`,
+  };
 }
 
 function healProvider(): HealProvider {

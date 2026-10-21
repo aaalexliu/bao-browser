@@ -64,14 +64,22 @@ pub fn app_element_opts(bundle: &str, manual: bool) -> Result<(i32, El), String>
     if pids.len() != 1 {
         return Err(format!("expected one process for {bundle}, found {} ({pids:?})", pids.len()));
     }
-    let el = El::adopt(unsafe { AXUIElementCreateApplication(pids[0]) })
-        .ok_or_else(|| format!("AXUIElementCreateApplication returned null for {}", pids[0]))?;
+    app_from_pid(pids[0], manual)
+}
+
+/// One process, even when several share the bundle id. Bao passes the pid it launched.
+pub fn app_from_pid(pid: i32, manual: bool) -> Result<(i32, El), String> {
+    if pid <= 0 {
+        return Err("pid must be positive".into());
+    }
+    let el = El::adopt(unsafe { AXUIElementCreateApplication(pid) })
+        .ok_or_else(|| format!("AXUIElementCreateApplication returned null for {pid}"))?;
     el.timeout();
     if manual {
         let _ = set_bool(&el, "AXManualAccessibility", true);
         let _ = set_bool(&el, "AXEnhancedUserInterface", true);
     }
-    Ok((pids[0], el))
+    Ok((pid, el))
 }
 
 pub fn detect_geom(pid: i32, app: &El) -> Geom {
@@ -285,10 +293,23 @@ pub fn harvest_opts(bundle: &str, manual: bool) -> Result<LiveTree, String> {
     harvest_filtered(bundle, manual, "", false)
 }
 
+pub fn harvest_pid(bundle: &str, pid: Option<i32>) -> Result<LiveTree, String> {
+    harvest_filtered_pid(bundle, pid, true, "", false)
+}
+
 /// `title` keeps one window. Other windows are not described and their values
 /// are not copied. `skip_menu` drops the menu bar before its items are read.
 pub fn harvest_filtered(bundle: &str, manual: bool, title: &str, skip_menu: bool) -> Result<LiveTree, String> {
-    let (pid, app) = app_element_opts(bundle, manual)?;
+    harvest_filtered_pid(bundle, None, manual, title, skip_menu)
+}
+
+pub fn harvest_filtered_pid(bundle: &str, forced: Option<i32>, manual: bool, title: &str, skip_menu: bool) -> Result<LiveTree, String> {
+    let (pid, app) = match forced {
+        Some(pid) => app_from_pid(pid, manual)?,
+        None => app_element_opts(bundle, manual)?,
+    };
+    let bundle_name = if bundle.is_empty() { crate::apps::bundle_id_for_pid(pid) } else { bundle.to_string() };
+    let bundle = bundle_name.as_str();
     let mut geom = detect_geom(pid, &app);
     let mut out = Vec::new();
     let mut elems = Vec::new();
@@ -337,7 +358,11 @@ pub fn harvest_filtered(bundle: &str, manual: bool, title: &str, skip_menu: bool
 }
 
 pub fn tree(bundle: &str) -> Result<(Vec<Node>, Geometry, i32), String> {
-    let live = harvest(bundle)?;
+    tree_pid(bundle, None)
+}
+
+pub fn tree_pid(bundle: &str, pid: Option<i32>) -> Result<(Vec<Node>, Geometry, i32), String> {
+    let live = harvest_pid(bundle, pid)?;
     Ok((live.nodes, live.geom, live.pid))
 }
 

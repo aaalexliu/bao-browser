@@ -126,9 +126,29 @@ export class Library {
     return settings;
   }
 
+  readBounds(id: string): { x: number; y: number; width: number; height: number } | null {
+    try {
+      const raw = JSON.parse(readFileSync(this.boundsFile(id), "utf8")) as { x?: number; y?: number; width?: number; height?: number };
+      if (typeof raw.x !== "number" || typeof raw.y !== "number" || typeof raw.width !== "number" || typeof raw.height !== "number") return null;
+      return { x: raw.x, y: raw.y, width: raw.width, height: raw.height };
+    } catch {
+      return null;
+    }
+  }
+
+  writeBounds(id: string, bounds: { x: number; y: number; width: number; height: number }): void {
+    mkdirSync(path.join(this.root, "bounds"), { recursive: true });
+    writeFileSync(this.boundsFile(id), JSON.stringify(bounds));
+  }
+
   private file(id: string): string {
     if (id.includes("/") || id.includes("..")) throw new Error("bad workflow id");
     return path.join(this.root, "workflows", `${id}.json`);
+  }
+
+  private boundsFile(id: string): string {
+    if (id.includes("/") || id.includes("..")) throw new Error("bad workflow id");
+    return path.join(this.root, "bounds", `${id}.json`);
   }
 }
 
