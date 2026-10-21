@@ -38,6 +38,11 @@
     <p id="files" data-testid="received-file">Waiting for a file</p>
     <div id="drop" data-testid="drop" data-bao-drop="1">Drop a file here</div>
   </section>
+  <form id="note-form">
+    <label>Note <input id="note-input" name="note" data-testid="note"></label>
+    <button id="save-note" type="submit" data-testid="save-note">Save note</button>
+  </form>
+  <p id="saved-note" data-testid="saved-note"></p>
   <ul id="rows">
     <li data-testid="row" data-name="Ada">Ada</li>
     <li data-testid="row" data-name="Grace">Grace</li>
@@ -77,6 +82,10 @@
       event.preventDefault();
       const file = event.dataTransfer && event.dataTransfer.files[0];
       document.getElementById("dropped").textContent = file ? "Dropped file: " + file.name : "";
+    });
+    document.getElementById("note-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      document.getElementById("saved-note").textContent = document.getElementById("note-input").value;
     });
     document.getElementById("rows").addEventListener("click", (event) => {
       const li = event.target.closest("li");

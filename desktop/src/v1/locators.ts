@@ -41,20 +41,30 @@ export function matchLocator(
   locator: StepLocator,
   nodes: Identity[],
   boxes?: Box[],
+  hidden?: boolean[],
 ): { index: number; detail: string } | undefined {
   if (locator.kind === "anchor") return matchAnchor(locator, nodes, boxes);
-  const hits: number[] = [];
-  nodes.forEach((node, index) => {
-    if (boxes && collapsed(boxes[index])) return;
-    if (nodeMatches(locator, node)) hits.push(index);
-  });
+  const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
   if (hits.length !== 1) return undefined;
   const index = hits[0]!;
   const node = nodes[index];
   return { index, detail: `${locator.kind} ${shown(node)}` };
 }
 
-function collapsed(box: Box | undefined): boolean {
+/** Every node the locator names, including a 0×0 or hidden box. */
+export function locatorIndexes(locator: StepLocator, nodes: Identity[]): number[] {
+  if (locator.kind === "anchor") return [];
+  const hits: number[] = [];
+  nodes.forEach((node, index) => {
+    if (nodeMatches(locator, node)) hits.push(index);
+  });
+  return hits;
+}
+
+/** A 0×0 box, or a node the page marked hidden. */
+export function isCollapsedBox(index: number, boxes?: Box[], hidden?: boolean[]): boolean {
+  if (hidden?.[index]) return true;
+  const box = boxes?.[index];
   return !!box && box.w <= 0 && box.h <= 0;
 }
 

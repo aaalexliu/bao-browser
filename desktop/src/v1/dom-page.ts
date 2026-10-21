@@ -19,6 +19,8 @@ export interface DomDump {
   checked?: boolean;
   enabled?: boolean;
   overlay?: boolean;
+  /** visibility, display, or aria-hidden. A 0×0 box is reported on bbox, not here. */
+  hidden?: boolean;
 }
 
 export interface PageDump {
@@ -160,6 +162,10 @@ export function dumpPage(): PageDump {
       checked: input instanceof HTMLInputElement && (input.type === "radio" || input.type === "checkbox") ? input.checked : undefined,
       enabled: !el.hasAttribute("disabled"),
       overlay: el.getAttribute("role") === "dialog" || el.hasAttribute("data-bao-overlay") || el.getAttribute("data-testid") === "overlay-close" || undefined,
+      hidden: (() => {
+        const style = getComputedStyle(el);
+        return style.display === "none" || style.visibility === "hidden" || el.getAttribute("aria-hidden") === "true";
+      })(),
     });
   });
   return { url: location.href, title: document.title, nodes, texts, values };

@@ -52,6 +52,11 @@
         "kind": "text",
         "match": "Status: Frozen",
         "timeoutMs": 2000
+      },
+      "readBack": {
+        "source": "text",
+        "match": "Status: Frozen",
+        "timeoutMs": 2000
       }
     },
     {

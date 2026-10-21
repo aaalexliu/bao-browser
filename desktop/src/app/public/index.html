@@ -23,7 +23,9 @@
     input, select, textarea { padding: 0.4rem; border: 1px solid var(--line); width: 100%; background: white; }
     .drop { outline: 1px dashed var(--line); padding: 0.6rem; }
     .drop.over { outline-color: var(--accent); }
-    .pass { color: var(--ok); } .fail, .paused { color: var(--bad); }
+    .pass { color: var(--ok); } .fail, .failed, .paused { color: var(--bad); }
+    .phase { display: inline-block; font: 12px/1 ui-monospace, monospace; background: var(--ink); color: var(--bg); padding: 0.12rem 0.35rem; margin-right: 0.35rem; }
+    .receipt { font: 13px/1.4 ui-monospace, monospace; border: 1px solid var(--line); background: white; padding: 0.45rem 0.6rem; margin: 0.35rem 0; }
     .badge { display: inline-block; background: var(--accent); color: white; padding: 0.05rem 0.4rem; font-size: 0.8rem; }
     .notice { background: #fff7ed; border: 1px solid #fdba74; padding: 0.6rem; margin: 0.4rem 0; }
     pre { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
@@ -50,6 +52,7 @@
     let lastRun = null;
     let lastWf = "";
     let banner = null;
+    let trailText = "";
 
     let renderKey = "";
 
@@ -145,7 +148,7 @@
       return `<section><h2>Audit trail</h2>
         <label>Trail <select id="trail-id">${ids}</select></label>
         <button id="load-trail">Load</button>
-        <pre id="trail-view">Values are masked. File paths are not stored.</pre>
+        <pre id="trail-view">${trailText ? esc(trailText) : "Values are masked. File paths are not stored."}</pre>
       </section>`;
     }
 
@@ -193,7 +196,7 @@
           <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
           <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
         </select></label>
-        <p>Auto is the default. A miss tries a cheap repair first. A model heal runs only after those fail, and only when a model key is set or this process is waiting on a Cursor heal. Otherwise replay stops and names the phase: locate, act, or expect.</p>
+        <p>Auto is the default. A miss tries a cheap repair first. A model heal runs only after those fail, and only when a model key is set or this process is waiting on a Cursor heal. Otherwise replay stops and names the phase: wait_for, find, action, or expect.</p>
         <button id="save-settings">Save</button></section>`;
     }
 
@@ -219,7 +222,9 @@
       if (load) load.onclick = async () => {
         const id = document.getElementById("trail-id").value;
         const trail = await (await fetch("/api/trails/" + encodeURIComponent(id))).json();
-        document.getElementById("trail-view").textContent = JSON.stringify(trail, null, 2);
+        trailText = JSON.stringify(trail, null, 2);
+        const view = document.getElementById("trail-view");
+        if (view) view.textContent = trailText;
       };
       document.querySelectorAll("[data-rename]").forEach((btn) => btn.onclick = async () => {
         const name = prompt("Name");
@@ -323,13 +328,17 @@
 
     function renderRun(run) {
       const healed = (run.heals || []).length > 0;
-      const lines = (run.steps || []).map((step) => `<div class="${esc(step.status)}">${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`).join("");
+      const lines = (run.steps || []).map((step) => {
+        const phase = step.phase ? `<span class="phase">${esc(step.phase)}</span>` : "";
+        return `<div class="step-row ${esc(step.status)}" data-phase="${esc(step.phase || "")}">${phase}${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`;
+      }).join("");
       const repairs = (run.repairs || []).map((item) => `<div id="repair-${esc(item.repair)}">repair ${esc(item.repair)}: ${esc(item.detail)}</div>`).join("");
+      const receipts = (run.receipts || []).map((item) => `<div class="receipt" id="receipt-${esc(item.stepId)}"><strong>receipt ${item.pass ? "pass" : "fail"}</strong> expected ${esc(item.expected)} · read ${esc(item.actual)} · ${esc(String(item.hash || "").slice(0, 16))}</div>`).join("");
       const promo = run.promotion;
       const promoHtml = promo ? `<div class="row" id="promotion" data-status="${esc(promo.status)}"><span class="badge">${esc(promo.status)}</span><span>drift ${esc(promo.drift)} · replays ${esc(promo.replays)}${promo.reason ? " · " + esc(promo.reason) : ""}</span></div>${promo.status === "provisional" ? '<button id="check-promotion" class="primary">Check promotion</button>' : ""}` : "";
       const heals = (run.heals || []).map((item) => reviewHeal(run, item)).join("");
       const failure = run.failure ? `<p id="failure-phase"><strong>phase ${esc(run.failure.phase)}</strong> ${esc(run.failure.reason)}</p><pre id="failure" style="max-height:8rem; overflow:auto">${esc(JSON.stringify(publicFailure(run.failure), null, 2))}</pre>` : "";
-      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${repairs}${promoHtml}${heals}${failure}`;
+      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${repairs}${receipts}${promoHtml}${heals}${failure}`;
     }
 
     function reviewHeal(run, item) {

@@ -49,6 +49,7 @@ export class BrowserDriver implements Driver {
       texts: dump.texts,
       values,
       boxes: dump.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 }),
+      hidden: dump.nodes.map((node) => !!node.hidden),
       flags: dump.nodes.map((node) => ({ checked: node.checked, enabled: node.enabled })),
     };
   }
@@ -100,7 +101,8 @@ export class BrowserDriver implements Driver {
   }
 
   async key(key: string): Promise<void> {
-    await this.page.keyboard.press(key);
+    const named = key.replace(/^ctrl\+/i, "Control+").replace(/^cmd\+/i, "Meta+").replace(/^alt\+/i, "Alt+");
+    await this.page.keyboard.press(named);
   }
 
   async upload(node: Identity, files: FileArg[]): Promise<void> {

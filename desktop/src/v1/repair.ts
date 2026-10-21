@@ -2,7 +2,8 @@
 // recorded intent plus the live tree. A repair that is not sure returns nothing.
 
 import { lookup } from "./identity";
-import type { Identity, WorkflowStep } from "./schema";
+import { isCollapsedBox, locatorIndexes, matchLocator } from "./locators";
+import type { Identity, StepLocator, WorkflowStep } from "./schema";
 
 export interface Box {
   x: number;
@@ -11,7 +12,7 @@ export interface Box {
   h: number;
 }
 
-export type RepairKind = "wait" | "overlay" | "label" | "anchor";
+export type RepairKind = "wait" | "overlay" | "label" | "anchor" | "reveal";
 
 export interface RepairLog {
   stepId: string;
@@ -85,6 +86,80 @@ export function anchorCandidate(
   });
   if (!best) return undefined;
   return { index: best.index, detail: `${anchor.relation} ${shown(nodes[best.index])}` };
+}
+
+const TOGGLE = /^(search|buscar)$/;
+
+/**
+ * The recorded target is present and its box is 0×0 or hidden.
+ * A visible match is not this case: the locator would have used it.
+ */
+export function collapsedTarget(
+  step: WorkflowStep,
+  nodes: Identity[],
+  boxes?: Box[],
+  hidden?: boolean[],
+  locators?: StepLocator[],
+): { index: number; detail: string } | undefined {
+  const list = locators && locators.length ? locators : step.locators;
+  if (list && list.length) {
+    for (const locator of list) {
+      const indexes = locatorIndexes(locator, nodes);
+      if (indexes.length !== 1) continue;
+      const index = indexes[0]!;
+      if (!isCollapsedBox(index, boxes, hidden)) continue;
+      const node = nodes[index];
+      return { index, detail: `${locator.kind} ${node?.id || node?.name || node?.text || "collapsed"}` };
+    }
+    return undefined;
+  }
+  if (!step.identity) return undefined;
+  const found = lookup(step.identity, nodes);
+  if (!found.ok || found.index == null) return undefined;
+  if (!isCollapsedBox(found.index, boxes, hidden)) return undefined;
+  return { index: found.index, detail: "identity collapsed" };
+}
+
+/**
+ * A visible search toggle for a collapsed field. Recorded `step.reveal` wins
+ * when it is on the step; this is the discoverable fallback.
+ */
+export function discoverReveal(
+  nodes: Identity[],
+  boxes: Box[] | undefined,
+  collapsedIndex: number,
+  hidden?: boolean[],
+): { index: number; detail: string } | undefined {
+  const target = nodes[collapsedIndex];
+  const hay = norm([target?.name, target?.label, target?.text, target?.title].filter(Boolean).join(" "));
+  const hits: number[] = [];
+  nodes.forEach((node, index) => {
+    if (index === collapsedIndex || isCollapsedBox(index, boxes, hidden)) return;
+    const role = normRole(node.role);
+    if (role !== "button" && role !== "link") return;
+    const label = norm(node.name || node.text || node.label || "");
+    if (!TOGGLE.test(label)) return;
+    const inSearch = (node.path || []).some((seg) => normRole(seg.role) === "search");
+    if (!inSearch && !hay.includes(label)) return;
+    hits.push(index);
+  });
+  if (hits.length !== 1) return undefined;
+  const index = hits[0]!;
+  const node = nodes[index];
+  return { index, detail: node?.text || node?.name || node?.label || "search toggle" };
+}
+
+/** The recorded reveal control, when it is visible. */
+export function recordedReveal(
+  step: WorkflowStep,
+  nodes: Identity[],
+  boxes?: Box[],
+  hidden?: boolean[],
+): { index: number; detail: string } | undefined {
+  if (!step.reveal) return undefined;
+  const found = matchLocator(step.reveal, nodes, boxes, hidden);
+  if (!found) return undefined;
+  return { index: found.index, detail: `recorded ${found.detail}` };
 }
 
 /** A known overlay's dismiss control. Absent when the page has no overlay. */

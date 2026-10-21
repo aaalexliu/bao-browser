@@ -86,7 +86,12 @@
       ],
       "timeoutMs": 8000,
       "input": "search",
-      "value": "{{search}}"
+      "value": "{{search}}",
+      "reveal": {
+        "kind": "role",
+        "role": "link",
+        "name": "Search"
+      }
     },
     {
       "id": "wf-wikipedia-1",

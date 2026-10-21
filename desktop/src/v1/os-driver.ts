@@ -1,5 +1,6 @@
 // Linux AT-SPI driver. Presses by role and name. Never by the stored coordinate.
 
+import { execFileSync } from "node:child_process";
 import { fromAtspiNode, assignSiblingIndex, lookup, normRole } from "./identity";
 import type { HealNotice } from "./replay";
 import type { Driver, LiveTree } from "./replay";
@@ -34,8 +35,9 @@ export class AtspiDriver implements Driver {
     await this.setText(node.app || "", node.role, node.name || "", text);
   }
 
-  async key(): Promise<void> {
-    throw new Error("page keys are not an AT-SPI press");
+  async key(key: string): Promise<void> {
+    const seq = key.replace(/Control\+/g, "ctrl+").replace(/Meta\+/g, "super+").replace(/Alt\+/g, "alt+");
+    execFileSync("xdotool", ["key", "--clearmodifiers", seq], { stdio: "ignore" });
   }
 
   async upload(): Promise<void> {

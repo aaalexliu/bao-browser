@@ -184,7 +184,7 @@ test("a locate miss becomes a model heal only after the repairs refuse", async (
   const result = await replay(workflow, {}, driver, {
     heal: { available: () => true, propose: async (failure) => { seen.push(failure.phase); return proposal; } },
   });
-  assert.deepEqual(seen, ["locate"]);
+  assert.deepEqual(seen, ["find"]);
   assert.equal(result.status, "passed");
   assert.equal(result.repairs.length, 0);
   assert.equal(result.heals[0]?.model?.version, "live");

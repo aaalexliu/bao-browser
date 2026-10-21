@@ -1,6 +1,6 @@
 # Drift report
 
-Generated 2026-10-21T18:58:24.469Z. Rates exclude n/a rows. Each failure lists the attribute that broke.
+Generated 2026-10-21T20:49:56.419Z. Rates exclude n/a rows. Each failure lists the attribute that broke.
 
 | change | passed | failed | n/a | rate |
 | --- | --- | --- | --- | --- |
@@ -35,20 +35,20 @@ Generated 2026-10-21T18:58:24.469Z. Rates exclude n/a rows. Each failure lists t
 
 ## Failures
 
-| workflow | change | step | attribute | fixed by | reason |
-| --- | --- | --- | --- | --- | --- |
-| | | | | | none |
+| workflow | change | step | phase | attribute | fixed by | reason |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | none |
 
 ## Recovered
 
 The first locator missed. A later locator, a repair, or a heal made the step pass.
 
-| workflow | change | step | attribute | fixed by | reason |
-| --- | --- | --- | --- | --- | --- |
-| gnome-calculator | scale | wf-gnome-calculator-3 | expect | wait | expect became true |
-| gnome-calculator | theme-dark | wf-gnome-calculator-3 | expect | wait | expect became true |
-| gnome-calculator | theme-light | wf-gnome-calculator-3 | expect | wait | expect became true |
-| gnome-calculator | font | wf-gnome-calculator-3 | expect | wait | expect became true |
+| workflow | change | step | phase | attribute | fixed by | reason |
+| --- | --- | --- | --- | --- | --- | --- |
+| gnome-calculator | scale | wf-gnome-calculator-3 |  | expect | wait | expect became true |
+| gnome-calculator | theme-dark | wf-gnome-calculator-3 |  | expect | wait | expect became true |
+| gnome-calculator | theme-light | wf-gnome-calculator-3 |  | expect | wait | expect became true |
+| gnome-calculator | font | wf-gnome-calculator-3 |  | expect | wait | expect became true |
 
 
 ## Single locator versus multi locator
@@ -75,6 +75,18 @@ Primary replays the first locator only, then the repair tiers. Multi tries role,
 | gedit | font | 1/1 | 1/1 |
 | gedit | lang | n/a | n/a |
 | gedit | slow | n/a | n/a |
+
+## Trajectory
+
+Each checked replay is diffed against the recording: target identity, action, postcondition, and timing bucket. A difference here does not change the pass rate.
+
+### gnome-calculator / baseline
+
+- Replay matched the recording on target, action, postcondition, and timing bucket.
+
+### gedit / baseline
+
+- Replay matched the recording on target, action, postcondition, and timing bucket.
 
 ## Notes
 

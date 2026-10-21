@@ -76,6 +76,27 @@ export interface Expectation {
   timeoutMs: number;
 }
 
+/** A check that runs before find (`waitFor`) or after the action (`gone`). */
+export interface StepCheck {
+  kind: "text" | "url" | "element" | "value";
+  match?: string;
+  identity?: Identity;
+  timeoutMs: number;
+}
+
+/**
+ * Re-read a value after the action and write a receipt.
+ * `file` reads a throwaway path supplied at runtime as `fileInput`, never a path stored here.
+ * The same shape is what a later "verify freeze status after Apply" step uses, with source `text`.
+ */
+export interface ReadBack {
+  source: "value" | "text" | "url" | "file";
+  match: string;
+  identity?: Identity;
+  fileInput?: string;
+  timeoutMs: number;
+}
+
 /** Where the target sits relative to a stable element. Coordinates are not stored. */
 export interface Anchor {
   identity: Identity;
@@ -117,9 +138,17 @@ export interface WorkflowStep {
   intent?: string;
   postcondition?: Postcondition;
   expect?: Expectation;
+  /** Must become true before find. A miss is phase `wait_for`. */
+  waitFor?: StepCheck;
+  /** Must be absent after the action. A miss is phase `expect`. */
+  gone?: StepCheck;
   anchor?: Anchor;
   /** Tried in order. Absent means the identity scorer is the only locator. */
   locators?: StepLocator[];
+  /** Control that unhides a collapsed target. Replay clicks it only when the target box is 0×0 or hidden. */
+  reveal?: StepLocator;
+  /** Re-read after the action. The run appends a hashed receipt. */
+  readBack?: ReadBack;
   timeoutMs: number;
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
   unresolved?: { reason: string };
@@ -139,6 +168,8 @@ export interface WorkflowV2 {
   heal?: HealMode;
   /** False means the workflow has not been replayed. */
   replayed?: boolean;
+  /** Re-read once after the last step. Same receipt as a step read-back. */
+  readBack?: ReadBack;
 }
 
 export interface ReplayArgs {
@@ -182,6 +213,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
       errors.push(`choice ${input.name}`);
     }
   }
+  if (doc.readBack) errors.push(...readBackErrors(doc.readBack, "workflow", names));
   doc.steps.forEach((step, i) => {
     if (step.index !== i) errors.push(`index ${step.id}`);
     if (step.input && !names.has(step.input)) errors.push(`unknown input ${step.input}`);
@@ -196,12 +228,36 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
       errors.push(`coordinates ${step.id}`);
     }
     if (step.action === "verify" && !step.expect && !step.postcondition) errors.push(`verify ${step.id}`);
-    for (const locator of step.locators ?? []) {
-      if (locator.kind === "role" && (!locator.role || locator.name == null)) errors.push(`role locator ${step.id}`);
-      if (locator.kind === "anchor" && (!locator.relation || !locator.anchor)) errors.push(`anchor locator ${step.id}`);
-      if (locator.kind !== "role" && locator.kind !== "anchor" && !locator.value) errors.push(`locator value ${step.id}`);
-    }
+    for (const locator of step.locators ?? []) errors.push(...locatorErrors(locator, step.id));
+    if (step.reveal) errors.push(...locatorErrors(step.reveal, step.id));
+    if (step.waitFor) errors.push(...checkErrors(step.waitFor, step.id, "waitFor"));
+    if (step.gone) errors.push(...checkErrors(step.gone, step.id, "gone"));
+    if (step.readBack) errors.push(...readBackErrors(step.readBack, step.id, names));
   });
+  return errors;
+}
+
+function locatorErrors(locator: StepLocator, id: string): string[] {
+  const errors: string[] = [];
+  if (locator.kind === "role" && (!locator.role || locator.name == null)) errors.push(`role locator ${id}`);
+  if (locator.kind === "anchor" && (!locator.relation || !locator.anchor)) errors.push(`anchor locator ${id}`);
+  if (locator.kind !== "role" && locator.kind !== "anchor" && !locator.value) errors.push(`locator value ${id}`);
+  return errors;
+}
+
+function checkErrors(check: StepCheck, id: string, label: string): string[] {
+  const errors: string[] = [];
+  if (check.kind === "element" && !check.identity) errors.push(`${label} identity ${id}`);
+  if (check.kind !== "element" && !check.match && !check.identity) errors.push(`${label} match ${id}`);
+  if (typeof check.timeoutMs !== "number") errors.push(`${label} timeout ${id}`);
+  return errors;
+}
+
+function readBackErrors(read: ReadBack, id: string, names: Set<string>): string[] {
+  const errors: string[] = [];
+  if (!read.match) errors.push(`read-back match ${id}`);
+  if (read.source === "file" && (!read.fileInput || !names.has(read.fileInput))) errors.push(`read-back file ${id}`);
+  if (typeof read.timeoutMs !== "number") errors.push(`read-back timeout ${id}`);
   return errors;
 }
 

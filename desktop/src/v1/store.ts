@@ -20,6 +20,7 @@ export interface StoredRun {
   failure?: unknown;
   steps: unknown[];
   repairs?: unknown[];
+  receipts?: unknown[];
   promotion?: unknown;
 }
 

@@ -12,6 +12,8 @@ export interface DriftRow {
   locator?: string;
   /** Repair, later locator, or heal that recovered a miss. Empty when the first locator hit. */
   fixedBy?: string;
+  /** wait_for, find, action, or expect when the step failed or a check ran. */
+  phase?: string;
   /** The change cannot be performed. Not counted as a pass or a failure. */
   na?: boolean;
 }
@@ -106,6 +108,11 @@ export interface DriftReport {
   workflows: DriftWorkflowRate[];
 }
 
+function phaseOf(reason: string | undefined): string | undefined {
+  const match = reason?.match(/^(wait_for|find|action|expect):/);
+  return match?.[1];
+}
+
 function totals(rows: DriftRow[], key: (row: DriftRow) => string): { key: string; label?: string; passed: number; failed: number; na: number; rate: number }[] {
   const buckets = new Map<string, { passed: number; failed: number; na: number; label?: string }>();
   for (const row of rows) {
@@ -151,7 +158,7 @@ export function driftReport(rows: DriftRow[], generatedAt: string): DriftReport 
 export function recoveryRows(input: {
   workflow: string;
   change: string;
-  steps: { id: string; label?: string; passed: boolean; reason?: string; brokenAttr?: string }[];
+  steps: { id: string; label?: string; passed: boolean; reason?: string; brokenAttr?: string; phase?: string }[];
   locatorHits?: { stepId: string; kind: string; detail?: string }[];
   repairs?: { stepId: string; repair: string; detail?: string }[];
   healedStepIds?: string[];
@@ -179,6 +186,7 @@ export function recoveryRows(input: {
       brokenAttr = first;
     }
     const reason = step.reason || repairs.map((item) => item.detail).filter(Boolean).join("; ") || hit?.detail;
+    const phase = step.phase || phaseOf(reason);
     return {
       workflow: input.workflow,
       change: input.change,
@@ -188,6 +196,7 @@ export function recoveryRows(input: {
       brokenAttr: fixedBy || !step.passed ? brokenAttr : undefined,
       fixedBy,
       locator: hit?.kind,
+      phase: !step.passed ? phase : undefined,
       reason,
     };
   });
@@ -213,17 +222,17 @@ export function driftMarkdown(report: DriftReport): string {
   for (const row of report.workflows) {
     lines.push(`| ${row.workflow} | ${row.passed} | ${row.failed} | ${row.na} | ${(row.rate * 100).toFixed(0)}% |`);
   }
-  lines.push(``, `## Failures`, ``, `| workflow | change | step | attribute | fixed by | reason |`, `| --- | --- | --- | --- | --- | --- |`);
+  lines.push(``, `## Failures`, ``, `| workflow | change | step | phase | attribute | fixed by | reason |`, `| --- | --- | --- | --- | --- | --- | --- |`);
   const failed = report.rows.filter((item) => !item.passed && !item.na);
   for (const row of failed) {
-    lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.brokenAttr || ""} | ${row.fixedBy || "none"} | ${row.reason || ""} |`);
+    lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.phase || ""} | ${row.brokenAttr || ""} | ${row.fixedBy || "none"} | ${row.reason || ""} |`);
   }
-  if (!failed.length) lines.push(`| | | | | | none |`);
+  if (!failed.length) lines.push(`| | | | | | | none |`);
   const recovered = report.rows.filter((item) => item.passed && item.fixedBy);
   if (recovered.length) {
-    lines.push(``, `## Recovered`, ``, `The first locator missed. A later locator, a repair, or a heal made the step pass.`, ``, `| workflow | change | step | attribute | fixed by | reason |`, `| --- | --- | --- | --- | --- | --- |`);
+    lines.push(``, `## Recovered`, ``, `The first locator missed. A later locator, a repair, or a heal made the step pass.`, ``, `| workflow | change | step | phase | attribute | fixed by | reason |`, `| --- | --- | --- | --- | --- | --- | --- |`);
     for (const row of recovered) {
-      lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.brokenAttr || ""} | ${row.fixedBy || ""} | ${row.reason || ""} |`);
+      lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.phase || ""} | ${row.brokenAttr || ""} | ${row.fixedBy || ""} | ${row.reason || ""} |`);
     }
   }
   const harness = report.rows.filter((row) => row.na && (row.reason || "").includes("n/a-harness"));

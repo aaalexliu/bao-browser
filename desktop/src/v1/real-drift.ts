@@ -13,6 +13,8 @@ import { cursorHeal, keepPatch, unavailableHeal, type HealProvider } from "./hea
 import { interpret, type TrailEvent } from "./interpret";
 import { fromAtspiNode } from "./identity";
 import { buildLocators } from "./locators";
+import { discoverReveal } from "./repair";
+import { diffTrajectory, trajectoryFromWorkflow, trajectoryMarkdown, type TrajectoryDiff, type TrajectoryStep } from "./trajectory";
 import { AtspiDriver } from "./os-driver";
 import { osNodes, osPress, type OsNode } from "../proxy/os";
 import { noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
@@ -25,6 +27,7 @@ export interface CapturedWeb {
   workflow: WorkflowV2;
   langUrl?: string;
   theme: "wikipedia" | "python" | "media";
+  trajectory: TrajectoryStep[];
 }
 
 const WIKI = "https://en.wikipedia.org/wiki/Main_Page";
@@ -41,7 +44,7 @@ const WEB_NOTES = `
 
 Wikipedia search is recorded as fill plus Enter. A click on \`#searchInput\` opens Vector's typeahead, and the field the click found is not the field the next step has to type into.
 
-Move keeps a 1280×720 viewport and only relocates the window. Resize sets an 880×560 viewport. Below about 1120px, Vector collapses \`#searchInput\` to a 0×0 box and shows a search link instead. Locators and the label repair both skip that collapsed box, so the resize step fails closed. Python docs search and the-internet dynamic loading still have a visible target at 880×560.
+Move keeps a 1280×720 viewport and only relocates the window. Resize sets an 880×560 viewport. Below about 1120px, Vector collapses \`#searchInput\` to a 0×0 box and shows a search link. When the recorded target is that collapsed box, replay clicks a recorded or discoverable reveal control (the search toggle) and logs a \`reveal\` repair, then locates the field that opened. Python docs search and the-internet dynamic loading still have a visible target at 880×560.
 
 Language drift changes the accessible name (Search Wikipedia / Search versus Buscar en Wikipedia / Búsqueda) and leaves the id or the \`name\` attribute. Primary replays the role locator only. Multi can use the css locator.
 
@@ -92,18 +95,19 @@ async function captureOne(
   url: string,
   langUrl: string | undefined,
   theme: CapturedWeb["theme"],
-  record: (page: Page) => Promise<WorkflowV2>,
+  record: (page: Page) => Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }>,
 ): Promise<CapturedWeb> {
-  const workflow = await record(page);
-  workflow.id = id;
-  workflow.name = name;
-  return { id, name, workflow, langUrl, theme };
+  const recorded = await record(page);
+  recorded.workflow.id = id;
+  recorded.workflow.name = name;
+  return { id, name, workflow: recorded.workflow, langUrl, theme, trajectory: recorded.trajectory };
 }
 
 export async function replayWeb(
   captured: CapturedWeb[],
   mode: LocatorMode,
   headed: boolean,
+  diffs?: TrajectoryDiff[],
 ): Promise<DriftRow[]> {
   const rows: DriftRow[] = [];
   for (const change of WEB_CHANGES) {
@@ -135,7 +139,11 @@ export async function replayWeb(
               lastErr = undefined;
               break;
             }
-            rows.push(...await runWorkflow(item.id, change, item.workflow, new BrowserDriver(page), mode));
+            rows.push(...await runWorkflow(item.id, change, item.workflow, new BrowserDriver(page), mode, (trajectory) => {
+              if (mode === "all" && diffs && (change === "move" || change === "resize")) {
+                diffs.push({ workflow: item.id, change, lines: diffTrajectory(item.trajectory, trajectory) });
+              }
+            }));
             lastErr = undefined;
             break;
           } catch (err) {
@@ -179,6 +187,7 @@ async function runWorkflow(
   workflow: WorkflowV2,
   driver: BrowserDriver | AtspiDriver,
   mode: LocatorMode,
+  onTrajectory?: (steps: TrajectoryStep[]) => void,
   heal?: HealProvider,
 ): Promise<DriftRow[]> {
   const result = await replay(workflow, argsOf(workflow), driver, {
@@ -186,6 +195,7 @@ async function runWorkflow(
     heal: heal ?? unavailableHeal(),
     settings: { heal: "auto" },
   });
+  onTrajectory?.(result.trajectory);
   const first: Record<string, string | undefined> = {};
   for (const step of workflow.steps) first[step.id] = step.locators?.[0]?.kind;
   const rows = recoveryRows({
@@ -196,6 +206,7 @@ async function runWorkflow(
       label: workflow.steps.find((item) => item.id === step.id)?.label,
       passed: step.status === "passed",
       reason: clip(step.reason),
+      phase: step.phase,
       brokenAttr: result.failure?.stepId === step.id ? result.failure.brokenAttr : undefined,
     })),
     locatorHits: result.locatorHits,
@@ -209,8 +220,9 @@ async function runWorkflow(
   });
 }
 
-async function recordWikipedia(page: Page): Promise<WorkflowV2> {
+async function recordWikipedia(page: Page): Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }> {
   await page.goto(WIKI, { waitUntil: "domcontentloaded", timeout: 45000 });
+  const reveal = await captureSearchReveal(page);
   const driver = new BrowserDriver(page);
   const tree = await driver.tree();
   const input = tree.nodes.find((node) => node.id === "searchInput");
@@ -218,10 +230,14 @@ async function recordWikipedia(page: Page): Promise<WorkflowV2> {
   const locators = buildLocators(input, tree.nodes, tree.boxes, tree.nodes.indexOf(input));
   const before = page.url();
   // A click opens Vector's typeahead and the recorded input stops being the field.
+  const fillStarted = Date.now();
   await driver.fill(input, "Ada Lovelace");
+  const fillMs = Date.now() - fillStarted;
+  const keyStarted = Date.now();
   await page.keyboard.press("Enter");
   await page.waitForURL(/Ada_Lovelace/, { timeout: 20000 });
-  return finishType(input, locators, "Ada Lovelace", before, page.url(), {
+  const keyMs = Date.now() - keyStarted;
+  const workflow = finishType(input, locators, "Ada Lovelace", before, page.url(), {
     id: "wf-wikipedia",
     name: "Wikipedia search",
     startUrl: WIKI,
@@ -229,9 +245,34 @@ async function recordWikipedia(page: Page): Promise<WorkflowV2> {
     expectKind: "url",
     click: false,
   });
+  const typed = workflow.steps.find((step) => step.action === "type");
+  if (typed && reveal) typed.reveal = reveal;
+  return { workflow, trajectory: trajectoryFromWorkflow(workflow, [fillMs, keyMs]) };
 }
 
-async function recordPython(page: Page): Promise<WorkflowV2> {
+/** The search toggle Vector shows when #searchInput is a 0×0 box. */
+async function captureSearchReveal(page: Page): Promise<WorkflowV2["steps"][number]["reveal"]> {
+  const size = page.viewportSize() || { width: 1280, height: 720 };
+  await page.setViewportSize({ width: 880, height: 560 });
+  await page.waitForTimeout(400);
+  const driver = new BrowserDriver(page);
+  const tree = await driver.tree();
+  const index = tree.nodes.findIndex((node) => node.id === "searchInput");
+  let reveal: WorkflowV2["steps"][number]["reveal"];
+  if (index >= 0) {
+    const found = discoverReveal(tree.nodes, tree.boxes, index, tree.hidden);
+    const node = found ? tree.nodes[found.index] : undefined;
+    if (node) {
+      const locs = buildLocators(node, tree.nodes, tree.boxes, found!.index);
+      reveal = locs.find((item) => item.kind === "role") || locs[0];
+    }
+  }
+  await page.setViewportSize(size);
+  await page.waitForTimeout(200);
+  return reveal;
+}
+
+async function recordPython(page: Page): Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }> {
   await page.goto(PY, { waitUntil: "domcontentloaded", timeout: 45000 });
   const driver = new BrowserDriver(page);
   const tree = await driver.tree();
@@ -239,20 +280,27 @@ async function recordPython(page: Page): Promise<WorkflowV2> {
   if (!input) throw new Error("python search field was not in the dump");
   const locators = buildLocators(input, tree.nodes, tree.boxes, tree.nodes.indexOf(input));
   const before = page.url();
+  const clickStarted = Date.now();
   await driver.click(input);
+  const clickMs = Date.now() - clickStarted;
+  const fillStarted = Date.now();
   await driver.fill(input, "json");
+  const fillMs = Date.now() - fillStarted;
+  const keyStarted = Date.now();
   await page.keyboard.press("Enter");
   await page.waitForURL(/q=json/, { timeout: 20000 });
-  return finishType(input, locators, "json", before, page.url(), {
+  const keyMs = Date.now() - keyStarted;
+  const workflow = finishType(input, locators, "json", before, page.url(), {
     id: "wf-python",
     name: "Python docs search",
     startUrl: PY,
     expect: "q=json",
     expectKind: "url",
   });
+  return { workflow, trajectory: trajectoryFromWorkflow(workflow, [clickMs, fillMs, keyMs]) };
 }
 
-async function recordDynamic(page: Page): Promise<WorkflowV2> {
+async function recordDynamic(page: Page): Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }> {
   await page.goto(DYNAMIC, { waitUntil: "domcontentloaded", timeout: 45000 });
   const driver = new BrowserDriver(page);
   const tree = await driver.tree();
@@ -262,15 +310,17 @@ async function recordDynamic(page: Page): Promise<WorkflowV2> {
   const event: TrailEvent = {
     id: "e", ts: 1, kind: "act", op: "click", identity: button, locators, afterText: "Hello World!",
   };
+  const started = Date.now();
   await driver.click(button);
   await page.getByText("Hello World!").waitFor({ timeout: 15000 });
+  const elapsed = Date.now() - started;
   const doc = interpret([event], { id: "wf-dynamic", name: "Dynamic loading", startUrl: DYNAMIC });
   const step = doc.steps[0];
   if (step) {
     step.expect = { kind: "text", match: "Hello World!", timeoutMs: 15000 };
     step.timeoutMs = 15000;
   }
-  return doc;
+  return { workflow: doc, trajectory: trajectoryFromWorkflow(doc, [elapsed]) };
 }
 
 async function recordStaleAdd(page: Page): Promise<WorkflowV2> {
@@ -484,7 +534,7 @@ export function ensureDesktopSession(): void {
   } catch { /* the helper will report the miss */ }
 }
 
-export async function runDesktop(mode: LocatorMode): Promise<{ rows: DriftRow[]; workflows: WorkflowV2[]; notes: string[] }> {
+export async function runDesktop(mode: LocatorMode, diffs?: TrajectoryDiff[]): Promise<{ rows: DriftRow[]; workflows: WorkflowV2[]; notes: string[] }> {
   ensureDesktopSession();
   const notes: string[] = [];
   const rows: DriftRow[] = [];
@@ -497,6 +547,7 @@ export async function runDesktop(mode: LocatorMode): Promise<{ rows: DriftRow[];
     cmd: ["gnome-calculator"],
     matchApp: (app) => /calc/i.test(app),
     record: recordCalculator,
+    diffs,
   }).catch((err: unknown) => {
     rows.push(failRow("gnome-calculator", "record", err));
     return undefined;
@@ -508,6 +559,7 @@ export async function runDesktop(mode: LocatorMode): Promise<{ rows: DriftRow[];
     cmd: ["gedit", "--new-window", emptyNote()],
     matchApp: (app) => /gedit/i.test(app),
     record: recordGedit,
+    diffs,
   }).catch((err: unknown) => {
     rows.push(failRow("gedit", "record", err));
     return undefined;
@@ -532,7 +584,8 @@ async function driftDesktopApp(opts: {
   id: string;
   cmd: string[];
   matchApp: (app: string) => boolean;
-  record: (bin: string, screen: string, appNodes: OsNode[]) => Promise<WorkflowV2>;
+  record: (bin: string, screen: string, appNodes: OsNode[]) => Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }>;
+  diffs?: TrajectoryDiff[];
 }): Promise<WorkflowV2 | undefined> {
   const home = mkdtempSync(path.join(tmpdir(), `bao-${opts.id}-`));
   const baseEnv = appEnv(home, {});
@@ -541,9 +594,14 @@ async function driftDesktopApp(opts: {
   try {
     const nodes = await waitApp(opts.bin, opts.screen, opts.matchApp);
     await sleep(600);
-    const workflow = await opts.record(opts.bin, opts.screen, nodes);
+    const recorded = await opts.record(opts.bin, opts.screen, nodes);
+    const workflow = recorded.workflow;
     const driver = () => new AtspiDriver(opts.bin, opts.screen);
-    opts.rows.push(...await runWorkflow(opts.id, "baseline", workflow, driver(), opts.mode));
+    opts.rows.push(...await runWorkflow(opts.id, "baseline", workflow, driver(), opts.mode, (steps) => {
+      if (opts.mode === "all" && opts.diffs) {
+        opts.diffs.push({ workflow: opts.id, change: "baseline", lines: diffTrajectory(recorded.trajectory, steps) });
+      }
+    }));
     if (moveWindow(opts.id, 180, 90)) opts.rows.push(...await runWorkflow(opts.id, "move", workflow, driver(), opts.mode));
     else opts.rows.push({ workflow: opts.id, change: "move", stepId: "window", passed: false, na: true, reason: "n/a-harness: window did not move" });
     if (moveWindow(opts.id, 40, 40, 640, 480)) opts.rows.push(...await runWorkflow(opts.id, "resize", workflow, driver(), opts.mode));
@@ -588,9 +646,10 @@ async function relaunch(
   }
 }
 
-async function recordCalculator(bin: string, screen: string, nodes: OsNode[]): Promise<WorkflowV2> {
+async function recordCalculator(bin: string, screen: string, nodes: OsNode[]): Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }> {
   const names = ["7", "+", "5", "="];
   const events: TrailEvent[] = [];
+  const timings: number[] = [];
   for (const name of names) {
     const node = nodes.find((item) => item.name === name && /button/i.test(item.role))
       || (await osNodes(bin, screen)).find((item) => item.name === name && /button/i.test(item.role));
@@ -610,9 +669,11 @@ async function recordCalculator(bin: string, screen: string, nodes: OsNode[]): P
       locators: buildLocators(identity, all, boxes, nodes.indexOf(node)),
       provenance: { x: Math.round(node.bbox.x + node.bbox.w / 2), y: Math.round(node.bbox.y + node.bbox.h / 2), space: "screen" },
     });
+    const started = Date.now();
     const pressed = await osPress(bin, screen, node.app, node.role, node.name);
     if (!pressed.ok) throw new Error(`calculator press ${name} failed: ${pressed.reason || "not ok"}`);
     await sleep(300);
+    timings.push(Date.now() - started);
   }
   const shown = await waitCalcResult(bin, screen);
   if (!shown) {
@@ -626,7 +687,7 @@ async function recordCalculator(bin: string, screen: string, nodes: OsNode[]): P
   }
   const last = doc.steps[doc.steps.length - 1];
   if (last) last.expect = { kind: "text", match: "12", timeoutMs: 6000 };
-  return doc;
+  return { workflow: doc, trajectory: trajectoryFromWorkflow(doc, timings) };
 }
 
 async function waitCalcResult(bin: string, screen: string): Promise<boolean> {
@@ -638,7 +699,7 @@ async function waitCalcResult(bin: string, screen: string): Promise<boolean> {
   return false;
 }
 
-async function recordGedit(bin: string, screen: string, nodes: OsNode[]): Promise<WorkflowV2> {
+async function recordGedit(bin: string, screen: string, nodes: OsNode[]): Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }> {
   const text = nodes.find((node) => node.role === "text" && !node.name);
   if (!text) {
     const seen = nodes.filter((node) => /text/i.test(node.role)).map((node) => `${node.role}:${node.name}`).slice(0, 20);
@@ -660,7 +721,7 @@ async function recordGedit(bin: string, screen: string, nodes: OsNode[]): Promis
     step.expect = { kind: "text", match: "*note.txt", timeoutMs: 8000 };
     if (step.identity) step.identity.path = step.identity.path.filter((seg) => !seg.name?.includes("/"));
   }
-  return doc;
+  return { workflow: doc, trajectory: trajectoryFromWorkflow(doc, [400]) };
 }
 
 function appEnv(home: string, extra: Record<string, string>): NodeJS.ProcessEnv {
@@ -843,8 +904,9 @@ async function main(): Promise<void> {
     mkdirSync(path.join(out, "workflows"), { recursive: true });
     for (const item of captured) writeFileSync(path.join(out, "workflows", `${item.id}.json`), JSON.stringify(item.workflow, null, 2));
     if (stale) writeFileSync(path.join(out, "workflows", "internet-add.json"), JSON.stringify(stale, null, 2));
+    const diffs: TrajectoryDiff[] = [];
     const primaryRows = [...errors, ...await replayWeb(captured, "primary", headed)];
-    const multiRows = [...errors, ...await replayWeb(captured, "all", headed)];
+    const multiRows = [...errors, ...await replayWeb(captured, "all", headed, diffs)];
     if (stale) {
       primaryRows.push(...await replayStale(stale, "primary"));
       multiRows.push(...await replayStale(stale, "all"));
@@ -852,16 +914,17 @@ async function main(): Promise<void> {
     const primary = driftReport(primaryRows, generatedAt);
     const multi = driftReport(multiRows, generatedAt);
     writeFileSync(path.join(out, "drift-real-before.md"), `${driftMarkdown(primary)}\n${WEB_NOTES}`);
-    writeFileSync(path.join(out, "drift-real.md"), `${driftMarkdown(multi)}\n${comparisonMarkdown(primary, multi)}\n${WEB_NOTES}`);
+    writeFileSync(path.join(out, "drift-real.md"), `${driftMarkdown(multi)}\n${comparisonMarkdown(primary, multi)}\n${trajectoryMarkdown(diffs)}\n${WEB_NOTES}`);
     writeFileSync(path.join(out, "drift-real.json"), JSON.stringify({ primary, multi }, null, 2));
     console.log(comparisonMarkdown(primary, multi));
   }
   if (part === "desktop" || part === "all") {
-    const desktop = await runDesktop("all");
+    const desktopDiffs: TrajectoryDiff[] = [];
+    const desktop = await runDesktop("all", desktopDiffs);
     const primary = await runDesktop("primary");
     const report = driftReport(desktop.rows, generatedAt);
     mkdirSync(path.join(out, "workflows"), { recursive: true });
-    writeFileSync(path.join(out, "drift-real-desktop.md"), `${driftMarkdown(report)}\n${desktop.notes.join("\n")}\n${comparisonMarkdown(driftReport(primary.rows, generatedAt), report)}\n${DESKTOP_NOTES}`);
+    writeFileSync(path.join(out, "drift-real-desktop.md"), `${driftMarkdown(report)}\n${desktop.notes.join("\n")}\n${comparisonMarkdown(driftReport(primary.rows, generatedAt), report)}\n${trajectoryMarkdown(desktopDiffs)}\n${DESKTOP_NOTES}`);
     writeFileSync(path.join(out, "drift-real-desktop.json"), JSON.stringify({ multi: report, primary: driftReport(primary.rows, generatedAt), notes: desktop.notes }, null, 2));
     for (const workflow of desktop.workflows) {
       writeFileSync(path.join(out, "workflows", `${workflow.id}.json`), JSON.stringify(workflow, null, 2));

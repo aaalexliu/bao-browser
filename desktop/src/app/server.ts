@@ -28,6 +28,7 @@ import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, type TrailEvent } from "../v1/interpret";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
+import { ReceiptLog } from "../v1/receipt";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
 import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
@@ -463,13 +464,18 @@ async function runWorkflow(
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
   }, prompts);
   const heal = healProvider();
+  const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const result = await replay(workflow, args, driver, {
     settings: library.settings(),
     heal,
     now: () => Date.now(),
+    receipts: receiptLog,
   } satisfies ReplayOptions);
   for (const repair of result.repairs) {
     library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
+  }
+  for (const receipt of result.receipts) {
+    library.appendTrail(workflow.id, receipt);
   }
   const promotion = recordProvisional(library, workflow, result.heals);
   library.saveRun({
@@ -481,6 +487,7 @@ async function runWorkflow(
     failure: result.failure,
     steps: result.steps,
     repairs: result.repairs,
+    receipts: result.receipts,
     promotion,
   });
   const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
