@@ -255,6 +255,17 @@ is still the source of truth for the extension.
   frontmost, and a CGEvent drag moves the pointer without starting a file drag.
   Electron exposes `bao-button` only after `accessibilitySupportEnabled` is
   set once the app is ready.
+- **2026-10-20 - v1 desktop mac build.** `origin/v1/desktop` at `4153139`
+  produced `Bao.app` and `Bao.dmg`, signed with `bao dev signing`. The app
+  identifier is `dev.bao.desktop`. The nested helper stays `dev.bao.oshelper`
+  with the same certificate leaf. `codesign --verify --deep --strict` passed.
+  A no-prompt permissions check on that helper copy stayed true for
+  Accessibility and Screen Recording. Copies are in the agent store under
+  `bao-mac-spike/v1/` and are not in git. `Bao.app` was not launched.
+  `docs/mac-test.md` is a clean-account pass and was not run. The live drift
+  test failed in 914ms because `desktop/src/launch.ts` confirms the owned
+  Chrome process by reading `/proc`, which macOS does not have. No drift
+  variant ran. The throwaway Chrome profile was deleted.
 
 ---
 

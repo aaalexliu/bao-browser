@@ -251,3 +251,45 @@ label and identifier is the stable token (`Seven`, `AllClear`). TextEdit's
 text area identifier is `First Text View`. Safari's private-window address
 field accepts `AXValue` plus `AXConfirm`. An Electron window stays one empty
 role until `app.accessibilitySupportEnabled` is set after `app.whenReady`.
+
+## 2026-10-20, v1 desktop build
+
+`origin/v1/desktop` is `4153139` ("Merge spike/proxy-macos signing notes into
+the desktop v1 line"). That tip does not include the fixture walker. The app
+was built from a detached worktree of that commit. The worktree was removed
+after the build.
+
+`desktop/os-helper-macos/package-app.sh` and
+`desktop/packaging/macos/package-app.sh` signed with `bao dev signing`.
+`codesign --verify --deep --strict` passed for `Bao.app` and for the nested
+helper.
+
+- `Bao.app` designated requirement: identifier `dev.bao.desktop` and
+  certificate leaf `H"a522e15d431a2f36ace451dd575a02e9e877fbd1"`. The
+  executable is a shell script, so the host line is `com.apple.bash`.
+- Nested `BaoOSHelper.app`: identifier `dev.bao.oshelper` and the same
+  certificate leaf.
+
+Copies are in the agent store under `bao-mac-spike/v1/`: `Bao.app`, `Bao.dmg`
+(676K, UDZO), and `BaoOSHelper.app`. They are not in git.
+
+A `permissions` run of that helper copy, with no `--prompt`, reported
+accessibility true, screen capture true, prompted false, and ppid 1.
+
+`docs/mac-test.md` on that branch is a clean-account procedure. It was not
+run. `Bao.app` was not launched, because its launcher opens Google Chrome.
+The fresh-user grant, the record pass, and the two replays remain a manual
+test. `examples/workflows/calculator.json` was not replayed on this v1 binary.
+
+The live drift test "shift, theme, font, order, slow network, and 2x scale"
+failed in 914ms with `Cannot inspect /proc to confirm the owned Chrome
+process.` `desktop/src/launch.ts` reads `/proc` after Chrome has started.
+macOS has no `/proc`, so the check throws before any variant runs. The
+desktop server returned that string from the drive call. No `drift.json` was
+written. The throwaway Chrome stayed open (headless, a temp `bao-profile`
+directory, not the daily profile) until that process was quit, and the
+runner waited on the handle. The profile directory was deleted. The next
+check in the same function treats a command line containing `Google/Chrome`
+as the daily profile. The macOS Chrome binary path contains that string, so
+replacing the `/proc` read would still stop there. That function was not
+patched.
