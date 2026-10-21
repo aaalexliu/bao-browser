@@ -104,6 +104,44 @@ verified yet. Do not rebuild this app until those two rows are enabled.
 Add `BaoOSHelper.app` with the + button if the row is missing. The path is the
 one in the table above.
 
+## 2026-10-20, signed with bao dev signing
+
+One self-signed certificate was imported into the login keychain. Common name
+`bao dev signing`. SHA-1 `A5:22:E1:5D:43:1A:2F:36:AC:E4:51:DD:57:5A:02:E9:E8:77:FB:D1`.
+It expires in 2036. Extended key usage is code signing, basic constraints are
+CA false, and key usage is digital signature. It is not in the System keychain,
+and trust settings were not changed. The temp key, cert, and p12 were deleted.
+No keychain password dialog appeared. `codesign` is allowed to use the key
+(`security import -T /usr/bin/codesign`).
+
+`package-app.sh` signs with `BAO_SIGN_IDENTITY` (default `bao dev signing`):
+
+```
+codesign --force --options runtime --identifier dev.bao.oshelper -s "bao dev signing"
+```
+
+Designated requirement:
+
+```
+designated => identifier "dev.bao.oshelper" and certificate leaf = H"a522e15d431a2f36ace451dd575a02e9e877fbd1"
+```
+
+cdhash after this sign: `bac5c56ac584bc325e0961999e028fdb87d74edd`. A later
+rebuild keeps the grant when the same certificate signs the same bundle id,
+because the requirement is the identifier plus that certificate, not the cdhash.
+
+The walker now follows `AXChildrenInNavigationOrder`, `AXContents`,
+`AXVisibleChildren`, and `AXChildren`, descends through groups, and caps depth
+at 30. Unit tests cover that list and the dedupe key. They do not talk to
+Calculator. The app was then rebuilt, which replaces the previous ad-hoc grant.
+
+One prompt followed the rebuild. Inside that process Accessibility and Screen
+Recording were both true. System Settings was already open on Screen & System
+Audio Recording; no new dialog was observed. The demo was not run. If the
+Privacy lists still show the old ad-hoc BaoOSHelper row, remove it and add:
+
+`/Users/alexliu/dev/bao-mac-spike/desktop/os-helper-macos/BaoOSHelper.app`
+
 ## 2026-10-20, grant is on, keypad is hit-test only
 
 A fresh launch of the same app, with no rebuild and no prompt, reported

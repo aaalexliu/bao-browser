@@ -210,6 +210,13 @@ is still the source of truth for the extension.
   buttons, so `press` misses and will not fall back to a coordinate. The
   OpenAI and Claude loops were not run. TextEdit was not opened. Fixing the
   walk means a Rust rebuild, which was not done.
+- **2026-10-20 - BaoOSHelper signed with bao dev signing.** One login-keychain
+  certificate, SHA-1 `A5:22:E1:5D:43:1A:2F:36:AC:E4:51:DD:57:5A:02:E9:E8:77:FB:D1`,
+  signs `dev.bao.oshelper`. The designated requirement is the bundle id plus
+  that certificate, so a later rebuild with the same cert keeps the grant.
+  The walker also follows navigation-order, contents, and visible children,
+  and the depth cap is 30. One prompt after this rebuild reported Accessibility
+  and Screen Recording true. The demo was not run.
 
 ---
 
