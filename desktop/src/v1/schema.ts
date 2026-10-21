@@ -9,7 +9,7 @@ export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 export type InputType = "text" | "secret" | "number" | "choice" | "file";
 export type HealMode = "auto" | "approve";
 export type Surface = "dom" | "ax" | "atspi";
-export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check";
+export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login";
 
 export interface WorkflowInput {
   name: string;
@@ -79,6 +79,8 @@ export interface WorkflowStep {
   key?: string;
   checked?: boolean;
   sensitive?: boolean;
+  /** A confirm or login step is done by the person. Replay does not click or type it. */
+  human?: boolean;
   postcondition?: Postcondition;
   timeoutMs: number;
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
@@ -97,6 +99,8 @@ export interface WorkflowV2 {
   updatedAt?: number;
   /** Absent means the global setting, whose default is auto. */
   heal?: HealMode;
+  /** False means the workflow has not been replayed. */
+  replayed?: boolean;
 }
 
 export interface ReplayArgs {
@@ -148,6 +152,10 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     }
     if (step.sensitive && step.value && !step.value.includes("{{")) {
       errors.push(`secret literal ${step.id}`);
+    }
+    if (step.action === "confirm" && step.human !== true) errors.push(`confirm ${step.id}`);
+    if ((step.action === "confirm" || step.action === "login") && step.provenance) {
+      errors.push(`coordinates ${step.id}`);
     }
   });
   return errors;

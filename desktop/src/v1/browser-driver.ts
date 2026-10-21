@@ -15,11 +15,22 @@ export interface FileProof {
   via: "input.files" | "echo";
 }
 
+export interface PersonPrompts {
+  showConfirm?(label: string): void;
+  clearConfirm?(): void;
+  showLoginWait?(label: string): void;
+  clearLoginWait?(): void;
+}
+
 export class BrowserDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
   readonly proofs: FileProof[] = [];
 
-  constructor(private readonly page: Page, private readonly onNotify?: (notice: HealNotice) => void) {}
+  constructor(
+    private readonly page: Page,
+    private readonly onNotify?: (notice: HealNotice) => void,
+    private readonly prompts?: PersonPrompts,
+  ) {}
 
   async tree(): Promise<LiveTree> {
     const dump = await this.page.evaluate(dumpPage);
@@ -137,6 +148,22 @@ export class BrowserDriver implements Driver {
 
   async check(node: Identity, checked: boolean): Promise<void> {
     await this.page.locator(this.sel(node)).setChecked(checked);
+  }
+
+  showConfirm(label: string): void {
+    this.prompts?.showConfirm?.(label);
+  }
+
+  clearConfirm(): void {
+    this.prompts?.clearConfirm?.();
+  }
+
+  showLoginWait(label: string): void {
+    this.prompts?.showLoginWait?.(label);
+  }
+
+  clearLoginWait(): void {
+    this.prompts?.clearLoginWait?.();
   }
 
   async notify(notice: HealNotice): Promise<void> {

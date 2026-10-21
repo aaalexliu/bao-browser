@@ -14,6 +14,7 @@
     "createdAt": { "type": "number" },
     "updatedAt": { "type": "number" },
     "heal": { "enum": ["auto", "approve"] },
+    "replayed": { "type": "boolean" },
     "inputs": {
       "type": "array",
       "items": { "$ref": "#/$defs/input" }
@@ -93,7 +94,7 @@
       "properties": {
         "id": { "type": "string" },
         "index": { "type": "number" },
-        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check"] },
+        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login"] },
         "label": { "type": "string" },
         "surface": { "enum": ["dom", "os"] },
         "identity": { "$ref": "#/$defs/identity" },
@@ -111,6 +112,7 @@
         "key": { "type": "string" },
         "checked": { "type": "boolean" },
         "sensitive": { "type": "boolean" },
+        "human": { "type": "boolean" },
         "postcondition": { "$ref": "#/$defs/postcondition" },
         "timeoutMs": { "type": "number" },
         "provenance": {

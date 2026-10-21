@@ -2,13 +2,27 @@
 // Nothing is recorded unless a session was started.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome, pidsForDataDir } from "../launch";
-import { BrowserDriver } from "../v1/browser-driver";
+import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
+import {
+  auditLine,
+  chooseProfile,
+  chromeUserDataDir,
+  assertDomain,
+  importConfirmText,
+  injectCookies,
+  loadChromeSiteCookies,
+  readChromeSafeStoragePassword,
+  readProfileNames,
+  safeImportError,
+  type ChromeProfile,
+  type ImportAudit,
+} from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
@@ -42,6 +56,17 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   let profile: string | undefined;
   const events: TrailEvent[] = [];
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
+  let pending: PendingImport | undefined;
+  let importing = false;
+  let loginWait: { message: string } | null = null;
+  let humanConfirm: { message: string; detail?: string } | null = null;
+  let site: { context: BrowserContext; page: Page; profile: string } | undefined;
+  const prompts: PersonPrompts = {
+    showConfirm(label) { humanConfirm = { message: "confirm before applying", detail: label }; },
+    clearConfirm() { humanConfirm = null; },
+    showLoginWait() { loginWait = { message: "waiting for you to log in" }; },
+    clearLoginWait() { loginWait = null; },
+  };
   let helperReport: unknown;
   if (process.platform === "darwin" && bundledHelperApp()) {
     helperReport = await new MacOsHelper(bundledHelperApp()!).permissions(false).catch((err) => ({
@@ -68,7 +93,104 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           trails: library.listTrails(),
           runs: library.listRuns(),
           helper: bundledHelperApp() || null,
+          pendingImport: pending ? publicPending(pending) : null,
+          loginWait,
+          humanConfirm,
         });
+      }
+      if (req.method === "GET" && url.pathname === "/api/import-login") {
+        if (!pending || pending.id !== url.searchParams.get("id")) return json(res, { error: "no import" }, 404);
+        return json(res, publicPending(pending));
+      }
+      if (req.method === "POST" && url.pathname === "/api/import-login") {
+        const body = await readBody(req) as { from?: string; domain?: string; profile?: string };
+        if (body.from !== "chrome") return json(res, { error: "only chrome is supported" }, 400);
+        let domain = "";
+        try { domain = assertDomain(body.domain || ""); }
+        catch (err) { return json(res, { error: safeImportError(err) }, 400); }
+        if (pending && (pending.phase === "confirm" || pending.phase === "pick" || pending.phase === "running")) {
+          return json(res, publicPending(pending));
+        }
+        pending = {
+          id: `imp-${Date.now()}`,
+          domain,
+          profile: body.profile,
+          phase: "confirm",
+          message: importConfirmText(domain),
+        };
+        return json(res, publicPending(pending));
+      }
+      if (req.method === "POST" && url.pathname === "/api/import-login/answer") {
+        const body = await readBody(req) as { id?: string; accept?: boolean; profile?: string };
+        if (!pending || body.id !== pending.id) return json(res, { error: "no import" }, 404);
+        if (body.accept === false) {
+          pending.phase = "cancelled";
+          return json(res, publicPending(pending));
+        }
+        if (pending.phase !== "confirm" && pending.phase !== "pick") return json(res, publicPending(pending));
+        if (pending.phase === "pick" && !body.profile) return json(res, { error: "pick a profile" }, 400);
+        if (body.profile) pending.profile = body.profile;
+        void settleImport();
+        return json(res, publicPending(pending));
+      }
+      if (req.method === "POST" && url.pathname === "/api/prompt") {
+        const body = await readBody(req) as { kind?: string; detail?: string };
+        if (body.kind === "login") loginWait = { message: "waiting for you to log in" };
+        else if (body.kind === "confirm") humanConfirm = { message: "confirm before applying", detail: body.detail };
+        else { loginWait = null; humanConfirm = null; }
+        return json(res, { loginWait, humanConfirm });
+      }
+      if (req.method === "GET" && url.pathname === "/api/site") {
+        if (!site || site.page.isClosed()) return json(res, { open: false });
+        return json(res, { open: true, ...(await siteSignals(site.page)) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/site/open") {
+        const body = await readBody(req) as { url?: string };
+        const page = await sitePage();
+        if (body.url) await page.goto(body.url, { waitUntil: "domcontentloaded" });
+        await moveOwnedWindow(page, { x: 80, y: 60, width: 1100, height: 780 }).catch(() => undefined);
+        return json(res, { open: true, ...(await siteSignals(page)) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/site/query") {
+        const body = await readBody(req) as { names?: string[] };
+        const names = (body.names || []).filter((name) => typeof name === "string" && name.trim() && name.length <= 40).slice(0, 8);
+        const page = await sitePage();
+        const controls = await namedControls(page, names);
+        return json(res, { controls });
+      }
+      if (req.method === "POST" && url.pathname === "/api/site/click") {
+        const body = await readBody(req) as { name?: string };
+        const name = (body.name || "").trim();
+        if (!["open", "frozen"].includes(name.toLowerCase())) return json(res, { error: "that control is not a selectable state" }, 400);
+        const page = await sitePage();
+        try {
+          await page.getByText(name, { exact: true }).first().click();
+        } catch {
+          return json(res, { error: "could not select that state" }, 409);
+        }
+        return json(res, { selected: name });
+      }
+      if (req.method === "POST" && url.pathname === "/api/site/text") {
+        const body = await readBody(req) as { phrases?: string[] };
+        const phrases = (body.phrases || []).filter((phrase) => typeof phrase === "string" && phrase.length <= 40).slice(0, 6);
+        const page = await sitePage();
+        const texts = (await shortTexts(page, phrases)).filter((text) => !looksPersonal(text));
+        return json(res, { texts });
+      }
+      if (req.method === "POST" && url.pathname === "/api/site/shot") {
+        const body = await readBody(req) as { phrase?: string; file?: string };
+        const phrase = (body.phrase || "").trim();
+        if (!phrase || phrase.length > 80 || looksPersonal(phrase)) return json(res, { error: "phrase" }, 400);
+        const base = path.basename(body.file || "status-card.png");
+        if (!/^[\w.-]+$/.test(base)) return json(res, { error: "file" }, 400);
+        const page = await sitePage();
+        const box = await clipForPhrase(page, phrase);
+        if (!box) return json(res, { error: "status card was not found" }, 404);
+        const shots = path.join(opts.home, "shots");
+        mkdirSync(shots, { recursive: true });
+        const dest = path.join(shots, base);
+        await page.screenshot({ path: dest, clip: box });
+        return json(res, { file: base });
       }
       if (req.method === "GET" && url.pathname === "/api/pids") {
         const product = pidsForDataDir(path.join(opts.home, "ui-profile"))[0] ?? null;
@@ -154,7 +276,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
-        const run = await runWorkflow(library, workflow, args, notices, replays);
+        const run = await runWorkflow(library, workflow, args, notices, replays, prompts);
         return json(res, run);
       }
       if (req.method === "POST" && url.pathname === "/api/replay/place") {
@@ -220,6 +342,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
   boundPort = port;
+  writeFileSync(path.join(opts.home, "server.json"), JSON.stringify({ port }));
 
   async function stopBrowser(): Promise<void> {
     recording = false;
@@ -230,6 +353,71 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     profile = undefined;
   }
 
+  async function sitePage(): Promise<Page> {
+    if (site && !site.page.isClosed()) return site.page;
+    const profile = path.join(opts.home, "site-profile");
+    mkdirSync(profile, { recursive: true });
+    const context = await launchOwnedChrome({
+      userDataDir: profile,
+      headless: process.env.BAO_HEADED !== "1",
+    });
+    const page = context.pages()[0] || await context.newPage();
+    site = { context, page, profile };
+    return page;
+  }
+
+  async function settleImport(): Promise<void> {
+    if (!pending || importing) return;
+    if (pending.phase === "done" || pending.phase === "cancelled" || pending.phase === "error") return;
+    importing = true;
+    try {
+      const userData = chromeUserDataDir();
+      const profiles = readProfileNames(path.join(userData, "Local State"));
+      const choice = chooseProfile(profiles, pending.profile);
+      if (!choice.ok) {
+        if (choice.reason === "none") {
+          pending.phase = "error";
+          pending.error = "Chrome has no profiles";
+          return;
+        }
+        pending.profile = undefined;
+        pending.profiles = profiles;
+        pending.phase = "pick";
+        return;
+      }
+      pending.phase = "running";
+      const password = readChromeSafeStoragePassword();
+      const loaded = await loadChromeSiteCookies({
+        userDataDir: userData,
+        profileDir: choice.profile.directory,
+        domain: pending.domain,
+        password,
+      });
+      if (loaded.cookies.length > 0) {
+        const page = await sitePage();
+        try {
+          await injectCookies(page, loaded.cookies);
+        } finally {
+          for (const cookie of loaded.cookies) cookie.value = "";
+        }
+      }
+      const audit = loaded.audit;
+      const auditDir = path.join(opts.home, "audit");
+      mkdirSync(auditDir, { recursive: true });
+      appendFileSync(path.join(auditDir, "import-login.jsonl"), `${auditLine(audit)}\n`);
+      pending.audit = audit;
+      pending.phase = "done";
+      pending.profiles = undefined;
+    } catch (err) {
+      if (pending) {
+        pending.phase = "error";
+        pending.error = safeImportError(err);
+      }
+    } finally {
+      importing = false;
+    }
+  }
+
   return {
     library,
     port,
@@ -237,6 +425,8 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     get recording() { return recording; },
     async close() {
       await stopBrowser();
+      await site?.context.close().catch(() => undefined);
+      site = undefined;
       for (const session of replays.values()) {
         await session.context.close().catch(() => undefined);
         await rm(session.profile, { recursive: true, force: true }).catch(() => undefined);
@@ -253,13 +443,14 @@ async function runWorkflow(
   args: ReplayArgs,
   notices: Notice[],
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  prompts?: PersonPrompts,
 ) {
   const session = await openReplay(library, workflow.id, replays);
   const page = session.page;
   if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
   const driver = new BrowserDriver(page, (notice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
-  });
+  }, prompts);
   const heal = healProvider();
   const result = await replay(workflow, args, driver, {
     settings: library.settings(),
@@ -356,6 +547,110 @@ function healProvider(): HealProvider {
   return llmHealFromEnv();
 }
 
+interface PendingImport {
+  id: string;
+  domain: string;
+  profile?: string;
+  phase: "confirm" | "pick" | "running" | "done" | "cancelled" | "error";
+  message: string;
+  profiles?: ChromeProfile[];
+  error?: string;
+  audit?: ImportAudit;
+}
+
+function publicPending(pending: PendingImport) {
+  return {
+    id: pending.id,
+    domain: pending.domain,
+    phase: pending.phase,
+    message: pending.message,
+    profiles: pending.profiles?.map((profile) => ({ directory: profile.directory, name: profile.name })),
+    error: pending.error,
+    audit: pending.audit,
+  };
+}
+
+async function siteSignals(page: Page): Promise<{ url: string; hasPassword: boolean }> {
+  const raw = page.url();
+  let url = "";
+  try {
+    const parsed = new URL(raw);
+    url = `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    url = "";
+  }
+  const hasPassword = await page.locator("input[type=password]").count().then((count) => count > 0).catch(() => false);
+  return { url, hasPassword };
+}
+
+async function namedControls(page: Page, names: string[]): Promise<{ role: string; name: string; id: string; testId: string; tag: string }[]> {
+  return page.evaluate((wanted) => {
+    const exact = new Set(wanted.map((name) => name.toLowerCase()));
+    const out: { role: string; name: string; id: string; testId: string; tag: string }[] = [];
+    for (const el of document.querySelectorAll("button, a, label, [role=radio], [role=button], input")) {
+      const name = (el.getAttribute("aria-label") || (el as HTMLElement).innerText || "").replace(/\s+/g, " ").trim();
+      if (!exact.has(name.toLowerCase()) || name.length > 40) continue;
+      out.push({
+        role: el.getAttribute("role") || el.tagName.toLowerCase(),
+        name,
+        id: (el as HTMLElement).id || "",
+        testId: el.getAttribute("data-testid") || "",
+        tag: el.tagName.toLowerCase(),
+      });
+    }
+    return out;
+  }, names);
+}
+
+async function shortTexts(page: Page, phrases: string[]): Promise<string[]> {
+  return page.evaluate((wanted) => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const el of document.querySelectorAll("body *")) {
+      const text = ((el as HTMLElement).innerText || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length > 80) continue;
+      const lower = text.toLowerCase();
+      if (!wanted.some((phrase) => lower.includes(phrase.toLowerCase()))) continue;
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      out.push(text);
+      if (out.length >= 8) break;
+    }
+    return out;
+  }, phrases);
+}
+
+function looksPersonal(text: string): boolean {
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text)) return true;
+  if (/\b\d{3}-\d{2}-\d{4}\b/.test(text)) return true;
+  if (/\d{6,}/.test(text)) return true;
+  return false;
+}
+
+async function clipForPhrase(page: Page, phrase: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  const box = await page.evaluate((wanted) => {
+    let best: { length: number; x: number; y: number; width: number; height: number } | null = null;
+    for (const el of document.querySelectorAll("body *")) {
+      const text = ((el as HTMLElement).innerText || "").replace(/\s+/g, " ").trim();
+      if (!text.toLowerCase().includes(wanted.toLowerCase()) || text.length > 160) continue;
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      if (rect.width < 8 || rect.height < 8) continue;
+      if (!best || text.length < best.length) {
+        best = { length: text.length, x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }
+    }
+    if (!best) return null;
+    return { x: best.x, y: best.y, width: Math.min(best.width, 640), height: Math.min(best.height, 240) };
+  }, phrase);
+  if (!box) return null;
+  return {
+    x: Math.max(0, box.x),
+    y: Math.max(0, box.y),
+    width: box.width,
+    height: box.height,
+  };
+}
+
 function summary(doc: WorkflowV2) {
   return {
     id: doc.id,
@@ -364,6 +659,7 @@ function summary(doc: WorkflowV2) {
     inputs: doc.inputs,
     heal: doc.heal,
     heals: doc.steps.filter((step) => step.label.startsWith("healed")).length,
+    replayed: doc.replayed,
   };
 }
 

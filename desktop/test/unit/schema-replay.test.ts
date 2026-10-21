@@ -326,6 +326,59 @@ test("a drop postcondition is the visible echo and a bare filename does not pass
   assert.equal(holds(step!.postcondition!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
 });
 
+test("a confirm step waits for a person and does not click", async () => {
+  let shown = "";
+  const apply = id({ name: "Apply", role: "button" });
+  const d = driver([apply], { texts: ["Your file is open"] });
+  d.showConfirm = (label) => { shown = label; };
+  const doc = workflow(apply);
+  doc.steps[0] = {
+    id: "c",
+    index: 0,
+    action: "confirm",
+    human: true,
+    label: "confirm before applying",
+    surface: "dom",
+    identity: apply,
+    timeoutMs: 0,
+    postcondition: { kind: "text", match: "Your file is open", timeoutMs: 0 },
+  };
+  const result = await replay(doc, {}, d);
+  assert.equal(result.status, "passed");
+  assert.equal(d.clicks, 0);
+  assert.equal(shown, "confirm before applying");
+  assert.equal(validate(doc), true);
+  assert.deepEqual(validateWorkflow(doc), []);
+});
+
+test("a login step never types", async () => {
+  let fills = 0;
+  const d = driver([], { url: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  d.fill = async () => { fills += 1; };
+  const doc = workflow(id({ role: "textbox" }));
+  doc.replayed = false;
+  doc.steps[0] = {
+    id: "login",
+    index: 0,
+    action: "login",
+    human: true,
+    label: "ensure logged in (import from chrome, else wait for user)",
+    surface: "dom",
+    timeoutMs: 0,
+    postcondition: { kind: "url", match: "usa.experian.com/mfe/protection", timeoutMs: 0 },
+  };
+  const ready = await replay(doc, {}, d);
+  assert.equal(ready.status, "passed");
+  assert.equal(fills, 0);
+  assert.equal(d.clicks, 0);
+  d.tree = async () => tree([], { url: "https://usa.experian.com/login" });
+  const waiting = await replay(doc, {}, d);
+  assert.equal(waiting.status, "failed");
+  assert.equal(waiting.failure?.reason, "waiting for you to log in");
+  assert.equal(fills, 0);
+  assert.equal(validate(doc), true);
+});
+
 test("value postcondition reads the live text", () => {
   const ok = holds(
     { kind: "value", match: "{{a}}+{{b}}", timeoutMs: 1 },

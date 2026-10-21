@@ -51,6 +51,11 @@ export interface Driver {
   check(node: Identity, checked: boolean): Promise<void>;
   notify(notice: HealNotice): Promise<void>;
   sleep?(ms: number): Promise<void>;
+  /** Shown in the Bao window. Replay does not click Apply. */
+  showConfirm?(label: string): void | Promise<void>;
+  clearConfirm?(): void | Promise<void>;
+  showLoginWait?(label: string): void | Promise<void>;
+  clearLoginWait?(): void | Promise<void>;
 }
 
 export interface RunResult {
@@ -165,6 +170,8 @@ async function runStep(
   driver: Driver,
   secrets: string[],
 ): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+  if (step.action === "confirm") return runConfirm(step, args, driver, secrets);
+  if (step.action === "login") return runLogin(step, args, driver, secrets);
   if (step.action === "key" && !step.identity) {
     await driver.key(step.key || "Enter");
     const tree = await driver.tree();
@@ -204,6 +211,54 @@ async function runStep(
     return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
   }
   return { ok: true };
+}
+
+async function runConfirm(
+  step: WorkflowStep,
+  args: ReplayArgs,
+  driver: Driver,
+  secrets: string[],
+): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+  await driver.showConfirm?.(step.label);
+  try {
+    const timeout = step.timeoutMs ?? 0;
+    const start = Date.now();
+    let seen = await driver.tree();
+    while (step.postcondition && !holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
+      await (driver.sleep ? driver.sleep(200) : sleep(200));
+      seen = await driver.tree();
+    }
+    if (step.postcondition && !holds(step.postcondition, seen, args)) {
+      return { ok: false, failure: await fail(driver, step, "postcondition", undefined, secrets) };
+    }
+    return { ok: true };
+  } finally {
+    await driver.clearConfirm?.();
+  }
+}
+
+async function runLogin(
+  step: WorkflowStep,
+  args: ReplayArgs,
+  driver: Driver,
+  secrets: string[],
+): Promise<{ ok: true } | { ok: false; failure: StepFailure }> {
+  await driver.showLoginWait?.(step.label);
+  try {
+    const timeout = step.timeoutMs ?? 0;
+    const start = Date.now();
+    let seen = await driver.tree();
+    while (step.postcondition && !holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
+      await (driver.sleep ? driver.sleep(200) : sleep(200));
+      seen = await driver.tree();
+    }
+    if (step.postcondition && !holds(step.postcondition, seen, args)) {
+      return { ok: false, failure: await fail(driver, step, "waiting for you to log in", undefined, secrets) };
+    }
+    return { ok: true };
+  } finally {
+    await driver.clearLoginWait?.();
+  }
 }
 
 async function poll(
