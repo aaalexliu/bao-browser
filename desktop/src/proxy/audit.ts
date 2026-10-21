@@ -45,8 +45,21 @@ export interface AuditEvent {
   resolved?: ResolvedElement | null;
   unresolved?: { reason: string };
   sensitive?: boolean;
-  provenance?: { x: number; y: number; space: "viewport" };
+  provenance?: { x: number; y: number; space: "viewport" | "screen" };
   checked?: boolean;
+  /** Set when the act resolved against an OS accessibility element. */
+  os?: {
+    app: string;
+    role: string;
+    subrole?: string;
+    name: string;
+    title?: string;
+    description?: string;
+    identifier?: string;
+    path: { role: string; name?: string }[];
+    value?: string;
+    key?: string;
+  };
 }
 
 export interface AuditLog {
@@ -123,11 +136,50 @@ function typedText(raw: unknown): string | undefined {
 }
 
 /** Workflow version 2, from act events only. Reads are not steps. */
-export function deriveWorkflow(events: readonly AuditEvent[], startUrl: string): Workflow {
-  const id = "wf-proxy-openai";
+export function deriveWorkflow(
+  events: readonly AuditEvent[],
+  startUrl: string,
+  meta?: { id?: string; name?: string },
+): Workflow {
+  const id = meta?.id ?? "wf-proxy-openai";
   const steps: Step[] = [];
   for (const e of events) {
     if (e.kind !== "act") continue;
+    if (e.op === "osClick" || e.op === "osSetValue" || e.op === "osType" || e.op === "osKey") {
+      const action = e.op === "osKey" ? "osKey" : e.op === "osClick" ? "osClick" : "osSetValue";
+      const base: Step = {
+        ts: e.ts,
+        action,
+        label: e.op,
+        surface: "os",
+        provenance: e.provenance,
+      };
+      if (e.unresolved || !e.os) {
+        steps.push({ ...base, label: `Unresolved ${e.op}`, unresolved: e.unresolved ?? { reason: "unresolved" } });
+        continue;
+      }
+      steps.push({
+        ...base,
+        label: action === "osClick" ? `Press ${e.os.name || e.os.role}` : action === "osKey" ? `Key ${e.os.key || e.os.name}` : "Set value",
+        os: {
+          target: {
+            platform: "macos",
+            app: e.os.app,
+            role: e.os.role,
+            subrole: e.os.subrole,
+            name: e.os.name,
+            title: e.os.title,
+            description: e.os.description,
+            identifier: e.os.identifier,
+            path: e.os.path,
+          },
+          value: e.sensitive ? undefined : e.os.value,
+          key: e.os.key,
+        },
+        sensitive: e.sensitive || undefined,
+      });
+      continue;
+    }
     const frameUrl = e.after?.url || e.before?.url || startUrl;
     const base: Step = {
       ts: e.ts,
@@ -187,7 +239,7 @@ export function deriveWorkflow(events: readonly AuditEvent[], startUrl: string):
   const createdAt = events[0]?.ts ?? Date.now();
   return {
     id,
-    name: "Proxy spike — checkboxes",
+    name: meta?.name ?? "Proxy spike — checkboxes",
     version: 2,
     startUrl,
     variables: [],

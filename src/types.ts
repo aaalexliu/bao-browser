@@ -103,6 +103,11 @@ export interface OsTarget {
   path: { role: string; name?: string }[];
   bbox?: { x: number; y: number; w: number; h: number; sw: number; sh: number };
   dialog?: OsDialogKind;
+  // macOS AX. Absent on Linux AT-SPI workflows.
+  subrole?: string;
+  title?: string;
+  description?: string;
+  identifier?: string;
 }
 
 // QA expectations (T6): checked at replay, recorded pass/fail, without acting.
@@ -154,7 +159,7 @@ export interface Step {
   dialog?: BrowserDialog;
   os?: { target: OsTarget; value?: string; key?: string };
   // Proxy capture audit. The pixel the vendor asked for. Replay does not click it.
-  provenance?: { x: number; y: number; space: "viewport" };
+  provenance?: { x: number; y: number; space: "viewport" | "screen" };
   // Hit-test missed an actionable element, or the action is not one this spike performs.
   // The step is stored so the miss is visible. Replay skips it.
   unresolved?: { reason: string };
