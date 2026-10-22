@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656634822,
+    "ts": 1792657816402,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656634863,
+    "ts": 1792657816443,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656634903,
+    "ts": 1792657816483,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656634944,
+    "ts": 1792657816523,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657816614,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -36,34 +44,16 @@
     "afterUrl": "https://www.lua.org/manual/5.4/"
   },
   {
-    "id": "e4",
-    "ts": 1792656635413,
+    "id": "e5",
+    "ts": 1792657817082,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://www.lua.org/manual/5.4/",
     "afterUrl": "https://www.lua.org/manual/5.4/"
   },
   {
-    "id": "e5",
-    "ts": 1792656635444,
-    "kind": "act",
-    "op": "click",
-    "identity": {
-      "surface": "dom",
-      "role": "heading",
-      "tag": "h1",
-      "text": "Lua 5.4 Reference Manual",
-      "cssPath": "h1:nth-of-type(1)",
-      "path": []
-    },
-    "subtreeBefore": "Lua 5.4 Reference Manual",
-    "subtreeAfter": "Lua 5.4 Reference Manual",
-    "beforeUrl": "https://www.lua.org/manual/5.4/",
-    "afterUrl": "https://www.lua.org/manual/5.4/"
-  },
-  {
     "id": "e6",
-    "ts": 1792656635791,
+    "ts": 1792657817102,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://www.lua.org/manual/5.4/",
@@ -71,7 +61,105 @@
   },
   {
     "id": "e7",
-    "ts": 1792656635822,
+    "ts": 1792657817136,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657817170,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657817203,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657817235,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657817235,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Lua 5.4 Reference Manual",
+      "cssPath": "h1:nth-of-type(1)",
+      "path": []
+    },
+    "subtreeBefore": "Lua 5.4 Reference Manual",
+    "subtreeAfter": "Lua 5.4 Reference Manual",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e12",
+    "ts": 1792657817626,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e13",
+    "ts": 1792657817653,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e14",
+    "ts": 1792657817685,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e15",
+    "ts": 1792657817719,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657817753,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657817786,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.lua.org/manual/5.4/",
+    "afterUrl": "https://www.lua.org/manual/5.4/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657817786,
     "kind": "act",
     "op": "click",
     "identity": {

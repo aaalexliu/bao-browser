@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656443747,
+    "ts": 1792657622769,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656443788,
+    "ts": 1792657622809,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656443828,
+    "ts": 1792657622849,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656443868,
+    "ts": 1792657622889,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657622982,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -46,27 +54,67 @@
     "subtreeBefore": "About this documentation",
     "subtreeAfter": "About this documentation",
     "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
-    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
-  },
-  {
-    "id": "e4",
-    "ts": 1792656444393,
-    "kind": "act",
-    "op": "scroll",
-    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
     "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
   },
   {
     "id": "e5",
-    "ts": 1792656444424,
+    "ts": 1792657623520,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657623546,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657623577,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657623610,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657623644,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657623677,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657623677,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
     "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
   },
   {
-    "id": "e6",
-    "ts": 1792656444494,
+    "id": "e12",
+    "ts": 1792657623745,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -96,24 +144,64 @@
     "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
   },
   {
-    "id": "e7",
-    "ts": 1792656445000,
+    "id": "e13",
+    "ts": 1792657624247,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
     "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
   },
   {
-    "id": "e8",
-    "ts": 1792656445067,
+    "id": "e14",
+    "ts": 1792657624330,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
     "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
   },
   {
-    "id": "e9",
-    "ts": 1792656445099,
+    "id": "e15",
+    "ts": 1792657624361,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657624394,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657624427,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657624461,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657624493,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657624493,
     "kind": "act",
     "op": "click",
     "identity": {

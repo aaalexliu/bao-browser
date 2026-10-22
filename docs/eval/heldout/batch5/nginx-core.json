@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656540934,
+    "ts": 1792657721746,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656540975,
+    "ts": 1792657721786,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656541015,
+    "ts": 1792657721826,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656541056,
+    "ts": 1792657721867,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657721954,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -52,27 +60,67 @@
     "subtreeBefore": "faq",
     "subtreeAfter": "",
     "beforeUrl": "https://nginx.org/en/docs/",
-    "afterUrl": "https://nginx.org/en/docs/faq.html"
-  },
-  {
-    "id": "e4",
-    "ts": 1792656571383,
-    "kind": "act",
-    "op": "scroll",
-    "beforeUrl": "https://nginx.org/en/docs/faq.html",
     "afterUrl": "https://nginx.org/en/docs/faq.html"
   },
   {
     "id": "e5",
-    "ts": 1792656571417,
+    "ts": 1792657752284,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657752304,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657752338,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657752373,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657752405,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657752438,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657752438,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://nginx.org/en/docs/faq.html",
     "afterUrl": "https://nginx.org/en/docs/"
   },
   {
-    "id": "e6",
-    "ts": 1792656571474,
+    "id": "e12",
+    "ts": 1792657752495,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -108,24 +156,64 @@
     "afterUrl": "https://nginx.org/en/docs/faq.html"
   },
   {
-    "id": "e7",
-    "ts": 1792656601758,
+    "id": "e13",
+    "ts": 1792657782779,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://nginx.org/en/docs/faq.html",
     "afterUrl": "https://nginx.org/en/docs/"
   },
   {
-    "id": "e8",
-    "ts": 1792656601817,
+    "id": "e14",
+    "ts": 1792657782870,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://nginx.org/en/docs/",
     "afterUrl": "https://nginx.org/en/docs/"
   },
   {
-    "id": "e9",
-    "ts": 1792656601848,
+    "id": "e15",
+    "ts": 1792657782905,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657782938,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657782970,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657783005,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657783037,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657783037,
     "kind": "act",
     "op": "click",
     "identity": {
