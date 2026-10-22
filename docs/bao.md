@@ -320,14 +320,15 @@ Settings → Sync shows the paired devices and item counts per category. Those t
 
 ## Share a workflow
 
-On the workflow page, copy a view link or an install link. The shared copy has already had emails, phone numbers, street addresses, and secret defaults removed.
+On the workflow page, mark which inputs are asked on import, then copy a view link or an install link. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
 
-An install link asks the setup questions, the same idea as Shortcuts. Secret and file answers are not accepted. An answer that looks like an email or a card number is dropped. Other answers become defaults on the recipient's private copy only.
+Secret and file answers are not stored. An email or a path typed as an answer is dropped. Other answers become defaults on the recipient's private copy only.
 
-Open a workflow from the desktop library or with:
+Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered.
 
 ```bash
 npm run bao -- open bao://workflow/<id>
+npm run bao -- open bao://import/<id>
 ```
 
 Replay → Re-run with past inputs fills the non-secret fields from the last run. Passwords are not kept.
@@ -342,9 +343,9 @@ Listing stays disabled until a device replays that redacted copy:
 npm run bao -- sync review <id> --inputs inputs.json
 ```
 
-`bao sync review` replays on this Mac. Only a passing run is reported, and the report is the hash of the redacted document. Confirm on the preview page after that. The marketplace page is the public catalog. Fork asks the same setup questions. Report sends a reason. There is no payment step.
+`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing and names the step. The marketplace page is the public catalog. Fork uses the same import sheet. Report sends a reason. There is no payment step.
 
-Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after that replay-and-confirm step.
+Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted: the password is not stored, so the clean replay cannot sign in.
 
 ## MCP
 

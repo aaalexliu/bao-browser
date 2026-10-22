@@ -176,6 +176,11 @@ const SCHEMA = [
     workflow_id text NOT NULL REFERENCES workflows(id),
     document_hash text NOT NULL,
     at timestamptz NOT NULL DEFAULT now(),
+    samples jsonb,
     PRIMARY KEY (workflow_id, document_hash)
   )`,
+  `ALTER TABLE reviews ADD COLUMN IF NOT EXISTS samples jsonb`,
+  `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS gate_step text`,
+  `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS gate_reason text`,
+  `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS ci_verified boolean DEFAULT false`,
 ];

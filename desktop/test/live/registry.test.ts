@@ -168,6 +168,20 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     });
     assert.equal(early.status, 409);
 
+    for (const seed of SEED_WORKFLOWS) {
+      if (!seed.id.startsWith("fixture-")) continue;
+      const current = await fetch(`${origin}/api/workflows/${seed.id}`, { headers: { cookie: examples } });
+      const pulled = await current.json() as { version: number; document: WorkflowV2 };
+      const doc = migrate(pulled.document);
+      doc.startUrl = fixture;
+      const retargeted = await fetch(`${origin}/api/workflows/${seed.id}/versions`, {
+        method: "POST",
+        headers: { cookie: examples, "content-type": "application/json" },
+        body: JSON.stringify({ baseVersion: pulled.version, document: doc }),
+      });
+      assert.equal(retargeted.status, 201, await retargeted.text());
+    }
+
     const published: string[] = [];
     for (const seed of SEED_WORKFLOWS) {
       const inputs = seedInputs(seed.id, fixture);
@@ -187,9 +201,10 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         logs.push(`review ${seed.id} ${result.outcome} ${result.reason || ""}\n`);
       }
     }
-    for (const id of ["fixture-sign-in", "fixture-row", "fixture-username", "fixture-upload", "wikipedia-search", "public-form"]) {
+    for (const id of ["fixture-row", "fixture-username", "fixture-upload", "wikipedia-search", "public-form"]) {
       assert.ok(published.includes(id), `${id} was not listed\n${logs.slice(-40).join("")}`);
     }
+    assert.equal(published.includes("fixture-sign-in"), false, `fixture-sign-in was listed without a password\n${logs.slice(-40).join("")}`);
     const publicSignIn = await (await fetch(`${origin}/api/marketplace/fixture-sign-in`)).text();
     assert.equal(publicSignIn.includes(fixturePassword), false);
 
@@ -213,7 +228,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       await page.getByRole("heading", { name: "What goes public" }).waitFor();
       await page.getByTestId("verified").waitFor();
       await page.getByTestId("domains").waitFor();
-      assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
+      assert.match(await page.getByTestId("last-green").innerText(), /Not replayed yet/);
       assert.match(await page.locator("table.diff").innerText(), /ada@acme.com/);
       await page.screenshot({ path: path.join(shots, "publish-preview-light.png"), fullPage: true });
       await clickTheme(page);
@@ -237,9 +252,10 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
 
       await openPage(page, `${origin}/marketplace`, logs);
       await page.getByTestId("marketplace").waitFor();
-      for (const id of ["fixture-sign-in", "fixture-row", "fixture-username", "fixture-upload", "wikipedia-search", "public-form"]) {
+      for (const id of ["fixture-row", "fixture-username", "fixture-upload", "wikipedia-search", "public-form"]) {
         await page.locator(`[data-testid=listing][data-id="${id}"]`).waitFor();
       }
+      assert.equal(await page.locator(`[data-testid=listing][data-id="fixture-sign-in"]`).count(), 0);
       assert.equal(await page.locator("input[name=q]").inputValue(), "");
       const cardText = await page.getByTestId("marketplace").innerText();
       assert.equal(cardText.includes("1 runs"), false);
@@ -261,7 +277,9 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       await page.getByTestId("verified").waitFor();
       await page.getByTestId("domains").waitFor();
       await page.getByTestId("setup-questions").waitFor();
-      assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green/);
+      assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
+      assert.match(await page.getByTestId("import-link").innerText(), /bao:\/\/import\/wikipedia-search/);
+      assert.match(await page.getByTestId("deeplink").innerText(), /bao:\/\/workflow\/wikipedia-search/);
       await page.getByTestId("install").click();
       assert.match(await page.getByTestId("install-link").innerText(), /bao:\/\/workflow\/wikipedia-search/);
       await page.screenshot({ path: path.join(shots, "workflow-light.png"), fullPage: true });

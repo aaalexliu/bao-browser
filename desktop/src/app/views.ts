@@ -975,6 +975,8 @@ export function workflowDetail(
         <h2>${esc(doc.name)}</h2>
         <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
         <div class="chips">${inputs}</div>
+        <p class="mono" data-testid="deeplink">bao://workflow/${esc(doc.id)}</p>
+        <p class="mono" data-testid="import-link">bao://import/${esc(doc.id)}</p>
       </div>
       <button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button>
     </header>

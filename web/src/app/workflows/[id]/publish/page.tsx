@@ -18,7 +18,7 @@ export default async function PublishPage({ params }: { params: Promise<{ id: st
   return (
     <article data-testid="publish-preview">
       <h1>What goes public</h1>
-      <p>This is the preview. Nothing is listed until a device replays this exact copy and you confirm.</p>
+      <p>A device replays this copy first. Listing then runs it once in a clean browser against its public site. Only that run stamps last green and Verified.</p>
       <div className="chips">
         {preview.verified ? <span className="badge" data-testid="verified">Verified author</span> : <span className="chip">{preview.author}</span>}
         <span className="chip">{preview.reviewed ? "Replay recorded" : "Waiting for a replay"}</span>
@@ -30,7 +30,14 @@ export default async function PublishPage({ params }: { params: Promise<{ id: st
         {preview.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
         {preview.domains.length ? null : <span className="chip">No network calls</span>}
       </div>
-      <p className="mono">{preview.link}</p>
+      <p className="mono" data-testid="deeplink">{preview.link}</p>
+      <p className="mono" data-testid="import-link">{preview.importLink}</p>
+      {preview.gateStep ? (
+        <div className="notice" data-testid="blocked-publish">
+          <p>Publish is blocked. The clean replay failed on <strong data-testid="gate-step">{preview.gateStep}</strong>.</p>
+          <p>{preview.gateReason}</p>
+        </div>
+      ) : null}
       <h2>Cleared before listing</h2>
       {preview.changes.length ? (
         <table className="diff">

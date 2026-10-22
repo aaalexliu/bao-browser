@@ -5,6 +5,7 @@ export interface SetupQuestion {
   required: boolean;
   choices?: string[];
   prompt: string;
+  cleared?: string;
 }
 
 export function SetupForm({
@@ -21,6 +22,7 @@ export function SetupForm({
       {questions.map((question) => (
         <label key={question.name}>
           {question.prompt}
+          {question.cleared ? <span className="muted"> Cleared {question.cleared}.</span> : null}
           {question.type === "secret" || question.type === "file" ? (
             <input disabled placeholder="Entered on your device, never sent" />
           ) : question.type === "choice" ? (
