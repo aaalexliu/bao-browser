@@ -116,6 +116,7 @@ a.card:hover { border-color: var(--accent); }
 .chips { display: flex; gap: 0.35rem; flex-wrap: wrap; margin: 0.45rem 0; }
 .chip { background: var(--select); border-radius: 999px; padding: 0.08rem 0.55rem; font-size: 12px; }
 .badge { background: var(--ok-bg); color: var(--ok); border-radius: 999px; padding: 0.08rem 0.5rem; font-size: 12px; font-weight: 650; }
+.badge.conflict { background: var(--warn-bg); color: var(--ink); }
 code, .mono { font: 12px/1.4 var(--mono); }
 label { display: grid; gap: 0.25rem; margin: 0.55rem 0; font-size: 13px; }
 input, select, textarea {

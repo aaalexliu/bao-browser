@@ -33,6 +33,11 @@ export default async function WorkflowPage({
   ]);
   const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string; askOnImport?: boolean }[]; steps?: { id: string; label?: string }[] };
   const steps = doc.steps ?? [];
+  const drafts = versions.filter((version) => version.kind === "conflict");
+  const draftDevices = [...new Set(drafts.map((version) => version.device_name).filter((name): name is string => Boolean(name)))];
+  const conflictOn = drafts.length
+    ? `Changed on ${workflow.deviceName || "The other Mac"} and ${draftDevices.join(" and ") || "This Mac"}`
+    : "";
   const publishEnabled = preview.reviewed && !preview.gateStep;
   const publishWhy = publishEnabled
     ? ""
@@ -46,7 +51,9 @@ export default async function WorkflowPage({
         <span className="chip">{workflow.category}</span>
         {workflow.verified ? <span className="badge">Verified author</span> : null}
         <span className="chip">{workflow.visibility}</span>
+        {conflictOn ? <span className="badge conflict" data-testid="conflict-badge">Conflict</span> : null}
       </div>
+      {conflictOn ? <p className="notice" data-testid="conflict-devices">{conflictOn}</p> : null}
       <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
       <p>{rate(workflow.passRate)}</p>
       <div className="chips" data-testid="domains">
@@ -96,9 +103,15 @@ export default async function WorkflowPage({
         <button type="submit">Save import questions</button>
       </form>
       <h2>Versions</h2>
-      <ul>
-        {versions.filter((version) => version.kind !== "conflict").map((version) => (
-          <li key={version.version}>v{version.version}{version.heal ? " · heal" : ""} · {when(version.created_at)}</li>
+      <ul className="versions" data-testid="version-list">
+        {versions.map((version) => (
+          <li key={`${version.kind}-${version.version}`} data-kind={version.kind}>
+            v{version.version}
+            {version.kind === "conflict" ? <> <span className="badge conflict">Conflict</span></> : null}
+            {version.heal ? " · heal" : ""}
+            {version.device_name ? ` · ${version.device_name}` : ""}
+            {` · ${when(version.created_at)}`}
+          </li>
         ))}
       </ul>
       <h2>Runs</h2>

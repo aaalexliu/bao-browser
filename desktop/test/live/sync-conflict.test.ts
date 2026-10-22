@@ -79,6 +79,25 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
     await page.reload({ waitUntil: "domcontentloaded" });
     await openConflict(page);
     await page.locator("#versions").screenshot({ path: path.join(shots, "conflict-dark.png") });
+    const webContext = await browser.newContext({ viewport: { width: 1100, height: 900 }, timezoneId: "America/New_York" });
+    await webContext.addCookies([{ name: "bao_session", value: cookie.split("=")[1] || "", url: origin }]);
+    const webPage = await webContext.newPage();
+    await webPage.goto(`${origin}/workflows/shared-note`, { waitUntil: "domcontentloaded" });
+    await webPage.getByTestId("conflict-badge").waitFor();
+    const conflictText = await webPage.getByTestId("conflict-devices").innerText();
+    assert.match(conflictText, /Changed on Ada's Mac and Home Mac/);
+    const versionList = await webPage.getByTestId("version-list").innerText();
+    assert.match(versionList, /Conflict/);
+    assert.match(versionList, /Ada's Mac/);
+    assert.match(versionList, /Home Mac/);
+    assert.match(versionList, /EDT|EST/);
+    await webPage.locator("main").screenshot({ path: path.join(shots, "conflict-web-light.png") });
+    await webPage.evaluate(() => {
+      localStorage.setItem("bao-theme", "dark");
+      document.documentElement.setAttribute("data-theme", "dark");
+    });
+    await webPage.locator("main").screenshot({ path: path.join(shots, "conflict-web-dark.png") });
+    await webContext.close();
     await page.getByTestId("keep-mine").click();
     await page.getByTestId("conflict-banner").waitFor({ state: "detached" });
     const kept = await fetch(`${origin}/api/workflows/shared-note`, { headers: { authorization: `Bearer ${token}` } });
