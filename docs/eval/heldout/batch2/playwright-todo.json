@@ -1,0 +1,124 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644119959,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644120000,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644120041,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644120080,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "todos",
+      "cssPath": "section:nth-of-type(1) > div:nth-of-type(1) > header:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://demo.playwright.dev/todomvc/#/",
+    "afterUrl": "https://demo.playwright.dev/todomvc/#/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644120355,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://demo.playwright.dev/todomvc/#/",
+    "afterUrl": "https://demo.playwright.dev/todomvc/#/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644120387,
+    "kind": "act",
+    "op": "type",
+    "value": "buy milkx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "tag": "input",
+      "cssPath": "section:nth-of-type(1) > div:nth-of-type(1) > header:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://demo.playwright.dev/todomvc/#/",
+    "afterUrl": "https://demo.playwright.dev/todomvc/#/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792644120545,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://demo.playwright.dev/todomvc/#/",
+    "afterUrl": "https://demo.playwright.dev/todomvc/#/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792644120545,
+    "kind": "act",
+    "op": "type",
+    "value": "buy milk",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "tag": "input",
+      "cssPath": "section:nth-of-type(1) > div:nth-of-type(1) > header:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://demo.playwright.dev/todomvc/#/",
+    "afterUrl": "https://demo.playwright.dev/todomvc/#/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792644120684,
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "beforeUrl": "https://demo.playwright.dev/todomvc/#/",
+    "afterUrl": "https://demo.playwright.dev/todomvc/#/"
+  }
+]

@@ -1,0 +1,199 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642596871,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642596912,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642596953,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642596994,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Talk",
+      "cssPath": "#ca-talk > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "nav",
+          "name": "Namespaces"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://en.wikipedia.org/wiki/Main_Page",
+    "afterUrl": "https://en.wikipedia.org/wiki/Talk:Main_Page"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642597872,
+    "kind": "read",
+    "op": "dom"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642597913,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://en.wikipedia.org/wiki/Talk:Main_Page",
+    "afterUrl": "https://en.wikipedia.org/wiki/Main_Page"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642598002,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://en.wikipedia.org/wiki/Main_Page",
+    "afterUrl": "https://en.wikipedia.org/wiki/Main_Page"
+  },
+  {
+    "id": "e7",
+    "ts": 1792642598041,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelacex",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "name": "Search Wikipedia",
+      "id": "searchInput",
+      "nameAttr": "search",
+      "tag": "input",
+      "label": "Search Wikipedia",
+      "cssPath": "#searchInput",
+      "path": [
+        {
+          "role": "search"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://en.wikipedia.org/wiki/Main_Page",
+    "afterUrl": "https://en.wikipedia.org/wiki/Main_Page"
+  },
+  {
+    "id": "e8",
+    "ts": 1792642598461,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://en.wikipedia.org/wiki/Main_Page",
+    "afterUrl": "https://en.wikipedia.org/wiki/Main_Page"
+  },
+  {
+    "id": "e9",
+    "ts": 1792642598461,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelace",
+    "identity": {
+      "surface": "dom",
+      "role": "combobox",
+      "name": "Search Wikipedia",
+      "nameAttr": "search",
+      "tag": "input",
+      "label": "Search Wikipedia",
+      "cssPath": "#searchform > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://en.wikipedia.org/wiki/Main_Page",
+    "afterUrl": "https://en.wikipedia.org/wiki/Main_Page"
+  },
+  {
+    "id": "e10",
+    "ts": 1792642598806,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Search",
+      "cssPath": "#searchform > div:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "search"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://en.wikipedia.org/wiki/Main_Page",
+    "afterUrl": "https://en.wikipedia.org/wiki/Ada_Lovelace"
+  }
+]

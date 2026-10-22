@@ -1,0 +1,240 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642603266,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642603307,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642603348,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642603388,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h2",
+      "text": "Login Page",
+      "cssPath": "#content > div:nth-of-type(1) > h2:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642603670,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h2",
+      "text": "Login Page",
+      "cssPath": "#content > div:nth-of-type(1) > h2:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642603896,
+    "kind": "read",
+    "op": "dom"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642603936,
+    "kind": "act",
+    "op": "type",
+    "value": "tomsmithh",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "username",
+      "nameAttr": "username",
+      "tag": "input",
+      "label": "Username",
+      "cssPath": "#username",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  },
+  {
+    "id": "e7",
+    "ts": 1792642604099,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  },
+  {
+    "id": "e8",
+    "ts": 1792642604099,
+    "kind": "act",
+    "op": "type",
+    "value": "tomsmith",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "username",
+      "nameAttr": "username",
+      "tag": "input",
+      "label": "Username",
+      "cssPath": "#username",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  },
+  {
+    "id": "e9",
+    "ts": 1792642604237,
+    "kind": "act",
+    "op": "type",
+    "sensitive": true,
+    "gate": "login",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "label": "Password",
+      "cssPath": "#password",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  },
+  {
+    "id": "e10",
+    "ts": 1792642604493,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  },
+  {
+    "id": "e11",
+    "ts": 1792642604536,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Login",
+      "cssPath": "#login > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "gate": "login",
+    "beforeUrl": "https://the-internet.herokuapp.com/login",
+    "afterUrl": "https://the-internet.herokuapp.com/login"
+  }
+]

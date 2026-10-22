@@ -2,6 +2,7 @@
 // Secrets become inputs. File paths are dropped. No model is required.
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
+import { fileAct } from "./file-chooser";
 import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
@@ -25,9 +26,19 @@ export interface TrailEvent {
   beforeUrl?: string;
   afterUrl?: string;
   afterText?: string;
+  /** Target subtree text before and after a click. Equal means no subtree diff. */
+  subtreeBefore?: string;
+  subtreeAfter?: string;
+  /** Target value before and after a click, when the target has a value. */
+  valueBefore?: string;
+  valueAfter?: string;
   /** Basename only. A path here is stripped, not stored. */
   fileName?: string;
   rawPath?: string;
+  /** Set when capture refused the action and a person has to do it. */
+  gate?: "login" | "confirm";
+  /** False when the tool recorded the act and did not change the page. */
+  performed?: boolean;
 }
 
 export interface InterpretMeta {
@@ -129,6 +140,13 @@ function isType(event: TrailEvent): boolean {
   return event.op === "type" || event.op === "input" || event.op === "osType" || event.op === "osSetValue";
 }
 
+/** A currency or unit choice stays a literal. The other typed values become inputs. */
+export function isConstantType(event: TrailEvent): boolean {
+  if (!isType(event) || event.sensitive || event.gate) return false;
+  const id = [event.identity?.id, event.identity?.nameAttr].filter(Boolean).join(" ");
+  return /\b(currency|unit)\b/i.test(id);
+}
+
 function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
   const left = a.identity;
   const right = b.identity;
@@ -141,6 +159,7 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
 }
 
 function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[]): WorkflowStep {
+  event = normalizeFile(event);
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const identity = stripSecretValue(event.identity, meta.secrets ?? []);
   const step: WorkflowStep = {
@@ -205,6 +224,8 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: read,
     };
   }
+  const gate = inferGate(event, meta.secrets ?? []);
+  if (gate) step.gate = gate;
   if (event.op === "keypress" || event.op === "key") {
     return {
       ...step,
@@ -231,6 +252,15 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   }
   if (isType(event)) {
     const secret = isSecret(event, meta.secrets ?? []);
+    if (!secret && isConstantType(event)) {
+      return {
+        ...step,
+        action: "type",
+        value: event.value,
+        label: `Type ${event.value}`,
+        postcondition: post(event, undefined, meta.secrets ?? []),
+      };
+    }
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
     const input = addInput(inputs, kind, nameHint(event, secret));
     if (!secret && event.value && !event.rawPath) input.default = event.value;
@@ -253,6 +283,21 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: post(event, undefined, meta.secrets ?? []),
     };
   }
+  if (event.gate === "login" && event.performed === false) {
+    const named = inputs.find((item) => item.type === "text" && /user|email|login/i.test(item.name))
+      || inputs.find((item) => item.type === "text");
+    return {
+      ...step,
+      action: "click",
+      gate: "login",
+      label: "Sign in",
+      postcondition: {
+        kind: "text",
+        match: named ? `Welcome {{${named.name}}}` : "Welcome",
+        timeoutMs: 4000,
+      },
+    };
+  }
   const name = event.identity?.name || event.identity?.text || event.identity?.label;
   return {
     ...step,
@@ -262,8 +307,23 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   };
 }
 
+/** Upload, drop, and a typed path become a file slot. The path itself is not a step value. */
+function normalizeFile(event: TrailEvent): TrailEvent {
+  const act = fileAct({
+    op: event.op,
+    value: event.value,
+    fileName: event.fileName,
+    rawPath: event.rawPath,
+    identity: event.identity,
+  });
+  if (!act.file) return { ...event, value: act.value, rawPath: undefined };
+  return { ...event, op: act.op, value: undefined, rawPath: undefined, fileName: act.fileName };
+}
+
 function post(event: TrailEvent, input: string | undefined, secrets: string[]): WorkflowStep["postcondition"] {
-  if (event.afterUrl && event.beforeUrl && event.afterUrl !== event.beforeUrl) {
+  // A stopped act leaves before-state on the event. That text is not the effect.
+  const acted = event.performed !== false;
+  if (acted && event.afterUrl && event.beforeUrl && event.afterUrl !== event.beforeUrl) {
     const cleaned = scrub(event.afterUrl, secrets);
     if (cleaned) {
       const url = new URL(cleaned, "https://bao.local");
@@ -271,7 +331,7 @@ function post(event: TrailEvent, input: string | undefined, secrets: string[]): 
     }
   }
   if (input) return { kind: "value", match: `{{${input}}}`, timeoutMs: 4000 };
-  const text = scrub(event.afterText, secrets);
+  const text = acted ? scrub(event.afterText, secrets) : undefined;
   if (text) return { kind: "text", match: text, timeoutMs: 4000 };
   if (event.identity) return { kind: "element", identity: stripSecretValue(event.identity, secrets), timeoutMs: 4000 };
   return undefined;
@@ -284,6 +344,17 @@ function scrub(value: string | undefined, secrets: string[]): string | undefined
     if (secret) out = out.split(secret).join("");
   }
   return out.trim() ? out : undefined;
+}
+
+function inferGate(event: TrailEvent, secrets: string[]): "login" | "confirm" | undefined {
+  if (event.gate === "login" || event.gate === "confirm") return event.gate;
+  if (isSecret(event, secrets)) return "login";
+  const name = [event.identity?.name, event.identity?.text, event.identity?.label, event.identity?.nameAttr]
+    .filter(Boolean)
+    .join(" ");
+  if (/\bconfirm\b/i.test(name)) return "confirm";
+  if (/\b(log in|sign in)\b/i.test(name)) return "login";
+  return undefined;
 }
 
 function isSecret(event: TrailEvent, secrets: string[]): boolean {

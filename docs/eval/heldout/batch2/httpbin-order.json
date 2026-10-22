@@ -1,0 +1,203 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792643983449,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792643983490,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792643983531,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792643983571,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "nameAttr": "size",
+      "tag": "input",
+      "label": "Small",
+      "cssPath": "form:nth-of-type(1) > fieldset:nth-of-type(1) > p:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "checked": true,
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e4",
+    "ts": 1792643983861,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelacex",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "custname",
+      "tag": "input",
+      "label": "Customer name:",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e5",
+    "ts": 1792643984080,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e6",
+    "ts": 1792643984080,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelace",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "custname",
+      "tag": "input",
+      "label": "Customer name:",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e7",
+    "ts": 1792643984270,
+    "kind": "act",
+    "op": "type",
+    "value": "nope",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "comments",
+      "tag": "textarea",
+      "label": "Delivery instructions:",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(5) > label:nth-of-type(1) > textarea:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e8",
+    "ts": 1792643984375,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e9",
+    "ts": 1792643984376,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e10",
+    "ts": 1792643984377,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e11",
+    "ts": 1792643984379,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/forms/post"
+  },
+  {
+    "id": "e12",
+    "ts": 1792643984379,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Submit order",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(6) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "beforeUrl": "https://httpbin.org/forms/post",
+    "afterUrl": "https://httpbin.org/post"
+  }
+]

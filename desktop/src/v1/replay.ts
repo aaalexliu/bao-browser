@@ -875,7 +875,7 @@ function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | und
 
 async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<void> {
   if (step.action === "type") {
-    const text = String(args[step.input || ""] ?? "");
+    const text = step.input ? String(args[step.input] ?? "") : String(step.value ?? "");
     await driver.fill(node, text, !!step.sensitive || step.identity?.role === "password");
     return;
   }

@@ -1,0 +1,197 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648017809,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648017850,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648017891,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648017931,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "mail",
+      "nameAttr": "user_mail",
+      "tag": "input",
+      "label": "E-mail:",
+      "cssPath": "#mail",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "",
+    "valueAfter": "",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648018230,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelacex",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "name",
+      "nameAttr": "user_name",
+      "tag": "input",
+      "label": "Name:",
+      "cssPath": "#name",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648018440,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648018440,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelace",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "name",
+      "nameAttr": "user_name",
+      "tag": "input",
+      "label": "Name:",
+      "cssPath": "#name",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648018628,
+    "kind": "act",
+    "op": "type",
+    "value": "nope",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "mail",
+      "nameAttr": "user_mail",
+      "tag": "input",
+      "label": "E-mail:",
+      "cssPath": "#mail",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792648018723,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792648018724,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e10",
+    "ts": 1792648018725,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e11",
+    "ts": 1792648018725,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html"
+  },
+  {
+    "id": "e12",
+    "ts": 1792648018725,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Send your message",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(4) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "Send your message",
+    "subtreeAfter": "",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "afterUrl": "https://mdn.github.io/my-handling-form-page"
+  }
+]
