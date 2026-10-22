@@ -12,7 +12,7 @@ import { replay } from "../../v1/replay";
 import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
 import { validateWorkflow } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
-import { calibrationPrompt, caseJudgePrompt } from "../intent/labels";
+import { caseJudgePrompt } from "../intent/labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "../intent/model";
 import {
   expectedHuman,
@@ -24,7 +24,7 @@ import {
   textDefaults,
   truthTexts,
 } from "../intent/score";
-import { BAD_INTENT_TEXTS } from "./bad-judge";
+import { BAD_INTENT_TEXTS, badJudgePrompt } from "./bad-judge";
 import type { HeldTruth } from "./capture";
 import type { Oracle } from "./tasks";
 
@@ -391,6 +391,29 @@ function blank(note: string): Omit<HeldRow, "caseId" | "condenser"> {
 }
 
 export async function evalHeldout(args: string[] = []): Promise<{ markdown: string; rows: HeldRow[]; bad: BadJudgeRow[] }> {
+  if (args.includes("--judge")) {
+    const out = flag(args, "--out") || path.join("docs", "eval", "heldout", "bad-judge.md");
+    const info = configuredModel();
+    const judged = info.available ? await scoreBadTexts() : { rows: BAD_INTENT_TEXTS.map((label) => ({ id: label.id, text: label.text, judge: null, low: false })), note: info.reason };
+    const low = judged.rows.filter((row) => row.low).length;
+    const markdown = [
+      "# Bad intent texts",
+      "",
+      `Model access: ${info.available ? `${info.provider} / ${info.model}` : info.reason}. ${judged.note}`,
+      "",
+      "This call uses the same rubric as calibration. The example JSON uses b1 and b2, because the first held-out call followed the calibration example keys l1-l10 and left these rows blank. That first table is in `batch1.md` and is unchanged.",
+      "",
+      `${low}/${judged.rows.length} scored bad.`,
+      "",
+      "| id | judge | low | text |",
+      "| --- | --- | --- | --- |",
+      ...judged.rows.map((row) => `| ${row.id} | ${row.judge == null ? "" : row.judge ? "good" : "bad"} | ${row.judge == null ? "" : row.low ? "yes" : "no"} | ${row.text.replace(/\|/g, "/")} |`),
+      "",
+    ].join("\n");
+    mkdirSync(path.dirname(out), { recursive: true });
+    writeFileSync(out, markdown);
+    return { markdown, rows: [], bad: judged.rows };
+  }
   const dir = flag(args, "--dir") || path.join("docs", "eval", "heldout", "batch1");
   const out = flag(args, "--out") || path.join("docs", "eval", "heldout", "batch1.md");
   const bundle = loadBundle(dir);
@@ -548,7 +571,7 @@ async function hybridRow(
 
 async function scoreBadTexts(): Promise<{ rows: BadJudgeRow[]; note: string }> {
   try {
-    const reply = await complete(calibrationPrompt(BAD_INTENT_TEXTS));
+    const reply = await complete(badJudgePrompt());
     const scores = parseFlagMap(reply.text);
     const rows = BAD_INTENT_TEXTS.map((label) => {
       const judge = Object.prototype.hasOwnProperty.call(scores, label.id) ? scores[label.id]! : null;

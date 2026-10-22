@@ -1,6 +1,7 @@
 // Drop the noise around a trail, then interpret what is left.
-// Reads, scrolls, a typo that was backspaced, a repeated click, and a
-// Coupon-to-Cancel detour do not become steps. A click that is not undone stays.
+// Reads, scrolls, a typo that was backspaced, a repeated click, a click
+// undone by Back, and a Coupon-to-Cancel detour do not become steps.
+// A click that is not undone stays.
 
 import { interpret, type InterpretMeta, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
@@ -12,7 +13,8 @@ const DROP_OP = new Set([
 
 export function condense(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
   const dropped = events.filter((event) => event.kind !== "read" && !DROP_OP.has(event.op));
-  const aborted = dropAborted(dropped);
+  const undone = dropBack(dropped);
+  const aborted = dropAborted(undone);
   const typed = collapseTypos(aborted);
   const retried = collapseRetries(typed);
   return interpret(retried, meta);
@@ -37,6 +39,19 @@ function dropAborted(events: TrailEvent[]): TrailEvent[] {
   return out;
 }
 
+function dropBack(events: TrailEvent[]): TrailEvent[] {
+  const out: TrailEvent[] = [];
+  for (const event of events) {
+    if (event.op !== "back") {
+      out.push(event);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (prev && prev.op === "click") out.pop();
+  }
+  return out;
+}
+
 function collapseTypos(events: TrailEvent[]): TrailEvent[] {
   const out: TrailEvent[] = [];
   for (let i = 0; i < events.length; i++) {
@@ -53,7 +68,9 @@ function collapseTypos(events: TrailEvent[]): TrailEvent[] {
     }
     const next = events[j];
     const wrong = event.value || "";
-    if (next && isType(next) && sameTarget(event, next) && backs >= wrong.length && backs > 0) {
+    const replaced = !!(next && isType(next) && sameTarget(event, next) && backs > 0);
+    const wiped = backs >= wrong.length && backs > 0 && !replaced;
+    if (replaced || wiped) {
       i = j - 1;
       continue;
     }
@@ -84,5 +101,6 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
     || (left.testId != null && left.testId === right.testId)
     || (left.nameAttr != null && left.nameAttr === right.nameAttr)
     || (left.identifier != null && left.identifier === right.identifier)
-    || (left.name != null && left.name === right.name && left.role === right.role && left.app === right.app);
+    || (left.name != null && left.name === right.name && left.role === right.role && left.app === right.app)
+    || (left.cssPath != null && left.cssPath === right.cssPath);
 }

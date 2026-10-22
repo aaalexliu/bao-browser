@@ -91,7 +91,9 @@ async function main(): Promise<void> {
   if (cmd === "eval" && rest[0] === "heldout" && rest[1] === "capture") {
     const { captureHeldout } = await import("../eval/heldout/capture");
     const dir = flag(rest, "--dir") || "docs/eval/heldout/batch1";
-    await captureHeldout(dir);
+    const tasks = flag(rest, "--tasks");
+    const list = tasks === "batch2" ? (await import("../eval/heldout/tasks2")).HELD_TASKS_2 : undefined;
+    await captureHeldout(dir, list);
     return;
   }
   if (cmd === "eval" && rest[0] === "heldout") {
@@ -100,7 +102,7 @@ async function main(): Promise<void> {
     process.stdout.write(result.markdown);
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file");
+  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge");
   process.exit(1);
 }
 

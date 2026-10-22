@@ -445,4 +445,4 @@ npm run bao -- eval heldout --dir docs/eval/heldout/batch1 --out docs/eval/heldo
 
 `eval intent` runs three condensers. `condense` is deterministic. The model condenser edits the raw trail. `hybrid` starts from that deterministic workflow: the model may drop a Help step, write intent text, and flag login or confirm. It cannot add a step, change an input, or clear a secret tag. A judge model scores the intent text and is calibrated on ten hand labels.
 
-`eval heldout` scores those same three condensers on trails captured from public pages. `eval heldout capture` writes the trails and `truth.json` and does not condense them. The judge rubric is unchanged. A separate list of bad intent texts is scored with that rubric.
+`eval heldout` scores those same condensers on trails captured from public pages. `eval heldout capture` writes the trails and `truth.json` and does not condense them. `--tasks batch2` captures the second batch. `eval heldout --judge` scores the bad intent texts with the same rubric.

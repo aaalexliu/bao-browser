@@ -1,7 +1,7 @@
 // Deliberately bad intent texts. Scored with the existing judge rubric.
 // These are not added to the calibration labels, and the rubric is not changed.
 
-import type { HandLabel } from "../intent/labels";
+import { JUDGE_RUBRIC, type HandLabel } from "../intent/labels";
 
 export const BAD_INTENT_TEXTS: HandLabel[] = [
   { id: "b1", kind: "step", good: false, text: "Click button." },
@@ -15,3 +15,16 @@ export const BAD_INTENT_TEXTS: HandLabel[] = [
   { id: "b9", kind: "step", good: false, text: "Type Ada Lovelace into the search box." },
   { id: "b10", kind: "step", good: false, text: "Open the Help menu." },
 ];
+
+// Same rubric as calibration. The example uses these ids. The shared
+// calibration prompt's example is l1/l2, and the first held-out call followed
+// that example instead of b1-b10.
+export function badJudgePrompt(): string {
+  const lines = BAD_INTENT_TEXTS.map((label) => `${label.id} ${label.kind}: ${label.text}`);
+  return [
+    "Score each intent text.",
+    JUDGE_RUBRIC,
+    "Reply with JSON only: {\"b1\":true,\"b2\":false}. true means good. Use these ids.",
+    ...lines,
+  ].join("\n");
+}

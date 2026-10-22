@@ -23,10 +23,10 @@ export interface HeldTruth {
   secret?: string;
 }
 
-export async function captureHeldout(dir: string): Promise<HeldTruth[]> {
+export async function captureHeldout(dir: string, tasks: readonly HeldTask[] = HELD_TASKS): Promise<HeldTruth[]> {
   mkdirSync(dir, { recursive: true });
   const truths: HeldTruth[] = [];
-  for (const task of HELD_TASKS) {
+  for (const task of tasks) {
     const result = await captureTask(task);
     const file = path.join(dir, `${task.id}.json`);
     writeFileSync(file, JSON.stringify(result.events, null, 2));
@@ -51,6 +51,9 @@ async function captureTask(task: HeldTask): Promise<{ events: TrailEvent[]; trut
   try {
     const page = context.pages()[0] || await context.newPage();
     page.setDefaultTimeout(15000);
+    page.on("dialog", (dialog) => {
+      dialog.accept().catch(() => undefined);
+    });
     await page.goto(task.url, { waitUntil: "domcontentloaded", timeout: 30000 });
     let cursor = 0;
     for (const step of task.steps) {
