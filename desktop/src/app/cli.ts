@@ -95,7 +95,9 @@ async function main(): Promise<void> {
     const { captureHeldout } = await import("../eval/heldout/capture");
     const dir = flag(rest, "--dir") || "docs/eval/heldout/batch1";
     const tasks = flag(rest, "--tasks");
-    const list = tasks === "batch4"
+    const list = tasks === "batch5"
+      ? (await import("../eval/heldout/tasks5")).HELD_TASKS_5
+      : tasks === "batch4"
       ? (await import("../eval/heldout/tasks4")).HELD_TASKS_4
       : tasks === "batch3"
       ? (await import("../eval/heldout/tasks3")).HELD_TASKS_3

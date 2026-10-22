@@ -1,0 +1,163 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792656350173,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792656350213,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792656350254,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792656350294,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "About",
+      "cssPath": "#sidebar > nav:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "nav"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "About",
+    "subtreeAfter": "About",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e4",
+    "ts": 1792656350639,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e5",
+    "ts": 1792656350670,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e6",
+    "ts": 1792656350735,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "About",
+      "cssPath": "#sidebar > nav:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "nav"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "About",
+    "subtreeAfter": "About",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e7",
+    "ts": 1792656351083,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e8",
+    "ts": 1792656351146,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e9",
+    "ts": 1792656351192,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "add",
+      "cssPath": "#main > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(3) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "add",
+    "subtreeAfter": "English",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs/git-add"
+  }
+]

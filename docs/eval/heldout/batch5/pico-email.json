@@ -1,0 +1,207 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792656632574,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792656632614,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792656632655,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792656632696,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Forms overview",
+      "cssPath": "main:nth-of-type(1) > hgroup:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "hgroup"
+        }
+      ]
+    },
+    "subtreeBefore": "Forms overview",
+    "subtreeAfter": "Forms overview",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e4",
+    "ts": 1792656633013,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e5",
+    "ts": 1792656633044,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Forms overview",
+      "cssPath": "main:nth-of-type(1) > hgroup:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "hgroup"
+        }
+      ]
+    },
+    "subtreeBefore": "Forms overview",
+    "subtreeAfter": "Forms overview",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e6",
+    "ts": 1792656633332,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e7",
+    "ts": 1792656633363,
+    "kind": "act",
+    "op": "type",
+    "value": "ada@example.comx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "email",
+      "tag": "input",
+      "label": "Email",
+      "cssPath": "#email",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "document"
+        },
+        {
+          "role": "section",
+          "name": "Introduction"
+        },
+        {
+          "role": "article",
+          "name": "Label and input syntax"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e8",
+    "ts": 1792656633659,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e9",
+    "ts": 1792656633659,
+    "kind": "act",
+    "op": "type",
+    "value": "ada@example.com",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "email",
+      "tag": "input",
+      "label": "Email",
+      "cssPath": "#email",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "document"
+        },
+        {
+          "role": "section",
+          "name": "Introduction"
+        },
+        {
+          "role": "article",
+          "name": "Label and input syntax"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e10",
+    "ts": 1792656633915,
+    "kind": "act",
+    "op": "type",
+    "sensitive": true,
+    "gate": "login",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "Password",
+      "nameAttr": "password",
+      "tag": "input",
+      "label": "Password",
+      "cssPath": "#content > section:nth-of-type(3) > article:nth-of-type(1) > form:nth-of-type(1) > fieldset:nth-of-type(1) > input:nth-of-type(2)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "document"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "article",
+          "name": "Form and grid example"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        }
+      ]
+    },
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  }
+]
