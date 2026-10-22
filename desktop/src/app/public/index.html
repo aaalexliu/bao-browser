@@ -105,6 +105,7 @@
     .versions { list-style: none; padding: 0; margin: 0.4rem 0 0; display: grid; gap: 0.7rem; }
     .versions li { padding-top: 0.55rem; border-top: 1px solid var(--line); }
     #versions time { color: var(--quiet); font-size: var(--text-sm); }
+    .locator-version { margin: 0.25rem 0 0; color: var(--quiet); font-size: var(--text-sm); display: flex; flex-wrap: wrap; gap: 0.55rem; }
     .lede { font-size: var(--text-md); margin: 0.35rem 0 var(--space-4); }
     .crumb { margin: 0 0 0.7rem; color: var(--quiet); font-size: var(--text-sm); display: flex; gap: 0.35rem; align-items: center; }
     .wf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.4rem; }
@@ -333,6 +334,8 @@
     #locator-tries { list-style: none; margin: 0; padding: 0; }
     #locator-tries li { display: flex; justify-content: space-between; gap: 8px; padding: 0.28rem 0; border-top: 1px solid var(--line); }
     #locator-tries em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--quiet); }
+    #recovered-row { margin: 0.35rem 0 0.6rem; padding: 0.4rem 0.65rem; background: var(--ok-bg); color: var(--ok); border-radius: 8px; font-weight: 650; }
+    .step em.recovered { color: var(--ok); font-style: normal; }
     .step-list { display: flex; flex-direction: column; gap: 0.25rem; }
     .step { text-align: left; background: transparent; width: 100%; }
     .step.on { background: var(--select); }

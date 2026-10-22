@@ -391,7 +391,8 @@ export function runViewer(
     const dur = duration(step);
     const review = (context.reviewStepIds || []).includes(step.id) || step.triage === "review";
     const reviewMark = review ? `<em class="review">needs review</em>` : "";
-    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${reviewMark}</button>`;
+    const recoveredMark = step.reason?.startsWith("recovered:") ? `<em class="recovered">${esc(step.reason)}</em>` : "";
+    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${recoveredMark}${reviewMark}</button>`;
   }).join("");
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
@@ -400,6 +401,9 @@ export function runViewer(
   const video = videoBar(run, steps);
   const safeHeadline = failed ? esc(headline) : headline;
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
+  const recoveredRow = selected?.reason?.startsWith("recovered:")
+    ? `<p id="recovered-row">${esc(selected.reason)}</p>`
+    : "";
   const stepRepairs = (run.repairs || []).filter((item) => !selected || item.stepId === selected.id);
   const stepReceipts = (run.receipts || []).filter((item) => !selected || item.stepId === selected.id);
   const snapDom = selected?.snapshot?.dom || (failure && failure.stepId === selected?.id ? failure.snapshot?.dom : undefined);
@@ -445,6 +449,7 @@ export function runViewer(
       <div class="step-list" id="step-list">${list}</div>
       <div class="step-detail" id="step-detail">
         <div class="row"><strong>${esc(selected?.label || "")}</strong></div>
+        ${recoveredRow}
         ${shot}
         ${stepRepairs.length ? repairLines(stepRepairs) : ""}
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
@@ -1027,6 +1032,28 @@ export interface VersionRow {
   role: string;
   source: string;
   createdAt: number;
+  /** The locator this version holds. The panel lists these and no second history. */
+  locator?: {
+    stepId: string;
+    source: string;
+    at: number;
+    runId?: string;
+    score?: number;
+    changed: string[];
+  };
+}
+
+function locatorHeld(version: VersionRow): string {
+  const locator = version.locator;
+  if (!locator) return "";
+  const changed = locator.changed.length ? locator.changed.join(", ") : "none";
+  return `<p class="locator-version" data-locator-source="${esc(locator.source)}" data-score="${locator.score ?? ""}" data-step="${esc(locator.stepId)}">
+    <time>${esc(formatClock(locator.at))}</time>
+    <span>${esc(locator.source)}</span>
+    <span>${esc(locator.runId || "—")}</span>
+    <span>${locator.score ?? ""}</span>
+    <span>${esc(changed)}</span>
+  </p>`;
 }
 
 export function versionsPanel(versions: VersionRow[]): string {
@@ -1043,6 +1070,7 @@ export function versionsPanel(versions: VersionRow[]): string {
         <span class="quiet">${esc(source)}</span>
         <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
       </div>
+      ${locatorHeld(version)}
       <div class="row">
         <button type="button" data-restore-version="${esc(version.n)}">Restore as draft</button>
         ${promote}

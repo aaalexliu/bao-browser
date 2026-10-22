@@ -731,7 +731,7 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
         const body = await readBody(req) as { id: string; stepId: string; patch: HealProposal["patch"]; runId?: string; healId?: string };
-        const next = keepPatch(library.read(body.id), body.stepId, body.patch);
+        const next = keepPatch(library.read(body.id), body.stepId, body.patch, { runId: body.runId, score: 100 });
         draftVersion(library, next, "heal");
         if (body.runId && body.healId) {
           const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
@@ -745,8 +745,8 @@ export async function startApp(opts: {
         const run = library.readRun(body.runId);
         const heal = (run.heals as HealRecord[]).find((item) => item.id === body.healId);
         if (!heal) return json(res, { error: "no heal" }, 404);
-        const next = revertPatch(library.read(body.id), heal.failedStep);
-        library.save(next);
+        const next = revertPatch(library.read(body.id), heal.failedStep, { runId: body.runId });
+        draftVersion(library, next, "restore");
         const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "revert" });
         return json(res, { workflow: next, decisions: recorded.decisions, heals: recorded.heals });
       }
@@ -1536,7 +1536,7 @@ function recordProvisional(library: Library, workflow: WorkflowV2, heals: HealRe
     before,
     need: library.settings().promoteAfter,
   });
-  const drafted = draftVersion(library, keepPatch(workflow, heal.failedStep.id, heal.proposedPatch), "heal");
+  const drafted = draftVersion(library, keepPatch(workflow, heal.failedStep.id, heal.proposedPatch, { at: Date.now(), runId: heal.runId, score: 100 }), "heal");
   const stored = { ...promotion, version: drafted.n };
   library.savePromotion(stored);
   library.appendTrail(workflow.id, promotionEvent(promotion, Date.now()));

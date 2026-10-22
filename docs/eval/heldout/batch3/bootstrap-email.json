@@ -1,0 +1,246 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648122974,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648123014,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648123054,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648123095,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "id": "content",
+      "tag": "h1",
+      "text": "Forms",
+      "cssPath": "#content",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Forms",
+    "subtreeAfter": "Forms",
+    "beforeUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "afterUrl": "https://getbootstrap.com/docs/5.3/forms/overview/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648123404,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "id": "content",
+      "tag": "h1",
+      "text": "Forms",
+      "cssPath": "#content",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Forms",
+    "subtreeAfter": "Forms",
+    "beforeUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "afterUrl": "https://getbootstrap.com/docs/5.3/forms/overview/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648123701,
+    "kind": "act",
+    "op": "type",
+    "value": "ada@example.comx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "exampleInputEmail1",
+      "tag": "input",
+      "label": "Email address",
+      "cssPath": "#exampleInputEmail1",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "afterUrl": "https://getbootstrap.com/docs/5.3/forms/overview/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648123988,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "afterUrl": "https://getbootstrap.com/docs/5.3/forms/overview/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648123988,
+    "kind": "act",
+    "op": "type",
+    "value": "ada@example.com",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "exampleInputEmail1",
+      "tag": "input",
+      "label": "Email address",
+      "cssPath": "#exampleInputEmail1",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "afterUrl": "https://getbootstrap.com/docs/5.3/forms/overview/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792648124255,
+    "kind": "act",
+    "op": "type",
+    "sensitive": true,
+    "gate": "login",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "exampleInputPassword1",
+      "tag": "input",
+      "label": "Password",
+      "cssPath": "#exampleInputPassword1",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "afterUrl": "https://getbootstrap.com/docs/5.3/forms/overview/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792648124595,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "exampleCheck1",
+      "tag": "input",
+      "label": "Check me out",
+      "cssPath": "#exampleCheck1",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "checked": true,
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "on",
+    "valueAfter": "on",
+    "beforeUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "afterUrl": "https://getbootstrap.com/docs/5.3/forms/overview/"
+  }
+]

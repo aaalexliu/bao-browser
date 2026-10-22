@@ -26,8 +26,9 @@ import {
 } from "./heal";
 import { isCollapsedBox, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
+import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
-import { collapsedTarget, discoverReveal, labelCandidate, overlayClose, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
+import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
 import {
   subst,
   type FileArg,
@@ -207,6 +208,7 @@ export async function replay(
 
   const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
   const startAt = fromIndex < 0 ? 0 : fromIndex;
+  const recovery: RecoveryBudget = { used: 0 };
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     if (i < startAt) {
@@ -229,14 +231,14 @@ export async function replay(
       noteTrajectory(trajectory, step, undefined, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
-    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
+    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra);
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
       const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
-        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
+        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra);
         repairs.push(...outcome.repairs);
       }
     }
@@ -246,7 +248,7 @@ export async function replay(
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
         stamp({ id: step.id, status: "passed", phase: "auth", reason: "auth: redirected to login" });
       } else {
-        stamp({ id: step.id, status: "passed" });
+        stamp({ id: step.id, status: "passed", ...(outcome.recovered ? { reason: `recovered: ${outcome.recovered}` } : {}) });
       }
       noteTrajectory(trajectory, step, outcome.acted, true, clock() - started);
       continue;
@@ -257,6 +259,24 @@ export async function replay(
       return finish({ runId, status: "paused", steps, pausedStepId: step.id });
     }
     const failure = outcome.failure;
+    const liveNodes = (await driver.tree().catch(() => undefined))?.nodes || [];
+    const stop = hardFailure({
+      phase: failure.phase,
+      reason: failure.reason,
+      nodes: liveNodes,
+      network: driver.trace?.().network,
+    });
+    if (stop && failure.phase !== "auth") {
+      stamp({ id: step.id, status: "failed", reason: stop, phase: failure.phase });
+      noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+      return finish({ runId, status: "failed", steps, failure: { ...failure, reason: stop } });
+    }
+    const covered = findRecovery(liveNodes);
+    if (covered && recovery.used >= RECOVERY_LIMIT) {
+      stamp({ id: step.id, status: "failed", reason: covered.kind, phase: failure.phase });
+      noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+      return finish({ runId, status: "failed", steps, failure: { ...failure, reason: covered.kind } });
+    }
     if (failure.phase === "auth") {
       noteAuth(trail, step.id, false);
       precondition = { phase: "auth", reason: failure.reason, recovered: false, stepId: step.id };
@@ -330,7 +350,7 @@ export async function replay(
     }
     const patched = applyPatch(step, proposal.patch);
     pictured = patched;
-    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
+    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
@@ -349,7 +369,7 @@ export async function replay(
       noteTrajectory(trajectory, patched, retried.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure: retried.failure });
     }
-    stamp({ id: step.id, status: "passed" });
+    stamp({ id: step.id, status: "passed", ...(retried.recovered ? { reason: `recovered: ${retried.recovered}` } : {}) });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
       const afterShot = await writeStepShot(driver, opts.shotDir, pictured, "after");
@@ -361,9 +381,13 @@ export async function replay(
 }
 
 type StepOutcome =
-  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean }
+  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
   | { ok: false; paused: "confirm"; repairs: RepairLog[] };
+
+interface RecoveryBudget {
+  used: number;
+}
 
 async function runStep(
   workflow: WorkflowV2,
@@ -376,6 +400,7 @@ async function runStep(
   receiptLog: ReceiptLog,
   runId: string,
   gate: ApplyGate,
+  recovery: RecoveryBudget,
   extra?: ReadBack,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
@@ -386,7 +411,7 @@ async function runStep(
       return { ok: false, repairs, failure: await fail(driver, step, "wait_for", checkReason(step.waitFor), undefined, secrets) };
     }
   }
-  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate);
+  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery);
   if (!outcome.ok) return outcome;
   if (step.gone) {
     const left = await holdCheck(step.gone, args, driver, false);
@@ -416,6 +441,7 @@ async function runStepAction(
   locatorHits: LocatorHit[],
   locatorMode: LocatorMode,
   gate: ApplyGate,
+  recovery: RecoveryBudget,
 ): Promise<StepOutcome> {
   if (step.action === "login") return runLogin(gate.workflow, step, args, driver, secrets, gate);
   const seen = await driver.tree();
@@ -423,9 +449,9 @@ async function runStepAction(
   if (miss) return { ok: false, repairs, failure: await fail(driver, step, "auth", miss, undefined, secrets) };
   if (step.action === "confirm") return runConfirm(step, args, driver, secrets, gate);
   if (step.action === "verify") {
-    const held = await readExpect(step, args, driver, repairs, gate);
-    if (!held) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
-    return { ok: true, repairs };
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.action === "key" && !step.identity) {
     try {
@@ -433,10 +459,11 @@ async function runStepAction(
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
-    if (!await readExpect(step, args, driver, repairs, gate)) {
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) {
       return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     }
-    return { ok: true, repairs };
+    return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.action === "digits") {
     const text = String(args[step.input || ""] ?? subst(step.value || "", args));
@@ -445,12 +472,13 @@ async function runStepAction(
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
-    if (!await readExpect(step, args, driver, repairs, gate)) {
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) {
       return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     }
-    return { ok: true, repairs, acted: step.identity };
+    return { ok: true, repairs, acted: step.identity, recovered: held.recovered };
   }
-  const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate);
+  const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate, recovery);
   if (!found.hit.ok || found.hit.index == null) {
     const failure = await fail(driver, step, "find", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets);
     if (step.identity) failure.identity = identityView(step.identity, found.nodes, found.hit);
@@ -468,15 +496,52 @@ async function runStepAction(
     const failure = await fail(driver, step, "action", reason, found.hit.brokenAttr, secrets);
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
-  if (!await readExpect(step, args, driver, repairs, gate)) {
+  const held = await readExpect(step, args, driver, repairs, gate, recovery);
+  if (!held.ok) {
     const failure = await fail(driver, step, "expect", expectReason(step), undefined, secrets);
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
-  return { ok: true, repairs, acted: node };
+  return { ok: true, repairs, acted: node, recovered: found.recovered || held.recovered };
 }
 
 function withLocators(failure: StepFailure, tried: TriedLocator[]): StepFailure {
   return tried.length ? { ...failure, locators: tried } : failure;
+}
+
+async function dismissCover(
+  driver: Driver,
+  gate: ApplyGate,
+  step: WorkflowStep,
+  repairs: RepairLog[],
+  budget: RecoveryBudget,
+): Promise<string | undefined> {
+  if (budget.used >= RECOVERY_LIMIT) return undefined;
+  const tree = await driver.tree();
+  const stop = hardFailure({ nodes: tree.nodes, network: driver.trace?.().network });
+  if (stop || hasCaptcha(tree.nodes)) return undefined;
+  const block = findRecovery(tree.nodes);
+  if (!block) return undefined;
+  const cleared = block.kind === "spinner"
+    ? await waitSpinner(driver, step)
+    : block.node ? await guardedClick(driver, gate, step.id, block.node) : false;
+  if (!cleared) return undefined;
+  repairs.push({ stepId: step.id, repair: "overlay", detail: block.kind });
+  budget.used += 1;
+  return block.kind;
+}
+
+async function waitSpinner(driver: Driver, step: WorkflowStep): Promise<boolean> {
+  const timeout = Math.min(step.timeoutMs ?? 1000, 2000);
+  if (timeout <= 0) return false;
+  const start = Date.now();
+  let spins = 0;
+  while (Date.now() - start < timeout && spins < 40) {
+    spins += 1;
+    await (driver.sleep ? driver.sleep(50) : sleep(50));
+    const block = findRecovery((await driver.tree()).nodes);
+    if (!block || block.kind !== "spinner") return true;
+  }
+  return false;
 }
 
 async function findTarget(
@@ -487,13 +552,10 @@ async function findTarget(
   locatorHits: LocatorHit[],
   locatorMode: LocatorMode,
   gate: ApplyGate,
-): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[] }> {
+  recovery: RecoveryBudget,
+): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[]; recovered?: string }> {
+  const recovered = await dismissCover(driver, gate, step, repairs, recovery);
   let tree = await driver.tree();
-  const close = overlayClose(tree.nodes);
-  if (close && await guardedClick(driver, gate, step.id, close)) {
-    repairs.push({ stepId: step.id, repair: "overlay", detail: close.text || close.name || "overlay" });
-    tree = await driver.tree();
-  }
   let located = locate(step, tree, args, locatorMode);
   if (shouldReveal(step, tree, located, locatorMode)) {
     const opened = await openReveal(step, tree, driver, repairs, locatorMode, gate);
@@ -506,29 +568,29 @@ async function findTarget(
   }
   if (located.hit.ok && located.hit.index != null && !isCollapsedBox(located.hit.index, tree.boxes, tree.hidden)) {
     if (located.via) locatorHits.push(located.via);
-    return located;
+    return { ...located, recovered };
   }
   const labeled = labelCandidate(step, tree.nodes, tree.boxes);
   if (labeled) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
-    return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried };
+    return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
   if (anchored) {
     repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
-    return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried };
+    return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
   const waited = await poll(step, args, driver, locatorMode);
   if (waited.hit.ok && waited.hit.index != null && !isCollapsedBox(waited.hit.index, waited.boxes, waited.hidden)) {
     repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
     if (waited.via) locatorHits.push(waited.via);
-    return waited;
+    return { ...waited, recovered };
   }
   if (waited.hit.ok) {
-    return { nodes: waited.nodes, hit: { ok: false, reason: "below-threshold", brokenAttr: "box", ranked: [] }, tried: waited.tried };
+    return { nodes: waited.nodes, hit: { ok: false, reason: "below-threshold", brokenAttr: "box", ranked: [] }, tried: waited.tried, recovered };
   }
-  return waited;
+  return { ...waited, recovered };
 }
 
 function shouldReveal(
@@ -573,9 +635,16 @@ async function openReveal(
   return true;
 }
 
-async function readExpect(step: WorkflowStep, args: ReplayArgs, driver: Driver, repairs: RepairLog[], gate: ApplyGate): Promise<boolean> {
-  if (!step.expect && !step.postcondition) return true;
-  if (await expectationsHold(step, await driver.tree(), args)) return true;
+async function readExpect(
+  step: WorkflowStep,
+  args: ReplayArgs,
+  driver: Driver,
+  repairs: RepairLog[],
+  gate: ApplyGate,
+  recovery: RecoveryBudget,
+): Promise<{ ok: boolean; recovered?: string }> {
+  if (!step.expect && !step.postcondition) return { ok: true };
+  if (await expectationsHold(step, await driver.tree(), args)) return { ok: true };
   const timeout = step.expect?.timeoutMs || step.postcondition?.timeoutMs || 0;
   const start = Date.now();
   if (driver.waitIdle) await driver.waitIdle(Math.min(timeout || step.timeoutMs || 1000, 2000));
@@ -583,17 +652,13 @@ async function readExpect(step: WorkflowStep, args: ReplayArgs, driver: Driver, 
     await (driver.sleep ? driver.sleep(100) : sleep(100));
     if (await expectationsHold(step, await driver.tree(), args)) {
       repairs.push({ stepId: step.id, repair: "wait", detail: "expect became true" });
-      return true;
+      return { ok: true };
     }
   }
-  if (timeout === 0 && await expectationsHold(step, await driver.tree(), args)) return true;
-  const tree = await driver.tree();
-  const close = overlayClose(tree.nodes);
-  if (close && await guardedClick(driver, gate, step.id, close)) {
-    repairs.push({ stepId: step.id, repair: "overlay", detail: close.text || close.name || "overlay" });
-    if (await expectationsHold(step, await driver.tree(), args)) return true;
-  }
-  return false;
+  if (timeout === 0 && await expectationsHold(step, await driver.tree(), args)) return { ok: true };
+  const recovered = await dismissCover(driver, gate, step, repairs, recovery);
+  if (recovered && await expectationsHold(step, await driver.tree(), args)) return { ok: true, recovered };
+  return { ok: false };
 }
 
 async function expectationsHold(step: WorkflowStep, tree: LiveTree, args: ReplayArgs): Promise<boolean> {
@@ -875,7 +940,7 @@ function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | und
 
 async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<void> {
   if (step.action === "type") {
-    const text = String(args[step.input || ""] ?? "");
+    const text = step.input ? String(args[step.input] ?? "") : String(step.value ?? "");
     await driver.fill(node, text, !!step.sensitive || step.identity?.role === "password");
     return;
   }

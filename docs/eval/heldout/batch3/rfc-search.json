@@ -1,0 +1,154 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648125412,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648125452,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648125493,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648125533,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "id": "the-official-home-of-rfcs",
+      "tag": "h1",
+      "text": "The official home of RFCs",
+      "cssPath": "#the-official-home-of-rfcs",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "The official home of RFCs",
+    "subtreeAfter": "The official home of RFCs",
+    "beforeUrl": "https://www.rfc-editor.org/",
+    "afterUrl": "https://www.rfc-editor.org/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648125912,
+    "kind": "act",
+    "op": "type",
+    "value": "httpx",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "name": "Find an RFC (number, subseries, title, author, etc.)",
+      "id": "search",
+      "nameAttr": "q",
+      "tag": "input",
+      "label": "Find an RFC (number, subseries, title, author, etc.)",
+      "cssPath": "#search",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.rfc-editor.org/",
+    "afterUrl": "https://www.rfc-editor.org/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648126040,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.rfc-editor.org/",
+    "afterUrl": "https://www.rfc-editor.org/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648126040,
+    "kind": "act",
+    "op": "type",
+    "value": "http",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "name": "Find an RFC (number, subseries, title, author, etc.)",
+      "id": "search",
+      "nameAttr": "q",
+      "tag": "input",
+      "label": "Find an RFC (number, subseries, title, author, etc.)",
+      "cssPath": "#search",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.rfc-editor.org/",
+    "afterUrl": "https://www.rfc-editor.org/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648126148,
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "beforeUrl": "https://www.rfc-editor.org/",
+    "afterUrl": "https://www.rfc-editor.org/search/?q=http"
+  }
+]

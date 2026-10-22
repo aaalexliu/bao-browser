@@ -57,6 +57,26 @@ test("migrate drops a password literal and validates against the json schema", (
   assert.equal(doc.steps[1]?.value, "{{password}}");
 });
 
+test("a refused confirm click does not keep the pre-click status as its postcondition", () => {
+  const events: TrailEvent[] = [
+    {
+      id: "e1", ts: 1, kind: "act", op: "click", performed: true,
+      identity: id({ id: "delete", testId: "delete", text: "Delete" }),
+      afterText: "Armed",
+    },
+    {
+      id: "e2", ts: 2, kind: "act", op: "click", performed: false, gate: "confirm",
+      identity: id({ id: "confirm", testId: "confirm", text: "Confirm" }),
+      afterText: "Armed",
+    },
+  ];
+  const doc = interpret(events, { id: "c", startUrl: "https://fixture.test/confirm" });
+  assert.equal(doc.steps[0]?.postcondition?.kind, "text");
+  assert.equal(doc.steps[0]?.postcondition?.match, "Armed");
+  assert.equal(doc.steps[1]?.gate, "confirm");
+  assert.notEqual(doc.steps[1]?.postcondition?.kind, "text");
+});
+
 test("interpret is deterministic and lifts a secret and a file without storing either", () => {
   const secret = "SuperSecretPassword!";
   const filePath = "/home/alex/secret-folder/taxes.pdf";

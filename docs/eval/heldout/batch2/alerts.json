@@ -1,0 +1,136 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644118456,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644118496,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644118537,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644118576,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "JavaScript Alerts",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "afterUrl": "https://the-internet.herokuapp.com/javascript_alerts"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644118856,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "JavaScript Alerts",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "afterUrl": "https://the-internet.herokuapp.com/javascript_alerts"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644119084,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Click for JS Confirm",
+      "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(2) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "afterUrl": "https://the-internet.herokuapp.com/javascript_alerts"
+  },
+  {
+    "id": "e6",
+    "ts": 1792644119324,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Click for JS Alert",
+      "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "afterUrl": "https://the-internet.herokuapp.com/javascript_alerts"
+  }
+]

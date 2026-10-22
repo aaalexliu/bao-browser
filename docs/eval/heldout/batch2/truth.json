@@ -1,0 +1,361 @@
+[
+  {
+    "id": "httpbin-order",
+    "name": "Submit an httpbin order",
+    "startUrl": "https://httpbin.org/forms/post",
+    "keep": [
+      "e6",
+      "e12"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Grace Hopper"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Lin"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "status-200",
+    "name": "Open the 200 status page",
+    "startUrl": "https://the-internet.herokuapp.com/status_codes",
+    "keep": [
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "returned a 200"
+    }
+  },
+  {
+    "id": "redirect",
+    "name": "Follow the redirector",
+    "startUrl": "https://the-internet.herokuapp.com/redirector",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "status_codes"
+    }
+  },
+  {
+    "id": "quotes-author",
+    "name": "Open an author on Quotes to Scrape",
+    "startUrl": "https://quotes.toscrape.com/",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/author/Albert-Einstein"
+    }
+  },
+  {
+    "id": "quotes-tag",
+    "name": "Open a tag on Quotes to Scrape",
+    "startUrl": "https://quotes.toscrape.com/",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/tag/inspirational/"
+    }
+  },
+  {
+    "id": "quotes-login",
+    "name": "Log in on Quotes to Scrape",
+    "startUrl": "https://quotes.toscrape.com/login",
+    "keep": [
+      "e6",
+      "e7",
+      "e8"
+    ],
+    "secrets": [
+      "BatchTwoDemoSecret!"
+    ],
+    "secretIds": [
+      "e7"
+    ],
+    "human": [
+      {
+        "id": "e7",
+        "gate": "login"
+      },
+      {
+        "id": "e8",
+        "gate": "login"
+      }
+    ],
+    "replays": [
+      {
+        "texts": [
+          "grace"
+        ],
+        "secret": "ReplaySecretA!",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin"
+        ],
+        "secret": "ReplaySecretB!",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "Logout"
+    },
+    "secret": "BatchTwoDemoSecret!"
+  },
+  {
+    "id": "books-travel",
+    "name": "Open Travel on Books to Scrape",
+    "startUrl": "https://books.toscrape.com/",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "travel_2"
+    }
+  },
+  {
+    "id": "w3c-shipping",
+    "name": "Fill a W3C shipping name",
+    "startUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "keep": [
+      "e11"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Grace"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Lin"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "#shipping_name",
+      "equals": "{{0}}"
+    }
+  },
+  {
+    "id": "w3c-check",
+    "name": "Check a W3C newsletter box",
+    "startUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "checked",
+      "selector": "#check_1"
+    }
+  },
+  {
+    "id": "mdn-button",
+    "name": "Open the MDN forms guide from the button page",
+    "startUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/button",
+    "keep": [
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/Extensions/Forms"
+    }
+  },
+  {
+    "id": "alerts",
+    "name": "Accept a JavaScript alert",
+    "startUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "successfully clicked an alert"
+    }
+  },
+  {
+    "id": "playwright-todo",
+    "name": "Add a todo on the Playwright TodoMVC demo",
+    "startUrl": "https://demo.playwright.dev/todomvc",
+    "keep": [
+      "e7",
+      "e8"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "write tests"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "ship replay"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{0}}"
+    }
+  }
+]

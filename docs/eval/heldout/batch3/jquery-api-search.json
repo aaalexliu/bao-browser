@@ -1,0 +1,133 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648120490,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648120530,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648120570,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648120610,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "jQuery API",
+      "cssPath": "#content > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "jQuery API",
+    "subtreeAfter": "jQuery API",
+    "beforeUrl": "https://api.jquery.com/",
+    "afterUrl": "https://api.jquery.com/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648121324,
+    "kind": "act",
+    "op": "type",
+    "value": "ajaxx",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "name": "Search jQuery API Documentation",
+      "nameAttr": "s",
+      "tag": "input",
+      "label": "Search jQuery API Documentation",
+      "cssPath": "#main > typesense-minibar:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "nav"
+        },
+        {
+          "role": "typesense-minibar"
+        },
+        {
+          "role": "search"
+        }
+      ]
+    },
+    "beforeUrl": "https://api.jquery.com/",
+    "afterUrl": "https://api.jquery.com/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648121868,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://api.jquery.com/",
+    "afterUrl": "https://api.jquery.com/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648121868,
+    "kind": "act",
+    "op": "type",
+    "value": "ajax",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "name": "Search jQuery API Documentation",
+      "nameAttr": "s",
+      "tag": "input",
+      "label": "Search jQuery API Documentation",
+      "cssPath": "#main > typesense-minibar:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "nav"
+        },
+        {
+          "role": "typesense-minibar"
+        },
+        {
+          "role": "search"
+        }
+      ]
+    },
+    "beforeUrl": "https://api.jquery.com/",
+    "afterUrl": "https://api.jquery.com/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648122391,
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "beforeUrl": "https://api.jquery.com/",
+    "afterUrl": "https://api.jquery.com/"
+  }
+]
