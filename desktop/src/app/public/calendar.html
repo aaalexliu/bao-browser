@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Calendar fixture</title>
+  <style>
+    body { font-family: sans-serif; margin: 1.5rem; background: #fff; color: #1c1915; }
+    .rbc-calendar { width: 420px; }
+    .rbc-toolbar-label { display: block; margin-bottom: 0.5rem; font-weight: 700; }
+    .rbc-month-row { position: relative; height: 96px; }
+    .rbc-row-bg { position: absolute; inset: 0; display: flex; }
+    .rbc-day-bg { flex: 1 0 0; border: 1px solid #ddd; box-sizing: border-box; }
+    .rbc-row-content { position: relative; z-index: 2; }
+    .rbc-row { display: flex; }
+    .rbc-date-cell { flex: 1 0 0; text-align: right; }
+    .rbc-event {
+      position: absolute;
+      left: calc(100% * 3 / 7);
+      width: calc(100% / 7);
+      top: 28px;
+      height: 28px;
+      background: #3174ad;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+    }
+    #doReservation { margin-top: 1rem; }
+    #hit, #stay { font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="rbc-calendar">
+    <span class="rbc-toolbar-label">October 2026</span>
+    <div class="rbc-month-view">
+      <div class="rbc-month-row">
+        <div class="rbc-row-bg">
+          <div class="rbc-day-bg"></div>
+          <div class="rbc-day-bg"></div>
+          <div class="rbc-day-bg"></div>
+          <div class="rbc-day-bg" id="covered-day"></div>
+          <div class="rbc-day-bg"></div>
+          <div class="rbc-day-bg"></div>
+          <div class="rbc-day-bg"></div>
+        </div>
+        <div class="rbc-row-content">
+          <div class="rbc-row">
+            <div class="rbc-date-cell"><button type="button" class="rbc-button-link">19</button></div>
+            <div class="rbc-date-cell"><button type="button" class="rbc-button-link">20</button></div>
+            <div class="rbc-date-cell"><button type="button" class="rbc-button-link">21</button></div>
+            <div class="rbc-date-cell"><button type="button" class="rbc-button-link">22</button></div>
+            <div class="rbc-date-cell"><button type="button" class="rbc-button-link">23</button></div>
+            <div class="rbc-date-cell"><button type="button" class="rbc-button-link">24</button></div>
+            <div class="rbc-date-cell"><button type="button" class="rbc-button-link">25</button></div>
+          </div>
+          <div class="rbc-event" title="Selected"><div class="rbc-event-content" title="Selected">Selected</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p id="hit">waiting</p>
+  <p id="stay">stay open</p>
+  <button type="button" id="doReservation">Reserve Now</button>
+  <script>
+    document.getElementById("covered-day").addEventListener("mousedown", () => {
+      document.getElementById("hit").textContent = "day received";
+    });
+    document.getElementById("doReservation").addEventListener("click", () => {
+      document.getElementById("stay").textContent = "booked";
+    });
+  </script>
+</body>
+</html>

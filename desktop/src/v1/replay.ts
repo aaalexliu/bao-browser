@@ -85,6 +85,8 @@ export interface LiveTree {
   boxes?: { x: number; y: number; w: number; h: number }[];
   /** Parallel to nodes. True when the page marked the node hidden. */
   hidden?: boolean[];
+  /** Parallel to nodes. True when the node sits inside a dialog. */
+  inDialog?: boolean[];
   flags?: { checked?: boolean; enabled?: boolean }[];
 }
 
@@ -162,7 +164,7 @@ export interface Driver {
   /** Arm CDP download capture, trigger the download, and return the saved path. */
   download?(spec: { dir: string; filename: string; timeoutMs: number; url?: string; node?: Identity }): Promise<{ suggestedFilename: string; path: string }>;
   /** Click or drag the cell for a resolved date. Recorded day clicks are not replayed. */
-  pickDate?(spec: { iso: string; endIso?: string; node?: Identity }): Promise<void>;
+  pickDate?(spec: { iso: string; endIso?: string; formatted?: string; node?: Identity }): Promise<void>;
   /** Drop trail capture while a person has the page. */
   pauseCapture?(): void;
   resumeCapture?(): void;
@@ -905,6 +907,10 @@ async function dismissCover(
   if (stop || hasCaptcha(tree.nodes)) return undefined;
   const block = findRecovery(tree.nodes);
   if (!block) return undefined;
+  // The registration form is a dialog that contains the field. Closing it
+  // removes the step's control. An overlay whose target is outside the dialog
+  // is still dismissed.
+  if (block.kind === "modal" && targetInsideDialog(step, tree)) return undefined;
   const cleared = block.kind === "spinner"
     ? await waitSpinner(driver, step)
     : block.node ? await guardedClick(driver, gate, step.id, block.node) : false;
@@ -912,6 +918,33 @@ async function dismissCover(
   repairs.push({ stepId: step.id, repair: "overlay", detail: block.kind });
   budget.used += 1;
   return block.kind;
+}
+
+/** A sized box can be clicked even when the node is aria-hidden. A 0×0 box cannot. */
+function canClick(index: number, boxes?: LiveTree["boxes"], hidden?: boolean[]): boolean {
+  const box = boxes?.[index];
+  if (box && box.w > 2 && box.h > 2) return true;
+  return !isCollapsedBox(index, boxes, hidden);
+}
+
+/** The step's control is visible inside the dialog, so the dialog is the form. */
+function targetInsideDialog(step: WorkflowStep, tree: LiveTree): boolean {
+  const flags = tree.inDialog;
+  const want = step.identity;
+  if (!flags || !want) return false;
+  const index = tree.nodes.findIndex((node) => sameRecordedControl(want, node));
+  if (index < 0 || !flags[index]) return false;
+  if (tree.hidden?.[index]) return false;
+  const box = tree.boxes?.[index];
+  if (box && (box.w < 2 || box.h < 2)) return false;
+  return true;
+}
+
+function sameRecordedControl(want: Identity, node: Identity): boolean {
+  if (want.id && node.id === want.id) return true;
+  if (want.testId && node.testId === want.testId) return true;
+  if (want.cssPath && node.cssPath && want.cssPath === node.cssPath) return true;
+  return false;
 }
 
 async function waitSpinner(driver: Driver, step: WorkflowStep): Promise<boolean> {
@@ -950,7 +983,7 @@ async function findTarget(
       located = locate(step, tree, args, "all");
     }
   }
-  if (located.hit.ok && located.hit.index != null && !isCollapsedBox(located.hit.index, tree.boxes, tree.hidden)) {
+  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden)) {
     if (located.via) locatorHits.push(located.via);
     return { ...located, recovered };
   }
@@ -966,7 +999,7 @@ async function findTarget(
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
   const waited = await poll(step, args, driver, locatorMode);
-  if (waited.hit.ok && waited.hit.index != null && !isCollapsedBox(waited.hit.index, waited.boxes, waited.hidden)) {
+  if (waited.hit.ok && waited.hit.index != null && canClick(waited.hit.index, waited.boxes, waited.hidden)) {
     repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
     if (waited.via) locatorHits.push(waited.via);
     return { ...waited, recovered };
@@ -1383,19 +1416,19 @@ function locate(
       const got = node[step.selection!.by];
       return typeof got === "string" && got.replace(/\s+/g, " ").trim() === want;
     });
-    if (picked.length === 1) {
-      const only = picked[0]!;
-      const wantRole = step.identity?.role;
-      if (!wantRole || rolesCompatible(wantRole, only.role)) {
-        const index = nodes.indexOf(only);
-        const label = only.name || only.text || only.role || "selection";
-        return {
-          nodes,
-          hit: { ok: true, index, ranked: [] },
-          via: { stepId: step.id, kind: "role", detail: `selection ${step.selection.input}` },
-          tried: [{ kind: "role", label, score: 100 }],
-        };
-      }
+    const wantRole = step.identity?.role;
+    const roleHits = wantRole ? picked.filter((node) => rolesCompatible(wantRole, node.role)) : [];
+    // The listbox and the option both show the typed word. The option is the choice.
+    const chosen = roleHits.length === 1 ? roleHits[0] : picked.length === 1 ? picked[0] : undefined;
+    if (chosen && (!wantRole || rolesCompatible(wantRole, chosen.role))) {
+      const index = nodes.indexOf(chosen);
+      const label = chosen.name || chosen.text || chosen.role || "selection";
+      return {
+        nodes,
+        hit: { ok: true, index, ranked: [] },
+        via: { stepId: step.id, kind: "role", detail: `selection ${step.selection.input}` },
+        tried: [{ kind: "role", label, score: 100 }],
+      };
     }
     nodes = picked;
   }
@@ -1405,7 +1438,51 @@ function locate(
       const scored = scoreLocator(locator, nodes, tree.boxes, tree.hidden);
       return { kind: locator.kind, label: scored.label, score: scored.score };
     });
-    const winner = tried.findIndex((item) => item.score === 100);
+    const perfect = tried
+      .map((item, index) => ({ index, score: item.score }))
+      .filter((row) => row.score === 100);
+    // A glossary button can share the field's visible name and score 100
+    // before the id. The recorded id is that field. A durable id that is not
+    // on the page yet is a miss, so the run waits instead of typing into the button.
+    const idAt = step.identity?.id
+      ? tried.findIndex((_, index) => list[index]?.kind === "css" && cssNamesId(list[index]?.value || "", step.identity?.id || ""))
+      : -1;
+    let preferred = -1;
+    if (idAt >= 0 && step.identity?.id && durableId(step.identity.id) && tried[idAt]!.score < 100) {
+      // Present id with a real box: the control can be aria-hidden and still be the target.
+      // Absent id: wait, instead of using a glossary button with the same words.
+      // A revealed field drops the id and keeps the role, so that hit is still the control.
+      // A 0×0 id stays a miss here so the reveal click can open it.
+      const indexes = locatorIndexes(list[idAt]!, nodes);
+      const sized = indexes.find((index) => {
+        const box = tree.boxes?.[index];
+        return !!box && box.w > 2 && box.h > 2;
+      });
+      if (sized != null) {
+        return {
+          nodes,
+          hit: { ok: true, index: sized, ranked: [] },
+          via: { stepId: step.id, kind: "css", detail: `css ${step.identity.id}` },
+          tried,
+        };
+      }
+      const recordedRole = step.identity.role;
+      const compatible = perfect.find((row) => {
+        const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
+        const node = found ? nodes[found.index] : undefined;
+        return !!node && rolesCompatible(recordedRole, node.role);
+      });
+      if (indexes.length === 0 && !compatible) {
+        return {
+          nodes,
+          hit: { ok: false, reason: "below-threshold", brokenAttr: "id", ranked: [] },
+          tried,
+        };
+      }
+      if (compatible) preferred = compatible.index;
+    }
+    const idWinner = idAt >= 0 && tried[idAt]!.score === 100 ? idAt : -1;
+    const winner = idWinner >= 0 ? idWinner : (preferred >= 0 ? preferred : (perfect[0]?.index ?? -1));
     if (winner >= 0) {
       const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
       if (found) {
@@ -1456,6 +1533,15 @@ function locate(
     return { kind: "identity", label, score: score.score };
   });
   return { nodes, hit, tried };
+}
+
+function durableId(id: string): boolean {
+  return /^[A-Za-z][\w-]*$/.test(id) && !/\d/.test(id);
+}
+
+function cssNamesId(selector: string, id: string): boolean {
+  if (!id || !selector.startsWith("#")) return false;
+  return selector.slice(1).replace(/\\(.)/g, "$1") === id;
 }
 
 function rolesCompatible(recorded: string, live: string): boolean {
@@ -1631,7 +1717,7 @@ async function runFilesDatesStep(
     const end = picker.endInput ? run.dates.get(picker.endInput) : undefined;
     if (picker.endInput && !end) throw new Error(`date ${picker.endInput}`);
     if (!driver.pickDate) throw new Error("date picker needs a browser");
-    await driver.pickDate({ iso: start.iso, endIso: end?.iso, node: step.identity });
+    await driver.pickDate({ iso: start.iso, endIso: end?.iso, formatted: start.formatted, node: step.identity });
     const held = await readExpect(step, args, driver, repairs, gate, recovery);
     if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     return { ok: true, repairs, acted: step.identity };

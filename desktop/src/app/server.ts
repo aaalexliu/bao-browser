@@ -33,6 +33,7 @@ import {
   type FreezeSession,
 } from "../v1/freeze-session";
 import { dismissCoveringAds } from "../v1/page-class";
+import { clickInDrive } from "../v1/drive-click";
 import { recorderSource } from "../v1/recorder";
 import { armBrowserDownloads, captureDownloads } from "../v1/files-dates";
 import { armFileChooser, queueChooserFile, storedFileEvent } from "../v1/file-chooser";
@@ -317,6 +318,9 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && (url.pathname === "/fixture" || url.pathname === "/secure")) {
         return sendFile(res, path.join(publicDir, "fixture.html"), "text/html");
+      }
+      if (req.method === "GET" && url.pathname === "/fixture/calendar") {
+        return sendFile(res, path.join(publicDir, "calendar.html"), "text/html");
       }
       if (req.method === "GET" && url.pathname === "/login") {
         const verify = url.searchParams.get("verify") === "1";
@@ -740,7 +744,7 @@ export async function startApp(opts: {
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/sessions/drive") {
         if (!page) return json(res, { error: "no session" }, 409);
         const body = await readBody(req) as {
-          fill?: { selector: string; value: string };
+          fill?: { selector: string; value: string; keys?: boolean };
           click?: string;
           upload?: { selector: string; path: string };
           drop?: { selector: string; name: string; path: string };
@@ -755,6 +759,7 @@ export async function startApp(opts: {
           timeout?: number;
         };
         const timeout = typeof body.timeout === "number" && body.timeout > 0 ? body.timeout : undefined;
+        await page.evaluate(dismissCoveringAds).catch(() => undefined);
         if (typeof body.scroll === "string" && /^#[A-Za-z][\w-]*$/.test(body.scroll)) {
           await page.evaluate((selector) => {
             const el = document.querySelector(selector);
@@ -808,13 +813,30 @@ export async function startApp(opts: {
           await page.mouse.move(endBox.x + endBox.width / 2, endBox.y + endBox.height / 2, { steps: 18 });
           await page.mouse.up();
         }
-        if (body.fill) await page.fill(body.fill.selector, body.fill.value, timeout ? { timeout } : undefined);
+        if (body.fill) {
+          const loc = page.locator(body.fill.selector).first();
+          if (body.fill.keys) {
+            await loc.evaluate((el) => {
+              if (!(el instanceof Element)) return;
+              const rect = el.getBoundingClientRect();
+              const inView = rect.width > 1 && rect.height > 1
+                && rect.top >= 0 && rect.left >= 0
+                && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+              if (!inView) el.scrollIntoView({ block: "center", inline: "nearest" });
+            }).catch(() => undefined);
+            // Clicking the combobox again closes the menu the previous click opened.
+            await loc.focus(timeout ? { timeout } : undefined);
+            await loc.press("Control+a").catch(() => undefined);
+            await loc.press("Backspace").catch(() => undefined);
+            await loc.pressSequentially(body.fill.value, { delay: 15 });
+          } else {
+            await loc.fill(body.fill.value, timeout ? { timeout } : undefined);
+          }
+        }
         if (typeof body.prompt === "string") nextDialogAnswer = body.prompt;
         if (body.click) {
           await page.evaluate(dismissCoveringAds).catch(() => undefined);
-          const loc = page.locator(body.click).first();
-          await loc.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" })).catch(() => undefined);
-          await loc.click(timeout ? { timeout } : undefined);
+          await clickInDrive(page, body.click, timeout);
         }
         if (body.press) await page.keyboard.press(body.press);
         if (body.select?.selector) {

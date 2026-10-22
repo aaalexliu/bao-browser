@@ -1,31 +1,37 @@
 # Real-world proof
 
-Measured on Linux with headless Chrome from v1/desktop. Pass means both the doc's check and 0 model calls. ACCEPT stays 60 and MARGIN stays 25.
+Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes. Pass means both the doc's check and 0 model calls. ACCEPT stays 60 and MARGIN stays 25.
 
-p1 replay 2 was run again in its own browser after the shared-window end shot matched replay 1 pixel for pixel. p4, p5, and p9 were replayed again the same way. Their end pages are still the same pixels, because each replay stops on the same screen. p6 replay 2 was never run; its png is the old replay 1 file. p2, p3, p7, and p8 were not replayed again in this pass.
+p2, p4, and p6 were remeasured in this pass. Each replay opened its own browser. p1, p3, p5, p7, p8, and p9 were not rerun; their rows are the previous measurement.
 
 | Task | Pass | Model calls | Heals | First failure |
 |---|---|---|---|---|
 | p1 Sign-up, contact upload, delete account | 2/2 | 0, 0 | 0 ; 0 | — |
-| p2 Practice form with date picker and dependent selects | 0/2 | 0, 0 | 0 ; 0 | select name is the truncated option list of a closed date popup |
+| p2 Practice form with date picker and dependent selects | 2/2 | 0, 0 | 0 ; 0 | — |
 | p3 Booking, stop before reserve | 2/2 | 0, 0 | 0 ; 0 | — |
-| p4 Trial search and CSV download | 0/2 | 0, 0 | 0 ; 0 | fill of disabled `#from-age-input` |
+| p4 Trial search and CSV download | 2/2 | 0, 0 | 0 ; 0 | — |
 | p5 Paginated catalog to CSV | 0/2 | 0, 0 | 0 ; 0 | no extract or CSV output; category is a click, not an input |
-| p6 Spreadsheet rows into a web table | 0/2 | 0, 0 | 0 ; 0 | replay 2 was not run; the old png is a copy of replay 1 |
+| p6 Spreadsheet rows into a web table | 2/2 | 0, 0 | 0 ; 0 | — |
 | p7 Wikipedia history across skins | 2/2 | 0, 0 | 0 ; 0 | — |
 | p8 Unstable DOM, new tab, JS dialogs | 2/2 | 0, 0 | 0 ; 0 | — |
 | p9 Shadow-DOM shop, stop before place order | 0/2 | 0, 0 | 0 ; 0 | no confirm gate before Place Order |
 
 ## Failure causes
 
-1. p2 — the saved select step is named with the month or year option list, cut at 80 characters. The live select shows only the chosen option and sits in a closed `.react-datepicker`.
-2. p4 — both replays fill the disabled age field `#from-age-input`. A fresh browser for replay 2 still photographs that same screen, so the png bytes match. The run ids differ.
-3. p5 and p9 — replay 2 ran again in its own browser and stopped on the same page as replay 1, so the end png matches. p5 has no extract. p9 has no confirm gate.
-4. p6 — replay 2 has no run id. `p6-r2.png` is the same bytes and the same timestamp as `p6-r1.png`. It was not recaptured. A real bot wall holds the proof for the act timeout.
+1. p5 — no extract or CSV output. The category is a click, not an input, so Mystery and Historical Fiction were not replayed.
+2. p9 — no confirm gate before Place Order.
 
 ## Keyframes
 
-p2, p3, p7, and p8 already had distinct replay 2 shots. p1's new shots are distinct. p4, p5, and p9 were recaptured and are still the same pixels. p6 was not recaptured.
+p2, p4, and p6 replay 1 and replay 2 were photographed from different browsers. The png bytes differ.
+
+| Task | Replay 1 sha256 | Replay 2 sha256 |
+|---|---|---|
+| p2 | `742e0d9f4ac61c03…` | `07a54ef0c07da21e…` |
+| p4 | `f79e0f2065100f3b…` | `b12e6546c25af21f…` |
+| p6 | `403133c044f8ebb1…` | `d4809be2194cde3b…` |
+
+p2 replay 1 shows Grace Hopper and 18 March, 1991. Replay 2 shows Radia Perlman and 04 November, 1984. p4 replay 1 searches type 1 diabetes in California (14 RECRUITING rows). Replay 2 searches migraine in Texas (12 RECRUITING rows). p6 replay 1 shows Alan Turing, Edsger Dijkstra, and Barbara Liskov. Replay 2 shows Ken Thompson, Dennis Ritchie, Frances Allen, Donald Knuth, and Margaret Hamilton. The p6 frames match an earlier passing replay of those same rows; the two runs in this pass are not the same image.
 
 ## Per task
 
@@ -125,6 +131,74 @@ Artifacts:
 - `docs/proof/realworld/artifacts/p1-r1.png`
 - `docs/proof/realworld/artifacts/p1-r2.png`
 
+
+### p2 Practice form with date picker and dependent selects
+
+Site: demoqa.com
+
+Recorded:
+
+```json
+{
+  "id": "wf-1792695069751",
+  "openUrl": "https://demoqa.com/automation-practice-form",
+  "startUrl": "https://demoqa.com/automation-practice-form",
+  "steps": 21,
+  "actions": {
+    "navigate": 1,
+    "type": 8,
+    "check": 2,
+    "click": 9,
+    "upload": 1
+  },
+  "inputs": [
+    "firstName:text=Ada",
+    "lastName:text=Lovelace",
+    "username:text=ada-form@example.com",
+    "username2:text=9990001111",
+    "subjectsInput:text=Maths",
+    "file:file",
+    "currentAddress:text=1 Market Street",
+    "text:text=NCR",
+    "text2:text=Delhi",
+    "dateOfBirthInput:date=-13429d"
+  ],
+  "labels": [
+    "navigate Open https://demoqa.com/automation-practice-form",
+    "type Type {{firstName}}",
+    "type Type {{lastName}}",
+    "type Type {{username}}",
+    "check Check \"Male\"",
+    "click Click \"Male\"",
+    "click Click \"Male\"",
+    "type Type {{username2}}",
+    "click Pick {{dateOfBirthInput}}",
+    "type Type {{subjectsInput}}",
+    "click Click {{subjectsInput}}",
+    "check Check \"Sports\"",
+    "click Click \"Sports\"",
+    "click Click \"Sports\"",
+    "upload Upload file",
+    "type Type {{currentAddress}}",
+    "type Type {{text}}",
+    "click Click {{text}}",
+    "type Type {{text2}}",
+    "click Click {{text2}}",
+    "click Click \"Submit\""
+  ]
+}
+```
+
+Replay 1: pass (passed), model calls 0, heals 0
+
+Replay 2: pass (passed), model calls 0, heals 0
+
+Artifacts:
+
+- `docs/proof/realworld/artifacts/p2-r1.png`
+- `docs/proof/realworld/artifacts/p2-r2.png`
+
+
 ### p4 Trial search and CSV download
 
 Site: clinicaltrials.gov
@@ -133,86 +207,49 @@ Recorded:
 
 ```json
 {
-  "id": "wf-1792676908524",
+  "id": "wf-1792695163010",
   "openUrl": "https://clinicaltrials.gov/search",
   "startUrl": "https://clinicaltrials.gov/search",
-  "steps": 28,
+  "steps": 12,
   "actions": {
     "navigate": 1,
-    "type": 26,
-    "click": 1
+    "type": 2,
+    "key": 1,
+    "click": 7,
+    "download": 1
   },
   "inputs": [
-    "text:text",
-    "text2:text",
-    "text3:text",
-    "text4:text",
-    "text5:text",
-    "text6:text",
-    "text7:text",
-    "text8:text",
-    "text9:text",
-    "text10:text",
-    "text11:text",
-    "text12:text",
-    "text13:text",
-    "text14:text",
-    "text15:text",
-    "text16:text",
-    "text17:text",
-    "text18:text",
-    "text19:text",
-    "text20:text",
-    "text21:text",
-    "text22:text",
-    "text23:text",
-    "text24:text",
     "advcond:text=type 1 diabetes",
-    "text25:text=California"
+    "text:text=California",
+    "text2:date=-2472d",
+    "text3:date=-660d"
   ],
   "labels": [
     "navigate Open https://clinicaltrials.gov/search",
-    "type Type {{text}}",
-    "type Type {{text2}}",
-    "type Type {{text3}}",
-    "type Type {{text4}}",
-    "type Type {{text5}}",
-    "type Type {{text6}}",
-    "type Type {{text7}}",
-    "type Type {{text8}}",
-    "type Type {{text9}}",
-    "type Type {{text10}}",
-    "type Type {{text11}}",
-    "type Type {{text12}}",
-    "type Type {{text13}}",
-    "type Type {{text14}}",
-    "type Type {{text15}}",
-    "type Type {{text16}}",
-    "type Type {{text17}}",
-    "type Type {{text18}}",
-    "type Type {{text19}}",
-    "type Type {{text20}}",
-    "type Type {{text21}}",
-    "type Type {{text22}}",
-    "type Type {{text23}}",
-    "type Type {{text24}}",
     "type Type {{advcond}}",
-    "type Type {{text25}}",
-    "click Click \"More Filters\""
+    "key Press Enter",
+    "type Type {{text}}",
+    "click Click {{text}}",
+    "click Pick {{text2}}",
+    "click Pick {{text3}}",
+    "click Click \"Recruiting (425)\"",
+    "click Click \"Apply Filters\"",
+    "click Click \"download\"",
+    "click Click \"CSV\"",
+    "download Download"
   ]
 }
 ```
 
-Replay 1: fail (failed), model calls 0, heals 0
-First failure: wf-1792676908524-1 type Type {{text}} — type "Type {{text}}": action locator.fill: Timeout 30000ms exceeded. Call log: - waiting for locator('[data-bao-i="225"]') - locator resolved to <input disabled data-bao-i="225" id="from-age-input" name="from-age-input" formcontrolname="fromAge" _ngcontent-ng-c956280390="" class="usa-input age-input ng-untouched ng-pristine"/> - fill("") - attempting fill action 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 20ms 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 100ms 60 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 500ms
+Replay 1: pass (passed), model calls 0, heals 0
 
-Replay 2: fail (failed), model calls 0, heals 0
-First failure: wf-1792676908524-1 type Type {{text}} — type "Type {{text}}": action locator.fill: Timeout 30000ms exceeded. Call log: - waiting for locator('[data-bao-i="225"]') - locator resolved to <input disabled data-bao-i="225" id="from-age-input" name="from-age-input" formcontrolname="fromAge" _ngcontent-ng-c956280390="" class="usa-input age-input ng-untouched ng-pristine"/> - fill("") - attempting fill action 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 20ms 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 100ms 60 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 500ms
+Replay 2: pass (passed), model calls 0, heals 0
 
 Artifacts:
 
 - `docs/proof/realworld/artifacts/p4-r1.png`
 - `docs/proof/realworld/artifacts/p4-r2.png`
+
 
 ### p5 Paginated catalog to CSV
 
@@ -248,6 +285,111 @@ Artifacts:
 
 - `docs/proof/realworld/artifacts/p5-r1.png`
 - `docs/proof/realworld/artifacts/p5-r2.png`
+
+
+### p6 Spreadsheet rows into a web table
+
+Site: demoqa.com/webtables
+
+Recorded:
+
+```json
+{
+  "id": "wf-1792695275250",
+  "openUrl": "https://demoqa.com/webtables",
+  "startUrl": "https://demoqa.com/webtables",
+  "steps": 41,
+  "actions": {
+    "navigate": 1,
+    "click": 10,
+    "type": 30
+  },
+  "inputs": [
+    "firstName:text=Ada",
+    "lastName:text=Lovelace",
+    "username:text=ada-table@example.com",
+    "age:text=36",
+    "salary:text=10001",
+    "department:text=Math",
+    "firstName2:text=Grace",
+    "lastName2:text=Hopper",
+    "username2:text=grace-table@example.com",
+    "age2:text=41",
+    "salary2:text=10002",
+    "department2:text=Compilers",
+    "firstName3:text=Radia",
+    "lastName3:text=Perlman",
+    "username3:text=radia-table@example.com",
+    "age3:text=44",
+    "salary3:text=10003",
+    "department3:text=Networks",
+    "firstName4:text=Donald",
+    "lastName4:text=Knuth",
+    "username4:text=donald-table@example.com",
+    "age4:text=84",
+    "salary4:text=10004",
+    "department4:text=Algorithms",
+    "firstName5:text=Margaret",
+    "lastName5:text=Hamilton",
+    "username5:text=margaret-table@example.com",
+    "age5:text=89",
+    "salary5:text=10005",
+    "department5:text=Apollo"
+  ],
+  "labels": [
+    "navigate Open https://demoqa.com/webtables",
+    "click Click \"Add\"",
+    "type Type {{firstName}}",
+    "type Type {{lastName}}",
+    "type Type {{username}}",
+    "type Type {{age}}",
+    "type Type {{salary}}",
+    "type Type {{department}}",
+    "click Click \"Submit\"",
+    "click Click \"Add\"",
+    "type Type {{firstName2}}",
+    "type Type {{lastName2}}",
+    "type Type {{username2}}",
+    "type Type {{age2}}",
+    "type Type {{salary2}}",
+    "type Type {{department2}}",
+    "click Click \"Submit\"",
+    "click Click \"Add\"",
+    "type Type {{firstName3}}",
+    "type Type {{lastName3}}",
+    "type Type {{username3}}",
+    "type Type {{age3}}",
+    "type Type {{salary3}}",
+    "type Type {{department3}}",
+    "click Click \"Submit\"",
+    "click Click \"Add\"",
+    "type Type {{firstName4}}",
+    "type Type {{lastName4}}",
+    "type Type {{username4}}",
+    "type Type {{age4}}",
+    "type Type {{salary4}}",
+    "type Type {{department4}}",
+    "click Click \"Submit\"",
+    "click Click \"Add\"",
+    "type Type {{firstName5}}",
+    "type Type {{lastName5}}",
+    "type Type {{username5}}",
+    "type Type {{age5}}",
+    "type Type {{salary5}}",
+    "type Type {{department5}}"
+  ]
+}
+```
+
+Replay 1: pass (passed), model calls 0, heals 0
+
+Replay 2: pass (passed), model calls 0, heals 0
+
+Artifacts:
+
+- `docs/proof/realworld/artifacts/p6-r1.png`
+- `docs/proof/realworld/artifacts/p6-r2.png`
+
 
 ### p9 Shadow-DOM shop, stop before place order
 

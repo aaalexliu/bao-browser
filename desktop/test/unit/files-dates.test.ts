@@ -21,6 +21,7 @@ import {
   renderTemplate,
   resolveRelative,
 } from "../../src/v1/files-dates";
+import { selectorForIdentity } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
@@ -141,6 +142,40 @@ test("a native date field stays a type step and a picker range becomes one plan"
   assert.equal(validateV3(range), true, JSON.stringify(validateV3.errors));
 });
 
+test("a generated download anchor is not the trigger the next run clicks", () => {
+  const doc = interpret([
+    event({ id: "csv", op: "click", identity: ident({ role: "label", tag: "label", text: "CSV" }) }),
+    event({
+      id: "btn",
+      op: "click",
+      identity: ident({
+        role: "button",
+        tag: "button",
+        text: "Download",
+        cssPath: "#download-modal > div > button:nth-of-type(1)",
+      }),
+    }),
+    event({
+      id: "a",
+      op: "click",
+      identity: ident({
+        role: "link",
+        tag: "a",
+        cssPath: "a:nth-of-type(1)",
+        href: "/api/int/studies/download?format=csv&cond=type+1+diabetes&state=California",
+      }),
+    }),
+    event({ id: "d", op: "download", suggestedFilename: "ctg-studies.csv" }),
+  ], { id: "wf-ctg", startUrl: "https://clinicaltrials.gov/search", zone: ZONE });
+  assert.equal(doc.steps.length, 2);
+  assert.equal(doc.steps[0]?.label, "Click \"CSV\"");
+  assert.equal(doc.steps[1]?.action, "download");
+  assert.equal(doc.steps[1]?.identity?.tag, "button");
+  assert.equal(doc.steps[1]?.identity?.cssPath, "#download-modal > div > button:nth-of-type(1)");
+  assert.equal(JSON.stringify(doc).includes("type+1+diabetes"), false);
+  assert.equal(JSON.stringify(doc).includes("California"), false);
+});
+
 test("a download folds the trigger click into a templated step and binds a later upload", () => {
   const doc = interpret([
     event({ id: "c", op: "click", identity: ident({ role: "link", tag: "a", id: "dl", text: "Download" }) }),
@@ -158,6 +193,14 @@ test("a download folds the trigger click into a templated step and binds a later
   assert.equal(doc.steps[0]?.download?.output, "note");
   assert.equal(doc.steps[0]?.download?.name, "{{run.date}}-{{suggested}}");
   assert.equal(doc.steps[0]?.identity?.id, "dl");
+  assert.equal(selectorForIdentity(doc.steps[0]!.identity!), "#dl");
+  const modal = ident({
+    role: "button",
+    tag: "button",
+    text: "Download",
+    cssPath: "#download-modal > div > button:nth-of-type(1)",
+  });
+  assert.equal(selectorForIdentity(modal), "#download-modal > div > button:nth-of-type(1)");
   assert.equal(doc.steps[1]?.action, "upload");
   assert.equal(doc.steps[1]?.fileFrom, "note");
   assert.equal(doc.inputs.find((item) => item.type === "file")?.fromOutput, "note");
@@ -384,7 +427,7 @@ test("replay resolves dates at run start and picks those cells, with no model ca
   }), { clock: OCT_22, zone: "UTC", runId: "run-pick", heal: { available: () => false, propose: async () => null } });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
-  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", node: workflow.steps[0]?.identity }]);
+  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: workflow.steps[0]?.identity }]);
 });
 
 test("replay saves a templated download and a later upload reads that file", async () => {
@@ -541,4 +584,27 @@ test("the recorder marks picked and typed dates", () => {
   assert.match(src, /rbc-calendar/);
   assert.match(src, /endValue/);
   assert.match(src, /data-bao-picker/);
+  assert.match(src, /st\|nd\|rd\|th/);
+  assert.match(src, /el\.disabled/);
+  assert.match(src, /react-datepicker-ignore-onclickoutside/);
+  assert.match(src, /role='option'/);
+  assert.match(src, /react-select-/);
+});
+
+test("a datepicker opener is dropped and the day becomes one date input", () => {
+  const doc = interpret([
+    event({ id: "open", op: "click", picker: true, identity: ident({ tag: "input", role: "textbox", id: "dateOfBirthInput" }) }),
+    event({
+      id: "day",
+      op: "click",
+      picker: true,
+      value: "1990-01-15",
+      identity: ident({ tag: "input", role: "textbox", id: "dateOfBirthInput" }),
+    }),
+  ], { id: "wf-dob", startUrl: "https://demoqa.com/automation-practice-form", zone: ZONE });
+  const date = doc.inputs.find((item) => item.type === "date");
+  assert.equal(date?.name, "dateOfBirthInput");
+  assert.equal(doc.steps.filter((step) => step.datePicker).length, 1);
+  assert.equal(doc.steps.some((step) => step.action === "select"), false);
+  assert.equal(doc.steps.some((step) => step.action === "click" && !step.datePicker), false);
 });

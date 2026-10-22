@@ -142,6 +142,145 @@ test("an anchor repair picks the button below the heading", async () => {
   assert.deepEqual(driver.clicks, ["apply"]);
 });
 
+test("an id locator wins over a glossary button that shares the field name", async () => {
+  const filled: string[] = [];
+  const glossary = ident({ role: "button", text: "Condition/disease", name: "Condition/disease" });
+  const field = ident({ role: "textbox", id: "advcond", tag: "input", cssPath: "#advcond" });
+  const workflow = doc([
+    step({
+      id: "cond",
+      action: "type",
+      label: "Type {{advcond}}",
+      input: "advcond",
+      value: "{{advcond}}",
+      identity: field,
+      locators: [
+        { kind: "text", value: "Condition/disease" },
+        { kind: "css", value: "#advcond" },
+      ],
+    }),
+  ]);
+  workflow.inputs = [{ name: "advcond", type: "text", default: "type 1 diabetes" }];
+  const page = tree([glossary, field], {
+    boxes: [
+      { x: 40, y: 40, w: 180, h: 24 },
+      { x: 40, y: 80, w: 240, h: 32 },
+    ],
+  });
+  let n = 0;
+  const driver: Driver = {
+    tree: async () => page,
+    snapshot: async () => ({ dom: "" }),
+    click: async () => { n += 1; },
+    fill: async (node) => { filled.push(node.id || node.text || ""); },
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+  };
+  const result = await replay(workflow, { advcond: "type 1 diabetes" }, driver, { heal: unavailableHeal() });
+  assert.equal(result.status, "passed");
+  assert.deepEqual(filled, ["advcond"]);
+  assert.equal(n, 0);
+  const early: string[] = [];
+  const onlyGlossary = tree([glossary], {
+    boxes: [{ x: 40, y: 40, w: 180, h: 24 }],
+  });
+  const earlyDriver: Driver = {
+    ...driver,
+    tree: async () => onlyGlossary,
+    fill: async (node) => { early.push(node.id || node.text || ""); },
+  };
+  const missed = await replay(workflow, { advcond: "type 1 diabetes" }, earlyDriver, { heal: unavailableHeal() });
+  assert.equal(missed.status, "failed");
+  assert.deepEqual(early, []);
+});
+
+test("a suggestion click prefers the option when the listbox shows the same text", async () => {
+  const listbox = ident({ role: "listbox", id: "react-select-2-listbox", text: "Physics" });
+  const option = ident({ role: "option", id: "react-select-2-option-0", text: "Physics", cssPath: "#react-select-2-option-0" });
+  const workflow = doc([
+    step({
+      id: "subject",
+      action: "click",
+      label: "Click {{subjectsInput}}",
+      identity: option,
+      selection: { by: "text", input: "subjectsInput" },
+      locators: [
+        { kind: "role", role: "option", name: "Maths" },
+        { kind: "text", value: "Maths" },
+        { kind: "css", value: "#react-select-2-option-0" },
+      ],
+    }),
+  ]);
+  workflow.inputs = [{ name: "subjectsInput", type: "text", default: "Maths" }];
+  const driver = fake([tree([listbox, option], {
+    boxes: [
+      { x: 40, y: 80, w: 240, h: 40 },
+      { x: 40, y: 80, w: 240, h: 32 },
+    ],
+    hidden: [false, true],
+  })]);
+  const result = await replay(workflow, { subjectsInput: "Physics" }, driver, { heal: unavailableHeal() });
+  assert.equal(result.status, "passed", result.failure?.reason);
+  assert.deepEqual(driver.clicks, ["react-select-2-option-0"]);
+});
+
+test("an aria-hidden control with a box is still the recorded id", async () => {
+  const button = ident({ role: "button", id: "action-bar-download-btn", text: "Download", name: "download", cssPath: "#action-bar-download-btn" });
+  const workflow = doc([
+    step({
+      id: "dl",
+      action: "click",
+      label: "Click download",
+      identity: button,
+      locators: [
+        { kind: "role", role: "button", name: "download" },
+        { kind: "css", value: "#action-bar-download-btn" },
+      ],
+    }),
+  ]);
+  const driver = fake([tree([button], {
+    boxes: [{ x: 40, y: 781, w: 135, h: 40 }],
+    hidden: [true],
+  })]);
+  const result = await replay(workflow, {}, driver, { heal: unavailableHeal() });
+  assert.equal(result.status, "passed", result.failure?.reason);
+  assert.deepEqual(driver.clicks, ["action-bar-download-btn"]);
+});
+
+test("a dialog that contains the field is not dismissed before the type", async () => {
+  const dialog = ident({ role: "dialog", text: "Registration Form" });
+  const close = ident({ role: "button", text: "Close" });
+  const field = ident({ role: "textbox", id: "firstName", tag: "input", cssPath: "#firstName" });
+  const workflow = doc([
+    step({
+      id: "first",
+      action: "type",
+      label: "Type Alan",
+      value: "Alan",
+      identity: field,
+      locators: [{ kind: "css", value: "#firstName" }],
+    }),
+  ]);
+  const page = tree([dialog, close, field], {
+    inDialog: [true, true, true],
+    boxes: [
+      { x: 40, y: 40, w: 400, h: 300 },
+      { x: 400, y: 48, w: 24, h: 24 },
+      { x: 60, y: 120, w: 180, h: 32 },
+    ],
+  });
+  const driver = fake([page]);
+  const result = await replay(workflow, {}, driver, { heal: unavailableHeal() });
+  assert.equal(result.status, "passed");
+  assert.equal(result.steps[0]?.reason || "", "");
+  assert.deepEqual(driver.clicks, []);
+});
+
 test("an overlay repair dismisses the notice before the click and skips the model", async () => {
   let proposed = 0;
   const dismiss = ident({ role: "button", testId: "overlay-close", text: "Dismiss" });

@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 2,
-  "id": "wf-1792677170471",
+  "id": "wf-1792695275250",
   "name": "Captured workflow",
   "startUrl": "https://demoqa.com/webtables",
   "inputs": [
@@ -130,11 +130,95 @@
       "required": true,
       "label": "department3",
       "default": "Networks"
+    },
+    {
+      "name": "firstName4",
+      "type": "text",
+      "required": true,
+      "label": "firstName4",
+      "default": "Donald"
+    },
+    {
+      "name": "lastName4",
+      "type": "text",
+      "required": true,
+      "label": "lastName4",
+      "default": "Knuth"
+    },
+    {
+      "name": "username4",
+      "type": "text",
+      "required": true,
+      "label": "username4",
+      "default": "donald-table@example.com"
+    },
+    {
+      "name": "age4",
+      "type": "text",
+      "required": true,
+      "label": "age4",
+      "default": "84"
+    },
+    {
+      "name": "salary4",
+      "type": "text",
+      "required": true,
+      "label": "salary4",
+      "default": "10004"
+    },
+    {
+      "name": "department4",
+      "type": "text",
+      "required": true,
+      "label": "department4",
+      "default": "Algorithms"
+    },
+    {
+      "name": "firstName5",
+      "type": "text",
+      "required": true,
+      "label": "firstName5",
+      "default": "Margaret"
+    },
+    {
+      "name": "lastName5",
+      "type": "text",
+      "required": true,
+      "label": "lastName5",
+      "default": "Hamilton"
+    },
+    {
+      "name": "username5",
+      "type": "text",
+      "required": true,
+      "label": "username5",
+      "default": "margaret-table@example.com"
+    },
+    {
+      "name": "age5",
+      "type": "text",
+      "required": true,
+      "label": "age5",
+      "default": "89"
+    },
+    {
+      "name": "salary5",
+      "type": "text",
+      "required": true,
+      "label": "salary5",
+      "default": "10005"
+    },
+    {
+      "name": "department5",
+      "type": "text",
+      "required": true,
+      "label": "department5",
+      "default": "Apollo"
     }
   ],
   "steps": [
     {
-      "id": "wf-1792677170471-0",
+      "id": "wf-1792695275250-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://demoqa.com/webtables",
@@ -148,7 +232,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-1",
+      "id": "wf-1792695275250-1",
       "index": 1,
       "action": "click",
       "label": "Click \"Add\"",
@@ -158,6 +242,7 @@
         "role": "button",
         "id": "addNewRecordButton",
         "tag": "button",
+        "cssPath": "#addNewRecordButton",
         "text": "Add",
         "path": []
       },
@@ -193,7 +278,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-2",
+      "id": "wf-1792695275250-2",
       "index": 2,
       "action": "type",
       "label": "Type {{firstName}}",
@@ -203,14 +288,10 @@
         "role": "textbox",
         "id": "firstName",
         "tag": "input",
+        "cssPath": "#firstName",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#firstName"
@@ -230,7 +311,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-3",
+      "id": "wf-1792695275250-3",
       "index": 3,
       "action": "type",
       "label": "Type {{lastName}}",
@@ -240,14 +321,10 @@
         "role": "textbox",
         "id": "lastName",
         "tag": "input",
+        "cssPath": "#lastName",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#lastName"
@@ -267,7 +344,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-4",
+      "id": "wf-1792695275250-4",
       "index": 4,
       "action": "type",
       "label": "Type {{username}}",
@@ -277,14 +354,10 @@
         "role": "textbox",
         "id": "userEmail",
         "tag": "input",
+        "cssPath": "#userEmail",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#userEmail"
@@ -304,7 +377,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-5",
+      "id": "wf-1792695275250-5",
       "index": 5,
       "action": "type",
       "label": "Type {{age}}",
@@ -314,14 +387,10 @@
         "role": "textbox",
         "id": "age",
         "tag": "input",
+        "cssPath": "#age",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#age"
@@ -341,7 +410,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-6",
+      "id": "wf-1792695275250-6",
       "index": 6,
       "action": "type",
       "label": "Type {{salary}}",
@@ -351,14 +420,10 @@
         "role": "textbox",
         "id": "salary",
         "tag": "input",
+        "cssPath": "#salary",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#salary"
@@ -378,7 +443,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-7",
+      "id": "wf-1792695275250-7",
       "index": 7,
       "action": "type",
       "label": "Type {{department}}",
@@ -388,14 +453,10 @@
         "role": "textbox",
         "id": "department",
         "tag": "input",
+        "cssPath": "#department",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#department"
@@ -415,7 +476,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-8",
+      "id": "wf-1792695275250-8",
       "index": 8,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -425,6 +486,7 @@
         "role": "button",
         "id": "submit",
         "tag": "button",
+        "cssPath": "#submit",
         "text": "Submit",
         "path": []
       },
@@ -460,7 +522,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-9",
+      "id": "wf-1792695275250-9",
       "index": 9,
       "action": "click",
       "label": "Click \"Add\"",
@@ -470,6 +532,7 @@
         "role": "button",
         "id": "addNewRecordButton",
         "tag": "button",
+        "cssPath": "#addNewRecordButton",
         "text": "Add",
         "path": []
       },
@@ -505,7 +568,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-10",
+      "id": "wf-1792695275250-10",
       "index": 10,
       "action": "type",
       "label": "Type {{firstName2}}",
@@ -515,14 +578,10 @@
         "role": "textbox",
         "id": "firstName",
         "tag": "input",
+        "cssPath": "#firstName",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#firstName"
@@ -542,7 +601,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-11",
+      "id": "wf-1792695275250-11",
       "index": 11,
       "action": "type",
       "label": "Type {{lastName2}}",
@@ -552,14 +611,10 @@
         "role": "textbox",
         "id": "lastName",
         "tag": "input",
+        "cssPath": "#lastName",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#lastName"
@@ -579,7 +634,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-12",
+      "id": "wf-1792695275250-12",
       "index": 12,
       "action": "type",
       "label": "Type {{username2}}",
@@ -589,14 +644,10 @@
         "role": "textbox",
         "id": "userEmail",
         "tag": "input",
+        "cssPath": "#userEmail",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#userEmail"
@@ -616,7 +667,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-13",
+      "id": "wf-1792695275250-13",
       "index": 13,
       "action": "type",
       "label": "Type {{age2}}",
@@ -626,14 +677,10 @@
         "role": "textbox",
         "id": "age",
         "tag": "input",
+        "cssPath": "#age",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#age"
@@ -653,7 +700,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-14",
+      "id": "wf-1792695275250-14",
       "index": 14,
       "action": "type",
       "label": "Type {{salary2}}",
@@ -663,14 +710,10 @@
         "role": "textbox",
         "id": "salary",
         "tag": "input",
+        "cssPath": "#salary",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#salary"
@@ -690,7 +733,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-15",
+      "id": "wf-1792695275250-15",
       "index": 15,
       "action": "type",
       "label": "Type {{department2}}",
@@ -700,14 +743,10 @@
         "role": "textbox",
         "id": "department",
         "tag": "input",
+        "cssPath": "#department",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#department"
@@ -727,7 +766,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-16",
+      "id": "wf-1792695275250-16",
       "index": 16,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -737,6 +776,7 @@
         "role": "button",
         "id": "submit",
         "tag": "button",
+        "cssPath": "#submit",
         "text": "Submit",
         "path": []
       },
@@ -772,7 +812,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-17",
+      "id": "wf-1792695275250-17",
       "index": 17,
       "action": "click",
       "label": "Click \"Add\"",
@@ -782,6 +822,7 @@
         "role": "button",
         "id": "addNewRecordButton",
         "tag": "button",
+        "cssPath": "#addNewRecordButton",
         "text": "Add",
         "path": []
       },
@@ -817,7 +858,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-18",
+      "id": "wf-1792695275250-18",
       "index": 18,
       "action": "type",
       "label": "Type {{firstName3}}",
@@ -827,14 +868,10 @@
         "role": "textbox",
         "id": "firstName",
         "tag": "input",
+        "cssPath": "#firstName",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#firstName"
@@ -854,7 +891,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-19",
+      "id": "wf-1792695275250-19",
       "index": 19,
       "action": "type",
       "label": "Type {{lastName3}}",
@@ -864,14 +901,10 @@
         "role": "textbox",
         "id": "lastName",
         "tag": "input",
+        "cssPath": "#lastName",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#lastName"
@@ -891,7 +924,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-20",
+      "id": "wf-1792695275250-20",
       "index": 20,
       "action": "type",
       "label": "Type {{username3}}",
@@ -901,14 +934,10 @@
         "role": "textbox",
         "id": "userEmail",
         "tag": "input",
+        "cssPath": "#userEmail",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#userEmail"
@@ -928,7 +957,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-21",
+      "id": "wf-1792695275250-21",
       "index": 21,
       "action": "type",
       "label": "Type {{age3}}",
@@ -938,14 +967,10 @@
         "role": "textbox",
         "id": "age",
         "tag": "input",
+        "cssPath": "#age",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#age"
@@ -965,7 +990,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-22",
+      "id": "wf-1792695275250-22",
       "index": 22,
       "action": "type",
       "label": "Type {{salary3}}",
@@ -975,14 +1000,10 @@
         "role": "textbox",
         "id": "salary",
         "tag": "input",
+        "cssPath": "#salary",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#salary"
@@ -1002,7 +1023,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-23",
+      "id": "wf-1792695275250-23",
       "index": 23,
       "action": "type",
       "label": "Type {{department3}}",
@@ -1012,14 +1033,10 @@
         "role": "textbox",
         "id": "department",
         "tag": "input",
+        "cssPath": "#department",
         "path": []
       },
       "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": ""
-        },
         {
           "kind": "css",
           "value": "#department"
@@ -1039,7 +1056,7 @@
       }
     },
     {
-      "id": "wf-1792677170471-24",
+      "id": "wf-1792695275250-24",
       "index": 24,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -1049,6 +1066,7 @@
         "role": "button",
         "id": "submit",
         "tag": "button",
+        "cssPath": "#submit",
         "text": "Submit",
         "path": []
       },
@@ -1082,7 +1100,587 @@
         "match": "{{age3}}",
         "timeoutMs": 4000
       }
+    },
+    {
+      "id": "wf-1792695275250-25",
+      "index": 25,
+      "action": "click",
+      "label": "Click \"Add\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "addNewRecordButton",
+        "tag": "button",
+        "cssPath": "#addNewRecordButton",
+        "text": "Add",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Add"
+        },
+        {
+          "kind": "text",
+          "value": "Add"
+        },
+        {
+          "kind": "css",
+          "value": "#addNewRecordButton"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"addNewRecordButton\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Age",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Age",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-26",
+      "index": 26,
+      "action": "type",
+      "label": "Type {{firstName4}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "firstName",
+        "tag": "input",
+        "cssPath": "#firstName",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#firstName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"firstName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "firstName4",
+      "value": "{{firstName4}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{firstName4}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-27",
+      "index": 27,
+      "action": "type",
+      "label": "Type {{lastName4}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "lastName",
+        "tag": "input",
+        "cssPath": "#lastName",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#lastName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"lastName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "lastName4",
+      "value": "{{lastName4}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{lastName4}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-28",
+      "index": 28,
+      "action": "type",
+      "label": "Type {{username4}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "userEmail",
+        "tag": "input",
+        "cssPath": "#userEmail",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#userEmail"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"userEmail\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username4",
+      "value": "{{username4}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username4}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-29",
+      "index": 29,
+      "action": "type",
+      "label": "Type {{age4}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "age",
+        "tag": "input",
+        "cssPath": "#age",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#age"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"age\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "age4",
+      "value": "{{age4}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{age4}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-30",
+      "index": 30,
+      "action": "type",
+      "label": "Type {{salary4}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "salary",
+        "tag": "input",
+        "cssPath": "#salary",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#salary"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"salary\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "salary4",
+      "value": "{{salary4}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{salary4}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-31",
+      "index": 31,
+      "action": "type",
+      "label": "Type {{department4}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "department",
+        "tag": "input",
+        "cssPath": "#department",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#department"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"department\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "department4",
+      "value": "{{department4}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{department4}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-32",
+      "index": 32,
+      "action": "click",
+      "label": "Click \"Submit\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "submit",
+        "tag": "button",
+        "cssPath": "#submit",
+        "text": "Submit",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        {
+          "kind": "text",
+          "value": "Submit"
+        },
+        {
+          "kind": "css",
+          "value": "#submit"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"submit\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "{{age4}}",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "{{age4}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-33",
+      "index": 33,
+      "action": "click",
+      "label": "Click \"Add\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "addNewRecordButton",
+        "tag": "button",
+        "cssPath": "#addNewRecordButton",
+        "text": "Add",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Add"
+        },
+        {
+          "kind": "text",
+          "value": "Add"
+        },
+        {
+          "kind": "css",
+          "value": "#addNewRecordButton"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"addNewRecordButton\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Age",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Age",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-34",
+      "index": 34,
+      "action": "type",
+      "label": "Type {{firstName5}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "firstName",
+        "tag": "input",
+        "cssPath": "#firstName",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#firstName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"firstName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "firstName5",
+      "value": "{{firstName5}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{firstName5}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-35",
+      "index": 35,
+      "action": "type",
+      "label": "Type {{lastName5}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "lastName",
+        "tag": "input",
+        "cssPath": "#lastName",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#lastName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"lastName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "lastName5",
+      "value": "{{lastName5}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{lastName5}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-36",
+      "index": 36,
+      "action": "type",
+      "label": "Type {{username5}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "userEmail",
+        "tag": "input",
+        "cssPath": "#userEmail",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#userEmail"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"userEmail\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username5",
+      "value": "{{username5}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username5}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-37",
+      "index": 37,
+      "action": "type",
+      "label": "Type {{age5}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "age",
+        "tag": "input",
+        "cssPath": "#age",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#age"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"age\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "age5",
+      "value": "{{age5}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{age5}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-38",
+      "index": 38,
+      "action": "type",
+      "label": "Type {{salary5}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "salary",
+        "tag": "input",
+        "cssPath": "#salary",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#salary"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"salary\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "salary5",
+      "value": "{{salary5}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{salary5}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-39",
+      "index": 39,
+      "action": "type",
+      "label": "Type {{department5}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "department",
+        "tag": "input",
+        "cssPath": "#department",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#department"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"department\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "department5",
+      "value": "{{department5}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{department5}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792695275250-40",
+      "index": 40,
+      "action": "click",
+      "label": "Click \"Submit\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "submit",
+        "tag": "button",
+        "cssPath": "#submit",
+        "text": "Submit",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        {
+          "kind": "text",
+          "value": "Submit"
+        },
+        {
+          "kind": "css",
+          "value": "#submit"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"submit\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "{{age5}}",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "{{age5}}",
+        "timeoutMs": 4000
+      }
     }
   ],
-  "createdAt": 1792677155714
+  "createdAt": 1792695250880
 }

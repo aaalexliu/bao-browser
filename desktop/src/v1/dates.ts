@@ -122,24 +122,28 @@ export function parseRecordedDate(value: string): { civil: Civil; format: string
   }
   match = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (match) {
-    const a = Number(match[1]);
-    const b = Number(match[2]);
+    const aRaw = match[1]!;
+    const bRaw = match[2]!;
+    const a = Number(aRaw);
+    const b = Number(bRaw);
     const y = Number(match[3]);
+    const monthToken = (raw: string) => raw.length === 2 ? "MM" : "M";
+    const dayToken = (raw: string) => raw.length === 2 ? "DD" : "D";
     let day: number;
     let month: number;
     let format: string;
     if (a > 12) {
       day = a;
       month = b;
-      format = a > 9 ? "DD/MM/YYYY" : "D/MM/YYYY";
+      format = `${dayToken(aRaw)}/${monthToken(bRaw)}/YYYY`;
     } else if (b > 12) {
       month = a;
       day = b;
-      format = a > 9 ? "MM/DD/YYYY" : "M/DD/YYYY";
+      format = `${monthToken(aRaw)}/${dayToken(bRaw)}/YYYY`;
     } else {
       day = a;
       month = b;
-      format = "DD/MM/YYYY";
+      format = `${dayToken(aRaw)}/${monthToken(bRaw)}/YYYY`;
     }
     const civil = { y, m: month, d: day };
     if (!validCivil(civil)) return undefined;
@@ -188,5 +192,5 @@ export function datePreview(expr: string, format: string, zone: string, now: Dat
 export function looksLikeDateField(identity?: { id?: string; nameAttr?: string; label?: string; name?: string; text?: string }): boolean {
   if (!identity) return false;
   const hay = [identity.id, identity.nameAttr, identity.label, identity.name, identity.text].filter(Boolean).join(" ");
-  return /\b(date|check-?in|check-?out|dob|birthday|arrival|departure)\b/i.test(hay);
+  return /date|dob|birth|check-?in|check-?out|birthday|arrival|departure/i.test(hay);
 }

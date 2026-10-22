@@ -275,6 +275,8 @@ function clutterWall(input: PageSignals): PageClassDecision | undefined {
   const blob = `${input.title || ""}\n${shortTexts(input).join("\n")}\n${(input.markers || []).join("\n")}\n${(input.iframeSrcs || []).join("\n")}`;
   const kind = clutterKind(blob, input);
   if (!kind) return undefined;
+  // A dialog that already contains the step's control is the form, not an interstitial.
+  if (kind === "modal" && input.targetPresent) return undefined;
   return { class: "clutter", reason: kind, evidence: [{ source: "text", detail: kind }], dismiss: close };
 }
 
