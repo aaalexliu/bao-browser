@@ -11,9 +11,12 @@ static const UInt32 kHotPause = 3;
 
 static NSPanel *panel;
 static NSTextField *banner;
+static NSTextField *notifyLabel;
+static NSButton *notifyButton;
 static NSTextView *stepsView;
 static NSTextField *field;
 static NSButton *pauseButton;
+static NSString *const kNotifySettingsURL = @"x-apple.systempreferences:com.apple.Notifications-Settings.extension";
 static BOOL paused = NO;
 static NSLock *outLock;
 
@@ -86,6 +89,24 @@ static void handle(NSDictionary *msg) {
         emit(@{@"event": @"badge", @"badge": [NSApp dockTile].badgeLabel ?: @""});
         return;
     }
+    if ([cmd isEqualToString:@"notify-off"]) {
+        notifyLabel.hidden = NO;
+        notifyButton.hidden = NO;
+        [panel orderFrontRegardless];
+        emit(@{
+            @"event": @"notify-off",
+            @"title": notifyLabel.stringValue ?: @"",
+            @"button": notifyButton.title ?: @"",
+            @"url": kNotifySettingsURL,
+        });
+        return;
+    }
+    if ([cmd isEqualToString:@"notify-clear"]) {
+        notifyLabel.hidden = YES;
+        notifyButton.hidden = YES;
+        emit(@{@"event": @"notify-clear"});
+        return;
+    }
     /* Fixture driver. performClick runs the same action as a mouse click. */
     if ([cmd isEqualToString:@"click"]) {
         NSString *title = msg[@"title"];
@@ -143,6 +164,12 @@ static void onDiscard(id sender) {
     emit(@{@"event": @"discard"});
 }
 
+static void onOpenSettings(id sender) {
+    (void)sender;
+    NSURL *url = [NSURL URLWithString:kNotifySettingsURL];
+    if (url) [[NSWorkspace sharedWorkspace] openURL:url];
+}
+
 static OSStatus hotkeyHandler(EventHandlerCallRef next, EventRef event, void *user) {
     (void)next; (void)user;
     EventHotKeyID hid = {0};
@@ -198,7 +225,7 @@ static void readStdin(void) {
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
     (void)note;
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-    NSRect frame = NSMakeRect(40, 80, 380, 420);
+    NSRect frame = NSMakeRect(40, 80, 380, 508);
     panel = [[NSPanel alloc] initWithContentRect:frame
         styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
         backing:NSBackingStoreBuffered
@@ -216,6 +243,17 @@ static void readStdin(void) {
     banner.font = [NSFont boldSystemFontOfSize:16];
     banner.textColor = [NSColor systemRedColor];
     [content addSubview:banner];
+
+    notifyLabel = [NSTextField labelWithString:@"Notifications are off for Bao"];
+    notifyLabel.hidden = YES;
+    notifyLabel.frame = NSMakeRect(16, 468, 348, 20);
+    notifyLabel.font = [NSFont systemFontOfSize:13];
+    notifyLabel.lineBreakMode = NSLineBreakByClipping;
+    [content addSubview:notifyLabel];
+    notifyButton = [NSButton buttonWithTitle:@"Open Settings" target:self action:@selector(openSettings:)];
+    notifyButton.hidden = YES;
+    notifyButton.frame = NSMakeRect(16, 432, 140, 28);
+    [content addSubview:notifyButton];
 
     pauseButton = [NSButton buttonWithTitle:@"Pause" target:self action:@selector(pause:)];
     pauseButton.frame = NSMakeRect(16, 348, 72, 28);
@@ -258,6 +296,7 @@ static void readStdin(void) {
 - (void)note:(id)sender { onNote(sender); }
 - (void)check:(id)sender { onCheck(sender); }
 - (void)discard:(id)sender { onDiscard(sender); }
+- (void)openSettings:(id)sender { onOpenSettings(sender); }
 @end
 
 int main(void) {

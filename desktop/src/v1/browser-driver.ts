@@ -517,7 +517,14 @@ async function baoNotify(cmd: "act" | "clear", title = "", body = ""): Promise<N
   });
 }
 
-export async function notifyOs(title: string, body: string): Promise<void> {
+let onOsNotify: (report: NotifyReport) => void = () => {};
+
+/** startApp registers this so a denied notification updates the capture bar. */
+export function watchOsNotify(watch: (report: NotifyReport) => void): void {
+  onOsNotify = watch;
+}
+
+export async function notifyOs(title: string, body: string): Promise<NotifyReport> {
   if (process.platform === "darwin") {
     const report = await baoNotify("act", title, body);
     console.log(`bao notify ${JSON.stringify({
@@ -529,7 +536,8 @@ export async function notifyOs(title: string, body: string): Promise<void> {
       bodies: report.bodies || [],
       error: report.error || "",
     })}`);
-    return;
+    onOsNotify(report);
+    return report;
   }
   const { spawn } = await import("node:child_process");
   await new Promise<void>((resolve) => {
@@ -537,6 +545,9 @@ export async function notifyOs(title: string, body: string): Promise<void> {
     child.on("error", () => resolve());
     child.on("close", () => resolve());
   });
+  const report: NotifyReport = { ok: true, delivered: false };
+  onOsNotify(report);
+  return report;
 }
 
 export async function clearOsNotify(): Promise<void> {
