@@ -15,7 +15,7 @@ interface Rpc {
   jsonrpc: "2.0";
   id?: number | string;
   method?: string;
-  params?: { name?: string; arguments?: Record<string, unknown> };
+  params?: { name?: string; arguments?: Record<string, unknown>; protocolVersion?: string };
 }
 
 interface Hit {
@@ -163,6 +163,8 @@ export async function liveMcpMain(): Promise<void> {
       text = err instanceof Error ? err.message : String(err);
     }
     const after = await statusText().catch(() => ({ status: undefined, url: page.url() }));
+    const view = await ask({ op: "view" }).catch(() => null);
+    if (view) writeFileSync(path.join(home, "last-view.json"), JSON.stringify(view));
     const image = await shot();
     const recordedArgs: Record<string, unknown> = { ...args };
     if (sensitive) delete recordedArgs.text;
@@ -192,6 +194,7 @@ export async function liveMcpMain(): Promise<void> {
 
   const input = process.stdin;
   let buf = Buffer.alloc(0);
+  let framing: RpcFraming | null = null;
   let closed = false;
   const shutdown = async () => {
     if (closed) return;
@@ -203,28 +206,30 @@ export async function liveMcpMain(): Promise<void> {
   input.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
-      const headerEnd = buf.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-      const header = buf.slice(0, headerEnd).toString("utf8");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) return;
-      const length = Number(match[1]);
-      const start = headerEnd + 4;
-      if (buf.length < start + length) return;
-      const body = buf.slice(start, start + length).toString("utf8");
-      buf = buf.slice(start + length);
-      void handle(body);
+      const next = takeRpcChunk(buf, framing);
+      if (!next) return;
+      framing = next.framing;
+      buf = Buffer.from(next.rest);
+      void handle(next.body);
     }
   });
+
+  function send(msg: unknown): void {
+    process.stdout.write(frameRpc(msg, framing || "headers"));
+  }
 
   async function handle(body: string): Promise<void> {
     const msg = JSON.parse(body) as Rpc;
     if (msg.method === "initialize") {
+      const requested = msg.params?.protocolVersion;
+      const protocolVersion = typeof requested === "string" && /^20\d{2}-\d{2}-\d{2}$/.test(requested)
+        ? requested
+        : "2024-11-05";
       return send({
         jsonrpc: "2.0",
         id: msg.id,
         result: {
-          protocolVersion: "2024-11-05",
+          protocolVersion,
           capabilities: { tools: {} },
           serverInfo: { name: "bao", version: "0.1.0" },
         },
@@ -252,7 +257,75 @@ export async function liveMcpMain(): Promise<void> {
   await new Promise(() => {});
 }
 
-function send(msg: unknown): void {
+export type RpcFraming = "headers" | "json";
+
+/** One MCP message. Claude Code writes a JSON line. The scripted client writes Content-Length. */
+export function takeRpcChunk(buf: Buffer, framing: RpcFraming | null): { body: string; rest: Buffer; framing: RpcFraming } | null {
+  const mode = framing || detectFraming(buf);
+  if (!mode) return null;
+  return mode === "json" ? takeJsonRpc(buf) : takeHeaderRpc(buf);
+}
+
+export function frameRpc(msg: unknown, framing: RpcFraming): string {
   const json = JSON.stringify(msg);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  if (framing === "json") return `${json}\n`;
+  return `Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`;
+}
+
+function detectFraming(buf: Buffer): RpcFraming | null {
+  let i = 0;
+  while (i < buf.length && (buf[i] === 0x20 || buf[i] === 0x09 || buf[i] === 0x0d || buf[i] === 0x0a)) i++;
+  if (i >= buf.length) return null;
+  return buf[i] === 0x7b ? "json" : "headers";
+}
+
+function takeJsonRpc(buf: Buffer): { body: string; rest: Buffer; framing: RpcFraming } | null {
+  const text = buf.toString("utf8");
+  let i = 0;
+  while (i < text.length && /\s/.test(text[i])) i++;
+  if (i >= text.length || text[i] !== "{") return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let j = i; j < text.length; j++) {
+    const ch = text[j];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === "\"") inString = false;
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const end = j + 1;
+        let byteEnd = Buffer.byteLength(text.slice(0, end));
+        if (buf[byteEnd] === 0x0a) byteEnd += 1;
+        else if (buf[byteEnd] === 0x0d && buf[byteEnd + 1] === 0x0a) byteEnd += 2;
+        return { body: text.slice(i, end), rest: buf.subarray(byteEnd), framing: "json" };
+      }
+    }
+  }
+  return null;
+}
+
+function takeHeaderRpc(buf: Buffer): { body: string; rest: Buffer; framing: RpcFraming } | null {
+  const headerEnd = buf.indexOf("\r\n\r\n");
+  if (headerEnd < 0) return null;
+  const header = buf.subarray(0, headerEnd).toString("utf8");
+  const match = header.match(/Content-Length:\s*(\d+)/i);
+  if (!match) return null;
+  const length = Number(match[1]);
+  const start = headerEnd + 4;
+  if (buf.length < start + length) return null;
+  return {
+    body: buf.subarray(start, start + length).toString("utf8"),
+    rest: buf.subarray(start + length),
+    framing: "headers",
+  };
 }

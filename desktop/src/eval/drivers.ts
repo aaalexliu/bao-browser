@@ -17,6 +17,7 @@ import { condense } from "../v1/condense";
 import type { TrailEvent } from "../v1/interpret";
 import { replay } from "../v1/replay";
 import { validateWorkflow, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
+import { driverBinary, driverProcessEnv, runLiveCli, taskPrompt, unavailableReason, type LiveDriver } from "./live-cli";
 import { McpClient } from "./mcp-client";
 import {
   CAPTURE_SECRET,
@@ -41,45 +42,75 @@ export interface DriverCell {
   tokens: string;
 }
 
-const NOT_RUN = {
-  claude: probeClaude(),
-  codex: probeCodex(),
-  cursor: probeCursor(),
-};
-
 export async function evalDrivers(args: string[] = []): Promise<{ markdown: string; cells: DriverCell[]; video?: string }> {
+  delete process.env.BAO_HEADED;
   const out = flag(args, "--out") || path.join("docs", "eval", "drivers.md");
   const only = flag(args, "--driver");
   const onlyTask = flag(args, "--task");
   const tasks = onlyTask ? DRIVER_TASKS.filter((task) => task.id === onlyTask) : DRIVER_TASKS;
+  const ready = {
+    claude: probeClaude(),
+    codex: probeCodex(),
+    cursor: probeCursor(),
+  };
   const cells: DriverCell[] = [];
-  for (const driver of ["claude", "codex", "cursor"] as const) {
-    if (only && only !== driver) continue;
-    const reason = NOT_RUN[driver];
-    for (const task of tasks) {
-      cells.push(blank(driver, task.id, "not run", reason));
+  const videos = new Map<string, string>();
+  const server = await startFixtures();
+  try {
+    for (const driver of ["claude", "codex", "cursor"] as const) {
+      if (only && only !== driver) continue;
+      const reason = ready[driver];
+      const bin = driverBinary(driver);
+      if (reason || !bin) {
+        for (const task of tasks) cells.push(blank(driver, task.id, "not run", reason || unavailableReason(driver)));
+        continue;
+      }
+      let filmed = false;
+      let fallback: { workflow: WorkflowV2; task: DriverTask } | undefined;
+      for (const task of tasks) {
+        const cell = await runLive(driver, bin, task, server.port, { video: task.id === "drift" });
+        cells.push(cell.cell);
+        if (cell.video) {
+          videos.set(driver, cell.video);
+          filmed = true;
+        } else if (!fallback && cell.workflow && cell.cell.taskComplete === "yes") {
+          fallback = { workflow: cell.workflow, task };
+        }
+      }
+      if (!filmed && fallback) {
+        const fileName = fallback.task.replayFiles?.[1] || "";
+        const outcome = await replayTask(fallback.workflow, fallback.task, server.port, {
+          texts: fallback.task.replayTexts[1] || [],
+          secret: fallback.task.replaySecrets?.[1] || "",
+          filePath: fileName ? writeSample(mkdtempSync(path.join(tmpdir(), "bao-video-file-")), fileName) : "",
+          fileName,
+          video: true,
+          videoName: `driver-replay-${driver}.webm`,
+        });
+        if (outcome.video) videos.set(driver, outcome.video);
+      }
     }
-  }
-  let video: string | undefined;
-  if (!only || only === "scripted") {
-    const server = await startFixtures();
-    try {
+    if (!only || only === "scripted") {
       for (const task of tasks) {
         const cell = await runScripted(task, server.port);
         cells.push(cell.cell);
-        if (cell.video) video = cell.video;
+        if (cell.video) videos.set("scripted", cell.video);
       }
-    } finally {
-      await server.close();
     }
+  } finally {
+    await server.close();
   }
-  const markdown = render(cells, video);
+  const markdown = render(cells, videos);
   mkdirSync(path.dirname(out), { recursive: true });
   writeFileSync(out, markdown);
-  if (video) {
-    mkdirSync("/opt/cursor/artifacts", { recursive: true });
-    const dest = "/opt/cursor/artifacts/driver-replay.webm";
-    copyFileSync(video, dest);
+  const video = videos.values().next().value as string | undefined;
+  for (const file of videos.values()) {
+    try {
+      mkdirSync("/opt/cursor/artifacts", { recursive: true });
+      copyFileSync(file, path.join("/opt/cursor/artifacts", path.basename(file)));
+    } catch {
+      // The artifact directory is not writable on every machine. The docs copy remains.
+    }
   }
   return { markdown, cells, video };
 }
@@ -125,6 +156,48 @@ async function startFixtures(): Promise<{ port: number; close: () => Promise<voi
 function taskUrl(port: number, task: DriverTask, query: string): string {
   const suffix = query ? `?${query}` : "";
   return `http://127.0.0.1:${port}/t/${task.id}${suffix}`;
+}
+
+async function runLive(
+  driver: LiveDriver,
+  bin: string,
+  task: DriverTask,
+  port: number,
+  opts: { video: boolean },
+): Promise<{ cell: DriverCell; video?: string; workflow?: WorkflowV2 }> {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-live-"));
+  const uploadPath = task.captureFile ? writeSample(home, task.captureFile) : "";
+  console.error(`bao eval ${driver} ${task.id}`);
+  const live = await runLiveCli({
+    driver,
+    bin,
+    home,
+    fixtureUrl: taskUrl(port, task, task.captureQuery),
+    prompt: taskPrompt(task, uploadPath),
+  });
+  let view: FixtureView | null = null;
+  try {
+    view = JSON.parse(readFileSync(path.join(home, "last-view.json"), "utf8")) as FixtureView;
+  } catch {
+    view = null;
+  }
+  let loaded: LoadedTrail | undefined;
+  try {
+    loaded = loadTrail(home);
+  } catch {
+    loaded = undefined;
+  }
+  const stops = (loaded?.rows || []).flatMap((row) => row.gate ? [row.gate] : []);
+  const failed = live.timedOut ? "timed out" : live.code && !view ? `cli exit ${live.code}` : "";
+  writeFileSync(path.join(home, "cli-out.txt"), live.stdout.slice(0, 200_000));
+  const graded = await grade(driver, task, port, home, uploadPath, view, stops, failed, {
+    video: opts.video,
+    videoName: `driver-replay-${driver}.webm`,
+    tokens: live.tokens,
+    extra: redact(live.stderr).slice(0, 240),
+    requireRef: false,
+  });
+  return graded;
 }
 
 async function runScripted(task: DriverTask, port: number): Promise<{ cell: DriverCell; video?: string }> {
@@ -181,7 +254,26 @@ async function runScripted(task: DriverTask, port: number): Promise<{ cell: Driv
   } finally {
     await client.close();
   }
-  const stderr = redact(client.stderr.join(""));
+  return grade("scripted", task, port, home, uploadPath, view, stops, failed, {
+    video: task.id === "drift",
+    videoName: "driver-replay.webm",
+    tokens: "n/a",
+    extra: redact(client.stderr.join("")).slice(0, 240),
+    requireRef: true,
+  });
+}
+
+async function grade(
+  driver: string,
+  task: DriverTask,
+  port: number,
+  home: string,
+  uploadPath: string,
+  view: FixtureView | null,
+  stops: string[],
+  failed: string,
+  opts: { video: boolean; videoName: string; tokens: string; extra: string; requireRef: boolean },
+): Promise<{ cell: DriverCell; video?: string; workflow?: WorkflowV2 }> {
   const captureReason = !view ? failed || "no final snapshot" : captureOk(task, view, stops);
   const taskComplete = !captureReason;
   let trailNote = "no trail";
@@ -195,7 +287,7 @@ async function runScripted(task: DriverTask, port: number): Promise<{ cell: Driv
   try {
     const loaded = loadTrail(home);
     const problems = trailProblems(loaded.rows, home, uploadPath);
-    if (task.id === "form-file" && !loaded.rows.some((row) => row.args?.ref === "noop")) {
+    if (opts.requireRef && task.id === "form-file" && !loaded.rows.some((row) => row.args?.ref === "noop")) {
       problems.push("form task did not record a DOM id ref");
     }
     trailOk = problems.length === 0 && loaded.rows.length > 0;
@@ -229,7 +321,8 @@ async function runScripted(task: DriverTask, port: number): Promise<{ cell: Driv
         secret: task.replaySecrets?.[i] || "",
         filePath,
         fileName: fileName || "",
-        video: task.id === "drift" && i === 1,
+        video: opts.video && i === 1,
+        videoName: opts.videoName,
       });
       calls += outcome.modelCalls;
       if (outcome.video) video = outcome.video;
@@ -242,21 +335,22 @@ async function runScripted(task: DriverTask, port: number): Promise<{ cell: Driv
   }
   const replayOk = replayNote === "2/2" && modelCalls === "0";
   const pass = taskComplete && trailOk && workflowOk && replayOk;
-  const reason = pass ? "" : redact([failed, captureReason || "", trailOk ? "" : trailNote, replayNote].filter(Boolean).join("; "));
+  const reason = pass ? "" : redact([failed, opts.extra, captureReason || "", trailOk ? "" : trailNote, replayNote].filter(Boolean).join("; ")).slice(0, 300);
   return {
     video,
+    workflow,
     cell: {
-      driver: "scripted",
+      driver,
       task: task.id,
       status: pass ? "pass" : "fail",
       reason,
       taskComplete: taskComplete ? "yes" : "no",
       trailComplete: trailOk ? "yes" : "no",
       workflow: workflowOk ? "yes" : "no",
-      replay: replayNote,
+      replay: redact(replayNote),
       modelCalls: modelCalls || (workflow ? "0" : ""),
       latencyMs: latency,
-      tokens: "n/a",
+      tokens: opts.tokens,
     },
   };
 }
@@ -370,7 +464,7 @@ async function replayTask(
   workflow: WorkflowV2,
   task: DriverTask,
   port: number,
-  spec: { texts: string[]; secret: string; filePath: string; fileName: string; video: boolean },
+  spec: { texts: string[]; secret: string; filePath: string; fileName: string; video: boolean; videoName?: string },
 ): Promise<{ ok: boolean; reason: string; modelCalls: number; video?: string }> {
   const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
   const videoDir = spec.video ? mkdtempSync(path.join(tmpdir(), "bao-video-")) : undefined;
@@ -402,7 +496,7 @@ async function replayTask(
     let videoPath: string | undefined;
     if (video) {
       videoPath = await video.path();
-      const saved = path.join("docs", "eval", "driver-replay.webm");
+      const saved = path.join("docs", "eval", spec.videoName || "driver-replay.webm");
       mkdirSync(path.dirname(saved), { recursive: true });
       copyFileSync(videoPath, saved);
       videoPath = saved;
@@ -498,58 +592,53 @@ function redact(text: string): string {
   for (const secret of [process.env.GROQ_API_KEY, process.env.OPENAI_API_KEY, process.env.ANTHROPIC_API_KEY, CAPTURE_SECRET]) {
     if (secret) out = out.split(secret).join("[redacted]");
   }
-  return out;
-}
-
-function which(bin: string): string | null {
-  const result = spawnSync("which", [bin], { encoding: "utf8" });
-  return result.status === 0 ? result.stdout.trim() : null;
+  return out.replace(/\/(?:var\/folders|private\/tmp|tmp)\/[^\s'")]+/g, "[tmp]");
 }
 
 function probeClaude(): string {
-  const bin = which("claude");
-  const key = !!process.env.ANTHROPIC_API_KEY;
-  let sdk = false;
-  try {
-    require.resolve("@anthropic-ai/claude-agent-sdk");
-    sdk = true;
-  } catch { /* not installed */ }
-  if (!bin && !sdk) {
-    return "not run: claude CLI is not on PATH, and @anthropic-ai/claude-agent-sdk is not installed";
-  }
-  if (!key && !bin) return "not run: ANTHROPIC_API_KEY is unset";
-  if (!bin && !key) return "not run: claude CLI is not on PATH and ANTHROPIC_API_KEY is unset";
-  if (!bin) return "not run: claude CLI is not on PATH";
-  if (!key) return "not run: claude CLI is on PATH but ANTHROPIC_API_KEY is unset and no Agent SDK session was configured";
-  return "not run: claude was found but this process did not start it";
+  const bin = driverBinary("claude");
+  if (!bin) return unavailableReason("claude");
+  const status = spawnSync(bin, ["auth", "status"], { encoding: "utf8", timeout: 20000, env: driverProcessEnv() });
+  if (`${status.stdout || ""}`.includes('"loggedIn": true') || `${status.stdout || ""}`.includes('"loggedIn":true')) return "";
+  if (process.env.ANTHROPIC_API_KEY) return "";
+  return "not run: claude CLI is present but not logged in";
 }
 
 function probeCodex(): string {
-  const bin = which("codex");
-  const key = !!process.env.OPENAI_API_KEY;
-  if (!bin && !key) return "not run: codex CLI is not on PATH and OPENAI_API_KEY is unset";
-  if (!bin) return "not run: codex CLI is not on PATH";
-  if (!key) return "not run: codex CLI is on PATH but OPENAI_API_KEY is unset";
-  return "not run: codex was found but this process did not start it";
+  const bin = driverBinary("codex");
+  if (!bin) return unavailableReason("codex");
+  const status = spawnSync(bin, ["login", "status"], { encoding: "utf8", timeout: 20000, env: driverProcessEnv() });
+  const text = `${status.stdout || ""}\n${status.stderr || ""}`;
+  if (status.status === 0 && /logged in/i.test(text)) return "";
+  return "not run: codex CLI is present but not logged in";
 }
 
 function probeCursor(): string {
-  const bin = which("cursor-agent") || which("agent") || which("cursor");
-  if (!bin) return "not run: cursor-agent CLI is not on PATH";
-  return `not run: ${bin} is on PATH but no Cursor credential for a computer-use session was configured`;
+  const bin = driverBinary("cursor");
+  if (!bin) return unavailableReason("cursor");
+  const status = spawnSync(bin, ["status"], { encoding: "utf8", timeout: 20000, env: driverProcessEnv() });
+  const text = `${status.stdout || ""}\n${status.stderr || ""}`;
+  if (status.status === 0 && /logged in/i.test(text)) return "";
+  return "not run: cursor-agent is present but not logged in";
 }
 
-function render(cells: DriverCell[], video?: string): string {
+function render(cells: DriverCell[], videos: Map<string, string>): string {
   const lines = [
     "# Driver eval",
     "",
-    "Scripted is a local MCP client. It sends coordinates from a snapshot, and one DOM id ref on the form task. It does not call a model. Claude, Codex, and Cursor are marked not run when the CLI or a credential is missing. Those cells are not filled in.",
+    "Scripted is a local MCP client. It sends coordinates from a snapshot, and one DOM id ref on the form task. It does not call a model. Claude, Codex, and Cursor run only when that CLI is already logged in. This command does not start a login. Model calls are replay heal calls. Tokens are the driver CLI usage.",
     "",
-    video ? `Replay video of the drifted-layout workflow: docs/eval/driver-replay.webm.` : "No replay video was written.",
-    "",
+  ];
+  if (videos.size === 0) lines.push("No replay video was written.", "");
+  else {
+    lines.push("Replay video of one derived workflow per driver:");
+    for (const [driver, file] of videos) lines.push(`- ${driver}: ${file}`);
+    lines.push("");
+  }
+  lines.push(
     "| driver | task | status | task complete | trail complete | workflow | replay | model calls | latency ms | tokens | reason |",
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-  ];
+  );
   for (const cell of cells) {
     lines.push(`| ${[
       cell.driver,
@@ -575,5 +664,5 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 export function driverProbeReasons(): { claude: string; codex: string; cursor: string } {
-  return { ...NOT_RUN };
+  return { claude: probeClaude(), codex: probeCodex(), cursor: probeCursor() };
 }
