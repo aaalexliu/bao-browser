@@ -102,6 +102,74 @@ export function recorderSource(): string {
       text: norm(el.innerText || el.textContent || "").slice(0, 80) || undefined,
       path: [],
     });
+    const monthIndex = (name) => {
+      const names = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+      const n = names.indexOf(String(name || "").toLowerCase());
+      return n < 0 ? 0 : n + 1;
+    };
+    const isoDate = (y, m, d) => String(y) + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    const pickerMark = (el) => {
+      if (!el || !el.closest) return null;
+      const popup = el.closest(".react-datepicker");
+      if (popup) {
+        const label = el.getAttribute && el.getAttribute("aria-label");
+        const match = label && String(label).match(/(\\d{1,2})\\s+([A-Za-z]+)\\s+(\\d{4})/);
+        const month = match ? monthIndex(match[2]) : 0;
+        if (!match || !month) return { picker: true };
+        return { picker: true, value: isoDate(Number(match[3]), month, Number(match[1])) };
+      }
+      const cal = el.closest(".rbc-calendar");
+      if (cal) {
+        const nav = norm(el.innerText || "").toLowerCase();
+        if (nav === "today" || nav === "back" || nav === "next") return { picker: true };
+        const cell = el.closest(".rbc-date-cell");
+        if (!cell) return { picker: true };
+        const heading = cal.querySelector(".rbc-toolbar-label");
+        const label = heading && heading.textContent && heading.textContent.trim().match(/^([A-Za-z]+)\\s+(\\d{4})$/);
+        const month = label ? monthIndex(label[1]) : 0;
+        const day = Number(norm(cell.innerText || ""));
+        if (!label || !month || !day) return { picker: true };
+        return { picker: true, value: isoDate(Number(label[2]), month, day) };
+      }
+      const fixture = el.closest("[data-bao-picker]");
+      if (fixture) {
+        const date = el.getAttribute && el.getAttribute("data-date");
+        if (el.getAttribute && el.getAttribute("data-nav")) return { picker: true };
+        return date ? { picker: true, value: date } : { picker: true };
+      }
+      return null;
+    };
+    const calendarRange = (cal) => {
+      const events = cal.querySelectorAll(".rbc-event");
+      if (!events.length) return null;
+      const heading = cal.querySelector(".rbc-toolbar-label");
+      const label = heading && heading.textContent && heading.textContent.trim().match(/^([A-Za-z]+)\\s+(\\d{4})$/);
+      const month = label ? monthIndex(label[1]) : 0;
+      if (!label || !month) return null;
+      const days = [];
+      cal.querySelectorAll(".rbc-month-row").forEach((row) => {
+        const cells = Array.from(row.querySelectorAll(".rbc-date-cell")).map((el) => ({
+          day: Number(norm(el.innerText || "")),
+          off: el.classList.contains("rbc-off-range"),
+        }));
+        const segments = Array.from(row.querySelectorAll(".rbc-row-segment"));
+        if (!segments.some((seg) => seg.querySelector(".rbc-event"))) return;
+        let cursor = 0;
+        segments.forEach((seg) => {
+          const basis = Number.parseFloat(seg.style.flexBasis || "0");
+          const span = Math.round((basis / 100) * 7) || 0;
+          const hit = !!seg.querySelector(".rbc-event");
+          for (let i = 0; i < span; i++) {
+            const cell = cells[cursor + i];
+            if (hit && cell && !cell.off) days.push(cell.day);
+          }
+          cursor += span;
+        });
+      });
+      if (!days.length) return null;
+      const year = Number(label[2]);
+      return { start: isoDate(year, month, days[0]), end: isoDate(year, month, days[days.length - 1]) };
+    };
     document.addEventListener("click", (event) => {
       if (window.__baoPicking) return;
       const raw = event.target;
@@ -130,7 +198,18 @@ export function recorderSource(): string {
           payload.subtreeAfter = change.after;
         }
         if (afterText) payload.afterText = afterText;
+        const picked = pickerMark(el);
+        if (picked) Object.assign(payload, picked);
         send(payload);
+      }, 0);
+    }, true);
+    document.addEventListener("mouseup", (event) => {
+      const cal = document.querySelector(".rbc-calendar");
+      if (!cal || !event.target || !cal.contains(event.target)) return;
+      setTimeout(() => {
+        const range = calendarRange(cal);
+        if (!range) return;
+        send({ kind: "act", op: "click", picker: true, value: range.start, endValue: range.end, identity: ident(cal) });
       }, 0);
     }, true);
     document.addEventListener("input", (event) => {
@@ -153,6 +232,11 @@ export function recorderSource(): string {
       }
       if (el.type === "password") {
         notePassword(el);
+        return;
+      }
+      const dateLike = el.type === "date" || /\\b(date|check-?in|check-?out|dob|birthday|arrival|departure)\\b/i.test([el.id, el.getAttribute("name"), el.getAttribute("aria-label"), el.getAttribute("placeholder")].join(" "));
+      if (dateLike) {
+        send({ kind: "act", op: "type", identity: ident(el), value: el.value, dateField: true, inputType: el.type || "text" });
         return;
       }
       send({ kind: "act", op: "type", identity: ident(el), value: el.value });

@@ -5,6 +5,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -39,6 +40,20 @@ import {
 import { consequential, type SiteTrustMode } from "./site-trust";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
+import {
+  beginFilesRun,
+  downloadFileName,
+  endFilesRun,
+  fileDigest,
+  filesFor,
+  filesRun,
+  openTarget,
+  placeDownload,
+  prepareFilesDatesRun,
+  renderTemplate,
+  templateScope,
+  type FileOutput,
+} from "./files-dates";
 import {
   subst,
   type FileArg,
@@ -133,6 +148,12 @@ export interface Driver {
   highlightTarget?(node: Identity): Promise<void>;
   /** The next person action, if the driver is watching the page. */
   performed?(): Promise<GuideAct | null>;
+  /** Open a URL in this browser. */
+  goto?(url: string): Promise<void>;
+  /** Arm CDP download capture, trigger the download, and return the saved path. */
+  download?(spec: { dir: string; filename: string; timeoutMs: number; url?: string; node?: Identity }): Promise<{ suggestedFilename: string; path: string }>;
+  /** Click or drag the cell for a resolved date. Recorded day clicks are not replayed. */
+  pickDate?(spec: { iso: string; endIso?: string; node?: Identity }): Promise<void>;
   /** Drop trail capture while a person has the page. */
   pauseCapture?(): void;
   resumeCapture?(): void;
@@ -191,6 +212,8 @@ export interface RunResult {
   modelCalls: number;
   /** Filled from workflow.outputs. Absent when the workflow declares none. */
   outputs?: OutputValue[];
+  /** Download files from this run. Paths live only here. */
+  files?: Record<string, FileOutput>;
 }
 
 export interface ReplayOptions {
@@ -227,6 +250,14 @@ export interface ReplayOptions {
   holdForPerson?: boolean;
   /** Called when a wall pauses the run, before the wait, so the run page can show it. */
   onPause?: (result: RunResult) => void;
+  /** IANA zone for date inputs. Absent uses the host zone. */
+  zone?: string;
+  /** Per-run download root. Each run gets a folder under it. */
+  downloadDir?: string;
+  /** Clock for resolving relative dates. Absent uses nowMs or the current time. */
+  clock?: Date;
+  /** Spawn used by an open-file step. Absent runs xdg-open or open. */
+  openExec?: (argv: string[]) => Promise<void>;
 }
 
 let seq = 0;
@@ -261,10 +292,21 @@ export async function replay(
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
   const tables = new Map<string, Record<string, string>[]>();
-
   const pageClasses: PageClassRecord[] = [];
+  const filesClock = opts.clock ?? new Date(opts.nowMs ? opts.nowMs() : Date.now());
+  const prepared = prepareFilesDatesRun(workflow, args, {
+    now: filesClock,
+    zone: opts.zone,
+    runId,
+    downloadDir: opts.downloadDir || path.join(tmpdir(), "bao-runs"),
+    openExec: opts.openExec,
+  });
+  args = prepared.args;
+  beginFilesRun(prepared);
+
   const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls" | "pageClasses"> & Partial<RunResult>): RunResult => {
     const trace = driver.trace?.();
+    const downloaded = endFilesRun(runId);
     const outputs = materializeOutputs(workflow, tables);
     return {
       heals,
@@ -279,6 +321,7 @@ export async function replay(
       network: trace?.network || [],
       ...partial,
       ...(outputs ? { outputs } : {}),
+      ...(Object.keys(downloaded).length ? { files: downloaded } : {}),
       modelCalls: heals.filter((item) => item.model).length,
     };
   };
@@ -438,7 +481,9 @@ export async function replay(
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
         stamp({ id: step.id, status: "passed", phase: "auth", reason: "auth: redirected to login" });
       } else {
-        const passed = clutterPrimed ? "recovered: clutter" : (outcome.detail || (outcome.recovered ? `recovered: ${outcome.recovered}` : ""));
+        const passed = clutterPrimed
+          ? "recovered: clutter"
+          : (outcome.note || outcome.detail || (outcome.recovered ? `recovered: ${outcome.recovered}` : ""));
         stamp({ id: step.id, status: "passed", ...(passed ? { reason: passed } : {}) });
       }
       noteTrajectory(trajectory, step, outcome.acted, true, clock() - started);
@@ -619,7 +664,7 @@ export async function replay(
       noteTrajectory(trajectory, patched, retried.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure: retried.failure });
     }
-    const passed = retried.detail || (retried.recovered ? `recovered: ${retried.recovered}` : "");
+    const passed = retried.note || retried.detail || (retried.recovered ? `recovered: ${retried.recovered}` : "");
     stamp({ id: step.id, status: "passed", ...(passed ? { reason: passed } : {}) });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
@@ -633,7 +678,7 @@ export async function replay(
 }
 
 type StepOutcome =
-  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string; detail?: string }
+  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string; note?: string; detail?: string }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
   | { ok: false; paused: "confirm" | "trust" | "signin"; repairs: RepairLog[]; ask?: HumanAsk };
 
@@ -721,6 +766,9 @@ async function runStepAction(
   if (step.action === "confirm") return runConfirm(step, args, driver, secrets, gate);
   if (trust === "ask" && !consequential(step) && step.action !== "verify" && step.action !== "note") {
     return { ok: false, paused: "trust", repairs };
+  }
+  if (step.action === "download" || step.action === "open" || step.datePicker) {
+    return runFilesDatesStep(step, args, driver, secrets, repairs, gate, recovery);
   }
   if (step.action === "verify") {
     const held = await readExpect(step, args, driver, repairs, gate, recovery);
@@ -1316,11 +1364,11 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     return;
   }
   if (step.action === "upload") {
-    await driver.upload(node, files(args, step.input));
+    await driver.upload(node, boundFiles(step, args, gate));
     return;
   }
   if (step.action === "drop") {
-    await driver.drop(node, files(args, step.input));
+    await driver.drop(node, boundFiles(step, args, gate));
     return;
   }
   if (step.action === "check") {
@@ -1386,6 +1434,80 @@ export function expectedText(match: string, args: ReplayArgs): string {
     return String(n);
   }
   return subst(match, args);
+}
+
+function boundFiles(step: WorkflowStep, args: ReplayArgs, gate: ApplyGate): FileArg[] {
+  const bound = filesFor(gate.runId || "", step, gate.workflow);
+  if (bound) return bound;
+  return files(args, step.input);
+}
+
+async function runFilesDatesStep(
+  step: WorkflowStep,
+  args: ReplayArgs,
+  driver: Driver,
+  secrets: string[],
+  repairs: RepairLog[],
+  gate: ApplyGate,
+  recovery: RecoveryBudget,
+): Promise<StepOutcome> {
+  const run = filesRun(gate.runId || "");
+  if (!run) {
+    return { ok: false, repairs, failure: await fail(driver, step, "action", "files run was not started", undefined, secrets) };
+  }
+  try {
+    if (step.action === "download") {
+      const spec = step.download;
+      if (!spec) throw new Error("download");
+      if (!driver.download) throw new Error("download needs a browser");
+      mkdirSync(run.downloadDir, { recursive: true });
+      const staging = path.join(run.downloadDir, "incoming");
+      mkdirSync(staging, { recursive: true });
+      const saved = await driver.download({
+        dir: staging,
+        filename: "pending",
+        timeoutMs: step.timeoutMs || 30_000,
+        url: spec.url ? renderTemplate(spec.url, templateScope(run)) : undefined,
+        node: spec.url ? undefined : step.identity,
+      });
+      const filename = downloadFileName(spec.name, templateScope(run, saved.suggestedFilename));
+      const dest = placeDownload(saved.path, run.downloadDir, filename);
+      const output = fileDigest(dest);
+      run.outputs.set(spec.output, output);
+      const held = await readExpect(step, args, driver, repairs, gate, recovery);
+      if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+      return { ok: true, repairs, note: `${output.name} ${output.sha256}` };
+    }
+    if (step.action === "open") {
+      const spec = step.open;
+      if (!spec) throw new Error("open");
+      if (spec.target === "url") {
+        const url = renderTemplate(spec.url || "", templateScope(run));
+        if (!driver.goto) throw new Error("open url needs a browser");
+        await driver.goto(url);
+        const held = await readExpect(step, args, driver, repairs, gate, recovery);
+        if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+        return { ok: true, repairs };
+      }
+      const file = renderTemplate(spec.file || "", templateScope(run));
+      const plan = await openTarget({ target: "file", path: file, app: spec.app }, { exec: run.openExec });
+      return { ok: true, repairs, note: plan.needsMacTest };
+    }
+    const picker = step.datePicker;
+    if (!picker) throw new Error("date picker");
+    const start = run.dates.get(picker.input);
+    if (!start) throw new Error(`date ${picker.input}`);
+    const end = picker.endInput ? run.dates.get(picker.endInput) : undefined;
+    if (picker.endInput && !end) throw new Error(`date ${picker.endInput}`);
+    if (!driver.pickDate) throw new Error("date picker needs a browser");
+    await driver.pickDate({ iso: start.iso, endIso: end?.iso, node: step.identity });
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    return { ok: true, repairs, acted: step.identity };
+  } catch (err) {
+    const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+    return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
+  }
 }
 
 function files(args: ReplayArgs, name: string | undefined): FileArg[] {

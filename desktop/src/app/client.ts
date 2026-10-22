@@ -1153,18 +1153,20 @@ async function openEditor(id: string): Promise<void> {
 async function fillArgs(id: string): Promise<void> {
   if (!id) return;
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json() as {
-    inputs: { name: string; type: string; label?: string; default?: string; choices?: string[]; multiple?: boolean }[];
+    inputs: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string }[];
+    steps?: { label?: string; download?: { output?: string } }[];
   };
   const form = document.getElementById("args");
   if (!form || screen !== "replay") return;
   const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const prev = { ...((pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {}), ...deeplinkInputs };
-  form.innerHTML = doc.inputs.map((input) => field(input, input.type === "secret" ? undefined : prev[input.name])).join("") || "<p>This workflow has no inputs.</p>";
+  form.innerHTML = doc.inputs.map((input) => field(input, input.type === "secret" ? undefined : prev[input.name], doc.steps || [])).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;
   form.querySelectorAll(".drop").forEach((zone) => {
     const el = zone as HTMLElement;
+    if (el.dataset.fromOutput) return;
     el.ondragover = (event) => { event.preventDefault(); el.classList.add("over"); };
     el.ondragleave = () => el.classList.remove("over");
     el.ondrop = (event) => {
@@ -1183,8 +1185,15 @@ async function fillArgs(id: string): Promise<void> {
   });
 }
 
-function field(input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }, previous?: string): string {
-  return runField(input, previous);
+function field(
+  input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string },
+  previous: string | undefined,
+  steps: { label?: string; download?: { output?: string } }[],
+): string {
+  const boundStep = input.fromOutput
+    ? steps.find((step) => step.download?.output === input.fromOutput)?.label || input.fromOutput
+    : undefined;
+  return runField({ ...input, boundStep }, previous);
 }
 
 function readSiteTrust(): Record<string, "ask" | "allow"> {

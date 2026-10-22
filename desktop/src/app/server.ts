@@ -33,6 +33,7 @@ import {
   type FreezeSession,
 } from "../v1/freeze-session";
 import { recorderSource } from "../v1/recorder";
+import { armBrowserDownloads, captureDownloads } from "../v1/files-dates";
 import { armFileChooser, queueChooserFile, storedFileEvent } from "../v1/file-chooser";
 import {
   auditLine,
@@ -1308,6 +1309,16 @@ export async function startApp(opts: {
           op: "upload",
           fileName: chosen.fileName,
           identity: chosen.identity,
+        }));
+      });
+      const downloadDir = await mkdtemp(path.join(tmpdir(), "bao-capture-downloads-"));
+      const downloads = await armBrowserDownloads(page, downloadDir);
+      captureDownloads(downloads, (info) => {
+        void watchShot(recordCaptured({
+          kind: "act",
+          op: "download",
+          suggestedFilename: info.suggestedFilename,
+          fileName: info.suggestedFilename,
         }));
       });
       await page.goto(startUrl);
