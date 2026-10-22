@@ -1122,6 +1122,9 @@ export async function startApp(opts: {
       });
       await context.addInitScript(recorderSource());
       page = context.pages()[0] || await context.newPage();
+      page.on("dialog", (dialog) => {
+        dialog.accept().catch(() => undefined);
+      });
       fileChooser = await armFileChooser(page, async (chosen) => {
         await recordCaptured({
           kind: "act",

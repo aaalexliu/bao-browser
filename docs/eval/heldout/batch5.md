@@ -6,7 +6,7 @@ A step expects the effect the trail recorded: text that appeared in the target s
 
 Effect filter wrongly dropped 0 true keep steps: none.
 
-Replay pass rate: condense 11/12, model 11/12, hybrid 11/12.
+Replay pass rate: condense 11/12, model 6/12, hybrid 11/12.
 
 Intent lint caught 10/10 bad texts and falsely rejected 0/24 good intents.
 
@@ -28,30 +28,30 @@ Step precision and recall use action, id, name attribute, accessible name, text 
 | nginx-core | condense | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  |  |  | pass | 0 |  |  |
 | pico-email | condense | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  |  |  | pass | 0 |  |  |
 | lua-manual | condense | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  |  |  | pass | 0 |  |  |
-| hn-search | groq/openai/gpt-oss-120b | 0.67 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | url missing Grace Hopper; url missing Alan Turing | 0 | 1228 | extra click////comments/#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(2) > span:nth-of-type(1) > a:nth-of-type(3)/-/-/ |
-| gutenberg-search | groq/openai/gpt-oss-120b | 0.67 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 1204 | extra click/slogan///Project Gutenberg is a library of 79,651 free eBooks/#slogan/-/-/ |
-| musicbrainz-search | groq/openai/gpt-oss-120b | 0.67 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 1131 | extra click////Search/#content > h1:nth-of-type(1)/-/-/; extra defaults BeatlessBeatles |
-| git-add | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 940 |  |
-| rust-vec | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 964 |  |
-| node-synopsis | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 779 |  |
-| markdown-cheat | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 784 |  |
-| pptr-api | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 956 |  |
-| httpwg-semantics | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 822 |  |
-| nginx-core | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 779 |  |
-| pico-email | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.00 | 1.00 |  | pass | 0 | 1015 |  |
-| lua-manual | groq/openai/gpt-oss-120b | 0.50 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 1139 | extra click////Lua 5.4 Reference Manual/h1:nth-of-type(1)/-/-/ |
-| hn-search | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 0.67 | url missing Grace Hopper; url missing Alan Turing | 0 | 1282 |  |
-| gutenberg-search | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 0.67 | pass | 0 | 1235 |  |
-| musicbrainz-search | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1468 |  |
-| git-add | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1031 |  |
-| rust-vec | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1034 |  |
-| node-synopsis | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1203 |  |
-| markdown-cheat | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1050 |  |
-| pptr-api | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1117 |  |
-| httpwg-semantics | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1105 |  |
-| nginx-core | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1009 |  |
-| pico-email | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 0.33 | pass | 0 | 1218 |  |
-| lua-manual | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1071 |  |
+| hn-search | groq/openai/gpt-oss-120b | 0.25 | 0.50 | 0.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | no-candidates; no-candidates | 0 | 1718 | missing type//q///#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(4) > td:nth-of-type(1) > center:nth-of-type(2) > form:nth-of-type(1) > input:nth-of-type(1)/-/q/; extra click////comments/#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(2) > span:nth-of-type(1) > a:nth-of-type(3)/-/-/ ; click// |
+| gutenberg-search | groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 896 |  |
+| musicbrainz-search | groq/openai/gpt-oss-120b | 0.67 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 1055 | extra click////Search/#content > h1:nth-of-type(1)/-/-/; extra defaults BeatlessBeatles |
+| git-add | groq/openai/gpt-oss-120b | 0.50 | 1.00 | 1.00 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 |  | below-threshold; below-threshold | 0 | 1111 | extra click////About/#sidebar > nav:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)/login/-/ |
+| rust-vec | groq/openai/gpt-oss-120b | 0.00 | 0.00 | 1.00 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 |  | below-threshold; below-threshold | 0 | 1089 | missing click////Vec<T>/#main-content > details:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(2)/-/-/; extra click////Option<T>/#main-content > details:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(3)/login/-/ ; click////Vec<T>/#main-content > details:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(2)/confirm/-/ |
+| node-synopsis | groq/openai/gpt-oss-120b | 0.00 | 0.00 | 1.00 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 1083 | missing click////Usage and example/#column2 > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)/-/-/; extra click////Usage and example/#column2 > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)/confirm/-/ |
+| markdown-cheat | groq/openai/gpt-oss-120b | 0.00 | 0.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | url missing /cheat-sheet/; url missing /cheat-sheet/ | 0 | 812 | missing click////Cheat Sheet/#navbarNavAltMarkup > div:nth-of-type(1) > a:nth-of-type(2)/-/-/ |
+| pptr-api | groq/openai/gpt-oss-120b | 0.50 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 1034 | extra click////Docs/#__docusaurus > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(2)/-/-/ |
+| httpwg-semantics | groq/openai/gpt-oss-120b | 0.50 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | pass | 0 | 949 | extra click////HTTP Caching/#col1 > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)/-/-/ |
+| nginx-core | groq/openai/gpt-oss-120b | 0.50 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | below-threshold; below-threshold | 0 | 1249 | extra click////faq/#menu > nav:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(9) > a:nth-of-type(1)/-/-/ |
+| pico-email | groq/openai/gpt-oss-120b | 0.67 | 1.00 | 1.00 | 1.00 | 0.50 | 1.00 | 0.00 | 1.00 |  | pass | 0 | 1100 | extra click////Forms overview/main:nth-of-type(1) > hgroup:nth-of-type(1) > h1:nth-of-type(1)/login/-/ |
+| lua-manual | groq/openai/gpt-oss-120b | 0.00 | 0.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | url missing manual.html; url missing manual.html | 0 | 1222 | missing click////start/div:nth-of-type(1) > a:nth-of-type(1)/-/-/ |
+| hn-search | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 0.67 | url missing Grace Hopper; url missing Alan Turing | 0 | 1275 |  |
+| gutenberg-search | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 0.67 | pass | 0 | 1271 |  |
+| musicbrainz-search | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 0.67 | pass | 0 | 1337 |  |
+| git-add | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1028 |  |
+| rust-vec | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1040 |  |
+| node-synopsis | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1167 |  |
+| markdown-cheat | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1040 |  |
+| pptr-api | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1129 |  |
+| httpwg-semantics | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1131 |  |
+| nginx-core | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1174 |  |
+| pico-email | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 0.33 | pass | 0 | 1312 |  |
+| lua-manual | hybrid/groq/openai/gpt-oss-120b | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |  | 1.00 | pass | 0 | 1115 |  |
 
 ## Bad intent texts
 

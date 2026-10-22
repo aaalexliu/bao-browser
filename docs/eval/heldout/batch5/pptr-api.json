@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656447726,
+    "ts": 1792657627695,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656447767,
+    "ts": 1792657627735,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656447807,
+    "ts": 1792657627775,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656447847,
+    "ts": 1792657627815,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://pptr.dev/",
+    "afterUrl": "https://pptr.dev/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657627917,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -47,27 +55,67 @@
     "subtreeBefore": "Docs",
     "subtreeAfter": "Docs",
     "beforeUrl": "https://pptr.dev/",
-    "afterUrl": "https://pptr.dev/category/introduction"
-  },
-  {
-    "id": "e4",
-    "ts": 1792656448181,
-    "kind": "act",
-    "op": "scroll",
-    "beforeUrl": "https://pptr.dev/category/introduction",
     "afterUrl": "https://pptr.dev/category/introduction"
   },
   {
     "id": "e5",
-    "ts": 1792656448222,
+    "ts": 1792657628243,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/category/introduction",
+    "afterUrl": "https://pptr.dev/category/introduction"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657628277,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/category/introduction",
+    "afterUrl": "https://pptr.dev/category/introduction"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657628310,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/category/introduction",
+    "afterUrl": "https://pptr.dev/category/introduction"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657628344,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/category/introduction",
+    "afterUrl": "https://pptr.dev/category/introduction"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657628377,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/category/introduction",
+    "afterUrl": "https://pptr.dev/category/introduction"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657628410,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/category/introduction",
+    "afterUrl": "https://pptr.dev/category/introduction"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657628410,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://pptr.dev/category/introduction",
     "afterUrl": "https://pptr.dev/"
   },
   {
-    "id": "e6",
-    "ts": 1792656448274,
+    "id": "e12",
+    "ts": 1792657628463,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -98,24 +146,64 @@
     "afterUrl": "https://pptr.dev/category/introduction"
   },
   {
-    "id": "e7",
-    "ts": 1792656448550,
+    "id": "e13",
+    "ts": 1792657628740,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://pptr.dev/category/introduction",
     "afterUrl": "https://pptr.dev/"
   },
   {
-    "id": "e8",
-    "ts": 1792656448601,
+    "id": "e14",
+    "ts": 1792657628810,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://pptr.dev/",
     "afterUrl": "https://pptr.dev/"
   },
   {
-    "id": "e9",
-    "ts": 1792656448639,
+    "id": "e15",
+    "ts": 1792657628843,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/",
+    "afterUrl": "https://pptr.dev/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657628877,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/",
+    "afterUrl": "https://pptr.dev/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657628909,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/",
+    "afterUrl": "https://pptr.dev/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657628944,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/",
+    "afterUrl": "https://pptr.dev/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657628977,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://pptr.dev/",
+    "afterUrl": "https://pptr.dev/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657628977,
     "kind": "act",
     "op": "click",
     "identity": {

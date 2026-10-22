@@ -119,6 +119,10 @@ export const HELD_TASKS_3: HeldTask[] = [
       { texts: ["ship replay"], secret: "", file: "" },
     ],
     oracle: { kind: "body", includes: "{{0}}" },
+    invalid: {
+      reason: "The jQuery TodoMVC demo does not boot, so Enter cannot add an item.",
+      evidence: "404 jquery.min.js, director.min.js, handlebars.min.js, todomvc-common, and todomvc-app-css. pageerror ReferenceError: jQuery is not defined. #new-todo is in the DOM and Enter leaves the list empty.",
+    },
     steps: [
       ...READS,
       { do: "click", selector: "h1" },
@@ -137,6 +141,10 @@ export const HELD_TASKS_3: HeldTask[] = [
       { texts: ["ship replay"], secret: "", file: "" },
     ],
     oracle: { kind: "body", includes: "{{0}}" },
+    invalid: {
+      reason: "The Backbone TodoMVC demo does not boot, so Enter cannot add an item.",
+      evidence: "404 backbone-min.js, underscore-min.js, and jquery.min.js. pageerror ReferenceError: Backbone is not defined and jQuery is not defined. .new-todo is in the DOM and Enter leaves the list empty.",
+    },
     steps: [
       ...READS,
       { do: "click", selector: "h1" },
