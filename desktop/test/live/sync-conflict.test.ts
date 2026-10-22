@@ -87,10 +87,14 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
     const conflictText = await webPage.getByTestId("conflict-devices").innerText();
     assert.match(conflictText, /Changed on Ada's Mac and Home Mac/);
     const versionList = await webPage.getByTestId("version-list").innerText();
-    assert.match(versionList, /Conflict/);
-    assert.match(versionList, /Ada's Mac/);
-    assert.match(versionList, /Home Mac/);
+    assert.match(versionList, /v1[\s\S]*Ada's Mac/);
+    assert.match(versionList, /v2[\s\S]*Ada's Mac/);
+    assert.match(versionList, /v3[\s\S]*Conflict[\s\S]*Home Mac/);
     assert.match(versionList, /EDT|EST/);
+    assert.equal(await webPage.getByText("element crop").count(), 0);
+    await webPage.getByTestId("keep-mine").waitFor();
+    await webPage.getByTestId("keep-theirs").waitFor();
+    await webPage.getByTestId("keep-both").waitFor();
     await webPage.locator("main").screenshot({ path: path.join(shots, "conflict-web-light.png") });
     await webPage.evaluate(() => {
       localStorage.setItem("bao-theme", "dark");
@@ -168,6 +172,12 @@ async function openConflict(page: Page): Promise<void> {
   assert.match(await page.getByTestId("conflict-diff").innerText(), /Open Ada/);
   assert.match(await page.getByTestId("conflict-diff").innerText(), /Save at home/);
   assert.match(await page.locator("#versions").innerText(), /2 steps/);
+  const numbers = await page.locator('[data-testid="version"]').evaluateAll((rows) => rows.map((row) => row.getAttribute("data-version")));
+  assert.deepEqual(numbers, ["1", "2", "3"]);
+  assert.match(await page.locator('[data-version="1"]').innerText(), /Ada's Mac/);
+  assert.match(await page.locator('[data-version="2"]').innerText(), /Ada's Mac/);
+  assert.match(await page.locator('[data-version="3"]').innerText(), /Conflict/);
+  assert.match(await page.locator('[data-version="3"]').innerText(), /Home Mac/);
   const sides = page.locator('[data-testid="conflict-diff"] li');
   assert.equal(await sides.count(), 4);
   for (const side of await sides.all()) assert.equal(await side.getAttribute("data-changed"), "true");

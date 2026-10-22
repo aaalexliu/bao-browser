@@ -53,7 +53,16 @@ export default async function WorkflowPage({
         <span className="chip">{workflow.visibility}</span>
         {conflictOn ? <span className="badge conflict" data-testid="conflict-badge">Conflict</span> : null}
       </div>
-      {conflictOn ? <p className="notice" data-testid="conflict-devices">{conflictOn}</p> : null}
+      {conflictOn ? (
+        <div className="notice" data-testid="conflict-state">
+          <p data-testid="conflict-devices">{conflictOn}</p>
+          <form className="row" action={`/api/workflows/${id}/conflict`} method="post">
+            <button className="primary" type="submit" name="action" value="keep-mine" data-testid="keep-mine">Keep mine</button>
+            <button type="submit" name="action" value="keep-theirs" data-testid="keep-theirs">Keep theirs</button>
+            <button type="submit" name="action" value="keep-both" data-testid="keep-both">Keep both as a copy</button>
+          </form>
+        </div>
+      ) : null}
       <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
       <p>{rate(workflow.passRate)}</p>
       <div className="chips" data-testid="domains">
@@ -76,15 +85,19 @@ export default async function WorkflowPage({
         <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission}). Personal values were cleared from the shared copy.</p>
       ) : null}
       <h2>Steps</h2>
-      <ol className="film" data-testid="step-crops">
-        {workflow.shots.map((shot) => (
-          <li key={shot.stepId}>
-            <img src={shot.url} alt="" />
-            <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
-          </li>
-        ))}
-      </ol>
-      <p className="muted">The picture is the element crop, with the control outlined.</p>
+      {workflow.shots.length ? (
+        <>
+          <ol className="film" data-testid="step-crops">
+            {workflow.shots.map((shot) => (
+              <li key={shot.stepId}>
+                <img src={shot.url} alt="" />
+                <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="muted" data-testid="crop-caption">The picture is the element crop, with the control outlined.</p>
+        </>
+      ) : null}
       <ol className="steps">
         {steps.map((step) => <li key={step.id}>{step.label}</li>)}
       </ol>
