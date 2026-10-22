@@ -17,7 +17,22 @@ export class SiteStore {
 
   get(origin: string): SiteLoginConfig {
     const found = this.read().sites.find((site) => site.origin === origin);
-    return found ?? { origin, probeUrl: origin, signedInSelector: "", signedInText: "", botCookies: "skip", origins: [] };
+    return found ?? { origin, probeUrl: origin, signedInSelector: "", signedInText: "", botCookies: "skip", origins: [], lastProbeAt: null, signedIn: null };
+  }
+
+  recordProbe(origin: string, signedIn: boolean, at = Date.now()): SiteLoginConfig {
+    const key = siteOrigin(origin);
+    if (!this.has(key)) throw new Error("That site is not saved.");
+    const current = this.get(key);
+    return this.save({ ...current, lastProbeAt: at, signedIn });
+  }
+
+  remove(origin: string): void {
+    const key = siteOrigin(origin);
+    const data = this.read();
+    data.sites = data.sites.filter((site) => site.origin !== key);
+    mkdirSync(path.dirname(this.file), { recursive: true });
+    writeFileSync(this.file, JSON.stringify(data, null, 2));
   }
 
   has(origin: string): boolean {
@@ -81,6 +96,8 @@ function normalize(record: SiteLoginConfig): SiteLoginConfig {
     signedInText: (record.signedInText || "").trim(),
     botCookies,
     origins: sameHostOrigins(origin, record.origins),
+    lastProbeAt: typeof record.lastProbeAt === "number" ? record.lastProbeAt : null,
+    signedIn: typeof record.signedIn === "boolean" ? record.signedIn : null,
   };
 }
 

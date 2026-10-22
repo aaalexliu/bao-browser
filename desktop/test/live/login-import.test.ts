@@ -28,12 +28,12 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
   const baoProfile = path.join(home, "chrome-profile");
   writeLocalState(userData, [
     { directory: "Default", name: "Ada Lovelace", email: "ada@example.com", avatar: TINY_PNG },
-    { directory: "Profile 1", name: "Grace Hopper", email: "grace@example.com", avatar: TINY_PNG },
+    { directory: "Profile 1", name: "Grace Hopper", email: "grace@example.com" },
   ]);
   await writeChromeStorage(userData, port);
   writeLocalState(userData, [
     { directory: "Default", name: "Ada Lovelace", email: "ada@example.com", avatar: TINY_PNG },
-    { directory: "Profile 1", name: "Grace Hopper", email: "grace@example.com", avatar: TINY_PNG },
+    { directory: "Profile 1", name: "Grace Hopper", email: "grace@example.com" },
   ]);
   const session = encryptCookieValue(plaintextForCookie("127.0.0.1", SESSION, true), LINUX_PEANUTS, LINUX_ITERATIONS, "v10");
   const expires = chromeExpiry(Date.now() + 86_400_000);
@@ -55,21 +55,37 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
   const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
   try {
     await ui.goto(`http://127.0.0.1:${app.port}/`);
+    await ui.evaluate(() => localStorage.removeItem("bao-theme"));
+    await ui.reload();
     await ui.click("nav button[data-screen=logins]");
     await ui.fill("#login-site", `${origin}/account`);
-    await ui.fill("#login-probe", `${origin}/account`);
     await ui.click("#show-profiles");
     await ui.waitForSelector("[data-import-profile=Default]");
     const picker = await ui.locator("body").innerText();
     if (!picker.includes("Ada Lovelace") || !picker.includes("ada@example.com")) throw new Error("picker missed Ada");
     if (!picker.includes("Grace Hopper") || !picker.includes("grace@example.com")) throw new Error("picker missed Grace");
     if (!picker.includes("localStorage")) throw new Error("picker missed localStorage counts");
+    if (!picker.includes("Advanced")) throw new Error("advanced disclosure was missing");
     assertNoValue(picker, SESSION);
     assertNoValue(picker, DEVICE);
     assertNoValue(picker, OTHER);
-    await ui.screenshot({ path: path.join(ARTIFACTS, "login-picker.png"), fullPage: true });
+    const selected = await ui.locator("[data-import-profile='Profile 1']").getAttribute("aria-pressed");
+    if (selected !== "true") throw new Error("profile with the most matches was not selected");
+    const initials = (await ui.locator("[data-import-profile='Profile 1'] .avatar").innerText()).trim();
+    if (initials !== "GH") throw new Error("profile without a picture did not show initials");
+    if (await ui.locator("[data-import-profile=Default] img").count() !== 1) throw new Error("profile picture was not shown");
+    const act = await ui.locator("#act-bar").innerText();
+    if (!act.includes("You need to act")) throw new Error("import act bar was missing");
+    if (!act.includes("Grace Hopper")) throw new Error("act bar did not name the selected profile");
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-picker-light.png"), fullPage: true });
+    await ui.click("#theme-toggle");
+    await ui.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-picker-dark.png"), fullPage: true });
+    await ui.click("#theme-toggle");
+    await ui.waitForFunction(() => document.documentElement.dataset.theme === "light");
 
     await ui.click("[data-import-profile=Default]");
+    await ui.click("#import-selected");
     await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("Signed in: yes"));
     const yes = await ui.locator("#login-result").innerText();
     if (!yes.includes("Signed in: yes")) throw new Error("import did not report signed in");
@@ -77,10 +93,23 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (!yes.includes("IndexedDB")) throw new Error("import did not report IndexedDB");
     assertNoValue(yes, SESSION);
     assertNoValue(yes, DEVICE);
-    await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-in.png"), fullPage: true });
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-in-light.png"), fullPage: true });
+    await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Live"));
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-saved-light.png"), fullPage: true });
+    await ui.click("#theme-toggle");
+    await ui.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-saved-dark.png"), fullPage: true });
+    await ui.click("#theme-toggle");
+    await ui.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    const recheck = ui.waitForResponse((res) => res.url().includes("/api/login-sites/recheck") && res.ok());
+    await ui.click("[data-recheck]");
+    await recheck;
+    await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Live"));
 
+    await ui.click("#login-advanced summary");
     await ui.fill("#login-probe", `${origin}/strict`);
     await ui.click("[data-import-profile=\"Profile 1\"]");
+    await ui.click("#import-selected");
     await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("Imperva"));
     const no = await ui.locator("#login-result").innerText();
     if (!no.includes("Signed in: no")) throw new Error("bot-cookie import did not report signed out");
@@ -88,7 +117,10 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (!no.includes("Sign in once in Bao's window")) throw new Error("bot-cookie explanation missed the sign-in path");
     assertNoValue(no, SESSION);
     assertNoValue(no, "bot-body");
-    await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-out-bot.png"), fullPage: true });
+    await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Needs sign-in"));
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-out-bot-light.png"), fullPage: true });
+    await ui.click("[data-remove]");
+    await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("No sites yet"));
 
     await assertRestored(baoProfile, origin, port);
     await assertNeedsSignIn(app.port, app.library, origin);
@@ -112,12 +144,12 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     await keyUi.goto(`http://127.0.0.1:${keyApp.port}/`);
     await keyUi.click("nav button[data-screen=logins]");
     await keyUi.fill("#login-site", `${origin}/account`);
-    await keyUi.fill("#login-probe", `${origin}/account`);
     await keyUi.click("#show-profiles");
     await keyUi.waitForSelector("[data-import-profile=Default]");
     const note = await keyUi.locator("body").innerText();
     if (!note.includes("Click Always Allow.")) throw new Error("preview missed the keychain copy");
     await keyUi.click("[data-import-profile=Default]");
+    await keyUi.click("#import-selected");
     await keyUi.waitForSelector("#login-result");
     const missed = await keyUi.locator("#login-result").innerText();
     if (!missed.includes("Imported 0. Signed in: no.")) throw new Error("missed prompt did not stop the import");
@@ -125,12 +157,67 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (!missed.includes("A missed prompt does not mean the password was wrong.")) throw new Error("missed prompt copy changed");
     assertNoValue(missed, SESSION);
     if (existsSync(path.join(keyHome, "chrome-profile"))) throw new Error("a missed keychain prompt launched Chrome");
-    await keyUi.screenshot({ path: path.join(ARTIFACTS, "login-keychain-missed.png"), fullPage: true });
+    await keyUi.screenshot({ path: path.join(ARTIFACTS, "login-keychain-missed-light.png"), fullPage: true });
+    await keyUi.click("#theme-toggle");
+    await keyUi.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await keyUi.screenshot({ path: path.join(ARTIFACTS, "login-keychain-missed-dark.png"), fullPage: true });
   } finally {
     await keyBrowser.close().catch(() => undefined);
     await keyApp.close();
   }
 });
+
+test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 }, async () => {
+  const server = await startSite();
+  const port = (server.address() as { port: number }).port;
+  const origin = `http://127.0.0.1:${port}`;
+  const baoProfile = tempDir("bao-session-profile-");
+  const first = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
+  try {
+    const page = first.pages()[0] || await first.newPage();
+    await page.goto(`${origin}/login`, { waitUntil: "domcontentloaded" });
+    await page.evaluate((value) => { document.cookie = `session=${value}; path=/`; }, SESSION);
+    const cookies = await first.cookies(origin);
+    const session = cookies.find((cookie) => cookie.name === "session");
+    if (!session || session.expires !== -1) throw new Error("the cookie was not a session cookie");
+  } finally {
+    await first.close();
+  }
+  const onDisk = sessionCookieOnDisk(baoProfile);
+  if (!onDisk) throw new Error("session cookie was not on disk after Chrome exited");
+  if (onDisk.expires !== "0") throw new Error("Chrome stored an expiry on the session cookie");
+  const again = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
+  try {
+    const page = again.pages()[0] || await again.newPage();
+    await page.goto(`${origin}/account`, { waitUntil: "domcontentloaded" });
+    if (page.url().includes("/login")) throw new Error("session cookie did not survive relaunch");
+  } finally {
+    await again.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+function sessionCookieOnDisk(profile: string): { expires: string } | null {
+  const candidates = [
+    path.join(profile, "Default", "Network", "Cookies"),
+    path.join(profile, "Default", "Cookies"),
+  ];
+  const file = candidates.find((item) => existsSync(item));
+  if (!file) return null;
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (file: string, opts: { readOnly: boolean }) => {
+      prepare(sql: string): { get(): { expires_utc: string } | undefined };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    const row = db.prepare("SELECT CAST(expires_utc AS TEXT) AS expires_utc FROM cookies WHERE name = 'session'").get();
+    return row ? { expires: String(row.expires_utc) } : null;
+  } finally {
+    db.close();
+  }
+}
 
 async function startSite(): Promise<Server> {
   const server = createServer((req, res) => {

@@ -1,12 +1,41 @@
 // Launch an owned Chrome. Never connectOverCDP, never port 9222, never the
 // daily profile. Playwright's persistent context is our child process.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { chromium, type BrowserContext } from "playwright";
 import { assertNotDailyChrome } from "./profile";
 
-export const OWNED_CHROME_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
+export const OWNED_CHROME_ARGS = [
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-sync",
+  // Continue where you left off. Chrome then keeps session cookies on a clean exit.
+  "--restore-last-session",
+];
 const LAUNCH_ARGS = OWNED_CHROME_ARGS;
+
+/** Chrome's "Continue where you left off". Session cookies survive a clean exit. */
+export const RESTORE_LAST_SESSION = 1;
+
+export function keepSessionCookies(userDataDir: string): void {
+  const dir = path.join(userDataDir, "Default");
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "Preferences");
+  let prefs: Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+      if (parsed && typeof parsed === "object") prefs = parsed as Record<string, unknown>;
+    } catch {
+      prefs = {};
+    }
+  }
+  const session = prefs.session && typeof prefs.session === "object" ? { ...(prefs.session as Record<string, unknown>) } : {};
+  session.restore_on_startup = RESTORE_LAST_SESSION;
+  prefs.session = session;
+  writeFileSync(file, JSON.stringify(prefs));
+}
 
 export async function launchOwnedChrome(opts: {
   userDataDir: string;
@@ -16,6 +45,7 @@ export async function launchOwnedChrome(opts: {
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
+  keepSessionCookies(opts.userDataDir);
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     channel: "chrome",
     headless: opts.headless ?? true,

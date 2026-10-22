@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { OWNED_CHROME_ARGS } from "../../src/launch";
+import { keepSessionCookies, OWNED_CHROME_ARGS, RESTORE_LAST_SESSION } from "../../src/launch";
 import { classifyBotCookie } from "../../src/login-import/bot";
 import { deriveAesKey, decryptCookieValue, encryptCookieValue, LINUX_ITERATIONS, LINUX_PEANUTS, MAC_ITERATIONS, plaintextForCookie } from "../../src/login-import/crypto";
-import { importChromeLogin, previewChromeProfiles } from "../../src/login-import/import-login";
+import { importChromeLogin, preferredProfile, previewChromeProfiles } from "../../src/login-import/import-login";
 import { describeKeys, keychainMessage, keyRingFromSources, linuxSecretLookups, macKeychainArgs, readPlatformKeys } from "../../src/login-import/keys";
 import { judgeSignedIn, isLoginUrl } from "../../src/login-import/probe";
 import { cookieMatchesHost, findCookieDb, loadDb, metaForChromeMajor, summarySql, withCookieDb } from "../../src/login-import/read";
@@ -606,14 +606,62 @@ test("saved sites keep same-host origins and unsaved origins are not gated", () 
   });
   assert.equal(store.has("https://www.example.com"), true);
   assert.deepEqual(saved.origins, ["https://www.example.com"]);
-  const same = store.save({ ...saved, origins: ["http://www.example.com/alt"] });
+  assert.equal(saved.signedIn, null);
+  assert.equal(saved.lastProbeAt, null);
+  assert.throws(() => store.recordProbe("https://other.example", true), /That site is not saved/);
+  const probed = store.recordProbe("https://www.example.com", true, 1_700_000_000_000);
+  assert.equal(probed.signedIn, true);
+  assert.equal(probed.lastProbeAt, 1_700_000_000_000);
+  const kept = store.save({ ...probed, probeUrl: "https://www.example.com/inbox" });
+  assert.equal(kept.signedIn, true);
+  assert.equal(kept.lastProbeAt, 1_700_000_000_000);
+  const same = store.save({ ...kept, origins: ["http://www.example.com/alt"] });
   assert.deepEqual(same.origins, ["http://www.example.com"]);
+  store.remove("https://www.example.com/account");
+  assert.equal(store.has("https://www.example.com"), false);
+  store.remove("https://www.example.com");
+});
+
+test("the profile with the most matches is preferred", () => {
+  assert.equal(preferredProfile([]), null);
+  assert.equal(preferredProfile([
+    { directory: "Default", matching: 1, willImport: 1 },
+    { directory: "Profile 1", matching: 2, willImport: 1 },
+  ]), "Profile 1");
+  assert.equal(preferredProfile([
+    { directory: "Default", matching: 2, willImport: 1 },
+    { directory: "Profile 1", matching: 2, willImport: 3 },
+  ]), "Profile 1");
+  assert.equal(preferredProfile([
+    { directory: "Default", matching: 2, willImport: 2 },
+    { directory: "Profile 1", matching: 2, willImport: 2 },
+  ]), "Default");
+});
+
+test("bao's profile is set to continue where you left off", () => {
+  const dir = tempDir("bao-prefs-");
+  keepSessionCookies(dir);
+  const file = path.join(dir, "Default", "Preferences");
+  const prefs = JSON.parse(readFileSync(file, "utf8")) as { session: { restore_on_startup: number }; homepage?: string };
+  assert.equal(prefs.session.restore_on_startup, RESTORE_LAST_SESSION);
+  prefs.homepage = "https://example.com";
+  writeFileSync(file, JSON.stringify(prefs));
+  keepSessionCookies(dir);
+  const again = JSON.parse(readFileSync(file, "utf8")) as { session: { restore_on_startup: number }; homepage?: string };
+  assert.equal(again.session.restore_on_startup, 1);
+  assert.equal(again.homepage, "https://example.com");
+  writeFileSync(file, "{");
+  keepSessionCookies(dir);
+  const fresh = JSON.parse(readFileSync(file, "utf8")) as { session: { restore_on_startup: number }; homepage?: string };
+  assert.equal(fresh.session.restore_on_startup, 1);
+  assert.equal(fresh.homepage, undefined);
 });
 
 test("owned Chrome launch args do not hide automation", () => {
   const joined = OWNED_CHROME_ARGS.join(" ");
   assert.equal(joined.includes("AutomationControlled"), false);
   assert.equal(joined.includes("disable-blink-features"), false);
+  assert.equal(OWNED_CHROME_ARGS.includes("--restore-last-session"), true);
 });
 
 test("the login routes refuse a read without a click and hide storage values", async () => {
@@ -664,11 +712,12 @@ test("the login routes refuse a read without a click and hide storage values", a
       body: JSON.stringify({ site: "https://example.com/home", consent: true, origins: "https://evil.example" }),
     });
     assert.equal(previewRes.status, 200);
-    const preview = await previewRes.json() as { profiles: { name: string; email: string; willImport: number; localStorageItems: number }[]; keychainNote: { title: string } | null };
+    const preview = await previewRes.json() as { profiles: { name: string; email: string; willImport: number; localStorageItems: number }[]; preferred: string | null; keychainNote: { title: string } | null };
     assert.equal(preview.profiles[0]?.name, "Ada Lovelace");
     assert.equal(preview.profiles[0]?.email, "ada@example.com");
     assert.equal(preview.profiles[0]?.willImport, 1);
     assert.equal(preview.profiles[0]?.localStorageItems, 1);
+    assert.equal(preview.preferred, "Default");
     assert.equal(preview.keychainNote?.title, "macOS will ask for Chrome Safe Storage");
     assertNoValue(JSON.stringify(preview), SESSION);
     assertNoValue(JSON.stringify(preview), STORAGE);
@@ -684,6 +733,25 @@ test("the login routes refuse a read without a click and hide storage values", a
     assert.match(report.keychain?.body || "", /Click Always Allow\./);
     assert.equal(existsSync(baoProfile), false);
     assertNoValue(JSON.stringify(report), SESSION);
+    const listed = await fetch(`http://127.0.0.1:${app2.port}/api/login-sites`);
+    const sites = await listed.json() as { sites: { origin: string; signedIn: boolean | null }[] };
+    assert.equal(sites.sites.length, 1);
+    assert.equal(sites.sites[0]?.signedIn, null);
+    const removed = await fetch(`http://127.0.0.1:${app2.port}/api/login-sites`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ origin: "https://example.com" }),
+    });
+    assert.equal(removed.status, 200);
+    const after = await (await fetch(`http://127.0.0.1:${app2.port}/api/login-sites`)).json() as { sites: unknown[] };
+    assert.equal(after.sites.length, 0);
+    const recheck = await fetch(`http://127.0.0.1:${app2.port}/api/login-sites/recheck`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ origin: "https://example.com" }),
+    });
+    assert.equal(recheck.status, 404);
+    assert.equal(existsSync(baoProfile), false);
   } finally {
     await app2.close();
   }

@@ -38,6 +38,16 @@ export interface ClickInput {
   clicked?: boolean;
 }
 
+export function preferredProfile(profiles: { directory: string; matching: number; willImport: number }[]): string | null {
+  let best: { directory: string; matching: number; willImport: number } | null = null;
+  for (const profile of profiles) {
+    if (!best || profile.matching > best.matching || (profile.matching === best.matching && profile.willImport > best.willImport)) {
+      best = profile;
+    }
+  }
+  return best ? best.directory : null;
+}
+
 export function assertClick(click: ClickInput | undefined): asserts click is ImportClick {
   if (!click || click.clicked !== true || typeof click.site !== "string" || !click.site.trim()) {
     throw new ConsentRequired();
@@ -70,6 +80,7 @@ export async function previewChromeProfiles(opts: {
       host,
       botCookies: opts.config.botCookies,
       profiles: [],
+      preferred: null,
       chromeFound: false,
       keychainNote: opts.platform === "darwin" ? KEYCHAIN_PREVIEW : null,
     };
@@ -84,6 +95,7 @@ export async function previewChromeProfiles(opts: {
     host,
     botCookies: opts.config.botCookies,
     profiles,
+    preferred: preferredProfile(profiles),
     chromeFound: true,
     keychainNote: opts.platform === "darwin" ? KEYCHAIN_PREVIEW : null,
   };
@@ -222,6 +234,26 @@ export async function importInOwnedChrome(opts: {
         return { success: result.success === true };
       },
       observe: (probeUrl) => observePage(page, probeUrl, opts.config.signedInSelector, opts.config.signedInText),
+    });
+  } finally {
+    await ctx.close().catch(() => undefined);
+  }
+}
+
+export async function probeOwnedProfile(opts: {
+  baoProfile: string;
+  config: Pick<SiteLoginConfig, "origin" | "probeUrl" | "signedInSelector" | "signedInText">;
+  headless?: boolean;
+}): Promise<{ signedIn: boolean; how: "selector" | "text" | "login-url" }> {
+  assertNotDailyChrome(opts.baoProfile);
+  const headless = opts.headless ?? process.env.BAO_HEADED !== "1";
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless });
+  try {
+    const page = ctx.pages()[0] || await ctx.newPage();
+    const obs = await observePage(page, opts.config.probeUrl || opts.config.origin, opts.config.signedInSelector, opts.config.signedInText);
+    return judgeSignedIn(obs, {
+      selector: opts.config.signedInSelector || undefined,
+      text: opts.config.signedInText || undefined,
     });
   } finally {
     await ctx.close().catch(() => undefined);

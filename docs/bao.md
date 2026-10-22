@@ -2,13 +2,15 @@
 
 Bao can bring a single site's session from the person's Chrome into Bao's own Chrome. The person names the site and clicks **Import this site's login from my Chrome**. That click is the only time Bao reads a Chrome profile. It reads the clicked site's origins and nothing else, and it never shows cookie values, localStorage values, or IndexedDB contents.
 
-The profile picker lists every profile in that Chrome's `Local State`: name, email, avatar, how many cookies match the site, how many of those will be imported, how many are expired, how many are anti-bot cookies, the localStorage item count, and the IndexedDB origin count. The person picks the profile. Bao does not assume `Default`.
+The form asks for the site. Probe URL, extra same-host origins, a signed-in selector or text, and the anti-bot choice sit under Advanced. A blank probe uses the page that was typed, when that page is an http or https URL. Otherwise it uses the origin. Anti-bot cookies are skipped unless Advanced says to include them.
+
+The profile picker lists every profile in that Chrome's `Local State`: name, email, avatar or initials, how many cookies match the site, how many of those will be imported, how many are expired, how many are anti-bot cookies, the localStorage item count, and the IndexedDB origin count. The profile with the most matching cookies is already selected. The person can choose another, then import. Bao does not assume `Default` when another profile has more matches.
 
 ## What is restored
 
 Three stores, all limited to the clicked site:
 
-- **Cookies.** The profile's cookie SQLite (`Network/Cookies`, or the legacy `Cookies` file). A cookie matches when it is host-only for that host, or a domain cookie for that host or a parent that is not a public suffix. Expired cookies are counted and left behind. Bao sets the ones it keeps one at a time with `Network.setCookie`, so one rejected `__Host-` or `SameSite=None` row does not drop the session cookie next to it. A cookie with no expiry is a session cookie. Chrome deletes those when Bao's Chrome process exits, which it does at the end of the import and again at the end of a run. A cookie with an expiry stays in Bao's profile for the next run.
+- **Cookies.** The profile's cookie SQLite (`Network/Cookies`, or the legacy `Cookies` file). A cookie matches when it is host-only for that host, or a domain cookie for that host or a parent that is not a public suffix. Expired cookies are counted and left behind. Bao sets the ones it keeps one at a time with `Network.setCookie`, so one rejected `__Host-` or `SameSite=None` row does not drop the session cookie next to it. A cookie with no expiry is a session cookie. Chrome deletes those on a clean exit unless the profile is set to continue where you left off. Bao sets that on its own profile: `session.restore_on_startup` is 1, and the launch passes `--restore-last-session`. A session cookie then stays in Bao's profile when Bao's Chrome exits, and the next launch sends it. Bao does not mark the profile as crashed, and it does not read the person's Chrome again to fill a cookie back in. If the cookie is gone at run time, the pre-run probe returns needs sign-in.
 - **localStorage.** Chrome keeps every origin in one LevelDB, `Local Storage/leveldb`. The map key is `_`, the origin, a NUL, and the item key. The value is tagged Latin-1 or UTF-16. Chrome is also moving this store to SQLite (`maps` joined to `map_entries`). When that file is present, Bao reads it the same way: the origin is the start of `storage_key`, up to the first NUL. `VERSION` and `META` rows are not site data. Bao then writes the items into its own Chrome one at a time with `DOMStorage.setDOMStorageItem`. One rejected item does not drop the rest.
 - **IndexedDB.** Chrome stores this as one directory per origin, named `scheme_host_port.indexeddb.leveldb` (and `.indexeddb.blob` when Chrome has one). The default port is `0`. Bao copies only the directories for the clicked origin, and for extra origins the person listed on the **same host**. It skips `LOCK` files. There is no CDP call that writes IndexedDB, so the copy happens before Bao's Chrome starts.
 
@@ -39,6 +41,8 @@ The import click saves the site. From then on, a workflow whose start URL is tha
 > Needs sign-in. The session is not live, so Bao did not start the run. Sign in once in Bao's window.
 
 A workflow for an origin that was never saved is not checked. Bao runs it as before.
+
+Saved sites are listed on Logins. Each row shows the last probe time and whether that probe was live or needs sign-in. Re-check loads the probe in Bao's Chrome only. It does not read the person's profile. Remove drops the saved site, so later runs of that origin are not gated. It does not delete cookies already in Bao's profile.
 
 ## Sites that tie the session down
 

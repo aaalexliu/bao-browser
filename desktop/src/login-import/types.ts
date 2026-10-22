@@ -15,6 +15,10 @@ export interface SiteLoginConfig {
   botCookies: BotCookiePolicy;
   /** Extra origins on the same host. Other hosts are ignored. */
   origins: string[];
+  /** Unix ms of the last probe in Bao's Chrome. Null until one has run. */
+  lastProbeAt?: number | null;
+  /** Null until a probe has run. False is needs sign-in. */
+  signedIn?: boolean | null;
 }
 
 export interface PublicProfile {
@@ -36,6 +40,8 @@ export interface PublicPreview {
   host: string;
   botCookies: BotCookiePolicy;
   profiles: PublicProfile[];
+  /** Directory with the most matching cookies. The picker selects it. */
+  preferred: string | null;
   chromeFound: boolean;
   keychainNote: { title: string; body: string } | null;
 }

@@ -8,9 +8,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
 import { defaultChromeUserData } from "../login-import/chrome-path";
-import { importInOwnedChrome, observePage, openOwnedSignIn, previewChromeProfiles, type ClickInput } from "../login-import/import-login";
+import { importInOwnedChrome, openOwnedSignIn, previewChromeProfiles, probeOwnedProfile, type ClickInput } from "../login-import/import-login";
 import { readPlatformKeys, type KeySources } from "../login-import/keys";
-import { judgeSignedIn } from "../login-import/probe";
 import { isNeedsSignIn, runIfSignedIn } from "../login-import/session-gate";
 import { SiteStore, siteOrigin } from "../login-import/sites";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
@@ -209,8 +208,30 @@ export async function startApp(opts: {
         return json(res, { sites: sites.list() });
       }
       if (req.method === "PUT" && url.pathname === "/api/login-sites") {
-        const body = await readBody(req) as Partial<SiteLoginConfig>;
-        return json(res, sites.save(siteConfig(body)));
+        const body = await readBody(req) as Partial<SiteLoginConfig> & LoginBody;
+        const origin = siteOrigin(body.origin || body.site || "");
+        const prior = sites.has(origin) ? sites.get(origin) : undefined;
+        return json(res, sites.save(siteConfig(body, prior)));
+      }
+      if (req.method === "DELETE" && url.pathname === "/api/login-sites") {
+        const body = await readBody(req) as { origin?: string };
+        sites.remove(body.origin || "");
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/login-sites/recheck") {
+        const body = await readBody(req) as { origin?: string };
+        const origin = siteOrigin(body.origin || "");
+        if (!sites.has(origin)) return json(res, { error: "That site is not saved." }, 404);
+        await signIn?.close();
+        signIn = undefined;
+        const config = sites.get(origin);
+        let signedIn = false;
+        try {
+          signedIn = (await probeOwnedProfile({ baoProfile, config })).signedIn;
+        } catch {
+          signedIn = false;
+        }
+        return json(res, { site: sites.recordProbe(origin, signedIn) });
       }
       if (req.method === "POST" && url.pathname === "/api/login-import/preview") {
         const body = await readBody(req) as LoginBody;
@@ -239,6 +260,7 @@ export async function startApp(opts: {
           config,
           keys,
         });
+        if (result.probed) sites.recordProbe(config.origin, result.signedIn);
         return json(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/login-import/sign-in") {
@@ -308,16 +330,14 @@ async function runWorkflow(
     signInUrl: config?.probeUrl || workflow.startUrl,
     runId,
     probe: async () => {
-      const context = await launchOwnedChrome({ userDataDir: gate.baoProfile, headless });
+      if (!origin || !config) return { signedIn: false };
       try {
-        const page = context.pages()[0] || await context.newPage();
-        const obs = await observePage(page, config?.probeUrl || origin || workflow.startUrl, config?.signedInSelector || "", config?.signedInText || "");
-        return judgeSignedIn(obs, {
-          selector: config?.signedInSelector || undefined,
-          text: config?.signedInText || undefined,
-        });
-      } finally {
-        await context.close().catch(() => undefined);
+        const judged = await probeOwnedProfile({ baoProfile: gate.baoProfile, config, headless });
+        gate.sites.recordProbe(origin, judged.signedIn);
+        return judged;
+      } catch (err) {
+        gate.sites.recordProbe(origin, false);
+        throw err;
       }
     },
     run: () => replayOnBaoProfile(library, workflow, args, notices, gate.baoProfile),
@@ -469,7 +489,7 @@ function clickFrom(body: LoginBody): ClickInput {
   return { site: body.site, clicked: true };
 }
 
-function siteConfig(body: Partial<SiteLoginConfig> & LoginBody): SiteLoginConfig {
+function siteConfig(body: Partial<SiteLoginConfig> & LoginBody, prior?: SiteLoginConfig): SiteLoginConfig {
   return {
     origin: body.origin || body.site || "",
     probeUrl: body.probeUrl || "",
@@ -477,6 +497,8 @@ function siteConfig(body: Partial<SiteLoginConfig> & LoginBody): SiteLoginConfig
     signedInText: body.signedInText || "",
     botCookies: body.botCookies === "include" ? "include" : "skip",
     origins: listedOrigins(body.origins, []),
+    lastProbeAt: prior?.lastProbeAt ?? null,
+    signedIn: prior?.signedIn ?? null,
   };
 }
 
@@ -485,12 +507,29 @@ function rememberSite(store: SiteStore, body: LoginBody): SiteLoginConfig {
   const prior = store.get(origin);
   return store.save({
     origin,
-    probeUrl: body.probeUrl?.trim() || prior.probeUrl || origin,
+    probeUrl: chosenProbe(body.probeUrl, body.site, origin, prior.probeUrl),
     signedInSelector: body.signedInSelector ?? prior.signedInSelector,
     signedInText: body.signedInText ?? prior.signedInText,
     botCookies: body.botCookies === "include" || body.botCookies === "skip" ? body.botCookies : prior.botCookies,
     origins: listedOrigins(body.origins, prior.origins),
+    lastProbeAt: prior.lastProbeAt ?? null,
+    signedIn: prior.signedIn ?? null,
   });
+}
+
+function chosenProbe(probe: string | undefined, site: string | undefined, origin: string, prior: string): string {
+  const typed = probe?.trim();
+  if (typed) return typed;
+  const page = site?.trim();
+  if (page && page !== origin) {
+    try {
+      const url = new URL(page);
+      if (url.protocol === "http:" || url.protocol === "https:") return page;
+    } catch {
+      // The site field is checked separately. An empty probe falls back.
+    }
+  }
+  return prior || origin;
 }
 
 function listedOrigins(value: string[] | string | undefined, fallback: string[]): string[] {
