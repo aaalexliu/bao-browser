@@ -112,7 +112,7 @@ export async function withRateLimitRetry(
   run: () => Promise<LiveCliResult>,
   opts: { waitsMs?: number[]; sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<LiveCliResult> {
-  const waits = opts.waitsMs ?? [45_000, 90_000];
+  const waits = opts.waitsMs ?? [45_000];
   const sleep = opts.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   let result = await run();
   for (const waitMs of waits) {
