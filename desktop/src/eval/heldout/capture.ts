@@ -23,6 +23,11 @@ export interface HeldTruth {
   oracle: Oracle;
   secret?: string;
   invalid?: HeldTask["invalid"];
+  /** Scored trail file, without `.json`, when it is not `${id}.json`. */
+  trail?: string;
+  version?: number;
+  /** Why this version replaced the previous trail. */
+  reason?: string;
 }
 
 export async function captureHeldout(dir: string, tasks: readonly HeldTask[] = HELD_TASKS): Promise<HeldTruth[]> {

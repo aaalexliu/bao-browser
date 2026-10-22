@@ -1,0 +1,42 @@
+[
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Click for JS Confirm",
+      "path": []
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "afterUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "dialog": "I am a JS Confirm",
+    "dialogType": "confirm",
+    "dialogDecision": "accept",
+    "subtreeBefore": "",
+    "subtreeAfter": "You clicked: Ok",
+    "id": "e0",
+    "ts": 1792664133773
+  },
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Click for JS Alert",
+      "path": []
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "afterUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "dialog": "I am a JS Alert",
+    "dialogType": "alert",
+    "dialogDecision": "accept",
+    "subtreeBefore": "You clicked: Ok",
+    "subtreeAfter": "You successfully clicked an alert",
+    "id": "e1",
+    "ts": 1792664133955
+  }
+]

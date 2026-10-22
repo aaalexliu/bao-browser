@@ -29,6 +29,7 @@ import {
   truthTexts,
 } from "../intent/score";
 import { BAD_INTENT_TEXTS, badJudgePrompt } from "./bad-judge";
+import { urlHasPhrase } from "./url-oracle";
 import type { HeldTruth } from "./capture";
 import type { Oracle } from "./tasks";
 
@@ -112,7 +113,7 @@ function loadBundle(dir: string): { truth: HeldTruth; events: TrailEvent[] }[] {
   const truths = JSON.parse(readFileSync(path.join(dir, "truth.json"), "utf8")) as HeldTruth[];
   return truths.map((truth) => ({
     truth,
-    events: JSON.parse(readFileSync(path.join(dir, `${truth.id}.json`), "utf8")) as TrailEvent[],
+    events: JSON.parse(readFileSync(path.join(dir, `${truth.trail || truth.id}.json`), "utf8")) as TrailEvent[],
   }));
 }
 
@@ -385,7 +386,7 @@ async function oracleOnce(
 ): Promise<string> {
   if (oracle.kind === "url") {
     const want = fill(oracle.includes, spec);
-    return page.url().includes(want) ? "" : `url missing ${want}`;
+    return urlHasPhrase(page.url(), want) ? "" : `url missing ${want}`;
   }
   if (oracle.kind === "value") {
     const want = fill(oracle.equals, spec);
