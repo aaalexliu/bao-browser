@@ -47,6 +47,16 @@ export interface StoredRun {
   precondition?: unknown;
   trail?: unknown[];
   trajectory?: unknown[];
+  /** Human step returned by run_workflow. Secrets are not in here. */
+  envelope?: {
+    status: string;
+    run_id?: string;
+    step?: string;
+    reason?: string;
+    ask?: string;
+    deadline?: string | null;
+    resume_token?: string;
+  };
 }
 
 const DEFAULT_SETTINGS: Settings = {

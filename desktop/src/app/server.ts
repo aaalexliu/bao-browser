@@ -15,6 +15,7 @@ import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, clearOsNotify, elementShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, type HumanAsk } from "../v1/human-ask";
+import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
 import {
@@ -95,7 +96,7 @@ import { keepMine, openConflict, pairDevice, publishWorkflow, restoreScheduledBa
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
-import { decideOpen, type OpenedView } from "./deeplink";
+import { decideOpen, parseBaoLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
 
 export interface Notice extends HealNotice {
@@ -256,6 +257,14 @@ export async function startApp(opts: {
     },
     shouldStop: () => stopRun,
     loginContinued: () => loginContinued,
+    pauseCapture() {
+      capture.pause();
+      capture.handoff(`Handoff started ${formatClock(Date.now())}`);
+    },
+    resumeCapture() {
+      capture.handoff(`Handoff ended ${formatClock(Date.now())}`);
+      capture.resume();
+    },
   };
   const sessions = new Map<string, FreezeSession>();
   const pendings = new Map<string, { user: string; exp: number }>();
@@ -269,10 +278,10 @@ export async function startApp(opts: {
   }
 
   function localWorkflow(link: string): WorkflowV2 | null {
-    const match = link.trim().match(/^bao:\/\/(?:workflow|import)\/([A-Za-z0-9_-]+)$/);
-    if (!match?.[1]) return null;
+    const parsed = parseBaoLink(link);
+    if (!parsed) return null;
     try {
-      return library.read(match[1]);
+      return library.read(parsed.id);
     } catch {
       return null;
     }
