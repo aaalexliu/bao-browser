@@ -276,7 +276,7 @@ function teachScreen(): string {
   const teach = state.teach;
   if (teach?.phase === "review") return teachReview(teach);
   if (teach?.phase === "live") {
-    const fixing = teach.fix ? `<p class="lede">Teaching a fix for <code>${esc(teach.fix.stepId)}</code>. Demonstrate that step, then stop.</p>` : `<p class="lede">The teach panel names each step as it lands. Click a row to correct it.</p>`;
+    const fixing = teach.fix ? `<p class="lede">Teaching a fix for <code>${esc(teach.fix.stepId)}</code>. Demonstrate the missing steps, then stop.</p>` : `<p class="lede">The teach panel names each step as it lands. Click a row to correct it.</p>`;
     return `<section><h2>Teach</h2>${fixing}</section>`;
   }
   return teachHome(state.workflows || []);
@@ -481,20 +481,7 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
-  const fix = document.getElementById("teach-fix");
-  if (fix) fix.onclick = async () => {
-    const workflow = fix.dataset.workflow || "";
-    const step = fix.dataset.step || "";
-    const saved = await (await fetch("/api/workflows/" + encodeURIComponent(workflow))).json() as { startUrl?: string };
-    await fetch("/api/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: saved.startUrl, teach: true, fix: { workflowId: workflow, stepId: step } }),
-    });
-    screen = "teach";
-    renderKey = "";
-    await refresh();
-  };
+  bindTeachFix(document);
   bindTeach(document);
   const start = document.getElementById("start");
   if (start) start.onclick = async () => {
@@ -688,6 +675,24 @@ function bind(): void {
   };
 }
 
+function bindTeachFix(root: ParentNode): void {
+  const fix = root.querySelector("#teach-fix") as HTMLButtonElement | null;
+  if (!fix) return;
+  fix.onclick = async () => {
+    const workflow = fix.dataset.workflow || "";
+    const step = fix.dataset.step || "";
+    const saved = await (await fetch("/api/workflows/" + encodeURIComponent(workflow))).json() as { startUrl?: string };
+    await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: saved.startUrl, teach: true, fix: { workflowId: workflow, stepId: step } }),
+    });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+}
+
 function bindAsk(): void {
   const show = document.getElementById("act-show");
   if (show) show.onclick = () => void fetch("/api/replay/show", { method: "POST" });
@@ -755,6 +760,7 @@ async function showRun(id: string): Promise<void> {
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
   host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds });
+  bindTeachFix(host);
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";

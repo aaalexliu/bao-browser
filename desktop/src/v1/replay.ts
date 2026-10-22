@@ -240,15 +240,28 @@ export async function replay(
   const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
   const startAt = fromIndex < 0 ? 0 : fromIndex;
   const recovery: RecoveryBudget = { used: 0 };
+  let guard: { present: string; open: boolean } | undefined;
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     if (i < startAt) {
       steps[i] = { id: step.id, status: "skipped", reason: "not re-run" };
       continue;
     }
-    if (step.when && String(args[step.when.input] ?? "") !== step.when.value) {
-      steps[i] = { id: step.id, status: "passed", reason: "other branch" };
-      continue;
+    const present = step.when?.present?.trim();
+    if (present) {
+      if (!guard || guard.present !== present) {
+        guard = { present, open: pageShows(await driver.tree(), present) };
+      }
+      if (!guard.open) {
+        steps[i] = { id: step.id, status: "passed", reason: "other branch" };
+        continue;
+      }
+    } else {
+      guard = undefined;
+      if (step.when?.input && String(args[step.when.input] ?? "") !== (step.when.value ?? "")) {
+        steps[i] = { id: step.id, status: "passed", reason: "other branch" };
+        continue;
+      }
     }
     const mode = stepPolicy(step, workflow, settings);
     driver.markStep?.(step.id);
@@ -548,6 +561,12 @@ async function runStepAction(
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
   return { ok: true, repairs, acted: node, recovered: found.recovered || held.recovered };
+}
+
+/** Visible text, or a control's name, that marks an interstitial as on the page. */
+function pageShows(tree: LiveTree, present: string): boolean {
+  if (tree.texts.some((text) => text.includes(present))) return true;
+  return tree.nodes.some((node) => [node.text, node.name, node.label].some((bit) => bit?.includes(present)));
 }
 
 function withLocators(failure: StepFailure, tried: TriedLocator[]): StepFailure {

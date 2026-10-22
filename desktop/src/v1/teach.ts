@@ -3,8 +3,8 @@
 // A note becomes the step's intent. Two demonstrations merge into one workflow,
 // with a branch only where the steps differ.
 
-import { explain, interpret, type InterpretMeta, type TrailEvent } from "./interpret";
-import { looksLikePath, validateWorkflow, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
+import { looksLikePath, validateWorkflow, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -84,6 +84,30 @@ export interface IntentEvalPair {
   decisions: TeachDecision[];
   baseline: WorkflowV2;
   workflow: WorkflowV2;
+}
+
+/** Serializable intent-eval case. The harness loads this; the corrected workflow is the label. */
+export interface TeachIntentCase {
+  schema: "bao.intent-case/v1";
+  id: string;
+  name: string;
+  startUrl: string;
+  events: TrailEvent[];
+  secrets: string[];
+  secretIds: string[];
+  human: { id: string; gate: "login" | "confirm"; target: string }[];
+  nodes: Identity[];
+  replays: { texts: string[]; secret: string; file: string }[];
+  decisions: TeachDecision[];
+  workflow: WorkflowV2;
+}
+
+export interface TeachSummary {
+  events: number;
+  steps: number;
+  inputs: number;
+  dropped: { id: string; reason: string }[];
+  line: string;
 }
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
@@ -237,16 +261,30 @@ export function measureIntentPair(pair: IntentEvalPair): {
   };
 }
 
-/** Replace the failed step with the steps the person just taught. */
+/**
+ * Insert the steps just taught immediately before the failed step, and keep that step.
+ * The taught steps share one guard: they run only when the interstitial text is on the page.
+ */
 export function spliceFix(workflow: WorkflowV2, failedStepId: string, taught: WorkflowV2, now = Date.now()): WorkflowV2 {
   const at = workflow.steps.findIndex((step) => step.id === failedStepId);
   if (at < 0) throw new Error("missing step");
-  const incoming = taught.steps.map((step, index) => ({
-    ...clone(step),
-    id: `${workflow.id}-fix-${at}-${index}`,
-    when: undefined,
-  }));
-  const steps = [...workflow.steps.slice(0, at), ...incoming, ...workflow.steps.slice(at + 1)]
+  if (!taught.steps.length) throw new Error("nothing taught");
+  const present = guardText(taught.steps[0]!);
+  if (!present) throw new Error("guard");
+  const incoming = taught.steps.map((step, index) => {
+    const copy = clone(step);
+    // The click often removes the interstitial, so the button is not still there.
+    // The step that failed originally keeps its own check.
+    delete copy.postcondition;
+    delete copy.expect;
+    delete copy.readBack;
+    return {
+      ...copy,
+      id: `${workflow.id}-fix-${at}-${index}`,
+      when: { present },
+    };
+  });
+  const steps = [...workflow.steps.slice(0, at), ...incoming, ...workflow.steps.slice(at)]
     .map((step, index) => ({ ...step, index }));
   const doc: WorkflowV2 = {
     ...workflow,
@@ -259,16 +297,28 @@ export function spliceFix(workflow: WorkflowV2, failedStepId: string, taught: Wo
   return doc;
 }
 
+/** Where a merged step's element crop was recorded, before ids are rewritten. */
+export interface MergeShot {
+  stepId: string;
+  workflowId: string;
+  sourceStepId: string;
+}
+
 /**
  * Fold demonstrations of one task into a single workflow.
  * Steps present in every take stay shared. A step that only some takes have
  * is kept once per take, selected by a choice input.
+ * `shots` records the source workflow and step for each new id so the crop can move with it.
  */
-export function mergeDemonstrations(docs: readonly WorkflowV2[], meta: { id: string; name: string; now?: number }): WorkflowV2 {
+export function mergeDemonstrations(
+  docs: readonly WorkflowV2[],
+  meta: { id: string; name: string; now?: number },
+  shots?: MergeShot[],
+): WorkflowV2 {
   if (docs.length < 2) throw new Error("need two demonstrations");
   const used = new Set<string>();
   const takes = docs.map((doc, index) => takeName(doc, index, used));
-  let rows: Row[] = docs[0]!.steps.map((step) => ({ step: clone(step), takes: [takes[0]!] }));
+  let rows: Row[] = docs[0]!.steps.map((step) => ({ step: clone(step), takes: [takes[0]!], workflowId: docs[0]!.id }));
   for (let i = 1; i < docs.length; i++) rows = foldRows(rows, docs[i]!, takes[i]!);
   const route = freshName(docs.flatMap((doc) => doc.inputs.map((input) => input.name)), "route");
   const branched = rows.some((row) => row.takes.length !== takes.length);
@@ -278,15 +328,18 @@ export function mergeDemonstrations(docs: readonly WorkflowV2[], meta: { id: str
   }
   const steps: WorkflowStep[] = [];
   for (const row of rows) {
+    const emit = (step: WorkflowStep) => {
+      const id = `${meta.id}-${steps.length}`;
+      shots?.push({ stepId: id, workflowId: row.workflowId, sourceStepId: row.step.id });
+      steps.push({ ...step, index: steps.length, id });
+    };
     if (!branched || row.takes.length === takes.length) {
       const step = clone(row.step);
       delete step.when;
-      steps.push(step);
+      emit(step);
       continue;
     }
-    for (const take of row.takes) {
-      steps.push({ ...clone(row.step), when: { input: route, value: take } });
-    }
+    for (const take of row.takes) emit({ ...clone(row.step), when: { input: route, value: take } });
   }
   const doc: WorkflowV2 = {
     schema: "bao.workflow/v2",
@@ -295,7 +348,7 @@ export function mergeDemonstrations(docs: readonly WorkflowV2[], meta: { id: str
     name: meta.name,
     startUrl: docs[0]!.startUrl,
     inputs,
-    steps: steps.map((step, index) => ({ ...step, index, id: `${meta.id}-${index}` })),
+    steps,
     createdAt: meta.now ?? docs[0]!.createdAt,
   };
   const errors = validateWorkflow(doc);
@@ -348,6 +401,93 @@ export function narratorFromEnv(env: NodeJS.ProcessEnv = process.env, fetchImpl:
         return null;
       }
     },
+  };
+}
+
+export function teachSummary(
+  events: readonly TrailEvent[],
+  decisions: readonly TeachDecision[],
+  meta: InterpretMeta,
+  spoken?: ReadonlyMap<string, Spoken>,
+): TeachSummary {
+  return teachSummaryFrom(events, projectTeach(events, decisions, meta, spoken));
+}
+
+export function teachSummaryFrom(
+  events: readonly TrailEvent[],
+  projected: { cards: TeachCard[]; workflow: WorkflowV2 },
+): TeachSummary {
+  const dropped = trailDrops(events);
+  const seen = new Set(dropped.map((item) => item.id));
+  for (const card of projected.cards) {
+    if (!card.dropped && !card.merged) continue;
+    const reason = card.dropped ? "dropped" : "merged into the previous step";
+    for (const id of card.eventIds) {
+      if (seen.has(id)) continue;
+      dropped.push({ id, reason });
+      seen.add(id);
+    }
+  }
+  const inputs = projected.workflow.inputs.length;
+  const line = `${events.length} events → ${projected.workflow.steps.length} steps, ${inputs} inputs found, ${dropped.length} dropped`;
+  return {
+    events: events.length,
+    steps: projected.workflow.steps.length,
+    inputs,
+    dropped,
+    line,
+  };
+}
+
+/** One labelled case for the intent harness. Secrets stay out of the file. */
+export function teachIntentCase(
+  id: string,
+  events: readonly TrailEvent[],
+  decisions: readonly TeachDecision[],
+  meta: InterpretMeta,
+  spoken?: ReadonlyMap<string, Spoken>,
+): TeachIntentCase {
+  const projected = projectTeach(events, decisions, { ...meta, id: meta.id || id }, spoken);
+  const raw = publicTrail(events);
+  const hidden = secretValues(events);
+  const human = projected.cards.flatMap((card) => {
+    if (card.dropped || card.merged || !card.human) return [];
+    const gate: "login" | "confirm" = card.action === "login" ? "login" : "confirm";
+    return [{ id: card.eventIds[0] || card.id, gate, target: card.intent || card.id }];
+  });
+  const nodes: Identity[] = [];
+  const seen = new Set<string>();
+  for (const event of raw) {
+    const key = event.identity?.id || event.identity?.testId;
+    if (!event.identity || !key || seen.has(key)) continue;
+    seen.add(key);
+    nodes.push(event.identity);
+  }
+  const texts = projected.workflow.inputs
+    .filter((input) => input.type === "text" || input.type === "number")
+    .map((input) => input.default || "");
+  return {
+    schema: "bao.intent-case/v1",
+    id,
+    name: meta.name || projected.workflow.name,
+    startUrl: meta.startUrl || projected.workflow.startUrl,
+    events: raw,
+    secrets: [],
+    secretIds: raw.filter((event) => event.sensitive || event.identity?.role === "password").map((event) => event.id),
+    human,
+    nodes,
+    replays: [
+      { texts, secret: "", file: "sample.txt" },
+      { texts: [...texts], secret: "", file: "sample-b.txt" },
+    ],
+    decisions: decisions.map((decision) => ({
+      ...decision,
+      detail: scrub(decision.detail, hidden, events),
+      intent: decision.intent ? scrub(decision.intent, hidden, events) : undefined,
+      note: decision.note ? scrub(decision.note, hidden, events) : undefined,
+      outcome: decision.outcome ? scrub(decision.outcome, hidden, events) : undefined,
+    })),
+    workflow: projected.workflow,
   };
 }
 
@@ -616,6 +756,13 @@ function scrub(value: string, secrets: string[], events: readonly TrailEvent[]):
   return out;
 }
 
+function guardText(step: WorkflowStep): string {
+  const identity = step.identity;
+  const raw = (identity?.text || identity?.name || identity?.label || "").replace(/\s+/g, " ").trim();
+  if (raw) return raw.slice(0, 80);
+  return (step.label || "").replace(/^Click\s+/, "").replace(/^"|"$/g, "").trim().slice(0, 80);
+}
+
 function sameTarget(a: WorkflowStep, b: WorkflowStep): boolean {
   if (a.action !== b.action) return false;
   const left = a.identity;
@@ -633,6 +780,7 @@ function clone<T>(value: T): T {
 interface Row {
   step: WorkflowStep;
   takes: string[];
+  workflowId: string;
 }
 
 function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
@@ -642,7 +790,7 @@ function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
   let j = 0;
   while (i < rows.length || j < incoming.length) {
     if (i < rows.length && j < incoming.length && stepKey(rows[i]!.step) === stepKey(incoming[j]!)) {
-      out.push({ step: rows[i]!.step, takes: [...rows[i]!.takes, take] });
+      out.push({ step: rows[i]!.step, takes: [...rows[i]!.takes, take], workflowId: rows[i]!.workflowId });
       i += 1;
       j += 1;
       continue;
@@ -654,11 +802,11 @@ function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
       continue;
     }
     if (bAhead > 0) {
-      for (let n = 0; n < bAhead; n++) out.push({ step: clone(incoming[j++]!), takes: [take] });
+      for (let n = 0; n < bAhead; n++) out.push({ step: clone(incoming[j++]!), takes: [take], workflowId: doc.id });
       continue;
     }
     if (i < rows.length) out.push(rows[i++]!);
-    if (j < incoming.length) out.push({ step: clone(incoming[j++]!), takes: [take] });
+    if (j < incoming.length) out.push({ step: clone(incoming[j++]!), takes: [take], workflowId: doc.id });
   }
   return out;
 }

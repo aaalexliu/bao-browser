@@ -13,6 +13,41 @@ test("a new leaf outranks a longer change", () => {
   assert.equal(smallestChange({ "P:1": "same" }, { "P:1": "same" }), undefined);
 });
 
+test("a password cover does not become the text that appeared", async () => {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  const events: TrailEvent[] = [];
+  try {
+    const context = await browser.newContext();
+    await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
+      events.push(payload);
+    });
+    await context.addInitScript(recorderSource());
+    const page = await context.newPage();
+    await page.goto(htmlPage(`<button id="apply" data-testid="apply">Apply</button><p id="status" data-testid="apply-status">Waiting to apply</p>
+      <script>
+        document.getElementById("apply").onclick = () => {
+          document.getElementById("status").textContent = "Applied";
+        };
+      </script>`));
+    await page.evaluate(() => {
+      const cover = document.createElement("div");
+      cover.setAttribute("data-bao-mask", "1");
+      cover.setAttribute("aria-hidden", "true");
+      cover.textContent = "••••••••";
+      document.body.appendChild(cover);
+    });
+    await page.locator("#apply").click();
+    await page.waitForTimeout(50);
+    const click = events.find((event) => event.op === "click");
+    assert.equal(click?.subtreeAfter, "Applied");
+    assert.equal(click?.afterText, "Applied");
+    assert.equal(JSON.stringify(click).includes("••••"), false);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("the recorder stores the dialog and the text that appears after it closes", async () => {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });

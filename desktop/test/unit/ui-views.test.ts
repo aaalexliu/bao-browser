@@ -155,6 +155,8 @@ test("run viewer shows the stop, one segment per step, and zero model calls", ()
     ],
   });
   assert.match(refused, /id="why-stopped"/);
+  assert.match(refused, /Nothing after step 2 ran/);
+  assert.equal(refused.includes("Nothing after step 0"), false);
   assert.match(refused, /Step 3 (&quot;|")click Upload(&quot;|")/);
   assert.match(refused, /name (&quot;|")Upload(&quot;|") → (&quot;|")Upload file(&quot;|")/);
   assert.equal((refused.match(/class="seg /g) || []).length, 4);
@@ -306,6 +308,19 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.equal(html.includes('data-testid="share-export" disabled'), false);
   assert.equal(html.includes('data-testid="deeplink"'), false);
   assert.equal(html.includes('data-testid="import-link"'), false);
+  const routed = workflowDetail({
+    id: "wf",
+    name: "Note either way",
+    inputs: [
+      { name: "username", type: "text" },
+      { name: "route", type: "choice", label: "Which way", choices: ["Log in first", "Already signed in"] },
+    ],
+    steps: [{ id: "u", action: "type", label: "Type {{username}}", input: "username", when: { input: "route", value: "Log in first" } }],
+  });
+  assert.match(routed, /id="route-branch"[^>]*>Routes: Log in first \/ Already signed in</);
+  assert.match(routed, /\{\{username\}\}/);
+  assert.equal(routed.includes(">{{route}}<"), false);
+  assert.equal(routed.includes('data-testid="deeplink"'), false);
   const empty = workflowDetail({ id: "empty", name: "Empty", steps: [] });
   assert.match(empty, /data-testid="share-export" disabled/);
   assert.match(empty, /This workflow has no steps to export/);
@@ -355,6 +370,8 @@ test("a failed run says the phase, the change, what bao tried, and shows the gri
   assert.match(html, /id="trajectory"/);
   assert.match(html, /aimed at/);
   assert.match(html, /id="open-failed-step"/);
+  assert.match(html, /No steps ran/);
+  assert.equal(html.includes("Nothing after step 0"), false);
   assert.match(html, /id="identity-table"/);
   assert.match(html, /id="snapshot-inspector"/);
   assert.match(html, /data-run-tab="console"/);
