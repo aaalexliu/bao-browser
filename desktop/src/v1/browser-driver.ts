@@ -3,6 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
+import { shotWithBlur } from "./blur";
 import { dumpPage, maskPasswordFields, unmaskPasswordFields, type DomDump } from "./dom-page";
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
@@ -149,7 +150,7 @@ export class BrowserDriver implements Driver {
       await found.mark();
       const view = this.page.viewportSize() || await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
       const clip = paddedClip(found.box, view);
-      return await this.page.screenshot({ type: "png", clip });
+      return await shotWithBlur(this.page, { type: "png", clip });
     } catch {
       return undefined;
     } finally {
@@ -162,7 +163,7 @@ export class BrowserDriver implements Driver {
     await this.page.evaluate(maskPasswordFields).catch(() => undefined);
     let png: Buffer;
     try {
-      png = await this.page.screenshot({ type: "png" });
+      png = await shotWithBlur(this.page, { type: "png" });
     } finally {
       await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
     }

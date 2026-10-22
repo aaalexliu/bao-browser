@@ -43,6 +43,8 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
   process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   delete process.env.BAO_HEAL_FIXTURE;
   const home = mkdtempSync(path.join(tmpdir(), "bao-ui-"));
+  const previousChrome = process.env.BAO_CHROME_USER_DATA;
+  process.env.BAO_CHROME_USER_DATA = path.join(home, "no-chrome");
   const app = await startApp({ home, port: 0 });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -224,6 +226,8 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     const code = await page.locator("#import-error").getAttribute("data-error-code");
     assert.ok(code && code !== "could not import");
   } finally {
+    if (previousChrome === undefined) delete process.env.BAO_CHROME_USER_DATA;
+    else process.env.BAO_CHROME_USER_DATA = previousChrome;
     delete process.env.BAO_HEAL_FIXTURE;
     await page.close().catch(() => undefined);
     await browser.close().catch(() => undefined);

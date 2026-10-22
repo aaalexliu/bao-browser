@@ -158,6 +158,29 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: post(event, undefined, meta.secrets ?? []),
     };
   }
+  if (event.op === "note") {
+    const text = scrub(event.afterText, meta.secrets ?? []);
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: "note",
+      label: text ? `Note: ${text}` : "Note",
+      surface: "dom",
+      timeoutMs: 8000,
+    };
+  }
+  if (event.op === "expect") {
+    const match = scrub(event.afterText, meta.secrets ?? []);
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: "verify",
+      label: match ? `Check: ${match}` : "Check",
+      surface: "dom",
+      timeoutMs: 8000,
+      expect: { kind: "text", match: match || "", timeoutMs: 8000 },
+    };
+  }
   if (event.op === "verify") {
     const read = post(event, undefined, meta.secrets ?? []);
     const match = scrub(event.afterText, meta.secrets ?? []);

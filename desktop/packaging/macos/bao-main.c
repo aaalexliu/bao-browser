@@ -68,6 +68,12 @@ int main(void) {
   char helper[4096];
   snprintf(helper, sizeof helper, "%s/BaoOSHelper.app", resources);
   if (access(helper, F_OK) == 0) setenv("BAO_OS_HELPER", helper, 1);
+  char bar[4096];
+  snprintf(bar, sizeof bar, "%s/BaoCaptureBar.app/Contents/MacOS/BaoCaptureBar", resources);
+  if (access(bar, X_OK) == 0) {
+    setenv("BAO_CAPTURE_BAR", "1", 1);
+    setenv("BAO_CAPTURE_BAR_BIN", bar, 1);
+  }
 
   const char *home = getenv("HOME");
   if (!home || !home[0]) home = "/tmp";

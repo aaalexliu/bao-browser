@@ -207,7 +207,7 @@ Click **Capture** in the sidebar.
 
 ![Capture screen with Start URL, Start capture, and Stop and save.](mac-test/03-capture.png)
 
-1. Press **Start capture**. A second window opens on the fixture. That window is the bundled Chromium.
+1. Press **Start capture**. A second window opens on the fixture. That window is the bundled Chromium. The floating Bao Capture panel lists each step as it lands. Pause drops further UI events. Add note and Add check append a note or a check. Discard throws the take away. Control-option-command R starts, period stops, and P pauses. A password field is blurred before a screenshot is taken. A login or confirm wait posts a macOS notification and sets the Bao Capture dock badge to `!`.
 2. Type `ada` in Username. Type a made-up password in Password. Choose a throwaway file in the file input, for example a text file you created under `/tmp` for this test.
 3. Press **Stop and save**.
 
