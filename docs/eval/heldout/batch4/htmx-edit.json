@@ -1,0 +1,92 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653738843,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653738883,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653738924,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653738964,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Click to Edit",
+      "cssPath": "main:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        }
+      ]
+    },
+    "subtreeBefore": "Click to Edit",
+    "subtreeAfter": "Click to Edit",
+    "beforeUrl": "https://htmx.org/examples/click-to-edit/",
+    "afterUrl": "https://htmx.org/examples/click-to-edit/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653739245,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Click to Edit",
+      "cssPath": "main:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        }
+      ]
+    },
+    "subtreeBefore": "Click to Edit",
+    "subtreeAfter": "Click to Edit",
+    "beforeUrl": "https://htmx.org/examples/click-to-edit/",
+    "afterUrl": "https://htmx.org/examples/click-to-edit/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653739476,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "CLICK TO EDIT",
+      "cssPath": "#demo-canvas > div:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "CLICK TO EDIT",
+    "subtreeAfter": "SUBMIT",
+    "beforeUrl": "https://htmx.org/examples/click-to-edit/",
+    "afterUrl": "https://htmx.org/examples/click-to-edit/"
+  }
+]

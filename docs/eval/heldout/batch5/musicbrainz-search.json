@@ -1,0 +1,202 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792656347462,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792656347502,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792656347542,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792656347582,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Search",
+      "cssPath": "#content > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Search",
+    "subtreeAfter": "Search",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e4",
+    "ts": 1792656347909,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e5",
+    "ts": 1792656347940,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Search",
+      "cssPath": "#content > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Search",
+    "subtreeAfter": "Search",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e6",
+    "ts": 1792656348204,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e7",
+    "ts": 1792656348235,
+    "kind": "act",
+    "op": "type",
+    "value": "Beatless",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "id-query",
+      "nameAttr": "query",
+      "tag": "input",
+      "label": "Query:",
+      "cssPath": "#id-query",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e8",
+    "ts": 1792656348437,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e9",
+    "ts": 1792656348437,
+    "kind": "act",
+    "op": "type",
+    "value": "Beatles",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "id-query",
+      "nameAttr": "query",
+      "tag": "input",
+      "label": "Query:",
+      "cssPath": "#id-query",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e10",
+    "ts": 1792656348595,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Search",
+      "cssPath": "#content > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(5) > span:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "span"
+        }
+      ]
+    },
+    "subtreeBefore": "Search",
+    "subtreeAfter": "Search",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search?query=Beatles&type=artist&limit=25&method=indexed"
+  }
+]

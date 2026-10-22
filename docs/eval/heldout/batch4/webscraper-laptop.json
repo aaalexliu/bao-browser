@@ -1,0 +1,102 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653707280,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653707320,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653707360,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653707401,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://webscraper.io/test-sites/e-commerce/allinone/computers/laptops",
+    "afterUrl": "https://webscraper.io/test-sites/e-commerce/allinone/computers/laptops"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653707454,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Test Sites",
+      "cssPath": "div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Test Sites",
+    "subtreeAfter": "Test Sites",
+    "beforeUrl": "https://webscraper.io/test-sites/e-commerce/allinone/computers/laptops",
+    "afterUrl": "https://webscraper.io/test-sites/e-commerce/allinone/computers/laptops"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653707848,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Asus VivoBook...",
+      "cssPath": "div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h4:nth-of-type(2) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "heading"
+        }
+      ]
+    },
+    "subtreeBefore": "Asus VivoBook...",
+    "subtreeAfter": "",
+    "beforeUrl": "https://webscraper.io/test-sites/e-commerce/allinone/computers/laptops",
+    "afterUrl": "https://webscraper.io/test-sites/e-commerce/allinone/product/60"
+  }
+]

@@ -76,7 +76,7 @@ export interface Postcondition {
 
 /** Re-read after the action. A verify step has no action of its own. */
 export interface Expectation {
-  kind: "text" | "url" | "state";
+  kind: "text" | "url" | "state" | "settled";
   match?: string;
   state?: "checked" | "unchecked" | "enabled" | "disabled" | "visible";
   identity?: Identity;
@@ -163,6 +163,8 @@ export interface WorkflowStep {
   gate?: "login" | "confirm";
   postcondition?: Postcondition;
   expect?: Expectation;
+  /** Set when the trail showed no subtree, value, or url effect. Replay only checks that the page settled. */
+  confidence?: "low";
   /** Must become true before find. A miss is phase `wait_for`. */
   waitFor?: StepCheck;
   /** Must be absent after the action. A miss is phase `expect`. */

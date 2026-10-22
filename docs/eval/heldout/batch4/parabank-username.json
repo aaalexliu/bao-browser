@@ -1,0 +1,166 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653705737,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653705777,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653705817,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653705858,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h2",
+      "text": "Customer Login",
+      "cssPath": "#leftPanel > h2:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Customer Login",
+    "subtreeAfter": "Customer Login",
+    "beforeUrl": "https://parabank.parasoft.com/parabank/index.htm",
+    "afterUrl": "https://parabank.parasoft.com/parabank/index.htm"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653706146,
+    "kind": "act",
+    "op": "type",
+    "value": "adax",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "username",
+      "tag": "input",
+      "cssPath": "#loginPanel > form:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://parabank.parasoft.com/parabank/index.htm",
+    "afterUrl": "https://parabank.parasoft.com/parabank/index.htm"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653706251,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://parabank.parasoft.com/parabank/index.htm",
+    "afterUrl": "https://parabank.parasoft.com/parabank/index.htm"
+  },
+  {
+    "id": "e6",
+    "ts": 1792653706251,
+    "kind": "act",
+    "op": "type",
+    "value": "ada",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "username",
+      "tag": "input",
+      "cssPath": "#loginPanel > form:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://parabank.parasoft.com/parabank/index.htm",
+    "afterUrl": "https://parabank.parasoft.com/parabank/index.htm"
+  },
+  {
+    "id": "e7",
+    "ts": 1792653706335,
+    "kind": "act",
+    "op": "type",
+    "sensitive": true,
+    "gate": "login",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "password",
+      "tag": "input",
+      "cssPath": "#loginPanel > form:nth-of-type(1) > div:nth-of-type(2) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://parabank.parasoft.com/parabank/index.htm",
+    "afterUrl": "https://parabank.parasoft.com/parabank/index.htm"
+  }
+]

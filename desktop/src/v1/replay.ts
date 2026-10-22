@@ -24,7 +24,7 @@ import {
   type StepFailure,
   type TriedLocator,
 } from "./heal";
-import { isCollapsedBox, matchLocator, scoreLocator } from "./locators";
+import { isCollapsedBox, matchLabeledControl, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
 import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
 import { consequential, type SiteTrustMode } from "./site-trust";
@@ -81,6 +81,8 @@ export interface Driver {
   drop(node: Identity, files: FileArg[]): Promise<void>;
   digits(app: string | undefined, role: string, text: string): Promise<void>;
   check(node: Identity, checked: boolean): Promise<void>;
+  /** Move focus onto the key step's target before the key is pressed. */
+  focus?(node: Identity): Promise<void>;
   notify(notice: HealNotice): Promise<void>;
   sleep?(ms: number): Promise<void>;
   waitIdle?(timeoutMs: number): Promise<void>;
@@ -930,6 +932,15 @@ function locate(
         };
       }
     }
+    const labeled = matchLabeledControl(list, step.identity, nodes, tree.boxes, tree.hidden);
+    if (labeled) {
+      return {
+        nodes,
+        hit: { ok: true, index: labeled.index, ranked: [] },
+        via: { stepId: step.id, kind: labeled.kind, detail: labeled.detail },
+        tried,
+      };
+    }
     return {
       nodes,
       hit: { ok: false, reason: "below-threshold", brokenAttr: list[0]?.kind || "locator", ranked: [] },
@@ -974,6 +985,7 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     return;
   }
   if (step.action === "key") {
+    await driver.focus?.(node);
     await driver.key(step.key || "Enter");
     return;
   }
@@ -983,6 +995,7 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
 }
 
 export function holdsExpect(expect: NonNullable<WorkflowStep["expect"]>, tree: LiveTree, args: ReplayArgs): boolean {
+  if (expect.kind === "settled") return pageSettled(tree);
   if (expect.kind === "url") return urlIncludes(tree.url || "", expectedText(expect.match || "", args));
   if (expect.kind === "text") {
     const want = expectedText(expect.match || "", args);
@@ -1094,6 +1107,14 @@ function checkHolds(check: StepCheck, tree: LiveTree, args: ReplayArgs): boolean
   return lookup(check.identity, tree.nodes).ok;
 }
 
+function pageSettled(tree: LiveTree): boolean {
+  const url = tree.url || "";
+  if (!url || /^chrome-error:/i.test(url) || /chromewebdata/i.test(url) || /^about:neterror/i.test(url)) return false;
+  const blob = tree.texts.join("\n");
+  if (/this site can.t be reached|dns_probe|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION/i.test(blob)) return false;
+  return true;
+}
+
 function urlIncludes(url: string, expected: string): boolean {
   if (!expected) return false;
   let decoded = url;
@@ -1193,7 +1214,9 @@ function phaseReason(failure: StepFailure): string {
 }
 
 function expectReason(step: WorkflowStep): string {
-  if (step.expect?.kind === "text" || step.expect?.kind === "url") return step.expect.match || step.expect.kind;
+  if (step.expect?.kind === "text" || step.expect?.kind === "url" || step.expect?.kind === "settled") {
+    return step.expect.match || step.expect.kind;
+  }
   if (step.expect?.state) return step.expect.state;
   if (step.postcondition) return "postcondition";
   return "expect";

@@ -1,0 +1,157 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792656540934,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792656540975,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792656541015,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792656541056,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "faq",
+      "cssPath": "#menu > nav:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(9) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "nav"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "faq",
+    "subtreeAfter": "",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792656571383,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792656571417,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792656571474,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "faq",
+      "cssPath": "#menu > nav:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(9) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "nav"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "faq",
+    "subtreeAfter": "",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/faq.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792656601758,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://nginx.org/en/docs/faq.html",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792656601817,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792656601848,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "ngx_http_core_module",
+      "cssPath": "#content > ul:nth-of-type(11) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "ngx_http_core_module",
+    "subtreeAfter": "",
+    "beforeUrl": "https://nginx.org/en/docs/",
+    "afterUrl": "https://nginx.org/en/docs/http/ngx_http_core_module.html"
+  }
+]

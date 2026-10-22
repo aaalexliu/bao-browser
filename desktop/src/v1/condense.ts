@@ -5,8 +5,8 @@
 // and nothing later sits inside that subtree. A button, tab, radio, or checkbox
 // with no css path stays when a later step uses another control.
 // A click that changed the url, a checked state, a value, or the target
-// subtree stays. A login or confirm gate stays. A Help click stays so the
-// hybrid pass can drop it.
+// subtree stays. A JS dialog (Page.javascriptDialogOpening) stays.
+// A login or confirm gate stays. A Help click stays so the hybrid pass can drop it.
 
 import { interpret, type InterpretMeta, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
@@ -57,6 +57,7 @@ function isHelp(event: TrailEvent): boolean {
 }
 
 function clickChangedState(event: TrailEvent): boolean {
+  if (event.dialog) return true;
   if (event.beforeUrl && event.afterUrl && event.beforeUrl !== event.afterUrl) return true;
   if (typeof event.checked === "boolean") return true;
   if (event.valueBefore != null && event.valueAfter != null && event.valueBefore !== event.valueAfter) return true;
