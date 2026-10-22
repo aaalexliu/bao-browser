@@ -5,6 +5,7 @@
 // writes only through SW messages (the single-writer discipline). Live capture stays in
 // the panel; this surface is the library + post-hoc filmstrip.
 import type { AssertKind, Msg, RunRecord, RunState, Step, Workflow, WorkflowSummary } from "./types";
+import { formatClock } from "../web/src/lib/time";
 import { domainOf, dateFmt, relTime, stepLabel, slugify, nSteps, groupWorkflows } from "./wf-view";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -320,8 +321,8 @@ function buildDebugBody(body: HTMLElement, s: Step): void {
   add("urlAfter", s.urlAfter);
   add("urlPattern", s.urlPattern);
   if (s.download) add("download", s.download.filename ?? JSON.stringify(s.download));
-  add("recordedAt", s.meta ? new Date(s.meta.recordedAt).toLocaleString() : undefined);
-  add("captured ts", s.ts ? new Date(s.ts).toLocaleString() : undefined);
+  add("recordedAt", s.meta ? formatClock(s.meta.recordedAt) : undefined);
+  add("captured ts", s.ts ? formatClock(s.ts) : undefined);
   if (s.meta?.viewport) add("viewport", `${s.meta.viewport.w}×${s.meta.viewport.h}`);
   if (s.frame) {
     add("frame id", s.frame.frameId);
@@ -486,7 +487,7 @@ async function openPlayer(rec: RunRecord): Promise<void> {
   $("pdot").className = `dot ${rec.outcome}`;
   $("poutcome").textContent = rec.outcome === "passed" ? "Passed" : "Failed";
   $("pmeta").textContent =
-    `${rec.workflowName} · ${new Date(rec.finishedAt).toLocaleString()} · ${((rec.finishedAt - rec.startedAt) / 1000).toFixed(1)}s`;
+    `${rec.workflowName} · ${formatClock(rec.finishedAt)} · ${((rec.finishedAt - rec.startedAt) / 1000).toFixed(1)}s`;
   playerEl.hidden = false;
   await renderFrame();
 }

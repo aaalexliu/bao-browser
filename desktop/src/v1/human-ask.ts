@@ -1,5 +1,7 @@
 // Copy for a step that waits on the person. Replay does not click or type these.
 
+import { formatClock } from "./time";
+
 export type AskKind = "login" | "confirm";
 
 /** A person has two hours unless Settings names another wait. */
@@ -86,13 +88,7 @@ export function formatWait(now: number, deadline: number | null, effect: string)
   const total = Math.ceil(remain / 1000);
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
-  const clock = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(new Date(deadline));
-  return `Waiting ${minutes}:${String(seconds).padStart(2, "0")} · times out ${clock} (${effect})`;
+  return `Waiting ${minutes}:${String(seconds).padStart(2, "0")} · times out ${formatClock(deadline)} (${effect})`;
 }
 
 export function pendingHealCount(runs: { heals?: { id?: string }[]; decisions?: { healId: string }[] }[]): number {

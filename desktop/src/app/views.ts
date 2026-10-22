@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
+import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs } from "../v1/filmstrip";
@@ -274,14 +275,7 @@ export function importCard(pending: ImportPending | null | undefined): string {
     return importErrorCard(view);
   }
   if (pending.phase === "done" && pending.audit) {
-    const when = pending.audit.at ? new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    }).format(new Date(pending.audit.at)) : "";
+    const when = typeof pending.audit.at === "number" ? formatClock(pending.audit.at) : "";
     return `<section class="card" id="import-done"><p>Imported ${esc(pending.audit.count)} cookies for ${esc(pending.audit.domain)}${when ? ` at ${esc(when)}` : ""}.</p></section>`;
   }
   return "";
@@ -545,7 +539,10 @@ export function consolePane(lines: ConsoleLine[] | undefined, stepId?: string): 
   const shown = mine.length ? mine : all;
   const note = mine.length || !all.length ? "" : `<p class="quiet">No console lines on this step. Showing the page load.</p>`;
   if (!shown.length) return `<p class="quiet" id="console-log">No console lines were captured.</p>`;
-  const rows = shown.map((line) => `<li><span class="quiet">${esc(line.type || "log")}</span> ${esc(line.text)}</li>`).join("");
+  const rows = shown.map((line) => {
+    const when = typeof line.ts === "number" ? formatClock(line.ts) : "";
+    return `<li><span class="quiet">${esc([when, line.type || "log"].filter(Boolean).join(" "))}</span> ${esc(line.text)}</li>`;
+  }).join("");
   return `${note}<ol id="console-log">${rows}</ol>`;
 }
 
@@ -555,7 +552,10 @@ export function networkPane(lines: NetworkLine[] | undefined, stepId?: string): 
   const shown = mine.length ? mine : all;
   const note = mine.length || !all.length ? "" : `<p class="quiet">No network lines on this step. Showing the page load.</p>`;
   if (!shown.length) return `<p class="quiet" id="network-log">No network requests were captured.</p>`;
-  const rows = shown.map((line) => `<li>${esc(line.status ?? "")} ${esc(line.method || "")} ${esc(line.url)}</li>`).join("");
+  const rows = shown.map((line) => {
+    const when = typeof line.ts === "number" ? formatClock(line.ts) : "";
+    return `<li>${esc([when, line.status ?? "", line.method || ""].filter((part) => part !== "").join(" "))} ${esc(line.url)}</li>`;
+  }).join("");
   return `${note}<ol id="network-log">${rows}</ol>`;
 }
 
@@ -567,7 +567,10 @@ export function inputsPane(inputs: Record<string, string> | undefined): string {
 
 export function trailPane(events: { id?: string; ts?: number; op?: string; kind?: string }[]): string {
   if (events.length === 0) return `<p class="quiet">No trail events.</p>`;
-  const lines = events.map((event) => `${event.ts ?? ""} ${event.kind || ""} ${event.op || ""} ${event.id || ""}`).join("\n");
+  const lines = events.map((event) => {
+    const when = typeof event.ts === "number" ? formatClock(event.ts) : "";
+    return [when, event.kind || "", event.op || "", event.id || ""].filter(Boolean).join(" ");
+  }).join("\n");
   return `<pre id="trail-view">${esc(lines)}</pre>`;
 }
 
@@ -613,7 +616,7 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
         bucket,
         workflow: healWorkflowName(heal, run, names),
         step: heal.failedStep?.label || heal.intent || heal.failedStep?.id || "step",
-        when: heal.ts ? new Date(heal.ts).toISOString() : "",
+        when: typeof heal.ts === "number" ? formatWhen(heal.ts) : "",
       });
     }
   }
@@ -634,7 +637,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
     `#${index + 1} ${esc(candidate.label)} ${candidate.score}`).join("  ") || "No other candidates stored on this record.";
   const post = heal.postconditionPassed === undefined ? "not run" : heal.postconditionPassed ? "passed" : "failed";
   const decisions = (run.decisions || []).filter((item) => item.healId === heal.id);
-  const decisionLine = decisions.map((item) => `${item.decision} at ${item.ts}`).join(", ");
+  const decisionLine = decisions.map((item) => `${item.decision} at ${formatClock(item.ts)}`).join(", ");
   const model = heal.model ? `${heal.model.name || ""} ${heal.model.version || ""}`.trim() : "no model";
   const name = extra.workflowName || healWorkflowName(heal, run, new Map());
   return `<article id="heal-detail" data-heal="${esc(heal.id)}" data-run="${esc(run.id)}">
@@ -783,32 +786,20 @@ export function receiptLines(receipts: { source?: string; expected?: string; act
   }).join("")}</ul>`;
 }
 
-function runWhen(at: number | undefined): { clock: string; full: string } {
-  if (!at) return { clock: "—", full: "" };
-  const date = new Date(at);
-  const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
-  const full = new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(date);
-  return { clock, full };
+function runClock(at: number | undefined): string {
+  return typeof at === "number" ? formatClock(at) : "—";
 }
 
 function runTitle(run: RunSummary): string {
-  const when = runWhen(run.at);
-  return when.full ? `${run.id} · ${when.full}` : run.id;
+  if (typeof run.at !== "number") return run.id;
+  return `${run.id} · ${formatWhen(run.at)}`;
 }
 
 export function passGrid(runs: RunSummary[], steps: { id: string; label?: string }[]): string {
   const cols = [...runs].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   if (!cols.length || !steps.length) return "";
   const head = cols.map((run) => {
-    const when = runWhen(run.at);
-    return `<th scope="col" title="${esc(runTitle(run))}"><time>${esc(when.clock)}</time></th>`;
+    return `<th scope="col" title="${esc(runTitle(run))}"><time>${esc(runClock(run.at))}</time></th>`;
   }).join("");
   const body = steps.map((step) => {
     const cells = cols.map((run) => {
@@ -941,9 +932,10 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): stri
     const kind = runKind(run);
     const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
     const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
-    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(run.id)}</td></tr>`;
+    const when = typeof run.at === "number" ? formatWhen(run.at) : "";
+    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td></tr>`;
   }).join("");
-  return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>Run</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>When</th><th>Run</th></tr></thead><tbody>${rows}</tbody></table></section>`;
 }
 
 export function commandItems(workflows: { id: string; name: string }[]): CommandItem[] {

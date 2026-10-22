@@ -1,6 +1,7 @@
 // Desktop window. Talks only to this machine's bao server.
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
+import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
@@ -602,7 +603,7 @@ async function openEditor(id: string): Promise<void> {
   const host = document.getElementById("workflow-host");
   if (!host || !host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-  const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}` : "Not run yet";
+  const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}${typeof last.at === "number" ? ` · ${formatWhen(last.at)}` : ""}` : "Not run yet";
   host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel }) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
