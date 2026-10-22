@@ -97,6 +97,8 @@
     .device { display: flex; justify-content: space-between; gap: 1rem; padding: 0.35rem 0; border-top: 1px solid var(--line); }
     .backup-row { display: flex; justify-content: space-between; gap: 1rem; align-items: end; }
     .backup-row label { min-width: 12rem; margin: 0; }
+    .backup-copy { display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; align-items: baseline; min-width: 0; }
+    .backup-copy p { margin: 0; }
     .sync-cats { list-style: none; padding: 0; margin: 0.2rem 0 0.8rem; }
     .sync-cats li { padding: 0.45rem 0; border-top: 1px solid var(--line); }
     .sync-cats label { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-weight: 600; }
@@ -105,7 +107,15 @@
     .versions { list-style: none; padding: 0; margin: 0.4rem 0 0; display: grid; gap: 0.7rem; }
     .versions li { padding-top: 0.55rem; border-top: 1px solid var(--line); }
     #versions time { color: var(--quiet); font-size: var(--text-sm); }
-    .locator-version { margin: 0.25rem 0 0; color: var(--quiet); font-size: var(--text-sm); display: flex; flex-wrap: wrap; gap: 0.55rem; }
+    .locator-history { width: 100%; border-collapse: collapse; margin: 0.35rem 0 0; font-size: var(--text-sm); }
+    .locator-history th, .locator-history td { text-align: left; font-weight: 500; padding: 0.2rem 0.55rem 0.2rem 0; color: var(--quiet); }
+    .locator-history th { font-size: var(--text-xs); }
+    .version-diff { margin: 0.35rem 0 0; }
+    .version-steps { margin: 0.35rem 0 0; }
+    .version-steps summary { cursor: pointer; color: var(--quiet); }
+    .version-steps ol { list-style: none; padding: 0; margin: 0.35rem 0 0; display: grid; gap: 0.35rem; }
+    .version-steps li { display: flex; flex-wrap: wrap; gap: 0.35rem 0.6rem; padding-top: 0; border-top: 0; color: var(--quiet); font-size: var(--text-sm); }
+    .version-steps li[data-changed="true"] { color: var(--ink); }
     .lede { font-size: var(--text-md); margin: 0.35rem 0 var(--space-4); }
     .crumb { margin: 0 0 0.7rem; color: var(--quiet); font-size: var(--text-sm); display: flex; gap: 0.35rem; align-items: center; }
     .wf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.4rem; }

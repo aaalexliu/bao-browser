@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { loadState, restoreScheduledBackup, runScheduledBackup } from "../../src/v1/sync";
+import { loadState, restoreScheduledBackup, revealBackup, runScheduledBackup, saveState } from "../../src/v1/sync";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -57,4 +57,10 @@ test("a daily backup file appears and restores the workflow", () => {
   assert.equal(next.ran, true);
   assert.notEqual(next.path, first.path);
   assert.equal(existsSync(path.join(next.path || "", "workflows", "wf-backup.json")), true);
+
+  assert.equal(revealBackup(library), next.path);
+  const moved = loadState(home);
+  moved.scheduledBackupPath = "/tmp/not-ours";
+  saveState(home, moved);
+  assert.throws(() => revealBackup(library), /bad backup path/);
 });

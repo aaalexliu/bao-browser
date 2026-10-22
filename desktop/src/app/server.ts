@@ -1,6 +1,7 @@
 // Local app. The UI, the library, and replay all stay on disk.
 // Nothing is recorded unless a session was started.
 
+import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -88,7 +89,7 @@ import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
-import { keepMine, openConflict, pairDevice, restoreScheduledBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus } from "../v1/sync";
+import { keepMine, openConflict, pairDevice, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
@@ -557,6 +558,15 @@ export async function startApp(opts: {
         const body = await readBody(req) as { schedule?: string; action?: string };
         if (body.action === "restore") return json(res, restoreScheduledBackup(library));
         return json(res, setBackupSchedule(library, String(body.schedule || "off")));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/reveal") {
+        const target = revealBackup(library);
+        const command = process.platform === "darwin" ? "open" : "xdg-open";
+        const args = process.platform === "darwin" ? ["-R", target] : [target];
+        const child = spawn(command, args, { stdio: "ignore", detached: true });
+        child.on("error", () => undefined);
+        child.unref();
+        return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/sync/conflict") {
         const body = await readBody(req) as { id?: string; action?: string };

@@ -308,6 +308,16 @@ export function runScheduledBackup(library: Library, now = Date.now()): { ran: b
   return { ran: true, path: dest };
 }
 
+/** The folder Reveal in Finder opens. It has to live under this library's backups. */
+export function revealBackup(library: Library): string {
+  const state = loadState(library.root);
+  const target = state.scheduledBackupPath || state.backupPath;
+  if (!target) throw new Error("no backup");
+  assertBackup(library.root, target);
+  if (!existsSync(target)) throw new Error("no backup");
+  return target;
+}
+
 export function restoreScheduledBackup(library: Library): SyncView {
   const state = loadState(library.root);
   const dest = state.scheduledBackupPath;

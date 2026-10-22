@@ -24,6 +24,14 @@ test("clock times use the machine zone and a recent row says how long ago", () =
   assert.equal(zoned(compiled, `formatRelative(${AT - 3 * 60 * 1000}, ${AT})`, "America/New_York"), "3 min ago");
   assert.equal(zoned(compiled, `formatRelative(${AT - 20 * 1000}, ${AT})`, "America/New_York"), "just now");
   assert.equal(zoned(compiled, `formatWhen(${AT}, ${NOW})`, "America/New_York"), "23 min ago · Oct 22, 12:50 AM EDT");
+  const night = Date.parse("2026-10-22T06:00:00.000Z");
+  const morning = Date.parse("2026-10-22T08:30:00.000Z");
+  assert.equal(zoned(compiled, `formatFriendly(${night}, ${morning})`, "America/New_York"), "Last night, 2:00 AM EDT");
+  const utcNight = zoned(compiled, `formatFriendly(${night}, ${morning})`, "UTC");
+  assert.match(utcNight, /6:00 AM/);
+  assert.match(utcNight, /UTC|GMT/);
+  assert.equal(utcNight.includes("EDT"), false);
+  assert.equal(utcNight.includes("2:00 AM"), false);
 });
 
 test("rendered pages have no ISO timestamp and no clock without a zone", () => {
