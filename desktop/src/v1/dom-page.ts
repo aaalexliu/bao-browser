@@ -12,8 +12,15 @@ export interface DomDump {
   label?: string;
   text?: string;
   cssPath?: string;
+  xpath?: string;
   path: { role: string; name?: string }[];
   value?: string;
+  bbox?: { x: number; y: number; w: number; h: number };
+  checked?: boolean;
+  enabled?: boolean;
+  overlay?: boolean;
+  /** visibility, display, or aria-hidden. A 0×0 box is reported on bbox, not here. */
+  hidden?: boolean;
 }
 
 export interface PageDump {
@@ -40,14 +47,20 @@ export function dumpPage(): PageDump {
     if (tag === "select") return "listbox";
     if (el instanceof HTMLInputElement) {
       if (el.type === "checkbox") return "checkbox";
+      if (el.type === "radio") return "radio";
       if (el.type === "file" || el.type === "text" || el.type === "password" || el.type === "email") return "textbox";
       if (el.type === "submit" || el.type === "button") return "button";
     }
-    if (tag === "h1" || tag === "h2" || tag === "h3") return "heading";
+    if (tag === "h1" || tag === "h2" || tag === "h3" || tag === "h4") return "heading";
     return tag;
   };
 
   const labelFor = (el: Element): string => {
+    const labelled = el.getAttribute("aria-labelledby");
+    if (labelled) {
+      const text = labelled.split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" ");
+      if (norm(text)) return norm(text);
+    }
     if (el.id) {
       const label = document.querySelector(`label[for="${cssEscape(el.id)}"]`);
       if (label) return norm(label.textContent || "");
@@ -55,6 +68,28 @@ export function dumpPage(): PageDump {
     const wrap = el.closest("label");
     if (wrap) return norm(wrap.textContent || "");
     return el.getAttribute("aria-label") || "";
+  };
+
+  const xpathOf = (el: Element): string => {
+    const name = el.getAttribute("name");
+    if (el.id && !/\d{4,}/.test(el.id) && !/[0-9a-f]{8,}/i.test(el.id)) {
+      return `//*[@id="${el.id.replace(/"/g, "")}"]`;
+    }
+    if (name && !name.includes('"')) return `//${el.tagName.toLowerCase()}[@name="${name}"]`;
+    const parts: string[] = [];
+    let node: Element | null = el;
+    while (node && node.nodeType === 1) {
+      let ix = 1;
+      let sib = node.previousElementSibling;
+      while (sib) {
+        if (sib.tagName === node.tagName) ix += 1;
+        sib = sib.previousElementSibling;
+      }
+      parts.unshift(`${node.tagName.toLowerCase()}[${ix}]`);
+      if (node === document.body) break;
+      node = node.parentElement;
+    }
+    return `/${parts.join("/")}`;
   };
 
   const cssPath = (el: Element): string => {
@@ -76,7 +111,7 @@ export function dumpPage(): PageDump {
 
   const interesting = (el: Element): boolean => {
     const tag = el.tagName;
-    return /^(A|BUTTON|INPUT|TEXTAREA|SELECT|LABEL|H1|H2|H3|SUMMARY)$/.test(tag)
+    return /^(A|BUTTON|INPUT|TEXTAREA|SELECT|LABEL|H1|H2|H3|H4|SUMMARY)$/.test(tag)
       || el.hasAttribute("role")
       || el.hasAttribute("data-testid")
       || el.hasAttribute("data-bao-drop");
@@ -88,6 +123,7 @@ export function dumpPage(): PageDump {
   let n = 0;
   document.querySelectorAll("body *").forEach((el) => {
     if (!(el instanceof HTMLElement) || !interesting(el)) return;
+    if (el.hidden || el.closest("[hidden]")) return;
     const handle = String(n++);
     el.setAttribute("data-bao-i", handle);
     const text = norm(el.innerText || el.textContent || "").slice(0, 80);
@@ -106,7 +142,9 @@ export function dumpPage(): PageDump {
       handle,
       surface: "dom",
       role: roleOf(el),
-      name: el.getAttribute("aria-label") || undefined,
+      name: el.getAttribute("aria-label")
+        || (el instanceof HTMLInputElement && (el.type === "submit" || el.type === "button") ? el.value : undefined)
+        || undefined,
       testId: el.getAttribute("data-testid") || undefined,
       id: el.id || undefined,
       nameAttr: el.getAttribute("name") || undefined,
@@ -114,9 +152,51 @@ export function dumpPage(): PageDump {
       label: labelFor(el) || undefined,
       text: text || undefined,
       cssPath: cssPath(el),
+      xpath: xpathOf(el),
       path,
       value: input && input.type !== "password" ? input.value : undefined,
+      bbox: (() => {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, w: rect.width, h: rect.height };
+      })(),
+      checked: input instanceof HTMLInputElement && (input.type === "radio" || input.type === "checkbox") ? input.checked : undefined,
+      enabled: !el.hasAttribute("disabled"),
+      overlay: el.getAttribute("role") === "dialog" || el.hasAttribute("data-bao-overlay") || el.getAttribute("data-testid") === "overlay-close" || undefined,
+      hidden: (() => {
+        const style = getComputedStyle(el);
+        return style.display === "none" || style.visibility === "hidden" || el.getAttribute("aria-hidden") === "true";
+      })(),
     });
   });
   return { url: location.href, title: document.title, nodes, texts, values };
+}
+
+/** Cover password fields before a screenshot. Does not read the field value. */
+export function maskPasswordFields(): void {
+  document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
+  for (const el of document.querySelectorAll("input[type=password]")) {
+    if (!(el instanceof HTMLInputElement) || !el.value) continue;
+    const rect = el.getBoundingClientRect();
+    const cover = document.createElement("div");
+    cover.setAttribute("data-bao-mask", "1");
+    cover.setAttribute("aria-hidden", "true");
+    cover.style.position = "fixed";
+    cover.style.left = `${rect.x}px`;
+    cover.style.top = `${rect.y}px`;
+    cover.style.width = `${Math.max(rect.width, 8)}px`;
+    cover.style.height = `${Math.max(rect.height, 8)}px`;
+    cover.style.background = "#1d1a16";
+    cover.style.color = "#f4f0e8";
+    cover.style.zIndex = "2147483647";
+    cover.style.display = "flex";
+    cover.style.alignItems = "center";
+    cover.style.padding = "0 8px";
+    cover.style.font = "16px sans-serif";
+    cover.textContent = "••••••••";
+    document.body.appendChild(cover);
+  }
+}
+
+export function unmaskPasswordFields(): void {
+  document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
 }

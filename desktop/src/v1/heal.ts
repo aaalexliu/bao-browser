@@ -2,6 +2,8 @@
 // The default policy is auto: apply the patch and keep going.
 // approve pauses at the proposal. The saved workflow changes only if the user keeps the patch.
 
+import type { IdentityView } from "../app/view-types";
+import { locatorsFromIdentity } from "./locators";
 import type { HealMode, Identity, WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface FailureSnapshot {
@@ -12,13 +14,22 @@ export interface FailureSnapshot {
   ax?: unknown;
 }
 
+/** wait_for, then find, then action, then expect. `gone` fails in expect. `auth` is a login redirect and is not healed. */
+export type ReplayPhase = "wait_for" | "find" | "action" | "expect" | "auth";
+
 export interface StepFailure {
   stepId: string;
   index: number;
   intent: string;
+  /** wait_for, find, action, expect, or auth. The reason is what failed inside that phase. */
+  phase: ReplayPhase;
   reason: string;
   brokenAttr?: string;
   snapshot: FailureSnapshot;
+  /** Ranked candidates from the lookup that stopped the step. */
+  identity?: IdentityView;
+  /** PNG from the start of the step, when the server asked for shots. */
+  beforeShot?: string;
 }
 
 export interface HealProposal {
@@ -51,6 +62,10 @@ export interface HealRecord {
   executed?: { action: string; identity?: Identity };
   postconditionPassed?: boolean;
   kept?: boolean;
+  /** PNG from the start of the failed step. Absent when shots were not captured. */
+  beforeShot?: string;
+  /** Candidates at the time of the miss. Keep and Revert do not change this. */
+  identity?: IdentityView;
 }
 
 export interface HealProvider {
@@ -61,10 +76,31 @@ export interface HealProvider {
 export interface HealSettings {
   /** Global default. Absent means auto. */
   heal?: HealMode;
+  /** How long a person has to act. Absent keeps the step timeout. */
+  actTimeoutMs?: number;
+  /** Passing real runs required before a provisional heal is kept. */
+  promoteAfter?: number;
+  /** Failed runs inside the window that stop auto-heal. */
+  circuitLimit?: number;
+  circuitWindowMs?: number;
 }
+
+export type StepHeal = "auto" | "ask" | "never";
 
 export function effectiveMode(workflow: WorkflowV2, settings: HealSettings): HealMode {
   return workflow.heal ?? settings.heal ?? "auto";
+}
+
+/** A step policy wins. `ask` is the approve pause. `never` does not call a model. */
+export function stepPolicy(
+  step: { heal?: string },
+  workflow: WorkflowV2,
+  settings: HealSettings,
+): HealMode | "never" {
+  if (step.heal === "never") return "never";
+  if (step.heal === "ask") return "approve";
+  if (step.heal === "auto") return "auto";
+  return effectiveMode(workflow, settings);
 }
 
 export function maskText(value: string, secrets: string[]): string {
@@ -92,6 +128,7 @@ export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: s
   const body = [
     "A replay step missed its target or its postcondition.",
     `Intent: ${failure.intent}`,
+    `Phase: ${failure.phase}`,
     `Reason: ${failure.reason}`,
     failure.brokenAttr ? `Attribute that broke: ${failure.brokenAttr}` : "",
     `Step: ${JSON.stringify(step)}`,
@@ -105,6 +142,7 @@ export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: s
 export function llmHealFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
+  secrets: string[] = [],
 ): HealProvider {
   const openai = env.OPENAI_API_KEY;
   const anthropic = env.ANTHROPIC_API_KEY;
@@ -114,7 +152,7 @@ export function llmHealFromEnv(
     },
     async propose(failure, step) {
       if (!openai && !anthropic) return null;
-      const prompt = buildPrompt(failure, step, []);
+      const prompt = buildPrompt(failure, step, secrets);
       if (openai) {
         const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {
           method: "POST",
@@ -169,7 +207,81 @@ export function unavailableHeal(): HealProvider {
   return { available: () => false, propose: async () => null };
 }
 
-function patchFromText(raw: string): HealProposal["patch"] {
+/** No vendor key. The proposal text was written by the Cursor session that is
+ * already running. This does not open a login and does not call OpenAI or Anthropic. */
+export function cursorSessionHeal(readResponse: () => string): HealProvider {
+  return {
+    available: () => true,
+    async propose(failure, step) {
+      const prompt = buildPrompt(failure, step, []);
+      let raw = "";
+      try {
+        raw = readResponse();
+      } catch {
+        return null;
+      }
+      if (!raw.trim()) return null;
+      return {
+        patch: patchFromText(raw),
+        model: { provider: "cursor", name: "cursor-session", version: "1" },
+        prompt,
+        rawResponse: raw,
+      };
+    },
+  };
+}
+
+/**
+ * File handoff. Writes the failure and waits for a response file.
+ * This process does not invent the patch. The Cursor CLI path calls this
+ * only when print mode cannot run.
+ */
+export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env, secrets: string[] = []): HealProvider {
+  return {
+    available: () => true,
+    async propose(failure, step) {
+      const { mkdirSync, readFileSync, unlinkSync, writeFileSync } = await import("node:fs");
+      const path = await import("node:path");
+      mkdirSync(dir, { recursive: true });
+      if (failure.snapshot.screenshot) {
+        writeFileSync(path.join(dir, "heal-shot.png"), Buffer.from(failure.snapshot.screenshot, "base64"));
+      }
+      const prompt = buildPrompt(failure, step, secrets);
+      writeFileSync(path.join(dir, "heal-request.json"), maskText(JSON.stringify({
+        intent: failure.intent,
+        phase: failure.phase,
+        reason: failure.reason,
+        step,
+        dom: failure.snapshot.dom,
+        prompt,
+      }, null, 2), secrets));
+      const responsePath = path.join(dir, "heal-response.json");
+      try { unlinkSync(responsePath); } catch { /* first request */ }
+      const deadline = Date.now() + Number(env.BAO_HEAL_WAIT_MS || 180000);
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        let raw = "";
+        try { raw = readFileSync(responsePath, "utf8"); } catch { continue; }
+        if (!raw.trim()) continue;
+        try {
+          const parsed = JSON.parse(raw) as { identity?: Identity; note?: string };
+          if (!parsed.identity) return null;
+          return {
+            patch: { identity: parsed.identity },
+            model: { provider: "cursor", name: "cursor", version: "live" },
+            prompt,
+            rawResponse: raw,
+          };
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    },
+  };
+}
+
+export function patchFromText(raw: string): HealProposal["patch"] {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) return {};
@@ -183,11 +295,12 @@ function patchFromText(raw: string): HealProposal["patch"] {
 }
 
 export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): WorkflowStep {
-  return {
-    ...step,
-    ...patch,
-    identity: patch.identity ? { ...step.identity, ...patch.identity, path: patch.identity.path || step.identity?.path || [] } : step.identity,
-  };
+  const identity = patch.identity
+    ? { ...patch.identity, path: patch.identity.path || [] }
+    : step.identity;
+  const next: WorkflowStep = { ...step, ...patch, identity };
+  if (patch.identity) next.locators = locatorsFromIdentity(identity);
+  return next;
 }
 
 export function keepPatch(workflow: WorkflowV2, stepId: string, patch: HealProposal["patch"]): WorkflowV2 {

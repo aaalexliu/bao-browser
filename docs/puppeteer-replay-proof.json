@@ -1,0 +1,43 @@
+{
+  "title": "Export click",
+  "steps": [
+    {
+      "type": "setViewport",
+      "width": 1280,
+      "height": 720,
+      "deviceScaleFactor": 1,
+      "isMobile": false,
+      "hasTouch": false,
+      "isLandscape": false
+    },
+    {
+      "type": "navigate",
+      "url": "file:///tmp/bao-replay/fixture.html",
+      "assertedEvents": [
+        {
+          "type": "navigation"
+        }
+      ]
+    },
+    {
+      "type": "click",
+      "selectors": [
+        [
+          "aria/Go"
+        ],
+        [
+          "text/Go"
+        ],
+        [
+          "#go"
+        ]
+      ],
+      "offsetX": 1,
+      "offsetY": 1
+    },
+    {
+      "type": "waitForExpression",
+      "expression": "document.body && document.body.innerText.includes(\"clicked\")"
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "permissions": {
+    "accessibility": true,
+    "screenCapture": true,
+    "prompted": false,
+    "parentIsLaunchd": true
+  },
+  "apps": {
+    "calculator": {
+      "manualAccessibility": true,
+      "nodeCount": 35,
+      "ok": true,
+      "sampleCount": 40,
+      "truncated": false,
+      "windowTitles": [
+        "Calculator"
+      ],
+      "buttonCount": 25,
+      "buttonsMissingFromTree": [],
+      "textRoles": []
+    },
+    "textedit": {
+      "manualAccessibility": true,
+      "nodeCount": 48,
+      "ok": true,
+      "sampleCount": 80,
+      "truncated": false,
+      "windowTitles": [
+        "Untitled"
+      ],
+      "buttonCount": 3,
+      "buttonsMissingFromTree": [],
+      "textRoles": [
+        "AXComboBox:font size",
+        "AXTextArea:First Text View"
+      ]
+    },
+    "finder": {
+      "manualAccessibility": true,
+      "nodeCount": 78,
+      "ok": true,
+      "sampleCount": 80,
+      "truncated": false,
+      "windowTitles": [
+        "bao-ax-finder"
+      ],
+      "buttonCount": 14,
+      "buttonsMissingFromTree": [],
+      "textRoles": [
+        "AXTextField:"
+      ]
+    },
+    "safari": {
+      "leftRunning": "other windows were left open",
+      "set": {
+        "set": true,
+        "confirmed": true,
+        "fields": 1
+      },
+      "navigated": true,
+      "ok": true,
+      "nodeCount": 206,
+      "sampleCount": 80,
+      "titleFilter": "Internet",
+      "roles": {
+        "AXApplication": 1,
+        "AXWindow": 1,
+        "AXButton": 13,
+        "AXImage": 1,
+        "AXGroup": 63,
+        "AXToolbar": 1,
+        "AXStaticText": 64,
+        "AXTextField": 1,
+        "AXSplitGroup": 1,
+        "AXTabGroup": 1,
+        "AXScrollArea": 1,
+        "AXWebArea": 1,
+        "AXLink": 54,
+        "AXHeading": 2,
+        "AXScrollBar": 1
+      },
+      "truncated": false,
+      "closedTestWindow": true
+    },
+    "electron": {
+      "bundle": "com.github.Electron",
+      "launch": "open -a Electron.app",
+      "accessibilitySupportEnabled": "after ready",
+      "manualOn": {
+        "nodeCount": 14,
+        "sampleCount": 0,
+        "roles": {
+          "AXApplication": 1,
+          "AXWindow": 1,
+          "AXButton": 4,
+          "AXGroup": 6,
+          "AXWebArea": 1,
+          "AXStaticText": 1
+        },
+        "buttons": [
+          "bao-button"
+        ],
+        "windowTitles": [
+          "bao ax electron"
+        ]
+      },
+      "manualOff": {
+        "nodeCount": 14,
+        "sampleCount": 0,
+        "roles": {
+          "AXApplication": 1,
+          "AXWindow": 1,
+          "AXButton": 4,
+          "AXGroup": 6,
+          "AXWebArea": 1,
+          "AXStaticText": 1
+        },
+        "buttons": [
+          "bao-button"
+        ],
+        "windowTitles": [
+          "bao ax electron"
+        ]
+      }
+    }
+  },
+  "openPanel": {
+    "before": {
+      "result": "empty"
+    },
+    "after": {
+      "result": "empty"
+    },
+    "steps": [
+      {
+        "name": "sheet-after-type",
+        "pathHit": true,
+        "sheet": true,
+        "nodeCount": 172
+      },
+      {
+        "name": "press-open",
+        "ok": true
+      }
+    ],
+    "axKeysIgnored": true,
+    "cgOpenPanel": true,
+    "titles": [
+      "Open",
+      "Untitled"
+    ],
+    "confirmError": "app did not become frontmost; key was not posted",
+    "confirmAttempt": {
+      "cmdO": "app did not become frontmost; key was not posted",
+      "go": "app did not become frontmost; key was not posted"
+    }
+  },
+  "drag": {
+    "from": {
+      "x": 496,
+      "y": 378
+    },
+    "to": {
+      "x": 262,
+      "y": 223
+    },
+    "delivered": true,
+    "blocked": false,
+    "landed": true,
+    "coordinateSpace": "top-left",
+    "cursorBefore": {
+      "x": 707,
+      "y": -385
+    },
+    "cursorAfter": {
+      "x": 262,
+      "y": 223
+    },
+    "valueAfter": {
+      "result": "empty"
+    }
+  }
+}

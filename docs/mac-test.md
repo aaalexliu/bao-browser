@@ -1,62 +1,262 @@
-# macOS test, clean account
+# macOS test
 
-Do this on a fresh macOS user. The machine in the notes is alex-jxp, macOS 26. The helper and the app are different bundles so the Accessibility grant sticks to the helper.
+Follow this on a fresh macOS user account, from an empty login to a saved workflow. The account needs its own Node, its own signing certificate, and its own privacy grants. A grant on another account does not carry over.
 
-## Install
+The pictures in this file are the Bao window on the built-in fixture (`http://127.0.0.1/fixture`). They were taken where the Mac helper is absent, so the sidebar footer reads **helper off**. On your Mac, before the two grants below, Library has a collapsible permission card and the other screens have a sidebar dot. After both grants, that footer reads **helper ok** and the card and the dot are gone. The rest of the window is the same. Linux does not show the card.
+
+Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
+
+Stay on the checkout that contains this file. That checkout is the integration branch for pull request 58, and it is the only tree you need: the desktop window, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, and the marketplace web app are already in it. Build both package scripts from this checkout. After pull request 58 merges, the same tree is `v1/desktop`.
+
+The signed app is still two scripts, in this order, from the repo root:
 
 ```sh
-git fetch origin v1/desktop
-git checkout v1/desktop
-npm install
-npx tsc -p tsconfig.desktop.json
-
-export BAO_SIGN_IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
-bash desktop/os-helper-macos/package-app.sh
-bash desktop/packaging/macos/package-app.sh
+desktop/os-helper-macos/package-app.sh
+desktop/packaging/macos/package-app.sh
 ```
 
-`package-app.sh` for the helper builds `desktop/os-helper-macos/BaoOSHelper.app` (`dev.bao.oshelper`). The desktop script builds `desktop/packaging/macos/dist/Bao.app` (`dev.bao.desktop`) and a dmg next to it. Both are signed with `BAO_SIGN_IDENTITY`. There is no notarization step.
+**What you should see:** the first script prints a signed `BaoOSHelper.app` (`dev.bao.oshelper`). The second prints a signed `Bao.app` (`dev.bao.desktop`) and a dmg. `Bao.app` contains the helper and Playwright's Chromium. No notarization step. Open `Bao.app`, and the window is the one in the pictures below: Library, Capture, Runs, Heals, Replay, Logins, and Settings.
 
-Open `Bao.app`. If it is a script bundle, Gatekeeper may say it is from an unidentified developer. Right-click → Open once. Do not rebuild the helper after the grant, or the signature changes and macOS asks again.
+## Prerequisites
+
+Install these before either `package-app.sh`. Each one has a check.
+
+### Node 24 or newer
+
+`package.json` asks for Node `>=24`. A Finder launch does not see your shell `PATH`, so you will also need the absolute path later (`BAO_NODE`).
+
+```sh
+node -v
+command -v node
+```
+
+**What you should see:** `node -v` prints `v24` or a higher major, for example `v24.19.0`. `command -v node` prints an absolute path such as `/opt/homebrew/bin/node` or a mise install under your home directory. If the version starts with `v22` or lower, install Node 24 before `npm install`. On an older Node, `npm install` prints `EBADENGINE` and the desktop compile is outside the range this repo declares.
+
+Homebrew on Apple silicon:
+
+```sh
+brew install node@24
+```
+
+**What you should see:** `$(brew --prefix node@24)/bin/node -v` prints `v24` or higher. Use that absolute path as `BAO_NODE`.
+
+### Google Chrome
+
+Install Chrome from [https://www.google.com/chrome/](https://www.google.com/chrome/) if it is not already in `/Applications`.
+
+```sh
+ls -d "/Applications/Google Chrome.app"
+```
+
+**What you should see:** the command prints `/Applications/Google Chrome.app`.
+
+Capture and replay open the Chromium that `package-app.sh` copies into `Bao.app` (`Contents/Resources/Chromium.app`, Playwright's Chrome for Testing). Importing a site sign-in is the step that reads the installed Google Chrome. The product window and the capture window leave that daily profile alone.
+
+### Xcode Command Line Tools
+
+The helper and the app need `clang`, `codesign`, and `hdiutil`.
+
+```sh
+xcode-select --install
+xcode-select -p
+xcrun --find clang
+xcrun --find codesign
+xcrun --find hdiutil
+```
+
+**What you should see:** if the tools are already present, `xcode-select --install` says the command line tools are already installed. `xcode-select -p` prints `/Library/Developer/CommandLineTools` or an Xcode.app path. The three `xcrun --find` lines print absolute paths. `clang --version` names Apple clang.
+
+### Rust, in the helper's toolchain directory
+
+`desktop/os-helper-macos/package-app.sh` runs cargo from `~/dev/bao-mac-toolchain/cargo` unless `CARGO_HOME` is already set. Install rustup there before the helper build.
+
+```sh
+mkdir -p "$HOME/dev/bao-mac-toolchain"
+export RUSTUP_HOME="$HOME/dev/bao-mac-toolchain/rustup"
+export CARGO_HOME="$HOME/dev/bao-mac-toolchain/cargo"
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
+"$CARGO_HOME/bin/cargo" --version
+```
+
+**What you should see:** the rustup script ends with a stable toolchain installed, and `cargo --version` prints `cargo 1.` followed by a version. The script does not edit your shell rc file (`--no-modify-path`).
+
+### Signing identity `bao dev signing`
+
+Both package scripts sign with `BAO_SIGN_IDENTITY`, which defaults to the login-keychain certificate `bao dev signing`. A fresh account has no such certificate. Create one self-signed code-signing cert, allow `codesign` to use the key, then delete the temporary key, certificate, and p12. Trust settings stay untouched. The certificate is not added to the System keychain.
+
+```sh
+security find-identity -v -p codesigning | grep -F 'bao dev signing' || true
+```
+
+If that prints a line containing `bao dev signing`, skip the `openssl` block. Otherwise:
+
+```sh
+WORKDIR=$(mktemp -d)
+openssl req -new -newkey rsa:2048 -x509 -days 3650 -nodes \
+  -subj "/CN=bao dev signing" \
+  -addext "basicConstraints=critical,CA:FALSE" \
+  -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=critical,codeSigning" \
+  -keyout "$WORKDIR/key.pem" -out "$WORKDIR/cert.pem"
+openssl pkcs12 -export -inkey "$WORKDIR/key.pem" -in "$WORKDIR/cert.pem" \
+  -out "$WORKDIR/bao.p12" -name "bao dev signing" -passout pass:
+security import "$WORKDIR/bao.p12" -P "" -T /usr/bin/codesign -f pkcs12
+rm -rf "$WORKDIR"
+security find-identity -v -p codesigning
+```
+
+**What you should see:** `security find-identity -v -p codesigning` prints one line whose quoted name is `bao dev signing`, with a SHA-1 in front of it. That SHA-1 belongs to this account. An older machine's SHA-1 will differ, and the grant follows this certificate plus the bundle id, so keep this cert for later rebuilds. `ls` of the temp directory fails because `rm -rf` removed the key, the cert, and the p12.
+
+There is no notarization step.
+
+### This checkout
+
+```sh
+git clone https://github.com/aaalexliu/bao-browser.git
+cd bao-browser
+git fetch origin cursor/integrate-desktop-v1-27d8
+git checkout cursor/integrate-desktop-v1-27d8
+git branch --show-current
+```
+
+Pull request 58 is that branch. After it merges, `git checkout v1/desktop` is the same tree and the commands below do not change.
+
+**What you should see:** `git branch --show-current` prints `cursor/integrate-desktop-v1-27d8` (or `v1/desktop` after the merge). `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
+
+## Build
+
+```sh
+npm install
+export BAO_SIGN_IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
+export BAO_NODE="$(command -v node)"
+case "$BAO_NODE" in
+  /*) ;;
+  *) echo "BAO_NODE must be an absolute path"; exit 1 ;;
+esac
+export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/dev/bao-mac-toolchain/rustup}"
+export CARGO_HOME="${CARGO_HOME:-$HOME/dev/bao-mac-toolchain/cargo}"
+bash desktop/os-helper-macos/package-app.sh
+bash desktop/packaging/macos/package-app.sh
+file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
+```
+
+`npm install` finishes before the desktop script runs `tsc`. The helper script builds `desktop/os-helper-macos/BaoOSHelper.app` (`dev.bao.oshelper`) and signs it with the runtime flag. The desktop script compiles `desktop/packaging/macos/bao-main.c` into `Bao.app` (`dev.bao.desktop`), copies the helper to `Bao.app/Contents/Resources/BaoOSHelper.app`, copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
+
+**What you should see:**
+
+- `npm install` ends without `EBADENGINE`.
+- The helper script's `codesign --verify` prints `valid on disk` and `satisfies its Designated Requirement`.
+- The desktop script prints `BUNDLED_BROWSER` and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
+- `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
+
+## First open (Gatekeeper)
+
+The app is signed with a self-signed certificate, so Gatekeeper stops a normal double-click. In Finder, open `desktop/packaging/macos/dist/`. Right-click `Bao.app`, choose Open, then Open again on the confirmation sheet.
+
+**What you should see:** the first sheet says `"Bao.app" cannot be opened because the developer cannot be verified.` The confirmation sheet says `macOS cannot verify the developer of "Bao.app". Are you sure you want to open it?` Those sheets are macOS. They are quoted here. After you confirm, continue with the Terminal launch below so `BAO_NODE` and `BAO_HOME` are set. Quit this Finder launch if a window appeared, so the next step is the only running copy.
+
+## Launch from Terminal
+
+A Finder launch uses a short `PATH` and the default data directory `~/Library/Application Support/bao`. Launch from Terminal on a fresh account. Use a throwaway home so this test does not read or write anything already in the default directory.
+
+```sh
+export BAO_HOME="$HOME/Library/Application Support/bao-mac-test"
+export BAO_PORT=4787
+export BAO_NODE="$(command -v node)"
+mkdir -p "$BAO_HOME"
+desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
+```
+
+The entry point sets `BAO_HEADED=1` when it is unset, points `BAO_BROWSER` at `Contents/Resources/Chromium.app`, and points `BAO_OS_HELPER` at the nested `BaoOSHelper.app`. Leave this Terminal process running. Do not `open` the app again while it is running. LaunchServices would start a second instance on the default home.
+
+**What you should see:** a window opens on `http://127.0.0.1:4787`. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail, and before the permission card was limited to macOS. The build includes both screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
+
+![Two permissions on the Mac. Accessibility and Screen Recording both say not granted yet. The footer says helper off.](mac-test/01-onboarding.png)
+
+In another Terminal:
+
+```sh
+ps aux | grep -F 'Bao.app/Contents/Resources/Chromium.app'
+curl -s "http://127.0.0.1:${BAO_PORT}/api/pids"
+```
+
+**What you should see:** the process list includes `Bao.app/Contents/Resources/Chromium.app`. `curl` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Permissions
 
-1. Launch `BaoOSHelper.app` once so the prompt appears.
-2. System Settings → Privacy & Security → Accessibility → enable `BaoOSHelper`.
-3. Same pane, Screen Recording → enable `BaoOSHelper`.
-4. Quit and relaunch the helper. `BaoOSHelper.app/Contents/MacOS/bao-os-macos permissions` should report both true.
+The product window does not need Accessibility. The nested helper does. On the first launch, macOS asks twice:
 
-The app itself does not need Accessibility. Chrome will ask for nothing beyond a normal window.
+1. Accessibility. The usage string is `BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.` The sheet asks to allow BaoOSHelper to control the computer.
+2. Screen Recording. The usage string is `BaoOSHelper captures one throwaway window so the spike can show the control it pressed.` The sheet asks to allow BaoOSHelper to record the screen.
 
-## Record
+**What you should see:** those two sheets, in that order, naming **BaoOSHelper**. Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility, and again under Screen & System Audio Recording (the Screen Recording list). Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by your `bao dev signing` certificate. A rebuild with that same certificate keeps the grant. A new certificate, or an ad-hoc signature, is a different app and the grant does not follow it. Do not pass `--prompt` after the rows are on.
 
-1. In Bao, Sessions → Browser → Start capture. URL can be the built-in fixture (`http://127.0.0.1:4787/fixture`) or a page you choose.
-2. Type a username. Type a password. The password must not show up later in the trail or the workflow.
-3. Drag a throwaway file onto the drop zone, or pick one with the file input. Use a file you created for the test, not a real document.
-4. Stop and save.
-5. Library shows the workflow. Export if you want the JSON. Confirm there is a `secret` input and a `file` input, and no absolute path.
+Quit Bao (Ctrl-C in the launch Terminal) and launch it again with the same `BAO_HOME`, `BAO_PORT`, and `BAO_NODE`.
 
-## Replay twice
+**What you should see:** no new privacy sheet. The sidebar footer reads **helper ok**. The permission card and the sidebar dot are gone, because both grants are present. Library is the main page. The picture of Library below was taken with the footer still **helper off**.
 
-1. Replay. The form lists every input before Run. Fill a different username and a different file than the capture.
-2. Run. Each step goes pass or fail. The fixture page shows the new username.
-3. Move and resize the Chrome window.
-4. Run again with a third username. It should pass without using the old coordinates.
-5. Optional: Settings → Approve before applying. Break a step's `testId` in the library editor, run again. With no API key the run stops on that step and shows the snapshot. With a key and the setting on approve, it pauses on the proposal. Auto (the default) continues only when a key is set.
+![Library with two workflow cards, sign in and fixture login, and a search field.](mac-test/02-library.png)
 
-## Calculator, after the walk is fixed
+`curl -s "http://127.0.0.1:${BAO_PORT}/api/state"` reports `helper.accessibility` true, `helper.screenCapture` true, and `helper.label` equal to `helper ok`.
 
-The 2026-10-20 spike could hit-test Calculator's `7`, `Add`, `5`, and `Equals`, but the tree walk did not contain them, so press-by-name missed. Do not paper over that with a click at the stored point.
+## Record on the fixture
 
-When `bao-os-macos nodes --bundle com.apple.calculator` includes those buttons:
+Click **Capture** in the sidebar.
 
-```sh
-# Capture fixtures for the scorer. Commit the dumps.
-bash -c 'see fixtures/ax/macos-26/README.md'
-```
+**What you should see:** Start URL is already the fixture on this server (`http://127.0.0.1:4787/fixture`). The page says nothing is recorded until you start, and that the capture browser uses an app-owned profile. The Mac app card names `Bao.app/Contents/Resources/BaoOSHelper.app` and bundle `dev.bao.oshelper`.
 
-Then replay `examples/workflows/calculator.json` with two pairs, for example `a=7 b=5` and `a=5 b=7`, after moving the Calculator window. The label should match the sum. The press command in the helper log must not contain an x,y.
+![Capture screen with Start URL, Start capture, and Stop and save.](mac-test/03-capture.png)
+
+1. Press **Start capture**. A second window opens on the fixture. That window is the bundled Chromium.
+2. Type `ada` in Username. Type a made-up password in Password. Choose a throwaway file in the file input, for example a text file you created under `/tmp` for this test.
+3. Press **Stop and save**.
+
+A drag that starts in another app still does not become a Bao drop. `CGEvent` can move the pointer, and it does not start an `NSDraggingSession`. Dropping a file from Finder onto the replay form later is an ordinary web drop on that form.
+
+**What you should see:** Library gains a card for the capture. Open the workflow. It has a `secret` input and a `file` input. The secret string is absent. The absolute path of the file is absent. The trail view says password values are not stored. The saved `startUrl` is the page URL at stop time. The fixture's Log in button uses `pushState` to `/secure`, and this server serves the fixture HTML there too. On any other site, stop on the page replay should open.
+
+## Replay twice, with inputs
+
+On the Library card, press **Run** (the button on the card, under the status). The run form lists every input before the run starts. Secrets are password fields. The username you type here is the value for this run.
+
+**What you should see:** the heading is `Run` plus the workflow name. Healing for this workflow offers the global setting, auto, or approve. Auto is the default. A Username field is empty until you type. The picture uses the made-up name `ada`.
+
+![Run form for sign in, Username filled with ada, and a Run button.](mac-test/04-run-inputs.png)
+
+Press **Run**. Fill a different username and a different file than the capture. Run again after you move and resize the replay window. The next run reuses that window, and the bounds are stored per workflow. Chrome for Testing is moved with CDP `Browser.setWindowBounds`. The helper is also tried with the replay pid. If the origin does not change, that drift row is `n/a-harness`. A step failure counts only after the requested bounds landed.
+
+**What you should see:** each step goes pass or fail in Runs. The fixture page shows `Welcome` plus the username you typed, and the file name you supplied. The press log has no x,y.
+
+### Login act bar
+
+A step whose action is `login` waits for you. Replay does not type the password and does not press Log in. The bar sits above the page you were on.
+
+**What you should see:** a bar labeled `You need to act`, the workflow name, and the instruction `Sign in on the Bao Chrome window. bao is not recording keystrokes in password fields.` Buttons are **I'm signed in, continue**, **Show window**, and **Cancel run**. The sidebar shows a waiting count. Sign in on the fixture window with `ada` and a made-up password, then press **I'm signed in, continue**. The picture is that bar on the run form.
+
+![Login act bar telling you to sign in in the Bao Chrome window, with the password-field sentence visible.](mac-test/05-login-act-bar.png)
+
+A confirm step uses the same bar with `Press Apply in the Bao Chrome window. bao will not press it.` Replay does not press Apply.
+
+## Heal review
+
+Settings → When a step misses defaults to **Auto self-heal**. With the Cursor CLI logged in (`agent login`), the footer reads **cursor account** and a miss calls `agent --print` on your Cursor plan. bao does not ask you to paste an API key. `BAO_HEAL_CURSOR=1` is the file handoff (`heal-request.json` / `heal-response.json`) when the CLI is missing or logged out. `BAO_HEAL_CURSOR_ACCOUNT=0` skips the CLI. `BAO_HEAL_FIXTURE=1` is a local stand-in whose model name is `bao-heal-fixture`. The pictures use that stand-in. It is the way to see a heal review on a machine with no Cursor login. It is not the billed path.
+
+**What you should see:** Settings shows When a step misses on Auto self-heal, Model **fixture model** while `BAO_HEAL_FIXTURE=1` is set, and the quiet paragraph names the Cursor CLI. On your Mac, after `agent login` and with the fixture flag unset, Model reads **cursor account**. With neither a login nor a key nor `BAO_HEAL_CURSOR`, Model reads **no model** and replay stops on the failed step.
+
+![Settings with Auto self-heal, the Cursor CLI sentence, and Model fixture model.](mac-test/07-settings.png)
+
+Open **Heals**. A row names the workflow, the step, and whether it is waiting for you. Open the row.
+
+**What you should see:** the detail shows the workflow name, Recorded next to Proposed, the model `bao-heal-fixture 1` when the fixture healer ran, the postcondition line, and **Keep** / **Revert**. Keep writes the patch into the saved workflow. Revert puts the failed step back. The heal record itself is not edited. In the picture, Recorded is `testId=missing-login` and Proposed is `testId=login`.
+
+![Heal review for fixture login, Recorded testId missing-login beside Proposed testId login, model bao-heal-fixture.](mac-test/06-heal-review.png)
+
+A login redirect (phase `auth`) is not sent to a model. The act bar above is the path for that wait.
+
+## Optional: Calculator
+
+Skip this until `BaoOSHelper` reports both permissions true and an accessibility walk of Calculator contains the keypad buttons (`7`, `Add`, `5`, `Equals`). The walk has to include those buttons. A hit-test that sees them while the tree does not is not enough for replay. `AXSize` is still rejected (`-25200`), so a resize row can stay `n/a-harness` while the steps pass. Quit Calculator when you are done. Do not leave a real document open in TextEdit. A throwaway `note.txt` under `/tmp` is the file to use if you try a type step.
 
 ## Done
 
-You can install the build, grant the two permissions, record a typed input and a dragged file, save, and replay twice with different upfront inputs after moving the window. That pass is yours to make. This repo's Linux run is the evidence for the same flows on the fixture page, the GTK calculator, the drift table, and the MCP trail.
+You have Node 24 or newer, Google Chrome in `/Applications`, the command line tools, cargo in `~/dev/bao-mac-toolchain`, a login-keychain identity named `bao dev signing`, Accessibility and Screen Recording for the nested `BaoOSHelper.app`, a fixture capture with a secret input and a file input, two replays with different inputs, the login act bar, and a heal review. The secret string and the file path are absent from the saved workflow.

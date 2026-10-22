@@ -1,9 +1,9 @@
-// MCP stdio server. screenshot, click, type, key, scroll.
-// Each call is appended to the bao trail. BAO_MCP_STUB=1 records without a browser
-// so a scripted client can test the protocol. A live session uses the same trail shape.
+// MCP stdio server. Four tools, however many workflows are on disk.
+// search_workflows, describe_workflow, run_workflow, get_run.
 
-import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
+import { Library } from "../v1/store";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -12,21 +12,54 @@ interface Rpc {
   params?: { name?: string; arguments?: Record<string, unknown> };
 }
 
-const tools = [
-  { name: "screenshot", description: "Capture the bao screen.", inputSchema: { type: "object", properties: {} } },
-  { name: "click", description: "Click. Recorded in the bao trail.", inputSchema: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"] } },
-  { name: "type", description: "Type text through bao.", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
-  { name: "key", description: "Press a key through bao.", inputSchema: { type: "object", properties: { key: { type: "string" } }, required: ["key"] } },
-  { name: "scroll", description: "Scroll through bao.", inputSchema: { type: "object", properties: { dx: { type: "number" }, dy: { type: "number" } } } },
-];
+export const TOOLS = [
+  {
+    name: "search_workflows",
+    description: "Search this Mac and the synced registry. Returns at most 5 ranked workflows and the input schema for each.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        source: { type: "string", enum: ["mine", "team", "public"] },
+        site: { type: "string" },
+        category: { type: "string" },
+        filters: { type: "object" },
+      },
+    },
+  },
+  {
+    name: "describe_workflow",
+    description: "Full input schema, steps, and the bao:// link for one workflow. Secret defaults are omitted.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+  {
+    name: "run_workflow",
+    description: "Replay a workflow on this device. Outcome is ok, needs_human, needs_signin, or failed, plus a resume token. rerun reuses past non-secret inputs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        inputs: { type: "object" },
+        resume: { type: "string" },
+        rerun: { type: "boolean" },
+      },
+    },
+  },
+  {
+    name: "get_run",
+    description: "Read one replay outcome by run id.",
+    inputSchema: { type: "object", properties: { run_id: { type: "string" } }, required: ["run_id"] },
+  },
+] as const;
+
+export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export async function mcpMain(): Promise<void> {
   const home = process.env.BAO_HOME || path.join(process.cwd(), ".bao-mcp");
-  mkdirSync(home, { recursive: true });
-  const trail = path.join(home, "trail.jsonl");
-  const input = process.stdin;
+  const library = new Library(home);
   let buf = Buffer.alloc(0);
-  input.on("data", (chunk: Buffer) => {
+  let chain = Promise.resolve();
+  process.stdin.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
       const headerEnd = buf.indexOf("\r\n\r\n");
@@ -39,49 +72,76 @@ export async function mcpMain(): Promise<void> {
       if (buf.length < start + length) return;
       const body = buf.slice(start, start + length).toString("utf8");
       buf = buf.slice(start + length);
-      handle(body, trail);
+      chain = chain.then(() => handle(body, library)).catch((err: unknown) => {
+        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      });
     }
   });
   await new Promise(() => {});
 }
 
-function handle(body: string, trail: string): void {
+async function handle(body: string, library: Library): Promise<void> {
   const msg = JSON.parse(body) as Rpc;
   if (msg.method === "initialize") {
-    return send({
+    send({
       jsonrpc: "2.0",
       id: msg.id,
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "bao", version: "0.1.0" },
+        serverInfo: { name: "bao", version: "0.2.0" },
       },
     });
+    return;
   }
   if (msg.method === "notifications/initialized") return;
   if (msg.method === "tools/list") {
-    return send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
+    send({ jsonrpc: "2.0", id: msg.id, result: { tools: TOOLS } });
+    return;
   }
   if (msg.method === "tools/call") {
-    const name = msg.params?.name || "";
-    const args = msg.params?.arguments || {};
-    const event = {
-      kind: name === "screenshot" ? "read" : "act",
-      op: name,
-      args,
-      ts: Date.now(),
-      source: { agent: "mcp", vendor: "bao", adapter: "stdio" },
+    try {
+      const text = JSON.stringify(await callTool(library, msg.params?.name || "", msg.params?.arguments || {}));
+      send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], isError: false } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      send({
+        jsonrpc: "2.0",
+        id: msg.id,
+        result: { content: [{ type: "text", text: message }], isError: true },
+      });
+    }
+    return;
+  }
+  if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
+}
+
+async function callTool(library: Library, name: string, args: Record<string, unknown>): Promise<unknown> {
+  if (name === "search_workflows") {
+    const filters = args.filters && typeof args.filters === "object" ? args.filters as Record<string, unknown> : args;
+    return {
+      hits: await searchWorkflows(library, String(args.query || ""), {
+        source: stringArg(filters.source),
+        site: stringArg(filters.site),
+        category: stringArg(filters.category),
+      }),
     };
-    appendFileSync(trail, JSON.stringify(event) + "\n");
-    return send({
-      jsonrpc: "2.0",
-      id: msg.id,
-      result: { content: [{ type: "text", text: name === "screenshot" ? "screenshot recorded" : "OK" }], isError: false },
+  }
+  if (name === "describe_workflow") return describeWorkflow(library, String(args.id || ""));
+  if (name === "run_workflow") {
+    return runWorkflow(library, {
+      id: args.id ? String(args.id) : undefined,
+      inputs: args.inputs && typeof args.inputs === "object" ? args.inputs as Record<string, string | number> : {},
+      resume: args.resume ? String(args.resume) : undefined,
+      rerun: args.rerun === true,
     });
   }
-  if (msg.id !== undefined) {
-    send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
-  }
+  if (name === "get_run") return getRun(library, String(args.run_id || ""));
+  throw new Error("unknown tool");
+}
+
+function stringArg(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
 }
 
 function send(msg: unknown): void {

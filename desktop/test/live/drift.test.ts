@@ -15,6 +15,7 @@ import { replay } from "../../src/v1/replay";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
+process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 
 async function post(port: number, pathname: string, body?: unknown): Promise<Record<string, unknown>> {
   const res = await fetch(`http://127.0.0.1:${port}${pathname}`, {
@@ -72,10 +73,12 @@ test("drift: shift, theme, font, order, slow network, and 2x scale", async () =>
         }
         const result = await replay(workflow, args, new BrowserDriver(page), { heal: unavailableHeal(), settings: { heal: "approve" } });
         for (const step of result.steps) {
+          const savedStep = workflow.steps.find((item) => item.id === step.id);
           rows.push({
             workflow: "browser-form",
             change: change.name,
             stepId: step.id,
+            label: savedStep?.label,
             passed: step.status === "passed",
             brokenAttr: result.failure?.stepId === step.id ? result.failure.brokenAttr : undefined,
             reason: step.reason,
