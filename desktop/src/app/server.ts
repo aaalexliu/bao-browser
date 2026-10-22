@@ -53,7 +53,7 @@ import { openReplayVideo } from "../v1/replay-video";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
-import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
+import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop } from "../v1/redacted-png";
 import {
   decide,
@@ -71,6 +71,7 @@ import {
   type TeachDecision,
 } from "../v1/teach";
 import { guideCrops, guideHtml } from "../v1/guide";
+import { guideMe, type GuideProgress } from "../v1/guide-me";
 import { guideShotName, shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
@@ -192,6 +193,8 @@ export async function startApp(opts: {
   let teachBaseline: string[] = [];
   let narrateGen = 0;
   const narrationCache = new Map<string, Spoken & { sig: string }>();
+  const cardSeen = new Map<string, { at: number; shownAt: number }>();
+  let guideLive: (GuideProgress & { workflowId: string; runId: string }) | null = null;
   const notifications: { title: string; body: string; tooltip: string }[] = [];
   let opened: OpenedView | null = null;
   let pendingDoc: WorkflowV2 | null = null;
@@ -209,7 +212,7 @@ export async function startApp(opts: {
       bar.send({ cmd: "hide" });
       return;
     }
-    bar.send({ cmd: "show", paused: capture.paused, steps: capture.steps.map((step) => step.label) });
+    bar.send({ cmd: "show", paused: capture.paused, steps: capture.steps.map(captureStepLabel) });
   }
   function raiseAct(ask: HumanAsk): void {
     const text = actSurfaceText(ask);
@@ -344,7 +347,7 @@ export async function startApp(opts: {
           capture: {
             recording: capture.recording,
             paused: capture.paused,
-            steps: capture.steps.map((step) => step.label),
+            steps: capture.steps.map(captureStepLabel),
           },
           notices,
           settings: library.settings(),
@@ -362,6 +365,7 @@ export async function startApp(opts: {
           recordingSince: capture.recording ? recordingSince : 0,
           liveTrail: capture.events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
           teach: teachState(),
+          guide: guideLive,
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
@@ -690,6 +694,7 @@ export async function startApp(opts: {
         try {
           const step = await enqueue(async () => {
             const saved = url.pathname.endsWith("/check") ? capture.check(text) : capture.note(text);
+            if (sessionMode === "teach") stampTeachSeen();
             publishCapture();
             return saved;
           });
@@ -782,7 +787,7 @@ export async function startApp(opts: {
         return json(res, workflow);
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
-        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string };
+        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
@@ -790,6 +795,10 @@ export async function startApp(opts: {
         loginContinued = false;
         replaying = true;
         try {
+          if (body.guide) {
+            const run = await runGuide(library, workflow, args, replays, prompts);
+            return json(res, run);
+          }
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
           const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
             baoProfile,
@@ -885,6 +894,7 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/teach/discard") {
         if (teachPhase === "idle") return json(res, { error: "not teaching" }, 409);
         teachDecisions = [];
+        cardSeen.clear();
         narrationCache.clear();
         teachBaseline = [];
         teachFix = null;
@@ -1255,6 +1265,7 @@ export async function startApp(opts: {
   async function recordCaptured(payload: Omit<TrailEvent, "id" | "ts">): Promise<void> {
     if (!capture.push(payload)) return;
     const stored = capture.events[capture.events.length - 1];
+    if (sessionMode === "teach") stampTeachSeen();
     publishCapture();
     if (!stored || !page || page.isClosed()) return;
     const dir = path.join(opts.home, "shots", "capture");
@@ -1296,6 +1307,7 @@ export async function startApp(opts: {
 
   async function beginTeach(startUrl: string, fix: { workflowId: string; stepId: string } | null): Promise<void> {
     teachDecisions = [];
+    cardSeen.clear();
     narrationCache.clear();
     narrateGen += 1;
     blurredShots = 0;
@@ -1332,12 +1344,13 @@ export async function startApp(opts: {
       delete copy.value;
       return copy;
     });
-    const workflow = interpret(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
-    const kept = retainedEvents(clean);
+    const built = explain(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
+    const workflow = built.workflow;
     const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
     mkdirSync(shotDest, { recursive: true });
     for (let i = 0; i < workflow.steps.length; i++) {
-      const event = kept[i];
+      const group = built.groups[i] || [];
+      const event = group.find((item) => item.op !== "note") || group[0];
       const step = workflow.steps[i];
       const src = event ? captureShots.get(event.id) : undefined;
       if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
@@ -1399,6 +1412,22 @@ export async function startApp(opts: {
     publishCapture();
   }
 
+  function stampTeachSeen(): void {
+    if (sessionMode !== "teach" || teachPhase === "idle") return;
+    let projected: ReturnType<typeof projectTeach>;
+    try {
+      projected = projectTeach(capture.events, teachDecisions, teachMeta(), spokenMap());
+    } catch {
+      return;
+    }
+    const now = Date.now();
+    for (const card of projected.cards) {
+      if (card.dropped || card.merged || cardSeen.has(card.id)) continue;
+      const event = capture.events.find((item) => item.id === card.id);
+      cardSeen.set(card.id, { at: event?.ts ?? now, shownAt: now });
+    }
+  }
+
   function teachMeta(): { id: string; name: string; startUrl: string } {
     return {
       id: "teach-draft",
@@ -1438,6 +1467,16 @@ export async function startApp(opts: {
     const narrator = projected?.cards.some((card) => card.narrator === "model") ? "model" : "heuristic";
     const summary = projected ? teachSummaryFrom(capture.events, projected) : undefined;
     const reasons = new Map((summary?.dropped || []).map((item) => [item.id, item.reason]));
+    const now = Date.now();
+    const cards = (projected?.cards || []).map((card) => {
+      let seen = cardSeen.get(card.id);
+      if (!seen && !card.dropped && !card.merged) {
+        const event = capture.events.find((item) => item.id === card.id);
+        seen = { at: event?.ts ?? now, shownAt: now };
+        cardSeen.set(card.id, seen);
+      }
+      return seen ? { ...card, at: seen.at, shownAt: seen.shownAt } : card;
+    });
     return {
       phase: teachPhase,
       paused: capture.paused,
@@ -1447,7 +1486,7 @@ export async function startApp(opts: {
       narrator,
       fix: teachFix,
       error,
-      cards: projected?.cards || [],
+      cards,
       decisions: teachDecisions.map((decision) => ({ kind: decision.kind, detail: decision.detail, cardId: decision.cardId })),
       review: teachPhase === "review" && projected && summary ? {
         summary,
@@ -1562,11 +1601,67 @@ export async function startApp(opts: {
     library.saveTeachIntentCase(workflow.id, caseDoc);
     capture.discard();
     teachDecisions = [];
+    cardSeen.clear();
     narrationCache.clear();
     teachFix = null;
     teachPhase = "idle";
     sessionMode = "capture";
     return workflow;
+  }
+
+  async function runGuide(
+    library: Library,
+    workflow: WorkflowV2,
+    args: ReplayArgs,
+    replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+    prompts?: PersonPrompts,
+  ) {
+    const session = await openReplay(library, workflow.id, replays);
+    const page = session.page;
+    const driver = new BrowserDriver(page, undefined, prompts);
+    if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
+    await driver.watchGuide();
+    const runId = `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const first = workflow.steps[0];
+    guideLive = {
+      workflowId: workflow.id,
+      runId,
+      index: 0,
+      total: workflow.steps.length,
+      stepId: first?.id || "",
+      intent: first?.intent || first?.label || "",
+      status: "highlight",
+      actions: 0,
+    };
+    const result = await guideMe(workflow, args, driver, {
+      runId,
+      onProgress(progress) {
+        guideLive = { ...progress, workflowId: workflow.id, runId };
+      },
+    });
+    guideLive = {
+      workflowId: workflow.id,
+      runId,
+      index: Math.max(0, workflow.steps.length - 1),
+      total: workflow.steps.length,
+      stepId: result.steps[result.steps.length - 1]?.id || first?.id || "",
+      intent: first ? (workflow.steps.find((step) => step.id === (result.steps[result.steps.length - 1]?.id || ""))?.intent
+        || workflow.steps.find((step) => step.id === (result.steps[result.steps.length - 1]?.id || ""))?.label
+        || guideLive?.intent
+        || "") : "",
+      status: result.status,
+      actions: result.actions,
+    };
+    library.saveRun({
+      id: runId,
+      workflowId: workflow.id,
+      status: result.status,
+      at: Date.now(),
+      heals: [],
+      steps: result.steps,
+      modelCalls: 0,
+    });
+    return { ...result, workflowId: workflow.id };
   }
 
   async function stopBrowser(): Promise<void> {
@@ -1734,6 +1829,10 @@ export async function startApp(opts: {
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
   };
+}
+
+function captureStepLabel(step: { label: string; note?: string }): string {
+  return step.note ? `${step.label} — ${step.note}` : step.label;
 }
 
 function stepHealChoice(value: string | null | undefined): "auto" | "ask" | "never" | undefined {

@@ -20,15 +20,23 @@ test("pause drops ui events and a sensitive note is refused", () => {
   capture.resume();
   const note = capture.note("wait for the banner");
   const check = capture.check("Welcome");
-  assert.equal(note.label, "Note: wait for the banner");
+  assert.equal(note.note, "wait for the banner");
+  assert.equal(note.label, "Click Open");
   assert.equal(check.label, "Check: Welcome");
   assert.throws(() => capture.note("123-45-6789"), /note/);
   assert.throws(() => capture.check("123456"), /note/);
   assert.equal(capture.events.some((event) => event.op === "note" && event.afterText === "123-45-6789"), false);
-  assert.equal(capture.steps.map((step) => step.label).join("|"), "Click Open|Note: wait for the banner|Check: Welcome");
+  assert.equal(capture.steps.map((step) => step.label).join("|"), "Click Open|Check: Welcome");
+  assert.equal(capture.steps[0]?.note, "wait for the banner");
+  assert.equal(capture.steps[1]?.note, undefined);
   const kept = capture.stop();
   assert.equal(capture.recording, false);
   assert.equal(kept.length, 3);
+  const doc = interpret(kept, { id: "wf-cap-note", name: "Fixture capture", startUrl: "http://127.0.0.1/fixture" });
+  assert.equal(doc.steps.length, 2);
+  assert.equal(doc.steps[0]?.action, "click");
+  assert.equal(doc.steps[0]?.intent, "wait for the banner");
+  assert.equal(doc.steps[1]?.action, "verify");
   capture.discard();
   assert.equal(capture.events.length, 0);
   assert.equal(capture.steps.length, 0);
@@ -37,15 +45,19 @@ test("pause drops ui events and a sensitive note is refused", () => {
 test("a note replays without touching the page and a check becomes a verify step", async () => {
   const capture = new Capture();
   capture.start();
-  capture.note("wait for the banner");
+  const early = capture.note("wait for the banner");
+  assert.equal(early.label, "Note: wait for the banner");
+  assert.equal(capture.steps.length, 0);
   capture.check("Welcome");
+  assert.equal(capture.steps.length, 1);
+  assert.equal(capture.steps[0]?.note, "wait for the banner");
   const doc = interpret(capture.stop(), { id: "wf-cap", name: "Fixture capture", startUrl: "http://127.0.0.1/fixture" });
   assert.equal(validateWorkflow(doc).length, 0);
-  assert.equal(doc.steps[0]?.action, "note");
-  assert.equal(doc.steps[0]?.label, "Note: wait for the banner");
-  assert.equal(doc.steps[1]?.action, "verify");
-  assert.equal(doc.steps[1]?.label, "Check: Welcome");
-  assert.equal(doc.steps[1]?.expect?.match, "Welcome");
+  assert.equal(doc.steps.length, 1);
+  assert.equal(doc.steps[0]?.action, "verify");
+  assert.equal(doc.steps[0]?.intent, "wait for the banner");
+  assert.equal(doc.steps[0]?.label, "Check: Welcome");
+  assert.equal(doc.steps[0]?.expect?.match, "Welcome");
   let looked = 0;
   const driver: Driver = {
     tree: async () => {

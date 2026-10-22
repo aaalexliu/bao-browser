@@ -94,6 +94,14 @@ function writeBook(library: Library, id: string, versions: WorkflowVersion[]): v
   writeFileSync(bookPath(library, id), JSON.stringify(versions, null, 2));
 }
 
+/** A missing or epoch timestamp is not a save. Wall times are milliseconds. */
+const WALL_MS = 1_000_000_000_000;
+
+function savedAt(at: number | undefined, now = Date.now()): number {
+  if (typeof at === "number" && Number.isFinite(at) && at >= WALL_MS) return at;
+  return now;
+}
+
 function seed(library: Library, id: string): WorkflowVersion[] {
   const existing = readBook(library, id);
   if (existing.length) return existing;
@@ -102,7 +110,7 @@ function seed(library: Library, id: string): WorkflowVersion[] {
     n: 1,
     role: "live",
     source: "saved",
-    createdAt: document.updatedAt || document.createdAt || Date.now(),
+    createdAt: savedAt(document.updatedAt || document.createdAt),
     document,
   };
   writeBook(library, id, [row]);
@@ -287,7 +295,7 @@ function locatorHeld(document: WorkflowV2): HeldLocator | undefined {
   return {
     stepId: step.id,
     source: "recorded",
-    at: document.createdAt || document.updatedAt || Date.now(),
+    at: savedAt(document.updatedAt || document.createdAt),
     score: 100,
     changed: [],
   };

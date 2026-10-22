@@ -72,6 +72,19 @@ export interface HealNotice {
   stepId: string;
 }
 
+/** A person did this on the page. Guide Me reads it. It is not an automated action. */
+export interface GuideAct {
+  op: "click" | "type" | "key" | "check";
+  id?: string;
+  testId?: string;
+  name?: string;
+  /** Empty when the field is a password. */
+  value?: string;
+  key?: string;
+  secret?: boolean;
+  ts: number;
+}
+
 export interface Driver {
   tree(): Promise<LiveTree>;
   snapshot(): Promise<FailureSnapshot>;
@@ -102,8 +115,12 @@ export interface Driver {
   markStep?(id: string): void;
   /** DOM and accessibility tree at the end of the step. Browser drivers only. */
   captureStep?(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }>;
-  /** Draw the match. Not an action: Try uses this and does not click or type. */
+  /** Draw the match. Not an action: Try and element crops use this and do not click or type. */
   outline?(node: Identity): Promise<void>;
+  /** Ring the control itself. Guide Me uses this. It does not click or type. */
+  highlightTarget?(node: Identity): Promise<void>;
+  /** The next person action, if the driver is watching the page. */
+  performed?(): Promise<GuideAct | null>;
   /** Drop trail capture while a person has the page. */
   pauseCapture?(): void;
   resumeCapture?(): void;

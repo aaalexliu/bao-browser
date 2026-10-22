@@ -124,6 +124,7 @@ export interface ShellState {
   activeAsk?: HumanAsk | null;
   pendingImport?: ImportPending | null;
   teach?: TeachView;
+  guide?: GuideView | null;
 }
 
 export interface CommandItem {
@@ -1218,6 +1219,7 @@ export function workflowDetail(
         ${routeHead}
         ${shareMenu(doc, meta.share)}
       </div>
+      <button type="button" data-guide="${esc(doc.id)}">Guide me</button>
       <button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button>
     </header>
     <h3 class="section">Steps</h3>
@@ -1434,8 +1436,13 @@ export interface TeachCardView {
   dropped: boolean;
   merged: boolean;
   note: string;
+  noteAsIntent?: boolean;
   action: string;
   values: { role: string; name: string; label: string }[];
+  /** Source event time. */
+  at?: number;
+  /** When this step first appeared in the narration. */
+  shownAt?: number;
 }
 
 export interface TeachView {
@@ -1508,6 +1515,8 @@ export function teachPanel(teach: TeachView): string {
       <span class="rec-dot" aria-hidden="true"></span>
       <span id="rec-timer" data-since="${teach.since || 0}">0:00</span>
       <span class="badge quiet-badge" id="teach-narrator">${esc(who)}</span>
+      <input id="teach-note" class="note-field" aria-label="Note" placeholder="Note">
+      <button type="button" id="teach-note-add">Note</button>
       <button type="button" id="teach-pause">${paused}</button>
       <button type="button" id="teach-stop">Stop</button>
       <button type="button" id="teach-check">Add check</button>
@@ -1522,12 +1531,17 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
   const who = card.narrator === "model" ? `model${card.modelName ? ` · ${card.modelName}` : ""}` : "heuristic";
   const chip = card.values[0] ? valueChip(card.values[0]) : "";
   const flags = [
-    card.human ? `<span class="badge you">you</span>` : "",
+    card.values.some((value) => value.role === "input") ? `<span class="badge flag" data-flag="input">input</span>` : "",
+    card.values.some((value) => value.role === "secret") ? `<span class="badge flag" data-flag="secret">secret</span>` : "",
+    card.human ? `<span class="badge you" data-flag="human">you</span>` : "",
     card.verify ? `<span class="badge expect">check</span>` : "",
+    card.note ? `<span class="badge note">note</span>` : "",
   ].join("");
+  const used = card.noteAsIntent ? `<span class="note-as-intent" data-note-intent>note used as intent</span>` : "";
+  const noted = card.note ? `<span class="note-read">${esc(card.note)}</span>` : "";
   const row = `<span class="thumb mini" data-shot="${esc(captureShot(card.id))}">${cropPlaceholder(card.action)}</span>
       <span class="intent-read">${esc(card.intent)}</span>
-      ${chip}${flags}${opts.edited || ""}`;
+      ${noted}${used}${chip}${flags}${opts.edited || ""}`;
   const head = opts.edit
     ? `<button type="button" class="teach-row" aria-expanded="false">${row}</button>`
     : `<div class="teach-row">${row}</div>`;
@@ -1550,10 +1564,13 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
         <button type="button" data-correct="drop">Drop</button>
         <button type="button" data-correct="merge">Merge</button>
       </div>
-      <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Saved as this step's intent" aria-label="Note"></label>
+      ${used}
+      <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Note" aria-label="Note"></label>
     </div>` : "";
   const classes = ["step-card", "teach-card", card.human ? "human" : "", opts.on ? "on" : ""].filter(Boolean).join(" ");
-  return `<article class="${classes}" data-card="${esc(card.id)}" data-narrator="${esc(card.narrator)}">
+  const at = typeof card.at === "number" ? String(card.at) : "";
+  const shown = typeof card.shownAt === "number" ? String(card.shownAt) : "";
+  return `<article class="${classes}" data-card="${esc(card.id)}" data-narrator="${esc(card.narrator)}" data-at="${esc(at)}" data-shown="${esc(shown)}" data-input="${card.values.some((value) => value.role === "input") ? "1" : "0"}" data-secret="${card.values.some((value) => value.role === "secret") ? "1" : "0"}" data-human="${card.human ? "1" : "0"}">
     ${head}
     ${editor}
   </article>`;
@@ -1615,10 +1632,37 @@ export function recordBar(state: { recording?: boolean; capturePaused?: boolean;
   return `<div id="record-bar" data-paused="${state.capturePaused ? "true" : "false"}">
     <span class="rec-dot" aria-hidden="true"></span>
     <span id="rec-timer" data-since="${state.recordingSince || 0}">0:00</span>
+    <input id="rec-note" class="note-field" aria-label="Note" placeholder="Note">
+    <button type="button" id="rec-note-add">Note</button>
     <button type="button" id="rec-pause">${paused}</button>
     <button type="button" id="rec-mark">Mark step</button>
     <button type="button" id="rec-stop">Stop</button>
   </div>`;
+}
+
+export interface GuideView {
+  workflowId: string;
+  runId: string;
+  status: "highlight" | "passed" | "stopped" | "timeout";
+  actions: number;
+  index: number;
+  total: number;
+  stepId: string;
+  intent: string;
+}
+
+export function guidePanel(guide: GuideView): string {
+  const place = guide.total ? `Step ${guide.index + 1} of ${guide.total}` : "";
+  const word = guide.status === "highlight" ? "Do this on the page. The target is highlighted." : guide.status === "passed" ? "You finished every step." : guide.status;
+  return `<section id="guide-panel" data-status="${esc(guide.status)}" data-actions="${guide.actions}" data-step="${esc(guide.stepId)}">
+    <header class="guide-head">
+      <h2>Guide me</h2>
+      <p id="guide-actions">${guide.actions} automated actions</p>
+    </header>
+    <p class="intent" id="guide-step">${esc(guide.intent)}</p>
+    <p class="meta">${esc(place)}</p>
+    <p class="quiet">${esc(word)}</p>
+  </section>`;
 }
 
 export function liveStepList(events: { id?: string; op?: string; kind?: string }[]): string {
