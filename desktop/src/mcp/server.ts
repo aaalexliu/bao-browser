@@ -48,7 +48,7 @@ export const TOOLS = [
   },
   {
     name: "get_run",
-    description: "Read one replay outcome by run id, including declared outputs when the workflow has them.",
+    description: "Read one replay outcome by run id, including declared outputs when the workflow has them. A bot check or a session that expired is needs_human, with the reason and pageClass.",
     inputSchema: { type: "object", properties: { run_id: { type: "string" } }, required: ["run_id"] },
   },
 ] as const;

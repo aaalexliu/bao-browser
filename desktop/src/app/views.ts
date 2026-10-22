@@ -69,6 +69,14 @@ export interface RunSummary {
     resume_token?: string;
   };
   outputs?: OutputValue[];
+  pageClasses?: {
+    stepId: string;
+    class: string;
+    reason: string;
+    vendor?: string;
+    evidence?: { source: string; detail: string }[];
+    line?: string;
+  }[];
 }
 
 export interface FailureView {
@@ -238,12 +246,18 @@ export function rail(state: ShellState): string {
 
 export function actBar(state: ShellState, now = Date.now()): string {
   const ask = state.activeAsk;
-  if (ask?.kind === "confirm" || ask?.kind === "login") {
-    const effect = ask.kind === "confirm" ? "run stops, nothing applied" : "run stops, still signed out";
+  if (ask?.kind === "confirm" || ask?.kind === "login" || ask?.kind === "wall") {
+    const effect = ask.kind === "confirm"
+      ? "run stops, nothing applied"
+      : ask.kind === "wall"
+        ? "the run stays on this step"
+        : "run stops, still signed out";
     const kicker = `You need to act · ${ask.workflowName} · step ${ask.stepIndex} of ${ask.stepCount}`;
     const extra = ask.kind === "login"
       ? `<button id="act-continue" type="button">I'm signed in, continue</button>`
-      : "";
+      : ask.kind === "wall"
+        ? `<button id="act-continue" type="button">Continue</button>`
+        : "";
     return `<section id="act-bar" data-ask="${ask.kind}" data-step="${esc(ask.stepId)}">
       <p class="kicker">${esc(kicker)}</p>
       <p class="instruction">${esc(ask.instruction)}</p>
@@ -426,7 +440,7 @@ export function runViewer(
       brokenAttr: failure?.brokenAttr,
     })
     : `${esc(workflow.name)} passed`;
-  const statusWord = run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
+  const statusWord = run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
   const badge = modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
@@ -492,6 +506,7 @@ export function runViewer(
     </header>
     ${outputsHtml(run.id, run.outputs)}
     ${video}
+    ${pageClassPane(run)}
     ${envelopePane(run.envelope)}
     ${handoffPane(run.trail)}
     <div class="row" id="run-actions">
@@ -528,6 +543,29 @@ export function runViewer(
     </div>
     <div id="run-extra"></div>
   </section>`;
+}
+
+function pageClassPane(run: RunSummary): string {
+  const items = run.pageClasses || [];
+  if (!items.length) return "";
+  const rows = items.map((item) => {
+    const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${bit.detail}`).join(" · ");
+    return `<li data-class="${esc(item.class)}"><strong>${esc(classLabel(item.class))}</strong>${item.vendor ? ` · ${esc(item.vendor)}` : ""} <span class="quiet">${esc(item.line || item.reason)}</span>${evidence ? ` <span class="quiet">${esc(evidence)}</span>` : ""}</li>`;
+  }).join("");
+  const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+  return `<section id="page-class" data-class="${esc(items[items.length - 1]?.class || "")}">
+    <h3>Page</h3>
+    <ul id="page-class-list">${rows}</ul>
+    <p id="page-class-calls">${(run.heals || []).length} heals · ${calls} model calls</p>
+  </section>`;
+}
+
+function classLabel(name: string): string {
+  if (name === "bot_wall") return "Bot check";
+  if (name === "login_wall") return "Sign-in";
+  if (name === "clutter") return "Clutter";
+  if (name === "changed") return "Changed";
+  return name;
 }
 
 function envelopePane(envelope: RunSummary["envelope"]): string {
@@ -788,15 +826,35 @@ export function healInbox(runs: RunSummary[], workflows: WorkflowSummary[], filt
       <strong>${esc(row.workflow)}</strong> · ${esc(row.step)} · ${esc(row.bucket === "pending" ? "waiting for you" : row.bucket)}
       <span class="quiet">${esc(row.when)}</span>
     </button>`).join("");
+  const classes = filter === "pending" ? classRows(runs, workflows) : "";
   return `<section id="heal-inbox">
     <header class="row"><h2>Heals</h2>
       <button type="button" data-heal-filter="pending">Pending</button>
       <button type="button" data-heal-filter="kept">Kept</button>
       <button type="button" data-heal-filter="reverted">Reverted</button>
     </header>
-    ${list || `<p class="quiet">Nothing ${filter}.</p>`}
+    ${classes}
+    ${list || (classes ? "" : `<p class="quiet">Nothing ${filter}.</p>`)}
     <div id="heal-detail"></div>
   </section>`;
+}
+
+function classRows(runs: RunSummary[], workflows: WorkflowSummary[]): string {
+  const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
+  const rows: string[] = [];
+  for (const run of runs) {
+    for (const item of run.pageClasses || []) {
+      const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${bit.detail}`).join(" · ");
+      const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+      rows.push(`<article class="heal-row" data-page-class="${esc(item.class)}" data-run="${esc(run.id)}">
+        <strong>${esc(names.get(run.workflowId) || run.workflowId)}</strong> · ${esc(item.stepId)} · ${esc(classLabel(item.class))}
+        <span class="quiet">${esc(item.line || item.reason)}</span>
+        ${evidence ? `<span class="quiet">${esc(evidence)}</span>` : ""}
+        <span class="quiet">${(run.heals || []).length} heals · ${calls} model calls</span>
+      </article>`);
+    }
+  }
+  return rows.join("");
 }
 
 function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
@@ -925,7 +983,7 @@ export function healWorkflowName(
 export function runKind(run: RunSummary, promotion?: PromotionView): string {
   if (run.status === "timed-out") return "timed-out";
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
-  if (run.status === "paused") return "paused";
+  if (run.status === "needs_human" || run.status === "paused") return "paused";
   if (run.status === "failed") return "failed";
   if ((run.heals || []).length > 0) return "healed";
   return "passed";

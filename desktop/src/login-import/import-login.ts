@@ -167,7 +167,7 @@ export async function importChromeLogin(opts: {
   let signedIn = false;
   let probed = false;
   let probeError = false;
-  let probeHow: "selector" | "text" | "login-url" | undefined;
+  let probeHow: "selector" | "text" | "login-url" | "login-wall" | undefined;
   if (imported > 0 || localStorageItems > 0 || indexedDbOrigins > 0) {
     try {
       const obs = await opts.observe(opts.config.probeUrl || origin);
@@ -256,7 +256,7 @@ export async function probeOwnedProfile(opts: {
   baoProfile: string;
   config: Pick<SiteLoginConfig, "origin" | "probeUrl" | "signedInSelector" | "signedInText">;
   headless?: boolean;
-}): Promise<{ signedIn: boolean; how: "selector" | "text" | "login-url" }> {
+}): Promise<{ signedIn: boolean; how: "selector" | "text" | "login-url" | "login-wall" }> {
   assertNotDailyChrome(opts.baoProfile);
   const headless = opts.headless ?? process.env.BAO_HEADED !== "1";
   const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
@@ -375,7 +375,8 @@ export async function observePage(page: Page, probeUrl: string, selector: string
   const finalUrl = page.url();
   const selectorFound = selector ? (await page.locator(selector).count()) > 0 : false;
   const bodyText = text ? await page.locator("body").innerText().catch(() => "") : "";
-  return { finalUrl, selectorFound, bodyText };
+  const hasPassword = await page.locator("input[type=password]").count().then((count) => count > 0).catch(() => false);
+  return { finalUrl, selectorFound, bodyText, startedUrl: probeUrl, hasPassword };
 }
 
 function resolveProfileDir(userDataDir: string, directory: string): string {

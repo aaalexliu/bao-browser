@@ -150,26 +150,34 @@ test("a cookie banner is dismissed for this run and the workflow file is unchang
   assert.deepEqual(workflow, saved);
 });
 
-test("captcha, a 5xx response, and a signed-out page stay failures", async () => {
+test("a captcha and a signed-out page stop for a person, and a 5xx stays a failure", async () => {
   const workflow = doc([
     step({ id: "apply", action: "click", label: "Click Apply", identity: ident({ testId: "apply", text: "Apply" }) }),
   ]);
   let proposed = 0;
   const heal = { available: () => true, propose: async () => { proposed += 1; return null; } };
   const captcha = await replay(workflow, {}, fake([tree([ident({ role: "button", text: "Verify you are human", testId: "captcha" })])]), { heal });
-  assert.equal(captcha.status, "failed");
-  assert.equal(captcha.failure?.reason, "captcha");
+  assert.equal(captcha.status, "paused");
+  assert.equal(captcha.pausedKind, "wall");
+  assert.equal(captcha.pageClasses.at(-1)?.class, "bot_wall");
   assert.equal(captcha.heals.length, 0);
+  assert.equal(captcha.modelCalls, 0);
+  assert.match(captcha.ask?.instruction || "", /bot check/);
+  assert.match(captcha.ask?.instruction || "", /Continue/);
   const driver = fake([tree([ident({ role: "button", text: "Elsewhere", testId: "other" })])]);
   driver.trace = () => ({ console: [], network: [{ url: "http://127.0.0.1/fixture", status: 503 }] });
   const down = await replay(workflow, {}, driver, { heal });
   assert.equal(down.status, "failed");
   assert.match(down.failure?.reason || "", /5xx/);
   const signedOut = await replay(workflow, {}, fake([tree([ident({ role: "heading", text: "You are signed out" })])]), { heal });
-  assert.equal(signedOut.status, "failed");
-  assert.equal(signedOut.failure?.reason, "signed-out");
+  assert.equal(signedOut.status, "paused");
+  assert.equal(signedOut.pausedKind, "wall");
+  assert.equal(signedOut.pageClasses.at(-1)?.class, "login_wall");
+  assert.equal(signedOut.heals.length, 0);
+  assert.equal(signedOut.modelCalls, 0);
   const login = await replay(workflow, {}, fake([tree([ident({ role: "button", testId: "login", text: "Log in" })])]), { heal });
   assert.notEqual(login.failure?.reason, "signed-out");
+  assert.equal(login.pausedKind, undefined);
   assert.equal(proposed, 1);
   assert.equal(captcha.heals.length + down.heals.length + signedOut.heals.length, 0);
 });

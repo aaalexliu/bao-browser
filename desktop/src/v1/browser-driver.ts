@@ -10,6 +10,7 @@ import { dumpPage, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFiel
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
+import { clickKnownClose, readPageMarkers, type PageSignals } from "./page-class";
 import type { Driver, GuideAct, HealNotice, LiveTree, ShotTarget } from "./replay";
 import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
@@ -56,6 +57,7 @@ export class BrowserDriver implements Driver {
   private domNodes: { role?: string; name?: string; text?: string; testId?: string; id?: string }[] = [];
   private readonly consoleLines: TraceLine[] = [];
   private readonly networkLines: TraceRequest[] = [];
+  private readonly headerNotes: { url: string; headers: { name: string; value: string }[] }[] = [];
   private automated = 0;
   private guideBound = false;
   private readonly guideEvents: GuideAct[] = [];
@@ -85,6 +87,11 @@ export class BrowserDriver implements Driver {
         ts: Date.now(),
       });
       if (this.networkLines.length > 80) this.networkLines.shift();
+      const headers = vendorHeaders(res.headers());
+      if (headers.length) {
+        this.headerNotes.push({ url, headers });
+        if (this.headerNotes.length > 80) this.headerNotes.shift();
+      }
     });
   }
 
@@ -94,6 +101,31 @@ export class BrowserDriver implements Driver {
 
   trace(): { console: TraceLine[]; network: TraceRequest[] } {
     return { console: this.consoleLines.slice(), network: this.networkLines.slice() };
+  }
+
+  async pageSignals(): Promise<PageSignals> {
+    const markers = await this.page.evaluate(readPageMarkers);
+    const cookies = await this.page.context().cookies().catch(() => []);
+    return {
+      url: markers.url,
+      title: markers.title,
+      texts: markers.texts,
+      iframeSrcs: markers.iframeSrcs,
+      markers: markers.markers,
+      hasPassword: markers.hasPassword,
+      closes: markers.closes,
+      cookies: cookies.map((cookie) => ({ name: cookie.name })),
+      responses: this.networkLines.map((line) => ({
+        url: line.url,
+        method: line.method,
+        status: line.status,
+        headers: this.headerNotes.find((note) => note.url === line.url)?.headers,
+      })),
+    };
+  }
+
+  async dismissClutter(): Promise<boolean> {
+    return this.page.evaluate(clickKnownClose);
   }
 
   async captureStep(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }> {
@@ -393,7 +425,9 @@ export class BrowserDriver implements Driver {
     this.prompts?.showAsk?.(ask);
     const text = ask.kind === "confirm"
       ? `You're in control. ${ask.instruction}`
-      : "You're in control. Sign in on this page. bao isn't recording keystrokes in password fields.";
+      : ask.kind === "wall"
+        ? ask.instruction
+        : "You're in control. Sign in on this page. bao isn't recording keystrokes in password fields.";
     void this.injectStrip(ask.kind, text);
   }
 
@@ -408,10 +442,11 @@ export class BrowserDriver implements Driver {
       note.textContent = text;
       note.style.margin = "0";
       bar.appendChild(note);
-      if (kind === "login") {
+      if (kind === "login" || kind === "wall") {
         const button = document.createElement("button");
         button.type = "button";
-        button.textContent = "I'm signed in, continue";
+        button.id = "bao-continue";
+        button.textContent = kind === "wall" ? "Continue" : "I'm signed in, continue";
         button.onclick = () => { void fetch("/api/prompt/continue", { method: "POST" }); };
         bar.appendChild(button);
       }
@@ -680,6 +715,16 @@ function maskTrace(text: string): string {
   const trimmed = text.replace(/\s+/g, " ").trim().slice(0, 240);
   if (!trimmed) return "";
   return trimmed.replace(/password[=:]\s*\S+/gi, "password=[secret]");
+}
+
+function vendorHeaders(headers: Record<string, string>): { name: string; value: string }[] {
+  const out: { name: string; value: string }[] = [];
+  for (const [name, value] of Object.entries(headers)) {
+    if (!/^(server|cf-|x-cdn|x-iinfo|x-akamai|x-datadome|x-dd-|x-px)/i.test(name) && !/incap|datadome|cloudflare|akamai|perimeterx|imperva/i.test(name)) continue;
+    out.push({ name, value: value.slice(0, 120) });
+    if (out.length >= 12) break;
+  }
+  return out;
 }
 
 function publicUrl(raw: string): string {

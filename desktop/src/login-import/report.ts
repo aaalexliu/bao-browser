@@ -15,7 +15,7 @@ export function buildReport(input: {
   probeError?: boolean;
   signInUrl: string;
   keychain: { title: string; body: string } | null;
-  probeHow?: "selector" | "text" | "login-url";
+  probeHow?: "selector" | "text" | "login-url" | "login-wall";
   includedBot: number;
   localStorageItems?: number;
   indexedDbOrigins?: number;
@@ -52,7 +52,7 @@ function explain(input: {
   failed: RejectedCookie[];
   probed: boolean;
   probeError?: boolean;
-  probeHow?: "selector" | "text" | "login-url";
+  probeHow?: "selector" | "text" | "login-url" | "login-wall";
   includedBot: number;
 }): string {
   const reliable = "Sign in once in Bao's window. That is the reliable path. Bao will not spoof a fingerprint, solve a captcha, or hide that this Chrome is automated.";
@@ -95,6 +95,7 @@ function explain(input: {
       reliable,
     ].join(" ");
   }
+  if (input.probeHow === "login-wall") return `The probe settled on a login page. The session did not stick. ${reliable}`;
   return `The session did not stick. ${reliable}`;
 }
 
