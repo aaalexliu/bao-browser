@@ -339,10 +339,11 @@ test("a drop postcondition is the visible echo and a bare filename does not pass
     },
   ], { id: "wf-drop", name: "Drop", startUrl: "https://example.test/fixture" });
   const step = doc.steps.find((item) => item.action === "drop");
-  assert.equal(step?.postcondition?.match, "Dropped file: {{drop}}");
+  assert.equal(step?.input, "file");
+  assert.equal(step?.postcondition?.match, "Dropped file: {{file}}");
   assert.equal(JSON.stringify(doc).includes("note.txt"), false);
   assert.equal(JSON.stringify(doc).includes("/tmp/note.txt"), false);
-  const args = { drop: { name: "bao-fix-run1.txt", path: "/tmp/bao-fix-run1.txt" } };
+  const args = { file: { name: "bao-fix-run1.txt", path: "/tmp/bao-fix-run1.txt" } };
   assert.equal(holds(step!.postcondition!, tree([], { texts: ["Waiting for a file", "Welcome grace"] }), args), false);
   assert.equal(holds(step!.postcondition!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
 });

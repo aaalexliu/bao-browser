@@ -166,7 +166,7 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
     assert.equal(listed.status, 200, await listed.text());
     await page.goto(`${origin}/marketplace/bao-fixture-ok`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("replay-verified").waitFor();
-    assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
+    assert.match(await page.getByTestId("last-green").innerText(), /Publisher replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
     assert.equal(await page.getByTestId("import-link").getAttribute("data-copy"), "bao://import/bao-fixture-ok");
     assert.equal(await page.getByTestId("deeplink").getAttribute("data-copy"), "bao://workflow/bao-fixture-ok");
     assert.equal((await page.getByTestId("workflow").innerText()).includes("bao://"), false);

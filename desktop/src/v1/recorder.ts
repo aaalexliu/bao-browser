@@ -156,11 +156,36 @@ export function recorderSource(): string {
       }
       send({ kind: "act", op: "type", identity: ident(el), value: el.value });
     }, true);
+    const elementOf = (raw) => !raw ? null : raw.nodeType === 1 ? raw : raw.parentElement;
+    const dropTarget = (raw) => {
+      const el = elementOf(raw);
+      return el && el.closest ? el.closest("input[type=file], [data-bao-drop]") : null;
+    };
+    // An OS file drag can deliver the drop to the document with client coordinates
+    // that miss the zone. The last dragover that was actually over a file input
+    // or drop zone is the zone the pointer released on.
+    let dropHover = null;
+    document.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer) return;
+      // Cancel the browser's default, which is to navigate to the file.
+      // The drop event is what gets recorded, and only on a file input or drop zone.
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      const pointed = document.elementFromPoint(event.clientX, event.clientY);
+      const zone = dropTarget(event.target) || dropTarget(pointed);
+      dropHover = zone ? { zone, x: event.clientX, y: event.clientY } : null;
+    }, true);
     document.addEventListener("drop", (event) => {
-      const el = event.target;
       const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-      if (!file || !file.name || file.name.indexOf("/") !== -1 || file.name.indexOf("\\\\") !== -1) return;
-      send({ kind: "act", op: "drop", identity: ident(el), fileName: file.name });
+      if (file) event.preventDefault();
+      const pointed = document.elementFromPoint(event.clientX, event.clientY);
+      const direct = dropTarget(event.target) || dropTarget(pointed);
+      const zone = direct || (dropHover && dropHover.zone);
+      const host = zone || (pointed && pointed.closest ? pointed.closest("[data-testid], button, a, input") : null);
+      const base = file && file.name ? file.name.split(/[/\\\\]/).pop() : "";
+      if (!zone || !host || !base) return;
+      if (zone.matches && zone.matches("input[type=file]")) window.__baoSkipNextFile = true;
+      send({ kind: "act", op: "drop", identity: ident(host), fileName: base });
     }, true);
   })();`;
 }

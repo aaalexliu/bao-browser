@@ -1,7 +1,10 @@
 // Replay a macOS OS-plane workflow by accessibility lookup.
 // press and set-value take role and name. They do not take x or y.
 
+import path from "node:path";
+import { tmpdir } from "node:os";
 import type { Workflow } from "../../../src/types";
+import { bundledWindowVideoApp, openOsReplayVideo } from "../v1/replay-video";
 import type { MacOsHelper } from "./os-macos";
 
 function isTextRole(role: string): boolean {
@@ -12,9 +15,20 @@ export async function replayOsWorkflow(
   helper: MacOsHelper,
   workflow: Workflow,
   between?: () => Promise<void>,
-): Promise<{ pressed: number; skipped: number }> {
+): Promise<{ pressed: number; skipped: number; video?: string }> {
   let pressed = 0;
   let skipped = 0;
+  const bundle = workflow.steps.find((step) => step.os?.target.app)?.os?.target.app;
+  const dest = path.join(process.env.BAO_HOME || tmpdir(), "videos", `os-${Date.now().toString(36)}.webm`);
+  let video: Awaited<ReturnType<typeof openOsReplayVideo>> | undefined;
+  let recorded: { wrote: boolean } | undefined;
+  if (bundle && bundledWindowVideoApp() && process.env.BAO_REPLAY_VIDEO !== "0") {
+    try {
+      const info = await helper.windows(bundle) as { pid?: number };
+      if (info.pid) video = await openOsReplayVideo(info.pid, dest);
+    } catch { /* the target app is not a single window */ }
+  }
+  try {
   for (const step of workflow.steps) {
     if (step.unresolved || !step.os || step.surface !== "os") {
       skipped++;
@@ -44,7 +58,10 @@ export async function replayOsWorkflow(
     }
     skipped++;
   }
-  return { pressed, skipped };
+  } finally {
+    recorded = await video?.stop();
+  }
+  return { pressed, skipped, ...(recorded?.wrote ? { video: dest } : {}) };
 }
 
 /** True when a replay command carried a coordinate flag. That is a fail. */
