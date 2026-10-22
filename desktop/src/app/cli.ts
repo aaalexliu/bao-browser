@@ -121,7 +121,25 @@ async function main(): Promise<void> {
     process.stdout.write(result.markdown);
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge");
+  if (cmd === "eval" && rest[0] === "nightly") {
+    const { runNightly } = await import("../eval/nightly/run");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const code = await runNightly({
+      out: flag(rest, "--out") || `docs/evals/nightly/runs/${stamp}`,
+      baseline: flag(rest, "--baseline") || "docs/evals/nightly/baseline",
+      saveBaseline: rest.includes("--save-baseline"),
+    });
+    process.exitCode = code;
+    return;
+  }
+  if (cmd === "eval" && rest[0] === "judge-agree") {
+    const { runJudgeAgree } = await import("../eval/judge-agree");
+    const result = await runJudgeAgree(flag(rest, "--sheet") || "docs/evals/judge-labels.md");
+    console.log(result.text);
+    process.exitCode = result.code;
+    return;
+  }
+  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 

@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/rust-vec",
+  "steps": [
+    {
+      "stepId": "rust-vec-0",
+      "action": "click",
+      "target": "link:Vec<T>",
+      "postcondition": "url /std/vec/struct.Vec.html",
+      "timing": "lt1s"
+    }
+  ]
+}

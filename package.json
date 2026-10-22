@@ -47,6 +47,8 @@
     "spike-macos": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/proxy/spike-macos.js",
     "test:v1": "tsc -p tsconfig.desktop.json && node desktop/test/run-v1.mjs",
     "bao": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/app/cli.js",
+    "eval:nightly": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/app/cli.js eval nightly",
+    "eval:judge-agree": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/app/cli.js eval judge-agree",
     "test:snapshot": "node build.mjs && node test/snapshot.mjs",
     "test:sensitive": "node build.mjs && node test/sensitive.mjs",
     "test:workflows": "node build.mjs && node test/workflows.mjs",

@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/nginx-core",
+  "steps": [
+    {
+      "stepId": "nginx-core-0",
+      "action": "click",
+      "target": "link:ngx_http_core_module",
+      "postcondition": "url /en/docs/http/ngx_http_core_module.html",
+      "timing": "lt1s"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "caseId": "heldout/batch3/httpbingo-topping",
+  "steps": [
+    {
+      "stepId": "httpbingo-topping-0",
+      "action": "check",
+      "target": "radio[name=size]",
+      "postcondition": "state checked",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "httpbingo-topping-1",
+      "action": "type",
+      "target": "textbox[name=custemail]",
+      "postcondition": "value {{username}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "httpbingo-topping-2",
+      "action": "check",
+      "target": "checkbox[name=topping]",
+      "postcondition": "state checked",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "httpbingo-topping-3",
+      "action": "click",
+      "target": "button:Submit order",
+      "postcondition": "url /post",
+      "timing": "lt1s"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch2/w3c-check",
+  "steps": [
+    {
+      "stepId": "w3c-check-0",
+      "action": "check",
+      "target": "checkbox#check_2",
+      "postcondition": "state checked",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "w3c-check-1",
+      "action": "check",
+      "target": "checkbox#check_1",
+      "postcondition": "state checked",
+      "timing": "lt1s"
+    }
+  ]
+}

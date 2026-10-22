@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/eslint-search",
+  "steps": [
+    {
+      "stepId": "eslint-search-0",
+      "action": "type",
+      "target": "input#search",
+      "postcondition": "value {{search}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "eslint-search-1",
+      "action": "key",
+      "target": "page",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}

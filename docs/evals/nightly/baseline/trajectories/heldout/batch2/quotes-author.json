@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch2/quotes-author",
+  "steps": [
+    {
+      "stepId": "quotes-author-0",
+      "action": "click",
+      "target": "link:(about)",
+      "postcondition": "url /author/Albert-Einstein/",
+      "timing": "lt1s"
+    }
+  ]
+}

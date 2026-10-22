@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/jquery-api-search",
+  "steps": [
+    {
+      "stepId": "jquery-api-search-0",
+      "action": "type",
+      "target": "input[name=s]",
+      "postcondition": "value {{s}}",
+      "timing": "lt10s"
+    },
+    {
+      "stepId": "jquery-api-search-1",
+      "action": "key",
+      "target": "page",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}
