@@ -145,7 +145,7 @@ bash desktop/packaging/macos/package-app.sh
 file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 ```
 
-`npm install` finishes before the desktop script runs `tsc`. The helper script builds `desktop/os-helper-macos/BaoOSHelper.app` (`dev.bao.oshelper`) and signs it with the runtime flag. The desktop script compiles `desktop/packaging/macos/bao-main.c` into `Bao.app` (`dev.bao.desktop`), copies the helper to `Bao.app/Contents/Resources/BaoOSHelper.app`, copies `src/mask.ts` to `Contents/Resources/bao/src/mask.ts` (the window script imports it; without that file `/app.js` is a 500 and the sidebar never renders), copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
+`npm install` finishes before the desktop script runs `tsc`. The helper script builds `desktop/os-helper-macos/BaoOSHelper.app` (`dev.bao.oshelper`) and signs it with the runtime flag. On this Mac that helper is already signed with `bao dev signing` (CDHash `e2ad7477d8f989484c3d0ef8a2598561844127bf`). Skip the helper script and run only the desktop script, so the nested helper keeps that CDHash and the grant stays. The desktop script compiles `desktop/packaging/macos/bao-main.c` into `Bao.app` (`dev.bao.desktop`), copies the helper to `Bao.app/Contents/Resources/BaoOSHelper.app`, copies `src/mask.ts` to `Contents/Resources/bao/src/mask.ts` (the window script imports it; without that file `/app.js` is a 500 and the sidebar never renders), copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
 
 **What you should see:**
 
