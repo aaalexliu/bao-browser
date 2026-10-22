@@ -8,7 +8,7 @@ import { dumpPage, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFiel
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
-import type { Driver, HealNotice, LiveTree, ShotTarget } from "./replay";
+import type { Driver, GuideAct, HealNotice, LiveTree, ShotTarget } from "./replay";
 import type { FileArg, Identity } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
 
@@ -54,6 +54,9 @@ export class BrowserDriver implements Driver {
   private domNodes: { role?: string; name?: string; text?: string; testId?: string; id?: string }[] = [];
   private readonly consoleLines: TraceLine[] = [];
   private readonly networkLines: TraceRequest[] = [];
+  private automated = 0;
+  private guideBound = false;
+  private readonly guideEvents: GuideAct[] = [];
 
   constructor(
     private readonly page: Page,
@@ -184,11 +187,43 @@ export class BrowserDriver implements Driver {
     };
   }
 
+  actions(): number {
+    return this.automated;
+  }
+
+  /** Listen for the person's clicks and typing. Guide Me uses this and does not act. */
+  async watchGuide(): Promise<void> {
+    if (!this.guideBound) {
+      this.guideBound = true;
+      await this.page.exposeBinding("__baoGuideAct", async (_source, payload: GuideAct) => {
+        if (!payload || (payload.op !== "click" && payload.op !== "type" && payload.op !== "key" && payload.op !== "check")) return;
+        this.guideEvents.push({
+          op: payload.op,
+          id: payload.id || undefined,
+          testId: payload.testId || undefined,
+          name: payload.name || undefined,
+          value: payload.secret ? undefined : payload.value,
+          key: payload.key,
+          secret: payload.secret === true,
+          ts: payload.ts || Date.now(),
+        });
+        if (this.guideEvents.length > 40) this.guideEvents.shift();
+      });
+    }
+    await this.page.evaluate(installGuideWatch);
+  }
+
+  async performed(): Promise<GuideAct | null> {
+    return this.guideEvents.shift() ?? null;
+  }
+
   async click(node: Identity): Promise<void> {
+    this.automated += 1;
     await this.page.locator(this.sel(node)).click();
   }
 
   async fill(node: Identity, text: string, secret = false): Promise<void> {
+    this.automated += 1;
     const loc = this.page.locator(this.sel(node));
     if (!secret) {
       await loc.fill(text);
@@ -212,11 +247,13 @@ export class BrowserDriver implements Driver {
   }
 
   async key(key: string): Promise<void> {
+    this.automated += 1;
     const named = key.replace(/^ctrl\+/i, "Control+").replace(/^cmd\+/i, "Meta+").replace(/^alt\+/i, "Alt+");
     await this.page.keyboard.press(named);
   }
 
   async upload(node: Identity, files: FileArg[]): Promise<void> {
+    this.automated += 1;
     const want = files[0]?.name || "";
     if (!want) throw new Error("upload has no file");
     const loc = this.page.locator(this.sel(node));
@@ -236,6 +273,7 @@ export class BrowserDriver implements Driver {
   }
 
   async drop(node: Identity, files: FileArg[]): Promise<void> {
+    this.automated += 1;
     const want = files[0]?.name || "";
     if (!want) throw new Error("drop has no file");
     const payload = files.map((file) => ({
@@ -279,10 +317,12 @@ export class BrowserDriver implements Driver {
   }
 
   async digits(): Promise<void> {
+    this.automated += 1;
     throw new Error("digits are an OS action");
   }
 
   async check(node: Identity, checked: boolean): Promise<void> {
+    this.automated += 1;
     await this.page.locator(this.sel(node)).setChecked(checked);
   }
 
@@ -382,6 +422,24 @@ export class BrowserDriver implements Driver {
     });
   }
 
+  /** Ring the control itself for Guide Me. Leaves outline() on the label for crops. */
+  async highlightTarget(node: Identity): Promise<void> {
+    const loc = this.page.locator(this.sel(node));
+    await loc.scrollIntoViewIfNeeded().catch(() => undefined);
+    await loc.evaluate((el) => {
+      document.querySelectorAll("[data-bao-guide-ring]").forEach((prev) => {
+        prev.removeAttribute("data-bao-guide-ring");
+        const host = prev as HTMLElement;
+        host.style.outline = "";
+        host.style.outlineOffset = "";
+      });
+      const target = el as HTMLElement;
+      target.setAttribute("data-bao-guide-ring", "1");
+      target.style.outline = "3px solid #d4532b";
+      target.style.outlineOffset = "4px";
+    });
+  }
+
   /** Crop of the outlined match. The outline stays on the live page. */
   async outlinePreview(): Promise<string | undefined> {
     const box = await this.page.locator("[data-bao-shot-outline]").first().boundingBox().catch(() => null);
@@ -391,6 +449,42 @@ export class BrowserDriver implements Driver {
     const png = await this.page.screenshot({ type: "png", clip }).catch(() => undefined);
     return png?.toString("base64");
   }
+}
+
+function installGuideWatch(): void {
+  const host = window as unknown as { __baoGuideBound?: boolean; __baoGuideAct?: (payload: GuideAct) => void };
+  if (host.__baoGuideBound) return;
+  host.__baoGuideBound = true;
+  const send = (payload: GuideAct) => {
+    host.__baoGuideAct?.(payload);
+  };
+  const describe = (el: Element | null) => {
+    const hostEl = el?.closest("input, textarea, button, a, label, [data-testid]") || el;
+    const control = hostEl instanceof HTMLLabelElement ? hostEl.querySelector("input, textarea, button") : hostEl;
+    const node = control instanceof Element ? control : hostEl;
+    if (!(node instanceof Element)) return {};
+    return {
+      id: node.id || undefined,
+      testId: node.getAttribute("data-testid") || undefined,
+      name: node.getAttribute("name") || node.getAttribute("aria-label") || undefined,
+    };
+  };
+  document.addEventListener("click", (ev) => {
+    const target = ev.target instanceof Element ? ev.target : null;
+    send({ op: "click", ...describe(target), ts: Date.now() });
+  }, true);
+  document.addEventListener("input", (ev) => {
+    const el = ev.target;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+    const secret = el instanceof HTMLInputElement && el.type === "password";
+    send({
+      op: "type",
+      ...describe(el),
+      value: secret ? "" : el.value.slice(0, 80),
+      secret,
+      ts: Date.now(),
+    });
+  }, true);
 }
 
 /** Crop around the step's target and outline it. A full-page picture is not used. */

@@ -136,18 +136,19 @@ export function projectTeach(
     const intent = heuristicIntent(step, event);
     const outcome = heuristicOutcome(step, event);
     const voice = spoken?.get(id);
+    const noted = attachedNote(group) || (step.intent || "").trim();
     const card: TeachCard = {
       id,
       eventIds: group.map((item) => item.id),
       narrator: voice?.narrator || "heuristic",
       modelName: voice?.modelName,
-      intent: scrub(voice?.intent || intent, secrets, events),
+      intent: scrub(noted || voice?.intent || intent, secrets, events),
       outcome: scrub(voice?.outcome || outcome, secrets, events),
       human: step.human === true || step.action === "login" || step.action === "confirm",
       verify: step.action === "verify",
       dropped: false,
       merged: false,
-      note: "",
+      note: scrub(noted, secrets, events),
       action: step.action,
       values: valuesOf(step, event),
     };
@@ -688,6 +689,12 @@ function valuesOf(step: WorkflowStep, event: TrailEvent | undefined): TeachValue
     return [{ role: "constant", name: "", label: step.value.slice(0, 48) }];
   }
   return [];
+}
+
+/** A capture-bar note folded into this step. Handoff lines are not intent. */
+function attachedNote(group: readonly TrailEvent[]): string {
+  const note = [...group].reverse().find((event) => event.op === "note" && event.afterText && !/^Handoff (started|ended)\b/.test(event.afterText));
+  return (note?.afterText || "").replace(/\s+/g, " ").trim();
 }
 
 function targetName(event: TrailEvent | undefined): string {

@@ -7,6 +7,8 @@ import type { TrailEvent } from "../v1/interpret";
 export interface CaptureStep {
   id: string;
   label: string;
+  /** Typed note attached to this step. It becomes the step's intent. */
+  note?: string;
 }
 
 export interface ActNotice {
@@ -22,12 +24,15 @@ export class Capture {
   paused = false;
   events: TrailEvent[] = [];
   steps: CaptureStep[] = [];
+  /** A note typed before the first step, waiting for that step. */
+  private pendingNote = "";
 
   start(): void {
     this.recording = true;
     this.paused = false;
     this.events = [];
     this.steps = [];
+    this.pendingNote = "";
   }
 
   pause(): void {
@@ -52,12 +57,26 @@ export class Capture {
     const stored = this.stamp(event);
     this.events.push(stored);
     const label = stepLabel(stored);
-    if (label) this.steps.push({ id: stored.id, label });
+    if (label) this.steps.push(this.withPending({ id: stored.id, label }));
     return true;
   }
 
+  /**
+   * Attach a typed note to the current step, or hold it for the next one.
+   * The note is not its own step.
+   */
   note(text: string): CaptureStep {
-    return this.annotate("note", text, (clean) => `Note: ${clean}`);
+    if (!this.recording) throw new Error("not recording");
+    const clean = cleanAnnotation(text);
+    const stored = this.stamp({ kind: "act", op: "note", afterText: clean });
+    this.events.push(stored);
+    const current = this.steps[this.steps.length - 1];
+    if (current) {
+      current.note = clean;
+      return { ...current };
+    }
+    this.pendingNote = clean;
+    return { id: stored.id, label: `Note: ${clean}`, note: clean };
   }
 
   check(text: string): CaptureStep {
@@ -69,6 +88,7 @@ export class Capture {
     this.paused = false;
     this.events = [];
     this.steps = [];
+    this.pendingNote = "";
   }
 
   stop(): TrailEvent[] {
@@ -83,9 +103,16 @@ export class Capture {
     const clean = cleanAnnotation(text);
     const stored = this.stamp({ kind: "act", op, afterText: clean });
     this.events.push(stored);
-    const step = { id: stored.id, label: label(clean) };
+    const step = this.withPending({ id: stored.id, label: label(clean) });
     this.steps.push(step);
     return step;
+  }
+
+  private withPending(step: CaptureStep): CaptureStep {
+    if (!this.pendingNote) return step;
+    const note = this.pendingNote;
+    this.pendingNote = "";
+    return { ...step, note };
   }
 
   private stamp(event: Omit<TrailEvent, "id" | "ts"> & { id?: string; ts?: number }): TrailEvent {

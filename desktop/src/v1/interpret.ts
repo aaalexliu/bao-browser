@@ -104,7 +104,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     }
     return { events: [event], step };
   });
-  const pieces = collapseDigits(drafted, inputs);
+  const pieces = foldNotes(collapseDigits(drafted, inputs), seen.secrets ?? []);
   attachExpr(pieces.map((piece) => piece.step));
   const steps = pieces.map((piece, index) => ({ ...piece.step, index, id: `${meta.id}-${index}` }));
   const doc: WorkflowV2 = {
@@ -192,6 +192,63 @@ function withoutChooserClicks(events: TrailEvent[]): TrailEvent[] {
     if (!next || (next.op !== "upload" && next.op !== "drop")) return true;
     return !sameTarget(event, next);
   });
+}
+
+/**
+ * A typed note is the step's intent, not its own action.
+ * A note after a step attaches to that step. A note before any step attaches to the next one.
+ * A trailing note with nothing after it stays a note so the text is kept.
+ * Handoff lines stay note steps; they are the pause record, not an intent.
+ */
+function foldNotes(pieces: InterpretPiece[], secrets: string[]): InterpretPiece[] {
+  const out: InterpretPiece[] = [];
+  let pending: InterpretPiece | undefined;
+  for (const piece of pieces) {
+    if (!isIntentNote(piece)) {
+      if (pending && piece.step.action !== "note") {
+        applyNote(piece, pending, secrets);
+        pending = undefined;
+      }
+      out.push(piece);
+      continue;
+    }
+    const current = out[out.length - 1];
+    if (current && current.step.action !== "note") {
+      applyNote(current, piece, secrets);
+      continue;
+    }
+    if (pending) {
+      pending.events.push(...piece.events);
+      pending.step = piece.step;
+      continue;
+    }
+    pending = { events: [...piece.events], step: { ...piece.step } };
+  }
+  if (pending) {
+    const text = noteText(pending, secrets);
+    if (text) pending.step.intent = text;
+    out.push(pending);
+  }
+  return out;
+}
+
+function isIntentNote(piece: InterpretPiece): boolean {
+  if (piece.step.action !== "note") return false;
+  const text = piece.events[0]?.afterText || piece.step.label || "";
+  return !/^Handoff (started|ended)\b/.test(text);
+}
+
+function noteText(piece: InterpretPiece, secrets: string[]): string {
+  const raw = piece.events.map((event) => event.afterText || "").find(Boolean) || "";
+  const cleaned = scrub(raw, secrets)?.replace(/\s+/g, " ").trim() || "";
+  if (cleaned) return cleaned;
+  return piece.step.label.replace(/^Note:\s*/, "").trim();
+}
+
+function applyNote(target: InterpretPiece, note: InterpretPiece, secrets: string[]): void {
+  const text = noteText(note, secrets);
+  if (text) target.step.intent = text;
+  target.events.push(...note.events);
 }
 
 function mergeTyping(events: TrailEvent[]): TrailEvent[] {

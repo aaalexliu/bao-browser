@@ -493,7 +493,23 @@
       padding: 0.4rem 0.45rem 0.4rem 0.7rem;
       flex-wrap: wrap;
     }
-    #teach-bar button { background: transparent; color: inherit; border-color: transparent; height: 26px; padding: 0 8px; }
+    #teach-bar button, #record-bar button { background: transparent; color: inherit; border-color: transparent; height: 26px; padding: 0 8px; }
+    #teach-bar input.note-field, #record-bar input.note-field {
+      height: 26px; width: 8.5rem; background: var(--bg); color: var(--ink);
+      border: 0; border-radius: 8px; padding: 0 8px;
+    }
+    .badge.flag { background: var(--select); color: var(--ink); }
+    .badge.note { background: #f3e2d4; color: #6b3a1f; }
+    [data-theme="dark"] .badge.note { background: #3a2a22; color: #f0d2c2; }
+    #guide-panel {
+      position: fixed; top: 16px; right: 16px; z-index: 33; width: 280px;
+      background: var(--card); color: var(--ink); border: 1px solid var(--line);
+      border-radius: 16px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22); padding: 0.9rem 1rem;
+    }
+    #guide-panel h2 { margin: 0; font-size: var(--text-lg); }
+    #guide-panel .guide-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    #guide-actions { margin: 0; font-variant-numeric: tabular-nums; font-weight: 650; }
+    #guide-step { font-weight: 650; margin: 0.6rem 0 0.2rem; }
     #teach-bar button:hover { background: rgba(255, 255, 255, 0.12); }
     #teach-bar .quiet, #teach-blur { color: inherit; opacity: 0.8; font-size: var(--text-xs); }
     #teach-cards { overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }

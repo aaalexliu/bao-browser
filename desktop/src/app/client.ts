@@ -17,6 +17,7 @@ import {
   importCard,
   consolePane,
   inputsPane,
+  guidePanel,
   libraryTable,
   networkPane,
   liveStepList,
@@ -165,6 +166,7 @@ async function refresh(): Promise<void> {
     sync: state.sync,
     // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
+    guide: state.guide ? { status: state.guide.status, stepId: state.guide.stepId, actions: state.guide.actions } : null,
     screen,
     healFilter,
     openHeal,
@@ -176,9 +178,11 @@ async function refresh(): Promise<void> {
   paintDockBadge();
   paintLive();
   paintTeach();
+  paintGuide();
   if (key === renderKey) return;
   renderKey = key;
   render();
+  paintGuide();
 }
 
 function render(): void {
@@ -192,7 +196,7 @@ function render(): void {
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
-  if (float && state.teach?.phase !== "live") float.innerHTML = recordBar(state);
+  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state);
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
@@ -655,6 +659,24 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+  const recNote = document.getElementById("rec-note") as HTMLInputElement | null;
+  const recNoteAdd = document.getElementById("rec-note-add");
+  const sendRecNote = async () => {
+    const text = recNote?.value.trim() || "";
+    if (!text || !recNote) return;
+    recNote.value = "";
+    await fetch("/api/sessions/note", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    renderKey = "";
+    await refresh();
+  };
+  if (recNoteAdd) recNoteAdd.onclick = () => void sendRecNote();
+  if (recNote) recNote.onkeydown = (ev) => {
+    if (ev.key === "Enter") void sendRecNote();
+  };
   const mark = document.getElementById("rec-mark");
   if (mark) mark.onclick = async () => {
     await fetch("/api/sessions/mark", { method: "POST" });
@@ -1054,6 +1076,9 @@ async function openEditor(id: string): Promise<void> {
     renderKey = "";
     await refresh();
   };
+  host.querySelectorAll("[data-guide]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => void startGuide((btn as HTMLButtonElement).dataset.guide || id);
+  });
   host.querySelectorAll("[data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || id;
@@ -1249,6 +1274,20 @@ function openTokenEditor(token: HTMLButtonElement, id: string): void {
     await refresh();
     await openEditor(id);
   });
+}
+
+async function startGuide(id: string): Promise<void> {
+  lastWf = id;
+  const res = await fetch("/api/replay", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, args: {}, guide: true }),
+  });
+  const run = await res.json() as { status?: string; actions?: number; error?: string };
+  const live = document.getElementById("guide-actions");
+  if (live && typeof run.actions === "number") live.textContent = `${run.actions} automated actions`;
+  renderKey = "";
+  await refresh();
 }
 
 async function runReplay(): Promise<void> {
@@ -1573,7 +1612,8 @@ function paintTeach(): void {
     return;
   }
   const active = document.activeElement;
-  const editing = active instanceof HTMLInputElement && float.contains(active) ? teachFieldKey(active) : "";
+  const barNote = active instanceof HTMLInputElement && active.id === "teach-note" ? active.value : "";
+  const editing = active instanceof HTMLInputElement && float.contains(active) && active.id !== "teach-note" ? teachFieldKey(active) : "";
   const value = editing && active instanceof HTMLInputElement ? active.value : "";
   const start = editing && active instanceof HTMLInputElement ? active.selectionStart : null;
   const end = editing && active instanceof HTMLInputElement ? active.selectionEnd : null;
@@ -1587,6 +1627,13 @@ function paintTeach(): void {
   }
   bindTeach(float);
   mountShots(float);
+  if (barNote) {
+    const nextNote = float.querySelector<HTMLInputElement>("#teach-note");
+    if (nextNote) {
+      nextNote.value = barNote;
+      nextNote.focus();
+    }
+  }
   const highlighted = float.querySelector(".teach-card.on");
   const highlightedId = highlighted?.getAttribute("data-card") || "";
   if (highlightedId && highlightedId !== teachHighlighted) {
@@ -1612,6 +1659,24 @@ async function correct(card: string, kind: string, extra: Record<string, string>
 }
 
 function bindTeach(root: ParentNode): void {
+  const noteInput = root.querySelector<HTMLInputElement>("#teach-note");
+  const noteAdd = root.querySelector("#teach-note-add");
+  const sendNote = async () => {
+    const text = noteInput?.value.trim() || "";
+    if (!text) return;
+    if (noteInput) noteInput.value = "";
+    await fetch("/api/sessions/note", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    renderKey = "";
+    await refresh();
+  };
+  if (noteAdd) (noteAdd as HTMLButtonElement).onclick = () => void sendNote();
+  if (noteInput) noteInput.onkeydown = (ev) => {
+    if (ev.key === "Enter") void sendNote();
+  };
   const pause = root.querySelector("#teach-pause");
   if (pause) (pause as HTMLButtonElement).onclick = async () => {
     await fetch("/api/sessions/pause", { method: "POST" });
@@ -1684,6 +1749,15 @@ function bindTeach(root: ParentNode): void {
       note.onchange = commit;
     }
   });
+}
+
+function paintGuide(): void {
+  const float = document.getElementById("float");
+  if (!float || state.teach?.phase === "live" || !state.guide) return;
+  const html = guidePanel(state.guide);
+  const current = float.querySelector("#guide-panel");
+  if (current && current.parentElement === float && float.innerHTML === html) return;
+  float.innerHTML = html;
 }
 
 function paintLive(): void {
