@@ -129,11 +129,55 @@ function secretStrings(events: readonly TrailEvent[], listed: string[]): string[
   return out;
 }
 
+function dropReason(event: TrailEvent): string | undefined {
+  if (event.kind === "read") return "read";
+  if (event.kind === "decision" || event.op === "decision") return "correction";
+  if (NOISE.has(event.op)) return event.op || "noise";
+  if (event.unresolved) return event.unresolved.reason || "unresolved";
+  return undefined;
+}
+
 function keep(event: TrailEvent): boolean {
-  if (event.kind === "read" || event.kind === "decision" || event.op === "decision") return false;
-  if (NOISE.has(event.op)) return false;
-  if (event.unresolved) return false;
-  return true;
+  return dropReason(event) === undefined;
+}
+
+export interface TrailDrop {
+  id: string;
+  reason: string;
+}
+
+/** Events interpret does not keep, with the reason each one was left out. */
+export function trailDrops(events: readonly TrailEvent[]): TrailDrop[] {
+  const dropped: TrailDrop[] = [];
+  const kept: TrailEvent[] = [];
+  for (const event of events) {
+    const reason = dropReason(event);
+    if (reason) dropped.push({ id: event.id, reason });
+    else kept.push(event);
+  }
+  const noChooser: TrailEvent[] = [];
+  for (let index = 0; index < kept.length; index++) {
+    const event = kept[index]!;
+    const next = kept[index + 1];
+    if (event.op === "click" && next && (next.op === "upload" || next.op === "drop") && sameTarget(event, next)) {
+      dropped.push({ id: event.id, reason: "opens the file chooser" });
+      continue;
+    }
+    noChooser.push(event);
+  }
+  const merged: TrailEvent[] = [];
+  for (const event of noChooser) {
+    const prev = merged[merged.length - 1];
+    if (prev && isType(prev) && isType(event) && sameTarget(prev, event)) {
+      dropped.push({ id: event.id, reason: "merged into the previous type" });
+      prev.value = event.sensitive ? undefined : (prev.value || "") + (event.value || "");
+      prev.sensitive = prev.sensitive || event.sensitive;
+      prev.ts = event.ts;
+      continue;
+    }
+    merged.push({ ...event });
+  }
+  return dropped;
 }
 
 /** A click that only opens the chooser is not a step once the file event lands. */

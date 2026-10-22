@@ -1,4 +1,5 @@
-// Teach the fixture once, correct it, replay twice, splice a failed step, and blur secrets.
+// Teach the fixture once, correct it, replay twice, and blur secrets.
+// A later test teaches the interstitial fix and merges a login route.
 // The capture browser is the local fixture page. No vendor network.
 
 import assert from "node:assert/strict";
@@ -8,8 +9,9 @@ import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
 import { startApp } from "../../src/app/server";
+import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
 import { blurSensitiveFields, unblurSensitiveFields } from "../../src/v1/dom-page";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
+import type { WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 
@@ -95,8 +97,14 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     await post(app.port, "/api/teach/correct", { kind: "drop", cardId: stray.id });
     await post(app.port, "/api/teach/correct", { kind: "note", cardId: note.id, note: "type the note" });
     await post(app.port, "/api/teach/correct", { kind: "human", cardId: apply.id });
+    const cases = loadTeachIntentCases(path.join(home, "evals", "intent", "cases"));
+    assert.ok(cases.length >= 3, `cases ${cases.length}`);
+    assert.ok(cases.every((item) => item.schema === "bao.intent-case/v1" && item.events.length > 0 && item.workflow.steps.length > 0));
+    assert.equal(JSON.stringify(cases).includes(secret), false);
+    await post(app.port, "/api/sessions/mark");
 
-    const review = await post(app.port, "/api/teach/stop") as { phase: string; review: { workflow: { steps: { action?: string; intent?: string; human?: boolean }[] } } };
+    const review = await post(app.port, "/api/teach/stop") as { phase: string; review: { summary?: { line: string }; workflow: { steps: { action?: string; intent?: string; human?: boolean }[] } } };
+    assert.match(review.review.summary?.line || "", /^\d+ events → \d+ steps, \d+ inputs found, \d+ dropped$/);
     assert.equal(review.phase, "review");
     await page.reload();
     await page.click("button[data-screen=teach]");
@@ -106,6 +114,8 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     assert.match(reviewText, /type the note/);
     assert.match(reviewText, /edited/);
     assert.match(reviewText, /Dropped \(1\)/);
+    assert.match(reviewText, /\d+ events → \d+ steps, \d+ inputs found, \d+ dropped/);
+    assert.match(reviewText, /mark/);
 
     const saved = await post(app.port, "/api/teach/save", { name: "Fixture teach" }) as {
       id: string;
@@ -174,42 +184,182 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     await page.evaluate(unblurSensitiveFields);
     assert.equal(await page.locator("[data-bao-blur]").count(), 0);
 
-    const broken: WorkflowV2 = {
-      schema: "bao.workflow/v2",
-      version: 2,
-      id: "wf-broken",
-      name: "Broken apply",
-      startUrl: `http://127.0.0.1:${app.port}/fixture`,
-      createdAt: 1,
-      inputs: [],
-      steps: [{
-        id: "bad",
-        index: 0,
-        action: "click",
-        label: "Click missing",
-        surface: "dom",
-        timeoutMs: 400,
-        identity: { surface: "dom", role: "button", testId: "missing-apply", path: [] } satisfies Identity,
-      }],
-    };
-    app.library.save(broken);
-    const failed = await post(app.port, "/api/replay", { id: broken.id, args: {} }) as { status: string };
-    assert.equal(failed.status, "failed");
-    await post(app.port, "/api/sessions", { teach: true, fix: { workflowId: broken.id, stepId: "bad" } });
-    await post(app.port, "/api/sessions/drive", { click: "#apply-btn" });
-    await post(app.port, "/api/teach/stop");
-    const fixed = await post(app.port, "/api/teach/save") as { id: string; steps: { identity?: { id?: string; testId?: string } }[] };
-    assert.equal(fixed.id, broken.id);
-    assert.equal(fixed.steps.some((step) => step.identity?.id === "apply-btn" || step.identity?.testId === "apply"), true);
-    assert.equal(fixed.steps.some((step) => step.identity?.testId === "missing-apply"), false);
-    const fixedRun = await post(app.port, "/api/replay", { id: broken.id, args: {} }) as { status: string; failure?: unknown };
-    assert.equal(fixedRun.status, "passed", JSON.stringify(fixedRun.failure));
-
     await post(app.port, "/api/sessions", { url: `http://127.0.0.1:${app.port}/fixture`, teach: true });
     await post(app.port, "/api/sessions/drive", { click: "#save-note" });
     await post(app.port, "/api/teach/discard");
     assert.equal((await state(app.port)).teach.phase, "idle");
     assert.equal(app.library.list().some((workflow) => workflow.name === "Taught workflow" && workflow.steps.length === 1), false);
+  } finally {
+    await browser.close();
+    await app.close();
+  }
+});
+
+test("teach the interstitial fix as a guarded branch", { timeout: 180000 }, async () => {
+  delete process.env.BAO_HEAL_FIXTURE;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.BAO_TEACH_FIXTURE;
+  const home = mkdtempSync(path.join(tmpdir(), "bao-fix-"));
+  const app = await startApp({ home, port: 0 });
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  try {
+    await post(app.port, "/api/sessions", { url: `http://127.0.0.1:${app.port}/fixture`, teach: true });
+    await post(app.port, "/api/sessions/drive", { click: "#apply-btn" });
+    await post(app.port, "/api/teach/stop");
+    const taught = await post(app.port, "/api/teach/save", { name: "Apply the note" }) as WorkflowV2;
+    const recorded = app.library.read(taught.id);
+    recorded.startUrl = `http://127.0.0.1:${app.port}/fixture?interstitial=1`;
+    app.library.save(recorded);
+    const failed = await post(app.port, "/api/replay", { id: recorded.id, args: {} }) as {
+      runId: string;
+      status: string;
+      modelCalls: number;
+      failure?: { stepId?: string; reason?: string };
+    };
+    assert.equal(failed.status, "failed", JSON.stringify(failed.failure));
+    assert.equal(failed.modelCalls, 0);
+    const stepId = failed.failure?.stepId || recorded.steps[0]?.id || "";
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.click('button[data-screen="runs"]');
+    await page.click(`[data-open-run="${failed.runId}"]`);
+    await page.waitForSelector("#teach-fix");
+    assert.equal(await page.locator("#teach-fix").innerText(), "Teach this step");
+    assert.match(await page.locator("#why-stopped").innerText(), /No steps ran/);
+    await page.click("#teach-fix");
+    const clicked = Date.now();
+    let taughtLive = false;
+    while (Date.now() - clicked < 20000) {
+      const current = await state(app.port);
+      if (current.teach.phase === "live") {
+        taughtLive = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    assert.equal(taughtLive, true);
+    await post(app.port, "/api/sessions/drive", { click: "#interstitial-go" });
+    const stopped = await post(app.port, "/api/teach/stop") as { review?: { summary?: { line: string } } };
+    assert.match(stopped.review?.summary?.line || "", /^\d+ events → \d+ steps, \d+ inputs found, \d+ dropped$/);
+    const fixed = await post(app.port, "/api/teach/save") as WorkflowV2;
+    assert.equal(fixed.steps[0]?.when?.present, "Review notice");
+    assert.equal(fixed.steps[0]?.identity?.id, "interstitial-go");
+    assert.equal(fixed.steps[1]?.identity?.id, "apply-btn");
+    assert.equal(fixed.steps[1]?.when, undefined);
+    const withNotice = await post(app.port, "/api/replay", { id: fixed.id, args: {} }) as {
+      status: string;
+      modelCalls: number;
+      steps: { reason?: string }[];
+      failure?: unknown;
+    };
+    assert.equal(withNotice.status, "passed", JSON.stringify(withNotice.failure));
+    assert.equal(withNotice.modelCalls, 0);
+    assert.notEqual(withNotice.steps[0]?.reason, "other branch");
+    assert.notEqual(withNotice.steps[1]?.reason, "other branch");
+
+    const plain: WorkflowV2 = {
+      ...app.library.read(fixed.id),
+      id: `${fixed.id}-plain`,
+      startUrl: `http://127.0.0.1:${app.port}/fixture`,
+    };
+    app.library.save(plain);
+    const without = await post(app.port, "/api/replay", { id: plain.id, args: {} }) as {
+      status: string;
+      modelCalls: number;
+      steps: { reason?: string }[];
+      failure?: unknown;
+    };
+    assert.equal(without.status, "passed", JSON.stringify(without.failure));
+    assert.equal(without.modelCalls, 0);
+    assert.equal(without.steps[0]?.reason, "other branch");
+    assert.notEqual(without.steps[1]?.reason, "other branch");
+  } finally {
+    await browser.close();
+    await app.close();
+  }
+});
+
+test("a logged-in demo and a login demo merge into one route", { timeout: 180000 }, async () => {
+  delete process.env.BAO_HEAL_FIXTURE;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.BAO_TEACH_FIXTURE;
+  const home = mkdtempSync(path.join(tmpdir(), "bao-route-"));
+  const app = await startApp({ home, port: 0 });
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const base = `http://127.0.0.1:${app.port}`;
+  try {
+    await post(app.port, "/api/sessions", { url: `${base}/fixture`, teach: true });
+    await post(app.port, "/api/sessions/drive", { fill: { selector: "#username", value: "demo" } });
+    await post(app.port, "/api/sessions/drive", { fill: { selector: "#password", value: "demo-pass" } });
+    await post(app.port, "/api/sessions/drive", { click: "#login-btn" });
+    await post(app.port, "/api/sessions/drive", { fill: { selector: "#note-input", value: "alpha note" } });
+    await post(app.port, "/api/sessions/drive", { click: "#apply-btn" });
+    await post(app.port, "/api/teach/stop");
+    const login = await post(app.port, "/api/teach/save", { name: "Log in first" }) as WorkflowV2;
+
+    await post(app.port, "/api/sessions", { url: `${base}/fixture?signedin=1`, teach: true });
+    await post(app.port, "/api/sessions/drive", { fill: { selector: "#note-input", value: "alpha note" } });
+    await post(app.port, "/api/sessions/drive", { click: "#apply-btn" });
+    await post(app.port, "/api/teach/stop");
+    const signed = await post(app.port, "/api/teach/save", { name: "Already signed in" }) as WorkflowV2;
+
+    const merged = await post(app.port, "/api/teach/merge", {
+      ids: [login.id, signed.id],
+      name: "Note either way",
+    }) as WorkflowV2;
+    const route = merged.inputs.find((input) => input.type === "choice");
+    assert.deepEqual(route?.choices, ["Log in first", "Already signed in"]);
+    assert.ok(merged.steps.some((step) => step.when?.value === "Log in first"));
+    assert.equal(merged.steps.find((step) => step.identity?.id === "apply-btn")?.when, undefined);
+    await page.goto(`${base}/`);
+    await page.click('button[data-screen="library"]');
+    await page.click(`[data-open-workflow="${merged.id}"]`);
+    await page.waitForSelector("#route-branch");
+    const branch = (await page.locator("#route-branch").innerText()).replace(/\s+/g, " ").trim();
+    assert.equal(branch, "Routes: Log in first / Already signed in");
+    assert.equal(await page.locator("#workflow-detail").innerText().then((text) => text.includes("{{route}}")), false);
+    assert.equal(await page.locator('[data-testid="deeplink"]').count(), 0);
+    assert.equal(await page.locator('[data-testid="share-menu"]').count(), 1);
+    assert.equal(await page.locator('[data-route="Log in first"]').count() > 0, true);
+    await page.waitForFunction(() => {
+      const cards = [...document.querySelectorAll("#workflow-steps .step-card")];
+      if (!cards.length) return false;
+      return cards.every((card) => {
+        const action = (card.querySelector("strong")?.textContent || "").toLowerCase();
+        const typed = action.startsWith("type") || action.startsWith("click");
+        if (!typed) return true;
+        const thumb = card.querySelector(".thumb");
+        const img = thumb?.querySelector("img") as HTMLImageElement | null;
+        return !!thumb?.classList.contains("has-shot") && !!img && img.naturalWidth > 96 && img.naturalHeight > 54;
+      });
+    });
+
+    const loginRun = await post(app.port, "/api/replay", {
+      id: merged.id,
+      args: { [route!.name]: "Log in first", username: "demo", password: "demo-pass", note: "alpha note" },
+    }) as { runId: string; status: string; modelCalls: number; failure?: unknown };
+    assert.equal(loginRun.status, "passed", JSON.stringify(loginRun.failure));
+    assert.equal(loginRun.modelCalls, 0);
+    await page.goto(`${base}/`);
+    await page.click('button[data-screen="runs"]');
+    await page.click(`[data-open-run="${loginRun.runId}"]`);
+    await page.waitForSelector("#route-ran");
+    assert.equal(await page.locator("#route-ran").getAttribute("data-route"), "Log in first");
+
+    const signedRun = await post(app.port, "/api/replay", {
+      id: merged.id,
+      args: { [route!.name]: "Already signed in", note: "beta note" },
+    }) as { runId: string; status: string; modelCalls: number; failure?: unknown };
+    assert.equal(signedRun.status, "passed", JSON.stringify(signedRun.failure));
+    assert.equal(signedRun.modelCalls, 0);
+    await page.goto(`${base}/`);
+    await page.click('button[data-screen="runs"]');
+    await page.click(`[data-open-run="${signedRun.runId}"]`);
+    await page.waitForSelector("#route-ran");
+    assert.equal(await page.locator("#route-ran").getAttribute("data-route"), "Already signed in");
   } finally {
     await browser.close();
     await app.close();

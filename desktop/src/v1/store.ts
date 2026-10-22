@@ -154,6 +154,13 @@ export class Library {
     writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(pair, null, 2));
   }
 
+  saveTeachIntentCase(id: string, doc: unknown): void {
+    const safe = id.replace(/[^A-Za-z0-9._-]/g, "_");
+    const dir = path.join(this.root, "evals", "intent", "cases");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `${safe}.json`), JSON.stringify(doc, null, 2));
+  }
+
   readIntentEval(id: string): unknown {
     return JSON.parse(readFileSync(path.join(this.root, "evals", "intent", `${id}.json`), "utf8")) as unknown;
   }
