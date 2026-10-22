@@ -37,6 +37,30 @@ export function buildLocators(
   return out;
 }
 
+/** 100 is one visible hit. 40 is more than one. 15 is only a collapsed or hidden hit. 0 is a miss. */
+export function scoreLocator(
+  locator: StepLocator,
+  nodes: Identity[],
+  boxes?: Box[],
+  hidden?: boolean[],
+): { score: number; label: string } {
+  const label = locatorLabel(locator);
+  const found = matchLocator(locator, nodes, boxes, hidden);
+  if (found) return { score: 100, label: found.detail };
+  if (locator.kind !== "anchor") {
+    const hits = locatorIndexes(locator, nodes);
+    if (hits.length > 1) return { score: 40, label };
+    if (hits.length === 1) return { score: 15, label };
+  }
+  return { score: 0, label };
+}
+
+function locatorLabel(locator: StepLocator): string {
+  if (locator.kind === "role") return ["role", locator.role, locator.name].filter(Boolean).join(" ");
+  if (locator.kind === "anchor") return ["anchor", locator.relation, locator.role].filter(Boolean).join(" ");
+  return [locator.kind, locator.value].filter(Boolean).join(" ");
+}
+
 export function matchLocator(
   locator: StepLocator,
   nodes: Identity[],

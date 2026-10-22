@@ -2,7 +2,7 @@
 // Nothing is recorded unless a session was started.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -450,9 +450,7 @@ export async function startApp(opts: {
         const run = library.readRun(id);
         const file = path.join(library.root, "videos", `${run.id}.webm`);
         if (!existsSync(file)) return json(res, { error: "no video" }, 404);
-        res.writeHead(200, { "content-type": "video/webm" });
-        res.end(readFileSync(file));
-        return;
+        return sendVideo(req, res, file);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.includes("/shots/")) {
         const parts = url.pathname.split("/");
@@ -1630,6 +1628,54 @@ function summary(doc: WorkflowV2) {
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
   };
+}
+
+function sendVideo(req: IncomingMessage, res: ServerResponse, file: string): void {
+  const size = statSync(file).size;
+  const asked = byteRange(req.headers.range, size);
+  if (req.headers.range && !asked) {
+    res.writeHead(416, { "content-range": `bytes */${size}`, "accept-ranges": "bytes" });
+    res.end();
+    return;
+  }
+  if (size === 0) {
+    res.writeHead(200, { "content-type": "video/webm", "content-length": 0, "accept-ranges": "bytes", "cache-control": "no-store" });
+    res.end();
+    return;
+  }
+  const start = asked?.start ?? 0;
+  const end = asked?.end ?? size - 1;
+  const headers: Record<string, number | string> = {
+    "content-type": "video/webm",
+    "accept-ranges": "bytes",
+    "content-length": end - start + 1,
+    "cache-control": "no-store",
+  };
+  if (asked) headers["content-range"] = `bytes ${start}-${end}/${size}`;
+  res.writeHead(asked ? 206 : 200, headers);
+  const stream = createReadStream(file, { start, end });
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
+}
+
+/** A single `bytes=` range. Unparseable or multipart ranges return null. */
+function byteRange(header: string | string[] | undefined, size: number): { start: number; end: number } | null {
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (!raw || size <= 0) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(raw.trim());
+  if (!match) return null;
+  const startRaw = match[1] ?? "";
+  const endRaw = match[2] ?? "";
+  if (startRaw === "" && endRaw === "") return null;
+  if (startRaw === "") {
+    const suffix = Number(endRaw);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    return { start: Math.max(0, size - suffix), end: size - 1 };
+  }
+  const start = Number(startRaw);
+  const end = endRaw === "" ? size - 1 : Number(endRaw);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= size || end < start) return null;
+  return { start, end: Math.min(end, size - 1) };
 }
 
 function sendPng(res: ServerResponse, file: string): void {

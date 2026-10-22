@@ -65,6 +65,7 @@ export interface FailureView {
   phase?: string;
   brokenAttr?: string;
   identity?: IdentityView;
+  locators?: { kind: string; label: string; score: number }[];
   beforeShot?: string;
   snapshot?: { screenshot?: string; screenshotRef?: string; dom?: SnapshotNode[]; ax?: string };
 }
@@ -390,7 +391,7 @@ export function runViewer(
     const dur = duration(step);
     const review = (context.reviewStepIds || []).includes(step.id) || step.triage === "review";
     const reviewMark = review ? `<em class="review">needs review</em>` : "";
-    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${reviewMark}</button>`;
+    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${reviewMark}</button>`;
   }).join("");
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
@@ -418,9 +419,10 @@ export function runViewer(
   const skipped = idleSkippedMs(steps);
   const film = spans.map((span) => {
     const step = steps.find((item) => item.id === span.id)!;
-    const src = frameUrl(run.id, step, failure, "after");
+    const face = frameFace(run.id, step, failure);
     const marker = span.skippedMs > 0 ? skipMark(span.skippedMs) : "";
-    return `${marker}<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" data-skipped="${span.skippedMs}" style="flex:${span.flex} 1 72px" ${src ? `data-shot="${esc(src)}"` : ""}>${placeholder(step.action, step.label || step.id)}</button>`;
+    const shotClass = face.src ? " has-shot" : "";
+    return `${marker}<button type="button" class="frame${shotClass} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" data-skipped="${span.skippedMs}" style="flex:${span.flex} 1 72px">${face.body}</button>`;
   }).join("");
   const idleNote = skipped > 0 ? `<p class="quiet" id="idle-note" data-idle-skipped="${skipped}">Idle longer than 3s is collapsed.</p>` : "";
   const recent = context.recent && context.recent.length ? context.recent : [run];
@@ -439,7 +441,7 @@ export function runViewer(
     ${idleNote}
     <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>
     <input id="scrubber" type="range" min="0" max="${Math.max(0, steps.length - 1)}" value="${selectedIndex}" aria-label="Step timeline">
-    <div class="split">
+    <div class="split${selected?.status === "failed" ? " with-failure" : ""}">
       <div class="step-list" id="step-list">${list}</div>
       <div class="step-detail" id="step-detail">
         <div class="row"><strong>${esc(selected?.label || "")}</strong></div>
@@ -450,6 +452,7 @@ export function runViewer(
         ${table}
         ${snapshotPane(snapDom, snapAx)}
       </div>
+      ${failurePanel(selected, failure, identity)}
     </div>
     ${passGrid(recent, workflow.steps)}
     ${trajectoryPane(context.recorded, run.trajectory)}
@@ -472,6 +475,40 @@ function duration(step: StepView): string {
     return `${(tenths / 10).toFixed(1)}s`;
   }
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function frameFace(runId: string, step: StepView, failure: FailureView | undefined): { src: string; body: string } {
+  const before = frameUrl(runId, step, failure, "before");
+  const after = frameUrl(runId, step, failure, "after");
+  const src = after || before;
+  const hold = placeholder(step.action, step.label || step.id);
+  if (!src) return { src: "", body: hold };
+  return {
+    src,
+    body: `<img src="${esc(src)}" alt="" data-before="${esc(before)}" data-after="${esc(after)}">${hold}`,
+  };
+}
+
+function failurePanel(step: StepView | undefined, failure: FailureView | undefined, identity: IdentityView | undefined): string {
+  if (!step || step.status !== "failed") return "";
+  const phase = step.phase || (failure && failure.stepId === step.id ? failure.phase : "") || "";
+  if (!phase) return "";
+  const fromFailure = failure && failure.stepId === step.id ? failure.locators : undefined;
+  const fromIdentity = (identity?.candidates || []).map((candidate) => ({
+    kind: "identity",
+    label: candidate.label,
+    score: candidate.score,
+  }));
+  const rows = fromFailure && fromFailure.length ? fromFailure : fromIdentity;
+  const list = rows.length
+    ? `<ol id="locator-tries">${rows.map((row) => `<li data-kind="${esc(row.kind)}" data-score="${row.score}"><span>${esc(row.label)}</span> <em>${row.score}</em></li>`).join("")}</ol>`
+    : `<p class="quiet" id="locator-tries">No locator was tried.</p>`;
+  return `<aside id="failure-panel" data-phase="${esc(phase)}">
+    <h3>Failure</h3>
+    <p id="failure-phase">Phase <strong>${esc(phase)}</strong></p>
+    <h4>Locators tried</h4>
+    ${list}
+  </aside>`;
 }
 
 function frameUrl(runId: string, step: StepView, failure: FailureView | undefined, which: "before" | "after"): string {
@@ -572,7 +609,7 @@ export function secretInput(name: string, label: string, hadSecret: boolean): st
 function storedInputsLine(inputs: Record<string, string> | undefined): string {
   const rows = Object.entries(inputs || {});
   if (!rows.length) return "";
-  const bits = rows.map(([key, value]) => `${esc(key)} ${esc(value)}`);
+  const bits = rows.map(([key, value]) => `${esc(key)}: ${esc(value)}`);
   return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}. A secret is asked again and is not kept in the run.</p>`;
 }
 
