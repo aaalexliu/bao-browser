@@ -7,8 +7,7 @@ import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { OutputValue } from "./data-steps";
-import type { HealMode, WorkflowV2 } from "./schema";
-import { migrate, toJson, validateWorkflow } from "./schema";
+import { migrate, toJson, validateWorkflow, type HealMode, type WorkflowV2 } from "./schema";
 
 export interface Settings extends HealSettings {
   heal: HealMode;

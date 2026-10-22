@@ -2,9 +2,15 @@
 // account or a vendor model key. A test opts in by setting the env in its own
 // process, after this runner has cleared it.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
+
+function isolationArg() {
+  const help = execFileSync(process.execPath, ["--test", "--help"], { encoding: "utf8" });
+  if (help.includes("--test-isolation=")) return "--test-isolation=process";
+  return "--experimental-test-isolation=process";
+}
 
 const dir = "desktop/dist/desktop/test/unit";
 const files = readdirSync(dir)
@@ -26,7 +32,7 @@ for (const key of [
   delete env[key];
 }
 
-const child = spawn(process.execPath, ["--test", "--test-isolation=process", ...files], {
+const child = spawn(process.execPath, ["--test", isolationArg(), ...files], {
   env,
   stdio: "inherit",
 });

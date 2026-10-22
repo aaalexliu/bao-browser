@@ -11,6 +11,7 @@ import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
 import type { Driver, GuideAct, HealNotice, LiveTree, ShotTarget } from "./replay";
+import { armBrowserDownloads, inspectDatePicker, readCalendarSelection, waitForDownloadFile, watchDownload } from "./files-dates";
 import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
 
@@ -251,6 +252,84 @@ export class BrowserDriver implements Driver {
     await this.page.locator(this.sel(node)).click();
   }
 
+  async goto(url: string): Promise<void> {
+    this.automated += 1;
+    await this.page.goto(url, { waitUntil: "domcontentloaded" });
+  }
+
+  async download(spec: { dir: string; filename: string; timeoutMs: number; url?: string; node?: Identity }): Promise<{ suggestedFilename: string; path: string }> {
+    this.automated += 1;
+    const client = await armBrowserDownloads(this.page, spec.dir);
+    const pending = watchDownload(client, spec.timeoutMs);
+    try {
+      if (spec.url) {
+        await this.page.goto(spec.url, { waitUntil: "commit", timeout: spec.timeoutMs }).catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!/ERR_ABORTED|Download is starting/i.test(message)) throw err;
+        });
+      } else if (spec.node) {
+        await this.page.locator(this.locatorFor(spec.node)).click();
+      } else {
+        throw new Error("download has no trigger");
+      }
+      const began = await pending;
+      const found = await waitForDownloadFile(spec.dir, began.suggestedFilename, spec.timeoutMs);
+      return { suggestedFilename: began.suggestedFilename, path: found };
+    } finally {
+      await client.detach().catch(() => undefined);
+    }
+  }
+
+  private async calendarHas(iso: string, endIso?: string): Promise<boolean> {
+    const selected = await this.page.evaluate(readCalendarSelection).catch(() => ({ isos: [] as string[] }));
+    if (!selected.isos.includes(iso)) return false;
+    return !endIso || selected.isos.includes(endIso);
+  }
+
+  async pickDate(spec: { iso: string; endIso?: string; node?: Identity }): Promise<void> {
+    this.automated += 1;
+    if (spec.node && (spec.node.tag === "input" || spec.node.role === "textbox" || spec.node.role === "input")) {
+      await this.page.locator(this.locatorFor(spec.node)).click();
+      await this.page.waitForTimeout(150);
+    }
+    for (let i = 0; i < 24; i++) {
+      const plan = await this.page.evaluate(inspectDatePicker, { startIso: spec.iso, endIso: spec.endIso ?? null });
+      if (plan.status === "error") {
+        // The calendar is often painted after navigation. Keep looking until it is there.
+        if ((plan.error === "no date picker" || plan.error === "picker month") && i < 23) {
+          await this.page.waitForTimeout(250);
+          continue;
+        }
+        throw new Error(plan.error || "date picker");
+      }
+      if (plan.status === "nav" && plan.x != null && plan.y != null) {
+        await this.page.mouse.click(plan.x, plan.y);
+        await this.page.waitForTimeout(180);
+        continue;
+      }
+      if (plan.status === "drag" && plan.from && plan.to) {
+        if (plan.kind === "fixture") {
+          await this.page.mouse.click(plan.from.x, plan.from.y);
+          await this.page.mouse.click(plan.to.x, plan.to.y);
+          return;
+        }
+        await this.page.mouse.move(plan.from.x, plan.from.y);
+        await this.page.mouse.down();
+        await this.page.mouse.move(plan.to.x, plan.to.y, { steps: 18 });
+        await this.page.mouse.up();
+        if (plan.kind === "rbc" && await this.calendarHas(spec.iso, spec.endIso)) return;
+        if (plan.kind !== "rbc") return;
+        await this.page.waitForTimeout(200);
+        continue;
+      }
+      if (plan.status === "click" && plan.x != null && plan.y != null) {
+        await this.page.mouse.click(plan.x, plan.y);
+        return;
+      }
+    }
+    throw new Error("date picker did not resolve");
+  }
+
   async fill(node: Identity, text: string, secret = false): Promise<void> {
     this.automated += 1;
     const loc = this.page.locator(this.sel(node));
@@ -436,6 +515,13 @@ export class BrowserDriver implements Driver {
 
   private sel(node: Identity): string {
     return `[data-bao-i="${this.handle(node)}"]`;
+  }
+
+  /** A step identity is not the tree node, so download and date open use a stable selector. */
+  private locatorFor(node: Identity): string {
+    if (node.id) return `#${cssEscape(node.id)}`;
+    if (node.testId) return `[data-testid="${cssEscape(node.testId)}"]`;
+    return this.sel(node);
   }
 
   /** Outline the node the scorer accepted. Does not click or type. */
@@ -797,4 +883,8 @@ function toIdentity(node: DomDump): Identity {
     path: node.path,
     value: node.value,
   };
+}
+
+function cssEscape(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, (ch) => `\\${ch}`);
 }

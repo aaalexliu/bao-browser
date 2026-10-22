@@ -7,6 +7,7 @@ import { applyExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
 import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { shapeFilesDates } from "./files-dates";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
 
 export interface TrailEvent {
@@ -45,6 +46,20 @@ export interface TrailEvent {
   /** Basename only. A path here is stripped, not stored. */
   fileName?: string;
   rawPath?: string;
+  /** Second date of a picker range, ISO or the field's recorded text. */
+  endValue?: string;
+  /** The field is a date. Interpret lifts a date input. */
+  dateField?: boolean;
+  /** A click inside a date picker. Folded into one datePicker step. */
+  picker?: boolean;
+  /** input type, so a native date field stays a type step. */
+  inputType?: string;
+  /** Recorded display format for a date, when capture already knows it. */
+  format?: string;
+  /** Suggested filename from Browser.downloadWillBegin. Basename only. */
+  suggestedFilename?: string;
+  /** Bind an upload to a previous download output. */
+  fileFrom?: string;
   /** Set when capture refused the action and a person has to do it. */
   gate?: "login" | "confirm";
   /** False when the tool recorded the act and did not change the page. */
@@ -69,6 +84,8 @@ export interface InterpretMeta {
   startUrl: string;
   /** Extra exact strings that must not survive into the workflow. */
   secrets?: string[];
+  /** Zone used to turn a picked date into +Nd. Absent is UTC so the same trail stays the same bytes. */
+  zone?: string;
 }
 
 const NOISE = new Set([
@@ -104,31 +121,30 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const kept = mergeTyping(withoutChooserClicks(events.filter(keep)));
   const inputs: WorkflowInput[] = [];
   const known: KnownTyped[] = [];
-  const drafted = kept.map((event) => {
+  const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
     if (step.action === "type" && step.input && event.value && !step.sensitive && !secrets.includes(event.value)) {
       known.push({ name: step.input, value: event.value });
     }
     return { events: [event], step };
   });
-  const pieces = foldNotes(collapseDigits(drafted, inputs), seen.secrets ?? []);
+  const pieces = foldNotes(collapseDigits(mapped, inputs), seen.secrets ?? []);
   attachExpr(pieces.map((piece) => piece.step));
   const captured = applyCapturedData(pieces, inputs);
-  const folded = captured.pieces;
-  const steps = folded.map((piece, index) => ({ ...piece.step, index, id: `${meta.id}-${index}` }));
-  const doc: WorkflowV2 = {
+  const drafted: WorkflowV2 = {
     schema: WORKFLOW_SCHEMA_ID,
     version: captured.version,
     id: meta.id,
     name: meta.name || "Untitled workflow",
     startUrl: meta.startUrl,
     inputs,
-    steps,
+    steps: captured.pieces.map((piece, index) => ({ ...piece.step, index, id: `${meta.id}-${index}` })),
     createdAt: events[0]?.ts ?? 0,
     ...(captured.outputs ? { outputs: captured.outputs } : {}),
   };
-  assertClean(doc, secrets);
-  return { doc, groups: folded.map((piece) => piece.events) };
+  const shaped = shapeFilesDates(drafted, captured.pieces.map((piece) => piece.events), meta.zone || "UTC");
+  assertClean(shaped.doc, secrets);
+  return { doc: shaped.doc, groups: shaped.groups as TrailEvent[][] };
 }
 
 /** A password field's typed text is a secret even when the caller did not list it. */
