@@ -1,4 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
+/* flock and LOCK_EX are BSD. This SDK hides them when only POSIX is requested. */
+#define _DARWIN_C_SOURCE
 
 #include "bao-launch.h"
 
@@ -17,6 +19,9 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+/* sys/types.h's major() macro would rewrite hooks->major(...). */
+#undef major
 
 static int lock_fd = -1;
 
