@@ -402,6 +402,25 @@ Testing (unit e2e, the headless CI runner, live-site suites): **[TESTING.md](doc
 
 ---
 
+## Host the sync registry on Vercel
+
+The registry is the Next.js app in `web/`. Its project settings are [`web/vercel.json`](web/vercel.json). Import and deploy it yourself. This repository does not create the Vercel project, the database, or the blob store.
+
+1. Open [vercel.com/new](https://vercel.com/new) and import this git repository.
+2. Framework preset: Next.js.
+3. Root Directory: `web`.
+4. Environment variable: `BAO_AUTH_STUB` = `1` when the API should return the email sign-in link. Leave it unset in production once a real mailer exists.
+5. Deploy.
+6. In the project, Storage → Create → Blob. Choose Private and connect it to the project. That sets `BLOB_STORE_ID` for the redacted PNGs. Do not create a public store.
+7. Marketplace → Neon → the free plan. Read the plan, then accept. Neon injects `DATABASE_URL`. Do not install Vercel Postgres or KV. Those products are sunset.
+8. Redeploy so the functions see `DATABASE_URL` and `BLOB_STORE_ID`.
+
+Variable names, with empty values, are in [`web/.env.example`](web/.env.example). The same click-through is under Deploy in [docs/bao.md](docs/bao.md).
+
+Locally, from `web/`, `npx vercel dev --local` leaves `DATABASE_URL` and `BLOB_STORE_ID` unset. The app then uses PGlite under `BAO_PG_DIR` (or `web/.data/pglite`) and files under `BAO_BLOB_DIR` (or `web/.data/blobs`). Pair, push, and pull against that server the same way as a hosted registry.
+
+---
+
 ## Path to launch: "a web app + install the extension"
 
 The product *is* the extension. "Deploy as a web app" means a **landing site** (what it
