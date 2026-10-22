@@ -7,7 +7,8 @@ import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
-import { filmstripSpans, idleSkippedMs } from "../v1/filmstrip";
+import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
+import { stepsNeedingReview, type StepReview } from "../v1/triage";
 import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
@@ -184,10 +185,12 @@ function icon(name: string): string {
 
 export function rail(state: ShellState): string {
   const heals = pendingHealCount(state.runs || []);
+  const reviews = reviewItems(state.runs);
   const waiting = attentionCount({
     ask: state.activeAsk,
     importPhase: state.pendingImport?.phase,
     pendingHeals: heals,
+    reviews: reviews.length,
   });
   const rec = state.recording ? "on" : "";
   const helper = state.helper?.label || "helper off";
@@ -231,6 +234,8 @@ export function actBar(state: ShellState, now = Date.now()): string {
       </div>
     </section>`;
   }
+  const reviewBar = reviewAct(state);
+  if (reviewBar) return reviewBar;
   const pending = state.pendingImport;
   if (pending && (pending.phase === "confirm" || pending.phase === "pick" || pending.phase === "running")) {
     const domain = pending.domain || "the site";
@@ -246,6 +251,23 @@ export function actBar(state: ShellState, now = Date.now()): string {
     </section>`;
   }
   return "";
+}
+
+function reviewAct(state: ShellState): string {
+  const reviews = reviewItems(state.runs);
+  const first = reviews[0];
+  if (!first) return "";
+  const names = new Map((state.workflows || []).map((workflow) => [workflow.id, workflow.name]));
+  const workflowName = names.get(first.workflowId) || first.workflowId;
+  const extra = reviews.length > 1 ? ` ${reviews.length - 1} more ${reviews.length === 2 ? "step" : "steps"} also need review.` : "";
+  return `<section id="act-bar" data-ask="review" data-step="${esc(first.stepId)}">
+    <p class="kicker">You need to act · ${esc(workflowName)} · ${esc(first.label)}</p>
+    <p class="instruction">${esc(first.label)} needs review. It healed itself on ${first.streak} runs in a row, so auto-heal is off for that step.${esc(extra)}</p>
+    <p class="timeout" id="act-timeout">Auto-heal stays off until a run passes this step without a heal.</p>
+    <div class="row">
+      <button id="act-review" type="button" data-workflow="${esc(first.workflowId)}" data-step="${esc(first.stepId)}">Open the step</button>
+    </div>
+  </section>`;
 }
 
 export function importCard(pending: ImportPending | null | undefined): string {
@@ -325,6 +347,8 @@ function stepLabel(step: StepView, workflowSteps: { id: string; label?: string; 
 export interface ViewerContext {
   recent?: RunSummary[];
   recorded?: TrajectoryStep[];
+  /** Steps whose auto-heal is off after consecutive heals. */
+  reviewStepIds?: string[];
 }
 
 export function runViewer(
@@ -364,7 +388,9 @@ export function runViewer(
   const list = steps.map((step) => {
     const mark = step.status === "passed" ? "✓" : step.status === "failed" ? "✗" : step.status === "paused" ? "⏸" : "·";
     const dur = duration(step);
-    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em></button>`;
+    const review = (context.reviewStepIds || []).includes(step.id) || step.triage === "review";
+    const reviewMark = review ? `<em class="review">needs review</em>` : "";
+    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${reviewMark}</button>`;
   }).join("");
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
@@ -393,15 +419,21 @@ export function runViewer(
   const film = spans.map((span) => {
     const step = steps.find((item) => item.id === span.id)!;
     const src = frameUrl(run.id, step, failure, "after");
-    return `<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" data-skipped="${span.skippedMs}" style="flex:${span.flex} 1 72px" ${src ? `data-shot="${esc(src)}"` : ""}>${placeholder(step.action, step.label || step.id)}</button>`;
+    const marker = span.skippedMs > 0 ? skipMark(span.skippedMs) : "";
+    return `${marker}<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" data-skipped="${span.skippedMs}" style="flex:${span.flex} 1 72px" ${src ? `data-shot="${esc(src)}"` : ""}>${placeholder(step.action, step.label || step.id)}</button>`;
   }).join("");
-  const idleNote = skipped > 0 ? `<p class="quiet" id="idle-note" data-idle-skipped="${skipped}">Idle time between steps is skipped.</p>` : "";
+  const idleNote = skipped > 0 ? `<p class="quiet" id="idle-note" data-idle-skipped="${skipped}">Idle longer than 3s is collapsed.</p>` : "";
   const recent = context.recent && context.recent.length ? context.recent : [run];
   return `<section id="run-viewer" data-run="${esc(run.id)}" data-status="${esc(run.status)}">
     <header class="run-head">
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
     </header>
+    <div class="row" id="run-actions">
+      <button id="rerun-run" type="button">Re-run with this run's inputs</button>
+      <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
+    </div>
+    ${storedInputsLine(run.inputs)}
     <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
     ${idleNote}
@@ -502,13 +534,16 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
     if (!step || typeof step.startedAt !== "number") return "";
     const index = steps.indexOf(step);
     const mark = step.status === "failed" ? "✗" : String(index + 1);
-    return `<button type="button" class="marker ${esc(step.status)}" data-marker="${esc(step.id)}" data-at="${step.startedAt}" style="left:${at}%">${mark}</button>`;
+    const gap = span.skippedMs > 0 ? skipMark(span.skippedMs, `${at}%`) : "";
+    return `${gap}<button type="button" class="marker ${esc(step.status)}" data-marker="${esc(step.id)}" data-at="${step.startedAt}" style="left:${at}%">${mark}</button>`;
   }).join("");
   const src = run.video ? `/api/runs/${encodeURIComponent(run.id)}/video` : "";
+  const skipData = esc(JSON.stringify(idleSkips(steps, origin).map((item) => ({ from: item.from, to: item.to, label: item.label }))));
   if (!src) return `<div id="video-bar" hidden data-origin="${origin}">${markers}</div>`;
   return `<div id="video-bar" data-origin="${origin}">
-    <video id="run-video" src="${esc(src)}" controls preload="metadata"></video>
+    <video id="run-video" src="${esc(src)}" data-skips="${skipData}" controls preload="metadata"></video>
     <div class="timeline">${markers}</div>
+    <p id="skip-live" class="quiet"></p>
     <div class="row"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button></div>
   </div>`;
 }
@@ -518,8 +553,31 @@ function triageWord(value: string): string {
   if (value === "blocker") return "a temporary blocker";
   if (value === "outage") return "an outage";
   if (value === "circuit") return "a circuit break";
+  if (value === "review") return "needs review";
   if (value === "never") return "a step set to never heal";
   return value;
+}
+
+function skipMark(ms: number, left?: string): string {
+  const style = left ? ` style="left:${left}"` : "";
+  return `<span class="skip-marker" data-skipped="${ms}"${style}>${esc(skipLabel(ms))}</span>`;
+}
+
+/** The re-run form asks for a secret again. The stored mask is not a value. */
+export function secretInput(name: string, label: string, hadSecret: boolean): string {
+  const hint = hadSecret ? "Last run used a secret" : "";
+  return `<label>${esc(label)} <input name="${esc(name)}" type="password" autocomplete="off" placeholder="${esc(hint)}"></label>`;
+}
+
+function storedInputsLine(inputs: Record<string, string> | undefined): string {
+  const rows = Object.entries(inputs || {});
+  if (!rows.length) return "";
+  const bits = rows.map(([key, value]) => `${esc(key)} ${esc(value)}`);
+  return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}. A secret is asked again and is not kept in the run.</p>`;
+}
+
+export function reviewItems(runs: RunSummary[] | undefined): StepReview[] {
+  return stepsNeedingReview(runs || []);
 }
 
 export function snapshotPane(dom: SnapshotNode[] | undefined, ax: string | undefined): string {

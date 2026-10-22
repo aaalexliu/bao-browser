@@ -55,7 +55,7 @@ export interface IdentityView {
 
 export interface StepView {
   id: string;
-  status: "passed" | "failed" | "paused" | "pending";
+  status: "passed" | "failed" | "paused" | "pending" | "skipped";
   reason?: string;
   phase?: string;
   startedAt?: number;

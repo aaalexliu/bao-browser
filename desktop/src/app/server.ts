@@ -50,7 +50,7 @@ import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
 import { clipBox } from "../v1/browser-driver";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
-import { circuitOpen } from "../v1/triage";
+import { circuitOpen, stepsNeedingReview } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
 import { defaultChromeUserData } from "../login-import/chrome-path";
 import { importInOwnedChrome, openOwnedSignIn, previewChromeProfiles, probeOwnedProfile, type ClickInput } from "../login-import/import-login";
@@ -527,7 +527,7 @@ export async function startApp(opts: {
         return json(res, workflow);
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
-        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode };
+        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
@@ -535,6 +535,7 @@ export async function startApp(opts: {
         loginContinued = false;
         replaying = true;
         try {
+          const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
           const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
             baoProfile,
             sites,
@@ -542,7 +543,7 @@ export async function startApp(opts: {
               await signIn?.close();
               signIn = undefined;
             },
-          });
+          }, fromStep);
           library.savePublicInputs(workflow.id, keptInputs(workflow, args));
           return json(res, run);
         } finally {
@@ -984,12 +985,13 @@ async function runWorkflow(
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
   prompts?: PersonPrompts,
   gate?: LoginGate,
+  fromStep?: string,
 ) {
   if (gate) {
-    const gated = await gateSavedLogin(library, workflow, args, notices, replays, prompts, gate);
+    const gated = await gateSavedLogin(library, workflow, args, notices, replays, prompts, gate, fromStep);
     if (gated) return gated;
   }
-  return runRecorded(library, workflow, args, notices, replays, prompts);
+  return runRecorded(library, workflow, args, notices, replays, prompts, undefined, fromStep);
 }
 
 async function gateSavedLogin(
@@ -1000,6 +1002,7 @@ async function gateSavedLogin(
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
   prompts: PersonPrompts | undefined,
   gate: LoginGate,
+  fromStep?: string,
 ) {
   await gate.closeSignIn();
   const origin = httpOrigin(workflow.startUrl);
@@ -1022,7 +1025,7 @@ async function gateSavedLogin(
         throw err;
       }
     },
-    run: () => runRecorded(library, workflow, args, notices, replays, prompts, gate.baoProfile),
+    run: () => runRecorded(library, workflow, args, notices, replays, prompts, gate.baoProfile, fromStep),
   });
   if (isNeedsSignIn(outcome)) {
     library.saveRun({
@@ -1047,6 +1050,7 @@ async function runRecorded(
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
   prompts?: PersonPrompts,
   profileDir?: string,
+  fromStep?: string,
 ) {
   const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
@@ -1066,6 +1070,7 @@ async function runRecorded(
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const settings = library.settings();
   const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
+  const reviewSteps = new Set(stepsNeedingReview(recent as Parameters<typeof stepsNeedingReview>[0]).map((item) => item.stepId));
   const result = await replay(workflow, args, driver, {
     runId,
     shotDir,
@@ -1073,6 +1078,8 @@ async function runRecorded(
     heal,
     now: () => Date.now(),
     receipts: receiptLog,
+    fromStepId: fromStep,
+    reviewSteps,
     circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
   } satisfies ReplayOptions);
   spillBinaryShots(result, shotDir);
