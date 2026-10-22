@@ -448,17 +448,20 @@ test("the record bar and the permission card follow live state", () => {
   assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
 });
 
-test("a target clip stays inside the viewport and is larger than the control", () => {
+test("a target clip is the element rect, padded and centered, and stays inside the viewport", () => {
   const clip = paddedClip({ x: 400, y: 300, width: 80, height: 28 }, { width: 1280, height: 800 });
-  assert.ok(clip.width >= 240);
-  assert.ok(clip.height >= 140);
-  assert.ok(clip.x >= 0 && clip.y >= 0);
-  assert.ok(clip.x + clip.width <= 1280);
-  assert.ok(clip.y + clip.height <= 800);
-  assert.ok(clip.x < 440 && clip.x + clip.width > 440);
+  assert.equal(clip.width, 96);
+  assert.equal(clip.height, 44);
+  assert.equal(clip.x, 392);
+  assert.equal(clip.y, 292);
+  assert.ok(clip.x <= 400 && clip.x + clip.width >= 480);
+  assert.ok(clip.y <= 300 && clip.y + clip.height >= 328);
+  const neighbor = paddedClip({ x: 32, y: 200, width: 448, height: 40 }, { width: 1280, height: 720 });
+  assert.ok(neighbor.y + neighbor.height <= 250, JSON.stringify(neighbor));
+  assert.ok(neighbor.y <= 200);
   const bar = paddedClip({ x: 0, y: 40, width: 1280, height: 36 }, { width: 1280, height: 800 });
   assert.equal(bar.x, 0);
-  assert.ok(bar.width >= 1280);
+  assert.equal(bar.width, 1280);
   assert.ok(bar.y <= 40 && bar.y + bar.height >= 76);
   const edge = paddedClip({ x: 1210, y: 20, width: 60, height: 24 }, { width: 1280, height: 800 });
   assert.ok(edge.x <= 1210);

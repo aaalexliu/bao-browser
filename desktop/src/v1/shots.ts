@@ -17,18 +17,16 @@ export interface ShotBox {
   height: number;
 }
 
-/** Crop around the target. Padding, then center. The element stays fully in frame. */
-export function paddedClip(box: ShotBox, view: { width: number; height: number }, pad = 32): ShotBox {
+/**
+ * Crop around the target's own rect. Pad, then center.
+ * The pad fits the 2px outline and its offset. A taller minimum pulls the next
+ * control into the card, which is how a password step was showing Log in.
+ */
+export function paddedClip(box: ShotBox, view: { width: number; height: number }, pad = 8): ShotBox {
   const viewW = Math.max(1, Math.round(view.width));
   const viewH = Math.max(1, Math.round(view.height));
-  const minW = Math.min(240, viewW);
-  const minH = Math.min(140, viewH);
-  let width = Math.min(viewW, Math.max(box.width + pad * 2, minW));
-  let height = Math.min(viewH, Math.max(box.height + pad * 2, minH));
-  if (box.width <= viewW) width = Math.min(viewW, Math.max(width, box.width));
-  else width = viewW;
-  if (box.height <= viewH) height = Math.min(viewH, Math.max(height, box.height));
-  else height = viewH;
+  const width = Math.min(viewW, Math.max(1, Math.round(box.width) + pad * 2));
+  const height = Math.min(viewH, Math.max(1, Math.round(box.height) + pad * 2));
 
   let x = box.x + box.width / 2 - width / 2;
   let y = box.y + box.height / 2 - height / 2;
