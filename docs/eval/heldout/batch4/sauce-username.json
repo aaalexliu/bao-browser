@@ -1,0 +1,187 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653699339,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653699379,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653699420,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653699460,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h4",
+      "text": "Accepted usernames are:",
+      "cssPath": "#login_credentials > h4:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Accepted usernames are:",
+    "subtreeAfter": "Accepted usernames are:",
+    "beforeUrl": "https://www.saucedemo.com/",
+    "afterUrl": "https://www.saucedemo.com/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653699750,
+    "kind": "act",
+    "op": "type",
+    "value": "standard_userx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "Username",
+      "id": "user-name",
+      "nameAttr": "user-name",
+      "tag": "input",
+      "label": "Username",
+      "cssPath": "#user-name",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form",
+          "name": "Login"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.saucedemo.com/",
+    "afterUrl": "https://www.saucedemo.com/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653699969,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.saucedemo.com/",
+    "afterUrl": "https://www.saucedemo.com/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792653699969,
+    "kind": "act",
+    "op": "type",
+    "value": "standard_user",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "Username",
+      "id": "user-name",
+      "nameAttr": "user-name",
+      "tag": "input",
+      "label": "Username",
+      "cssPath": "#user-name",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form",
+          "name": "Login"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.saucedemo.com/",
+    "afterUrl": "https://www.saucedemo.com/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792653700167,
+    "kind": "act",
+    "op": "type",
+    "sensitive": true,
+    "gate": "login",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "Password",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "label": "Password",
+      "cssPath": "#password",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form",
+          "name": "Login"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.saucedemo.com/",
+    "afterUrl": "https://www.saucedemo.com/"
+  }
+]

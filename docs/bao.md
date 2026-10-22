@@ -167,6 +167,10 @@ Locator versions live on the workflow versions, in the one Versions panel. A ver
 
 A filmstrip frame shows the step's cropped, redacted screenshot, with the outline drawn on the target when the picture was taken. A step with no picture keeps the icon. Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
 
+### 2026-10-22 — Try a step, input tokens, and per-site trust
+
+Try, on a workflow step, looks that step up on the live window and outlines the match. It does not click, type, or call a model. Run from step N opens the same run form and starts replay at that step. An input in the step text is a token: label, type, default, and required. Clicking it edits that input, and a secret token stays masked. The run form fills the same default. Settings lists each site as Always ask or Allow for ordinary actions. That map is separate from the confirm policy. A confirm step still waits for the person when the site is Allow.
+
 ### 2026-10-22 — Re-run, skipped idle, and a per-step heal limit
 
 A past run can be started again from the run viewer. Re-run with this run's inputs fills the form from that run and asks for a secret again. Debug from this step starts at the selected step. Idle longer than 3 seconds is collapsed on the filmstrip and in the replay video, with a marker such as `skipped 12s`. When the same step heals itself on 3 consecutive runs, auto-heal stops for that step, the step is marked needs review, and the act bar says so.
@@ -421,7 +425,7 @@ The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres
 
 A password `type` is not performed. A `click` on an element with `data-bao-gate="login"` or `data-bao-gate="confirm"`, or a button whose text is `Log in`, `Sign in`, or `Confirm`, is not performed. The trail line has `gate` and `performed: false`. A login stop also records a sign-in click when the driver does not click Log in. That click stays in the derived workflow, and its postcondition is the Welcome line. Replay performs the step with the inputs supplied for that run.
 
-A file input is a file parameter whether the driver called `upload`, dropped a file, or typed a path. The absolute path is not written into `trail.jsonl`. `eval drivers` retries an HTTP 429 with backoff. If the driver still exits without finishing, the cell is `driver-error` and the run directory still has a partial trail. That cell is separate from a bao replay failure.
+A file input is a file parameter whether the driver called `upload`, dropped a file, or typed a path. The absolute path is not written into `trail.jsonl`. `eval drivers` retries an HTTP 429 once after a 45 second backoff. If the driver still exits without finishing, the cell is `infra` and the run directory still has a partial trail. That cell is not a bao replay failure.
 
 Every read and every act stores `snapshot.sha256` and `snapshot.path`. The file is a PNG. `latencyMs` is the time inside the tool call, including the snapshot.
 

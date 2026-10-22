@@ -2,6 +2,7 @@
 // Secrets become inputs. File paths are dropped. No model is required.
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
+import { applyExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
 import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
@@ -10,8 +11,16 @@ import { WORKFLOW_SCHEMA_ID } from "./schema";
 export interface TrailEvent {
   id: string;
   ts: number;
-  kind: "read" | "act";
+  kind: "read" | "act" | "decision";
   op: string;
+  /** Append-only teach correction. Interpret does not turn these into steps. */
+  decision?: string;
+  detail?: string;
+  cardId?: string;
+  intent?: string;
+  name?: string;
+  note?: string;
+  outcome?: string;
   /** live-model marks a person or model driving MCP. Scripted drivers use another label. */
   source?: { agent: string; vendor: string; adapter: string };
   unresolved?: { reason: string };
@@ -39,6 +48,8 @@ export interface TrailEvent {
   gate?: "login" | "confirm";
   /** False when the tool recorded the act and did not change the page. */
   performed?: boolean;
+  /** Message from Page.javascriptDialogOpening. The opening itself is an effect. */
+  dialog?: string;
 }
 
 export interface InterpretMeta {
@@ -61,15 +72,37 @@ export function retainedEvents(events: readonly TrailEvent[]): TrailEvent[] {
   return mergeTyping(withoutChooserClicks(events.filter(keep)));
 }
 
+export interface InterpretPiece {
+  events: TrailEvent[];
+  step: WorkflowStep;
+}
+
+/** The same grouping interpret saves, so a teach card can point at the events behind a step. */
+export function explain(events: readonly TrailEvent[], meta: InterpretMeta): { workflow: WorkflowV2; groups: TrailEvent[][] } {
+  const built = buildWorkflow(events, meta);
+  return { workflow: built.doc, groups: built.groups };
+}
+
 export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
+  return buildWorkflow(events, meta).doc;
+}
+
+function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { doc: WorkflowV2; groups: TrailEvent[][] } {
   const secrets = secretStrings(events, meta.secrets ?? []);
   const seen: InterpretMeta = { ...meta, secrets };
-  const kept = withoutChooserClicks(events.filter(keep));
-  const merged = mergeTyping(kept);
+  const kept = mergeTyping(withoutChooserClicks(events.filter(keep)));
   const inputs: WorkflowInput[] = [];
-  let steps = merged.map((event, index) => toStep(event, index, seen, inputs));
-  steps = parameterizeDigits(steps, inputs);
-  steps = steps.map((step, index) => ({ ...step, index, id: `${meta.id}-${index}` }));
+  const known: KnownTyped[] = [];
+  const drafted = kept.map((event) => {
+    const step = toStep(event, 0, seen, inputs, known);
+    if (step.action === "type" && step.input && event.value && !step.sensitive && !secrets.includes(event.value)) {
+      known.push({ name: step.input, value: event.value });
+    }
+    return { events: [event], step };
+  });
+  const pieces = collapseDigits(drafted, inputs);
+  attachExpr(pieces.map((piece) => piece.step));
+  const steps = pieces.map((piece, index) => ({ ...piece.step, index, id: `${meta.id}-${index}` }));
   const doc: WorkflowV2 = {
     schema: WORKFLOW_SCHEMA_ID,
     version: 2,
@@ -81,7 +114,7 @@ export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): W
     createdAt: events[0]?.ts ?? 0,
   };
   assertClean(doc, secrets);
-  return doc;
+  return { doc, groups: pieces.map((piece) => piece.events) };
 }
 
 /** A password field's typed text is a secret even when the caller did not list it. */
@@ -97,7 +130,7 @@ function secretStrings(events: readonly TrailEvent[], listed: string[]): string[
 }
 
 function keep(event: TrailEvent): boolean {
-  if (event.kind === "read") return false;
+  if (event.kind === "read" || event.kind === "decision" || event.op === "decision") return false;
   if (NOISE.has(event.op)) return false;
   if (event.unresolved) return false;
   return true;
@@ -158,7 +191,7 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
     || (left.name != null && left.name === right.name && left.role === right.role && left.app === right.app);
 }
 
-function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[]): WorkflowStep {
+function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: readonly KnownTyped[]): WorkflowStep {
   event = normalizeFile(event);
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const identity = stripSecretValue(event.identity, meta.secrets ?? []);
@@ -184,7 +217,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       surface: "dom",
       human: true,
       timeoutMs: 8000,
-      postcondition: post(event, undefined, meta.secrets ?? []),
+      ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
   if (event.op === "note") {
@@ -211,8 +244,8 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   if (event.op === "verify") {
-    const read = post(event, undefined, meta.secrets ?? []);
     const match = scrub(event.afterText, meta.secrets ?? []);
+    const check = observed(event, undefined, false, known, meta.secrets ?? []);
     return {
       id: `${meta.id}-${index}`,
       index,
@@ -220,8 +253,8 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       label: "re-read the status",
       surface: "dom",
       timeoutMs: 8000,
-      expect: match ? { kind: "text", match, timeoutMs: 8000 } : undefined,
-      postcondition: read,
+      expect: match ? { kind: "text", match, timeoutMs: 8000 } : check.expect,
+      postcondition: check.postcondition,
     };
   }
   const gate = inferGate(event, meta.secrets ?? []);
@@ -232,7 +265,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       action: "key",
       key: event.key || event.value,
       label: `Press ${event.key || event.value || "key"}`,
-      postcondition: post(event, undefined, meta.secrets ?? []),
+      ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
   if (event.op === "upload" || event.op === "drop") {
@@ -258,7 +291,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
         action: "type",
         value: event.value,
         label: `Type ${event.value}`,
-        postcondition: post(event, undefined, meta.secrets ?? []),
+        ...observed(event, undefined, false, known, meta.secrets ?? []),
       };
     }
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
@@ -271,7 +304,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       value: `{{${input.name}}}`,
       sensitive: secret || undefined,
       label: secret ? "Type secret" : `Type {{${input.name}}}`,
-      postcondition: post(event, secret ? undefined : input.name, meta.secrets ?? []),
+      ...observed(event, secret ? undefined : input.name, secret, known, meta.secrets ?? []),
     };
   }
   if (typeof event.checked === "boolean") {
@@ -280,7 +313,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       action: "check",
       checked: event.checked,
       label: event.checked ? "Check" : "Uncheck",
-      postcondition: post(event, undefined, meta.secrets ?? []),
+      ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
   if (event.gate === "login" && event.performed === false) {
@@ -303,7 +336,27 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     ...step,
     action: "click",
     label: name ? `Click "${name}"` : "Click",
-    postcondition: post(event, undefined, meta.secrets ?? []),
+    ...observed(event, undefined, false, known, meta.secrets ?? []),
+  };
+}
+
+function observed(
+  event: TrailEvent,
+  input: string | undefined,
+  secret: boolean,
+  known: readonly KnownTyped[],
+  secrets: string[],
+): Pick<WorkflowStep, "postcondition" | "expect" | "confidence"> {
+  const identity = stripSecretValue(event.identity, secrets);
+  const step = applyExpect(
+    { id: "x", index: 0, action: "click", label: "x", surface: "dom", timeoutMs: 8000, identity },
+    { ...event, identity },
+    { input, secret, known, secrets },
+  );
+  return {
+    ...(step.postcondition ? { postcondition: step.postcondition } : {}),
+    ...(step.expect ? { expect: step.expect } : {}),
+    ...(step.confidence ? { confidence: step.confidence } : {}),
   };
 }
 
@@ -318,23 +371,6 @@ function normalizeFile(event: TrailEvent): TrailEvent {
   });
   if (!act.file) return { ...event, value: act.value, rawPath: undefined };
   return { ...event, op: act.op, value: undefined, rawPath: undefined, fileName: act.fileName };
-}
-
-function post(event: TrailEvent, input: string | undefined, secrets: string[]): WorkflowStep["postcondition"] {
-  // A stopped act leaves before-state on the event. That text is not the effect.
-  const acted = event.performed !== false;
-  if (acted && event.afterUrl && event.beforeUrl && event.afterUrl !== event.beforeUrl) {
-    const cleaned = scrub(event.afterUrl, secrets);
-    if (cleaned) {
-      const url = new URL(cleaned, "https://bao.local");
-      return { kind: "url", match: url.pathname, timeoutMs: 8000 };
-    }
-  }
-  if (input) return { kind: "value", match: `{{${input}}}`, timeoutMs: 4000 };
-  const text = acted ? scrub(event.afterText, secrets) : undefined;
-  if (text) return { kind: "text", match: text, timeoutMs: 4000 };
-  if (event.identity) return { kind: "element", identity: stripSecretValue(event.identity, secrets), timeoutMs: 4000 };
-  return undefined;
 }
 
 function scrub(value: string | undefined, secrets: string[]): string | undefined {
@@ -419,33 +455,40 @@ function stripSecretValue(identity: Identity | undefined, secrets: string[]): Id
 }
 
 /** 7, 7, +, 5, =  becomes digits {{a}}, click +, digits {{b}}, click = with a numeric postcondition. */
-function parameterizeDigits(steps: WorkflowStep[], inputs: WorkflowInput[]): WorkflowStep[] {
-  const out: WorkflowStep[] = [];
+function collapseDigits(
+  pieces: { events: TrailEvent[]; step: WorkflowStep }[],
+  inputs: WorkflowInput[],
+): { events: TrailEvent[]; step: WorkflowStep }[] {
+  const out: { events: TrailEvent[]; step: WorkflowStep }[] = [];
+  const steps = pieces.map((piece) => piece.step);
   let i = 0;
-  while (i < steps.length) {
+  while (i < pieces.length) {
     const run = digitRun(steps, i);
     if (run.length === 0) {
-      out.push(steps[i]!);
+      out.push(pieces[i]!);
       i += 1;
       continue;
     }
-    const sample = steps[i]!;
+    const sample = pieces[i]!.step;
     const input = addInput(inputs, "number", inputs.some((item) => item.name === "a") ? "b" : "a");
     input.default = run.map((step) => step.identity?.name).join("");
     input.label = input.name;
     out.push({
-      ...sample,
-      action: "digits",
-      input: input.name,
-      value: `{{${input.name}}}`,
-      label: `Enter {{${input.name}}}`,
-      identity: sample.identity ? { ...sample.identity, name: undefined, text: undefined, title: undefined } : undefined,
-      locators: undefined,
-      postcondition: { kind: "element", timeoutMs: 4000 },
+      events: pieces.slice(i, i + run.length).flatMap((piece) => piece.events),
+      step: {
+        ...sample,
+        action: "digits",
+        input: input.name,
+        value: `{{${input.name}}}`,
+        label: `Enter {{${input.name}}}`,
+        identity: sample.identity ? { ...sample.identity, name: undefined, text: undefined, title: undefined } : undefined,
+        locators: undefined,
+        postcondition: { kind: "element", timeoutMs: 4000 },
+      },
     });
     i += run.length;
   }
-  return attachExpr(out);
+  return out;
 }
 
 function digitRun(steps: WorkflowStep[], start: number): WorkflowStep[] {

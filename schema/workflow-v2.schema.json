@@ -85,7 +85,7 @@
       "additionalProperties": false,
       "required": ["kind", "timeoutMs"],
       "properties": {
-        "kind": { "enum": ["text", "url", "state"] },
+        "kind": { "enum": ["text", "url", "state", "settled"] },
         "match": { "type": "string" },
         "state": { "enum": ["checked", "unchecked", "enabled", "disabled", "visible"] },
         "identity": { "$ref": "#/$defs/identity" },
@@ -206,6 +206,7 @@
         "gate": { "enum": ["login", "confirm"] },
         "postcondition": { "$ref": "#/$defs/postcondition" },
         "expect": { "$ref": "#/$defs/expect" },
+        "confidence": { "enum": ["low"] },
         "waitFor": { "$ref": "#/$defs/check" },
         "gone": { "$ref": "#/$defs/check" },
         "anchor": { "$ref": "#/$defs/anchor" },
@@ -214,6 +215,15 @@
         "locators": {
           "type": "array",
           "items": { "$ref": "#/$defs/locator" }
+        },
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input", "value"],
+          "properties": {
+            "input": { "type": "string" },
+            "value": { "type": "string" }
+          }
         },
         "timeoutMs": { "type": "number" },
         "heal": { "enum": ["auto", "ask", "never"] },

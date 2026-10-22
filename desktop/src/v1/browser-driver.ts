@@ -57,6 +57,9 @@ export class BrowserDriver implements Driver {
     private readonly onNotify?: (notice: HealNotice) => void,
     private readonly prompts?: PersonPrompts,
   ) {
+    page.on("dialog", (dialog) => {
+      dialog.accept().catch(() => undefined);
+    });
     page.on("console", (msg) => {
       const text = maskTrace(msg.text());
       if (!text) return;
@@ -199,6 +202,10 @@ export class BrowserDriver implements Driver {
     } catch {
       throw new Error("could not fill the secret field");
     }
+  }
+
+  async focus(node: Identity): Promise<void> {
+    await this.page.locator(this.sel(node)).focus();
   }
 
   async key(key: string): Promise<void> {
@@ -350,10 +357,33 @@ export class BrowserDriver implements Driver {
   private sel(node: Identity): string {
     return `[data-bao-i="${this.handle(node)}"]`;
   }
+
+  /** Outline the node the scorer accepted. Does not click or type. */
+  async outline(node: Identity): Promise<void> {
+    await clearShotMarks(this.page);
+    const loc = this.page.locator(this.sel(node));
+    await loc.scrollIntoViewIfNeeded().catch(() => undefined);
+    await loc.evaluate((el) => {
+      const target = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? (el.closest("label") || el) : el;
+      target.setAttribute("data-bao-shot-outline", "1");
+      (target as HTMLElement).style.outline = "2px solid #d4532b";
+      (target as HTMLElement).style.outlineOffset = "2px";
+    });
+  }
+
+  /** Crop of the outlined match. The outline stays on the live page. */
+  async outlinePreview(): Promise<string | undefined> {
+    const box = await this.page.locator("[data-bao-shot-outline]").first().boundingBox().catch(() => null);
+    if (!box || box.width < 2 || box.height < 2) return;
+    const view = this.page.viewportSize() || await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const clip = paddedClip(box, view);
+    const png = await this.page.screenshot({ type: "png", clip }).catch(() => undefined);
+    return png?.toString("base64");
+  }
 }
 
 /** Crop around the step's target and outline it. A full-page picture is not used. */
-export async function elementShot(page: Page, target?: ShotTarget): Promise<Buffer | undefined> {
+export async function elementShot(page: Page, target?: ShotTarget, opts?: { blur?: boolean }): Promise<Buffer | undefined> {
   try {
     await page.evaluate(maskPasswordFields).catch(() => undefined);
     const found = await locateTarget(page, target);
@@ -361,6 +391,7 @@ export async function elementShot(page: Page, target?: ShotTarget): Promise<Buff
     await found.mark();
     const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
     const clip = paddedClip(found.box, view);
+    if (opts?.blur === false) return await page.screenshot({ type: "png", clip });
     return await shotWithBlur(page, { type: "png", clip });
   } catch {
     return undefined;

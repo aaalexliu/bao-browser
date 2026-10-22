@@ -1,0 +1,154 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792656449067,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792656449107,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792656449147,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792656449188,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "HTTP Caching",
+      "cssPath": "#col1 > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "HTTP Caching",
+    "subtreeAfter": "",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792656479756,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792656479788,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792656479851,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "HTTP Caching",
+      "cssPath": "#col1 > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "HTTP Caching",
+    "subtreeAfter": "",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792656510124,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792656510187,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792656510236,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "HTTP Semantics",
+      "cssPath": "#col1 > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "HTTP Semantics",
+    "subtreeAfter": "",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/rfc9110.html"
+  }
+]

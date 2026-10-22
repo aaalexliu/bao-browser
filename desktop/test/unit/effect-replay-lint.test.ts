@@ -4,7 +4,7 @@ import { droppedNoEffectIds, condense } from "../../src/v1/condense";
 import { lintIntent } from "../../src/eval/intent/lint";
 import { GOOD_INTENTS } from "../../src/eval/intent/good-intents";
 import { BAD_INTENT_TEXTS } from "../../src/eval/heldout/bad-judge";
-import { buildLocators } from "../../src/v1/locators";
+import { buildLocators, matchLabeledControl } from "../../src/v1/locators";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import type { TrailEvent } from "../../src/v1/interpret";
@@ -60,6 +60,81 @@ test("effect filter drops a still click and keeps one that changed state", () =>
   assert.equal(workflow.steps.some((step) => step.identity?.id === "go"), true);
   assert.equal(workflow.steps.some((step) => step.identity?.name === "Help"), true);
   assert.equal(workflow.steps.some((step) => step.identity?.cssPath === "details"), true);
+});
+
+test("a shared radio name resolves to the input inside the recorded label", async () => {
+  const recorded: Identity = {
+    surface: "dom",
+    role: "input",
+    nameAttr: "size",
+    tag: "input",
+    label: "Small",
+    cssPath: "form:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)",
+    path: [{ role: "form" }, { role: "label" }],
+  };
+  const small: Identity = { ...recorded, role: "radio" };
+  const medium: Identity = { ...small, label: "Medium", cssPath: "form:nth-of-type(1) > label:nth-of-type(2) > input:nth-of-type(1)" };
+  const large: Identity = { ...small, label: "Large", cssPath: "form:nth-of-type(1) > label:nth-of-type(3) > input:nth-of-type(1)" };
+  const label: Identity = { surface: "dom", role: "label", text: "Small", label: "Small", path: [] };
+  const workflow = condense([
+    {
+      id: "e3",
+      ts: 1,
+      kind: "act",
+      op: "click",
+      identity: recorded,
+      checked: true,
+      beforeUrl: url,
+      afterUrl: url,
+    },
+  ], { id: "order", name: "order", startUrl: url });
+  const step = workflow.steps[0];
+  assert.equal(step?.action, "check");
+  assert.equal(step?.locators?.some((item) => item.kind === "css" && item.value === 'input[name="size"]'), true);
+  const nodes = [label, small, medium, large];
+  const ambiguous = matchLabeledControl(
+    step?.locators || [],
+    { ...recorded, label: "Small" },
+    [small, { ...small, cssPath: "form label.other input" }, medium],
+  );
+  assert.equal(ambiguous, undefined);
+  let checked: Identity | undefined;
+  const driver = memory(nodes, { flags: nodes.map(() => ({ checked: true })) });
+  driver.check = async (node) => {
+    checked = node;
+  };
+  const result = await replay(workflow, {}, driver, {});
+  assert.equal(result.status, "passed", result.failure?.reason);
+  assert.equal(checked?.label, "Small");
+  assert.equal(checked?.role, "radio");
+});
+
+test("a tab click and a radio click with no css path stay for the later step", () => {
+  const tab: Identity = { surface: "dom", role: "button", id: "tab-address", text: "Address", path: [] };
+  const city: Identity = { surface: "dom", role: "textbox", id: "city", path: [] };
+  const radio: Identity = { surface: "dom", role: "radio", id: "blue", nameAttr: "color", path: [] };
+  const label: Identity = { surface: "dom", role: "textbox", id: "label", path: [] };
+  const apply: Identity = { surface: "dom", role: "button", id: "apply", text: "Apply", path: [] };
+  const tabs = [
+    click("tab", tab),
+    { id: "city", ts: 2, kind: "act" as const, op: "type", value: "Paris", identity: city, beforeUrl: url, afterUrl: url },
+  ];
+  const choice = [
+    click("blue", radio),
+    { id: "label", ts: 2, kind: "act" as const, op: "type", value: "west", identity: label, beforeUrl: url, afterUrl: url },
+    click("apply", apply, { afterText: "Applied" }),
+  ];
+  assert.deepEqual(droppedNoEffectIds(tabs), []);
+  assert.deepEqual(droppedNoEffectIds(choice), []);
+  assert.deepEqual(droppedNoEffectIds([click("head", heading)]), ["head"]);
+  const password: Identity = { surface: "dom", role: "textbox", id: "password", path: [] };
+  const signIn: Identity = { surface: "dom", role: "button", id: "login-btn", text: "Log in", path: [] };
+  const focus = [
+    click("pw", password),
+    { id: "secret", ts: 2, kind: "act" as const, op: "type", value: "secret", identity: password, beforeUrl: url, afterUrl: url },
+    click("go", signIn, { gate: "login", performed: false }),
+  ];
+  assert.deepEqual(droppedNoEffectIds(focus), ["pw"]);
 });
 
 test("a click with no recorded urls is kept", () => {
