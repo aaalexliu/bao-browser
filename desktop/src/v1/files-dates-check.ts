@@ -7,10 +7,11 @@ const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 export function filesDatesErrors(doc: WorkflowV2): string[] {
   const errors: string[] = [];
   const uses = usesFilesDates(doc);
-  if (doc.version === 3) {
+  if (uses) {
+    if (doc.version !== 3) errors.push("filesDates version");
     if (doc.filesDates !== 1) errors.push("filesDates");
-  } else if (doc.version === 2 && (uses || doc.filesDates)) {
-    errors.push("filesDates version");
+  } else if (doc.filesDates != null) {
+    errors.push("filesDates");
   }
   const outputs = new Map<string, number>();
   doc.steps.forEach((step, index) => {
@@ -55,7 +56,7 @@ export function filesDatesErrors(doc: WorkflowV2): string[] {
   return errors;
 }
 
-function usesFilesDates(doc: WorkflowV2): boolean {
+export function usesFilesDates(doc: WorkflowV2): boolean {
   if (doc.inputs.some((input) => input.type === "date" || input.fromOutput || input.relative || input.format)) return true;
   return doc.steps.some((step) => step.action === "download" || step.action === "open" || step.datePicker || step.fileFrom || step.download || step.open);
 }

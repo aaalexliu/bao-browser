@@ -171,6 +171,7 @@ export function recorderSource(): string {
       return { start: isoDate(year, month, days[0]), end: isoDate(year, month, days[days.length - 1]) };
     };
     document.addEventListener("click", (event) => {
+      if (window.__baoPicking) return;
       const raw = event.target;
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
       const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid]") : raw;

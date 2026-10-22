@@ -246,7 +246,7 @@ describe("files and dates demos", { concurrency: 1 }, () => {
         });
         assert.equal(result.status, "passed", `${result.failure?.phase || ""} ${result.failure?.reason || ""}`);
         assert.equal(result.modelCalls, 0);
-        const file = result.outputs?.note;
+        const file = result.files?.note;
         assert.ok(file);
         assert.equal(file.name, "2026-10-22-acme-note.txt");
         assert.equal(file.sha256, createHash("sha256").update(payload).digest("hex"));
@@ -264,7 +264,7 @@ describe("files and dates demos", { concurrency: 1 }, () => {
       runField({ name: "checkOut", type: "date", label: "Check out", relative: "+17d", format: "D MMM YYYY", zone: "UTC", required: true }, undefined, CLOCK),
       runField({ name: "monday", type: "date", label: "Next Monday", relative: "next monday", format: "D MMM YYYY", zone: "UTC" }, undefined, CLOCK),
       runField({ name: "month", type: "date", label: "First of next month", relative: "first of next month", format: "D MMM YYYY", zone: "UTC" }, undefined, CLOCK),
-      runField({ name: "statement", type: "file", label: "Statement", fromOutput: "statement" }),
+      runField({ name: "statement", type: "file", label: "Statement", fromOutput: "statement", boundStep: "Download W-9" }),
     ].join("");
     const html = (theme: string) => `<!doctype html><html lang="en" data-theme="${theme}"><head><style>${sheet}</style></head><body><main id="main"><section class="card"><h2>Run inputs</h2>${fields}</section></main></body></html>`;
     mkdirSync(ARTIFACTS, { recursive: true });
@@ -274,7 +274,8 @@ describe("files and dates demos", { concurrency: 1 }, () => {
         await page.setContent(html(theme));
         const resolved = await page.locator(".date-preview").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-resolved")));
         assert.deepEqual(resolved, ["5 Nov 2026", "8 Nov 2026", "26 Oct 2026", "1 Nov 2026"]);
-        assert.match(await page.locator(".drop span").innerText(), /statement download/);
+        assert.equal(await page.locator(".drop input").count(), 0);
+        assert.equal(await page.locator(".drop span").innerText(), "From this run: Download W-9");
         const file = path.join(ARTIFACTS, `date_form_${theme}.png`);
         await page.screenshot({ path: file });
         const png = readFileSync(file);
@@ -384,7 +385,7 @@ describe("files and dates demos", { concurrency: 1 }, () => {
           });
           assert.equal(result.status, "passed", `${result.failure?.phase || ""} ${result.failure?.reason || ""}`);
           assert.equal(result.modelCalls, 0);
-          const file = result.outputs?.statement;
+          const file = result.files?.statement;
           assert.ok(file);
           assert.equal(file.name, "2026-10-22-irs-statement.pdf");
           const bytes = readFileSync(file.path);
@@ -467,7 +468,7 @@ describe("files and dates demos", { concurrency: 1 }, () => {
         });
         assert.equal(result.status, "passed", `${result.failure?.phase || ""} ${result.failure?.reason || ""}`);
         assert.equal(result.modelCalls, 0);
-        const file = result.outputs?.note;
+        const file = result.files?.note;
         assert.ok(file);
         assert.equal(file.name, "2026-10-22-acme-some-file.txt");
         assert.match(file.sha256, /^[a-f0-9]{64}$/);

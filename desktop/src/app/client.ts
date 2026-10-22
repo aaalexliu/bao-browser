@@ -166,6 +166,7 @@ async function refresh(): Promise<void> {
     // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     guide: state.guide ? { status: state.guide.status, stepId: state.guide.stepId, actions: state.guide.actions } : null,
+    extract: state.extractPicker || "",
     screen,
     healFilter,
     openHeal,
@@ -195,7 +196,7 @@ function render(): void {
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
-  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state);
+  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state) + (state.extractPicker || "");
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
@@ -690,6 +691,29 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+  const recExtract = document.getElementById("rec-extract");
+  if (recExtract) recExtract.onclick = async () => {
+    await fetch("/api/sessions/extract/arm", { method: "POST" });
+  };
+  const extractCommit = document.getElementById("extract-commit");
+  if (extractCommit) extractCommit.onclick = async () => {
+    const names: Record<string, string> = {};
+    const drop: string[] = [];
+    document.querySelectorAll<HTMLInputElement>("[data-col-keep]").forEach((box) => {
+      const id = box.dataset.colKeep || "";
+      const field = document.querySelector<HTMLInputElement>(`[data-col-name="${id}"]`);
+      if (!box.checked) drop.push(id);
+      else if (field) names[id] = field.value;
+    });
+    const pages = document.getElementById("extract-pages") as HTMLInputElement | null;
+    await fetch("/api/sessions/extract/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ names, drop, maxPages: pages ? Number(pages.value) : 1, as: "items" }),
+    });
+    renderKey = "";
+    await refresh();
+  };
   const recStop = document.getElementById("rec-stop");
   if (recStop) recStop.onclick = async () => {
     await fetch("/api/sessions/stop", { method: "POST" });
@@ -1129,18 +1153,20 @@ async function openEditor(id: string): Promise<void> {
 async function fillArgs(id: string): Promise<void> {
   if (!id) return;
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json() as {
-    inputs: { name: string; type: string; label?: string; default?: string; choices?: string[]; multiple?: boolean }[];
+    inputs: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string }[];
+    steps?: { label?: string; download?: { output?: string } }[];
   };
   const form = document.getElementById("args");
   if (!form || screen !== "replay") return;
   const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const prev = { ...((pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {}), ...deeplinkInputs };
-  form.innerHTML = doc.inputs.map((input) => field(input, input.type === "secret" ? undefined : prev[input.name])).join("") || "<p>This workflow has no inputs.</p>";
+  form.innerHTML = doc.inputs.map((input) => field(input, input.type === "secret" ? undefined : prev[input.name], doc.steps || [])).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;
   form.querySelectorAll(".drop").forEach((zone) => {
     const el = zone as HTMLElement;
+    if (el.dataset.fromOutput) return;
     el.ondragover = (event) => { event.preventDefault(); el.classList.add("over"); };
     el.ondragleave = () => el.classList.remove("over");
     el.ondrop = (event) => {
@@ -1159,8 +1185,15 @@ async function fillArgs(id: string): Promise<void> {
   });
 }
 
-function field(input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }, previous?: string): string {
-  return runField(input, previous);
+function field(
+  input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string },
+  previous: string | undefined,
+  steps: { label?: string; download?: { output?: string } }[],
+): string {
+  const boundStep = input.fromOutput
+    ? steps.find((step) => step.download?.output === input.fromOutput)?.label || input.fromOutput
+    : undefined;
+  return runField({ ...input, boundStep }, previous);
 }
 
 function readSiteTrust(): Record<string, "ask" | "allow"> {

@@ -7,7 +7,7 @@
   "required": ["schema", "version", "id", "name", "startUrl", "inputs", "steps", "createdAt"],
   "properties": {
     "schema": { "const": "bao.workflow/v2" },
-    "version": { "const": 2 },
+    "version": { "enum": [2, 3] },
     "id": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1 },
     "startUrl": { "type": "string" },
@@ -25,6 +25,10 @@
     "steps": {
       "type": "array",
       "items": { "$ref": "#/$defs/step" }
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workflowOutput" }
     }
   },
   "$defs": {
@@ -34,7 +38,7 @@
       "required": ["name", "type"],
       "properties": {
         "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
-        "type": { "enum": ["text", "secret", "number", "choice", "file"] },
+        "type": { "enum": ["text", "secret", "number", "choice", "file", "table"] },
         "label": { "type": "string" },
         "required": { "type": "boolean" },
         "default": { "type": "string" },
@@ -183,7 +187,7 @@
       "properties": {
         "id": { "type": "string" },
         "index": { "type": "number" },
-        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login", "verify", "note"] },
+        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login", "verify", "note", "extract", "for_each"] },
         "label": { "type": "string" },
         "surface": { "enum": ["dom", "os"] },
         "identity": { "$ref": "#/$defs/identity" },
@@ -216,6 +220,8 @@
           "type": "array",
           "items": { "$ref": "#/$defs/locator" }
         },
+        "extract": { "$ref": "#/$defs/extractSpec" },
+        "forEach": { "$ref": "#/$defs/forEachSpec" },
         "when": {
           "oneOf": [
             {
@@ -259,6 +265,77 @@
           "required": ["reason"],
           "properties": { "reason": { "type": "string" } }
         }
+      }
+    },
+    "extractColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "read", "locators"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "label": { "type": "string" },
+        "type": { "enum": ["text", "number", "url"] },
+        "read": { "enum": ["text", "href", "src", "value", "title", "rating"] },
+        "locators": { "type": "array", "items": { "$ref": "#/$defs/locator" } },
+        "dropped": { "type": "boolean" }
+      }
+    },
+    "extractSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "locators", "columns", "as"],
+      "properties": {
+        "mode": { "enum": ["element", "list"] },
+        "locators": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/locator" } },
+        "columns": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/extractColumn" } },
+        "as": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "pagination": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["next", "maxPages"],
+          "properties": {
+            "next": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/locator" } },
+            "maxPages": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        }
+      }
+    },
+    "forEachSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["over", "steps"],
+      "properties": {
+        "over": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "name"],
+          "properties": {
+            "kind": { "enum": ["extract", "input"] },
+            "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
+          }
+        },
+        "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } }
+      }
+    },
+    "outputColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "type": { "enum": ["text", "number", "url"] }
+      }
+    },
+    "workflowOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "from"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "label": { "type": "string" },
+        "type": { "enum": ["table", "text", "number"] },
+        "from": { "type": "string" },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/outputColumn" } }
       }
     }
   }

@@ -2,6 +2,7 @@
 // Secrets become inputs. File paths are dropped. No model is required.
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
+import { applyCapturedData, type ExtractSpec, type ListCapture } from "./data-steps";
 import { applyExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
 import { locatorsFromIdentity } from "./locators";
@@ -69,6 +70,12 @@ export interface TrailEvent {
   dialogType?: "alert" | "confirm" | "prompt";
   /** Which button closed the dialog. An alert records accept. */
   dialogDecision?: "accept" | "dismiss";
+  /** Name this click from an input. The recorded text is the sample default. */
+  parameter?: string;
+  /** Rows the person selected or copied. */
+  list?: ListCapture;
+  /** A picked element or list, already named. */
+  extract?: ExtractSpec;
 }
 
 export interface InterpretMeta {
@@ -123,18 +130,19 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   });
   const pieces = foldNotes(collapseDigits(mapped, inputs), seen.secrets ?? []);
   attachExpr(pieces.map((piece) => piece.step));
-  const steps = pieces.map((piece, index) => ({ ...piece.step, index, id: `${meta.id}-${index}` }));
+  const captured = applyCapturedData(pieces, inputs);
   const drafted: WorkflowV2 = {
     schema: WORKFLOW_SCHEMA_ID,
-    version: 2,
+    version: captured.version,
     id: meta.id,
     name: meta.name || "Untitled workflow",
     startUrl: meta.startUrl,
     inputs,
-    steps,
+    steps: captured.pieces.map((piece, index) => ({ ...piece.step, index, id: `${meta.id}-${index}` })),
     createdAt: events[0]?.ts ?? 0,
+    ...(captured.outputs ? { outputs: captured.outputs } : {}),
   };
-  const shaped = shapeFilesDates(drafted, pieces.map((piece) => piece.events), meta.zone || "UTC");
+  const shaped = shapeFilesDates(drafted, captured.pieces.map((piece) => piece.events), meta.zone || "UTC");
   assertClean(shaped.doc, secrets);
   return { doc: shaped.doc, groups: shaped.groups as TrailEvent[][] };
 }
@@ -341,6 +349,20 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       human: true,
       timeoutMs: 8000,
       ...observed(event, undefined, false, known, meta.secrets ?? []),
+    };
+  }
+  if (event.op === "extract" && event.extract) {
+    const spec = event.extract;
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: "extract",
+      label: `Extract ${spec.as}`,
+      surface: "dom",
+      timeoutMs: 8000,
+      heal: "never",
+      locators: spec.locators,
+      extract: spec,
     };
   }
   if (event.op === "note") {
@@ -647,9 +669,11 @@ function assertClean(doc: WorkflowV2, secrets: string[]): void {
       throw new Error("interpret kept a secret");
     }
   }
-  for (const step of doc.steps) {
+  const walk = (step: WorkflowStep): void => {
     if (step.value && step.value.startsWith("/") && !step.value.includes("{{")) {
       throw new Error("interpret kept a file path");
     }
-  }
+    for (const nested of step.forEach?.steps ?? []) walk(nested);
+  };
+  for (const step of doc.steps) walk(step);
 }

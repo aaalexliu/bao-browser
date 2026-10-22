@@ -6,9 +6,8 @@ import type { HealSettings } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
-import type { HealMode, WorkflowV2 } from "./schema";
-import { migrateFilesDates } from "./files-dates";
-import { toJson, validateWorkflow } from "./schema";
+import type { OutputValue } from "./data-steps";
+import { migrate, toJson, validateWorkflow, type HealMode, type WorkflowV2 } from "./schema";
 
 export interface Settings extends HealSettings {
   heal: HealMode;
@@ -48,6 +47,8 @@ export interface StoredRun {
   precondition?: unknown;
   trail?: unknown[];
   trajectory?: unknown[];
+  /** Declared workflow outputs for this run. */
+  outputs?: OutputValue[];
   /** Human step returned by run_workflow. Secrets are not in here. */
   envelope?: {
     status: string;
@@ -86,7 +87,7 @@ export class Library {
 
   read(id: string): WorkflowV2 {
     const raw = JSON.parse(readFileSync(this.file(id), "utf8")) as unknown;
-    const doc = migrateFilesDates(raw);
+    const doc = migrate(raw);
     const errors = validateWorkflow(doc);
     if (errors.length) throw new Error(`workflow ${id} is invalid: ${errors.join(", ")}`);
     return doc;
@@ -109,7 +110,7 @@ export class Library {
   }
 
   importJson(raw: string): WorkflowV2 {
-    const doc = migrateFilesDates(JSON.parse(raw) as unknown);
+    const doc = migrate(JSON.parse(raw) as unknown);
     const errors = validateWorkflow(doc);
     if (errors.length) throw new Error(errors.join(", "));
     this.save(doc);

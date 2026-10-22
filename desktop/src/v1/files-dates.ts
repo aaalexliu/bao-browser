@@ -1,6 +1,6 @@
-// Files and dates. Additive on workflow v2: version 3 plus filesDates 1.
-// schema/files-dates.schema.json is the only schema edit. workflow-v2.schema.json stays put
-// so a parallel extract/loop change and a parallel bot-wall change can land beside this.
+// Files and dates. Version 3 when a document uses this revision or data steps.
+// schema/workflow-v3.schema.json references this file and schema/data-steps.schema.json.
+// workflow-v2.schema.json stays the version 2 contract.
 //
 // Download follows the same CDP events Playwright uses (Browser.setDownloadBehavior,
 // Browser.downloadWillBegin, Browser.downloadProgress). Power Automate Desktop renames a
@@ -308,12 +308,44 @@ interface FilesDatesSchema {
   $defs: Record<string, unknown>;
 }
 
-/** Clone the v2 schema and add this revision. The v2 file is not edited. */
+/** Clone a schema and add one revision. Stub fragments do not replace full definitions. */
 export function composeFilesDatesSchema(base: JsonSchema, addon?: FilesDatesSchema): JsonSchema {
   const extra = addon || (JSON.parse(readFileSync(path.join(process.cwd(), "schema/files-dates.schema.json"), "utf8")) as FilesDatesSchema);
   const schema = structuredClone(base);
   schema.$id = "bao.workflow/v3";
   schema.title = "Bao workflow v3";
+  mergeRevision(schema, extra);
+  return schema;
+}
+
+/** One v3 schema. schema/workflow-v3.schema.json names both revision files. */
+export function composeV3Schema(base?: JsonSchema): JsonSchema {
+  const index = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v3.schema.json"), "utf8")) as JsonSchema & {
+    revisions?: { $ref?: string }[];
+  };
+  const v2 = base || (JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8")) as JsonSchema);
+  const schema = structuredClone(v2);
+  schema.$id = typeof index.$id === "string" ? index.$id : "bao.workflow/v3";
+  schema.title = typeof index.title === "string" ? index.title : "Bao workflow v3";
+  if (typeof index.description === "string") schema.description = index.description;
+  for (const revision of index.revisions ?? []) {
+    if (!revision.$ref) continue;
+    const extra = JSON.parse(readFileSync(path.join(process.cwd(), "schema", revision.$ref), "utf8")) as FilesDatesSchema;
+    mergeRevision(schema, {
+      filesDates: extra.filesDates ?? FILES_DATES_REVISION,
+      workflowVersion: extra.workflowVersion ?? FILES_DATES_WORKFLOW_VERSION,
+      inputTypes: extra.inputTypes ?? [],
+      actions: extra.actions ?? [],
+      documentProperties: extra.documentProperties ?? {},
+      inputProperties: extra.inputProperties ?? {},
+      stepProperties: extra.stepProperties ?? {},
+      $defs: extra.$defs ?? {},
+    });
+  }
+  return schema;
+}
+
+function mergeRevision(schema: JsonSchema, extra: FilesDatesSchema): void {
   const properties = schema.properties as Record<string, unknown>;
   properties.version = { enum: [2, 3] };
   Object.assign(properties, extra.documentProperties);
@@ -326,16 +358,18 @@ export function composeFilesDatesSchema(base: JsonSchema, addon?: FilesDatesSche
   const action = step?.action as { enum?: string[] } | undefined;
   if (action?.enum) for (const name of extra.actions) if (!action.enum.includes(name)) action.enum.push(name);
   if (step) Object.assign(step, extra.stepProperties);
-  Object.assign(defs, extra.$defs);
-  return schema;
+  for (const [key, value] of Object.entries(extra.$defs)) {
+    if (!value || typeof value !== "object") continue;
+    const def = value as { type?: unknown };
+    if (def.type !== "object" && def.type !== "array") continue;
+    defs[key] = value as (typeof defs)[string];
+  }
 }
 
-/** v1 and v2 load. The files-dates door bumps them to version 3 without changing steps. */
+/** Same door as migrate(). A plain version 2 document stays version 2. */
 export function migrateFilesDates(raw: unknown): WorkflowV2 {
   const { migrate } = require("./schema") as typeof import("./schema");
-  const doc = migrate(raw);
-  if (doc.version === FILES_DATES_WORKFLOW_VERSION && doc.filesDates === FILES_DATES_REVISION) return doc;
-  return { ...doc, version: FILES_DATES_WORKFLOW_VERSION, filesDates: FILES_DATES_REVISION };
+  return migrate(raw);
 }
 
 function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {

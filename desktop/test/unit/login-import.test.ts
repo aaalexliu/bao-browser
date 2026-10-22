@@ -9,7 +9,7 @@ import { presentAvatar } from "../../src/login-import/avatar";
 import { keepSessionCookies, OWNED_CHROME_ARGS, RESTORE_LAST_SESSION } from "../../src/launch";
 import { classifyBotCookie } from "../../src/login-import/bot";
 import { deriveAesKey, decryptCookieValue, encryptCookieValue, LINUX_ITERATIONS, LINUX_PEANUTS, MAC_ITERATIONS, plaintextForCookie } from "../../src/login-import/crypto";
-import { importChromeLogin, preferredProfile, previewChromeProfiles } from "../../src/login-import/import-login";
+import { importChromeLogin, observePage, preferredProfile, previewChromeProfiles, PROBE_SETTLE_MS } from "../../src/login-import/import-login";
 import { describeKeys, keychainMessage, keyRingFromSources, linuxSecretLookups, macKeychainArgs, readPlatformKeys } from "../../src/login-import/keys";
 import { judgeSignedIn, isLoginUrl } from "../../src/login-import/probe";
 import { cookieMatchesHost, findCookieDb, loadDb, metaForChromeMajor, summarySql, withCookieDb } from "../../src/login-import/read";
@@ -488,6 +488,61 @@ test("probe failure names the anti-bot vendor and the sign-in-once path", () => 
   assert.equal(isLoginUrl("https://example.com/home"), false);
   assert.equal(judgeSignedIn({ finalUrl: "https://example.com/login", selectorFound: false, bodyText: "" }, {}).signedIn, false);
   assert.equal(judgeSignedIn({ finalUrl: "https://example.com/login", selectorFound: true, bodyText: "Welcome back" }, { selector: "#account", text: "Welcome back" }).signedIn, true);
+});
+
+test("the signed-in probe waits out DOMContentLoaded for network idle and 5 seconds", async () => {
+  const events: string[] = [];
+  let settled = false;
+  const page = {
+    async goto(_url: string, opts: { waitUntil: string }) {
+      events.push(`goto:${opts.waitUntil}`);
+    },
+    async waitForLoadState(state: string) {
+      events.push(`idle:${state}`);
+    },
+    async waitForTimeout(ms: number) {
+      assert.ok(ms >= PROBE_SETTLE_MS - 50, `settle wait was ${ms}`);
+      events.push("wait");
+      settled = true;
+    },
+    url() {
+      events.push(settled ? "url:settled" : "url:early");
+      return settled ? "https://member.example/home" : "https://member.example/login";
+    },
+    locator() {
+      return { count: async () => 0, innerText: async () => "" };
+    },
+  };
+  const obs = await observePage(page as never, "https://member.example/home", "", "");
+  assert.deepEqual(events, ["goto:domcontentloaded", "idle:networkidle", "wait", "url:settled"]);
+  assert.equal(obs.finalUrl, "https://member.example/home");
+  assert.equal(judgeSignedIn(obs, {}).signedIn, true);
+
+  const chatty: string[] = [];
+  let chattySettled = false;
+  const busy = {
+    async goto() { chatty.push("goto"); },
+    async waitForLoadState() {
+      chatty.push("idle-timeout");
+      throw new Error("timeout");
+    },
+    async waitForTimeout(ms: number) {
+      assert.ok(ms >= PROBE_SETTLE_MS - 50);
+      chatty.push("wait");
+      chattySettled = true;
+    },
+    url() {
+      chatty.push(chattySettled ? "url:settled" : "url:early");
+      return "https://member.example/login";
+    },
+    locator() {
+      return { count: async () => 0, innerText: async () => "" };
+    },
+  };
+  const late = await observePage(busy as never, "https://member.example/account", "", "");
+  assert.deepEqual(chatty, ["goto", "idle-timeout", "wait", "url:settled"]);
+  assert.equal(late.finalUrl, "https://member.example/login");
+  assert.equal(judgeSignedIn(late, {}).signedIn, false);
 });
 
 test("localStorage leveldb and sqlite keep the clicked origins, including latin1 and utf-16", async () => {

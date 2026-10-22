@@ -7,11 +7,10 @@ import Ajv from "ajv/dist/2020";
 import { canonical } from "../../src/v1/canonical";
 import {
   civilInZone,
-  composeFilesDatesSchema,
+  composeV3Schema,
   datePreview,
   downloadFileName,
   fileDigest,
-  FILES_DATES_REVISION,
   formatCivil,
   isoOf,
   migrateFilesDates,
@@ -31,7 +30,7 @@ import { Library } from "../../src/v1/store";
 const v2Schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validateV2 = ajv.compile(v2Schema);
-const validateV3 = ajv.compile(composeFilesDatesSchema(v2Schema));
+const validateV3 = ajv.compile(composeV3Schema(v2Schema));
 
 const OCT_22 = new Date("2026-10-22T15:00:00Z");
 const ZONE = "UTC";
@@ -178,7 +177,7 @@ test("an ordinary trail stays version 2 and byte-identical", () => {
   assert.equal(validateV2(doc), true, JSON.stringify(validateV2.errors));
 });
 
-test("old workflows load, and the files-dates door bumps them without changing steps", () => {
+test("a plain version 2 document stays version 2 in memory and on disk", () => {
   const raw = {
     id: "wf-old",
     name: "Old",
@@ -200,23 +199,116 @@ test("old workflows load, and the files-dates door bumps them without changing s
   assert.equal(v2.version, 2);
   assert.equal(v2.filesDates, undefined);
   assert.equal(validateV2(v2), true, JSON.stringify(validateV2.errors));
-  const v3 = migrateFilesDates(raw);
-  assert.equal(v3.version, 3);
-  assert.equal(v3.filesDates, FILES_DATES_REVISION);
-  assert.equal(v3.steps.length, v2.steps.length);
-  assert.equal(v3.steps[0]?.action, v2.steps[0]?.action);
-  assert.deepEqual(validateWorkflow(v3), []);
-  assert.equal(validateV3(v3), true, JSON.stringify(validateV3.errors));
-  assert.equal(migrateFilesDates(v3), v3);
+  assert.equal(migrateFilesDates(raw).version, 2);
+  assert.equal(migrate(v2), v2);
 
   const root = mkdtempSync(path.join(tmpdir(), "bao-lib-"));
   const library = new Library(root);
   library.save(v2);
-  assert.equal(JSON.parse(readFileSync(path.join(root, "workflows", "wf-old.json"), "utf8")).version, 2);
+  const file = path.join(root, "workflows", "wf-old.json");
+  const before = readFileSync(file, "utf8");
+  assert.equal(JSON.parse(before).version, 2);
+  assert.equal(JSON.parse(before).filesDates, undefined);
   const loaded = library.read("wf-old");
-  assert.equal(loaded.version, 3);
-  assert.equal(loaded.filesDates, 1);
+  assert.equal(loaded.version, 2);
+  assert.equal(loaded.filesDates, undefined);
   assert.equal(loaded.steps[0]?.label, v2.steps[0]?.label);
+  assert.equal(readFileSync(file, "utf8"), before);
+});
+
+test("version 3 is data steps, files and dates, or both", () => {
+  const published = JSON.parse(readFileSync("schema/workflow-v3.schema.json", "utf8")) as {
+    $id: string;
+    revisions: { $ref: string }[];
+  };
+  assert.equal(published.$id, "bao.workflow/v3");
+  assert.deepEqual(published.revisions.map((item) => item.$ref), ["data-steps.schema.json", "files-dates.schema.json"]);
+
+  const plain = JSON.parse(readFileSync("examples/workflows/browser-form.json", "utf8")) as WorkflowV2;
+  const data = {
+    schema: WORKFLOW_SCHEMA_ID,
+    version: 2 as const,
+    id: "wf-data",
+    name: "Data",
+    startUrl: "https://books.toscrape.com/",
+    createdAt: 1,
+    inputs: [],
+    outputs: [{ name: "books", type: "table" as const, from: "books", columns: [{ name: "title", type: "text" as const }] }],
+    steps: [{
+      id: "extract-1",
+      index: 0,
+      action: "extract" as const,
+      label: "Books",
+      surface: "dom" as const,
+      timeoutMs: 8000,
+      heal: "never" as const,
+      locators: [{ kind: "css" as const, value: "article.product_pod" }],
+      extract: {
+        mode: "list" as const,
+        as: "books",
+        locators: [{ kind: "css" as const, value: "article.product_pod" }],
+        columns: [{ name: "title", type: "text" as const, read: "title" as const, locators: [{ kind: "css" as const, value: "h3 > a" }] }],
+      },
+    }],
+  };
+  const files = {
+    schema: WORKFLOW_SCHEMA_ID,
+    version: 2 as const,
+    id: "wf-files",
+    name: "Files",
+    startUrl: "https://fixture.test/files",
+    createdAt: 1,
+    inputs: [{ name: "when", type: "date" as const, relative: "+14d", format: "D MMM YYYY", zone: "UTC" }],
+    steps: [{
+      id: "dl",
+      index: 0,
+      action: "download" as const,
+      label: "Download W-9",
+      surface: "dom" as const,
+      timeoutMs: 30000,
+      download: { output: "statement", name: "{{run.date}}-statement.pdf" },
+    }],
+  };
+  const both = {
+    ...data,
+    id: "wf-both",
+    name: "Both",
+    inputs: files.inputs,
+    steps: [
+      data.steps[0]!,
+      { ...files.steps[0]!, index: 1, id: "dl" },
+    ],
+  };
+
+  assert.equal(migrate(plain), plain);
+  assert.equal(plain.version, 2);
+  const dataDoc = migrate(data);
+  assert.equal(dataDoc.version, 3);
+  assert.equal(dataDoc.filesDates, undefined);
+  const filesDoc = migrate(files);
+  assert.equal(filesDoc.version, 3);
+  assert.equal(filesDoc.filesDates, 1);
+  const bothDoc = migrate(both);
+  assert.equal(bothDoc.version, 3);
+  assert.equal(bothDoc.filesDates, 1);
+  assert.equal(bothDoc.outputs?.[0]?.name, "books");
+  assert.equal(bothDoc.steps.some((step) => step.action === "download"), true);
+  for (const doc of [plain, dataDoc, filesDoc, bothDoc]) {
+    assert.deepEqual(validateWorkflow(doc), [], doc.id);
+    assert.equal(validateV3(doc), true, `${doc.id} ${JSON.stringify(validateV3.errors)}`);
+  }
+
+  const root = mkdtempSync(path.join(tmpdir(), "bao-v3-"));
+  const library = new Library(root);
+  for (const doc of [plain, dataDoc, filesDoc, bothDoc]) {
+    library.save(doc);
+    const file = path.join(root, "workflows", `${doc.id}.json`);
+    const before = readFileSync(file, "utf8");
+    const loaded = library.read(doc.id);
+    assert.equal(loaded.version, doc.version, doc.id);
+    assert.equal(loaded.filesDates, doc.filesDates, doc.id);
+    assert.equal(readFileSync(file, "utf8"), before, doc.id);
+  }
 });
 
 test("a download name is a template, and a path is refused", () => {
@@ -349,8 +441,8 @@ test("replay saves a templated download and a later upload reads that file", asy
   assert.equal(first.status, "passed", first.failure?.reason);
   assert.equal(second.status, "passed", second.failure?.reason);
   assert.equal(first.modelCalls, 0);
-  const a = first.outputs?.statement;
-  const b = second.outputs?.statement;
+  const a = first.files?.statement;
+  const b = second.files?.statement;
   assert.ok(a && b);
   assert.equal(a.name, "2026-10-22-irs-statement.pdf");
   assert.equal(b.name, a.name);

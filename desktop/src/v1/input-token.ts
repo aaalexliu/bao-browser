@@ -14,6 +14,8 @@ export interface TokenInput {
   relative?: string;
   zone?: string;
   fromOutput?: string;
+  /** Label of the download step this file is filled from. */
+  boundStep?: string;
 }
 
 export interface TokenFields {
@@ -25,7 +27,7 @@ export interface TokenFields {
   masked: boolean;
 }
 
-const TYPES: readonly InputType[] = ["text", "secret", "number", "choice", "file", "date"];
+const TYPES: readonly InputType[] = ["text", "secret", "number", "choice", "file", "date", "table"];
 
 export function tokenFields(input: TokenInput): TokenFields {
   const type = input.type || "text";

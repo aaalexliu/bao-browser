@@ -3,15 +3,16 @@
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { canonical } from "./canonical";
+import { documentUsesDataSteps, validateDataSteps, workflowVersionError, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import type { ElementVersion } from "./element-history";
-import { filesDatesErrors } from "./files-dates-check";
+import { filesDatesErrors, usesFilesDates } from "./files-dates-check";
 
 export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 
-export type InputType = "text" | "secret" | "number" | "choice" | "file" | "date";
+export type InputType = "text" | "secret" | "number" | "choice" | "file" | "date" | "table";
 export type HealMode = "auto" | "approve";
 export type Surface = "dom" | "ax" | "atspi";
-export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify" | "note" | "download" | "open";
+export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify" | "note" | "download" | "open" | "extract" | "for_each";
 
 export interface WorkflowInput {
   name: string;
@@ -210,11 +211,15 @@ export interface WorkflowStep {
   datePicker?: { input: string; endInput?: string };
   /** files-dates: upload or drop reads this download output. */
   fileFrom?: string;
+  /** Pull one element or a repeated list. Replay reads the locators. No model. */
+  extract?: ExtractSpec;
+  /** Repeat `steps` for each row of an extract or a table input. */
+  forEach?: ForEachSpec;
 }
 
 export interface WorkflowV2 {
   schema: typeof WORKFLOW_SCHEMA_ID;
-  /** 2 is the base contract. 3 is the files-dates revision; old documents stay 2 until migrateFilesDates. */
+  /** 2 is every workflow that uses no v3 feature. 3 is data steps or files and dates. */
   version: 2 | 3;
   id: string;
   name: string;
@@ -223,6 +228,8 @@ export interface WorkflowV2 {
   steps: WorkflowStep[];
   createdAt: number;
   updatedAt?: number;
+  /** Declared results. Replay fills them. run_workflow and get_run return the values. */
+  outputs?: WorkflowOutput[];
   /** Absent means the global setting, whose default is auto. */
   heal?: HealMode;
   /** False means the workflow has not been replayed. */
@@ -233,7 +240,7 @@ export interface WorkflowV2 {
   precondition?: Precondition;
   /** One sentence written by the hybrid condenser. It is not replayed. */
   summary?: string;
-  /** files-dates revision. Present on version 3. */
+  /** Set when the document uses files or dates. Absent on a data-steps-only version 3. */
   filesDates?: 1;
 }
 
@@ -262,7 +269,9 @@ export function subst(template: string, args: ReplayArgs): string {
 export function validateWorkflow(doc: WorkflowV2): string[] {
   const errors: string[] = [];
   if (doc.schema !== WORKFLOW_SCHEMA_ID) errors.push("schema");
-  if (doc.version !== 2 && doc.version !== 3) errors.push("version");
+  const versionError = workflowVersionError(doc.version);
+  if (versionError) errors.push(versionError);
+  else if (doc.version === 3 && !documentUsesDataSteps(doc) && !usesFilesDates(doc)) errors.push("version");
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
   const names = new Set<string>();
@@ -316,6 +325,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.readBack) errors.push(...readBackErrors(step.readBack, step.id, names));
   });
   errors.push(...filesDatesErrors(doc));
+  errors.push(...validateDataSteps(doc));
   return errors;
 }
 
@@ -400,12 +410,12 @@ interface LooseWorkflow {
 export function migrate(raw: unknown): WorkflowV2 {
   const doc = (raw && typeof raw === "object" ? raw : {}) as LooseWorkflow;
   if (doc.schema === WORKFLOW_SCHEMA_ID && (doc.version === 2 || doc.version === 3) && Array.isArray(doc.inputs)) {
-    return doc as WorkflowV2;
+    return settleVersion(doc as WorkflowV2);
   }
   const id = doc.id || "wf-migrated";
   const inputs: WorkflowInput[] = [];
   const steps = (doc.steps ?? []).map((step, index) => migrateStep(step, index, id, inputs));
-  return {
+  return settleVersion({
     schema: WORKFLOW_SCHEMA_ID,
     version: 2,
     id,
@@ -415,7 +425,25 @@ export function migrate(raw: unknown): WorkflowV2 {
     steps,
     createdAt: doc.createdAt ?? Date.now(),
     heal: doc.heal,
-  };
+  });
+}
+
+/** Version 3 only when the document uses data steps or files and dates. A plain version 2 document is the same object. */
+function settleVersion(doc: WorkflowV2): WorkflowV2 {
+  const data = documentUsesDataSteps(doc);
+  const files = usesFilesDates(doc);
+  if (!data && !files) {
+    if (doc.version === 2 && doc.filesDates == null) return doc;
+    const next: WorkflowV2 = { ...doc, version: 2 };
+    delete next.filesDates;
+    return next;
+  }
+  const flagOk = files ? doc.filesDates === 1 : doc.filesDates == null;
+  if (doc.version === 3 && flagOk) return doc;
+  const next: WorkflowV2 = { ...doc, version: 3 };
+  if (files) next.filesDates = 1;
+  else delete next.filesDates;
+  return next;
 }
 
 function migrateStep(step: LooseStep, index: number, wf: string, inputs: WorkflowInput[]): WorkflowStep {

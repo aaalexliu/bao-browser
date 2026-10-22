@@ -71,6 +71,8 @@ export interface WorkflowOutcome {
   /** Local-zone clock, or "No timeout". */
   deadline?: string | null;
   resume_token?: string;
+  /** Declared workflow outputs filled by this run. */
+  outputs?: import("../v1/data-steps").OutputValue[];
 }
 
 export interface RemoteAuth {
@@ -158,6 +160,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   importLink: string;
   source: string;
   lastGreen: string;
+  outputs?: WorkflowV2["outputs"];
 }> {
   const found = await locateWorkflow(library, id, auth);
   const workflow = stripSecretDefaults(found.document);
@@ -168,6 +171,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
     importLink: `bao://import/${id}`,
     source: originLabel(found),
     lastGreen: greenLabel(originLabel(found), found.lastGreenAt, localGreenAt(library, id)),
+    ...(workflow.outputs ? { outputs: workflow.outputs } : {}),
   };
 }
 
@@ -583,6 +587,7 @@ function saveWorkflowRun(
     modelCalls: run.modelCalls,
     trail: run.trail,
     inputs: Object.fromEntries(Object.entries(publicInputs(workflow, inputs)).map(([key, value]) => [key, String(value)])),
+    ...(run.outputs ? { outputs: run.outputs } : {}),
     envelope: outcome.status && outcome.status !== "ok" ? {
       status: outcome.status,
       run_id: outcome.run_id || run.runId,
@@ -642,6 +647,7 @@ function baseOutcome(
     receipts,
     stops: outcome === "ok" ? [] : [{ stepId, outcome, reason }],
     link: linkFor(workflow.id),
+    ...(run?.outputs ? { outputs: run.outputs } : {}),
   };
 }
 

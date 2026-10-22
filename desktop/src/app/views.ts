@@ -10,6 +10,7 @@ import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } f
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
 import { stepsNeedingReview, type StepReview } from "../v1/triage";
 import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
+import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
@@ -68,6 +69,7 @@ export interface RunSummary {
     deadline?: string | null;
     resume_token?: string;
   };
+  outputs?: OutputValue[];
 }
 
 export interface FailureView {
@@ -126,6 +128,8 @@ export interface ShellState {
   pendingImport?: ImportPending | null;
   teach?: TeachView;
   guide?: GuideView | null;
+  /** HTML for the capture column picker. Empty when nothing is picked. */
+  extractPicker?: string;
 }
 
 export interface CommandItem {
@@ -487,6 +491,7 @@ export function runViewer(
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
     </header>
+    ${outputsHtml(run.id, run.outputs)}
     ${video}
     ${envelopePane(run.envelope)}
     ${handoffPane(run.trail)}
@@ -696,11 +701,13 @@ export function runField(input: TokenInput, previous?: string, now = new Date())
     const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
     return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
   }
+  if (input.type === "file" && input.fromOutput) {
+    const stepName = input.boundStep || input.fromOutput;
+    return `<label class="drop" data-from-output="${esc(input.fromOutput)}">${label} <span>From this run: ${esc(stepName)}</span></label>`;
+  }
   if (input.type === "file") {
-    const hint = input.fromOutput
-      ? `Uses the ${input.fromOutput} download from this run.`
-      : previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
-    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""} ${input.fromOutput ? "data-from-output=\"" + esc(input.fromOutput) + "\"" : ""}> <span>${esc(hint)}</span></label>`;
+    const hint = previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
+    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""}> <span>${esc(hint)}</span></label>`;
   }
   if (input.type === "date") {
     const expr = previous || input.relative || input.default || "today";
@@ -1649,6 +1656,7 @@ export function recordBar(state: { recording?: boolean; capturePaused?: boolean;
     <span id="rec-timer" data-since="${state.recordingSince || 0}">0:00</span>
     <input id="rec-note" class="note-field" aria-label="Note" placeholder="Note">
     <button type="button" id="rec-note-add">Note</button>
+    <button type="button" id="rec-extract">Pick list</button>
     <button type="button" id="rec-pause">${paused}</button>
     <button type="button" id="rec-mark">Mark step</button>
     <button type="button" id="rec-stop">Stop</button>
