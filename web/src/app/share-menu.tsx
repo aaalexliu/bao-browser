@@ -2,6 +2,31 @@
 
 import { useState } from "react";
 
+export function CopyMenu({ link, importLink }: { link: string; importLink: string }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState("");
+
+  function copy(value: string, which: string): void {
+    void navigator.clipboard?.writeText(value).then(() => setCopied(which)).catch(() => setCopied(""));
+  }
+
+  return (
+    <div className="share" data-testid="share-menu">
+      <button type="button" data-testid="share-open" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}>
+        Share
+      </button>
+      <div className="share-panel" data-testid="share-panel" role="menu" hidden={!open}>
+        <button type="button" role="menuitem" data-testid="deeplink" data-copy={link} onClick={() => copy(link, "link")}>
+          {copied === "link" ? "Copied" : "Copy link"}
+        </button>
+        <button type="button" role="menuitem" data-testid="import-link" data-copy={importLink} onClick={() => copy(importLink, "import")}>
+          {copied === "import" ? "Copied" : "Copy import link"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ShareMenu({
   link,
   publishHref,
