@@ -6,7 +6,7 @@ The pictures in this file are the Bao window on the built-in fixture (`http://12
 
 Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
 
-Build branch `cursor/mac-clean-window-file-e55f`. It is based on `v1/desktop` at `18d938e`, which has the desktop window, the floating capture bar, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, and the marketplace web app. This branch adds the clean product window and the file step. Build both package scripts from this checkout.
+Build commit `0a3276f` on `v1/desktop`. That commit has the desktop window, the floating capture bar, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, the marketplace web app, the clean product window, and the file step. Build both package scripts from this checkout.
 
 The signed app is still two scripts, in this order, from the repo root:
 
@@ -45,10 +45,10 @@ brew install node@24
 Install Chrome from [https://www.google.com/chrome/](https://www.google.com/chrome/) if it is not already in `/Applications`.
 
 ```sh
-ls -d "/Applications/Google Chrome.app"
+/bin/ls -d "/Applications/Google Chrome.app"
 ```
 
-**What you should see:** the command prints `/Applications/Google Chrome.app`.
+**What you should see:** the command prints `/Applications/Google Chrome.app`. Use `/bin/ls`. A shell `ls` can be an alias, and a missing alias target prints nothing even when Chrome is installed.
 
 Capture and replay open the Chromium that `package-app.sh` copies into `Bao.app` (`Contents/Resources/Chromium.app`, Playwright's Chrome for Testing). Importing a site sign-in is the step that reads the installed Google Chrome. The product window and the capture window leave that daily profile alone.
 
@@ -111,15 +111,17 @@ There is no notarization step.
 
 ### This checkout
 
+This procedure was checked at `0a3276f` on `v1/desktop`.
+
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
-git fetch origin cursor/mac-clean-window-file-e55f
-git checkout cursor/mac-clean-window-file-e55f
-git branch --show-current
+git fetch origin v1/desktop
+git checkout 0a3276f
+git rev-parse --short HEAD
 ```
 
-**What you should see:** `git branch --show-current` prints `cursor/mac-clean-window-file-e55f`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
+**What you should see:** `git rev-parse --short HEAD` prints `0a3276f`. Git may say detached HEAD. That is the commit. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
 
 ## Build
 
@@ -169,7 +171,7 @@ desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 
 The entry point sets `BAO_HEADED=1` when it is unset, points `BAO_BROWSER` at `Contents/Resources/Chromium.app`, and points `BAO_OS_HELPER` at the nested `BaoOSHelper.app`. Leave this Terminal process running. Do not `open` the app again while it is running. LaunchServices would start a second instance on the default home.
 
-**What you should see:** a window opens on `http://127.0.0.1:4807`. It is app mode: no address bar, no tab strip, and no Chrome for Testing infobar (`--disable-infobars`). The page does not ask to show notifications. **You need to act** is a macOS notification from the helper (`osascript`) and the Bao Capture dock badge. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail, and before the permission card was limited to macOS. The build includes both screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
+**What you should see:** a window opens on `http://127.0.0.1:4807`. It is app mode: no address bar, no tab strip, and no Chrome for Testing infobar (`--disable-infobars`). The page does not ask to show notifications. **You need to act** is the red title on the Bao Capture panel, and `!` on that panel's Dock tile. The capture bar sets both, then runs `/usr/bin/osascript` to ask Notification Center for a banner. BaoOSHelper does not post that banner. If the bar is not running, the server runs the same `osascript`. On the Mac where this was checked, Notification Center did not draw the banner. Look for the panel title and the Dock badge. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail, and before the permission card was limited to macOS. The build includes both screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
 
 ![Two permissions on the Mac. Accessibility and Screen Recording both say not granted yet. The footer says helper off.](mac-test/01-onboarding.png)
 
@@ -207,7 +209,7 @@ Click **Capture** in the sidebar.
 
 ![Capture screen with Start URL, Start capture, and Stop and save.](mac-test/03-capture.png)
 
-1. Press **Start capture**. A second window opens on the fixture. That window is the bundled Chromium. The floating Bao Capture panel lists each step as it lands. Pause drops further UI events. Add note and Add check append a note or a check. Discard throws the take away. Control-option-command R starts, period stops, and P pauses. A password field is blurred before a screenshot is taken. A login or confirm wait posts a macOS notification through the helper and sets the Bao Capture dock badge to `!`.
+1. Press **Start capture**. A second window opens on the fixture. That window is the bundled Chromium. The floating Bao Capture panel lists each step as it lands. Pause drops further UI events. Add note and Add check append a note or a check. Discard throws the take away. Control-option-command R starts, period stops, and P pauses. A password field is blurred before a screenshot is taken. A login or confirm wait shows **You need to act** in red on the Bao Capture panel and sets that panel's Dock badge to `!`. The panel asks Notification Center for a banner with `/usr/bin/osascript`. That request is the capture bar, not BaoOSHelper.
 2. Type `ada` in Username. Type a made-up password in Password. Click **Log in**. The fixture shows `Welcome` plus the username.
 3. Choose a throwaway file in the file input, for example a text file you created under `/tmp` for this test. Capture intercepts the chooser, records a `file` input, and forwards the chosen path so the page shows the file name.
 4. Drag a throwaway file from Finder onto **Drop a file here** by hand. A drop that reaches the page, with files on `dataTransfer`, is recorded as a `file` input.
@@ -215,7 +217,7 @@ Click **Capture** in the sidebar.
 
 Alex drags that Finder file by hand. The harness proof uses the chooser path. A scripted pointer move does not start an `NSDraggingSession`, so it is not the proof that a file was recorded.
 
-**What you should see:** Library gains a card for the capture. Open the workflow. It has a `secret` input and a `file` input. The secret string is absent. The absolute path of the file is absent. The trail view says password values are not stored. The saved `startUrl` is the page URL at stop time. The fixture's Log in button uses `pushState` to `/secure`, and this server serves the fixture HTML there too. On any other site, stop on the page replay should open.
+**What you should see:** Library gains a card for the capture. Open the workflow. It has a `secret` input. The chooser and the drag each add a `file` input. A capture that stopped after Log in has the secret and the click, and no file input. The secret string is absent. The absolute path of the file is absent. The trail view says password values are not stored. The saved `startUrl` is the page URL at stop time. The fixture's Log in button uses `pushState` to `/secure`, and this server serves the fixture HTML there too. On any other site, stop on the page replay should open.
 
 ## Replay twice, with inputs
 
@@ -231,6 +233,8 @@ Press **Run**. Fill a different username and a different file than the capture. 
 
 ### Login act bar
 
+The fixture capture above records Type, Type secret, and Click Log in. It does not record a step whose action is `login`, so Library after only that capture does not show this bar. This section is a different workflow.
+
 A step whose action is `login` waits for you. Replay does not type the password and does not press Log in. The bar sits above the page you were on.
 
 **What you should see:** a bar labeled `You need to act`, the workflow name, and the instruction `Sign in on the Bao Chrome window. bao is not recording keystrokes in password fields.` Buttons are **I'm signed in, continue**, **Show window**, and **Cancel run**. The sidebar shows a waiting count. Sign in on the fixture window with `ada` and a made-up password, then press **I'm signed in, continue**. The picture is that bar on the run form.
@@ -243,7 +247,9 @@ A confirm step uses the same bar with `Press Apply in the Bao Chrome window. bao
 
 Settings → When a step misses defaults to **Auto self-heal**. With the Cursor CLI logged in (`agent login`), the footer reads **cursor account** and a miss calls `agent --print` on your Cursor plan. bao does not ask you to paste an API key. `BAO_HEAL_CURSOR=1` is the file handoff (`heal-request.json` / `heal-response.json`) when the CLI is missing or logged out. `BAO_HEAL_CURSOR_ACCOUNT=0` skips the CLI. `BAO_HEAL_FIXTURE=1` is a local stand-in whose model name is `bao-heal-fixture`. The pictures use that stand-in. It is the way to see a heal review on a machine with no Cursor login. It is not the billed path.
 
-**What you should see:** Settings shows When a step misses on Auto self-heal, Model **fixture model** while `BAO_HEAL_FIXTURE=1` is set, and the quiet paragraph names the Cursor CLI. On your Mac, after `agent login` and with the fixture flag unset, Model reads **cursor account**. With neither a login nor a key nor `BAO_HEAL_CURSOR`, Model reads **no model** and replay stops on the failed step.
+The fixture capture in Record does not miss, so Heals stays empty after those two replays. A row appears when a step fails. The pictures are that failure with `BAO_HEAL_FIXTURE=1`.
+
+**What you should see:** Settings shows When a step misses on Auto self-heal, Model **fixture model** while `BAO_HEAL_FIXTURE=1` is set, and the quiet paragraph names the Cursor CLI. On your Mac, after `agent login` and with the fixture flag unset, Model reads **cursor account**. With neither a login nor a key nor `BAO_HEAL_CURSOR`, Model reads **no model** and replay stops on the failed step. The launch block above does not set `BAO_HEAL_FIXTURE`.
 
 ![Settings with Auto self-heal, the Cursor CLI sentence, and Model fixture model.](mac-test/07-settings.png)
 
@@ -261,4 +267,4 @@ Skip this until `BaoOSHelper` reports both permissions true and an accessibility
 
 ## Done
 
-You have Node 24 or newer, Google Chrome in `/Applications`, the command line tools, cargo in `~/dev/bao-mac-toolchain`, a login-keychain identity named `bao dev signing`, Accessibility and Screen Recording for the nested `BaoOSHelper.app`, a fixture capture with a secret input and a file input, two replays with different inputs, the login act bar, and a heal review. The secret string and the file path are absent from the saved workflow.
+You have Node 24 or newer, Google Chrome in `/Applications`, the command line tools, cargo in `~/dev/bao-mac-toolchain`, a login-keychain identity named `bao dev signing`, Accessibility and Screen Recording for the nested `BaoOSHelper.app`, a fixture capture with a secret input, a file input after the chooser and the Finder drag, and two replays with different inputs. The login act bar is a workflow whose step action is `login`. A heal review appears when a step misses. The secret string and the file path are absent from the saved workflow.
