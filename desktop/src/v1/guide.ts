@@ -3,6 +3,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { prepareGuideCrop, type GuideCropKind } from "./guide-crop";
 import { isElementCrop } from "./redacted-png";
 import { looksLikePath, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
@@ -34,12 +35,12 @@ export function guideCrops(root: string, doc: WorkflowV2): Map<string, Buffer> {
   return crops;
 }
 
-/** Self-contained HTML. `crops` are already-redacted element PNGs. */
+/** Self-contained HTML. Typed crops are rewritten so recorded values stay out. */
 export function guideHtml(doc: WorkflowV2, crops: Map<string, Buffer>): string {
-  const secrets = secretStrings(doc);
-  const title = esc(tidy(scrubText(doc.name || "", secrets)) || "Workflow");
-  const inputs = inputList(doc, secrets);
-  const steps = doc.steps.map((step) => stepBlock(doc, step, crops.get(step.id), secrets)).join("");
+  const hidden = hiddenStrings(doc);
+  const title = esc(tidy(scrubText(doc.name || "", hidden)) || "Workflow");
+  const inputs = inputList(doc, hidden);
+  const steps = guideSteps(doc).map((entry) => stepBlock(doc, entry.step, crops.get(entry.cropId), hidden)).join("");
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -114,13 +115,17 @@ export function guideHtml(doc: WorkflowV2, crops: Map<string, Buffer>): string {
     font-size: 12px;
     font-weight: 600;
   }
-  li.step img {
-    display: block;
-    width: auto;
-    max-width: 100%;
-    height: auto;
+  li.step .shot {
     margin-top: 10px;
     border-radius: 8px;
+    overflow: hidden;
+    max-width: 100%;
+    line-height: 0;
+  }
+  li.step .shot img {
+    display: block;
+    max-width: 100%;
+    height: auto;
     background: var(--bg);
   }
   li.step p { margin: 10px 0 0; }
@@ -138,9 +143,56 @@ export function guideHtml(doc: WorkflowV2, crops: Map<string, Buffer>): string {
 `;
 }
 
-function stepBlock(doc: WorkflowV2, step: WorkflowStep, png: Buffer | undefined, secrets: string[]): string {
-  const img = png ? `<img alt="" src="data:image/png;base64,${png.toString("base64")}">` : "";
-  return `<li class="step">${img}<p>${esc(instruction(doc, step, secrets))}</p></li>`;
+function stepBlock(doc: WorkflowV2, step: WorkflowStep, png: Buffer | undefined, hidden: string[]): string {
+  const shot = png ? prepareGuideCrop(png, cropKind(doc, step)) : undefined;
+  const img = shot ? `<span class="shot"><img alt="" src="data:image/png;base64,${shot.toString("base64")}"></span>` : "";
+  return `<li class="step">${img}<p>${esc(instruction(doc, step, hidden))}</p></li>`;
+}
+
+/** A focus click and the type on that same control are one guide step. */
+function guideSteps(doc: WorkflowV2): { step: WorkflowStep; cropId: string }[] {
+  const out: { step: WorkflowStep; cropId: string }[] = [];
+  const steps = doc.steps;
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const next = steps[i + 1];
+    if (next && focusInto(doc, step, next)) {
+      out.push({ step: next, cropId: next.id });
+      i += 1;
+      continue;
+    }
+    out.push({ step, cropId: step.id });
+  }
+  return out;
+}
+
+function focusInto(doc: WorkflowV2, click: WorkflowStep, typed: WorkflowStep): boolean {
+  if (click.action !== "click") return false;
+  if (typed.action !== "type" && typed.action !== "digits") return false;
+  if (!isFieldTarget(doc, click)) return false;
+  return sameControl(click, typed);
+}
+
+function sameControl(click: WorkflowStep, typed: WorkflowStep): boolean {
+  const left = click.identity;
+  const right = typed.identity;
+  if (left && right) {
+    if (left.id && left.id === right.id) return true;
+    if (left.nameAttr && left.nameAttr === right.nameAttr) return true;
+    if (left.testId && left.testId === right.testId) return true;
+  }
+  const phrase = clickPhrase(click).toLowerCase();
+  const names = [typed.input, typed.identity?.id, typed.identity?.nameAttr, typed.identity?.name]
+    .filter((name): name is string => Boolean(name))
+    .map((name) => name.toLowerCase());
+  return names.includes(phrase);
+}
+
+function cropKind(doc: WorkflowV2, step: WorkflowStep): GuideCropKind {
+  const input = doc.inputs.find((item) => item.name === step.input);
+  if (step.sensitive || step.action === "login" || input?.type === "secret") return "secret";
+  if (step.action === "type" || step.action === "digits") return "type";
+  return "plain";
 }
 
 function inputList(doc: WorkflowV2, secrets: string[]): string {
@@ -159,38 +211,91 @@ function inputList(doc: WorkflowV2, secrets: string[]): string {
   return `<h2>Inputs</h2><ul class="inputs">${rows.join("")}</ul>`;
 }
 
-function instruction(doc: WorkflowV2, step: WorkflowStep, secrets: string[]): string {
+function instruction(doc: WorkflowV2, step: WorkflowStep, hidden: string[]): string {
   const input = doc.inputs.find((item) => item.name === step.input);
   const name = input && /^[A-Za-z][A-Za-z0-9_]*$/.test(input.name) ? input.name : "";
   const token = name ? `{{${name}}}` : "";
   const secretish = step.sensitive === true || step.action === "login" || input?.type === "secret";
   let text: string;
-  if (secretish) text = token ? `Type ${token}` : "Sign in";
+  if ((step.action === "type" || step.action === "digits") && (secretish || token)) {
+    const where = fieldLabel(step, hidden);
+    text = token ? (where ? `Type ${token} in ${where}` : `Type ${token}`) : "Sign in";
+  } else if (secretish) text = "Sign in";
   else if (step.action === "upload" || step.action === "drop") text = token ? `Add ${token}` : "Add a file";
-  else if ((step.action === "type" || step.action === "digits") && token) {
-    text = (step.label || "").includes(token) ? step.label : `Type ${token}`;
-  } else text = step.label || step.action;
+  else if (step.action === "click") text = clickLine(doc, step, hidden);
+  else text = step.label || step.action;
   const literal = step.value && !step.value.includes("{{") ? step.value : "";
   if (literal) text = text.split(literal).join(token);
-  const cleaned = tidy(scrubText(text, secrets));
+  const cleaned = tidy(scrubText(text, hidden));
   return cleaned || (token ? `Type ${token}` : "Step");
 }
 
-function secretStrings(doc: WorkflowV2): string[] {
+function clickLine(doc: WorkflowV2, step: WorkflowStep, hidden: string[]): string {
+  const phrase = tidy(scrubText(clickPhrase(step), hidden));
+  if (isFieldTarget(doc, step)) {
+    const label = pretty(phrase.replace(/^the\s+/i, "").replace(/\s+field$/i, ""));
+    return label ? `Click the ${label} field` : "Click the field";
+  }
+  const label = pretty(phrase);
+  return label ? `Click ${label}` : "Click";
+}
+
+function clickPhrase(step: WorkflowStep): string {
+  const label = (step.label || "").trim();
+  const quoted = label.match(/^Click\s+"(.+)"$/i);
+  if (quoted?.[1]) return quoted[1];
+  const plain = label.match(/^Click\s+(.+)$/i);
+  if (plain?.[1]) return plain[1];
+  return step.identity?.text || step.identity?.name || step.identity?.label || "";
+}
+
+function isFieldTarget(doc: WorkflowV2, step: WorkflowStep): boolean {
+  const role = (step.identity?.role || "").toLowerCase();
+  const tag = (step.identity?.tag || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (/password|textbox|searchbox|combobox/.test(role) || role === "input") return true;
+  const phrase = clickPhrase(step).toLowerCase();
+  if (!phrase || phrase.includes(" ")) return false;
+  return doc.inputs.some((input) => input.type !== "choice" && input.name.toLowerCase() === phrase);
+}
+
+function fieldLabel(step: WorkflowStep, hidden: string[]): string {
+  const identity = step.identity;
+  const candidates = [identity?.label, identity?.name, identity?.nameAttr, step.input, identity?.id];
+  for (const candidate of candidates) {
+    const clean = (candidate || "").replace(/\s+/g, " ").trim();
+    if (!clean || clean.includes("{{")) continue;
+    if (hidden.some((value) => value && clean.includes(value))) continue;
+    if (looksLikePath(clean)) continue;
+    return pretty(clean);
+  }
+  return "";
+}
+
+function pretty(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/[A-Z]/.test(trimmed) || /\s/.test(trimmed)) return trimmed;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function hiddenStrings(doc: WorkflowV2): string[] {
   const found: string[] = [];
   const keep = (value: string | undefined) => {
     if (!value || value.length < 4 || value.includes("{{")) return;
     found.push(value);
   };
   for (const input of doc.inputs) {
-    if (input.type === "secret") keep(input.default);
+    if (input.type === "secret" || input.type === "text" || input.type === "number") keep(input.default);
+    if (input.type !== "secret") keep(input.example);
     if (input.default && looksLikePath(input.default)) keep(input.default);
   }
   for (const step of doc.steps) {
     const input = doc.inputs.find((item) => item.name === step.input);
-    if (step.sensitive || step.action === "login" || input?.type === "secret" || (step.value && looksLikePath(step.value))) {
-      keep(step.value);
-    }
+    const value = step.value;
+    if (!value || value.includes("{{")) continue;
+    if (step.sensitive || step.action === "login" || input?.type === "secret" || looksLikePath(value)) keep(value);
+    else if (step.action === "type" || step.action === "digits") keep(value);
   }
   return [...new Set(found)].sort((a, b) => b.length - a.length);
 }

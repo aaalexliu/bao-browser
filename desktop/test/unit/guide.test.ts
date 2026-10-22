@@ -8,6 +8,7 @@ import test from "node:test";
 import { deflateSync } from "node:zlib";
 import { startApp } from "../../src/app/server";
 import { guideCrops, guideHtml } from "../../src/v1/guide";
+import { readGuidePng } from "../../src/v1/guide-crop";
 import { redactedPng } from "../../src/v1/redacted-png";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { shotFile, workflowShotName } from "../../src/v1/shots";
@@ -109,6 +110,9 @@ test("an exported guide has placeholders and crops and no secret or absolute pat
   assert.match(html, /\{\{note\}\}/);
   assert.match(html, /\{\{upload\}\}/);
   assert.match(html, /Log in first \/ Already signed in/);
+  assert.match(html, /Type \{\{username\}\} in Username/);
+  assert.match(html, /Type \{\{password\}\} in Password/);
+  assert.match(html, /Type \{\{note\}\} in Note/);
   assert.match(html, /Click Apply/);
   assert.match(html, /data:image\/png;base64,/);
   assert.equal(html.split("data:image/png;base64,").length - 1, 3);
@@ -116,6 +120,153 @@ test("an exported guide has placeholders and crops and no secret or absolute pat
   assert.match(html, /prefers-color-scheme: dark/);
   assert.doesNotMatch(html, /<script/i);
 });
+
+test("a focus click folds into the type step and recorded values stay out of the export", () => {
+  const recorded = ["demo", "alpha note"];
+  const doc: WorkflowV2 = {
+    schema: "bao.workflow/v2",
+    version: 2,
+    id: "wf",
+    name: "Sign in and apply",
+    startUrl: "http://127.0.0.1:9/fixture",
+    createdAt: 1,
+    inputs: [
+      { name: "username", type: "text", default: "demo" },
+      { name: "password", type: "secret", default: secret },
+      { name: "note", type: "text", default: "alpha note" },
+    ],
+    steps: [
+      step({ id: "c-user", action: "click", label: "Click username", identity: field("username") }, 0),
+      step({ id: "username", action: "type", label: "Type demo", input: "username", value: "demo", identity: field("username") }, 1),
+      step({ id: "c-pass", action: "click", label: "Click password", identity: field("password") }, 2),
+      step({ id: "password", action: "type", label: "Type secret", input: "password", value: secret, sensitive: true, identity: field("password") }, 3),
+      step({ id: "login", action: "click", label: "Click Log in", identity: { surface: "dom", role: "button", tag: "button", text: "Log in", path: [] } }, 4),
+      step({ id: "c-note", action: "click", label: "Click note", identity: field("note") }, 5),
+      step({ id: "note", action: "type", label: "Type alpha note", input: "note", value: "alpha note", identity: field("note") }, 6),
+      step({ id: "apply", action: "click", label: "Click Apply", identity: { surface: "dom", role: "button", tag: "button", text: "Apply", path: [] } }, 7),
+      step({ id: "only-note", action: "click", label: "Click note", identity: field("note") }, 8),
+    ],
+  };
+  const typed = textCrop(recorded[0]);
+  const secretShot = maskCrop();
+  const plain = png(40, 28, [255, 255, 255]);
+  assert.equal(typed.includes(Buffer.from("demo")), true);
+  assert.equal(typed.includes(Buffer.from("alpha note")), true);
+  const html = guideHtml(doc, new Map([
+    ["username", typed],
+    ["password", secretShot],
+    ["note", textCrop("alpha note")],
+    ["apply", plain],
+    ["only-note", plain],
+  ]));
+  assert.equal((html.match(/<li class="step"/g) || []).length, 6);
+  assert.match(html, /Type \{\{username\}\} in Username/);
+  assert.match(html, /Type \{\{password\}\} in Password/);
+  assert.match(html, /Click Log in/);
+  assert.match(html, /Type \{\{note\}\} in Note/);
+  assert.match(html, /Click Apply/);
+  assert.match(html, /Click the Note field/);
+  assert.equal(html.includes("Click username"), false);
+  assert.equal(html.includes("Click password"), false);
+  assert.equal(html.includes("Click note"), false);
+  for (const value of [...recorded, secret, "demo-pass"]) assert.equal(html.includes(value), false, value);
+  const images = [...html.matchAll(/data:image\/png;base64,([^"]+)/g)].map((match) => Buffer.from(match[1], "base64"));
+  assert.equal(images.length, 5);
+  const username = readGuidePng(images[0]);
+  assert.ok(username);
+  assert.equal(countColor(username, (r, g, b) => g > 200 && r < 40 && b < 40), 0);
+  assert.ok(countColor(username, (r, g, b) => r > 180 && r > g + 40 && b < 100) > 20);
+  const password = readGuidePng(images[1]);
+  assert.ok(password);
+  const edge = 20 * password.width * 4;
+  assert.ok(password.rgba[edge] > 200, "password mask overflows the card");
+  assert.equal(countColor(password, (r, g, b) => r < 20 && g < 20 && b < 20), 0);
+  assert.ok(countColor(password, (r, g, b) => r > 90 && r < 140 && g > 90 && g < 140) > 4);
+  assert.ok(countColor(password, (r, g, b) => r > 180 && r > g + 40 && b < 100) > 20);
+  const apply = readGuidePng(images[3]);
+  assert.ok(apply);
+  assert.ok(countColor(apply, (r, g, b) => r > 180 && r > g + 40 && b < 100) > 20);
+});
+
+function field(name: string): WorkflowStep["identity"] {
+  return { surface: "dom", role: "input", tag: "input", id: name, nameAttr: name, path: [] };
+}
+
+function textCrop(value: string): Buffer {
+  const image = png(48, 36, [255, 255, 255]);
+  const painted = paintRect(image, 8, 22, 32, 8, [0, 255, 0]);
+  return withText(painted, `${value} alpha note`);
+}
+
+function maskCrop(): Buffer {
+  const image = png(48, 36, [245, 245, 247]);
+  return paintRect(image, 0, 16, 48, 14, [0, 0, 0]);
+}
+
+function paintRect(image: Buffer, x: number, y: number, w: number, h: number, rgb: [number, number, number]): Buffer {
+  const decoded = readGuidePng(image);
+  if (!decoded) throw new Error("png");
+  for (let row = y; row < y + h; row++) {
+    for (let col = x; col < x + w; col++) {
+      const i = (row * decoded.width + col) * 4;
+      decoded.rgba[i] = rgb[0];
+      decoded.rgba[i + 1] = rgb[1];
+      decoded.rgba[i + 2] = rgb[2];
+    }
+  }
+  return encodeRgb(decoded.width, decoded.height, decoded.rgba);
+}
+
+function withText(image: Buffer, text: string): Buffer {
+  const iend = image.lastIndexOf(Buffer.from("IEND"));
+  const chunk = textChunk(text);
+  return Buffer.concat([image.subarray(0, iend - 4), chunk, image.subarray(iend - 4)]);
+}
+
+function textChunk(text: string): Buffer {
+  const data = Buffer.concat([Buffer.from("Comment"), Buffer.from([0]), Buffer.from(text)]);
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from("tEXt"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+}
+
+function encodeRgb(width: number, height: number, rgba: Uint8Array): Buffer {
+  const stride = width * 3;
+  const raw = Buffer.alloc(height * (stride + 1));
+  for (let y = 0; y < height; y++) {
+    const row = y * (stride + 1);
+    for (let x = 0; x < width; x++) {
+      const src = (y * width + x) * 4;
+      const dest = row + 1 + x * 3;
+      raw[dest] = rgba[src];
+      raw[dest + 1] = rgba[src + 1];
+      raw[dest + 2] = rgba[src + 2];
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  return Buffer.concat([
+    sig,
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function countColor(image: { width: number; height: number; rgba: Uint8Array }, match: (r: number, g: number, b: number) => boolean): number {
+  let count = 0;
+  for (let i = 0; i < image.width * image.height * 4; i += 4) {
+    if (match(image.rgba[i], image.rgba[i + 1], image.rgba[i + 2])) count += 1;
+  }
+  return count;
+}
 
 test("guide crops keep a redacted secret step and skip a full-page stripe", () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-guide-"));
