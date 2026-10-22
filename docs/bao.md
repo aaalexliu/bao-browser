@@ -326,7 +326,7 @@ npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/sha
 npm run bao -- sync --home ~/.local/share/bao
 ```
 
-`bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. Back up daily or Back up weekly, beside that copy, writes `backups/scheduled-<time>/` when the interval is due. Settings → Sync shows the backup as a local phrase from the shared formatter, such as “Last night, 2:00 AM EDT”. Reveal in Finder opens that folder. The path stays on the tooltip. A newer remote version wins. The copy you had is written to `conflicts/<id>.json` and shown under Settings → Sync. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
+`bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. Back up daily or Back up weekly, beside that copy, writes `backups/scheduled-<time>/` when the interval is due. Settings → Sync shows the backup as a local phrase from the shared formatter, such as “Last night, 2:00 AM EDT”. Reveal in Finder opens that folder. The path stays on the tooltip. Each cloud version records the device and the parent version. A push whose parent is not the cloud's latest is stored as a conflict draft and does not replace the head. The Versions panel names both Macs, shows the steps side by side, and offers Keep mine, Keep theirs, and Keep both as a copy. The copy you had is also written to `conflicts/<id>.json`. An edit made while the Mac is offline waits in the outbox and pushes the next time sync reconnects. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
 
 The web Devices page lists each paired Mac with the time it last synced, how many workflows that sync held, and Unpair. Settings → Sync shows the paired devices, item counts per site category, and a toggle for workflows, run history, heal records, and settings. While a category is catching up it reads “N on this device of M in the cloud.” An offline Mac finishes that catch-up the next time sync reaches the account. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). The Mac permission card stays on Library, and only while a grant is missing. It is not repeated here. Secrets are inputs of type `secret` with no default. Typed secret values, cookie headers, and screenshot bytes are dropped before a push. A payload that still contains them is rejected.
 
@@ -336,7 +336,7 @@ On the workflow page, mark which inputs are asked on import. Share copies the `b
 
 Secret and file answers are not stored. A path is asked with the same file field capture records, and the path is not shown. An email typed as an answer is dropped. Other answers become defaults on the recipient's private copy only. A non-personal sample is shown as an example.
 
-Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered.
+Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered. `bao://run/<id>?inputs=<json>` opens the run form with those non-secret inputs filled in. A secret key in that JSON is refused, and a secret is asked again on the device.
 
 ```bash
 npm run bao -- open bao://workflow/<id>
@@ -367,10 +367,10 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 | --- | --- |
 | `search_workflows` | At most 5 ranked hits from this Mac and the registry. Each hit includes its input schema. |
 | `describe_workflow` | The steps, the input schema, and a `bao://workflow/<id>` link. Secret defaults are omitted. |
-| `run_workflow` | `ok`, `needs_human`, `needs_signin`, or `failed` with a reason, plus a one-time resume token. `rerun: true` reuses past non-secret inputs. |
+| `run_workflow` | `ok`, `needs_human`, `needs_signin`, or `failed`. A human step returns immediately with `status`, `run_id`, `step`, `reason`, `ask`, `deadline`, and `resume_token`. Pass that token to continue the same run. `cancel: true` stops it and applies nothing. `rerun: true` reuses past non-secret inputs. |
 | `get_run` | A stored outcome. |
 
-A missing secret or file, or a heal that is waiting for approval, is `needs_human` and does not leave the device. A failed sign-in step is `needs_signin`. Pass the resume token with the missing input to run again. The token is deleted when it is used.
+A missing secret or file, or a heal that is waiting for approval, is `needs_human` and does not leave the device. A sign-in ask is `needs_signin`. A confirm ask is `needs_human`. Neither blocks the tool call, and neither is a bare string. Pass the resume token after the person acts to continue that same run. `cancel: true` with the token stops the run and leaves the page unpressed. The token is deleted when it is used. While the person has the page, step screenshots and trail capture pause. The trail records handoff start and end with the local zone.
 
 A scripted client searched for "sign in", described `agent-sign-in`, and ran it as grace. The tool list stayed these four names. Search returned four hits, under the cap of five, and each hit included its input schema. The run result was:
 

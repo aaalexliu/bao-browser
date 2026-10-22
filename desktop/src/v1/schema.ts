@@ -104,10 +104,15 @@ export interface ReadBack {
   timeoutMs: number;
 }
 
-/** Selects one demonstration where two teachings of the same task diverged. */
+/**
+ * Run this step only on one demonstration, or only when an interstitial is on the page.
+ * `input` and `value` select a merged take.
+ * `present` is visible text. Consecutive steps that share it are decided once, on the first of them.
+ */
 export interface StepWhen {
-  input: string;
-  value: string;
+  input?: string;
+  value?: string;
+  present?: string;
 }
 
 /**
@@ -177,7 +182,7 @@ export interface WorkflowStep {
   /** Re-read after the action. The run appends a hashed receipt. */
   readBack?: ReadBack;
   /**
-   * Run this step only when the choice input equals `value`.
+   * Run this step only for one merged take, or only when `present` is on the page.
    * Steps without `when` run on every demonstration.
    */
   when?: StepWhen;
@@ -274,9 +279,15 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.action === "verify" && !step.expect && !step.postcondition) errors.push(`verify ${step.id}`);
     if (step.heal && step.heal !== "auto" && step.heal !== "ask" && step.heal !== "never") errors.push(`heal ${step.id}`);
     if (step.when) {
-      const input = doc.inputs.find((item) => item.name === step.when?.input);
-      if (!input || input.type !== "choice") errors.push(`when ${step.id}`);
-      else if (!input.choices?.includes(step.when.value)) errors.push(`when value ${step.id}`);
+      const present = step.when.present?.trim();
+      if (present) {
+        if (step.when.input || step.when.value) errors.push(`when ${step.id}`);
+      } else {
+        const input = doc.inputs.find((item) => item.name === step.when?.input);
+        const value = step.when.value;
+        if (!input || input.type !== "choice" || !value) errors.push(`when ${step.id}`);
+        else if (!input.choices?.includes(value)) errors.push(`when value ${step.id}`);
+      }
     }
     for (const locator of step.locators ?? []) errors.push(...locatorErrors(locator, step.id));
     if (step.reveal) errors.push(...locatorErrors(step.reveal, step.id));

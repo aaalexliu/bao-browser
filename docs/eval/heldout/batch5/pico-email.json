@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656632574,
+    "ts": 1792657813653,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656632614,
+    "ts": 1792657813693,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656632655,
+    "ts": 1792657813734,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656632696,
+    "ts": 1792657813774,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657813864,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -43,41 +51,16 @@
     "afterUrl": "https://picocss.com/docs/forms"
   },
   {
-    "id": "e4",
-    "ts": 1792656633013,
+    "id": "e5",
+    "ts": 1792657814200,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://picocss.com/docs/forms",
     "afterUrl": "https://picocss.com/docs/forms"
   },
   {
-    "id": "e5",
-    "ts": 1792656633044,
-    "kind": "act",
-    "op": "click",
-    "identity": {
-      "surface": "dom",
-      "role": "heading",
-      "tag": "h1",
-      "text": "Forms overview",
-      "cssPath": "main:nth-of-type(1) > hgroup:nth-of-type(1) > h1:nth-of-type(1)",
-      "path": [
-        {
-          "role": "main"
-        },
-        {
-          "role": "hgroup"
-        }
-      ]
-    },
-    "subtreeBefore": "Forms overview",
-    "subtreeAfter": "Forms overview",
-    "beforeUrl": "https://picocss.com/docs/forms",
-    "afterUrl": "https://picocss.com/docs/forms"
-  },
-  {
     "id": "e6",
-    "ts": 1792656633332,
+    "ts": 1792657814221,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://picocss.com/docs/forms",
@@ -85,7 +68,112 @@
   },
   {
     "id": "e7",
-    "ts": 1792656633363,
+    "ts": 1792657814270,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657814320,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657814369,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657814419,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657814419,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Forms overview",
+      "cssPath": "main:nth-of-type(1) > hgroup:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "hgroup"
+        }
+      ]
+    },
+    "subtreeBefore": "Forms overview",
+    "subtreeAfter": "Forms overview",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e12",
+    "ts": 1792657814720,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e13",
+    "ts": 1792657814754,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e14",
+    "ts": 1792657814802,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e15",
+    "ts": 1792657814853,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657814902,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657814953,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://picocss.com/docs/forms",
+    "afterUrl": "https://picocss.com/docs/forms"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657814953,
     "kind": "act",
     "op": "type",
     "value": "ada@example.comx",
@@ -120,8 +208,8 @@
     "afterUrl": "https://picocss.com/docs/forms"
   },
   {
-    "id": "e8",
-    "ts": 1792656633659,
+    "id": "e19",
+    "ts": 1792657815248,
     "kind": "act",
     "op": "key",
     "key": "Backspace",
@@ -129,8 +217,8 @@
     "afterUrl": "https://picocss.com/docs/forms"
   },
   {
-    "id": "e9",
-    "ts": 1792656633659,
+    "id": "e20",
+    "ts": 1792657815248,
     "kind": "act",
     "op": "type",
     "value": "ada@example.com",
@@ -165,8 +253,8 @@
     "afterUrl": "https://picocss.com/docs/forms"
   },
   {
-    "id": "e10",
-    "ts": 1792656633915,
+    "id": "e21",
+    "ts": 1792657815503,
     "kind": "act",
     "op": "type",
     "sensitive": true,

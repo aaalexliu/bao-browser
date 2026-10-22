@@ -12,13 +12,18 @@ export interface HeldStep {
   keep?: boolean;
   secret?: boolean;
   human?: "login" | "confirm";
-  do: "read" | "scroll" | "back" | "click" | "type" | "backs" | "key" | "upload";
+  do: "read" | "scroll" | "jitter" | "tab" | "back" | "click" | "type" | "backs" | "key" | "upload";
   op?: string;
   selector?: string;
   text?: string;
   key?: string;
   count?: number;
   file?: string;
+}
+
+export interface InvalidFixture {
+  reason: string;
+  evidence: string;
 }
 
 export interface HeldTask {
@@ -28,6 +33,8 @@ export interface HeldTask {
   secret?: string;
   replays: { texts: string[]; secret: string; file: string }[];
   oracle: Oracle;
+  /** The site cannot satisfy the oracle. The row stays in the table and is left out of bao misses. */
+  invalid?: InvalidFixture;
   steps: HeldStep[];
 }
 

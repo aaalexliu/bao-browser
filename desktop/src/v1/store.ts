@@ -47,6 +47,16 @@ export interface StoredRun {
   precondition?: unknown;
   trail?: unknown[];
   trajectory?: unknown[];
+  /** Human step returned by run_workflow. Secrets are not in here. */
+  envelope?: {
+    status: string;
+    run_id?: string;
+    step?: string;
+    reason?: string;
+    ask?: string;
+    deadline?: string | null;
+    resume_token?: string;
+  };
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -152,6 +162,13 @@ export class Library {
     const dir = path.join(this.root, "evals", "intent");
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(pair, null, 2));
+  }
+
+  saveTeachIntentCase(id: string, doc: unknown): void {
+    const safe = id.replace(/[^A-Za-z0-9._-]/g, "_");
+    const dir = path.join(this.root, "evals", "intent", "cases");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `${safe}.json`), JSON.stringify(doc, null, 2));
   }
 
   readIntentEval(id: string): unknown {

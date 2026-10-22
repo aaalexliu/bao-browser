@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656351702,
+    "ts": 1792657530472,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656351742,
+    "ts": 1792657530512,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656351782,
+    "ts": 1792657530552,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656351823,
+    "ts": 1792657530593,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657530681,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -52,27 +60,67 @@
     "subtreeBefore": "Option<T>",
     "subtreeAfter": "",
     "beforeUrl": "https://doc.rust-lang.org/std/",
-    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
-  },
-  {
-    "id": "e4",
-    "ts": 1792656382217,
-    "kind": "act",
-    "op": "scroll",
-    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
     "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
   },
   {
     "id": "e5",
-    "ts": 1792656382249,
+    "ts": 1792657561079,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657561114,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657561146,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657561181,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657561214,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657561246,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657561246,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
     "afterUrl": "https://doc.rust-lang.org/std/"
   },
   {
-    "id": "e6",
-    "ts": 1792656382317,
+    "id": "e12",
+    "ts": 1792657561314,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -108,24 +156,64 @@
     "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
   },
   {
-    "id": "e7",
-    "ts": 1792656412724,
+    "id": "e13",
+    "ts": 1792657591709,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
     "afterUrl": "https://doc.rust-lang.org/std/"
   },
   {
-    "id": "e8",
-    "ts": 1792656412792,
+    "id": "e14",
+    "ts": 1792657591794,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://doc.rust-lang.org/std/",
     "afterUrl": "https://doc.rust-lang.org/std/"
   },
   {
-    "id": "e9",
-    "ts": 1792656412824,
+    "id": "e15",
+    "ts": 1792657591829,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657591862,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657591895,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657591929,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657591961,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657591961,
     "kind": "act",
     "op": "click",
     "identity": {

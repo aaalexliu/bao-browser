@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656445922,
+    "ts": 1792657625366,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656445963,
+    "ts": 1792657625406,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656446003,
+    "ts": 1792657625446,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656446043,
+    "ts": 1792657625486,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657625580,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -46,27 +54,67 @@
     "subtreeBefore": "Get Started",
     "subtreeAfter": "Get Started",
     "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
-    "afterUrl": "https://www.markdownguide.org/getting-started/"
-  },
-  {
-    "id": "e4",
-    "ts": 1792656446437,
-    "kind": "act",
-    "op": "scroll",
-    "beforeUrl": "https://www.markdownguide.org/getting-started/",
     "afterUrl": "https://www.markdownguide.org/getting-started/"
   },
   {
     "id": "e5",
-    "ts": 1792656446471,
+    "ts": 1792657625993,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657626027,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657626061,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657626094,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657626127,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657626161,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657626161,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://www.markdownguide.org/getting-started/",
     "afterUrl": "https://www.markdownguide.org/basic-syntax/"
   },
   {
-    "id": "e6",
-    "ts": 1792656446590,
+    "id": "e12",
+    "ts": 1792657626278,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -96,24 +144,64 @@
     "afterUrl": "https://www.markdownguide.org/getting-started/"
   },
   {
-    "id": "e7",
-    "ts": 1792656446970,
+    "id": "e13",
+    "ts": 1792657626652,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://www.markdownguide.org/getting-started/",
     "afterUrl": "https://www.markdownguide.org/basic-syntax/"
   },
   {
-    "id": "e8",
-    "ts": 1792656447089,
+    "id": "e14",
+    "ts": 1792657626787,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
     "afterUrl": "https://www.markdownguide.org/basic-syntax/"
   },
   {
-    "id": "e9",
-    "ts": 1792656447120,
+    "id": "e15",
+    "ts": 1792657626810,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657626844,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657626877,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657626910,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657626944,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657626944,
     "kind": "act",
     "op": "click",
     "identity": {

@@ -59,7 +59,9 @@ async function main(): Promise<void> {
   }
   if (cmd === "open") {
     const link = positional(rest)[0] || "";
-    if (!parseBaoLink(link)) throw new Error("usage: bao open bao://workflow/<id>");
+    if (!parseBaoLink(link)) {
+      throw new Error(link.trim().startsWith("bao://run/") ? "inputs must be JSON" : "usage: bao open bao://workflow/<id>");
+    }
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || readServerPort(flag(rest, "--home")) || 0);
     if (!port) {
       console.error("start Bao first");
@@ -95,6 +97,11 @@ async function main(): Promise<void> {
     const { captureHeldout } = await import("../eval/heldout/capture");
     const dir = flag(rest, "--dir") || "docs/eval/heldout/batch1";
     const tasks = flag(rest, "--tasks");
+    if (tasks === "alerts") {
+      const { recordAlertsTrail } = await import("../eval/heldout/record-alerts");
+      await recordAlertsTrail(dir);
+      return;
+    }
     const list = tasks === "batch5"
       ? (await import("../eval/heldout/tasks5")).HELD_TASKS_5
       : tasks === "batch4"
@@ -113,7 +120,7 @@ async function main(): Promise<void> {
     process.stdout.write(result.markdown);
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge");
+  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge");
   process.exit(1);
 }
 

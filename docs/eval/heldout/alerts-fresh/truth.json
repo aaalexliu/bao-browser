@@ -1,0 +1,29 @@
+[
+  {
+    "id": "alerts-dialog",
+    "name": "Accept a JavaScript alert",
+    "startUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "keep": [
+      "e0"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "successfully clicked an alert"
+    }
+  }
+]
