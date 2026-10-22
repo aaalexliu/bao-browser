@@ -6,9 +6,10 @@ import path from "node:path";
 import { reviewWorkflow } from "../mcp/catalog";
 import { mcpMain } from "../mcp/server";
 import { mcpBaoMain } from "../proxy/mcp-bao";
+import { parseBaoLink } from "./deeplink";
 import { startApp } from "./server";
 import { Library } from "../v1/store";
-import { pairDevice, syncAll, syncStatus } from "../v1/sync";
+import { pairDevice, syncAll } from "../v1/sync";
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
@@ -57,26 +58,58 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "open") {
-    const home = flag(rest, "--home") || process.env.BAO_HOME || defaultHome();
     const link = positional(rest)[0] || "";
-    const id = link.replace(/^bao:\/\/workflow\//, "");
-    if (!id || id === link && !link.startsWith("bao://")) throw new Error("usage: bao open bao://workflow/<id>");
-    const library = new Library(home);
-    try {
-      const doc = library.read(id);
-      console.log(`${doc.name}\nbao://workflow/${doc.id}`);
-    } catch {
-      console.log(`bao://workflow/${id}`);
+    if (!parseBaoLink(link)) throw new Error("usage: bao open bao://workflow/<id>");
+    const port = Number(flag(rest, "--port") || process.env.BAO_PORT || readServerPort(flag(rest, "--home")) || 0);
+    if (!port) {
+      console.error("start Bao first");
+      process.exit(1);
     }
-    const status = syncStatus(library);
-    if (status.server) console.log(`${status.server}/marketplace/${id}`);
+    const res = await fetch(`http://127.0.0.1:${port}/api/open`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ link }),
+    });
+    const body = await res.json() as { ok?: boolean; error?: string };
+    console.log(JSON.stringify(body));
+    if (!res.ok || !body.ok) process.exitCode = 1;
     return;
   }
   if (cmd === "replay") {
     console.log("use the app replay screen, or POST /api/replay");
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id>");
+  if (cmd === "eval" && rest[0] === "drivers") {
+    const { evalDrivers } = await import("../eval/drivers");
+    const result = await evalDrivers(rest.slice(1));
+    process.stdout.write(result.markdown);
+    return;
+  }
+  if (cmd === "eval" && rest[0] === "intent") {
+    const { evalIntent } = await import("../eval/intent/run");
+    const result = await evalIntent(rest.slice(1));
+    process.stdout.write(result.markdown);
+    return;
+  }
+  if (cmd === "eval" && rest[0] === "heldout" && rest[1] === "capture") {
+    const { captureHeldout } = await import("../eval/heldout/capture");
+    const dir = flag(rest, "--dir") || "docs/eval/heldout/batch1";
+    const tasks = flag(rest, "--tasks");
+    const list = tasks === "batch3"
+      ? (await import("../eval/heldout/tasks3")).HELD_TASKS_3
+      : tasks === "batch2"
+        ? (await import("../eval/heldout/tasks2")).HELD_TASKS_2
+        : undefined;
+    await captureHeldout(dir, list);
+    return;
+  }
+  if (cmd === "eval" && rest[0] === "heldout") {
+    const { evalHeldout } = await import("../eval/heldout/run");
+    const result = await evalHeldout(rest.slice(1));
+    process.stdout.write(result.markdown);
+    return;
+  }
+  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge");
   process.exit(1);
 }
 

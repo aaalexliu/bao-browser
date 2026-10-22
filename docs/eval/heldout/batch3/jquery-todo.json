@@ -1,0 +1,111 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648114824,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648114864,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648114905,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648114945,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "todos",
+      "cssPath": "#header > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "subtreeBefore": "todos",
+    "subtreeAfter": "todos",
+    "beforeUrl": "https://todomvc.com/examples/jquery/",
+    "afterUrl": "https://todomvc.com/examples/jquery/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648115201,
+    "kind": "act",
+    "op": "type",
+    "value": "buy milkx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "new-todo",
+      "tag": "input",
+      "cssPath": "#new-todo",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://todomvc.com/examples/jquery/",
+    "afterUrl": "https://todomvc.com/examples/jquery/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648115356,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://todomvc.com/examples/jquery/",
+    "afterUrl": "https://todomvc.com/examples/jquery/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648115356,
+    "kind": "act",
+    "op": "type",
+    "value": "buy milk",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "new-todo",
+      "tag": "input",
+      "cssPath": "#new-todo",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://todomvc.com/examples/jquery/",
+    "afterUrl": "https://todomvc.com/examples/jquery/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648115487,
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "beforeUrl": "https://todomvc.com/examples/jquery/",
+    "afterUrl": "https://todomvc.com/examples/jquery/"
+  }
+]

@@ -29,6 +29,7 @@ import {
   rememberGrant,
   reportWorkflow,
   requestMagicLink,
+  setImportMarks,
   userFromSession,
   verifyMagicLink,
 } from "./registry";
@@ -149,7 +150,17 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
       const principal = await requireUser(req);
       const body = await readBody(req);
       const shots = Array.isArray(body.shots) ? body.shots as { stepId?: string; png?: string; redacted?: boolean }[] : [];
-      return NextResponse.json(await recordReview(principal, parts[1] || "", String(body.documentHash || ""), shots));
+      const samples = body.samples && typeof body.samples === "object" && !Array.isArray(body.samples)
+        ? body.samples as Record<string, unknown>
+        : {};
+      return NextResponse.json(await recordReview(principal, parts[1] || "", String(body.documentHash || ""), shots, samples));
+    }
+    if (parts[0] === "workflows" && parts[2] === "inputs" && method === "POST") {
+      const principal = await requireUser(req);
+      const body = await readBody(req);
+      const names = Object.keys(body).filter((key) => key.startsWith("ask_") && body[key]).map((key) => key.slice(4));
+      const result = await setImportMarks(principal, parts[1] || "", names);
+      return finish(req, result, `/workflows/${parts[1]}`);
     }
     if (parts[0] === "workflows" && parts[2] === "publish" && method === "POST") {
       const principal = await requireUser(req);

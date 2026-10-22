@@ -159,6 +159,10 @@ The desktop window and the web app share one formatter (`web/src/lib/time.ts`). 
 
 A login or confirm wait is stored in the app home as `pending-prompt.json`. Closing the window and opening it again restores the bar and the badge. When the deadline passes and no replay is still in that wait, the file is removed and the run is marked stopped, timed out. A wait that finishes inside a running replay still stops with `nothing applied` or `waiting for you to log in`.
 
+### 2026-10-22 — Trace-style run viewer
+
+A filmstrip frame shows the step's cropped, redacted screenshot, with the outline drawn on the target when the picture was taken. A step with no picture keeps the icon. Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
+
 ### 2026-10-22 — Re-run, skipped idle, and a per-step heal limit
 
 A past run can be started again from the run viewer. Re-run with this run's inputs fills the form from that run and asks for a secret again. Debug from this step starts at the selected step. Idle longer than 3 seconds is collapsed on the filmstrip and in the replay video, with a marker such as `skipped 12s`. When the same step heals itself on 3 consecutive runs, auto-heal stops for that step, the step is marked needs review, and the act bar says so.
@@ -320,14 +324,15 @@ Settings → Sync shows the paired devices and item counts per category. Those t
 
 ## Share a workflow
 
-On the workflow page, copy a view link or an install link. The shared copy has already had emails, phone numbers, street addresses, and secret defaults removed.
+On the workflow page, mark which inputs are asked on import, then copy a view link or an install link. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
 
-An install link asks the setup questions, the same idea as Shortcuts. Secret and file answers are not accepted. An answer that looks like an email or a card number is dropped. Other answers become defaults on the recipient's private copy only.
+Secret and file answers are not stored. A path is asked with the same file field capture records, and the path is not shown. An email typed as an answer is dropped. Other answers become defaults on the recipient's private copy only. A non-personal sample is shown as an example.
 
-Open a workflow from the desktop library or with:
+Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered.
 
 ```bash
 npm run bao -- open bao://workflow/<id>
+npm run bao -- open bao://import/<id>
 ```
 
 Replay → Re-run with past inputs fills the non-secret fields from the last run. Passwords are not kept.
@@ -342,9 +347,9 @@ Listing stays disabled until a device replays that redacted copy:
 npm run bao -- sync review <id> --inputs inputs.json
 ```
 
-`bao sync review` replays on this Mac. Only a passing run is reported, and the report is the hash of the redacted document. Confirm on the preview page after that. The marketplace page is the public catalog. Fork asks the same setup questions. Report sends a reason. There is no payment step.
+`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace page is the public catalog. Fork uses the same import sheet. Report sends a reason. There is no payment step.
 
-Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after that replay-and-confirm step.
+Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted: the password is not stored, so the clean replay cannot sign in.
 
 ## MCP
 
@@ -391,3 +396,60 @@ Do this yourself when you want a hosted registry. This repo does not create the 
 8. Redeploy so the function sees `DATABASE_URL` and the Blob store.
 
 The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres URL, and the `pg` driver for `localhost`. Blob uploads use the private store when `BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID` is set. With neither, the files stay on disk, which is the local path above.
+
+# Bao MCP drivers
+
+`bao mcp` is the stdio server a driver talks to. Live mode is `BAO_MCP_LIVE=1` with `BAO_FIXTURE_URL` set to a page bao opened. The default server does not open a browser. It appends the call to `trail.jsonl` and returns text.
+
+## Live tools
+
+| Tool | Arguments | What the driver gets back | Trail |
+| --- | --- | --- | --- |
+| `screenshot` | none | PNG | read, with a snapshot |
+| `snapshot` | none | JSON boxes (`id`, `role`, `name`, layout `x` `y` `w` `h`, visible intersection `vx` `vy` `vw` `vh`) and a PNG | read, with a snapshot |
+| `click` | `x` and `y` in viewport CSS pixels, origin top left. Optional `ref` | `OK`, or `STOP login`, or `STOP confirm` | act, with a snapshot |
+| `type` | `text` | `OK`, or `STOP login` when the focused field is a password | act, with a snapshot |
+| `key` | `key`, a Playwright key name | `OK` | act, with a snapshot |
+| `scroll` | `x`, `y`, `dx`, `dy` | `OK` | act, with a snapshot |
+| `upload` | `id` DOM id, `path` local file | `OK` | act, with a snapshot. The line stores the basename, not `path` |
+
+`ref` is the element's DOM `id`. It is not a macOS AX identifier and not a Linux AT-SPI name. If `ref` is set, bao ignores `x` and `y`, clicks the center of that element, and records that center as provenance.
+
+A password `type` is not performed. A `click` on an element with `data-bao-gate="login"` or `data-bao-gate="confirm"`, or a button whose text is `Log in`, `Sign in`, or `Confirm`, is not performed. The trail line has `gate` and `performed: false`. A login stop also records a sign-in click when the driver does not click Log in. That click stays in the derived workflow, and its postcondition is the Welcome line. Replay performs the step with the inputs supplied for that run.
+
+A file input is a file parameter whether the driver called `upload`, dropped a file, or typed a path. The absolute path is not written into `trail.jsonl`. `eval drivers` retries an HTTP 429 with backoff. If the driver still exits without finishing, the cell is `driver-error` and the run directory still has a partial trail. That cell is separate from a bao replay failure.
+
+Every read and every act stores `snapshot.sha256` and `snapshot.path`. The file is a PNG. `latencyMs` is the time inside the tool call, including the snapshot.
+
+## Stub tools
+
+With `BAO_MCP_LIVE` unset, the tools are `screenshot`, `click`, `type`, `key`, and `scroll`. `click` requires `x` and `y`. The server does not take a snapshot, does not return a PNG, and does not change a page.
+
+## What each driver can send
+
+Computer-use tool names are not this server. Claude's `left_click` and `coordinate` pair is the proxy adapter in `desktop/src/proxy/claude.ts`. Codex does not publish a pixel action schema. Neither shape is accepted by `bao mcp`.
+
+| Driver | How it would attach | Tool names it can call here | Screenshots | Coordinates | AX or AT-SPI ids |
+| --- | --- | --- | --- | --- | --- |
+| Claude CLI | MCP client pointed at `bao mcp`. This machine has no `claude` binary and no `ANTHROPIC_API_KEY`, so the eval did not start it | bao's tool names above, not `left_click` | PNG on `screenshot` and `snapshot`, if the CLI renders MCP image content | `click` `x`, `y` | not accepted. `ref` is a DOM id |
+| Claude Agent SDK | `@anthropic-ai/claude-agent-sdk` is not installed here | same as the CLI, if the SDK is configured as an MCP client | same | same | not accepted |
+| Codex CLI | MCP server in the Codex config. This machine has no `codex` binary and no `OPENAI_API_KEY` | bao's tool names, if Codex calls them. Codex has no pixel schema of its own | PNG only when Codex calls `screenshot` or `snapshot` and keeps the image | `click` `x`, `y` when it calls `click` | not accepted |
+| Cursor `cursor-agent` | MCP client. `cursor-agent` is not on `PATH` here | bao's tool names | PNG on `screenshot` and `snapshot` | `click` `x`, `y` | not accepted. `ref` is a DOM id |
+| Scripted client in `bao eval drivers` | spawns `bao mcp` and speaks the live tools. No model | all live tools | yes, and the trail snapshot is checked | yes. The client reads boxes from `snapshot` and sends the center | one `click` on the form task sends `ref` `noop`, a DOM id. No AX id |
+
+The viewport is the page. The browser tab strip is not in it. The tabs task is in-page tabs. The dialog task is a page element with `role="dialog"`, not an OS file dialog.
+
+## Commands
+
+```sh
+npm run bao -- eval drivers
+npm run bao -- eval intent
+npm run bao -- eval heldout capture --dir docs/eval/heldout/batch1
+npm run bao -- eval heldout --dir docs/eval/heldout/batch1 --out docs/eval/heldout/batch1.md
+```
+
+`eval drivers` writes `docs/eval/drivers.md`. `eval intent` writes `docs/eval/intent.md`. A missing CLI or a missing key is a `not run` cell. The command does not invent a pass.
+
+`eval intent` runs three condensers. `condense` is deterministic. The model condenser edits the raw trail. `hybrid` starts from that deterministic workflow: the model may drop a Help step, write intent text, and flag login or confirm. It cannot add a step, change an input, or clear a secret tag. A judge model scores the intent text and is calibrated on ten hand labels.
+
+`eval heldout` scores those same condensers on trails captured from public pages. `eval heldout capture` writes the trails and `truth.json` and does not condense them. `--tasks batch2` and `--tasks batch3` capture the later batches. Held-out replay tries role, text, test id, css, and xpath after an identity miss, and opens a collapsed target through a search toggle. `eval heldout --judge` lints intent text first, then scores whatever the lint passes with the same rubric.

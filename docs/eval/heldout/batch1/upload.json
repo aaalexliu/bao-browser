@@ -1,0 +1,169 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642605308,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642605349,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642605389,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642605430,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "id": "file-submit",
+      "tag": "input",
+      "cssPath": "#file-submit",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/upload",
+    "afterUrl": "https://the-internet.herokuapp.com/upload"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642620736,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://the-internet.herokuapp.com/upload",
+    "afterUrl": "https://the-internet.herokuapp.com/upload"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642620813,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "File Uploader",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/upload",
+    "afterUrl": "https://the-internet.herokuapp.com/upload"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642621065,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "File Uploader",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/upload",
+    "afterUrl": "https://the-internet.herokuapp.com/upload"
+  },
+  {
+    "id": "e7",
+    "ts": 1792642621296,
+    "kind": "act",
+    "op": "upload",
+    "fileName": "held-out-note.txt",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "file-upload",
+      "nameAttr": "file",
+      "tag": "input",
+      "cssPath": "#file-upload",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/upload",
+    "afterUrl": "https://the-internet.herokuapp.com/upload"
+  },
+  {
+    "id": "e8",
+    "ts": 1792642621361,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "id": "file-submit",
+      "tag": "input",
+      "cssPath": "#file-submit",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/upload",
+    "afterUrl": "https://the-internet.herokuapp.com/upload"
+  }
+]

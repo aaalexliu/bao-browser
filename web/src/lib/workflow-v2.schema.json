@@ -34,6 +34,9 @@
         "label": { "type": "string" },
         "required": { "type": "boolean" },
         "default": { "type": "string" },
+        "askOnImport": { "type": "boolean" },
+        "cleared": { "enum": ["email", "name", "path", "phone", "ssn"] },
+        "example": { "type": "string" },
         "choices": { "type": "array", "items": { "type": "string" } },
         "multiple": { "type": "boolean" },
         "accept": { "type": "string" }

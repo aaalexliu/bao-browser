@@ -1,0 +1,153 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648117448,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648117488,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648117529,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648117569,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "About",
+      "cssPath": "div:nth-of-type(1) > div:nth-of-type(3) > ul:nth-of-type(1) > li:nth-of-type(3) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "About",
+    "subtreeAfter": "About",
+    "beforeUrl": "https://www.sqlite.org/search",
+    "afterUrl": "https://www.sqlite.org/about.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648117924,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://www.sqlite.org/about.html",
+    "afterUrl": "https://www.sqlite.org/search"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648117983,
+    "kind": "act",
+    "op": "type",
+    "value": "vacuumx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "searchbox",
+      "nameAttr": "q",
+      "tag": "input",
+      "cssPath": "#searchbox",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.sqlite.org/search",
+    "afterUrl": "https://www.sqlite.org/search"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648118149,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.sqlite.org/search",
+    "afterUrl": "https://www.sqlite.org/search"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648118149,
+    "kind": "act",
+    "op": "type",
+    "value": "vacuum",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "searchbox",
+      "nameAttr": "q",
+      "tag": "input",
+      "cssPath": "#searchbox",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.sqlite.org/search",
+    "afterUrl": "https://www.sqlite.org/search"
+  },
+  {
+    "id": "e8",
+    "ts": 1792648118266,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "input",
+      "cssPath": "#searchmenu > form:nth-of-type(1) > input:nth-of-type(2)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "Go",
+    "valueAfter": "Go",
+    "beforeUrl": "https://www.sqlite.org/search",
+    "afterUrl": "https://www.sqlite.org/search?s=d&q=vacuum"
+  }
+]

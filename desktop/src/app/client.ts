@@ -41,7 +41,17 @@ import {
   type WorkflowSummary,
 } from "./views";
 
-type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins";
+type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import";
+
+interface OpenedState {
+  kind: "workflow" | "import";
+  id: string;
+  name: string;
+  link: string;
+  importLink: string;
+  saved: boolean;
+  questions: { name: string; type: string; label: string; required: boolean; choices?: string[]; prompt: string; hint?: string; example?: string; cleared?: string }[];
+}
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string }[];
@@ -61,6 +71,7 @@ let state: ShellState & {
   trails?: string[];
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
+  opened?: OpenedState | null;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
 let screen: Screen = "library";
@@ -86,6 +97,8 @@ let gateUrl = "";
 let pinnedRunId = "";
 let pinnedInputs: Record<string, string> | null = null;
 let debugStepId = "";
+let pendingSeek: number | undefined;
+let seenOpen = "";
 try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
@@ -100,6 +113,18 @@ async function refresh(): Promise<void> {
     if (stored === "dark" || stored === "light") theme = stored;
   } catch { /* private mode */ }
   state = await (await fetch("/api/state")).json();
+  const opened = state.opened;
+  if (opened) {
+    const token = `${opened.kind}:${opened.id}:${opened.saved}`;
+    if (token !== seenOpen) {
+      seenOpen = token;
+      if (opened.kind === "import") screen = "import";
+      else {
+        openWorkflow = opened.id;
+        screen = "workflow";
+      }
+    }
+  }
   const key = JSON.stringify({
     recording: state.recording,
     pending: state.pendingImport,
@@ -114,13 +139,14 @@ async function refresh(): Promise<void> {
     paused: state.capturePaused,
     since: state.recordingSince,
     promotions: state.promotions,
+    // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
     screen,
     healFilter,
     openHeal,
     openRun,
     openWorkflow,
-    selectedStep,
     banner,
+    opened: state.opened,
   });
   paintDockBadge();
   paintLive();
@@ -145,7 +171,8 @@ function render(): void {
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
   const keepWorkflow = screen === "workflow" && document.getElementById("workflow-detail")?.getAttribute("data-workflow") === openWorkflow;
-  if (!keepReplay && !keepWorkflow) {
+  const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
+  if (!keepReplay && !keepWorkflow && !keepImport) {
     const body = screen === "capture" ? capture()
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
@@ -153,6 +180,7 @@ function render(): void {
       : screen === "settings" ? settings()
       : screen === "logins" ? loginsScreen(login)
       : screen === "replay" ? replayForm()
+      : screen === "import" ? importSheet()
       : screen === "workflow" ? `<section id="workflow-host"><p class="meta">Loading workflow…</p></section>`
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || []);
     const typingSearch = document.activeElement?.id === "library-search";
@@ -179,7 +207,7 @@ function render(): void {
 }
 
 function markNav(): void {
-  const current = screen === "run" ? "runs" : screen === "workflow" ? "library" : screen;
+  const current = screen === "run" ? "runs" : screen === "workflow" || screen === "import" ? "library" : screen;
   document.querySelectorAll("#rail nav button").forEach((btn) => {
     const el = btn as HTMLButtonElement;
     el.classList.toggle("on", el.dataset.screen === current);
@@ -235,7 +263,8 @@ function replayForm(): string {
       <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
     </select></label>
     <form id="args"></form>
-    <p class="mono">bao://workflow/${esc(selected)}</p>
+    <p class="mono" data-testid="deeplink">bao://workflow/${esc(selected)}</p>
+    <p class="mono" data-testid="import-link">bao://import/${esc(selected)}</p>
     <div class="row">
       <button class="primary" id="run" type="button">Run</button>
       <button id="rerun" type="button">Re-run with past inputs</button>
@@ -276,6 +305,35 @@ function settings(): string {
   </section>`;
 }
 
+function importSheet(): string {
+  const opened = state.opened;
+  if (!opened) return `<section id="import-sheet" data-testid="import-sheet"><h2>Import</h2><p>Nothing is waiting.</p></section>`;
+  const fields = opened.questions.map((question) => {
+    const hint = question.hint ? `<span class="meta">${esc(question.hint)}</span>` : "";
+    if (question.type === "file") {
+      return `<label>${esc(question.prompt)} ${hint}<input type="file" disabled></label>`;
+    }
+    if (question.type === "secret") {
+      return `<label>${esc(question.prompt)} ${hint}<input disabled placeholder="Entered on your device, never sent"></label>`;
+    }
+    if (question.type === "choice") {
+      const options = (question.choices || []).map((choice) => `<option>${esc(choice)}</option>`).join("");
+      return `<label>${esc(question.prompt)} ${hint}<select name="a_${esc(question.name)}">${options}</select></label>`;
+    }
+    const example = question.example ? ` placeholder="for example ${esc(question.example)}"` : "";
+    return `<label>${esc(question.prompt)} ${hint}<input name="a_${esc(question.name)}" ${question.required ? "required" : ""}${example}></label>`;
+  }).join("");
+  return `<section id="import-sheet" data-testid="import-sheet" data-id="${esc(opened.id)}">
+    <h2>Import</h2>
+    <p>${esc(opened.name)}</p>
+    <p class="notice">Nothing is saved until you answer these.</p>
+    <p class="mono" data-testid="import-link">${esc(opened.importLink)}</p>
+    ${fields || `<p>This workflow has no import questions.</p>`}
+    <p id="import-error" class="notice" hidden></p>
+    <button class="primary" id="import-save" type="button">Save</button>
+  </section>`;
+}
+
 function bind(): void {
   document.querySelectorAll("#rail nav button").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
@@ -302,6 +360,30 @@ function bind(): void {
       render();
     };
   });
+  const saveImport = document.getElementById("import-save");
+  if (saveImport) saveImport.onclick = async () => {
+    const answers: Record<string, string> = {};
+    document.querySelectorAll("#import-sheet input[name], #import-sheet select[name]").forEach((node) => {
+      const field = node as HTMLInputElement;
+      if (field.name.startsWith("a_")) answers[field.name.slice(2)] = field.value;
+    });
+    const res = await fetch("/api/open/install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ answers }),
+    });
+    const body = await res.json() as { error?: string };
+    if (!res.ok) {
+      const note = document.getElementById("import-error");
+      if (note) {
+        note.hidden = false;
+        note.textContent = body.error || "answer the questions";
+      }
+      return;
+    }
+    renderKey = "";
+    await refresh();
+  };
   const start = document.getElementById("start");
   if (start) start.onclick = async () => {
     await fetch("/api/sessions", {
@@ -544,9 +626,19 @@ async function showRun(id: string): Promise<void> {
   host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      selectedStep = (btn as HTMLButtonElement).dataset.selectStep || "";
+      const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";
+      const step = (run.steps || []).find((item) => item.id === stepId);
+      selectedStep = stepId;
+      pendingSeek = step?.startedAt;
       void showRun(id);
     };
+  });
+  host.querySelectorAll("#filmstrip img").forEach((img) => {
+    img.addEventListener("error", () => {
+      const frame = img.parentElement;
+      img.remove();
+      frame?.classList.remove("has-shot");
+    });
   });
   host.querySelectorAll("[data-frame]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
@@ -557,6 +649,9 @@ async function showRun(id: string): Promise<void> {
       stage.dataset.which = which;
       host.querySelectorAll("[data-frame]").forEach((el) => el.classList.toggle("on", (el as HTMLElement).dataset.frame === which));
       mountStage(stage);
+      const thumb = host.querySelector("#filmstrip .frame.on img") as HTMLImageElement | null;
+      const next = which === "before" ? thumb?.dataset.before : thumb?.dataset.after;
+      if (thumb && next) thumb.src = next;
     };
   });
   mountShots(host);
@@ -568,13 +663,15 @@ async function showRun(id: string): Promise<void> {
     const step = (run.steps || [])[index];
     if (!step) return;
     selectedStep = step.id;
-    seekVideo(step.startedAt);
+    pendingSeek = step.startedAt;
     void showRun(id);
   };
   host.querySelectorAll("[data-marker]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      selectedStep = (btn as HTMLButtonElement).dataset.marker || "";
-      seekVideo(Number((btn as HTMLButtonElement).dataset.at || 0));
+      const stepId = (btn as HTMLButtonElement).dataset.marker || "";
+      const step = (run.steps || []).find((item) => item.id === stepId);
+      selectedStep = stepId;
+      pendingSeek = step?.startedAt ?? Number((btn as HTMLButtonElement).dataset.at || 0);
       void showRun(id);
     };
   });
@@ -606,6 +703,11 @@ async function showRun(id: string): Promise<void> {
   const debug = host.querySelector("#debug-step");
   if (debug) (debug as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, (debug as HTMLButtonElement).dataset.step || "", run.inputs);
   bindVideoSkip();
+  if (typeof pendingSeek === "number") {
+    const at = pendingSeek;
+    pendingSeek = undefined;
+    seekVideo(at);
+  }
 }
 
 function openPastRun(workflowId: string, runId: string, stepId: string, inputs?: Record<string, string>): void {
@@ -623,14 +725,47 @@ function bindVideoSkip(): void {
   if (!video) return;
   let skips: { from: number; to: number; label: string }[] = [];
   try { skips = JSON.parse(video.dataset.skips || "[]") as { from: number; to: number; label: string }[]; } catch { skips = []; }
+  const follow = () => highlightStepAt(video.currentTime);
   video.ontimeupdate = () => {
-    if (video.paused) return;
-    const hit = skips.find((item) => video.currentTime >= item.from && video.currentTime < item.to - 0.05);
-    if (!hit) return;
-    video.currentTime = hit.to;
-    const live = document.getElementById("skip-live");
-    if (live) live.textContent = hit.label;
+    if (!video.paused) {
+      const hit = skips.find((item) => video.currentTime >= item.from && video.currentTime < item.to - 0.05);
+      if (hit) {
+        video.currentTime = hit.to;
+        const live = document.getElementById("skip-live");
+        if (live) live.textContent = hit.label;
+        return;
+      }
+    }
+    follow();
   };
+  video.onseeked = follow;
+}
+
+/** The step whose start is at or before the video time stays highlighted. */
+function highlightStepAt(time: number): void {
+  const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
+  const frames = [...document.querySelectorAll<HTMLElement>("#filmstrip [data-select-step]")];
+  let chosen = "";
+  let best = -Infinity;
+  for (const frame of frames) {
+    const at = Number(frame.dataset.at);
+    if (!Number.isFinite(at)) continue;
+    const start = (at - origin) / 1000;
+    if (start <= time + 0.04 && start >= best) {
+      best = start;
+      chosen = frame.dataset.selectStep || "";
+    }
+  }
+  if (!chosen) return;
+  selectedStep = chosen;
+  document.querySelectorAll<HTMLElement>("[data-select-step], [data-marker]").forEach((el) => {
+    const id = el.dataset.selectStep || el.dataset.marker || "";
+    el.classList.toggle("on", id === chosen);
+  });
+  const listed = [...document.querySelectorAll<HTMLElement>("#step-list [data-select-step]")];
+  const index = listed.findIndex((el) => el.dataset.selectStep === chosen);
+  const scrub = document.getElementById("scrubber") as HTMLInputElement | null;
+  if (scrub && index >= 0) scrub.value = String(index);
 }
 
 async function showHeal(runId: string, healId: string): Promise<void> {
@@ -1152,7 +1287,26 @@ function runCommand(item?: CommandItem): void {
 function seekVideo(at: number | undefined): void {
   const video = document.getElementById("run-video") as HTMLVideoElement | null;
   const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
-  if (video && at && origin) video.currentTime = Math.max(0, (at - origin) / 1000);
+  if (!video || typeof at !== "number" || !Number.isFinite(at)) return;
+  const target = Math.max(0, (at - origin) / 1000);
+  const apply = () => {
+    if (video.seekable.length === 0) return false;
+    const end = video.seekable.end(video.seekable.length - 1);
+    if (!(end > 0)) return false;
+    const clamped = Math.min(target, Math.max(0, end - 0.001));
+    if (Math.abs(video.currentTime - clamped) > 0.05) video.currentTime = clamped;
+    return true;
+  };
+  if (apply()) return;
+  const retry = () => {
+    if (!apply()) return;
+    video.removeEventListener("loadedmetadata", retry);
+    video.removeEventListener("progress", retry);
+    video.removeEventListener("canplay", retry);
+  };
+  video.addEventListener("loadedmetadata", retry);
+  video.addEventListener("progress", retry);
+  video.addEventListener("canplay", retry);
 }
 
 function paintToasts(): void {

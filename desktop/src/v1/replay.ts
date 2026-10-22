@@ -22,8 +22,9 @@ import {
   type HealSettings,
   type ReplayPhase,
   type StepFailure,
+  type TriedLocator,
 } from "./heal";
-import { isCollapsedBox, matchLocator } from "./locators";
+import { isCollapsedBox, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, overlayClose, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
@@ -453,22 +454,29 @@ async function runStepAction(
   if (!found.hit.ok || found.hit.index == null) {
     const failure = await fail(driver, step, "find", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets);
     if (step.identity) failure.identity = identityView(step.identity, found.nodes, found.hit);
-    return { ok: false, repairs, failure };
+    return { ok: false, repairs, failure: withLocators(failure, found.tried) };
   }
   const node = found.nodes[found.hit.index];
   if (!node) {
-    return { ok: false, repairs, failure: await fail(driver, step, "find", "lookup miss", found.hit.brokenAttr, secrets) };
+    const failure = await fail(driver, step, "find", "lookup miss", found.hit.brokenAttr, secrets);
+    return { ok: false, repairs, failure: withLocators(failure, found.tried) };
   }
   try {
     await act(step, node, args, driver, gate);
   } catch (err) {
     const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
-    return { ok: false, repairs, acted: node, failure: await fail(driver, step, "action", reason, found.hit.brokenAttr, secrets) };
+    const failure = await fail(driver, step, "action", reason, found.hit.brokenAttr, secrets);
+    return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
   if (!await readExpect(step, args, driver, repairs, gate)) {
-    return { ok: false, repairs, acted: node, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    const failure = await fail(driver, step, "expect", expectReason(step), undefined, secrets);
+    return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
   return { ok: true, repairs, acted: node };
+}
+
+function withLocators(failure: StepFailure, tried: TriedLocator[]): StepFailure {
+  return tried.length ? { ...failure, locators: tried } : failure;
 }
 
 async function findTarget(
@@ -479,7 +487,7 @@ async function findTarget(
   locatorHits: LocatorHit[],
   locatorMode: LocatorMode,
   gate: ApplyGate,
-): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup> }> {
+): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[] }> {
   let tree = await driver.tree();
   const close = overlayClose(tree.nodes);
   if (close && await guardedClick(driver, gate, step.id, close)) {
@@ -503,12 +511,12 @@ async function findTarget(
   const labeled = labelCandidate(step, tree.nodes, tree.boxes);
   if (labeled) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
-    return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] } };
+    return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried };
   }
   const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
   if (anchored) {
     repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
-    return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] } };
+    return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried };
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
   const waited = await poll(step, args, driver, locatorMode);
@@ -518,7 +526,7 @@ async function findTarget(
     return waited;
   }
   if (waited.hit.ok) {
-    return { nodes: waited.nodes, hit: { ok: false, reason: "below-threshold", brokenAttr: "box", ranked: [] } };
+    return { nodes: waited.nodes, hit: { ok: false, reason: "below-threshold", brokenAttr: "box", ranked: [] }, tried: waited.tried };
   }
   return waited;
 }
@@ -795,7 +803,7 @@ async function poll(
   args: ReplayArgs,
   driver: Driver,
   locatorMode: LocatorMode,
-): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; via?: LocatorHit; boxes?: LiveTree["boxes"]; hidden?: boolean[] }> {
+): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; via?: LocatorHit; tried: TriedLocator[]; boxes?: LiveTree["boxes"]; hidden?: boolean[] }> {
   const timeout = step.timeoutMs ?? 0;
   const start = Date.now();
   let tree = await driver.tree();
@@ -813,7 +821,7 @@ function locate(
   tree: LiveTree,
   args: ReplayArgs,
   locatorMode: LocatorMode,
-): { nodes: Identity[]; hit: ReturnType<typeof lookup>; via?: LocatorHit } {
+): { nodes: Identity[]; hit: ReturnType<typeof lookup>; via?: LocatorHit; tried: TriedLocator[] } {
   let nodes = tree.nodes;
   if (step.selection) {
     const want = String(args[step.selection.input] ?? "");
@@ -824,24 +832,39 @@ function locate(
   }
   const list = locatorList(step, locatorMode);
   if (list) {
-    for (const locator of list) {
-      const found = matchLocator(locator, nodes, tree.boxes, tree.hidden);
-      if (!found) continue;
-      return {
-        nodes,
-        hit: { ok: true, index: found.index, ranked: [] },
-        via: { stepId: step.id, kind: locator.kind, detail: found.detail },
-      };
+    const tried = list.map((locator) => {
+      const scored = scoreLocator(locator, nodes, tree.boxes, tree.hidden);
+      return { kind: locator.kind, label: scored.label, score: scored.score };
+    });
+    const winner = tried.findIndex((item) => item.score === 100);
+    if (winner >= 0) {
+      const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
+      if (found) {
+        return {
+          nodes,
+          hit: { ok: true, index: found.index, ranked: [] },
+          via: { stepId: step.id, kind: list[winner]!.kind, detail: found.detail },
+          tried,
+        };
+      }
     }
     return {
       nodes,
       hit: { ok: false, reason: "below-threshold", brokenAttr: list[0]?.kind || "locator", ranked: [] },
+      tried,
     };
   }
   if (!step.identity) {
-    return { nodes: [], hit: { ok: false, reason: "no-candidates", brokenAttr: "identity", ranked: [] } };
+    return { nodes: [], hit: { ok: false, reason: "no-candidates", brokenAttr: "identity", ranked: [] }, tried: [] };
   }
-  return { nodes, hit: lookup(step.identity, nodes) };
+  const hit = lookup(step.identity, nodes);
+  const tried = hit.ranked.slice(0, 5).map((score, index) => {
+    const node = nodes[score.index];
+    const name = node?.name || node?.text || node?.label || node?.testId || node?.id || `candidate ${index + 1}`;
+    const label = node?.role && name ? `${node.role} ${name}` : name;
+    return { kind: "identity", label, score: score.score };
+  });
+  return { nodes, hit, tried };
 }
 
 function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | undefined {
@@ -852,7 +875,7 @@ function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | und
 
 async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<void> {
   if (step.action === "type") {
-    const text = String(args[step.input || ""] ?? "");
+    const text = step.input ? String(args[step.input] ?? "") : String(step.value ?? "");
     await driver.fill(node, text, !!step.sensitive || step.identity?.role === "password");
     return;
   }

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642637064,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642637105,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642637145,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642637186,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Enable",
+      "cssPath": "#input-example > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/dynamic_controls",
+    "afterUrl": "https://the-internet.herokuapp.com/dynamic_controls"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642637468,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://the-internet.herokuapp.com/dynamic_controls",
+    "afterUrl": "https://the-internet.herokuapp.com/dynamic_controls"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642637502,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Remove",
+      "cssPath": "#checkbox-example > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/dynamic_controls",
+    "afterUrl": "https://the-internet.herokuapp.com/dynamic_controls"
+  }
+]

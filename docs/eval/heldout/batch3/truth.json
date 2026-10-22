@@ -1,0 +1,400 @@
+[
+  {
+    "id": "mdn-name-form",
+    "name": "Send the MDN first form",
+    "startUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form.html",
+    "keep": [
+      "e6",
+      "e12"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Grace Hopper"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Lin"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "my-handling-form-page"
+    }
+  },
+  {
+    "id": "mdn-styled-mail",
+    "name": "Send the styled MDN form",
+    "startUrl": "https://mdn.github.io/learning-area/html/forms/your-first-HTML-form/first-form-styled.html",
+    "keep": [
+      "e6",
+      "e12"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "grace@example.com"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin@example.com"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "my-handling-form-page"
+    }
+  },
+  {
+    "id": "mdn-get-say",
+    "name": "Submit the MDN GET example",
+    "startUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html",
+    "keep": [
+      "e7",
+      "e8"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Hello"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Bye"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "mdn-postcard",
+    "name": "Address the MDN postcard",
+    "startUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "keep": [
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Grace"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Lin"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "#name",
+      "equals": "{{0}}"
+    }
+  },
+  {
+    "id": "httpbingo-topping",
+    "name": "Order from httpbingo",
+    "startUrl": "https://httpbingo.org/forms/post",
+    "keep": [
+      "e6",
+      "e12",
+      "e13"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "grace@example.com"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin@example.com"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "jquery-todo",
+    "name": "Add a jQuery TodoMVC item",
+    "startUrl": "https://todomvc.com/examples/jquery/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "write tests"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "ship replay"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "backbone-todo",
+    "name": "Add a Backbone TodoMVC item",
+    "startUrl": "https://todomvc.com/examples/backbone/",
+    "keep": [
+      "e7",
+      "e8"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "write tests"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "ship replay"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "sqlite-search",
+    "name": "Search the SQLite docs",
+    "startUrl": "https://www.sqlite.org/search",
+    "keep": [
+      "e7",
+      "e8"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "pragma"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "index"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "eslint-search",
+    "name": "Search the ESLint docs",
+    "startUrl": "https://eslint.org/docs/latest/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "no-console"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "no-undef"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "input[type='search'] >> visible=true",
+      "equals": "{{0}}"
+    }
+  },
+  {
+    "id": "jquery-api-search",
+    "name": "Search the jQuery API",
+    "startUrl": "https://api.jquery.com/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "get"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "on"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "bootstrap-email",
+    "name": "Fill the Bootstrap form example",
+    "startUrl": "https://getbootstrap.com/docs/5.3/forms/overview/",
+    "keep": [
+      "e7",
+      "e8",
+      "e9"
+    ],
+    "secrets": [
+      "BatchThreeDemoSecret!"
+    ],
+    "secretIds": [
+      "e8"
+    ],
+    "human": [
+      {
+        "id": "e8",
+        "gate": "login"
+      }
+    ],
+    "replays": [
+      {
+        "texts": [
+          "grace@example.com"
+        ],
+        "secret": "ReplayThreeA!",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin@example.com"
+        ],
+        "secret": "ReplayThreeB!",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "#exampleInputEmail1",
+      "equals": "{{0}}"
+    },
+    "secret": "BatchThreeDemoSecret!"
+  },
+  {
+    "id": "rfc-search",
+    "name": "Search the RFC editor",
+    "startUrl": "https://www.rfc-editor.org/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "tls"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "quic"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  }
+]

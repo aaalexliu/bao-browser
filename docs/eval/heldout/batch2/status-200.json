@@ -1,0 +1,144 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644000094,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644000134,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644000174,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644000214,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "404",
+      "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(3) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/status_codes",
+    "afterUrl": "https://the-internet.herokuapp.com/status_codes/404"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644015535,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://the-internet.herokuapp.com/status_codes/404",
+    "afterUrl": "https://the-internet.herokuapp.com/status_codes"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644015613,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Status Codes",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/status_codes",
+    "afterUrl": "https://the-internet.herokuapp.com/status_codes"
+  },
+  {
+    "id": "e6",
+    "ts": 1792644015857,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Status Codes",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/status_codes",
+    "afterUrl": "https://the-internet.herokuapp.com/status_codes"
+  },
+  {
+    "id": "e7",
+    "ts": 1792644016088,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "200",
+      "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/status_codes",
+    "afterUrl": "https://the-internet.herokuapp.com/status_codes/200"
+  }
+]

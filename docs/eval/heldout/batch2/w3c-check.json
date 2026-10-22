@@ -1,0 +1,131 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644114528,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644114568,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644114609,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644114649,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Test & Evaluate",
+      "cssPath": "nav:nth-of-type(2) > ul:nth-of-type(1) > li:nth-of-type(4) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "nav",
+          "name": "Main"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/test-evaluate/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644115092,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://www.w3.org/WAI/test-evaluate/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644115157,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "check_2",
+      "nameAttr": "company_offers",
+      "tag": "input",
+      "label": "Offers from the company",
+      "cssPath": "#check_2",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "checked": true,
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792644115436,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "check_1",
+      "nameAttr": "newsletter",
+      "tag": "input",
+      "label": "The weekly newsletter",
+      "cssPath": "#check_1",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "checked": true,
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  }
+]

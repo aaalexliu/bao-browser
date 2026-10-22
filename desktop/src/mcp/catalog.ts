@@ -14,7 +14,8 @@ import { migrate, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "..
 import { shotFile } from "../v1/shots";
 import { Library } from "../v1/store";
 import { loadState, type SyncState } from "../v1/sync";
-import { categoryFor, domainsOf, redactForRelease, releaseHash, summaryOf } from "../../../web/src/lib/publish";
+import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
 
 export type OutcomeName = "ok" | "needs_human" | "needs_signin" | "failed";
@@ -102,11 +103,12 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   workflow: WorkflowV2;
   inputs: InputField[];
   link: string;
+  importLink: string;
   source: "mine" | "team" | "public";
 }> {
   const found = await loadWorkflow(library, id, auth);
   const workflow = stripSecretDefaults(found.document);
-  return { workflow, inputs: inputSchema(workflow), link: linkFor(id), source: found.source };
+  return { workflow, inputs: inputSchema(workflow), link: linkFor(id), importLink: `bao://import/${id}`, source: found.source };
 }
 
 export async function runWorkflow(
@@ -153,7 +155,7 @@ export async function reviewWorkflow(
   opts: RemoteAuth & { startUrl?: string } = {},
 ): Promise<WorkflowOutcome & { reviewed: boolean; documentHash?: string }> {
   const found = await loadWorkflow(library, id, opts);
-  const released = redactForRelease(found.document);
+  const released = prepareImport(found.document);
   const documentHash = releaseHash(released.document);
   const replayDoc = migrate(released.document);
   const outcome = await runWorkflow(library, { id, inputs, startUrl: opts.startUrl, document: replayDoc }, opts);
@@ -163,7 +165,11 @@ export async function reviewWorkflow(
     state,
     "POST",
     `/api/workflows/${encodeURIComponent(id)}/review`,
-    { documentHash, shots: outcome.runId ? redactedStepShots(library, replayDoc, outcome.runId) : [] },
+    {
+      documentHash,
+      shots: outcome.runId ? redactedStepShots(library, replayDoc, outcome.runId) : [],
+      samples: publicSamples(inputs),
+    },
     opts,
   );
   if (!recorded?.ok) return { ...outcome, reviewed: false, documentHash, reason: "review was not recorded" };
