@@ -487,6 +487,7 @@ export function runViewer(
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
     </header>
+    ${video}
     ${envelopePane(run.envelope)}
     ${handoffPane(run.trail)}
     <div class="row" id="run-actions">
@@ -515,7 +516,6 @@ export function runViewer(
     </div>
     ${passGrid(recent, workflow.steps)}
     ${trajectoryPane(context.recorded, run.trajectory)}
-    ${video}
     <div class="tabs" id="run-tabs">
       <button type="button" data-run-tab="trail">Trail</button>
       <button type="button" data-run-tab="inputs">Inputs</button>
@@ -660,7 +660,7 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
   const note = skips.length ? `<p class="quiet" id="idle-video">Shaded stretches are skipped.</p>` : "";
   if (!src) return `<div id="video-bar" hidden data-origin="${origin}" data-span="${span}">${shades}${markers}</div>`;
   return `<div id="video-bar" data-origin="${origin}" data-span="${span}">
-    <video id="run-video" src="${esc(src)}" data-skips="${skipData}" controls preload="metadata"></video>
+    <video id="run-video" src="${esc(src)}" poster="/api/runs/${encodeURIComponent(run.id)}/poster" data-skips="${skipData}" controls preload="auto" style="display:block;width:100%;height:240px;object-fit:contain;background:#1c1915"></video>
     <div class="timeline">${shades}${markers}</div>
     ${note}
     <p id="skip-live" class="quiet"></p>
@@ -1434,7 +1434,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): stri
     const status = failed
       ? `<button type="button" class="status ${esc(kind)}" data-open-run="${esc(run.id)}" data-open-step="${esc(failed)}">${esc(statusLabel(kind))}</button>`
       : `<span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span>`;
-    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td>${status} ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td><td><button type="button" data-rerun="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Re-run with this run's inputs</button></td></tr>`;
+    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}" aria-label="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td>${status} ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td><td><button type="button" data-rerun="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Re-run with this run's inputs</button></td></tr>`;
   }).join("");
   return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>When</th><th>Run</th><th></th></tr></thead><tbody>${rows}</tbody></table></section>`;
 }

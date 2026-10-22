@@ -43,6 +43,8 @@ if [[ -d desktop/os-helper-macos/BaoOSHelper.app ]]; then
 fi
 bash desktop/packaging/macos/build-capture-bar.sh
 cp -a "$ROOT/desktop/packaging/macos/dist/BaoCaptureBar.app" "$APP/Contents/Resources/BaoCaptureBar.app"
+bash desktop/packaging/macos/build-window-video.sh
+cp -a "$ROOT/desktop/packaging/macos/dist/BaoWindowVideo.app" "$APP/Contents/Resources/BaoWindowVideo.app"
 
 BROWSER="$(node -e "const {chromium}=require('playwright'); process.stdout.write(chromium.executablePath())")"
 if [[ ! -x "$BROWSER" ]]; then

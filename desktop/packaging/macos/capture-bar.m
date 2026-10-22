@@ -252,7 +252,7 @@ static void readStdin(void) {
     NSView *content = panel.contentView;
     banner = [NSTextField labelWithString:@"You need to act"];
     banner.hidden = YES;
-    banner.frame = NSMakeRect(16, 496, 348, 40);
+    banner.frame = NSMakeRect(16, 560, 348, 40);
     banner.font = [NSFont boldSystemFontOfSize:14];
     banner.textColor = [NSColor systemRedColor];
     banner.maximumNumberOfLines = 2;
@@ -261,7 +261,7 @@ static void readStdin(void) {
     [content addSubview:banner];
     timeLabel = [NSTextField labelWithString:@""];
     timeLabel.hidden = YES;
-    timeLabel.frame = NSMakeRect(16, 456, 348, 36);
+    timeLabel.frame = NSMakeRect(16, 520, 348, 36);
     timeLabel.font = [NSFont systemFontOfSize:12];
     timeLabel.maximumNumberOfLines = 2;
     timeLabel.lineBreakMode = NSLineBreakByWordWrapping;
@@ -269,18 +269,18 @@ static void readStdin(void) {
     [content addSubview:timeLabel];
     showButton = [NSButton buttonWithTitle:@"Show window" target:self action:@selector(showWindow:)];
     showButton.hidden = YES;
-    showButton.frame = NSMakeRect(16, 420, 130, 28);
+    showButton.frame = NSMakeRect(16, 484, 130, 28);
     [content addSubview:showButton];
 
     notifyLabel = [NSTextField labelWithString:@"Notifications are off for Bao"];
     notifyLabel.hidden = YES;
-    notifyLabel.frame = NSMakeRect(16, 580, 348, 20);
+    notifyLabel.frame = NSMakeRect(16, 452, 348, 20);
     notifyLabel.font = [NSFont systemFontOfSize:13];
     notifyLabel.lineBreakMode = NSLineBreakByClipping;
     [content addSubview:notifyLabel];
     notifyButton = [NSButton buttonWithTitle:@"Open Settings" target:self action:@selector(openSettings:)];
     notifyButton.hidden = YES;
-    notifyButton.frame = NSMakeRect(16, 544, 140, 28);
+    notifyButton.frame = NSMakeRect(16, 416, 140, 28);
     [content addSubview:notifyButton];
 
     pauseButton = [NSButton buttonWithTitle:@"Pause" target:self action:@selector(pause:)];

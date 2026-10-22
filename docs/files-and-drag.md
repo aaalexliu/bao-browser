@@ -1,6 +1,6 @@
 # Files and drag
 
-A workflow step stores a `file` input (`{{file}}` or `{{drop}}`). The path exists only in the replay arguments for that run. Capture records the basename in the trail event and interpret drops even that, so the saved workflow has neither the path nor the filename.
+A workflow step stores a `file` input named `file` (`{{file}}`), whether the capture was a chooser or a drop on the page. The path exists only in the replay arguments for that run. Capture records the basename in the trail event and interpret drops even that, so the saved workflow has neither the path nor the filename.
 
 ## What was run here
 

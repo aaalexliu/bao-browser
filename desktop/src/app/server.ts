@@ -49,6 +49,7 @@ import {
   type ImportAudit,
 } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
+import { openReplayVideo } from "../v1/replay-video";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
@@ -583,7 +584,8 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/poster")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const file = newestPng(path.join(library.root, "shots", "runs", id));
+        const frame = path.join(library.root, "videos", `${id}.png`);
+        const file = existsSync(frame) ? frame : newestPng(path.join(library.root, "shots", "runs", id));
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPng(res, file);
       }
@@ -711,7 +713,42 @@ export async function startApp(opts: {
           upload?: { selector: string; path: string };
           drop?: { selector: string; name: string; path: string };
           chooser?: { selector: string; path: string };
+          box?: string;
+          scroll?: string;
         };
+        if (typeof body.scroll === "string" && /^#[A-Za-z][\w-]*$/.test(body.scroll)) {
+          await page.evaluate((selector) => {
+            const el = document.querySelector(selector);
+            if (el instanceof Element) el.scrollIntoView({ block: "start", inline: "nearest" });
+          }, body.scroll);
+          return json(res, { events: capture.events.length });
+        }
+        if (typeof body.box === "string" && /^#[A-Za-z][\w-]*$/.test(body.box)) {
+          const box = await page.evaluate((selector) => {
+            const el = document.querySelector(selector);
+            if (!(el instanceof Element)) return null;
+            const rect = el.getBoundingClientRect();
+            const outerH = window.outerHeight;
+            const innerH = window.innerHeight;
+            const viewH = window.visualViewport && window.visualViewport.height ? window.visualViewport.height : innerH;
+            // innerHeight on this Chrome build stays larger than the window, so
+            // outer-inner is negative and the point lands above the element.
+            // The visible viewport, then a measured title-bar inset, keep the
+            // point on the element.
+            let chrome = outerH - viewH;
+            if (!(chrome > 20 && chrome < 160)) chrome = outerH - innerH;
+            if (!(chrome > 20 && chrome < 160)) chrome = 87;
+            return {
+              x: window.screenX + rect.left + rect.width / 2,
+              y: window.screenY + chrome + rect.top + rect.height / 2,
+              w: rect.width,
+              h: rect.height,
+              top: rect.top,
+              chrome,
+            };
+          }, body.box);
+          return json(res, { box, events: capture.events.length });
+        }
         if (body.fill) await page.fill(body.fill.selector, body.fill.value);
         if (body.click) await page.click(body.click);
         if (body.chooser?.selector && body.chooser.path) {
@@ -1268,9 +1305,11 @@ export async function startApp(opts: {
     teachFix = fix;
     teachCaseId = `teach-${Date.now().toString(36)}`;
     sessionMode = "teach";
-    teachPhase = "live";
     try {
       await beginSession(startUrl);
+      // Live means the capture page exists. Publishing it earlier lets a
+      // drive land in the gap while Chrome is still launching.
+      teachPhase = "live";
       if (page && !page.isClosed()) teachBaseline = await page.evaluate(visibleStatusLines).catch(() => []);
     } catch (err) {
       sessionMode = "capture";
@@ -1799,21 +1838,29 @@ async function runRecorded(
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
+  const videoStartedAt = Date.now();
+  const video = await openReplayVideo(pidsForDataDir(session.profile), path.join(library.root, "videos", `${runId}.webm`));
   const settings = library.settings();
   const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
   const reviewSteps = new Set(stepsNeedingReview(recent as Parameters<typeof stepsNeedingReview>[0]).map((item) => item.stepId));
-  const result = await replay(workflow, args, driver, {
-    runId,
-    shotDir,
-    settings,
-    heal,
-    now: () => Date.now(),
-    receipts: receiptLog,
-    fromStepId: fromStep,
-    reviewSteps,
-    circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
-    siteTrust: trustMode(settings, originOf(workflow.startUrl)),
-  } satisfies ReplayOptions);
+  let result: Awaited<ReturnType<typeof replay>>;
+  let recorded = { wrote: false, frames: 0 };
+  try {
+    result = await replay(workflow, args, driver, {
+      runId,
+      shotDir,
+      settings,
+      heal,
+      now: () => Date.now(),
+      receipts: receiptLog,
+      fromStepId: fromStep,
+      reviewSteps,
+      circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
+      siteTrust: trustMode(settings, originOf(workflow.startUrl)),
+    } satisfies ReplayOptions);
+  } finally {
+    recorded = await video.stop();
+  }
   spillBinaryShots(result, shotDir);
   for (const repair of result.repairs) {
     library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
@@ -1840,6 +1887,7 @@ async function runRecorded(
     promotion,
     modelCalls: result.modelCalls,
     inputs: maskedInputs(workflow, args),
+    ...(recorded.wrote ? { video: `${runId}.webm`, videoStartedAt } : {}),
   }), secretList)) as Parameters<Library["saveRun"]>[0];
   library.saveRun(saved);
   if (result.status === "failed" && result.failure?.stepId) {
