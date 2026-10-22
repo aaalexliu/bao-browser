@@ -2,7 +2,7 @@
 // Nothing is recorded unless a session was started.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -73,7 +73,9 @@ import {
 } from "../v1/pending-prompt";
 import { Library } from "../v1/store";
 import { keepMine, openConflict, pairDevice, syncAll, syncStatus } from "../v1/sync";
-import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
+import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
+import { decideOpen, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
 
 export interface Notice extends HealNotice {
@@ -127,6 +129,8 @@ export async function startApp(opts: {
   let replaying = false;
   let recordingSince = 0;
   const notifications: { title: string; body: string }[] = [];
+  let opened: OpenedView | null = null;
+  let pendingDoc: WorkflowV2 | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
   let tail: Promise<void> = Promise.resolve();
   function enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -193,6 +197,16 @@ export async function startApp(opts: {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     }));
+  }
+
+  function localWorkflow(link: string): WorkflowV2 | null {
+    const match = link.trim().match(/^bao:\/\/(?:workflow|import)\/([A-Za-z0-9_-]+)$/);
+    if (!match?.[1]) return null;
+    try {
+      return library.read(match[1]);
+    } catch {
+      return null;
+    }
   }
 
   const server = createServer(async (req, res) => {
@@ -266,7 +280,37 @@ export async function startApp(opts: {
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
+          opened,
         });
+      }
+      if (req.method === "POST" && url.pathname === "/api/open") {
+        const body = await readBody(req) as { link?: string; document?: unknown };
+        const parsed = decideOpen(String(body.link || ""), localWorkflow(String(body.link || "")), body.document);
+        if ("error" in parsed) return json(res, { ok: false, error: parsed.error }, 404);
+        opened = parsed.opened;
+        pendingDoc = parsed.pending;
+        return json(res, { ok: true, opened });
+      }
+      if (req.method === "POST" && url.pathname === "/api/open/install") {
+        if (!pendingDoc) return json(res, { ok: false, error: "nothing to import" }, 400);
+        const body = await readBody(req) as { answers?: Record<string, unknown> };
+        try {
+          const installed = migrate(applyImportAnswers(pendingDoc, body.answers || {}));
+          library.save(installed);
+          pendingDoc = null;
+          opened = {
+            kind: "workflow",
+            id: installed.id,
+            name: installed.name,
+            link: `bao://workflow/${installed.id}`,
+            importLink: `bao://import/${installed.id}`,
+            questions: importQuestions(installed),
+            saved: true,
+          };
+          return json(res, { ok: true, id: installed.id, opened });
+        } catch (err) {
+          return json(res, { ok: false, error: err instanceof Error ? err.message : "answer the import questions" }, 400);
+        }
       }
       if (req.method === "GET" && url.pathname === "/api/import-login") {
         if (!pending || pending.id !== url.searchParams.get("id")) return json(res, { error: "no import" }, 404);
@@ -406,9 +450,7 @@ export async function startApp(opts: {
         const run = library.readRun(id);
         const file = path.join(library.root, "videos", `${run.id}.webm`);
         if (!existsSync(file)) return json(res, { error: "no video" }, 404);
-        res.writeHead(200, { "content-type": "video/webm" });
-        res.end(readFileSync(file));
-        return;
+        return sendVideo(req, res, file);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.includes("/shots/")) {
         const parts = url.pathname.split("/");
@@ -1586,6 +1628,54 @@ function summary(doc: WorkflowV2) {
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
   };
+}
+
+function sendVideo(req: IncomingMessage, res: ServerResponse, file: string): void {
+  const size = statSync(file).size;
+  const asked = byteRange(req.headers.range, size);
+  if (req.headers.range && !asked) {
+    res.writeHead(416, { "content-range": `bytes */${size}`, "accept-ranges": "bytes" });
+    res.end();
+    return;
+  }
+  if (size === 0) {
+    res.writeHead(200, { "content-type": "video/webm", "content-length": 0, "accept-ranges": "bytes", "cache-control": "no-store" });
+    res.end();
+    return;
+  }
+  const start = asked?.start ?? 0;
+  const end = asked?.end ?? size - 1;
+  const headers: Record<string, number | string> = {
+    "content-type": "video/webm",
+    "accept-ranges": "bytes",
+    "content-length": end - start + 1,
+    "cache-control": "no-store",
+  };
+  if (asked) headers["content-range"] = `bytes ${start}-${end}/${size}`;
+  res.writeHead(asked ? 206 : 200, headers);
+  const stream = createReadStream(file, { start, end });
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
+}
+
+/** A single `bytes=` range. Unparseable or multipart ranges return null. */
+function byteRange(header: string | string[] | undefined, size: number): { start: number; end: number } | null {
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (!raw || size <= 0) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(raw.trim());
+  if (!match) return null;
+  const startRaw = match[1] ?? "";
+  const endRaw = match[2] ?? "";
+  if (startRaw === "" && endRaw === "") return null;
+  if (startRaw === "") {
+    const suffix = Number(endRaw);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    return { start: Math.max(0, size - suffix), end: size - 1 };
+  }
+  const start = Number(startRaw);
+  const end = endRaw === "" ? size - 1 : Number(endRaw);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= size || end < start) return null;
+  return { start, end: Math.min(end, size - 1) };
 }
 
 function sendPng(res: ServerResponse, file: string): void {

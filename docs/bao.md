@@ -159,6 +159,10 @@ The desktop window and the web app share one formatter (`web/src/lib/time.ts`). 
 
 A login or confirm wait is stored in the app home as `pending-prompt.json`. Closing the window and opening it again restores the bar and the badge. When the deadline passes and no replay is still in that wait, the file is removed and the run is marked stopped, timed out. A wait that finishes inside a running replay still stops with `nothing applied` or `waiting for you to log in`.
 
+### 2026-10-22 — Trace-style run viewer
+
+A filmstrip frame shows the step's cropped, redacted screenshot, with the outline drawn on the target when the picture was taken. A step with no picture keeps the icon. Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
+
 ### 2026-10-22 — Re-run, skipped idle, and a per-step heal limit
 
 A past run can be started again from the run viewer. Re-run with this run's inputs fills the form from that run and asks for a secret again. Debug from this step starts at the selected step. Idle longer than 3 seconds is collapsed on the filmstrip and in the replay video, with a marker such as `skipped 12s`. When the same step heals itself on 3 consecutive runs, auto-heal stops for that step, the step is marked needs review, and the act bar says so.
@@ -320,14 +324,15 @@ Settings → Sync shows the paired devices and item counts per category. Those t
 
 ## Share a workflow
 
-On the workflow page, copy a view link or an install link. The shared copy has already had emails, phone numbers, street addresses, and secret defaults removed.
+On the workflow page, mark which inputs are asked on import, then copy a view link or an install link. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
 
-An install link asks the setup questions, the same idea as Shortcuts. Secret and file answers are not accepted. An answer that looks like an email or a card number is dropped. Other answers become defaults on the recipient's private copy only.
+Secret and file answers are not stored. A path is asked with the same file field capture records, and the path is not shown. An email typed as an answer is dropped. Other answers become defaults on the recipient's private copy only. A non-personal sample is shown as an example.
 
-Open a workflow from the desktop library or with:
+Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered.
 
 ```bash
 npm run bao -- open bao://workflow/<id>
+npm run bao -- open bao://import/<id>
 ```
 
 Replay → Re-run with past inputs fills the non-secret fields from the last run. Passwords are not kept.
@@ -342,9 +347,9 @@ Listing stays disabled until a device replays that redacted copy:
 npm run bao -- sync review <id> --inputs inputs.json
 ```
 
-`bao sync review` replays on this Mac. Only a passing run is reported, and the report is the hash of the redacted document. Confirm on the preview page after that. The marketplace page is the public catalog. Fork asks the same setup questions. Report sends a reason. There is no payment step.
+`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace page is the public catalog. Fork uses the same import sheet. Report sends a reason. There is no payment step.
 
-Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after that replay-and-confirm step.
+Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted: the password is not stored, so the clean replay cannot sign in.
 
 ## MCP
 

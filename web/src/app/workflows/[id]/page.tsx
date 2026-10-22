@@ -25,7 +25,7 @@ export default async function WorkflowPage({
     throw err;
   }
   const [versions, runs] = await Promise.all([listVersions(user, id), listRuns(user, id)]);
-  const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string }[]; steps?: { id: string; label?: string }[] };
+  const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string; askOnImport?: boolean }[]; steps?: { id: string; label?: string }[] };
   return (
     <article>
       <h1>{doc.name || id}</h1>
@@ -39,7 +39,8 @@ export default async function WorkflowPage({
       <div className="chips" data-testid="domains">
         {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
       </div>
-      <p className="mono">{workflow.link}</p>
+      <p className="mono" data-testid="deeplink">{workflow.link}</p>
+      <p className="mono" data-testid="import-link">{workflow.importLink}</p>
       <p className="row">
         <a className="button" href={`/workflows/${id}/publish`}>Preview what goes public</a>
       </p>
@@ -60,11 +61,19 @@ export default async function WorkflowPage({
         {(doc.steps ?? []).map((step) => <li key={step.id}>{step.label}</li>)}
       </ol>
       <h2>Inputs</h2>
-      <ul>
-        {(doc.inputs ?? []).map((input) => (
-          <li key={input.name}>{input.label || input.name} · {input.type}</li>
-        ))}
-      </ul>
+      <form action={`/api/workflows/${id}/inputs`} method="post">
+        <ul>
+          {(doc.inputs ?? []).map((input) => (
+            <li key={input.name}>
+              <label>
+                <input type="checkbox" name={`ask_${input.name}`} defaultChecked={input.askOnImport === true} />
+                {" "}Ask on import · {input.label || input.name} · {input.type}
+              </label>
+            </li>
+          ))}
+        </ul>
+        <button type="submit">Save import questions</button>
+      </form>
       <h2>Share</h2>
       <div className="row">
         <form action={`/api/workflows/${id}/share`} method="post">

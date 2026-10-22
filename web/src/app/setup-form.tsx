@@ -5,6 +5,9 @@ export interface SetupQuestion {
   required: boolean;
   choices?: string[];
   prompt: string;
+  hint?: string;
+  example?: string;
+  cleared?: string;
 }
 
 export function SetupForm({
@@ -21,7 +24,10 @@ export function SetupForm({
       {questions.map((question) => (
         <label key={question.name}>
           {question.prompt}
-          {question.type === "secret" || question.type === "file" ? (
+          {question.hint ? <span className="muted">{question.hint}</span> : null}
+          {question.type === "file" ? (
+            <input type="file" disabled />
+          ) : question.type === "secret" ? (
             <input disabled placeholder="Entered on your device, never sent" />
           ) : question.type === "choice" ? (
             <select name={`a_${question.name}`}>
@@ -30,7 +36,7 @@ export function SetupForm({
               ))}
             </select>
           ) : (
-            <input name={`a_${question.name}`} required={question.required} />
+            <input name={`a_${question.name}`} required={question.required} placeholder={question.example ? `for example ${question.example}` : undefined} />
           )}
         </label>
       ))}
