@@ -7,8 +7,9 @@ import { dumpPage, maskPasswordFields, unmaskPasswordFields, type DomDump } from
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
-import type { Driver, HealNotice, LiveTree } from "./replay";
+import type { Driver, HealNotice, LiveTree, ShotTarget } from "./replay";
 import type { FileArg, Identity } from "./schema";
+import { paddedClip, type ShotBox } from "./shots";
 
 export interface FileProof {
   action: "upload" | "drop";
@@ -73,10 +74,12 @@ export class BrowserDriver implements Driver {
     }
   }
 
-  async shot(): Promise<Buffer | undefined> {
+  async shot(target?: ShotTarget): Promise<Buffer | undefined> {
     try {
       await this.page.evaluate(maskPasswordFields).catch(() => undefined);
-      return await this.page.screenshot({ type: "png" });
+      const clip = await clipBox(this.page, target);
+      if (!clip) return;
+      return await this.page.screenshot({ type: "png", clip });
     } catch {
       return undefined;
     } finally {
@@ -287,6 +290,81 @@ export class BrowserDriver implements Driver {
   private sel(node: Identity): string {
     return `[data-bao-i="${this.handle(node)}"]`;
   }
+}
+
+/** Crop around the step's target. A full-page picture is not used as a thumbnail. */
+export async function clipBox(page: Page, target?: ShotTarget): Promise<ShotBox | undefined> {
+  const hint = target || {};
+  const identity = hint.identity;
+  const testId = identity?.testId;
+  const nodeId = identity?.id;
+  const name = identity?.name;
+  const text = hint.text;
+  const label = hint.label;
+  const found = await firstBox([
+    testId ? { locate: () => page.getByTestId(testId) } : undefined,
+    nodeId && /^[\w-]+$/.test(nodeId) ? { locate: () => page.locator(`#${nodeId}`) } : undefined,
+    name ? { locate: () => page.getByRole("button", { name, exact: true }) } : undefined,
+    hint.action === "login" ? { locate: () => page.locator("#login") } : undefined,
+    hint.action === "confirm" ? { locate: () => page.locator("#apply-btn, [data-testid='apply']") } : undefined,
+    text ? { locate: () => page.getByText(text, { exact: false }), phrase: text } : undefined,
+    label ? { locate: () => page.getByText(label, { exact: false }), phrase: label } : undefined,
+  ]);
+  if (!found) return;
+  const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  return paddedClip(found, view);
+}
+
+async function firstBox(tries: Array<{ locate: () => ReturnType<Page["locator"]>; phrase?: string } | undefined>): Promise<ShotBox | undefined> {
+  for (const attempt of tries) {
+    if (!attempt) continue;
+    const box = await elementBox(attempt.locate(), attempt.phrase).catch(() => null);
+    if (box) return box;
+  }
+  return undefined;
+}
+
+async function elementBox(loc: ReturnType<Page["locator"]>, phrase?: string): Promise<ShotBox | null> {
+  if (await loc.count().catch(() => 0) === 0) return null;
+  const handle = await loc.first().elementHandle({ timeout: 250 }).catch(() => null);
+  if (!handle) return null;
+  const box = await handle.evaluate((el, wanted) => {
+    let node: Element = el;
+    if (wanted) {
+      let best: Element | null = null;
+      let bestArea = Number.POSITIVE_INFINITY;
+      for (const item of [el, ...el.querySelectorAll("*")]) {
+        const text = (item.textContent || "").replace(/\s+/g, " ");
+        if (!text.includes(wanted)) continue;
+        const rect = (item as HTMLElement).getBoundingClientRect();
+        const area = rect.width * rect.height;
+        if (rect.width >= 2 && rect.height >= 2 && area > 0 && area < bestArea) {
+          best = item;
+          bestArea = area;
+        }
+      }
+      if (best) node = best;
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      let textNode: Node | null;
+      while ((textNode = walker.nextNode())) {
+        const content = textNode.textContent || "";
+        const at = content.indexOf(wanted);
+        if (at < 0) continue;
+        const range = document.createRange();
+        range.setStart(textNode, at);
+        range.setEnd(textNode, at + wanted.length);
+        const rect = range.getBoundingClientRect();
+        if (rect.width >= 2 && rect.height >= 2) {
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }
+      }
+    }
+    if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) node = node.closest("label") || node;
+    const rect = (node as HTMLElement).getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  }, phrase || "").catch(() => null);
+  if (!box || box.width < 2 || box.height < 2) return null;
+  return box;
 }
 
 export async function notifyOs(title: string, body: string): Promise<void> {

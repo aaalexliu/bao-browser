@@ -36,7 +36,7 @@ import {
 type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow";
 
 let state: ShellState & {
-  notices?: { title?: string; body?: string }[];
+  notices?: { id?: string; title?: string; body?: string }[];
   settings?: { heal?: string };
   trails?: string[];
   workflows?: WorkflowSummary[];
@@ -50,7 +50,8 @@ let healFilter: "pending" | "kept" | "reverted" = "pending";
 let openHeal: { runId: string; healId: string } | null = null;
 let openRun = "";
 let selectedStep = "";
-let banner: { title: string; body: string } | null = null;
+let banner: { id: string; title: string; body: string } | null = null;
+const dismissed = new Set<string>();
 let renderKey = "";
 let notified = "";
 let libraryQuery = "";
@@ -132,7 +133,7 @@ function render(): void {
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
-    mainEl().innerHTML = notices(banner ? [banner, ...(state.notices || [])] : (state.notices || [])) + body;
+    mainEl().innerHTML = body;
     const search = document.getElementById("library-search") as HTMLInputElement | null;
     if (search) search.value = libraryQuery;
     if (typingSearch && search) {
@@ -147,6 +148,7 @@ function render(): void {
   paintPalette();
   paintLive();
   mountShots();
+  paintToasts();
   if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
   if (screen === "run" && openRun) void showRun(openRun);
   if (screen === "heals" && openHeal) void showHeal(openHeal.runId, openHeal.healId);
@@ -422,6 +424,7 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
     });
   }
   banner = {
+    id: `decision-${decision}-${Date.now()}`,
     title: decision === "keep" ? "Patch kept" : "Patch reverted",
     body: decision === "keep" ? "Kept the heal in the saved workflow." : "Reverted the saved workflow to the failed step.",
   };
@@ -797,6 +800,26 @@ function seekVideo(at: number | undefined): void {
   const video = document.getElementById("run-video") as HTMLVideoElement | null;
   const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
   if (video && at && origin) video.currentTime = Math.max(0, (at - origin) / 1000);
+}
+
+function paintToasts(): void {
+  const host = document.getElementById("toasts");
+  if (!host) return;
+  const items = [banner, ...(state.notices || [])].flatMap((item) => {
+    if (!item || !item.title) return [];
+    const id = ("id" in item && item.id) ? item.id : item.title;
+    if (dismissed.has(id)) return [];
+    return [{ id, title: item.title, body: item.body }];
+  });
+  host.innerHTML = notices(items);
+  host.querySelectorAll<HTMLButtonElement>("[data-dismiss]").forEach((btn) => {
+    btn.onclick = () => {
+      const id = btn.dataset.dismiss || "";
+      if (id) dismissed.add(id);
+      if (banner && banner.id === id) banner = null;
+      paintToasts();
+    };
+  });
 }
 
 function mountShots(root: ParentNode = document): void {

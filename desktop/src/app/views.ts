@@ -612,13 +612,15 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
       : `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
     const thumbLabel = workflow.firstStep?.label || workflow.name;
     return `<article class="wf-card" data-workflow="${esc(workflow.id)}">
+      <h3 class="wf-title"><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
       <div class="thumb" data-shot="${esc(poster)}" data-shot-fallback="/api/workflows/${encodeURIComponent(workflow.id)}/poster">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
-      <div class="wf-body">
-        <h3><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
-        <p class="meta"><span class="status ${esc(kind)}">${esc(label)}</span> ${expects}</p>
+      <div class="wf-mid">
+        <div class="chips">${inputs}${waits}${expects}</div>
+      </div>
+      <div class="wf-foot">
+        <span class="status ${esc(kind)}">${esc(label)}</span>
         ${sparkline(history)}
-        <div class="chips">${inputs}${waits}</div>
-        <div class="row"><button type="button" data-screen="replay" data-workflow="${esc(workflow.id)}">Run</button></div>
+        <button type="button" data-screen="replay" data-workflow="${esc(workflow.id)}">Run</button>
       </div>
     </article>`;
   }).join("");
@@ -634,8 +636,8 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
   </section>`;
 }
 
-export function notices(items: { title?: string; body?: string }[]): string {
-  return items.map((item) => `<div class="notice"><strong>${esc(item.title)}</strong><div>${esc(item.body)}</div></div>`).join("");
+export function notices(items: { id?: string; title?: string; body?: string }[]): string {
+  return items.map((item) => `<div class="toast" data-notice="${esc(item.id || item.title || "")}"><div><strong>${esc(item.title)}</strong><div>${esc(item.body)}</div></div><button type="button" data-dismiss="${esc(item.id || item.title || "")}" aria-label="Dismiss">Close</button></div>`).join("");
 }
 
 export function healWorkflowName(
@@ -827,7 +829,7 @@ export function workflowDetail(
       <button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button>
     </header>
     <h3 class="section">Steps</h3>
-    ${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}
+    <div id="workflow-steps">${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}</div>
   </section>`;
 }
 

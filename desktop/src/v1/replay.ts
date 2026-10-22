@@ -89,8 +89,15 @@ export interface Driver {
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
-  /** Page PNG only. Unit-test drivers omit this, so they do not take pictures. */
-  shot?(): Promise<Buffer | undefined>;
+  /** Page PNG of the target, when the driver can see it. Unit-test drivers omit this. */
+  shot?(target?: ShotTarget): Promise<Buffer | undefined>;
+}
+
+export interface ShotTarget {
+  identity?: Identity;
+  action?: string;
+  label?: string;
+  text?: string;
 }
 
 export interface RunResult {
@@ -177,7 +184,7 @@ export async function replay(
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     const started = clock();
-    const beforeShot = await writeStepShot(driver, opts.shotDir, step.id, "before");
+    const beforeShot = await writeStepShot(driver, opts.shotDir, step, "before");
     const stamp = (patch: RunResult["steps"][number]) => {
       steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot };
     };
@@ -295,7 +302,7 @@ export async function replay(
     stamp({ id: step.id, status: "passed" });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
-      const afterShot = await writeStepShot(driver, opts.shotDir, step.id, "after");
+      const afterShot = await writeStepShot(driver, opts.shotDir, step, "after");
       if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot };
     }
   }
@@ -1051,13 +1058,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function writeStepShot(driver: Driver, dir: string | undefined, stepId: string, which: "before" | "after"): Promise<string | undefined> {
+async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<string | undefined> {
   if (!dir || !driver.shot) return;
   try {
-    const png = await driver.shot();
+    const png = await driver.shot({
+      identity: step.identity,
+      action: step.action,
+      label: step.label,
+      text: step.expect?.match || step.postcondition?.match,
+    });
     if (!png || png.length < 24 || png[0] !== 0x89 || png[1] !== 0x50) return;
     mkdirSync(dir, { recursive: true });
-    const name = shotFile(stepId, which);
+    const name = shotFile(step.id, which);
     writeFileSync(path.join(dir, name), png);
     return name;
   } catch {

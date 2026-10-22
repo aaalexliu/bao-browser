@@ -372,7 +372,9 @@ is still the source of truth for the extension.
   worth copying. A follow-up replaced empty thumbnails with per-step PNGs
   from capture and replay, gave the workflow its own page, and drew one
   sparkline cell per recent run. A missing picture is an icon and the target
-  text. Red is reserved for a failed step.
+  text. Red is reserved for a failed step. A later polish shows every saved
+  step on the workflow page, turns the heal notice into a dismissible toast,
+  and crops each thumbnail around the target instead of shrinking the page.
 
 ---
 

@@ -5,6 +5,7 @@ import { importErrorView } from "../../src/app/import-error";
 import { attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
 import { viewFromLookup } from "../../src/v1/run-trace";
+import { paddedClip } from "../../src/v1/shots";
 import { ensureTrailTimes } from "../../src/v1/trail-time";
 import type { Identity } from "../../src/v1/schema";
 
@@ -260,6 +261,11 @@ test("library cards show a sparkline, inputs, and search", () => {
   assert.match(html, /id="library-search"/);
   assert.match(html, /⌘K/);
   assert.match(html, /class="status failed"/);
+  assert.match(html, /class="wf-title"/);
+  assert.match(html, /class="wf-foot"/);
+  const titleAt = html.indexOf("wf-title");
+  const footAt = html.indexOf("wf-foot");
+  assert.ok(titleAt > 0 && titleAt < footAt);
   assert.match(libraryTable([], []), /No workflows yet/);
 });
 
@@ -284,6 +290,10 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.match(html, /badge expect">verify/);
   assert.match(html, /data-screen="replay"/);
   assert.match(html, /you press Apply/);
+  assert.match(html, /id="workflow-steps"/);
+  const steps = html.slice(html.indexOf("workflow-steps"));
+  assert.ok(steps.indexOf("Type {{note}}") < steps.indexOf("re-read the status"));
+  assert.ok(steps.indexOf("re-read the status") < steps.indexOf("confirm before applying"));
   assert.match(html, /class="crumb"/);
   assert.match(html, /data-screen="library"/);
   assert.equal(html.includes("id=\"library\""), false);
@@ -369,6 +379,19 @@ test("the record bar and the permission card follow live state", () => {
   assert.match(on, /data-ok="true"/);
   assert.match(on, /allowed/);
   assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
+});
+
+test("a target clip stays inside the viewport and is larger than the control", () => {
+  const clip = paddedClip({ x: 400, y: 300, width: 80, height: 28 }, { width: 1280, height: 800 });
+  assert.ok(clip.width >= 240);
+  assert.ok(clip.height >= 140);
+  assert.ok(clip.x >= 0 && clip.y >= 0);
+  assert.ok(clip.x + clip.width <= 1280);
+  assert.ok(clip.y + clip.height <= 800);
+  assert.ok(clip.x < 440 && clip.x + clip.width > 440);
+  const bar = paddedClip({ x: 0, y: 40, width: 1280, height: 36 }, { width: 1280, height: 800 });
+  assert.ok(bar.width <= 560);
+  assert.equal(bar.x, 0);
 });
 
 test("a trail with a missing timestamp gets one", () => {

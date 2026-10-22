@@ -46,6 +46,7 @@ import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } fr
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
+import { clipBox } from "../v1/browser-driver";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { ReceiptLog } from "../v1/receipt";
@@ -384,7 +385,9 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           mkdirSync(dir, { recursive: true });
           const dest = path.join(dir, `${id}.png`);
           try {
-            await page.screenshot({ path: dest, type: "png" });
+            const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
+            if (!clip) return;
+            await page.screenshot({ path: dest, type: "png", clip });
             captureShots.set(id, dest);
           } catch { /* headed Chromium can refuse captureScreenshot */ }
         });
@@ -1123,10 +1126,20 @@ function newestPng(dir: string): string | undefined {
   if (!existsSync(dir)) return;
   const ranked = readdirSync(dir)
     .filter((name) => /^[\w.-]+\.png$/.test(name))
-    .map((name) => ({ name, mtime: statSync(path.join(dir, name)).mtimeMs, after: name.endsWith("-after.png") }))
+    .map((name) => {
+      const file = path.join(dir, name);
+      return { file, mtime: statSync(file).mtimeMs, after: name.endsWith("-after.png"), cropped: croppedPng(file) };
+    })
+    .filter((item) => item.cropped)
     .sort((a, b) => Number(b.after) - Number(a.after) || b.mtime - a.mtime);
-  const pick = ranked[0];
-  return pick ? path.join(dir, pick.name) : undefined;
+  return ranked[0]?.file;
+}
+
+/** A poster is a crop around a control. A full-page capture stays off the card. */
+function croppedPng(file: string): boolean {
+  const buf = readFileSync(file);
+  if (buf.length < 24 || buf.toString("ascii", 12, 16) !== "IHDR") return false;
+  return buf.readUInt32BE(16) <= 720 && buf.readUInt32BE(20) <= 480;
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {
