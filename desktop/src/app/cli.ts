@@ -103,6 +103,11 @@ async function main(): Promise<void> {
       await recordAlertsTrail(dir);
       return;
     }
+    if (tasks === "alerts-v2") {
+      const { recordAlertsV2 } = await import("../eval/heldout/record-alerts");
+      await recordAlertsV2(dir);
+      return;
+    }
     const list = tasks === "batch5"
       ? (await import("../eval/heldout/tasks5")).HELD_TASKS_5
       : tasks === "batch4"
