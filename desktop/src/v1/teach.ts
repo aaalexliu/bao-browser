@@ -40,6 +40,8 @@ export interface TeachCard {
   dropped: boolean;
   merged: boolean;
   note: string;
+  /** The capture note is the workflow intent. The card still shows the step intent beside it. */
+  noteAsIntent?: boolean;
   action: string;
   values: TeachValue[];
 }
@@ -136,26 +138,30 @@ export function projectTeach(
     const intent = heuristicIntent(step, event);
     const outcome = heuristicOutcome(step, event);
     const voice = spoken?.get(id);
-    const noted = attachedNote(group) || (step.intent || "").trim();
+    const noted = attachedNote(group);
+    const guess = scrub(voice?.intent || intent, secrets, events);
+    const note = scrub(noted, secrets, events);
+    const noteAsIntent = Boolean(note);
     const card: TeachCard = {
       id,
       eventIds: group.map((item) => item.id),
       narrator: voice?.narrator || "heuristic",
       modelName: voice?.modelName,
-      intent: scrub(noted || voice?.intent || intent, secrets, events),
+      intent: guess,
       outcome: scrub(voice?.outcome || outcome, secrets, events),
       human: step.human === true || step.action === "login" || step.action === "confirm",
       verify: step.action === "verify",
       dropped: false,
       merged: false,
-      note: scrub(noted, secrets, events),
+      note,
+      noteAsIntent,
       action: step.action,
       values: valuesOf(step, event),
     };
     return {
       id,
       events: group.map((item) => ({ ...item })),
-      step: { ...step, intent: card.intent, label: card.intent },
+      step: { ...step, intent: noteAsIntent ? note : guess },
       card,
       dropped: false,
       merged: false,
@@ -164,7 +170,12 @@ export function projectTeach(
   const overrides = new Map<string, WorkflowInput>();
   for (const decision of decisions) applyDecision(drafts, decision, baseline.inputs, overrides, secrets, events);
   const kept = drafts.filter((draft) => !draft.dropped && !draft.merged);
-  const steps = kept.map((draft, index) => ({ ...draft.step, index, id: `${meta.id}-${index}`, intent: draft.card.intent || draft.step.intent }));
+  const steps = kept.map((draft, index) => ({
+    ...draft.step,
+    index,
+    id: `${meta.id}-${index}`,
+    intent: draft.card.noteAsIntent ? (draft.card.note || draft.step.intent) : (draft.card.intent || draft.step.intent),
+  }));
   const inputs = inputsFor(steps, baseline.inputs, overrides);
   const workflow: WorkflowV2 = {
     ...baseline,
@@ -519,6 +530,7 @@ function applyDecision(
   if (decision.kind === "rename" && decision.intent) {
     const intent = scrub(decision.intent, secrets, events);
     draft.card.intent = intent;
+    draft.card.noteAsIntent = false;
     draft.step.intent = intent;
     draft.step.label = intent;
     return;
@@ -526,9 +538,8 @@ function applyDecision(
   if (decision.kind === "note" && decision.note) {
     const intent = scrub(decision.note, secrets, events);
     draft.card.note = intent;
-    draft.card.intent = intent;
+    draft.card.noteAsIntent = true;
     draft.step.intent = intent;
-    draft.step.label = intent;
     return;
   }
   if (decision.kind === "drop") {
@@ -706,6 +717,7 @@ function targetName(event: TrailEvent | undefined): string {
 
 /** The interpret label, with a named target when that label is only "Click". */
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
+  if (step.action === "type") return typeIntent(step, event);
   const fromLabel = (step.label || "").trim().replace(/^Click "(.+)"$/, "Click $1");
   if (fromLabel && fromLabel !== "Click") return fromLabel;
   const target = targetName(event);
@@ -716,9 +728,26 @@ function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): str
   if (step.action === "login") return "Sign in";
   if (step.action === "drop") return "Drop file";
   if (step.action === "upload") return "Upload file";
-  if (step.action === "type" && (step.sensitive || event?.sensitive)) return "Type secret";
-  if (step.action === "type" && step.input) return `Type {{${step.input}}}`;
   return "Click";
+}
+
+function typeIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
+  const where = fieldName(step, event);
+  const secret = step.sensitive || event?.sensitive || /pass|secret/i.test(step.input || "");
+  if (secret) return where ? `Type secret into ${where}` : "Type secret";
+  const token = step.input ? `{{${step.input}}}` : (step.value || "").trim();
+  if (token && where) return `Type ${token} into ${where}`;
+  if (token) return token.startsWith("Type ") ? token : `Type ${token}`;
+  return where ? `Type into ${where}` : "Type";
+}
+
+function fieldName(step: WorkflowStep, event: TrailEvent | undefined): string {
+  const identity = event?.identity || step.identity;
+  const raw = [identity?.label, identity?.name, identity?.nameAttr, identity?.id].find((bit) => bit && bit.trim()) || "";
+  const clean = raw.replace(/\s+/g, " ").trim();
+  if (!clean || clean.includes("{{")) return "";
+  if (/[A-Z]/.test(clean) || /\s/.test(clean)) return clean;
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
 function heuristicOutcome(step: WorkflowStep, event: TrailEvent | undefined): string {

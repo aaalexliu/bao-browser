@@ -216,6 +216,33 @@ test("a conflict draft uses the cloud version numbers and device names", () => {
   assert.match(html, /data-testid="version-device">Home Mac/);
 });
 
+test("a saved version uses the real save time, not the epoch", () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-version-saved-"));
+  const library = new Library(home);
+  const before = Date.now();
+  const doc = workflow("wf-saved-now", "go");
+  doc.createdAt = 0;
+  library.save(doc);
+  const saved = listVersions(library, "wf-saved-now")[0];
+  assert.ok(saved);
+  assert.ok(saved.createdAt >= before, `saved at ${saved.createdAt}`);
+  assert.ok(saved.createdAt >= 1_000_000_000_000);
+  assert.ok((saved.history?.[0]?.at || 0) >= before);
+  const one = workflow("wf-saved-one", "go");
+  one.createdAt = 1;
+  library.save(one);
+  const sentinel = listVersions(library, "wf-saved-one")[0];
+  assert.ok(sentinel && sentinel.createdAt >= before);
+  const html = zoned(
+    require.resolve("../../src/app/views"),
+    `versionsPanel(${JSON.stringify([{ n: saved.n, role: saved.role, source: saved.source, createdAt: saved.createdAt, history: saved.history }])})`,
+    "America/New_York",
+  );
+  assert.match(html, /EDT|EST/);
+  assert.equal(html.includes("1970"), false);
+  assert.equal(html.includes("12:00 AM UTC"), false);
+});
+
 test("the versions panel prints the local time with the zone label", () => {
   const html = zoned(
     require.resolve("../../src/app/views"),

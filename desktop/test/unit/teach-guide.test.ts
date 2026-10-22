@@ -16,6 +16,7 @@ interface TeachCard {
   id: string;
   intent: string;
   note: string;
+  noteAsIntent?: boolean;
   action: string;
   human: boolean;
   at?: number;
@@ -86,8 +87,9 @@ test("a note lands on the step within a second and a fix is a labelled correctio
 
     await post(app.port, "/api/sessions/note", { text: "alpha note" });
     const noted = await readState(app.port);
-    assert.equal(noted.teach.cards[0]?.intent, "alpha note");
+    assert.equal(noted.teach.cards[0]?.intent, "Click username");
     assert.equal(noted.teach.cards[0]?.note, "alpha note");
+    assert.equal(noted.teach.cards[0]?.noteAsIntent, true);
     assert.equal(noted.teach.cards[0]?.shownAt, card.shownAt);
 
     await post(app.port, "/api/sessions/drive", { fill: { selector: "#username", value: "demo" } });
@@ -98,7 +100,9 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     const secret = filled.teach.cards.find((item) => item.values.some((value) => value.role === "secret"));
     const login = filled.teach.cards.find((item) => item.action === "click" && item.id !== card.id);
     assert.ok(typed && secret && login, JSON.stringify(filled.teach.cards));
+    assert.equal(typed.intent, "Type {{username}} into Username");
     assert.equal(typed.values[0]?.role, "input");
+    assert.equal(secret.intent, "Type secret into Password");
     assert.equal(secret.values[0]?.role, "secret");
 
     const corrected = await post(app.port, "/api/teach/correct", {
@@ -111,7 +115,10 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     const flagged = await readState(app.port);
     assert.equal(flagged.teach.cards.find((item) => item.id === login.id)?.human, true);
     assert.equal(flagged.teach.decisions.some((decision) => decision.detail === "you do this"), true);
-    assert.equal(flagged.teach.cards.find((item) => item.id === card.id)?.intent, "alpha note");
+    const notedCard = flagged.teach.cards.find((item) => item.id === card.id);
+    assert.equal(notedCard?.intent, "Click username");
+    assert.equal(notedCard?.note, "alpha note");
+    assert.equal(notedCard?.noteAsIntent, true);
 
     await post(app.port, "/api/teach/stop");
     await post(app.port, "/api/teach/save", { name: "Noted fixture" });

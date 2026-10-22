@@ -77,7 +77,7 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     const apply = live.teach.cards.find((card) => card.action === "click" && /apply/i.test(card.intent));
     const stray = live.teach.cards.find((card) => card.action === "click" && card.id !== apply?.id);
     assert.ok(note && apply && stray, JSON.stringify(live.teach.cards));
-    assert.equal(note.intent, "Type {{note}}");
+    assert.equal(note.intent, "Type {{note}} into Note");
     assert.equal(note.narrator, "heuristic");
     assert.match(apply.intent, /^Click /);
 

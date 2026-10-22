@@ -25,7 +25,7 @@ import {
   teachIntentCase,
   teachSummary,
 } from "../../src/v1/teach";
-import { rail, runViewer, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
+import { rail, runViewer, teachCard, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -66,15 +66,36 @@ test("a capture note becomes the current or next step's intent", () => {
   const typed = { id: "note-now", ts: 2, kind: "act" as const, op: "note", afterText: "wait for the banner" };
   const current = projectTeach([click, typed], [], meta);
   assert.equal(current.cards.length, 1);
-  assert.equal(current.cards[0]?.intent, "wait for the banner");
+  assert.equal(current.cards[0]?.intent, "Click Open");
   assert.equal(current.cards[0]?.note, "wait for the banner");
+  assert.equal(current.cards[0]?.noteAsIntent, true);
   assert.equal(current.workflow.steps[0]?.intent, "wait for the banner");
   assert.equal(current.workflow.steps[0]?.action, "click");
+  const html = teachCard({
+    id: current.cards[0]!.id,
+    intent: current.cards[0]!.intent,
+    outcome: current.cards[0]!.outcome,
+    narrator: "heuristic",
+    human: false,
+    verify: false,
+    dropped: false,
+    merged: false,
+    note: current.cards[0]!.note,
+    noteAsIntent: true,
+    action: "click",
+    values: [],
+  }, { edit: true });
+  assert.match(html, /note used as intent/);
+  assert.match(html, /data-intent value="Click Open"/);
+  assert.match(html, /data-note value="wait for the banner"/);
+  assert.equal(html.includes('data-intent value="wait for the banner"'), false);
   const early = { id: "note-next", ts: 1, kind: "act" as const, op: "note", afterText: "sign in as the demo user" };
   const next = projectTeach([early, click], [], meta);
   assert.equal(next.cards.length, 1);
   assert.equal(next.cards[0]?.id, "click-open");
-  assert.equal(next.cards[0]?.intent, "sign in as the demo user");
+  assert.equal(next.cards[0]?.intent, "Click Open");
+  assert.equal(next.cards[0]?.note, "sign in as the demo user");
+  assert.equal(next.cards[0]?.noteAsIntent, true);
   assert.equal(next.workflow.steps[0]?.action, "click");
   const pair = intentEvalPair("wf-note", [click, typed], [], meta);
   const blob = JSON.stringify(pair);
@@ -92,10 +113,10 @@ test("the heuristic narrates the fixture and a note becomes the intent", () => {
   const hidden = projected.cards.find((card) => card.id === "type-secret");
   const drop = projected.cards.find((card) => card.id === "drop-file");
   const apply = projected.cards.find((card) => card.id === "click-apply");
-  assert.equal(note?.intent, "Type {{note}}");
+  assert.equal(note?.intent, "Type {{note}} into Note");
   assert.equal(note?.narrator, "heuristic");
   assert.equal(note?.values[0]?.label, "{{note}}");
-  assert.equal(hidden?.intent, "Type secret");
+  assert.equal(hidden?.intent, "Type secret into Password");
   assert.equal(hidden?.values[0]?.role, "secret");
   assert.equal(drop?.intent, "Drop file");
   assert.equal(apply?.intent, "Click Apply");

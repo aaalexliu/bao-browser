@@ -517,7 +517,8 @@
     .teach-card.on { background: var(--select); }
     button.teach-row, .teach-row {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
+      flex-wrap: wrap;
       gap: 8px;
       width: 100%;
       height: auto;
@@ -532,15 +533,26 @@
       box-shadow: none;
       font-size: inherit;
     }
-    .teach-card .thumb.mini { width: 72px; height: 44px; grid-area: auto; border-radius: 6px; }
+    .teach-card .thumb.mini { width: 72px; height: 44px; grid-area: auto; border-radius: 6px; flex: none; }
     .teach-card .intent-read {
-      flex: 1;
-      min-width: 0;
+      flex: 1 1 10rem;
+      min-width: 8rem;
       margin: 0;
       font-weight: 650;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow: visible;
+      overflow-wrap: anywhere;
+    }
+    .teach-card .note-read {
+      flex: 1 1 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .teach-card .note-as-intent {
+      flex: 1 1 100%;
+      color: var(--quiet);
+      font-size: var(--text-xs);
+      font-weight: 650;
     }
     .teach-edit { display: none; width: 100%; }
     .teach-card.open .teach-edit { display: grid; gap: 6px; padding: 4px 0 8px; }

@@ -1478,6 +1478,7 @@ export interface TeachCardView {
   dropped: boolean;
   merged: boolean;
   note: string;
+  noteAsIntent?: boolean;
   action: string;
   values: { role: string; name: string; label: string }[];
   /** Source event time. */
@@ -1578,9 +1579,11 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
     card.verify ? `<span class="badge expect">check</span>` : "",
     card.note ? `<span class="badge note">note</span>` : "",
   ].join("");
+  const used = card.noteAsIntent ? `<span class="note-as-intent" data-note-intent>note used as intent</span>` : "";
+  const noted = card.note ? `<span class="note-read">${esc(card.note)}</span>` : "";
   const row = `<span class="thumb mini" data-shot="${esc(captureShot(card.id))}">${cropPlaceholder(card.action)}</span>
       <span class="intent-read">${esc(card.intent)}</span>
-      ${chip}${flags}${opts.edited || ""}`;
+      ${noted}${used}${chip}${flags}${opts.edited || ""}`;
   const head = opts.edit
     ? `<button type="button" class="teach-row" aria-expanded="false">${row}</button>`
     : `<div class="teach-row">${row}</div>`;
@@ -1603,7 +1606,8 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
         <button type="button" data-correct="drop">Drop</button>
         <button type="button" data-correct="merge">Merge</button>
       </div>
-      <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Saved as this step's intent" aria-label="Note"></label>
+      ${used}
+      <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Note" aria-label="Note"></label>
     </div>` : "";
   const classes = ["step-card", "teach-card", card.human ? "human" : "", opts.on ? "on" : ""].filter(Boolean).join(" ");
   const at = typeof card.at === "number" ? String(card.at) : "";
