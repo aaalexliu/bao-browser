@@ -15,6 +15,8 @@ export interface ApplyGate {
   trail: RunTrailEvent[];
   /** Person-wait from Settings. Absent uses the step timeout. */
   actTimeoutMs?: number;
+  /** The run that is waiting, so a restart can find the prompt. */
+  runId?: string;
 }
 
 export function isApplyTarget(node: Identity | undefined): boolean {

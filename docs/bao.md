@@ -155,6 +155,10 @@ Billing follows the Cursor plan. Cursor's CLI docs say headless print mode is a 
 
 The desktop window and the web app share one formatter (`web/src/lib/time.ts`). A shown time is the machine's zone with the short zone name, for example `Oct 22, 12:50 AM EDT`. A time from the last day also leads with how long ago (`23 min ago · Oct 22, 12:50 AM EDT`) on rows that have the room: Heals, the runs list, saved logins, and the workflow's last run. The recent-runs header is the zoned clock, and the hover adds the relative phrase. Stored instants, HAR times, and cookie expirations stay ISO. A unit test renders those pages and fails if an ISO `Z` timestamp, a `YYYY-MM-DD` date, or a clock with no zone is left in the HTML.
 
+### 2026-10-22 — Act prompts survive a restart
+
+A login or confirm wait is stored in the app home as `pending-prompt.json`. Closing the window and opening it again restores the bar and the badge. When the deadline passes and no replay is still in that wait, the file is removed and the run is marked stopped, timed out. A wait that finishes inside a running replay still stops with `nothing applied` or `waiting for you to log in`.
+
 ## 2026-10-22 — One checkout for the signed app
 
 The integration branch (pull request 58) is the tree a Mac build should use. It already contains the desktop window, and this pass landed the rest of the open desktop work on that same branch:

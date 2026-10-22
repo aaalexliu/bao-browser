@@ -356,7 +356,7 @@ export function runViewer(
       brokenAttr: failure?.brokenAttr,
     })
     : `${esc(workflow.name)} passed`;
-  const statusWord = run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : "refused";
+  const statusWord = run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
   const badge = modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
@@ -726,6 +726,7 @@ export function healWorkflowName(
 }
 
 export function runKind(run: RunSummary, promotion?: PromotionView): string {
+  if (run.status === "timed-out") return "timed-out";
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
   if (run.status === "paused") return "paused";
   if (run.status === "failed") return "failed";
@@ -734,6 +735,7 @@ export function runKind(run: RunSummary, promotion?: PromotionView): string {
 }
 
 export function statusLabel(kind: string): string {
+  if (kind === "timed-out") return "stopped, timed out";
   if (kind === "paused") return "needs you";
   if (kind === "failed") return "failed";
   if (kind === "healed") return "healed";
