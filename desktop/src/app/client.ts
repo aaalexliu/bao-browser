@@ -35,6 +35,7 @@ import {
   teachPanel,
   teachReview,
   trailPane,
+  versionsPanel,
   workflowDetail,
   type CommandItem,
   type HealView,
@@ -145,6 +146,7 @@ async function refresh(): Promise<void> {
     paused: state.capturePaused,
     since: state.recordingSince,
     promotions: state.promotions,
+    sync: state.sync,
     // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     screen,
@@ -545,6 +547,18 @@ function bind(): void {
       action: "keep",
     });
   });
+  document.querySelectorAll<HTMLInputElement>("[data-sync-category]").forEach((input) => {
+    input.onchange = () => void postSync("/api/sync/category", {
+      category: input.dataset.syncCategory,
+      enabled: input.checked,
+    });
+  });
+  const schedule = document.getElementById("backup-schedule");
+  if (schedule) schedule.onchange = () => void postSync("/api/sync/backup", {
+    schedule: (schedule as HTMLSelectElement).value,
+  });
+  const restore = document.getElementById("restore-backup");
+  if (restore) restore.onclick = () => void postSync("/api/sync/backup", { action: "restore" });
   bindAsk();
   bindHeal();
   const save = document.getElementById("save-settings");
@@ -684,7 +698,7 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
   banner = {
     id: `decision-${decision}-${Date.now()}`,
     title: decision === "keep" ? "Patch kept" : "Patch reverted",
-    body: decision === "keep" ? "Kept the heal in the saved workflow." : "Reverted the saved workflow to the failed step.",
+    body: decision === "keep" ? "Saved a draft. Replay still uses the live version until you promote it." : "Reverted the live workflow to the failed step.",
   };
   renderKey = "";
   await refresh();
@@ -703,17 +717,6 @@ async function showRun(id: string): Promise<void> {
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
   host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds });
-  host.querySelectorAll("[data-rollback]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => {
-      const versionId = (btn as HTMLButtonElement).dataset.rollback || "";
-      const stepId = (btn as HTMLButtonElement).dataset.step || "";
-      void fetch("/api/workflows/" + encodeURIComponent(workflow.id) + "/rollback", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ stepId, versionId }),
-      }).then(() => showRun(id));
-    };
-  });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";
@@ -890,11 +893,14 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
 
 async function openEditor(id: string): Promise<void> {
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
+  const listed = await (await fetch("/api/workflows/" + encodeURIComponent(id) + "/versions")).json() as {
+    versions?: { n: number; role: string; source: string; createdAt: number }[];
+  };
   const host = document.getElementById("workflow-host");
   if (!host || !host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}${typeof last.at === "number" ? ` · ${formatWhen(last.at)}` : ""}` : "Not run yet";
-  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel }) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
+  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel }) + versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
       <button type="button" data-export="${esc(id)}">Export</button>
@@ -916,6 +922,7 @@ async function openEditor(id: string): Promise<void> {
     });
     renderKey = "";
     await refresh();
+    await openEditor(id);
   };
   const rename = host.querySelector("[data-rename]") as HTMLButtonElement;
   rename.onclick = async () => {
@@ -928,6 +935,7 @@ async function openEditor(id: string): Promise<void> {
     });
     renderKey = "";
     await refresh();
+    await openEditor(id);
   };
   const del = host.querySelector("[data-delete]") as HTMLButtonElement;
   del.onclick = async () => {
@@ -969,6 +977,21 @@ async function openEditor(id: string): Promise<void> {
       render();
     };
   });
+  host.querySelectorAll("[data-promote-version], [data-restore-version]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = async () => {
+      const el = btn as HTMLButtonElement;
+      const n = Number(el.dataset.promoteVersion || el.dataset.restoreVersion);
+      const action = el.dataset.promoteVersion ? "promote" : "restore";
+      await fetch("/api/workflows/" + encodeURIComponent(id) + "/versions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, n }),
+      });
+      renderKey = "";
+      await refresh();
+      await openEditor(id);
+    };
+  });
   host.querySelectorAll("[data-step-heal]").forEach((sel) => {
     (sel as HTMLSelectElement).onchange = async () => {
       const stepId = (sel as HTMLSelectElement).dataset.stepHeal || "";
@@ -980,6 +1003,7 @@ async function openEditor(id: string): Promise<void> {
       });
       renderKey = "";
       await refresh();
+      await openEditor(id);
     };
   });
   mountShots(host);

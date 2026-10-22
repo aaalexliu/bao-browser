@@ -16,6 +16,8 @@ export interface Settings extends HealSettings {
   circuitLimit: number;
   circuitWindowMs: number;
   syncServer?: string;
+  /** Scheduled library export. Absent means off. */
+  backupSchedule?: "off" | "daily" | "weekly";
 }
 
 export interface StoredRun {
@@ -123,7 +125,7 @@ export class Library {
     writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(promotion, null, 2));
   }
 
-  readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string } | undefined {
+  readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string; version?: number } | undefined {
     try {
       return JSON.parse(readFileSync(path.join(this.root, "promotions", `${workflowId}.json`), "utf8")) as {
         workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string;

@@ -161,6 +161,8 @@ export function preferredDirectory(profiles: { directory: string; matching: numb
   return best?.directory || "";
 }
 
+const SYNC_CATEGORIES = ["workflows", "run history", "heal records", "settings"] as const;
+
 export function syncPanel(sync: {
   server?: string;
   deviceName?: string;
@@ -172,6 +174,11 @@ export function syncPanel(sync: {
   categories?: { category: string; count: number }[];
   localCategories?: { category: string; count: number }[];
   conflicts?: { id: string; remoteVersion: number; file: string }[];
+  buckets?: { category: string; enabled: boolean; local: number; cloud: number }[];
+  catchingUp?: boolean;
+  backupSchedule?: string;
+  lastBackupAt?: string;
+  scheduledBackupPath?: string;
 } | undefined, opened?: { id: string; name: string; steps: string[] } | null): string {
   const row = sync || {};
   const devices = (row.devices || []).map((device) => {
@@ -211,7 +218,19 @@ export function syncPanel(sync: {
     </div>
     <p class="quiet" data-testid="sync-result">${esc(syncStatusLine(row))}</p>
     ${row.lastSyncedAt ? `<p class="quiet" data-testid="last-synced">This Mac last synced ${esc(clockTime(row.lastSyncedAt))}</p>` : ""}
-    <p class="quiet">Backup: ${esc(row.backupPath || "Taken automatically before the first sync.")}</p>
+    <div class="backup-row" data-testid="backup-row">
+      <p class="quiet">Backup: ${esc(row.backupPath || "Taken automatically before the first sync.")}</p>
+      <label>Back up <select id="backup-schedule" data-testid="backup-schedule">
+        <option value="off" ${row.backupSchedule === "daily" || row.backupSchedule === "weekly" ? "" : "selected"}>Off</option>
+        <option value="daily" ${row.backupSchedule === "daily" ? "selected" : ""}>Back up daily</option>
+        <option value="weekly" ${row.backupSchedule === "weekly" ? "selected" : ""}>Back up weekly</option>
+      </select></label>
+    </div>
+    <p class="quiet" data-testid="last-backup">Last backup: ${esc(row.lastBackupAt ? clockTime(row.lastBackupAt) : "Not yet.")}</p>
+    <p class="quiet" data-testid="restore-path">Restore from ${esc(row.scheduledBackupPath || "No scheduled backup yet.")}</p>
+    <button id="restore-backup" type="button">Restore</button>
+    <h3>Categories</h3>
+    <ul class="sync-cats" data-testid="sync-categories">${categoryRows(row)}</ul>
     <h3>Devices</h3>
     <div data-testid="devices">${devices || `<p class="quiet">Pair this Mac to see your devices.</p>`}</div>
     <h3>On this Mac</h3><ul>${local}</ul>
@@ -219,6 +238,30 @@ export function syncPanel(sync: {
     ${refused}
     ${conflicts ? `<h3>Conflicts</h3>${conflicts}` : ""}
   </div>`;
+}
+
+function categoryRows(row: {
+  buckets?: { category: string; enabled: boolean; local: number; cloud: number }[];
+  catchingUp?: boolean;
+}): string {
+  const given = row.buckets || [];
+  return SYNC_CATEGORIES.map((category) => {
+    const bucket = given.find((item) => item.category === category) || { category, enabled: true, local: 0, cloud: 0 };
+    const count = row.catchingUp
+      ? `<p data-testid="catchup-count">${esc(bucket.local)} on this device of ${esc(bucket.cloud)} in the cloud</p>`
+      : "";
+    return `<li data-testid="sync-category" data-category="${esc(category)}">
+      <label><input type="checkbox" data-sync-category="${esc(category)}"${bucket.enabled ? " checked" : ""}> ${esc(categoryLabel(category))}</label>
+      ${count}
+    </li>`;
+  }).join("");
+}
+
+function categoryLabel(category: string): string {
+  if (category === "workflows") return "Workflows";
+  if (category === "run history") return "Run history";
+  if (category === "heal records") return "Heal records";
+  return "Settings";
 }
 
 function syncStatusLine(row: { lastResult?: string; paired?: boolean; conflicts?: unknown[] }): string {

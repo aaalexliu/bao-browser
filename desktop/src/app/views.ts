@@ -4,7 +4,6 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
-import type { ElementVersion } from "../v1/element-history";
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
@@ -358,7 +357,7 @@ export interface ViewerContext {
 
 export function runViewer(
   run: RunSummary,
-  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number; history?: ElementVersion[] }[] },
+  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number }[] },
   selectedId?: string,
   context: ViewerContext = {},
 ): string {
@@ -405,8 +404,6 @@ export function runViewer(
   const video = videoBar(run, steps);
   const safeHeadline = failed ? esc(headline) : headline;
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
-  const workflowStep = workflow.steps.find((item) => item.id === selected?.id);
-  const history = elementHistory(selected?.id, workflowStep?.history);
   const recoveredRow = selected?.reason?.startsWith("recovered:")
     ? `<p id="recovered-row">${esc(selected.reason)}</p>`
     : "";
@@ -461,7 +458,6 @@ export function runViewer(
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
         <h3 class="section">Identity</h3>
         ${table}
-        ${history}
         ${snapshotPane(snapDom, snapAx)}
       </div>
       ${failurePanel(selected, failure, identity)}
@@ -499,32 +495,6 @@ function frameFace(runId: string, step: StepView, failure: FailureView | undefin
     src,
     body: `<img src="${esc(src)}" alt="" data-before="${esc(before)}" data-after="${esc(after)}">${hold}`,
   };
-}
-
-function elementHistory(stepId: string | undefined, history: ElementVersion[] | undefined): string {
-  if (!stepId || !history || history.length === 0) return "";
-  const latest = history[history.length - 1];
-  const rows = history.map((row) => {
-    const changed = row.changed.length ? row.changed.join(", ") : "none";
-    const button = row.id === latest?.id
-      ? ""
-      : `<button type="button" data-rollback="${esc(row.id)}" data-step="${esc(stepId)}">Roll back to this version</button>`;
-    return `<tr data-source="${esc(row.source)}" data-score="${row.score ?? ""}">
-      <td>${esc(formatWhen(row.at))}</td>
-      <td>${esc(row.source)}</td>
-      <td>${esc(row.runId || "—")}</td>
-      <td>${row.score ?? ""}</td>
-      <td>${esc(changed)}</td>
-      <td>${button}</td>
-    </tr>`;
-  }).join("");
-  return `<section id="element-history">
-    <h3>Element history</h3>
-    <table>
-      <thead><tr><th>When</th><th>Source</th><th>Run</th><th>Score</th><th>Changed</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </section>`;
 }
 
 function failurePanel(step: StepView | undefined, failure: FailureView | undefined, identity: IdentityView | undefined): string {
@@ -791,7 +761,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
       <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Keep</button>
       <button type="button" data-revert="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Revert</button>
     </div>
-    <p class="quiet">Keep writes the patch into the saved workflow. Revert puts the failed step back. Both are appended. ${esc(decisionLine)}</p>
+    <p class="quiet">Keep saves a draft version. Replay keeps using the live version until you promote it. Revert puts the failed step back on the live workflow. Both are appended. ${esc(decisionLine)}</p>
   </article>`;
 }
 
@@ -1057,6 +1027,63 @@ export function workflowDetail(
     </header>
     <h3 class="section">Steps</h3>
     <div id="workflow-steps">${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}</div>
+  </section>`;
+}
+
+export interface VersionRow {
+  n: number;
+  role: string;
+  source: string;
+  createdAt: number;
+  /** The locator this version holds. The panel lists these and no second history. */
+  locator?: {
+    stepId: string;
+    source: string;
+    at: number;
+    runId?: string;
+    score?: number;
+    changed: string[];
+  };
+}
+
+function locatorHeld(version: VersionRow): string {
+  const locator = version.locator;
+  if (!locator) return "";
+  const changed = locator.changed.length ? locator.changed.join(", ") : "none";
+  return `<p class="locator-version" data-locator-source="${esc(locator.source)}" data-score="${locator.score ?? ""}" data-step="${esc(locator.stepId)}">
+    <time>${esc(formatClock(locator.at))}</time>
+    <span>${esc(locator.source)}</span>
+    <span>${esc(locator.runId || "—")}</span>
+    <span>${locator.score ?? ""}</span>
+    <span>${esc(changed)}</span>
+  </p>`;
+}
+
+export function versionsPanel(versions: VersionRow[]): string {
+  const rows = versions.map((version) => {
+    const role = version.role === "live" ? "Live" : version.role === "draft" ? "Draft" : "Past";
+    const source = version.source === "heal" ? "Heal" : version.source === "edit" ? "Edit" : version.source === "restore" ? "Restore" : "Saved";
+    const promote = version.role === "draft"
+      ? `<button type="button" class="primary" data-promote-version="${esc(version.n)}">Promote</button>`
+      : "";
+    return `<li data-testid="version" data-version="${esc(version.n)}" data-role="${esc(version.role)}">
+      <div class="row">
+        <strong>v${esc(version.n)}</strong>
+        <span class="badge">${esc(role)}</span>
+        <span class="quiet">${esc(source)}</span>
+        <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
+      </div>
+      ${locatorHeld(version)}
+      <div class="row">
+        <button type="button" data-restore-version="${esc(version.n)}">Restore as draft</button>
+        ${promote}
+      </div>
+    </li>`;
+  }).join("");
+  return `<section class="card" id="versions" data-testid="versions">
+    <h3>Versions</h3>
+    <p class="quiet">Replay uses the live version. A heal or an edit is a draft until you promote it.</p>
+    <ol class="versions">${rows || `<li class="quiet">No versions yet.</li>`}</ol>
   </section>`;
 }
 

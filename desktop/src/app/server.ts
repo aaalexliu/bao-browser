@@ -49,7 +49,6 @@ import {
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
-import { rollbackTo } from "../v1/element-history";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
 import {
@@ -86,7 +85,8 @@ import {
   writePendingPrompt,
 } from "../v1/pending-prompt";
 import { Library } from "../v1/store";
-import { keepMine, openConflict, pairDevice, syncAll, syncStatus } from "../v1/sync";
+import { keepMine, openConflict, pairDevice, restoreScheduledBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus } from "../v1/sync";
+import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
 import { decideOpen, type OpenedView } from "./deeplink";
@@ -278,6 +278,7 @@ export async function startApp(opts: {
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
+        runScheduledBackup(library);
         syncPending();
         return json(res, {
           recording: capture.recording,
@@ -463,6 +464,19 @@ export async function startApp(opts: {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
         return json(res, library.readPublicInputs(id));
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/versions")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        return json(res, { versions: listVersions(library, id) });
+      }
+      if (req.method === "POST" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/versions")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const body = await readBody(req) as { action?: string; n?: number };
+        const n = Number(body.n);
+        if (!Number.isInteger(n) || n < 1) return json(res, { error: "version" }, 400);
+        if (body.action === "promote") return json(res, promoteVersion(library, id, n));
+        if (body.action === "restore") return json(res, restoreVersion(library, id, n));
+        return json(res, { error: "action" }, 400);
+      }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
       }
@@ -526,6 +540,15 @@ export async function startApp(opts: {
         const body = await readBody(req) as { mode?: "sync" | "push" | "pull" };
         const mode = body.mode === "push" || body.mode === "pull" ? body.mode : "sync";
         return json(res, await syncAll(library, mode));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/category") {
+        const body = await readBody(req) as { category?: string; enabled?: boolean };
+        return json(res, setCategoryEnabled(library, String(body.category || ""), Boolean(body.enabled)));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/backup") {
+        const body = await readBody(req) as { schedule?: string; action?: string };
+        if (body.action === "restore") return json(res, restoreScheduledBackup(library));
+        return json(res, setBackupSchedule(library, String(body.schedule || "off")));
       }
       if (req.method === "POST" && url.pathname === "/api/sync/conflict") {
         const body = await readBody(req) as { id?: string; action?: string };
@@ -808,7 +831,7 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
         const body = await readBody(req) as { id: string; stepId: string; patch: HealProposal["patch"]; runId?: string; healId?: string };
         const next = keepPatch(library.read(body.id), body.stepId, body.patch, { runId: body.runId, score: 100 });
-        library.save(next);
+        draftVersion(library, next, "heal");
         if (body.runId && body.healId) {
           const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
           const heal = (recorded.heals as HealRecord[]).find((item) => item.id === body.healId);
@@ -821,20 +844,10 @@ export async function startApp(opts: {
         const run = library.readRun(body.runId);
         const heal = (run.heals as HealRecord[]).find((item) => item.id === body.healId);
         if (!heal) return json(res, { error: "no heal" }, 404);
-        const next = revertPatch(library.read(body.id), heal.failedStep);
-        library.save(next);
+        const next = revertPatch(library.read(body.id), heal.failedStep, { runId: body.runId });
+        draftVersion(library, next, "restore");
         const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "revert" });
         return json(res, { workflow: next, decisions: recorded.decisions, heals: recorded.heals });
-      }
-      if (req.method === "POST" && /^\/api\/workflows\/[^/]+\/rollback$/.test(url.pathname)) {
-        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const body = await readBody(req) as { stepId?: string; versionId?: string };
-        const workflow = library.read(id);
-        const steps = workflow.steps.map((step) => step.id === body.stepId
-          ? rollbackTo(step, body.versionId || "", { at: Date.now(), recordedAt: workflow.createdAt })
-          : step);
-        library.save({ ...workflow, steps, updatedAt: Date.now() });
-        return json(res, library.read(id));
       }
       if (req.method === "PATCH" && url.pathname.startsWith("/api/workflows/")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -853,22 +866,27 @@ export async function startApp(opts: {
             const { heal: _drop, ...rest } = step;
             return rest;
           });
-          library.save({ ...doc, steps, updatedAt: Date.now() });
-          return json(res, library.read(id));
+          const next = { ...doc, steps, updatedAt: Date.now() };
+          draftVersion(library, next, "edit");
+          return json(res, next);
         }
         if (body.workflow) {
-          library.save({ ...body.workflow, id, updatedAt: Date.now() });
-          return json(res, library.read(id));
+          const next = { ...body.workflow, id, updatedAt: Date.now() };
+          draftVersion(library, next, "edit");
+          return json(res, next);
         }
         if (body.heal === "auto" || body.heal === "approve" || body.heal === null) {
           const doc = library.read(id);
           const next: WorkflowV2 = { ...doc, updatedAt: Date.now() };
           if (body.heal) next.heal = body.heal;
           else delete next.heal;
-          library.save(next);
+          draftVersion(library, next, "edit");
           return json(res, next);
         }
-        return json(res, library.rename(id, body.name || library.read(id).name));
+        const current = library.read(id);
+        const renamed = { ...current, name: body.name || current.name, updatedAt: Date.now() };
+        draftVersion(library, renamed, "edit");
+        return json(res, renamed);
       }
       if (req.method === "DELETE" && url.pathname.startsWith("/api/workflows/")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -1790,20 +1808,21 @@ function recordProvisional(library: Library, workflow: WorkflowV2, heals: HealRe
     before,
     need: library.settings().promoteAfter,
   });
-  library.save(keepPatch(workflow, heal.failedStep.id, heal.proposedPatch, { at: Date.now(), runId: heal.runId, score: 100 }));
-  library.savePromotion(promotion);
+  const drafted = draftVersion(library, keepPatch(workflow, heal.failedStep.id, heal.proposedPatch, { at: Date.now(), runId: heal.runId, score: 100 }), "heal");
+  const stored = { ...promotion, version: drafted.n };
+  library.savePromotion(stored);
   library.appendTrail(workflow.id, promotionEvent(promotion, Date.now()));
   return promotion;
 }
 
 async function checkPromotion(library: Library, id: string, notices: Notice[]): Promise<Promotion> {
-  const current = library.readPromotion(id) as Promotion | undefined;
+  const current = library.readPromotion(id) as (Promotion & { version?: number }) | undefined;
   if (!current || current.status !== "provisional") throw new Error("no provisional heal");
-  const workflow = library.read(id);
-  const args = defaultArgs(workflow);
+  const candidate = current.version ? versionDocument(library, id, current.version) : library.read(id);
+  const args = defaultArgs(candidate);
   let driftOk = true;
   for (const change of driftChanges) {
-    if (!await replayChanged(workflow, args, change)) {
+    if (!await replayChanged(candidate, args, change)) {
       driftOk = false;
       break;
     }
@@ -1811,23 +1830,21 @@ async function checkPromotion(library: Library, id: string, notices: Notice[]): 
   let promotion = noteDrift(current, driftOk);
   library.savePromotion(promotion);
   library.appendTrail(id, promotionEvent(promotion, Date.now()));
-  if (promotion.status === "reverted") {
-    library.save(revertPatch(workflow, promotion.before));
-    return promotion;
-  }
+  if (promotion.status === "reverted") return promotion;
   const required = library.settings().promoteAfter;
   for (let i = 0; i < required && promotion.status === "provisional"; i++) {
-    const passed = await replayChanged(library.read(id), args, { query: "" });
+    const passed = await replayChanged(candidate, args, { query: "" });
     promotion = noteReplay(promotion, passed, required);
     library.savePromotion(promotion);
     library.appendTrail(id, promotionEvent(promotion, Date.now()));
-    if (promotion.status === "reverted") library.save(revertPatch(library.read(id), promotion.before));
+    if (promotion.status === "reverted") return promotion;
   }
+  if (promotion.status === "promoted" && current.version) promoteVersion(library, id, current.version);
   notices.unshift({
     id: `n-${notices.length + 1}`,
     at: Date.now(),
     title: promotion.status === "promoted" ? "Bao promoted a heal" : "Bao reverted a heal",
-    body: `${workflow.name}: ${promotion.status}`,
+    body: `${candidate.name}: ${promotion.status}`,
     workflowId: id,
     runId: promotion.healId,
     stepId: promotion.stepId,

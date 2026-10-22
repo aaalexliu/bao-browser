@@ -2,13 +2,24 @@
 // The first sync copies the library aside before anything is sent.
 
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
 import { assertSyncSafe, buildPushBody, buildRunBody, SyncRejected } from "../../../web/src/lib/guard";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
-import { Library } from "./store";
+import { Library, type Settings } from "./store";
+
+export const SYNC_CATEGORIES = ["workflows", "run history", "heal records", "settings"] as const;
+export type SyncCategory = (typeof SYNC_CATEGORIES)[number];
+export type BackupSchedule = "off" | "daily" | "weekly";
+
+export interface SyncBucket {
+  category: SyncCategory;
+  enabled: boolean;
+  local: number;
+  cloud: number;
+}
 
 export interface DeviceRow {
   id: string;
@@ -43,6 +54,12 @@ export interface SyncState {
   remoteDevices: DeviceRow[];
   remoteCategories: CategoryCount[];
   conflicts: ConflictNote[];
+  categoryEnabled?: Partial<Record<SyncCategory, boolean>>;
+  cloudCounts?: Partial<Record<SyncCategory, number>>;
+  catchingUp?: boolean;
+  lastBackupAt?: string;
+  scheduledBackupPath?: string;
+  settingsCloudAt?: string;
 }
 
 export interface SyncView {
@@ -58,6 +75,11 @@ export interface SyncView {
   categories: CategoryCount[];
   localCategories: CategoryCount[];
   conflicts: ConflictNote[];
+  buckets: SyncBucket[];
+  catchingUp: boolean;
+  backupSchedule: BackupSchedule;
+  lastBackupAt?: string;
+  scheduledBackupPath?: string;
 }
 
 interface PullBody {
@@ -96,6 +118,12 @@ export function loadState(root: string): SyncState {
     remoteDevices: parsed.remoteDevices ?? [],
     remoteCategories: parsed.remoteCategories ?? [],
     conflicts: parsed.conflicts ?? [],
+    categoryEnabled: parsed.categoryEnabled ?? {},
+    cloudCounts: parsed.cloudCounts ?? {},
+    catchingUp: Boolean(parsed.catchingUp),
+    lastBackupAt: parsed.lastBackupAt,
+    scheduledBackupPath: parsed.scheduledBackupPath,
+    settingsCloudAt: parsed.settingsCloudAt,
   };
 }
 
@@ -107,6 +135,8 @@ export function saveState(root: string, state: SyncState): void {
 
 export function syncStatus(library: Library): SyncView {
   const state = loadState(library.root);
+  const buckets = syncBuckets(library, state);
+  const catchingUp = Boolean(state.catchingUp) || buckets.some((bucket) => bucket.enabled && bucket.local < bucket.cloud);
   return {
     server: state.server,
     deviceId: state.deviceId,
@@ -120,6 +150,11 @@ export function syncStatus(library: Library): SyncView {
     categories: state.remoteCategories,
     localCategories: localCategoryCounts(library),
     conflicts: state.conflicts,
+    buckets,
+    catchingUp,
+    backupSchedule: library.settings().backupSchedule ?? "off",
+    lastBackupAt: state.lastBackupAt,
+    scheduledBackupPath: state.scheduledBackupPath,
   };
 }
 
@@ -149,19 +184,46 @@ export async function syncAll(library: Library, mode: "sync" | "push" | "pull" =
   const state = loadState(library.root);
   if (!state.server || !state.deviceToken) throw new Error("pair this Mac first");
   ensureBackup(library, state);
+  runScheduledBackup(library);
+  try {
+    return await syncOnline(library, mode);
+  } catch (err) {
+    if (!isOffline(err)) throw err;
+    const current = loadState(library.root);
+    current.catchingUp = true;
+    current.lastResult = "Offline. This Mac will catch up when it reconnects.";
+    saveState(library.root, current);
+    throw err;
+  }
+}
+
+async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Promise<SyncView> {
+  const state = loadState(library.root);
+  const snapshot = await loadSnapshot(state);
+  if (snapshot) {
+    state.cloudCounts = normalizeCounts(snapshot.counts);
+    state.catchingUp = true;
+    saveState(library.root, state);
+  }
   let pushed = 0;
   let pulled = 0;
-  if (mode !== "push") {
+  if (mode !== "push" && categoryOn(state, "workflows")) {
     pulled = (await pullRemote(library, state)).pulled;
   }
+  if (mode !== "push" && snapshot) applyCatchUp(library, state, snapshot);
   let refused = "";
-  if (mode !== "pull") {
+  if (mode !== "pull" && categoryOn(state, "workflows")) {
     const outgoing = await pushLocal(library, state);
     pushed = outgoing.pushed;
     refused = outgoing.refused;
-    if (!refused) await pushRuns(library, state);
+  }
+  if (mode !== "pull" && !refused && categoryOn(state, "run history")) await pushRuns(library, state);
+  if (mode !== "pull" && !refused && snapshot && categoryOn(state, "settings")) {
+    await pushSettings(library, state);
   }
   await refreshAccount(state);
+  const local = localSyncCounts(library);
+  state.catchingUp = SYNC_CATEGORIES.some((category) => categoryOn(state, category) && local[category] < (state.cloudCounts?.[category] ?? 0));
   state.lastSyncedAt = new Date().toISOString();
   state.lastResult = refused
     ? `Push refused: ${refused}`
@@ -211,6 +273,192 @@ function ensureBackup(library: Library, state: SyncState): void {
   state.backedUp = true;
   state.backupPath = dest;
   saveState(library.root, state);
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SETTINGS_KEYS = ["heal", "promoteAfter", "actTimeoutMs", "circuitLimit", "circuitWindowMs", "backupSchedule"] as const;
+
+export function setCategoryEnabled(library: Library, category: string, enabled: boolean): SyncView {
+  if (!isSyncCategory(category)) throw new Error("category");
+  const state = loadState(library.root);
+  state.categoryEnabled = { ...state.categoryEnabled, [category]: enabled };
+  saveState(library.root, state);
+  return syncStatus(library);
+}
+
+export function setBackupSchedule(library: Library, schedule: string): SyncView {
+  if (schedule !== "off" && schedule !== "daily" && schedule !== "weekly") throw new Error("schedule");
+  library.updateSettings({ backupSchedule: schedule });
+  runScheduledBackup(library);
+  return syncStatus(library);
+}
+
+export function runScheduledBackup(library: Library, now = Date.now()): { ran: boolean; path?: string } {
+  const schedule = library.settings().backupSchedule ?? "off";
+  if (schedule !== "daily" && schedule !== "weekly") return { ran: false };
+  const state = loadState(library.root);
+  const last = state.lastBackupAt ? Date.parse(state.lastBackupAt) : 0;
+  const windowMs = schedule === "weekly" ? 7 * DAY_MS : DAY_MS;
+  if (last && Number.isFinite(last) && now - last < windowMs) return { ran: false };
+  const dest = path.join(library.root, "backups", `scheduled-${now}`);
+  copyLibrary(library.root, dest);
+  state.lastBackupAt = new Date(now).toISOString();
+  state.scheduledBackupPath = dest;
+  saveState(library.root, state);
+  return { ran: true, path: dest };
+}
+
+export function restoreScheduledBackup(library: Library): SyncView {
+  const state = loadState(library.root);
+  const dest = state.scheduledBackupPath;
+  if (!dest) throw new Error("no scheduled backup");
+  assertBackup(library.root, dest);
+  if (!existsSync(dest)) throw new Error("no scheduled backup");
+  for (const name of ["workflows", "runs", "promotions", "heals", "versions"] as const) {
+    const from = path.join(dest, name);
+    const to = path.join(library.root, name);
+    if (!existsSync(from)) continue;
+    rmSync(to, { recursive: true, force: true });
+    cpSync(from, to, { recursive: true });
+  }
+  const settings = path.join(dest, "settings.json");
+  if (existsSync(settings)) cpSync(settings, path.join(library.root, "settings.json"));
+  state.lastResult = `Restored ${dest}`;
+  saveState(library.root, state);
+  return syncStatus(library);
+}
+
+function copyLibrary(root: string, dest: string): void {
+  mkdirSync(dest, { recursive: true });
+  for (const name of ["workflows", "runs", "promotions", "heals", "versions"]) {
+    const from = path.join(root, name);
+    if (existsSync(from)) cpSync(from, path.join(dest, name), { recursive: true });
+  }
+  const settings = path.join(root, "settings.json");
+  if (existsSync(settings)) cpSync(settings, path.join(dest, "settings.json"));
+}
+
+function assertBackup(root: string, target: string): void {
+  const resolved = path.resolve(target);
+  const backups = path.resolve(root, "backups");
+  if (resolved !== backups && !resolved.startsWith(`${backups}${path.sep}`)) throw new Error("bad backup path");
+}
+
+interface SyncSnapshot {
+  counts?: Partial<Record<SyncCategory, number>>;
+  runs?: { id?: string; workflowId?: string; status?: string; at?: string | number; steps?: unknown[] }[];
+  heals?: { id?: string; workflowId?: string; heal?: unknown }[];
+  settings?: Partial<Settings> | null;
+  settingsUpdatedAt?: string | null;
+}
+
+async function loadSnapshot(state: SyncState): Promise<SyncSnapshot | null> {
+  try {
+    return await request<SyncSnapshot>(state, "GET", "/api/sync/snapshot");
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) return null;
+    throw err;
+  }
+}
+
+function applyCatchUp(library: Library, state: SyncState, snapshot: SyncSnapshot): void {
+  if (categoryOn(state, "run history")) {
+    for (const run of snapshot.runs ?? []) {
+      const id = String(run.id || "");
+      const workflowId = String(run.workflowId || "");
+      if (!id || !workflowId || !safeKey(id) || !safeKey(workflowId)) continue;
+      try {
+        library.readRun(id);
+        continue;
+      } catch { /* missing on this device */ }
+      const at = typeof run.at === "number" ? run.at : Date.parse(String(run.at || ""));
+      library.saveRun({
+        id,
+        workflowId,
+        status: String(run.status || ""),
+        at: Number.isFinite(at) ? at : Date.now(),
+        heals: [],
+        steps: Array.isArray(run.steps) ? run.steps : [],
+      });
+    }
+  }
+  if (categoryOn(state, "heal records")) {
+    const dir = path.join(library.root, "heals");
+    mkdirSync(dir, { recursive: true });
+    for (const heal of snapshot.heals ?? []) {
+      const id = String(heal.id || "");
+      if (!safeKey(id) || existsSync(path.join(dir, `${id}.json`))) continue;
+      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }, null, 2));
+    }
+  }
+  if (categoryOn(state, "settings") && snapshot.settings && snapshot.settingsUpdatedAt && snapshot.settingsUpdatedAt !== state.settingsCloudAt) {
+    library.updateSettings(pickSettings(snapshot.settings));
+    state.settingsCloudAt = snapshot.settingsUpdatedAt;
+  }
+}
+
+async function pushSettings(library: Library, state: SyncState): Promise<void> {
+  try {
+    await request(state, "POST", "/api/sync/settings", pickSettings(library.settings()));
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) return;
+    throw err;
+  }
+}
+
+function syncBuckets(library: Library, state: SyncState): SyncBucket[] {
+  const local = localSyncCounts(library);
+  return SYNC_CATEGORIES.map((category) => ({
+    category,
+    enabled: categoryOn(state, category),
+    local: local[category],
+    cloud: Number(state.cloudCounts?.[category] ?? 0) || 0,
+  }));
+}
+
+function localSyncCounts(library: Library): Record<SyncCategory, number> {
+  return {
+    workflows: library.list().length,
+    "run history": library.listRuns().length,
+    "heal records": countJson(path.join(library.root, "heals")),
+    settings: existsSync(path.join(library.root, "settings.json")) ? 1 : 0,
+  };
+}
+
+function countJson(dir: string): number {
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir).filter((name) => name.endsWith(".json")).length;
+}
+
+function categoryOn(state: SyncState, category: SyncCategory): boolean {
+  return state.categoryEnabled?.[category] !== false;
+}
+
+function isSyncCategory(category: string): category is SyncCategory {
+  return (SYNC_CATEGORIES as readonly string[]).includes(category);
+}
+
+function normalizeCounts(raw: Partial<Record<SyncCategory, number>> | undefined): Record<SyncCategory, number> {
+  const counts = {} as Record<SyncCategory, number>;
+  for (const category of SYNC_CATEGORIES) counts[category] = Number(raw?.[category] ?? 0) || 0;
+  return counts;
+}
+
+function pickSettings(settings: Partial<Settings>): Partial<Settings> {
+  const picked: Partial<Settings> = {};
+  for (const key of SETTINGS_KEYS) {
+    if (settings[key] !== undefined) picked[key] = settings[key] as never;
+  }
+  return picked;
+}
+
+function safeKey(id: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(id);
+}
+
+function isOffline(err: unknown): boolean {
+  const status = (err as { status?: number }).status;
+  return status === undefined || status >= 500;
 }
 
 async function pullRemote(library: Library, state: SyncState): Promise<{ pulled: number; conflicts: number }> {
