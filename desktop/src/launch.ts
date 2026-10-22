@@ -5,7 +5,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { chromium, type BrowserContext } from "playwright";
 import { assertNotDailyChrome } from "./profile";
 
-const LAUNCH_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
+export const OWNED_CHROME_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
+const LAUNCH_ARGS = OWNED_CHROME_ARGS;
 
 export async function launchOwnedChrome(opts: {
   userDataDir: string;

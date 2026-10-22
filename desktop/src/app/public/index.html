@@ -26,6 +26,11 @@
     .notice { background: #fff7ed; border: 1px solid #fdba74; padding: 0.6rem; margin: 0.4rem 0; }
     pre { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
     .row { display: flex; gap: 0.5rem; align-items: center; }
+    .profiles { display: grid; gap: 0.6rem; }
+    .profile { display: grid; grid-template-columns: 48px 1fr; column-gap: 0.75rem; align-items: center; text-align: left; width: 100%; }
+    .profile img, .avatar { width: 48px; height: 48px; border-radius: 50%; background: #e7e0d6; object-fit: cover; display: grid; place-items: center; font-weight: 600; }
+    .profile .email, .profile .count { color: #5c564e; font-size: 0.92rem; }
+    .result h3 { margin: 0 0 0.4rem; }
   </style>
 </head>
 <body>
@@ -37,6 +42,7 @@
       <button data-screen="library">Library</button>
       <button data-screen="replay">Replay</button>
       <button data-screen="settings">Settings</button>
+      <button data-screen="logins">Logins</button>
     </nav>
     <div class="rec"><span class="dot" id="dot"></span><span id="rec-label">Idle</span></div>
   </header>
@@ -45,6 +51,7 @@
     const main = document.getElementById("main");
     let state = { recording: false, notices: [], settings: { heal: "auto" }, workflows: [], trails: [], runs: [] };
     let screen = "sessions";
+    let login = { site: "", probeUrl: "", selector: "", text: "", origins: "", botCookies: "skip", preview: null, report: null, error: "" };
     let lastRun = null;
     let lastWf = "";
     let banner = null;
@@ -57,7 +64,7 @@
     }
 
     function render() {
-      const views = { sessions, trail, library, replay, settings };
+      const views = { sessions, trail, library, replay, settings, logins };
       main.innerHTML = notices() + views[screen]();
       bind();
     }
@@ -65,7 +72,7 @@
     function sessions() {
       return `<section>
         <h2>Sessions</h2>
-        <p>Nothing is recorded until you start a session. The capture browser uses an app-owned profile, not your daily Chrome.</p>
+        <p>Nothing is recorded until you start a session. The capture browser uses an app-owned profile, not your daily Chrome. To bring one site's login across, open Logins and click import for that site.</p>
         <div class="card">
           <h3>Browser</h3>
           <label>Start URL <input id="start-url" value="${location.origin}/fixture"></label>
@@ -126,6 +133,57 @@
         <button class="primary" id="run">Run</button>
         <div id="live">${lastRun ? renderRun(lastRun) : ""}</div>
       </section>`;
+    }
+
+    function logins() {
+      const preview = login.preview;
+      const profiles = preview && preview.profiles ? preview.profiles.map((profile) => {
+        const avatar = profile.avatarDataUrl
+          ? `<img alt="" src="${profile.avatarDataUrl}">`
+          : `<div class="avatar">${esc((profile.name || "?").slice(0, 1))}</div>`;
+        const bot = profile.botManager ? `<div class="count">${profile.botManager} anti-bot ${profile.botManager === 1 ? "cookie" : "cookies"} skipped</div>` : "";
+        const expired = profile.expired ? `<div class="count">${profile.expired} expired left behind</div>` : "";
+        const storage = `<div class="count">${profile.localStorageItems || 0} localStorage ${(profile.localStorageItems || 0) === 1 ? "item" : "items"} · ${profile.indexedDbOrigins || 0} IndexedDB ${(profile.indexedDbOrigins || 0) === 1 ? "origin" : "origins"}</div>`;
+        return `<button class="profile" data-import-profile="${esc(profile.directory)}">
+          ${avatar}
+          <span><strong>${esc(profile.name)}</strong><div class="email">${esc(profile.email || "No account email")}</div>
+          <div class="count">${profile.matching} ${profile.matching === 1 ? "cookie matches" : "cookies match"} this site · will import ${profile.willImport}</div>
+          ${storage}${bot}${expired}</span>
+        </button>`;
+      }).join("") : "";
+      const note = preview && preview.keychainNote ? `<div class="notice"><strong>${esc(preview.keychainNote.title)}</strong><div>${esc(preview.keychainNote.body)}</div></div>` : "";
+      const missing = preview && preview.chromeFound === false ? `<p>Bao did not find Chrome's Local State. Nothing was read.</p>` : "";
+      const empty = preview && preview.chromeFound && profiles === "" ? `<p>Chrome has no profiles in Local State.</p>` : "";
+      const report = login.report ? renderLoginReport(login.report) : "";
+      const error = login.error ? `<div class="notice"><strong>Import</strong><div>${esc(login.error)}</div></div>` : "";
+      return `<section><h2>Logins</h2>
+        <p>Bao reads cookies, localStorage, and IndexedDB for the site you name here, and only after this click. Other sites stay in Chrome. Values are not shown.</p>
+        <div class="card">
+          <label>Site <input id="login-site" value="${esc(login.site)}" placeholder="https://www.example.com"></label>
+          <label>Probe URL <input id="login-probe" value="${esc(login.probeUrl)}" placeholder="Page that redirects to login when signed out"></label>
+          <label>Same-host origins <input id="login-origins" value="${esc(login.origins)}" placeholder="Optional. https://app.example.com"></label>
+          <label>Signed-in selector <input id="login-selector" value="${esc(login.selector)}" placeholder="Optional. Example: #account"></label>
+          <label>Signed-in text <input id="login-text" value="${esc(login.text)}" placeholder="Optional. Example: Welcome back"></label>
+          <label>Anti-bot cookies <select id="login-bots">
+            <option value="skip" ${login.botCookies === "skip" ? "selected" : ""}>Skip (default)</option>
+            <option value="include" ${login.botCookies === "include" ? "selected" : ""}>Include for this site</option>
+          </select></label>
+          <p>With no selector and no text, Bao checks whether the probe URL landed on a login URL. Extra origins are read only when they are the same host. Before each run of a saved site, Bao checks that the session is still live.</p>
+          <button class="primary" id="show-profiles">Import this site's login from my Chrome</button>
+        </div>
+        ${error}${note}${missing}${empty}
+        <div class="profiles">${profiles}</div>
+        ${report}
+      </section>`;
+    }
+
+    function renderLoginReport(report) {
+      const tone = report.signedIn ? "pass" : "fail";
+      const keychain = report.keychain ? `<div class="notice"><strong>${esc(report.keychain.title)}</strong><div>${esc(report.keychain.body)}</div></div>` : "";
+      const rejected = (report.rejected || []).map((item) => `<div>${esc(item.name)} · ${esc(item.reason)}</div>`).join("");
+      const failed = (report.failed || []).map((item) => `<div>${esc(item.name)} · ${esc(item.reason)}</div>`).join("");
+      const signIn = report.offerSignIn ? `<button id="sign-in-once">Sign in once in Bao's window</button>` : "";
+      return `<div class="card result" id="login-result"><h3 class="${tone}">${esc(report.headline)}</h3><p>${esc(report.message || "")}</p>${keychain}${rejected}${failed}<div class="row">${signIn}</div></div>`;
     }
 
     function settings() {
@@ -202,6 +260,8 @@
       };
       const run = document.getElementById("run");
       if (run) run.onclick = runReplay;
+      const runSign = document.getElementById("run-sign-in");
+      if (runSign && lastRun && lastRun.signInUrl) runSign.onclick = () => signInOnce(lastRun.signInUrl);
       document.querySelectorAll("[data-keep]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.keep, "keep"));
       document.querySelectorAll("[data-revert]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.revert, "revert"));
       const save = document.getElementById("save-settings");
@@ -209,6 +269,67 @@
         await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ heal: document.getElementById("heal").value }) });
         refresh();
       };
+      bindLogins();
+    }
+
+    function readLoginForm() {
+      const site = document.getElementById("login-site");
+      if (!site) return;
+      login.site = site.value.trim();
+      login.probeUrl = document.getElementById("login-probe").value.trim();
+      login.selector = document.getElementById("login-selector").value.trim();
+      login.text = document.getElementById("login-text").value.trim();
+      login.origins = document.getElementById("login-origins").value.trim();
+      login.botCookies = document.getElementById("login-bots").value;
+    }
+
+    function loginPayload() {
+      return {
+        site: login.site,
+        consent: true,
+        probeUrl: login.probeUrl,
+        signedInSelector: login.selector,
+        signedInText: login.text,
+        origins: login.origins,
+        botCookies: login.botCookies,
+      };
+    }
+
+    function bindLogins() {
+      const show = document.getElementById("show-profiles");
+      if (show) show.onclick = async () => {
+        readLoginForm();
+        login.error = "";
+        login.report = null;
+        const res = await fetch("/api/login-import/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(loginPayload()) });
+        const body = await res.json();
+        if (!res.ok) { login.error = body.error || "Import failed"; login.preview = null; render(); return; }
+        login.preview = body;
+        render();
+      };
+      document.querySelectorAll("[data-import-profile]").forEach((btn) => btn.onclick = async () => {
+        readLoginForm();
+        login.error = "";
+        const res = await fetch("/api/login-import", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...loginPayload(), profile: btn.dataset.importProfile }),
+        });
+        const body = await res.json();
+        if (!res.ok) { login.error = body.error || "Import failed"; render(); return; }
+        login.report = body;
+        render();
+      });
+      const once = document.getElementById("sign-in-once");
+      if (once) once.onclick = () => signInOnce();
+    }
+
+    async function signInOnce(url) {
+      if (document.getElementById("login-site")) readLoginForm();
+      const payload = url ? { site: url, consent: true, probeUrl: url } : loginPayload();
+      const res = await fetch("/api/login-import/sign-in", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const body = await res.json();
+      if (!res.ok) { login.error = body.error || "Could not open Bao's window"; render(); }
     }
 
     async function openEditor(id) {
@@ -250,6 +371,9 @@
     }
 
     function renderRun(run) {
+      if (run.status === "needs-sign-in") {
+        return `<div class="row fail" id="run-status"><strong>Needs sign-in</strong></div><p>${esc(run.message || "")}</p><button id="run-sign-in">Sign in once in Bao's window</button>`;
+      }
       const healed = (run.heals || []).length > 0;
       const lines = (run.steps || []).map((step) => `<div class="${esc(step.status)}">${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`).join("");
       const heals = (run.heals || []).map((item) => reviewHeal(run, item)).join("");

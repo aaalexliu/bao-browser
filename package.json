@@ -61,5 +61,8 @@
     "fast-check": "^4.10.2",
     "playwright": "^1.49.0",
     "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "classic-level": "^2.0.0"
   }
 }
