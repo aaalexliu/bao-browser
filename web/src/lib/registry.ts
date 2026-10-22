@@ -372,6 +372,7 @@ export async function pull(principal: Principal, id: string, version?: number) {
     passRate: await passRate(id),
     deviceId: found.device_id,
     deviceName: found.device_name,
+    forkedFrom: row.forked_from,
     parentVersion: found.parent_version,
   };
 }
@@ -519,7 +520,7 @@ export async function installShare(principal: Principal, token: string, answers:
   const doc = { ...(installed as Record<string, unknown>), id, name: `Fork of ${(installed as { name?: string }).name || "workflow"}` };
   const errors = workflowErrors(doc);
   if (errors.length) throw new HttpError(errors.join("; "), 400);
-  await insertOwned(principal.userId, doc, 0, null, [], user.name, categoryFor(doc));
+  await insertOwned(principal.userId, doc, 0, null, [], user.name, categoryFor(doc), undefined, principal.deviceId ?? null);
   return { id };
 }
 
@@ -688,7 +689,7 @@ export async function forkPublic(principal: Principal, id: string, answers: Reco
   const doc = { ...(installed as Record<string, unknown>), id: nextId, name: `Fork of ${pub.name}` };
   const errors = workflowErrors(doc);
   if (errors.length) throw new HttpError(errors.join("; "), 400);
-  await insertOwned(principal.userId, doc, 0, null, [], user.name, pub.category, id);
+  await insertOwned(principal.userId, doc, 0, null, [], user.name, pub.category, id, principal.deviceId ?? null);
   return { id: nextId };
 }
 
@@ -1004,6 +1005,7 @@ interface WorkflowRow extends RankInput {
   head_version: number;
   published_version: number | null;
   last_green_at: string | null;
+  forked_from: string | null;
   ci_verified: boolean | null;
   summary: string;
   name: string;
@@ -1024,6 +1026,8 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
   author: string;
   verified: boolean;
   lastGreenAt: string | null;
+  deviceName: string | null;
+  forkedFrom: string | null;
   ciVerified: boolean;
   link: string;
   importLink: string;
@@ -1031,8 +1035,11 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
   thumbnail: string;
 }> {
   const ver = source === "public" && row.published_version ? row.published_version : row.head_version;
-  const versions = await query<{ document: unknown }>(
-    `SELECT document FROM workflow_versions WHERE workflow_id = $1 AND version = $2`,
+  const versions = await query<{ document: unknown; device_name: string | null }>(
+    `SELECT v.document, d.name AS device_name
+     FROM workflow_versions v
+     LEFT JOIN devices d ON d.id = v.device_id
+     WHERE v.workflow_id = $1 AND v.version = $2`,
     [row.id, ver],
   );
   const parsed = json(versions[0]?.document);
@@ -1051,6 +1058,8 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
     author: row.author_name,
     verified: row.verified,
     lastGreenAt: row.last_green_at,
+    deviceName: versions[0]?.device_name ?? null,
+    forkedFrom: row.forked_from,
     ciVerified: Boolean(row.ci_verified),
     link: `bao://workflow/${row.id}`,
     importLink: `bao://import/${row.id}`,

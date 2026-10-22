@@ -367,9 +367,9 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 
 | Tool | What it returns |
 | --- | --- |
-| `search_workflows` | At most 5 ranked hits from this Mac and the registry. Each hit includes its input schema. |
-| `describe_workflow` | The steps, the input schema, and a `bao://workflow/<id>` link. Secret defaults are omitted. |
-| `run_workflow` | `ok`, `needs_human`, `needs_signin`, or `failed`. A human step returns immediately with `status`, `run_id`, `step`, `reason`, `ask`, `deadline`, and `resume_token`. Pass that token to continue the same run. `cancel: true` stops it and applies nothing. `rerun: true` reuses past non-secret inputs. |
+| `search_workflows` | At most 5 ranked hits from this Mac, workflows synced from your other devices, and installed marketplace listings. Each hit includes its input schema, a source (`this Mac`, the device name, or `marketplace`), and the last green time in the local zone. |
+| `describe_workflow` | The steps, the input schema, a `bao://workflow/<id>` link, the same source, and the last green time. Secret defaults are omitted. |
+| `run_workflow` | `ok`, `needs_human`, `needs_signin`, or `failed`. A workflow that is not on this Mac is pulled here before replay. A human step returns immediately with `status`, `run_id`, `step`, `reason`, `ask`, `deadline`, and `resume_token`. Pass that token to continue the same run. `cancel: true` stops it and applies nothing. `rerun: true` reuses past non-secret inputs. |
 | `get_run` | A stored outcome. |
 
 A missing secret or file, or a heal that is waiting for approval, is `needs_human` and does not leave the device. A sign-in ask is `needs_signin`. A confirm ask is `needs_human`. Neither blocks the tool call, and neither is a bare string. Pass the resume token after the person acts to continue that same run. `cancel: true` with the token stops the run and leaves the page unpressed. The token is deleted when it is used. While the person has the page, step screenshots and trail capture pause. The trail records handoff start and end with the local zone.

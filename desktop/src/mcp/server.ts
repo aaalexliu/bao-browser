@@ -15,7 +15,7 @@ interface Rpc {
 export const TOOLS = [
   {
     name: "search_workflows",
-    description: "Search this Mac and the synced registry. Returns at most 5 ranked workflows and the input schema for each.",
+    description: "Search this Mac, workflows synced from your other devices, and installed marketplace listings. At most 5 hits. Each hit includes its input schema, a source (this Mac, the device name, or marketplace), and the last green time.",
     inputSchema: {
       type: "object",
       properties: {
@@ -29,12 +29,12 @@ export const TOOLS = [
   },
   {
     name: "describe_workflow",
-    description: "Full input schema, steps, and the bao:// link for one workflow. Secret defaults are omitted.",
+    description: "Steps, input schema, bao:// link, source, and last green time for one workflow. Secret defaults are omitted. Source is this Mac, the device name, or marketplace.",
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a workflow on this device. A workflow that is only on another device or an installed listing is pulled onto this Mac first. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {

@@ -1,7 +1,7 @@
 // Search, describe, and run. The MCP server exposes these four operations
 // and does not add a tool per workflow.
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,11 +13,11 @@ import { BrowserDriver } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, replay, type RunResult } from "../v1/replay";
-import { formatClock } from "../v1/time";
-import { migrate, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { formatClock, when } from "../v1/time";
+import { migrate, toJson, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library } from "../v1/store";
-import { loadState, type SyncState } from "../v1/sync";
+import { loadState, saveState, type SyncState } from "../v1/sync";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
@@ -38,7 +38,10 @@ export interface SearchHit {
   summary: string;
   site: string;
   category: string;
-  source: "mine" | "team" | "public";
+  /** "this Mac", the other device's name, or "marketplace". */
+  source: string;
+  /** Local-zone clock, or "Not replayed yet". */
+  lastGreen: string;
   score: number;
   inputs: InputField[];
   link: string;
@@ -53,6 +56,8 @@ export interface WorkflowOutcome {
   receipts: { id: string; status: string; readBack: string }[];
   stops: { stepId: string; outcome: OutcomeName; reason: string }[];
   link: string;
+  source?: string;
+  lastGreen?: string;
   /** Structured human step. `completed` is the same run after resume. */
   status?: OutcomeName | "completed" | "timed-out" | "stopped" | "ok";
   run_id?: string;
@@ -71,11 +76,40 @@ export interface RemoteAuth {
 
 const SIGN_IN = /login|sign[\s-]?in|password/i;
 
+type Bucket = "mine" | "team" | "public";
+
+interface Located {
+  document: WorkflowV2;
+  local: boolean;
+  bucket: Bucket;
+  deviceName?: string | null;
+  forkedFrom?: string | null;
+  lastGreenAt?: unknown;
+  version?: number;
+  thisDevice?: string | null;
+}
+
+export function originLabel(input: {
+  local: boolean;
+  bucket: Bucket;
+  deviceName?: string | null;
+  forkedFrom?: string | null;
+  thisDevice?: string | null;
+}): string {
+  if (input.forkedFrom || input.bucket === "public") return "marketplace";
+  const device = (input.deviceName || "").trim();
+  const mine = (input.thisDevice || "").trim();
+  if (input.local || (device && mine && device === mine)) return "this Mac";
+  if (device) return device;
+  return "this Mac";
+}
+
 export async function searchWorkflows(
   library: Library,
   query: string,
   filters: { source?: string; site?: string; category?: string } = {},
 ): Promise<SearchHit[]> {
+  const thisDevice = loadState(library.root).deviceName || "";
   const local = library.list().map((doc) => ({
     id: doc.id,
     title: doc.name,
@@ -86,27 +120,17 @@ export async function searchWorkflows(
     source: "mine" as const,
     inputs: inputSchema(doc),
     link: linkFor(doc.id),
+    local: true,
   }));
   const rankedLocal = rankHits(local, query, filters);
   const remote = await remoteHits(library, query, filters);
-  const byId = new Map<string, SearchHit>();
-  for (const hit of [...rankedLocal, ...remote]) {
+  const byId = new Map<string, DraftHit>();
+  for (const hit of [...rankedLocal.map((item) => draftFromLocal(item)), ...remote]) {
     const prev = byId.get(hit.id);
-    if (!prev || hit.source === "mine" || hit.score > prev.score) {
-      byId.set(hit.id, {
-        id: hit.id,
-        title: hit.title,
-        summary: hit.summary,
-        site: hit.site,
-        category: hit.category,
-        source: hit.source,
-        score: hit.score,
-        inputs: hit.inputs,
-        link: hit.link || linkFor(hit.id),
-      });
-    }
+    byId.set(hit.id, prev ? mergeDraft(prev, hit) : hit);
   }
   return [...byId.values()]
+    .map((hit) => toSearchHit(hit, thisDevice))
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
     .slice(0, SEARCH_LIMIT);
 }
@@ -116,11 +140,19 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   inputs: InputField[];
   link: string;
   importLink: string;
-  source: "mine" | "team" | "public";
+  source: string;
+  lastGreen: string;
 }> {
-  const found = await loadWorkflow(library, id, auth);
+  const found = await locateWorkflow(library, id, auth);
   const workflow = stripSecretDefaults(found.document);
-  return { workflow, inputs: inputSchema(workflow), link: linkFor(id), importLink: `bao://import/${id}`, source: found.source };
+  return {
+    workflow,
+    inputs: inputSchema(workflow),
+    link: linkFor(id),
+    importLink: `bao://import/${id}`,
+    source: originLabel(found),
+    lastGreen: when(found.lastGreenAt),
+  };
 }
 
 export async function runWorkflow(
@@ -143,25 +175,30 @@ export async function runWorkflow(
   const resumed = request.resume ? takeResume(library, request.resume) : undefined;
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
-  const loaded = request.document ? migrate(request.document) : (await loadWorkflow(library, id, auth)).document;
+  const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
+  if (placed && !placed.local) materializeWorkflow(library, placed);
+  const loaded = request.document ? migrate(request.document) : placed!.document;
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
+  const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => placed
+    ? { ...outcome, source: originLabel(placed), lastGreen: when(placed.lastGreenAt) }
+    : outcome;
   const inputs: ReplayArgs = {
     ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
     ...(resumed?.publicInputs ?? {}),
     ...(request.inputs ?? {}),
   };
   const missing = missingHuman(workflow, inputs);
-  if (missing) return remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs);
+  if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs));
   const secrets = secretStrings(workflow, inputs);
   try {
     const played = await replayInBrowser(library, workflow, inputs, secrets);
-    if (played.held) return played.outcome;
+    if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome);
-    return played.outcome;
+    return stamp(played.outcome);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    return remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs);
+    return stamp(remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs));
   }
 }
 
@@ -178,7 +215,7 @@ export async function reviewWorkflow(
   inputs: ReplayArgs,
   opts: RemoteAuth & { startUrl?: string } = {},
 ): Promise<WorkflowOutcome & { reviewed: boolean; documentHash?: string }> {
-  const found = await loadWorkflow(library, id, opts);
+  const found = await locateWorkflow(library, id, opts);
   const released = prepareImport(found.document);
   const documentHash = releaseHash(released.document);
   const replayDoc = migrate(released.document);
@@ -678,21 +715,144 @@ function emptyOutcome(id: string, outcome: OutcomeName, reason: string): Workflo
   return { outcome, reason, workflowId: id, receipts: [], stops: [{ stepId: id, outcome, reason }], link: linkFor(id) };
 }
 
-async function loadWorkflow(library: Library, id: string, auth?: RemoteAuth): Promise<{ document: WorkflowV2; source: "mine" | "team" | "public" }> {
+interface DraftHit {
+  id: string;
+  title: string;
+  summary: string;
+  site: string;
+  category: string;
+  bucket: Bucket;
+  score: number;
+  inputs: InputField[];
+  link: string;
+  local: boolean;
+  deviceName?: string | null;
+  forkedFrom?: string | null;
+  lastGreenAt?: unknown;
+}
+
+interface RemotePayload {
+  document?: unknown;
+  version?: number;
+  lastGreenAt?: unknown;
+  deviceName?: string | null;
+  forkedFrom?: string | null;
+}
+
+function draftFromLocal(hit: {
+  id: string;
+  title: string;
+  summary: string;
+  site: string;
+  category: string;
+  source: Bucket;
+  score: number;
+  inputs: InputField[];
+  link: string;
+}): DraftHit {
+  return {
+    id: hit.id,
+    title: hit.title,
+    summary: hit.summary,
+    site: hit.site,
+    category: hit.category,
+    bucket: hit.source,
+    score: hit.score,
+    inputs: hit.inputs,
+    link: hit.link,
+    local: true,
+  };
+}
+
+function mergeDraft(prev: DraftHit, hit: DraftHit): DraftHit {
+  const local = prev.local || hit.local;
+  const base = local ? (prev.local ? prev : hit) : (hit.score > prev.score ? hit : prev);
+  const forkedFrom = prev.forkedFrom || hit.forkedFrom || null;
+  const bucket: Bucket = prev.bucket === "public" || hit.bucket === "public" ? "public" : base.bucket;
+  return {
+    ...base,
+    local,
+    score: Math.max(prev.score, hit.score),
+    bucket: forkedFrom ? base.bucket : bucket,
+    deviceName: hit.deviceName || prev.deviceName || null,
+    forkedFrom,
+    lastGreenAt: prev.lastGreenAt ?? hit.lastGreenAt,
+  };
+}
+
+function toSearchHit(hit: DraftHit, thisDevice: string): SearchHit {
+  return {
+    id: hit.id,
+    title: hit.title,
+    summary: hit.summary,
+    site: hit.site,
+    category: hit.category,
+    source: originLabel({ ...hit, thisDevice }),
+    lastGreen: when(hit.lastGreenAt),
+    score: hit.score,
+    inputs: hit.inputs,
+    link: hit.link || linkFor(hit.id),
+  };
+}
+
+async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): Promise<Located> {
+  const remote = await remoteWorkflow(library, id, auth);
+  let localDoc: WorkflowV2 | undefined;
   try {
-    return { document: library.read(id), source: "mine" };
+    localDoc = library.read(id);
   } catch {
-    /* not on this Mac */
+    localDoc = undefined;
   }
-  const state = loadState(library.root);
-  const owned = await remoteFetch<{ document?: unknown }>(state, "GET", `/api/workflows/${encodeURIComponent(id)}`, undefined, auth);
-  if (owned?.document) return { document: migrate(owned.document), source: "mine" };
-  const pub = await remoteFetch<{ document?: unknown }>(state, "GET", `/api/marketplace/${encodeURIComponent(id)}`, undefined, auth);
-  if (pub?.document) return { document: migrate(pub.document), source: "public" };
+  const thisDevice = loadState(library.root).deviceName || "";
+  if (localDoc) {
+    return {
+      document: localDoc,
+      local: true,
+      bucket: remote?.forkedFrom ? "mine" : remote?.bucket ?? "mine",
+      deviceName: remote?.deviceName,
+      forkedFrom: remote?.forkedFrom,
+      lastGreenAt: remote?.lastGreenAt,
+      version: remote?.version,
+      thisDevice,
+    };
+  }
+  if (remote?.document) {
+    return {
+      document: migrate(remote.document),
+      local: false,
+      bucket: remote.bucket,
+      deviceName: remote.deviceName,
+      forkedFrom: remote.forkedFrom,
+      lastGreenAt: remote.lastGreenAt,
+      version: remote.version,
+      thisDevice,
+    };
+  }
   throw new Error("workflow not found");
 }
 
-async function remoteHits(library: Library, query: string, filters: { source?: string; site?: string; category?: string }): Promise<SearchHit[]> {
+function materializeWorkflow(library: Library, found: Located): void {
+  const doc = migrate(found.document);
+  library.save(doc);
+  if (!found.version) return;
+  const state = loadState(library.root);
+  state.workflows[doc.id] = {
+    version: found.version,
+    hash: createHash("sha256").update(toJson(doc)).digest("hex"),
+  };
+  saveState(library.root, state);
+}
+
+async function remoteWorkflow(library: Library, id: string, auth?: RemoteAuth): Promise<(RemotePayload & { bucket: Bucket }) | null> {
+  const state = loadState(library.root);
+  const owned = await remoteFetch<RemotePayload>(state, "GET", `/api/workflows/${encodeURIComponent(id)}`, undefined, auth);
+  if (owned?.document) return { ...owned, bucket: "mine" };
+  const pub = await remoteFetch<RemotePayload>(state, "GET", `/api/marketplace/${encodeURIComponent(id)}`, undefined, auth);
+  if (pub?.document) return { ...pub, bucket: "public" };
+  return null;
+}
+
+async function remoteHits(library: Library, query: string, filters: { source?: string; site?: string; category?: string }): Promise<DraftHit[]> {
   const state = loadState(library.root);
   if (!state.server || !state.deviceToken) return [];
   const params = new URLSearchParams();
@@ -700,8 +860,39 @@ async function remoteHits(library: Library, query: string, filters: { source?: s
   if (filters.source) params.set("source", filters.source);
   if (filters.site) params.set("site", filters.site);
   if (filters.category) params.set("category", filters.category);
-  const body = await remoteFetch<{ hits?: SearchHit[] }>(state, "GET", `/api/catalog?${params.toString()}`);
-  return (body?.hits ?? []).map((hit) => ({ ...hit, link: hit.link || linkFor(hit.id), inputs: hit.inputs ?? [] }));
+  // fetch encodes "+" as "%2B", and the server then searches for a literal plus.
+  const qs = params.toString().replace(/\+/g, "%20");
+  const body = await remoteFetch<{ hits?: RemoteCatalogHit[] }>(state, "GET", `/api/catalog?${qs}`);
+  return (body?.hits ?? []).map((hit) => ({
+    id: hit.id,
+    title: hit.title,
+    summary: hit.summary,
+    site: hit.site,
+    category: hit.category,
+    bucket: hit.source,
+    score: hit.score,
+    inputs: hit.inputs ?? [],
+    link: hit.link || linkFor(hit.id),
+    local: false,
+    deviceName: hit.deviceName,
+    forkedFrom: hit.forkedFrom,
+    lastGreenAt: hit.lastGreenAt,
+  }));
+}
+
+interface RemoteCatalogHit {
+  id: string;
+  title: string;
+  summary: string;
+  site: string;
+  category: string;
+  source: Bucket;
+  score: number;
+  inputs?: InputField[];
+  link?: string;
+  deviceName?: string | null;
+  forkedFrom?: string | null;
+  lastGreenAt?: string | null;
 }
 
 async function remoteFetch<T>(
