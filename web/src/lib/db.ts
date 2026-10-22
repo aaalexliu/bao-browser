@@ -96,9 +96,13 @@ const SCHEMA = [
     name text NOT NULL,
     token_hash text UNIQUE NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
-    last_seen_at timestamptz
+    last_seen_at timestamptz,
+    last_synced_at timestamptz,
+    workflow_count int NOT NULL DEFAULT 0
   )`,
   `ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_seen_at timestamptz`,
+  `ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_synced_at timestamptz`,
+  `ALTER TABLE devices ADD COLUMN IF NOT EXISTS workflow_count int NOT NULL DEFAULT 0`,
   `CREATE TABLE IF NOT EXISTS pair_codes (
     code text PRIMARY KEY,
     user_id text NOT NULL REFERENCES users(id),
@@ -183,4 +187,9 @@ const SCHEMA = [
   `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS gate_step text`,
   `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS gate_reason text`,
   `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS ci_verified boolean DEFAULT false`,
+  `CREATE TABLE IF NOT EXISTS account_settings (
+    user_id text PRIMARY KEY REFERENCES users(id),
+    document jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
 ];

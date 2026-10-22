@@ -1,6 +1,6 @@
 // Floating capture bar. JSON lines on stdin, events on stdout.
 // Shortcuts: ctrl-opt-cmd R start, period stop, P pause.
-// "You need to act" posts a notification and sets the dock badge.
+// The act line names the ask and the site. Bao.app posts that same text and sets its Dock badge.
 
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
@@ -11,9 +11,14 @@ static const UInt32 kHotPause = 3;
 
 static NSPanel *panel;
 static NSTextField *banner;
+static NSTextField *timeLabel;
+static NSButton *showButton;
+static NSTextField *notifyLabel;
+static NSButton *notifyButton;
 static NSTextView *stepsView;
 static NSTextField *field;
 static NSButton *pauseButton;
+static NSString *const kNotifySettingsURL = @"x-apple.systempreferences:com.apple.Notifications-Settings.extension";
 static BOOL paused = NO;
 static NSLock *outLock;
 
@@ -28,28 +33,6 @@ static void emit(NSDictionary *obj) {
     } @catch (__unused NSException *ex) {
     }
     [outLock unlock];
-}
-
-static NSString *escapeApple(NSString *text) {
-    return [[text stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"]
-        stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-}
-
-static BOOL notify(NSString *title, NSString *body) {
-    NSString *source = [NSString stringWithFormat:@"display notification \"%@\" with title \"%@\"",
-        escapeApple(body ?: @""), escapeApple(title ?: @"You need to act")];
-    NSTask *task = [[NSTask alloc] init];
-    task.launchPath = @"/usr/bin/osascript";
-    task.arguments = @[@"-e", source];
-    task.standardOutput = [NSFileHandle fileHandleWithNullDevice];
-    task.standardError = [NSFileHandle fileHandleWithNullDevice];
-    @try {
-        [task launch];
-        [task waitUntilExit];
-        return task.terminationStatus == 0;
-    } @catch (__unused NSException *ex) {
-        return NO;
-    }
 }
 
 static void setBadge(NSString *label) {
@@ -96,21 +79,40 @@ static void handle(NSDictionary *msg) {
     }
     if ([cmd isEqualToString:@"act"]) {
         NSString *title = msg[@"title"] ?: @"You need to act";
-        NSString *body = msg[@"body"] ?: @"Bao is waiting.";
+        NSString *detail = [msg[@"detail"] isKindOfClass:[NSString class]] ? msg[@"detail"] : @"";
         banner.stringValue = title;
         banner.hidden = NO;
-        NSString *badge = msg[@"badge"] ?: @"!";
-        setBadge(badge);
-        BOOL posted = notify(title, body);
+        timeLabel.stringValue = detail;
+        timeLabel.hidden = detail.length == 0;
+        showButton.hidden = NO;
         [panel orderFrontRegardless];
-        NSString *shown = [NSApp dockTile].badgeLabel ?: @"";
-        emit(@{@"event": @"acted", @"badge": shown, @"title": title, @"notified": @(posted)});
+        emit(@{@"event": @"acted", @"badge": @"", @"title": title, @"detail": detail, @"notified": @NO});
         return;
     }
     if ([cmd isEqualToString:@"clear-badge"]) {
         banner.hidden = YES;
+        timeLabel.hidden = YES;
+        showButton.hidden = YES;
         setBadge(nil);
         emit(@{@"event": @"badge", @"badge": [NSApp dockTile].badgeLabel ?: @""});
+        return;
+    }
+    if ([cmd isEqualToString:@"notify-off"]) {
+        notifyLabel.hidden = NO;
+        notifyButton.hidden = NO;
+        [panel orderFrontRegardless];
+        emit(@{
+            @"event": @"notify-off",
+            @"title": notifyLabel.stringValue ?: @"",
+            @"button": notifyButton.title ?: @"",
+            @"url": kNotifySettingsURL,
+        });
+        return;
+    }
+    if ([cmd isEqualToString:@"notify-clear"]) {
+        notifyLabel.hidden = YES;
+        notifyButton.hidden = YES;
+        emit(@{@"event": @"notify-clear"});
         return;
     }
     /* Fixture driver. performClick runs the same action as a mouse click. */
@@ -170,6 +172,17 @@ static void onDiscard(id sender) {
     emit(@{@"event": @"discard"});
 }
 
+static void onShowWindow(id sender) {
+    (void)sender;
+    emit(@{@"event": @"show-window"});
+}
+
+static void onOpenSettings(id sender) {
+    (void)sender;
+    NSURL *url = [NSURL URLWithString:kNotifySettingsURL];
+    if (url) [[NSWorkspace sharedWorkspace] openURL:url];
+}
+
 static OSStatus hotkeyHandler(EventHandlerCallRef next, EventRef event, void *user) {
     (void)next; (void)user;
     EventHotKeyID hid = {0};
@@ -225,7 +238,7 @@ static void readStdin(void) {
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
     (void)note;
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-    NSRect frame = NSMakeRect(40, 80, 380, 420);
+    NSRect frame = NSMakeRect(40, 80, 380, 620);
     panel = [[NSPanel alloc] initWithContentRect:frame
         styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
         backing:NSBackingStoreBuffered
@@ -239,10 +252,36 @@ static void readStdin(void) {
     NSView *content = panel.contentView;
     banner = [NSTextField labelWithString:@"You need to act"];
     banner.hidden = YES;
-    banner.frame = NSMakeRect(16, 384, 348, 22);
-    banner.font = [NSFont boldSystemFontOfSize:16];
+    banner.frame = NSMakeRect(16, 496, 348, 40);
+    banner.font = [NSFont boldSystemFontOfSize:14];
     banner.textColor = [NSColor systemRedColor];
+    banner.maximumNumberOfLines = 2;
+    banner.lineBreakMode = NSLineBreakByWordWrapping;
+    banner.cell.wraps = YES;
     [content addSubview:banner];
+    timeLabel = [NSTextField labelWithString:@""];
+    timeLabel.hidden = YES;
+    timeLabel.frame = NSMakeRect(16, 456, 348, 36);
+    timeLabel.font = [NSFont systemFontOfSize:12];
+    timeLabel.maximumNumberOfLines = 2;
+    timeLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    timeLabel.cell.wraps = YES;
+    [content addSubview:timeLabel];
+    showButton = [NSButton buttonWithTitle:@"Show window" target:self action:@selector(showWindow:)];
+    showButton.hidden = YES;
+    showButton.frame = NSMakeRect(16, 420, 130, 28);
+    [content addSubview:showButton];
+
+    notifyLabel = [NSTextField labelWithString:@"Notifications are off for Bao"];
+    notifyLabel.hidden = YES;
+    notifyLabel.frame = NSMakeRect(16, 580, 348, 20);
+    notifyLabel.font = [NSFont systemFontOfSize:13];
+    notifyLabel.lineBreakMode = NSLineBreakByClipping;
+    [content addSubview:notifyLabel];
+    notifyButton = [NSButton buttonWithTitle:@"Open Settings" target:self action:@selector(openSettings:)];
+    notifyButton.hidden = YES;
+    notifyButton.frame = NSMakeRect(16, 544, 140, 28);
+    [content addSubview:notifyButton];
 
     pauseButton = [NSButton buttonWithTitle:@"Pause" target:self action:@selector(pause:)];
     pauseButton.frame = NSMakeRect(16, 348, 72, 28);
@@ -285,6 +324,8 @@ static void readStdin(void) {
 - (void)note:(id)sender { onNote(sender); }
 - (void)check:(id)sender { onCheck(sender); }
 - (void)discard:(id)sender { onDiscard(sender); }
+- (void)openSettings:(id)sender { onOpenSettings(sender); }
+- (void)showWindow:(id)sender { onShowWindow(sender); }
 @end
 
 int main(void) {

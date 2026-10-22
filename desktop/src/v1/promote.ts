@@ -1,5 +1,5 @@
 // A model heal stays provisional until the drift suite passes and N later
-// real runs pass. The default N is 3. Either failure puts the saved step back.
+// real runs pass. The default N is 3. The live workflow changes when that draft is promoted.
 
 export const DEFAULT_PROMOTE_AFTER = 3;
 

@@ -1,6 +1,6 @@
+import { workflowCountLabel } from "@/lib/listing";
 import { activePairCode, categoryCounts, listDevices } from "@/lib/registry";
-import { principal } from "@/lib/viewer";
-import { LocalTime } from "../ui";
+import { principal, when } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,7 @@ export default async function PairPage() {
     return (
       <section>
         <h1>Devices</h1>
-        <p>Sign in, then show a pairing code on this page. <a href="/login">Sign in</a></p>
+        <p>Sign in for a pairing code, then type it in the Mac app under Settings &gt; Sync. <a href="/login">Sign in</a></p>
       </section>
     );
   }
@@ -22,19 +22,31 @@ export default async function PairPage() {
   return (
     <section>
       <h1>Devices</h1>
-      <p>On the Mac, run <span className="mono">bao sync pair CODE --server THIS_ORIGIN</span>. The device token stays in that Mac&apos;s sync file.</p>
+      <p>Type this code in the Mac app, under Settings &gt; Sync.</p>
       <div className="card">
         <h2>Pairing code</h2>
         {pair ? <p className="pair" data-testid="pair-code">{pair.code}</p> : <p>No active code.</p>}
-        {pair ? <p className="muted">Expires {String(pair.expiresAt)}</p> : null}
+        {pair ? <p className="muted">Expires {when(pair.expiresAt)}</p> : null}
         <form action="/api/pair" method="post">
           <button className="primary" type="submit">New code</button>
         </form>
       </div>
-      <h2>Devices</h2>
-      <ul data-testid="devices">
+      <p className="pair-hint" data-testid="pair-cli">Or from the command line: <span className="mono">bao sync pair CODE --server THIS_ORIGIN</span>. The device token stays in that Mac&apos;s sync file.</p>
+      <h2>Paired Macs</h2>
+      <ul className="devices" data-testid="devices">
         {devices.map((device) => (
-          <li className="device" key={device.id}>{device.name} <LocalTime iso={device.last_seen_at} /></li>
+          <li className="device" key={device.id} data-testid="device">
+            <div>
+              <strong>{device.name}</strong>
+              <p className="meta" data-testid="device-synced">
+                Last synced {device.last_synced_at ? when(device.last_synced_at) : "Not synced yet"}
+              </p>
+              <p className="meta" data-testid="device-workflows">{workflowCountLabel(device.workflow_count)}</p>
+            </div>
+            <form action={`/api/devices/${encodeURIComponent(device.id)}/unpair`} method="post">
+              <button type="submit" data-testid="unpair">Unpair</button>
+            </form>
+          </li>
         ))}
       </ul>
       {devices.length ? null : <p>No devices paired yet.</p>}

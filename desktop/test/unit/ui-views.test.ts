@@ -28,7 +28,7 @@ test("confirm act bar names the button and has no approve control", () => {
   });
   const html = actBar({ activeAsk: ask }, 1_000);
   assert.match(html, /You need to act · experian: unfreeze · step 5 of 6/);
-  assert.match(html, /Press Apply in the Bao Chrome window\. bao will not press it\./);
+  assert.match(html, /Press Apply on the site in the Bao window/);
   assert.match(html, /Waiting 2:05 · times out /);
   assert.match(html, /run stops, nothing applied/);
   assert.equal(html.includes("act-continue"), false);
@@ -50,8 +50,7 @@ test("login act bar offers continue and does not press the site button", () => {
     now: 0,
   });
   const html = actBar({ activeAsk: ask }, 0);
-  assert.match(html, /Sign in on the Bao Chrome window/);
-  assert.match(html, /not recording keystrokes in password fields/);
+  assert.match(html, /Sign in to the site in the Bao window/);
   assert.match(html, /I'm signed in, continue/);
   assert.equal(html.includes(">Approve<"), false);
   assert.equal(html.includes("Press Apply"), false);
@@ -299,6 +298,24 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.equal(html.includes("id=\"library\""), false);
   assert.equal(html.includes("<img"), false);
   assert.match(html, /class="ph"/);
+  assert.match(html, /data-testid="share-menu"/);
+  assert.match(html, /data-testid="share-copy" data-copy="bao:\/\/workflow\/wf"/);
+  assert.match(html, /data-testid="share-publish" disabled/);
+  assert.match(html, /Pair this Mac before listing/);
+  assert.match(html, /data-testid="share-export"/);
+  assert.equal(html.includes('data-testid="share-export" disabled'), false);
+  assert.equal(html.includes('data-testid="deeplink"'), false);
+  assert.equal(html.includes('data-testid="import-link"'), false);
+  const empty = workflowDetail({ id: "empty", name: "Empty", steps: [] });
+  assert.match(empty, /data-testid="share-export" disabled/);
+  assert.match(empty, /This workflow has no steps to export/);
+  const cropped = workflowDetail({
+    id: "wf",
+    name: "fixture apply",
+    steps: [{ id: "signed-in", action: "click", label: "Click signed in" }],
+  }, { shots: { "signed-in": "/api/runs/run-1/shots/signed-in-after.png" } });
+  assert.match(cropped, /<img src="\/api\/runs\/run-1\/shots\/signed-in-after\.png"/);
+  assert.match(cropped, /class="thumb has-shot"/);
 });
 
 test("a failed run says the phase, the change, what bao tried, and shows the grid", () => {

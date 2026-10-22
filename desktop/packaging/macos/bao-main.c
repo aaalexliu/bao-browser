@@ -9,7 +9,9 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include "bao-notify.h"
 
 static void dirname_inplace(char *path) {
   char *slash = strrchr(path, '/');
@@ -84,6 +86,11 @@ int main(void) {
 
   const char *port = getenv("BAO_PORT");
   if (!port || !port[0]) port = "4787";
+  mkdir(bao_home, 0700);
+  char notify_sock[4096];
+  snprintf(notify_sock, sizeof notify_sock, "%s/notify.sock", bao_home);
+  if (bao_notify_prepare(notify_sock) == 0) setenv("BAO_NOTIFY_SOCK", notify_sock, 1);
+  else fprintf(stderr, "bao notify socket was not created\n");
   /* A Finder launch does not inherit the shell PATH. BAO_NODE is an absolute node. */
   const char *node_bin = getenv("BAO_NODE");
   if (!node_bin || !node_bin[0]) node_bin = "node";
@@ -124,9 +131,5 @@ int main(void) {
     _exit(127);
   }
 
-  int status = 0;
-  if (browser_pid > 0) waitpid(browser_pid, &status, 0);
-  kill(node, SIGTERM);
-  waitpid(node, &status, 0);
-  return 0;
+  return bao_notify_run((int)browser_pid, (int)node);
 }

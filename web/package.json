@@ -16,7 +16,6 @@
     "@electric-sql/pglite": "0.5.11",
     "@neondatabase/serverless": "1.2.0",
     "@vercel/blob": "2.8.2",
-    "@vercel/config": "0.13.0",
     "ajv": "8.20.0",
     "next": "16.4.2",
     "pg": "8.23.1",

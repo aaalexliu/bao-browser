@@ -79,6 +79,8 @@ export function recorderSource(): string {
       noteDialog("prompt", message, typed == null ? "dismiss" : "accept");
       return typed;
     };
+    const fieldValues = () => new Set([...document.querySelectorAll("input, textarea")].map((el) => norm(el.value)).filter(Boolean));
+    const visible = () => [...document.querySelectorAll("[data-testid]")].map((el) => norm(el.innerText || el.value || "")).filter(Boolean);
     const secretSent = new WeakSet();
     const notePassword = (el) => {
       if (secretSent.has(el)) return;
@@ -105,12 +107,16 @@ export function recorderSource(): string {
       if (!el) return;
       pending = undefined;
       const leaves = leafTexts();
-      const before = location.href;
+      const beforeUrl = location.href;
+      const beforeLines = visible();
       setTimeout(() => {
         const change = smallestChange(leaves, leafTexts());
         const dialog = pending;
         pending = undefined;
-        const payload = { kind: "act", op: "click", identity: ident(el), beforeUrl: before, afterUrl: location.href };
+        const typed = fieldValues();
+        const added = visible().filter((line) => !beforeLines.includes(line) && !typed.has(line));
+        const afterText = added.join(" ").slice(0, 180);
+        const payload = { kind: "act", op: "click", identity: ident(el), beforeUrl, afterUrl: location.href };
         if (dialog) {
           payload.dialog = dialog.message;
           payload.dialogType = dialog.type;
@@ -120,6 +126,7 @@ export function recorderSource(): string {
           payload.subtreeBefore = change.before;
           payload.subtreeAfter = change.after;
         }
+        if (afterText) payload.afterText = afterText;
         send(payload);
       }, 0);
     }, true);

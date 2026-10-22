@@ -109,6 +109,34 @@ test("a shared radio name resolves to the input inside the recorded label", asyn
   assert.equal(checked?.role, "radio");
 });
 
+test("a tab click and a radio click with no css path stay for the later step", () => {
+  const tab: Identity = { surface: "dom", role: "button", id: "tab-address", text: "Address", path: [] };
+  const city: Identity = { surface: "dom", role: "textbox", id: "city", path: [] };
+  const radio: Identity = { surface: "dom", role: "radio", id: "blue", nameAttr: "color", path: [] };
+  const label: Identity = { surface: "dom", role: "textbox", id: "label", path: [] };
+  const apply: Identity = { surface: "dom", role: "button", id: "apply", text: "Apply", path: [] };
+  const tabs = [
+    click("tab", tab),
+    { id: "city", ts: 2, kind: "act" as const, op: "type", value: "Paris", identity: city, beforeUrl: url, afterUrl: url },
+  ];
+  const choice = [
+    click("blue", radio),
+    { id: "label", ts: 2, kind: "act" as const, op: "type", value: "west", identity: label, beforeUrl: url, afterUrl: url },
+    click("apply", apply, { afterText: "Applied" }),
+  ];
+  assert.deepEqual(droppedNoEffectIds(tabs), []);
+  assert.deepEqual(droppedNoEffectIds(choice), []);
+  assert.deepEqual(droppedNoEffectIds([click("head", heading)]), ["head"]);
+  const password: Identity = { surface: "dom", role: "textbox", id: "password", path: [] };
+  const signIn: Identity = { surface: "dom", role: "button", id: "login-btn", text: "Log in", path: [] };
+  const focus = [
+    click("pw", password),
+    { id: "secret", ts: 2, kind: "act" as const, op: "type", value: "secret", identity: password, beforeUrl: url, afterUrl: url },
+    click("go", signIn, { gate: "login", performed: false }),
+  ];
+  assert.deepEqual(droppedNoEffectIds(focus), ["pw"]);
+});
+
 test("a click with no recorded urls is kept", () => {
   const workflow = condense([
     { id: "c", ts: 1, kind: "act", op: "click", identity: heading },

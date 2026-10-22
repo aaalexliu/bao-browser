@@ -1,9 +1,11 @@
 // Drop the noise around a trail, then interpret what is left.
 // Reads, scrolls, a typo that was backspaced, a repeated click, a click
 // undone by Back, and a Coupon-to-Cancel detour do not become steps.
-// A click with no observed effect is dropped when nothing later sits inside
-// its subtree. A click that changed the url, a checked state, a value, or
-// the target subtree stays. A JS dialog (Page.javascriptDialogOpening) stays.
+// A click with no observed effect is dropped when its css path was recorded
+// and nothing later sits inside that subtree. A button, tab, radio, or checkbox
+// with no css path stays when a later step uses another control.
+// A click that changed the url, a checked state, a value, or the target
+// subtree stays. A JS dialog (Page.javascriptDialogOpening) stays.
 // A login or confirm gate stays. A Help click stays so the hybrid pass can drop it.
 
 import { interpret, type InterpretMeta, type TrailEvent } from "./interpret";
@@ -71,7 +73,9 @@ function observedStill(event: TrailEvent): boolean {
 
 function laterDepends(events: TrailEvent[], index: number): boolean {
   const path = events[index]!.identity?.cssPath;
-  if (!path) return false;
+  // The driver fixture records no css path. A tab or radio click still reveals
+  // the next control. A click that only focuses the field about to be typed does not.
+  if (!path) return revealsLaterTarget(events, index);
   for (let j = index + 1; j < events.length; j++) {
     const later = events[j]!;
     if (later.kind === "read" || DROP_OP.has(later.op) || later.op === "back") continue;
@@ -82,6 +86,36 @@ function laterDepends(events: TrailEvent[], index: number): boolean {
     }
   }
   return false;
+}
+
+/** A button, tab, radio, or checkbox with no css path stays when a later step uses another control. */
+function revealsLaterTarget(events: TrailEvent[], index: number): boolean {
+  const event = events[index]!;
+  const role = event.identity?.role || "";
+  if (!/^(button|radio|checkbox|tab|switch)$/i.test(role)) return false;
+  const next = nextAct(events, index);
+  if (next && (next.op === "type" || next.op === "key") && sameControl(event, next)) return false;
+  for (let j = index + 1; j < events.length; j++) {
+    const later = events[j]!;
+    if (later.kind === "read" || DROP_OP.has(later.op) || later.op === "back") continue;
+    if (!sameControl(event, later)) return true;
+  }
+  return false;
+}
+
+function nextAct(events: TrailEvent[], index: number): TrailEvent | undefined {
+  for (let j = index + 1; j < events.length; j++) {
+    const later = events[j]!;
+    if (later.kind === "read" || DROP_OP.has(later.op)) continue;
+    return later;
+  }
+  return undefined;
+}
+
+function sameControl(a: TrailEvent, b: TrailEvent): boolean {
+  const left = a.identity?.id || a.identity?.testId;
+  const right = b.identity?.id || b.identity?.testId;
+  return !!left && left === right;
 }
 
 function label(event: TrailEvent): string {

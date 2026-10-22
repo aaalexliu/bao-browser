@@ -40,6 +40,8 @@ A workflow can declare `precondition` `{ "kind": "url", "match", "phase": "auth"
 
 `unresolved` steps are stored so the miss is visible. Replay stops on them instead of skipping.
 
+`when` is optional: `{ "input": "route", "value": "Save the note" }`. The input is a `choice`. Replay runs the step only when that choice equals `value`. Steps without `when` run on every take. Teach uses this when two demonstrations of the same task diverge.
+
 ## Example
 
 This is the login step from `examples/workflows/browser-form.json`, captured from the local fixture page (username, secret, file input, drop). The password string is not in the file.

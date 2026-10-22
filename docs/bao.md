@@ -161,11 +161,15 @@ A login or confirm wait is stored in the app home as `pending-prompt.json`. Clos
 
 ### 2026-10-22 — Locator history and a banner that stays off the workflow
 
-A step stores each locator version: recorded, heal, revert, and a rollback. Roll back to this version copies that version onto the step and appends a row. It does not edit the older rows. When a click misses because a cookie banner, a modal, or a spinner is in the way, replay dismisses or waits for this run only, at most three times, and the run viewer says `recovered:` plus the reason. The workflow file is not changed. A CAPTCHA, a 5xx response, and a signed-out page stay failures and are not sent to a model.
+Locator versions live on the workflow versions, in the one Versions panel. A version holds the recorded locator, a heal, a revert, or a rollback: the local time with its zone, the source run, the score, and which attributes changed. Restore saves that version as a new draft and does not edit the older versions. When a click misses because a cookie banner, a modal, or a spinner is in the way, replay dismisses or waits for this run only, at most three times, and the run viewer says `recovered:` plus the reason. The workflow file is not changed. A CAPTCHA, a 5xx response, and a signed-out page stay failures and are not sent to a model.
 
 ### 2026-10-22 — Trace-style run viewer
 
 A filmstrip frame shows the step's cropped, redacted screenshot, with the outline drawn on the target when the picture was taken. A step with no picture keeps the icon. Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
+
+### 2026-10-22 — Try a step, input tokens, and per-site trust
+
+Try, on a workflow step, looks that step up on the live window and outlines the match. It does not click, type, or call a model. Run from step N opens the same run form and starts replay at that step. An input in the step text is a token: label, type, default, and required. Clicking it edits that input, and a secret token stays masked. The run form fills the same default. Settings lists each site as Always ask or Allow for ordinary actions. That map is separate from the confirm policy. A confirm step still waits for the person when the site is Allow.
 
 ### 2026-10-22 — Re-run, skipped idle, and a per-step heal limit
 
@@ -176,7 +180,7 @@ A past run can be started again from the run viewer. Re-run with this run's inpu
 The integration branch (pull request 58) is the tree a Mac build should use. It already contains the desktop window, and this pass landed the rest of the open desktop work on that same branch:
 
 - Step pictures in the filmstrip and in Before / After are cropped around the target element's box, with padding, the control centered and fully in frame, and a thin outline on it. A type step shows the field before the value and after it. A secret is covered.
-- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. The act bar says "Sign in on the Bao Chrome window."
+- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. The act bar says "Sign in to the site in the Bao window."
 - The Mac permission card is only on macOS, and only while Accessibility or Screen Recording is missing. Library shows it once, collapsed until opened. After Continue, a sidebar dot is the only copy. Linux does not list those grants as missing.
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
@@ -301,7 +305,7 @@ A dismissed prompt starts with `The keychain prompt was dismissed.` A missing it
 
 # Sync, share, and run Bao workflows
 
-Bao keeps a workflow as schema v2 JSON on the Mac that recorded it. A registry lets that Mac meet your other Macs, and a web app lets you share or list a workflow. Replay still happens on a device. The server never sees a cookie, a secret, or an unredacted screenshot.
+Bao keeps a workflow as schema v2 JSON on the Mac that recorded it. A heal or an edit is a new version. The Versions panel lists each one in local time, with the machine's zone label. Restore saves that version as a draft. Replay keeps using the live file until the draft is promoted. A registry lets that Mac meet your other Macs, and a web app lets you share or list a workflow. Replay still happens on a device. The server never sees a cookie, a secret, or an unredacted screenshot.
 
 ## Run it locally
 
@@ -315,20 +319,20 @@ npm --prefix web run dev
 
 The dev server uses PGlite under `web/.data/pglite` and files under `web/.data/blobs` when `DATABASE_URL` is unset. `BAO_AUTH_STUB=1` (or any non-production run) returns the email sign-in link in the response instead of sending mail. The GitHub button signs you in as a verified stub user.
 
-Pair a Mac from Devices, then:
+Pair a Mac from Devices. The page shows a code. Type it in the Mac app under Settings → Sync. The command line is the other way:
 
 ```bash
 npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/share/bao
 npm run bao -- sync --home ~/.local/share/bao
 ```
 
-`bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. A newer remote version wins. The copy you had is written to `conflicts/<id>.json` and shown under Settings → Sync. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
+`bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. Back up daily or Back up weekly, beside that copy, writes `backups/scheduled-<time>/` when the interval is due. Settings → Sync shows the backup as a local phrase from the shared formatter, such as “Last night, 2:00 AM EDT”. Reveal in Finder opens that folder. The path stays on the tooltip. A newer remote version wins. The copy you had is written to `conflicts/<id>.json` and shown under Settings → Sync. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
 
-Settings → Sync shows the paired devices and item counts per category. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). The Mac permission card stays on Library, and only while a grant is missing. It is not repeated here. Secrets are inputs of type `secret` with no default. Typed secret values, cookie headers, and screenshot bytes are dropped before a push. A payload that still contains them is rejected.
+The web Devices page lists each paired Mac with the time it last synced, how many workflows that sync held, and Unpair. Settings → Sync shows the paired devices, item counts per site category, and a toggle for workflows, run history, heal records, and settings. While a category is catching up it reads “N on this device of M in the cloud.” An offline Mac finishes that catch-up the next time sync reaches the account. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). The Mac permission card stays on Library, and only while a grant is missing. It is not repeated here. Secrets are inputs of type `secret` with no default. Typed secret values, cookie headers, and screenshot bytes are dropped before a push. A payload that still contains them is rejected.
 
 ## Share a workflow
 
-On the workflow page, mark which inputs are asked on import, then copy a view link or an install link. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
+On the workflow page, mark which inputs are asked on import. Share copies the `bao://workflow/<id>` link, opens the public preview, and exports the workflow file. Publish stays disabled until a device replays the redacted copy, and a failed clean replay stays disabled with the reason beside it. Export stays disabled, with a reason, when the workflow has no steps. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
 
 Secret and file answers are not stored. A path is asked with the same file field capture records, and the path is not shown. An email typed as an answer is dropped. Other answers become defaults on the recipient's private copy only. A non-personal sample is shown as an example.
 
@@ -351,7 +355,7 @@ Listing stays disabled until a device replays that redacted copy:
 npm run bao -- sync review <id> --inputs inputs.json
 ```
 
-`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace page is the public catalog. Fork uses the same import sheet. Report sends a reason. There is no payment step.
+`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace card counts that clean replay: when no device run was stored it says “Verified by 1 replay” instead of “0 runs.” The listing page shows the step list with redacted crops, one Inputs section, the sites it touches, and the version history. Install opens `bao://import/<id>`. Share copies the workflow link and the import link. Copy to my library sits with the inputs. Report a problem is a quiet link at the bottom of the page. There is no payment step.
 
 Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted: the password is not stored, so the clean replay cannot sign in.
 
@@ -421,7 +425,7 @@ The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres
 
 A password `type` is not performed. A `click` on an element with `data-bao-gate="login"` or `data-bao-gate="confirm"`, or a button whose text is `Log in`, `Sign in`, or `Confirm`, is not performed. The trail line has `gate` and `performed: false`. A login stop also records a sign-in click when the driver does not click Log in. That click stays in the derived workflow, and its postcondition is the Welcome line. Replay performs the step with the inputs supplied for that run.
 
-A file input is a file parameter whether the driver called `upload`, dropped a file, or typed a path. The absolute path is not written into `trail.jsonl`. `eval drivers` retries an HTTP 429 with backoff. If the driver still exits without finishing, the cell is `driver-error` and the run directory still has a partial trail. That cell is separate from a bao replay failure.
+A file input is a file parameter whether the driver called `upload`, dropped a file, or typed a path. The absolute path is not written into `trail.jsonl`. `eval drivers` retries an HTTP 429 once after a 45 second backoff. If the driver still exits without finishing, the cell is `infra` and the run directory still has a partial trail. That cell is not a bao replay failure.
 
 Every read and every act stores `snapshot.sha256` and `snapshot.path`. The file is a PNG. `latencyMs` is the time inside the tool call, including the snapshot.
 

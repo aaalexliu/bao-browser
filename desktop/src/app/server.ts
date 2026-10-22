@@ -1,6 +1,7 @@
 // Local app. The UI, the library, and replay all stay on disk.
 // Nothing is recorded unless a session was started.
 
+import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -12,10 +13,10 @@ import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launc
 import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
-import { BrowserDriver, notifyOs, type PersonPrompts } from "../v1/browser-driver";
-import type { HumanAsk } from "../v1/human-ask";
+import { BrowserDriver, clearOsNotify, elementShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
+import { actAskLine, actDeadlineLine, actSurfaceText, type HumanAsk } from "../v1/human-ask";
 import { ensureTrailTimes } from "../v1/trail-time";
-import { maskPasswordFields, unmaskPasswordFields } from "../v1/dom-page";
+import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
 import {
   cookieHeader,
   loginDocument,
@@ -49,10 +50,22 @@ import {
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
-import { rollbackTo } from "../v1/element-history";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
-import { clipBox } from "../v1/browser-driver";
+import { isElementCrop } from "../v1/redacted-png";
+import {
+  decide,
+  decisionEvent,
+  intentEvalPair,
+  mergeDemonstrations,
+  narratorFromEnv,
+  projectTeach,
+  publicTrail,
+  spliceFix,
+  type Spoken,
+  type TeachCorrection,
+  type TeachDecision,
+} from "../v1/teach";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
@@ -72,8 +85,12 @@ import {
   readPendingPrompt,
   writePendingPrompt,
 } from "../v1/pending-prompt";
+import { editInput } from "../v1/input-token";
+import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
+import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
-import { keepMine, openConflict, pairDevice, syncAll, syncStatus } from "../v1/sync";
+import { keepMine, openConflict, pairDevice, publishWorkflow, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
+import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
 import { decideOpen, type OpenedView } from "./deeplink";
@@ -88,7 +105,7 @@ export interface App {
   library: Library;
   port: number;
   notices: Notice[];
-  notifications: { title: string; body: string }[];
+  notifications: { title: string; body: string; tooltip: string }[];
   recording: boolean;
   close(): Promise<void>;
 }
@@ -114,6 +131,11 @@ export async function startApp(opts: {
   let boundPort = opts.port ?? 0;
   const capture = new Capture();
   const bar = new CaptureBar();
+  watchOsNotify((report) => {
+    if (!bar.running) return;
+    if (report.authorization === "denied") bar.send({ cmd: "notify-off" });
+    else if (report.authorization === "authorized" || report.authorization === "provisional") bar.send({ cmd: "notify-clear" });
+  });
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let profile: string | undefined;
@@ -129,10 +151,21 @@ export async function startApp(opts: {
   let loginContinued = false;
   let replaying = false;
   let recordingSince = 0;
-  const notifications: { title: string; body: string }[] = [];
+  let sessionMode: "capture" | "teach" = "capture";
+  let teachPhase: "idle" | "live" | "review" = "idle";
+  let teachDecisions: TeachDecision[] = [];
+  let teachFix: { workflowId: string; stepId: string } | null = null;
+  let teachStartUrl = "";
+  let teachName = "";
+  let blurredShots = 0;
+  let teachBaseline: string[] = [];
+  let narrateGen = 0;
+  const narrationCache = new Map<string, Spoken & { sig: string }>();
+  const notifications: { title: string; body: string; tooltip: string }[] = [];
   let opened: OpenedView | null = null;
   let pendingDoc: WorkflowV2 | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
+  let watch: { context: BrowserContext; page: Page; profile: string } | undefined;
   let tail: Promise<void> = Promise.resolve();
   function enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const run = tail.then(fn, fn);
@@ -147,14 +180,24 @@ export async function startApp(opts: {
     }
     bar.send({ cmd: "show", paused: capture.paused, steps: capture.steps.map((step) => step.label) });
   }
-  function raiseAct(detail: string): void {
-    const notice = actNotice(detail);
-    notifications.push({ title: notice.title, body: notice.body });
-    if (bar.running) bar.send({ cmd: "act", title: notice.title, body: notice.body, badge: notice.badge });
-    else void notifyOs(notice.title, notice.body);
+  function raiseAct(ask: HumanAsk): void {
+    const text = actSurfaceText(ask);
+    const notice = actNotice(text);
+    notifications.push({ title: notice.title, body: notice.body, tooltip: notice.tooltip });
+    if (bar.running) {
+      bar.send({
+        cmd: "act",
+        title: actAskLine(ask),
+        detail: actDeadlineLine(ask.deadline),
+        badge: notice.badge,
+        tooltip: notice.tooltip,
+      });
+    }
+    void notifyOs(notice.title, notice.body, notice.tooltip);
   }
   function clearAct(): void {
     if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
+    void clearOsNotify();
   }
   const prompts: PersonPrompts = {
     showConfirm(_label) {
@@ -184,7 +227,7 @@ export async function startApp(opts: {
     showAsk(ask) {
       activeAsk = ask;
       rememberPending(ask);
-      raiseAct(ask.instruction);
+      raiseAct(ask);
     },
     shouldStop: () => stopRun,
     loginContinued: () => loginContinued,
@@ -255,6 +298,7 @@ export async function startApp(opts: {
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
+        runScheduledBackup(library);
         syncPending();
         return json(res, {
           recording: capture.recording,
@@ -278,6 +322,7 @@ export async function startApp(opts: {
           capturePaused: capture.paused,
           recordingSince: capture.recording ? recordingSince : 0,
           liveTrail: capture.events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
+          teach: teachState(),
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
@@ -435,9 +480,36 @@ export async function startApp(opts: {
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPng(res, file);
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/share")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        return json(res, await workflowShare(library, id));
+      }
+      if (req.method === "POST" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/publish")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        try {
+          const result = await publishWorkflow(library, id);
+          return json(res, result, result.ok ? 200 : 409);
+        } catch (err) {
+          const why = err instanceof Error ? err.message : "The clean replay did not pass.";
+          return json(res, { ok: false, why }, 409);
+        }
+      }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/inputs")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
         return json(res, library.readPublicInputs(id));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/versions")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        return json(res, { versions: listVersions(library, id) });
+      }
+      if (req.method === "POST" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/versions")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const body = await readBody(req) as { action?: string; n?: number };
+        const n = Number(body.n);
+        if (!Number.isInteger(n) || n < 1) return json(res, { error: "version" }, 400);
+        if (body.action === "promote") return json(res, promoteVersion(library, id, n));
+        if (body.action === "restore") return json(res, restoreVersion(library, id, n));
+        return json(res, { error: "action" }, 400);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
@@ -477,7 +549,7 @@ export async function startApp(opts: {
         return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; siteTrust?: unknown };
         const patch: Partial<Settings> = {};
         if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
@@ -490,6 +562,10 @@ export async function startApp(opts: {
           patch.circuitLimit = Math.round(body.circuitLimit);
         }
         if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
+        if ("siteTrust" in body) {
+          const siteTrust = cleanSiteTrust(body.siteTrust);
+          if (siteTrust) patch.siteTrust = siteTrust;
+        }
         if (!Object.keys(patch).length) return json(res, { error: "settings" }, 400);
         return json(res, library.updateSettings(patch));
       }
@@ -503,6 +579,24 @@ export async function startApp(opts: {
         const mode = body.mode === "push" || body.mode === "pull" ? body.mode : "sync";
         return json(res, await syncAll(library, mode));
       }
+      if (req.method === "POST" && url.pathname === "/api/sync/category") {
+        const body = await readBody(req) as { category?: string; enabled?: boolean };
+        return json(res, setCategoryEnabled(library, String(body.category || ""), Boolean(body.enabled)));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/backup") {
+        const body = await readBody(req) as { schedule?: string; action?: string };
+        if (body.action === "restore") return json(res, restoreScheduledBackup(library));
+        return json(res, setBackupSchedule(library, String(body.schedule || "off")));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/reveal") {
+        const target = revealBackup(library);
+        const command = process.platform === "darwin" ? "open" : "xdg-open";
+        const args = process.platform === "darwin" ? ["-R", target] : [target];
+        const child = spawn(command, args, { stdio: "ignore", detached: true });
+        child.on("error", () => undefined);
+        child.unref();
+        return json(res, { ok: true });
+      }
       if (req.method === "POST" && url.pathname === "/api/sync/conflict") {
         const body = await readBody(req) as { id?: string; action?: string };
         if (!body.id) return json(res, { error: "id" }, 400);
@@ -514,7 +608,19 @@ export async function startApp(opts: {
         return json(res, library.importJson(String(await readBody(req, true))));
       }
       if (req.method === "POST" && url.pathname === "/api/sessions") {
-        const body = await readBody(req) as { url?: string };
+        const body = await readBody(req) as { url?: string; teach?: boolean; fix?: { workflowId?: string; stepId?: string } };
+        if (body.teach) {
+          let nextFix: { workflowId: string; stepId: string } | null = null;
+          let nextUrl = body.url || "";
+          if (body.fix?.workflowId && body.fix.stepId) {
+            const saved = library.read(body.fix.workflowId);
+            if (!saved.steps.some((step) => step.id === body.fix?.stepId)) return json(res, { error: "missing step" }, 404);
+            nextFix = { workflowId: body.fix.workflowId, stepId: body.fix.stepId };
+            if (!nextUrl) nextUrl = saved.startUrl;
+          }
+          await enqueue(() => beginTeach(nextUrl || `http://127.0.0.1:${boundPort}/fixture`, nextFix));
+          return json(res, { recording: capture.recording, teach: true });
+        }
         await enqueue(() => beginSession(body.url || `http://127.0.0.1:${boundPort}/fixture`));
         return json(res, { recording: capture.recording, paused: capture.paused });
       }
@@ -582,6 +688,7 @@ export async function startApp(opts: {
         return json(res, { events: capture.events.length });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/stop") {
+        if (sessionMode === "teach") return json(res, await finishTeach());
         const workflow = await enqueue(() => saveSession());
         return json(res, workflow);
       }
@@ -652,6 +759,68 @@ export async function startApp(opts: {
         publishCapture();
         return json(res, { events: capture.events.length });
       }
+      if (req.method === "GET" && url.pathname === "/api/evals/intent") {
+        return json(res, library.listIntentEvals());
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/evals/intent/")) {
+        return json(res, library.readIntentEval(decodeURIComponent(url.pathname.split("/")[4] || "")));
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/correct") {
+        if (teachPhase === "idle") return json(res, { error: "not teaching" }, 409);
+        const body = await readBody(req) as TeachCorrection;
+        const projected = projectTeach(capture.events, teachDecisions, teachMeta(), spokenMap());
+        const index = projected.cards.findIndex((card) => card.id === body.cardId);
+        if (index < 0) return json(res, { error: "no step" }, 404);
+        if (body.kind === "merge") {
+          const previous = projected.cards.slice(0, index).reverse().find((card) => !card.dropped && !card.merged);
+          if (!previous) return json(res, { error: "nothing to merge" }, 400);
+        }
+        teachDecisions = decide(teachDecisions, body, Date.now());
+        return json(res, teachState());
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/check") {
+        if (teachPhase !== "live" || !page || page.isClosed()) return json(res, { error: "not teaching" }, 409);
+        const text = await checkText(page);
+        if (!capture.push({ kind: "act", op: "verify", afterText: text })) return json(res, { error: "not teaching" }, 409);
+        const id = capture.events[capture.events.length - 1]!.id;
+        teachDecisions = decide(teachDecisions, { kind: "check", cardId: id, outcome: text }, Date.now());
+        void narrateSoon();
+        return json(res, teachState());
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/stop") {
+        if (teachPhase !== "live") return json(res, { error: "not teaching" }, 409);
+        return json(res, await finishTeach());
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/discard") {
+        if (teachPhase === "idle") return json(res, { error: "not teaching" }, 409);
+        teachDecisions = [];
+        narrationCache.clear();
+        teachBaseline = [];
+        teachFix = null;
+        teachPhase = "idle";
+        sessionMode = "capture";
+        recordingSince = 0;
+        await discardSession();
+        return json(res, { phase: "idle" });
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/save") {
+        if (teachPhase !== "review") return json(res, { error: "review first" }, 409);
+        const body = await readBody(req) as { name?: string };
+        if (body.name) teachName = body.name;
+        const saved = saveTeach();
+        return json(res, saved);
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/merge") {
+        const body = await readBody(req) as { ids?: string[]; name?: string };
+        const ids = body.ids || [];
+        if (ids.length < 2) return json(res, { error: "need two demonstrations" }, 400);
+        const docs = ids.map((id) => library.read(id));
+        const id = `wf-${Date.now()}`;
+        const merged = mergeDemonstrations(docs, { id, name: body.name || "Merged workflow", now: Date.now() });
+        library.save(merged);
+        library.saveTrail(id, [{ id: "dec-0", ts: Date.now(), kind: "decision", op: "decision", decision: "merge", detail: `merged ${ids.join(", ")}`, cardId: id }]);
+        return json(res, merged);
+      }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/press") {
         const body = await readBody(req) as { name?: string; fill?: { selector: string; value: string } };
         const session = [...replays.values()].find((item) => !item.page.isClosed());
@@ -709,7 +878,7 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
         const body = await readBody(req) as { id: string; stepId: string; patch: HealProposal["patch"]; runId?: string; healId?: string };
         const next = keepPatch(library.read(body.id), body.stepId, body.patch, { runId: body.runId, score: 100 });
-        library.save(next);
+        draftVersion(library, next, "heal");
         if (body.runId && body.healId) {
           const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
           const heal = (recorded.heals as HealRecord[]).find((item) => item.id === body.healId);
@@ -722,20 +891,32 @@ export async function startApp(opts: {
         const run = library.readRun(body.runId);
         const heal = (run.heals as HealRecord[]).find((item) => item.id === body.healId);
         if (!heal) return json(res, { error: "no heal" }, 404);
-        const next = revertPatch(library.read(body.id), heal.failedStep);
-        library.save(next);
+        const next = revertPatch(library.read(body.id), heal.failedStep, { runId: body.runId });
+        draftVersion(library, next, "restore");
         const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "revert" });
         return json(res, { workflow: next, decisions: recorded.decisions, heals: recorded.heals });
       }
-      if (req.method === "POST" && /^\/api\/workflows\/[^/]+\/rollback$/.test(url.pathname)) {
+      if (req.method === "POST" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/try")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const body = await readBody(req) as { stepId?: string; versionId?: string };
-        const workflow = library.read(id);
-        const steps = workflow.steps.map((step) => step.id === body.stepId
-          ? rollbackTo(step, body.versionId || "", { at: Date.now(), recordedAt: workflow.createdAt })
-          : step);
-        library.save({ ...workflow, steps, updatedAt: Date.now() });
-        return json(res, library.read(id));
+        const body = await readBody(req) as { stepId?: string };
+        let doc: WorkflowV2;
+        try {
+          doc = library.read(id);
+        } catch {
+          return json(res, { error: "no workflow" }, 404);
+        }
+        const step = doc.steps.find((item) => item.id === body.stepId);
+        if (!step) return json(res, { error: "no step" }, 404);
+        try {
+          const live = await livePage(doc.startUrl);
+          const driver = new BrowserDriver(live);
+          const outcome = await tryStep(step, driver);
+          const preview = outcome.matched ? await driver.outlinePreview() : undefined;
+          return json(res, { ...outcome, preview, actions: 0, modelCalls: 0 });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "try failed";
+          return json(res, { error: message, actions: 0, modelCalls: 0 }, 500);
+        }
       }
       if (req.method === "PATCH" && url.pathname.startsWith("/api/workflows/")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -744,7 +925,21 @@ export async function startApp(opts: {
           workflow?: WorkflowV2;
           heal?: HealMode | null;
           stepHeal?: { stepId?: string; heal?: string | null };
+          inputEdit?: { name?: string; label?: string; type?: string; default?: string; required?: boolean };
         };
+        if (body.inputEdit?.name) {
+          const doc = library.read(id);
+          const edited = editInput(doc, {
+            name: body.inputEdit.name,
+            label: body.inputEdit.label,
+            type: body.inputEdit.type,
+            default: body.inputEdit.default,
+            required: body.inputEdit.required,
+          });
+          if (!edited.doc) return json(res, { error: edited.error || "input" }, 400);
+          const drafted = draftVersion(library, edited.doc, "edit");
+          return json(res, promoteVersion(library, id, drafted.n).document);
+        }
         if (body.stepHeal?.stepId) {
           const doc = library.read(id);
           const policy = stepHealChoice(body.stepHeal.heal);
@@ -754,22 +949,27 @@ export async function startApp(opts: {
             const { heal: _drop, ...rest } = step;
             return rest;
           });
-          library.save({ ...doc, steps, updatedAt: Date.now() });
-          return json(res, library.read(id));
+          const next = { ...doc, steps, updatedAt: Date.now() };
+          draftVersion(library, next, "edit");
+          return json(res, next);
         }
         if (body.workflow) {
-          library.save({ ...body.workflow, id, updatedAt: Date.now() });
-          return json(res, library.read(id));
+          const next = { ...body.workflow, id, updatedAt: Date.now() };
+          draftVersion(library, next, "edit");
+          return json(res, next);
         }
         if (body.heal === "auto" || body.heal === "approve" || body.heal === null) {
           const doc = library.read(id);
           const next: WorkflowV2 = { ...doc, updatedAt: Date.now() };
           if (body.heal) next.heal = body.heal;
           else delete next.heal;
-          library.save(next);
+          draftVersion(library, next, "edit");
           return json(res, next);
         }
-        return json(res, library.rename(id, body.name || library.read(id).name));
+        const current = library.read(id);
+        const renamed = { ...current, name: body.name || current.name, updatedAt: Date.now() };
+        draftVersion(library, renamed, "edit");
+        return json(res, renamed);
       }
       if (req.method === "DELETE" && url.pathname.startsWith("/api/workflows/")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -956,12 +1156,48 @@ export async function startApp(opts: {
     const dir = path.join(opts.home, "shots", "capture");
     mkdirSync(dir, { recursive: true });
     const dest = path.join(dir, `${stored.id}.png`);
+    if (sessionMode === "teach") void narrateSoon();
     try {
-      const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
-      if (!clip) return;
-      await shotWithBlur(page, { path: dest, type: "png", clip });
+      const target = { identity: payload.identity, action: payload.op, label: payload.identity?.text };
+      if (sessionMode === "teach") {
+        const blurred = await page.evaluate(blurSensitiveFields);
+        try {
+          const png = await elementShot(page, target, { blur: false });
+          if (!png) return;
+          writeFileSync(dest, png);
+        } finally {
+          await page.evaluate(unblurSensitiveFields).catch(() => undefined);
+        }
+        if (blurred > 0) blurredShots += 1;
+      } else {
+        const png = await elementShot(page, target);
+        if (!png) return;
+        writeFileSync(dest, png);
+      }
       captureShots.set(stored.id, dest);
     } catch { /* headed Chromium can refuse captureScreenshot */ }
+  }
+
+  async function beginTeach(startUrl: string, fix: { workflowId: string; stepId: string } | null): Promise<void> {
+    teachDecisions = [];
+    narrationCache.clear();
+    narrateGen += 1;
+    blurredShots = 0;
+    teachBaseline = [];
+    teachName = "";
+    teachStartUrl = startUrl;
+    teachFix = fix;
+    sessionMode = "teach";
+    teachPhase = "live";
+    try {
+      await beginSession(startUrl);
+      if (page && !page.isClosed()) teachBaseline = await page.evaluate(visibleStatusLines).catch(() => []);
+    } catch (err) {
+      sessionMode = "capture";
+      teachPhase = "idle";
+      teachFix = null;
+      throw err;
+    }
   }
 
   async function saveSession(): Promise<WorkflowV2> {
@@ -1018,12 +1254,167 @@ export async function startApp(opts: {
     } else if (event.event === "hotkey" && event.name === "stop") {
       if (capture.recording) await saveSession();
       return;
+    } else if (event.event === "notify-off") {
+      console.log(`bao notify off ${JSON.stringify({ title: event.title || "", button: event.button || "", url: event.url || "" })}`);
+      return;
+    } else if (event.event === "show-window") {
+      const session = [...replays.values()].find((item) => !item.page.isClosed());
+      if (!session) {
+        console.log("bao show window missed");
+        return;
+      }
+      void session.page.bringToFront().then(() => {
+        console.log("bao show window");
+      }, () => {
+        console.log("bao show window missed");
+      });
+      return;
     } else if (event.event === "hotkey" && event.name === "pause") {
       if (!capture.recording) return;
       if (capture.paused) capture.resume();
       else capture.pause();
     } else return;
     publishCapture();
+  }
+
+  function teachMeta(): { id: string; name: string; startUrl: string } {
+    return {
+      id: "teach-draft",
+      name: teachName || (teachFix ? "Taught fix" : "Taught workflow"),
+      startUrl: teachStartUrl,
+    };
+  }
+
+  function spokenMap(): Map<string, Spoken> {
+    const map = new Map<string, Spoken>();
+    for (const [id, value] of narrationCache) {
+      if (value.narrator === "model") map.set(id, { narrator: "model", modelName: value.modelName, intent: value.intent, outcome: value.outcome });
+    }
+    return map;
+  }
+
+  function teachState(): Record<string, unknown> {
+    if (teachPhase === "idle") return { phase: "idle" };
+    let projected: ReturnType<typeof projectTeach> | undefined;
+    let error = "";
+    try {
+      projected = projectTeach(capture.events, teachDecisions, teachMeta(), spokenMap());
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+    const narrator = projected?.cards.some((card) => card.narrator === "model") ? "model" : "heuristic";
+    return {
+      phase: teachPhase,
+      paused: capture.paused,
+      since: recordingSince,
+      blur: true,
+      blurredShots,
+      narrator,
+      fix: teachFix,
+      error,
+      cards: projected?.cards || [],
+      decisions: teachDecisions.map((decision) => ({ kind: decision.kind, detail: decision.detail, cardId: decision.cardId })),
+      review: teachPhase === "review" && projected ? {
+        raw: publicTrail(capture.events).map((event) => ({ id: event.id, op: event.op, kind: event.kind, detail: event.detail })),
+        decisions: teachDecisions,
+        workflow: {
+          name: projected.workflow.name,
+          inputs: projected.workflow.inputs.map((input) => ({ name: input.name, type: input.type })),
+          steps: projected.workflow.steps.map((step) => ({
+            id: step.id,
+            label: step.label,
+            intent: step.intent,
+            action: step.action,
+            human: step.human,
+            value: step.value,
+            input: step.input,
+            sensitive: step.sensitive,
+          })),
+        },
+      } : undefined,
+    };
+  }
+
+  async function narrateSoon(): Promise<void> {
+    const gen = ++narrateGen;
+    const narrator = narratorFromEnv();
+    if (!narrator) return;
+    let drafted: ReturnType<typeof projectTeach>;
+    try {
+      drafted = projectTeach(capture.events, [], teachMeta());
+    } catch {
+      return;
+    }
+    for (const card of drafted.cards) {
+      if (gen !== narrateGen) return;
+      const sig = `${card.action}|${card.intent}|${card.outcome}`;
+      const cached = narrationCache.get(card.id);
+      if (cached?.sig === sig) continue;
+      const spoken = await narrator.narrate(card);
+      if (gen !== narrateGen) return;
+      narrationCache.set(card.id, spoken
+        ? { sig, narrator: "model", modelName: narrator.name, intent: spoken.intent, outcome: spoken.outcome }
+        : { sig, narrator: "heuristic", intent: card.intent, outcome: card.outcome });
+    }
+  }
+
+  async function checkText(current: Page): Promise<string> {
+    const lines = await current.evaluate(visibleStatusLines).catch(() => [] as string[]);
+    const fresh = lines.filter((line) => !teachBaseline.includes(line));
+    return fresh.slice(-2).join(" ").slice(0, 180) || "the page matches this check";
+  }
+
+  async function finishTeach(): Promise<Record<string, unknown>> {
+    if (page && !page.isClosed()) teachStartUrl = page.url();
+    teachPhase = "review";
+    sessionMode = "teach";
+    capture.stop();
+    recordingSince = 0;
+    await stopBrowser();
+    publishCapture();
+    return teachState();
+  }
+
+  function saveTeach(): WorkflowV2 {
+    const id = teachFix ? teachFix.workflowId : `wf-${Date.now()}`;
+    const meta = { id: teachFix ? `${id}-fix` : id, name: teachName || teachMeta().name, startUrl: teachStartUrl };
+    const projected = projectTeach(capture.events, teachDecisions, { ...meta, id: teachFix ? `${id}-taught` : id }, spokenMap());
+    let workflow = projected.workflow;
+    const decisions = [...teachDecisions];
+    if (teachFix) {
+      workflow = spliceFix(library.read(teachFix.workflowId), teachFix.stepId, { ...projected.workflow, id });
+      decisions.push({ ts: Date.now(), cardId: teachFix.stepId, kind: "splice", detail: `spliced into ${teachFix.stepId}` });
+      workflow = { ...workflow, name: teachName || library.read(teachFix.workflowId).name };
+    } else {
+      workflow = { ...projected.workflow, id, name: meta.name, startUrl: teachStartUrl };
+    }
+    if (!workflow.steps.length) throw new Error("nothing to save");
+    const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
+    mkdirSync(shotDest, { recursive: true });
+    let stepIndex = 0;
+    for (const card of projected.cards) {
+      if (card.dropped || card.merged) continue;
+      const step = workflow.steps[teachFix ? workflow.steps.findIndex((item) => item.id.startsWith(`${workflow.id}-fix-`)) + stepIndex : stepIndex];
+      stepIndex += 1;
+      const src = captureShots.get(card.id);
+      if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+    }
+    library.save(workflow);
+    const trail = [...publicTrail(capture.events), ...decisions.map((decision, index) => decisionEvent(decision, index))];
+    library.saveTrail(workflow.id, ensureTrailTimes(trail).events);
+    const pair = intentEvalPair(workflow.id, capture.events, teachDecisions, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl }, spokenMap());
+    if (teachFix) {
+      pair.workflow = workflow;
+      pair.decisions = decisions;
+    }
+    library.saveIntentEval(workflow.id, pair);
+    capture.discard();
+    teachDecisions = [];
+    narrationCache.clear();
+    teachFix = null;
+    teachPhase = "idle";
+    sessionMode = "capture";
+    return workflow;
   }
 
   async function stopBrowser(): Promise<void> {
@@ -1143,6 +1534,26 @@ export async function startApp(opts: {
     return session;
   }
 
+  async function livePage(startUrl: string): Promise<Page> {
+    if (page && !page.isClosed()) return page;
+    for (const session of replays.values()) {
+      if (!session.page.isClosed()) return session.page;
+    }
+    if (watch && !watch.page.isClosed()) {
+      if (startUrl.startsWith("http") && !sameTarget(watch.page.url(), startUrl)) {
+        await watch.page.goto(startUrl, { waitUntil: "domcontentloaded" });
+      }
+      return watch.page;
+    }
+    const dir = await mkdtemp(path.join(tmpdir(), "bao-try-"));
+    const opened = await launchOwnedChrome({ userDataDir: dir, headless: process.env.BAO_HEADED !== "1" });
+    const live = opened.pages()[0] || await opened.newPage();
+    await live.setViewportSize({ width: 1280, height: 800 }).catch(() => undefined);
+    if (startUrl.startsWith("http")) await live.goto(startUrl, { waitUntil: "domcontentloaded" });
+    watch = { context: opened, page: live, profile: dir };
+    return live;
+  }
+
   return {
     library,
     port,
@@ -1150,6 +1561,7 @@ export async function startApp(opts: {
     notifications,
     get recording() { return capture.recording; },
     async close() {
+      watchOsNotify(() => {});
       bar.close();
       capture.discard();
       await signIn?.close();
@@ -1157,6 +1569,9 @@ export async function startApp(opts: {
       await stopBrowser();
       await site?.context.close().catch(() => undefined);
       site = undefined;
+      await watch?.context.close().catch(() => undefined);
+      if (watch) await rm(watch.profile, { recursive: true, force: true }).catch(() => undefined);
+      watch = undefined;
       for (const session of replays.values()) {
         await session.context.close().catch(() => undefined);
         if (path.resolve(session.profile) !== path.resolve(baoProfile)) {
@@ -1284,6 +1699,7 @@ async function runRecorded(
     fromStepId: fromStep,
     reviewSteps,
     circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
+    siteTrust: trustMode(settings, originOf(workflow.startUrl)),
   } satisfies ReplayOptions);
   spillBinaryShots(result, shotDir);
   for (const repair of result.repairs) {
@@ -1521,20 +1937,21 @@ function recordProvisional(library: Library, workflow: WorkflowV2, heals: HealRe
     before,
     need: library.settings().promoteAfter,
   });
-  library.save(keepPatch(workflow, heal.failedStep.id, heal.proposedPatch, { at: Date.now(), runId: heal.runId, score: 100 }));
-  library.savePromotion(promotion);
+  const drafted = draftVersion(library, keepPatch(workflow, heal.failedStep.id, heal.proposedPatch, { at: Date.now(), runId: heal.runId, score: 100 }), "heal");
+  const stored = { ...promotion, version: drafted.n };
+  library.savePromotion(stored);
   library.appendTrail(workflow.id, promotionEvent(promotion, Date.now()));
   return promotion;
 }
 
 async function checkPromotion(library: Library, id: string, notices: Notice[]): Promise<Promotion> {
-  const current = library.readPromotion(id) as Promotion | undefined;
+  const current = library.readPromotion(id) as (Promotion & { version?: number }) | undefined;
   if (!current || current.status !== "provisional") throw new Error("no provisional heal");
-  const workflow = library.read(id);
-  const args = defaultArgs(workflow);
+  const candidate = current.version ? versionDocument(library, id, current.version) : library.read(id);
+  const args = defaultArgs(candidate);
   let driftOk = true;
   for (const change of driftChanges) {
-    if (!await replayChanged(workflow, args, change)) {
+    if (!await replayChanged(candidate, args, change)) {
       driftOk = false;
       break;
     }
@@ -1542,23 +1959,21 @@ async function checkPromotion(library: Library, id: string, notices: Notice[]): 
   let promotion = noteDrift(current, driftOk);
   library.savePromotion(promotion);
   library.appendTrail(id, promotionEvent(promotion, Date.now()));
-  if (promotion.status === "reverted") {
-    library.save(revertPatch(workflow, promotion.before));
-    return promotion;
-  }
+  if (promotion.status === "reverted") return promotion;
   const required = library.settings().promoteAfter;
   for (let i = 0; i < required && promotion.status === "provisional"; i++) {
-    const passed = await replayChanged(library.read(id), args, { query: "" });
+    const passed = await replayChanged(candidate, args, { query: "" });
     promotion = noteReplay(promotion, passed, required);
     library.savePromotion(promotion);
     library.appendTrail(id, promotionEvent(promotion, Date.now()));
-    if (promotion.status === "reverted") library.save(revertPatch(library.read(id), promotion.before));
+    if (promotion.status === "reverted") return promotion;
   }
+  if (promotion.status === "promoted" && current.version) promoteVersion(library, id, current.version);
   notices.unshift({
     id: `n-${notices.length + 1}`,
     at: Date.now(),
     title: promotion.status === "promoted" ? "Bao promoted a heal" : "Bao reverted a heal",
-    body: `${workflow.name}: ${promotion.status}`,
+    body: `${candidate.name}: ${promotion.status}`,
     workflowId: id,
     runId: promotion.healId,
     stepId: promotion.stepId,
@@ -1641,7 +2056,18 @@ function summary(doc: WorkflowV2) {
     waits: doc.steps.filter((step) => step.action === "login" || step.action === "confirm").length,
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
+    startUrl: doc.startUrl,
   };
+}
+
+function sameTarget(current: string, startUrl: string): boolean {
+  try {
+    const left = new URL(current);
+    const right = new URL(startUrl);
+    return left.origin === right.origin && left.pathname === right.pathname && left.search === right.search;
+  } catch {
+    return false;
+  }
 }
 
 function sendVideo(req: IncomingMessage, res: ServerResponse, file: string): void {
@@ -1714,11 +2140,9 @@ function newestPng(dir: string): string | undefined {
   return ranked[0]?.file;
 }
 
-/** A poster is a crop around a control. A full-page capture stays off the card. */
+/** A poster is an element crop. A stripe fixture and a full-page capture stay off the card. */
 function croppedPng(file: string): boolean {
-  const buf = readFileSync(file);
-  if (buf.length < 24 || buf.toString("ascii", 12, 16) !== "IHDR") return false;
-  return buf.readUInt32BE(16) <= 720 && buf.readUInt32BE(20) <= 480;
+  return isElementCrop(readFileSync(file));
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {

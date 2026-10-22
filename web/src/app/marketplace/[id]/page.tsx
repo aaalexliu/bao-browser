@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
+import { CopyMenu } from "@/app/share-menu";
+import { listingStat } from "@/lib/listing";
 import { HttpError, publicWorkflow } from "@/lib/registry";
-import { principal, rate, when } from "@/lib/viewer";
-import { SetupForm } from "../../setup-form";
-import { InstallButton } from "../../ui";
+import { principal, when } from "@/lib/viewer";
+import type { SetupQuestion } from "../../setup-form";
 
 export const dynamic = "force-dynamic";
 
@@ -23,71 +24,128 @@ export default async function PublicWorkflowPage({
     if (err instanceof HttpError && err.status === 404) notFound();
     throw err;
   }
-  const steps = (workflow.document as { steps?: { id?: string; label?: string }[] }).steps ?? [];
+  const doc = workflow.document as { steps?: { id?: string; label?: string }[] };
+  const steps = doc.steps ?? [];
+  const shots = new Map(workflow.shots.map((shot) => [shot.stepId, shot.url]));
+  const stat = listingStat(workflow.passRate.total, when(workflow.lastGreenAt), workflow.ciVerified);
   return (
-    <article data-testid="workflow">
-      <h1>{workflow.name}</h1>
-      <p className="muted">{workflow.summary}</p>
-      <div className="chips">
-        <span className="chip">{workflow.category}</span>
-        {workflow.verified ? <span className="badge" data-testid="verified">Verified author</span> : <span className="chip">{workflow.author}</span>}
-        {workflow.ciVerified ? <span className="badge" data-testid="replay-verified">Verified</span> : null}
-        <span className="chip">{rate(workflow.passRate)}</span>
+    <article data-testid="workflow" className="listing">
+      <header className="listing-hero">
+        <div>
+          <p className="crumb"><a href="/marketplace">Marketplace</a> <span aria-hidden="true">/</span> {workflow.category}</p>
+          <h1>{workflow.name}</h1>
+          <p className="lede">{workflow.summary}</p>
+          <p className="meta">By {workflow.author}</p>
+          <div className="chips">
+            <span className="chip">{workflow.category}</span>
+            {workflow.verified ? <span className="badge" data-testid="verified">Verified author</span> : null}
+            {workflow.ciVerified ? <span className="badge" data-testid="replay-verified">Verified</span> : null}
+            <span className="chip" data-testid="listing-stat">{stat}</span>
+          </div>
+        </div>
+        <div className="listing-install">
+          <a className="button primary" data-testid="install" href={workflow.importLink}>Install</a>
+          <p className="muted">Opens the import sheet on this Mac.</p>
+        </div>
+      </header>
+      <div className="listing-layout">
+        <div>
+          <h2>Steps</h2>
+          <ol className="listing-steps" data-testid="steps">
+            {steps.map((step, index) => {
+              const src = shots.get(String(step.id || ""));
+              const label = step.label || step.id || "Step";
+              return (
+                <li key={step.id || index}>
+                  <span className="n">{index + 1}</span>
+                  {src ? <img src={src} alt="" /> : <span className="crop-empty">No crop</span>}
+                  <strong>{label}</strong>
+                </li>
+              );
+            })}
+          </ol>
+          <section data-testid="inputs" className="listing-inputs">
+            <h2>Inputs</h2>
+            {user ? (
+              <form className="listing-copy" action={`/api/marketplace/${workflow.id}/fork`} method="post">
+                <InputList questions={workflow.questions} fields />
+                <button className="primary" type="submit">Copy to my library</button>
+              </form>
+            ) : (
+              <>
+                <InputList questions={workflow.questions} fields={false} />
+                <p className="listing-copy"><a href="/login">Sign in</a> to copy this into your library.</p>
+              </>
+            )}
+          </section>
+          <h2>Versions</h2>
+          <ol className="versions" data-testid="versions">
+            {workflow.versions.map((version) => (
+              <li key={version.version}>v{version.version} · {when(version.created_at)}</li>
+            ))}
+          </ol>
+        </div>
+        <aside className="card listing-side">
+          <h2>Sites</h2>
+          <div className="chips" data-testid="domains">
+            {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
+            {workflow.domains.length ? null : <span className="chip">No network calls</span>}
+          </div>
+          <h2>Replay</h2>
+          <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
+          <CopyMenu link={workflow.link} importLink={workflow.importLink} />
+        </aside>
       </div>
-      <p>By {workflow.author}</p>
-      <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
-      <p className="mono" data-testid="deeplink">{workflow.link}</p>
-      <p className="mono" data-testid="import-link">{workflow.importLink}</p>
-      <h2>Domains</h2>
-      <div className="chips" data-testid="domains">
-        {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
-        {workflow.domains.length ? null : <span className="chip">No network calls</span>}
-      </div>
-      <div className="card">
-        <h2>Install</h2>
-        <p className="muted">Shortcuts-style setup stays on your machine. The button shows the link this Mac opens.</p>
-        <InstallButton link={workflow.link} />
-      </div>
-      <h2>Steps</h2>
-      <ol className="film">
-        {workflow.shots.map((shot) => (
-          <li key={shot.stepId}>
-            <img src={shot.url} alt="" />
-            <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
-          </li>
-        ))}
-      </ol>
-      <p className="muted">The first picture is the redacted crop of the first step that is not a secret. Password fields are covered before it leaves the device.</p>
-      <ol className="steps">
-        {steps.map((step) => <li key={step.id}>{step.label}</li>)}
-      </ol>
-      <h2>Setup questions</h2>
-      <ol className="steps" data-testid="setup-questions">
-        {workflow.questions.map((question) => <li key={question.name}>{question.prompt}</li>)}
-      </ol>
-      <h2>Inputs</h2>
-      {user ? (
-        <SetupForm action={`/api/marketplace/${workflow.id}/fork`} questions={workflow.questions} submit="Fork to my library" />
-      ) : (
-        <p><a href="/login">Sign in</a> to fork this and answer the setup questions.</p>
-      )}
-      <h2>Versions</h2>
-      <ul>
-        {workflow.versions.map((version) => (
-          <li key={version.version}>v{version.version} · {String(version.created_at)}</li>
-        ))}
-      </ul>
-      <h2>Report</h2>
-      {query.reported ? <p className="notice">Report received.</p> : null}
-      <p className="muted">{workflow.reports} report{workflow.reports === 1 ? "" : "s"}</p>
-      {user ? (
-        <form action={`/api/marketplace/${workflow.id}/report`} method="post">
-          <label>What is wrong?
-            <input name="reason" required />
-          </label>
-          <button type="submit">Report</button>
-        </form>
-      ) : null}
+      <details className="report" data-testid="report">
+        <summary>Report a problem</summary>
+        {query.reported ? <p className="notice">Report received.</p> : null}
+        <p className="count">{workflow.reports} report{workflow.reports === 1 ? "" : "s"}</p>
+        {user ? (
+          <form action={`/api/marketplace/${workflow.id}/report`} method="post">
+            <label>What is wrong?
+              <input name="reason" required />
+            </label>
+            <button type="submit">Send report</button>
+          </form>
+        ) : <p><a href="/login">Sign in</a> to send a report.</p>}
+      </details>
     </article>
+  );
+}
+
+function InputList({ questions, fields }: { questions: SetupQuestion[]; fields: boolean }) {
+  if (!questions.length) return <p className="muted" data-testid="setup-questions">This workflow asks for nothing.</p>;
+  return (
+    <ul className="ask" data-testid="setup-questions">
+      {questions.map((question) => (
+        <li key={question.name}>
+          <strong>{question.label || question.prompt}</strong>
+          <span className="chip">{question.type}</span>
+          {question.prompt && question.prompt !== question.label ? <p className="muted">{question.prompt}</p> : null}
+          {question.hint ? <p className="muted">{question.hint}</p> : null}
+          {fields ? <Answer question={question} /> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Answer({ question }: { question: SetupQuestion }) {
+  if (question.type === "file") return <input type="file" disabled aria-label={question.prompt} />;
+  if (question.type === "secret") return <input disabled placeholder="Entered on your device, never sent" aria-label={question.prompt} />;
+  if (question.type === "choice") {
+    return (
+      <select name={`a_${question.name}`} aria-label={question.prompt}>
+        {(question.choices ?? []).map((choice) => <option key={choice}>{choice}</option>)}
+      </select>
+    );
+  }
+  return (
+    <input
+      name={`a_${question.name}`}
+      required={question.required}
+      aria-label={question.prompt}
+      placeholder={question.example ? `for example ${question.example}` : undefined}
+    />
   );
 }

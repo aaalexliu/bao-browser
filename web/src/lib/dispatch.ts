@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { actor, answersFrom, fail, formPost, readBody, requireUser, session } from "./http";
+import { plainReplayReason } from "./review-gate";
 import {
   activePairCode,
   catalog,
@@ -14,6 +15,7 @@ import {
   installShare,
   issuePairCode,
   listDevices,
+  unpairDevice,
   listLibrary,
   listRuns,
   listVersions,
@@ -29,7 +31,9 @@ import {
   rememberGrant,
   reportWorkflow,
   requestMagicLink,
+  saveAccountSettings,
   setImportMarks,
+  syncSnapshot,
   userFromSession,
   verifyMagicLink,
 } from "./registry";
@@ -81,6 +85,19 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
         categoryCounts(principal.userId),
       ]);
       return NextResponse.json({ devices, categories });
+    }
+    if (parts[0] === "devices" && parts[2] === "unpair" && method === "POST") {
+      const principal = await requireUser(req);
+      await unpairDevice(principal.userId, parts[1] || "");
+      return finish(req, { ok: true }, "/pair");
+    }
+    if (parts[0] === "sync" && parts[1] === "snapshot" && method === "GET") {
+      const principal = await requireUser(req);
+      return NextResponse.json(await syncSnapshot(principal));
+    }
+    if (parts[0] === "sync" && parts[1] === "settings" && method === "POST") {
+      const principal = await requireUser(req);
+      return NextResponse.json(await saveAccountSettings(principal, await readBody(req)));
     }
     if (parts[0] === "catalog" && method === "GET") {
       const principal = await actor(req);
@@ -162,6 +179,21 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
       const result = await setImportMarks(principal, parts[1] || "", names);
       return finish(req, result, `/workflows/${parts[1]}`);
     }
+    if (parts[0] === "workflows" && parts[2] === "publish" && method === "GET") {
+      const principal = await requireUser(req);
+      const preview = await previewPublication(principal, parts[1] || "");
+      const why = !preview.reviewed
+        ? "Replay on a device before listing."
+        : preview.gateStep
+          ? (plainReplayReason(String(preview.gateReason || "")) || "The clean replay did not pass.")
+          : "";
+      return NextResponse.json({
+        enabled: preview.reviewed && !preview.gateStep,
+        why,
+        link: preview.link,
+        importLink: preview.importLink,
+      });
+    }
     if (parts[0] === "workflows" && parts[2] === "publish" && method === "POST") {
       const principal = await requireUser(req);
       const result = await confirmPublish(principal, parts[1] || "");
@@ -205,6 +237,12 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
 }
 
 function finish(req: Request, body: unknown, location: string) {
-  if (formPost(req)) return NextResponse.redirect(new URL(location, req.url));
+  if (formPost(req)) {
+    const path = location.startsWith("/") ? location : `/${location}`;
+    const res = NextResponse.redirect(new URL(path, req.url), 303);
+    // A relative Location keeps the browser on the host it used. A 303 turns the POST into a GET.
+    res.headers.set("location", path);
+    return res;
+  }
   return NextResponse.json(body);
 }

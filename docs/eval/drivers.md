@@ -10,35 +10,35 @@ Replay video of one derived workflow per driver:
 
 | driver | task | status | task complete | trail complete | workflow | replay | model calls | latency ms | tokens | reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| claude | form-file | pass | yes | yes | yes | 2/2 | 0 | 90 | 752 |  |
-| claude | tabs | pass | yes | yes | yes | 2/2 | 0 | 89 | 969 |  |
-| claude | login | fail | yes | yes | yes | flash ; flash  | 0 | 80 | 2626 | flash ; flash  |
-| claude | confirm | pass | yes | yes | yes | 2/2 | 0 | 80 | 883 |  |
-| claude | drift | pass | yes | yes | yes | 2/2 | 0 | 102 | 679 |  |
-| claude | dialog | pass | yes | yes | yes | 2/2 | 0 | 89 | 1007 |  |
-| claude | scroll | pass | yes | yes | yes | 2/2 | 0 | 86 | 1089 |  |
-| claude | choice | pass | yes | yes | yes | 2/2 | 0 | 96 | 536 |  |
-| codex | form-file | fail | yes | no | yes | no-candidates; no-candidates | 0 | 80 | 138879 | file path stored in the trail; path in trail.jsonl; no-candidates; no-candidates |
-| codex | tabs | pass | yes | yes | yes | 2/2 | 0 | 96 | 159825 |  |
-| codex | login | fail | yes | yes | yes | flash ; flash  | 0 | 88 | 65308 | flash ; flash  |
-| codex | confirm | fail | no | no | no | ENOENT: no such file or directory, open '[tmp]' |  |  | n/a | cli exit 1; cli exit 1; no trail; ENOENT: no such file or directory, open '[tmp]' |
-| codex | drift | pass | yes | yes | yes | 2/2 | 0 | 95 | 68098 |  |
-| codex | dialog | pass | yes | yes | yes | 2/2 | 0 | 86 | 140255 |  |
-| codex | scroll | fail | no | no | no | ENOENT: no such file or directory, open '[tmp]' |  |  | n/a | cli exit 1; cli exit 1; no trail; ENOENT: no such file or directory, open '[tmp]' |
-| codex | choice | pass | yes | yes | yes | 2/2 | 0 | 96 | 111246 |  |
-| cursor | form-file | pass | yes | yes | yes | 2/2 | 0 | 81 | 34176 |  |
-| cursor | tabs | pass | yes | yes | yes | 2/2 | 0 | 85 | 17762 |  |
-| cursor | login | fail | yes | yes | yes | flash ; flash  | 0 | 76 | 17199 | flash ; flash  |
-| cursor | confirm | pass | yes | yes | yes | 2/2 | 0 | 76 | 17460 |  |
-| cursor | drift | pass | yes | yes | yes | 2/2 | 0 | 86 | 51343 |  |
-| cursor | dialog | pass | yes | yes | yes | 2/2 | 0 | 84 | 19031 |  |
-| cursor | scroll | pass | yes | yes | yes | 2/2 | 0 | 92 | 45958 |  |
-| cursor | choice | pass | yes | yes | yes | 2/2 | 0 | 84 | 16963 |  |
-| scripted | form-file | pass | yes | yes | yes | 2/2 | 0 | 80 | n/a |  |
-| scripted | tabs | pass | yes | yes | yes | 2/2 | 0 | 80 | n/a |  |
-| scripted | login | pass | yes | yes | yes | 2/2 | 0 | 62 | n/a |  |
-| scripted | confirm | pass | yes | yes | yes | 2/2 | 0 | 72 | n/a |  |
-| scripted | drift | pass | yes | yes | yes | 2/2 | 0 | 84 | n/a |  |
-| scripted | dialog | pass | yes | yes | yes | 2/2 | 0 | 80 | n/a |  |
-| scripted | scroll | pass | yes | yes | yes | 2/2 | 0 | 75 | n/a |  |
-| scripted | choice | pass | yes | yes | yes | 2/2 | 0 | 83 | n/a |  |
+| claude | form-file | pass | yes | yes | yes | 2/2 | 0 | 64 | 770 |  |
+| claude | tabs | pass | yes | yes | yes | 2/2 | 0 | 61 | 867 |  |
+| claude | login | pass | yes | yes | yes | 2/2 | 0 | 44 | 939 |  |
+| claude | confirm | pass | yes | yes | yes | 2/2 | 0 | 58 | 786 |  |
+| claude | drift | pass | yes | yes | yes | 2/2 | 0 | 68 | 810 |  |
+| claude | dialog | pass | yes | yes | yes | 2/2 | 0 | 56 | 1062 |  |
+| claude | scroll | pass | yes | yes | yes | 2/2 | 0 | 62 | 1410 |  |
+| claude | choice | pass | yes | yes | yes | 2/2 | 0 | 68 | 651 |  |
+| codex | form-file | pass | yes | yes | yes | 2/2 | 0 | 62 | 130761 |  |
+| codex | tabs | pass | yes | yes | yes | 2/2 | 0 | 61 | 174851 |  |
+| codex | login | pass | yes | yes | yes | 2/2 | 0 | 41 | 139798 |  |
+| codex | confirm | pass | yes | yes | yes | 2/2 | 0 | 56 | 122314 |  |
+| codex | drift | pass | yes | yes | yes | 2/2 | 0 | 67 | 85730 |  |
+| codex | dialog | pass | yes | yes | yes | 2/2 | 0 | 62 | 156376 |  |
+| codex | scroll | pass | yes | yes | yes | 2/2 | 0 | 68 | 157308 |  |
+| codex | choice | pass | yes | yes | yes | 2/2 | 0 | 65 | 94987 |  |
+| cursor | form-file | pass | yes | yes | yes | 2/2 | 0 | 58 | 29707 |  |
+| cursor | tabs | pass | yes | yes | yes | 2/2 | 0 | 58 | 32015 |  |
+| cursor | login | pass | yes | yes | yes | 2/2 | 0 | 43 | 17163 |  |
+| cursor | confirm | pass | yes | yes | yes | 2/2 | 0 | 51 | 36013 |  |
+| cursor | drift | pass | yes | yes | yes | 2/2 | 0 | 62 | 21903 |  |
+| cursor | dialog | pass | yes | yes | yes | 2/2 | 0 | 58 | 17028 |  |
+| cursor | scroll | pass | yes | yes | yes | 2/2 | 0 | 62 | 24676 |  |
+| cursor | choice | pass | yes | yes | yes | 2/2 | 0 | 63 | 16736 |  |
+| scripted | form-file | pass | yes | yes | yes | 2/2 | 0 | 58 | n/a |  |
+| scripted | tabs | pass | yes | yes | yes | 2/2 | 0 | 55 | n/a |  |
+| scripted | login | pass | yes | yes | yes | 2/2 | 0 | 36 | n/a |  |
+| scripted | confirm | pass | yes | yes | yes | 2/2 | 0 | 50 | n/a |  |
+| scripted | drift | pass | yes | yes | yes | 2/2 | 0 | 64 | n/a |  |
+| scripted | dialog | pass | yes | yes | yes | 2/2 | 0 | 58 | n/a |  |
+| scripted | scroll | pass | yes | yes | yes | 2/2 | 0 | 55 | n/a |  |
+| scripted | choice | pass | yes | yes | yes | 2/2 | 0 | 56 | n/a |  |

@@ -47,6 +47,7 @@ export default async function MarketplacePage({
             lastGreen={when(hit.lastGreenAt)}
             domains={hit.domains}
             verified={hit.verified}
+            verifiedReplay={hit.ciVerified}
           />
         ))}
       </div>
