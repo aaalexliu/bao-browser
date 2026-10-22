@@ -63,6 +63,10 @@ Window titles `Untitled` and `Untitled.rtf` match. That is TextEdit's untitled d
 
 The same accessibility table, fed by `desktop/src/v1/identity.ts` `fromAtspiNode`. There is usually no identifier, so role plus name is the strong pair. `fixtures/atspi/baocalc.json` is a raw `bao-os-helper nodes` dump of `baocalc.py` on this machine: the `7` button is unique, and the drawing area (empty name, no action) stays under the threshold.
 
+## Locators, then repairs
+
+A step may store `locators` in this order: role plus accessible name, text, test id, css, xpath, then a relative anchor. Replay closes a known overlay first, then tries those locators, then label similarity, anchor position, and the wait. Each locator has to match exactly one node that still has a box. The run records which kind hit. The scorer above is the lookup when the step has no locator list. `xpath` is not one of the scored attributes.
+
 ## What replay does with a miss
 
 It stops on that step. The failure carries the reason, `brokenAttr`, and a snapshot (screenshot ref when the browser driver took one, plus the DOM or accessibility nodes that were scored). Healing runs only when a provider is available. See `docs/v1.md`.

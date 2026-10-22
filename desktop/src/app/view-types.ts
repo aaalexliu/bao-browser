@@ -28,6 +28,7 @@ export interface StepView {
   id: string;
   status: "passed" | "failed" | "paused" | "pending";
   reason?: string;
+  phase?: string;
   startedAt?: number;
   endedAt?: number;
   label?: string;

@@ -261,6 +261,7 @@ test("the prompt text leaves the screenshot bytes on the audit snapshot", () => 
   const prompt = buildPrompt({
     stepId: "s0",
     index: 0,
+    phase: "find",
     intent: "Click login",
     reason: "below-threshold",
     snapshot: { screenshot: "AAAASECRETBYTES", screenshotRef: "png:16", dom: [{ testId: "login" }], ax: "button login" },
@@ -293,7 +294,7 @@ test("llm provider is unavailable without a key and does not fetch", async () =>
   const heal = llmHealFromEnv({}, (async () => { fetched += 1; return new Response("{}"); }) as typeof fetch);
   assert.equal(heal.available(), false);
   assert.equal(await heal.propose({
-    stepId: "s", index: 0, intent: "x", reason: "miss", snapshot: {},
+    stepId: "s", index: 0, phase: "find", intent: "x", reason: "miss", snapshot: {},
   }, workflow(id({ testId: "a" })).steps[0]!), null);
   assert.equal(fetched, 0);
   assert.equal(unavailableHeal().available(), false);
@@ -324,6 +325,61 @@ test("a drop postcondition is the visible echo and a bare filename does not pass
   const args = { drop: { name: "bao-fix-run1.txt", path: "/tmp/bao-fix-run1.txt" } };
   assert.equal(holds(step!.postcondition!, tree([], { texts: ["Waiting for a file", "Welcome grace"] }), args), false);
   assert.equal(holds(step!.postcondition!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
+});
+
+test("interpret keeps login and confirm as human steps with no coordinates", () => {
+  const doc = interpret([
+    {
+      id: "login", ts: 1, kind: "act", op: "login",
+      provenance: { x: 4, y: 5, space: "viewport" },
+    },
+    {
+      id: "open", ts: 2, kind: "act", op: "click",
+      identity: id({ role: "radio", name: "Open" }),
+      afterText: "Open",
+    },
+    {
+      id: "apply", ts: 3, kind: "act", op: "confirm",
+      provenance: { x: 9, y: 9, space: "screen" },
+      afterText: "Security freeze is off",
+    },
+  ], { id: "wf-human", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  assert.equal(validateWorkflow(doc).length, 0);
+  assert.equal(doc.steps[0]?.action, "login");
+  assert.equal(doc.steps[0]?.human, true);
+  assert.equal(doc.steps[0]?.provenance, undefined);
+  assert.equal(doc.steps[0]?.label, "ensure logged in (import from chrome, else wait for user)");
+  assert.equal(doc.steps[1]?.action, "click");
+  assert.equal(doc.steps[1]?.identity?.name, "Open");
+  assert.equal(doc.steps[2]?.action, "confirm");
+  assert.equal(doc.steps[2]?.human, true);
+  assert.equal(doc.steps[2]?.provenance, undefined);
+  assert.equal(doc.steps[2]?.label, "confirm before applying");
+  assert.equal(doc.steps[2]?.postcondition?.match, "Security freeze is off");
+});
+
+test("interpret turns a status re-read into a verify step", () => {
+  const doc = interpret([
+    {
+      id: "open", ts: 1, kind: "act", op: "click",
+      identity: id({ role: "radio", name: "Open" }),
+    },
+    {
+      id: "apply", ts: 2, kind: "act", op: "confirm",
+    },
+    {
+      id: "status", ts: 3, kind: "act", op: "verify",
+      afterText: "Open",
+      provenance: { x: 1, y: 2, space: "viewport" },
+    },
+  ], { id: "wf-verify", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  assert.equal(validateWorkflow(doc).length, 0);
+  assert.equal(doc.steps[2]?.action, "verify");
+  assert.equal(doc.steps[2]?.label, "re-read the status");
+  assert.equal(doc.steps[2]?.human, undefined);
+  assert.equal(doc.steps[2]?.provenance, undefined);
+  assert.equal(doc.steps[2]?.expect?.kind, "text");
+  assert.equal(doc.steps[2]?.expect?.match, "Open");
 });
 
 test("a confirm step waits for a person and does not click", async () => {

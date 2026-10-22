@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createCipheriv } from "node:crypto";
+import { createCipheriv, createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,16 +10,22 @@ import {
   auditLine,
   chooseProfile,
   chromeExpiresToUnix,
+  cookieValueFromPlain,
   decryptSiteCookies,
   decryptV10,
   deriveChromeKey,
+  explainImportError,
   hostMatches,
+  lastUsedDirectory,
   importConfirmText,
   profilesFromLocalState,
   readSiteCookieRows,
   safeImportError,
+  injectCookies,
+  isBotManagerCookie,
   toCdpCookies,
   withCookiesCopy,
+  withoutBotManagerCookies,
 } from "../../src/v1/chrome-login";
 
 const OTHER = "SHOULD-NOT-LEAK";
@@ -100,9 +106,46 @@ test("a synthetic cookies database returns only that site, and the temp copy is 
     copied = copy;
     assert.equal(existsSync(copy), true);
     assert.equal(readSiteCookieRows(copy, "experian.com").length, 3);
+    writeFileSync(dbPath + "-journal", "journal-bytes");
+  });
+  await withCookiesCopy(dbPath, (copy) => {
+    assert.equal(existsSync(copy + "-journal"), true);
   });
   assert.equal(existsSync(copied), false);
   assert.equal(existsSync(path.dirname(copied)), false);
+});
+
+test("bot-manager cookie names are skipped and a session cookie is kept", () => {
+  assert.equal(isBotManagerCookie("_abck"), true);
+  assert.equal(isBotManagerCookie("bm_sz"), true);
+  assert.equal(isBotManagerCookie("ak_bmsc"), true);
+  assert.equal(isBotManagerCookie("visid_incap_1"), true);
+  assert.equal(isBotManagerCookie("incap_ses_1_2"), true);
+  assert.equal(isBotManagerCookie("reese84"), true);
+  assert.equal(isBotManagerCookie("_dd_s"), true);
+  assert.equal(isBotManagerCookie("session_id"), false);
+  assert.equal(isBotManagerCookie("frozen-status-cookie"), false);
+  const kept = withoutBotManagerCookies([
+    { name: "_abck", value: "bot-token" },
+    { name: "session_id", value: "site-token" },
+  ]);
+  assert.deepEqual(kept.map((cookie) => cookie.name), ["session_id"]);
+  assert.equal(JSON.stringify(kept).includes("bot-token"), false);
+});
+
+test("a host hash prefix is removed and a raw value is left as-is", () => {
+  const host = ".experian.com";
+  const key = deriveChromeKey("test-password-not-a-keychain-secret");
+  const hash = createHash("sha256").update(host).digest();
+  const prefixed = Buffer.concat([hash, Buffer.from("session")]);
+  assert.equal(cookieValueFromPlain(prefixed, host), "session");
+  assert.equal(cookieValueFromPlain(Buffer.from("session"), host), "session");
+  assert.notEqual(cookieValueFromPlain(prefixed, "usa.experian.com"), "session");
+  const iv = Buffer.alloc(16, " ");
+  const cipher = createCipheriv("aes-128-cbc", key, iv);
+  const encrypted = Buffer.concat([Buffer.from("v10"), cipher.update(prefixed), cipher.final()]);
+  assert.equal(decryptV10(encrypted, key, host), "session");
+  assert.notEqual(decryptV10(encrypted, key), "session");
 });
 
 test("profile names come from info_cache and a tie is not guessed", () => {
@@ -122,6 +165,13 @@ test("profile names come from info_cache and a tie is not guessed", () => {
   assert.equal(packed.includes("ada@example.test"), false);
   assert.equal(packed.includes("Ada Lovelace"), false);
   assert.deepEqual(profiles.map((profile) => profile.name), ["Fallback", "Personal", "Work"]);
+  const marked = JSON.parse(raw) as { profile: { last_used?: string } };
+  marked.profile.last_used = "Profile 1";
+  const withLast = profilesFromLocalState(JSON.stringify(marked)).map((profile) => (
+    profile.directory === lastUsedDirectory(JSON.stringify(marked)) ? { ...profile, lastUsed: true } : profile
+  ));
+  assert.equal(withLast.find((profile) => profile.directory === "Profile 1")?.lastUsed, true);
+  assert.equal(JSON.stringify(withLast).includes("work@example.test"), false);
   const choice = chooseProfile(profiles);
   assert.equal(choice.ok, false);
   if (!choice.ok) assert.equal(choice.reason, "pick");
@@ -137,9 +187,24 @@ test("confirm copy, audit line, and errors omit cookie material", () => {
   assert.equal(line, "{\"domain\":\"experian.com\",\"count\":2,\"at\":10}");
   assert.equal(chromeExpiresToUnix(0), undefined);
   const key = deriveChromeKey("k");
-  assert.throws(() => decryptV10(Buffer.from("v11abcdefghijklmnop"), key), /could not decrypt cookies/);
-  assert.equal(safeImportError(new Error("cookie=site-token")), "import failed");
-  assert.equal(safeImportError(new Error("keychain prompt was not approved")), "keychain prompt was not approved");
+  assert.throws(() => decryptV10(Buffer.from("v11abcdefghijklmnop"), key), /unsupported cookie encryption/);
+  assert.equal(safeImportError(new Error("cookie=site-token")), "Import failed. Press Import again.");
+  assert.equal(explainImportError(new Error("cookie=site-token")).includes("site-token"), false);
+  assert.equal(safeImportError(new Error("keychain prompt was not approved")), "The keychain prompt was not approved. Press Import and choose Allow.");
+  assert.equal(
+    explainImportError(new Error("zero matching cookies"), "Profile 1"),
+    "Profile Profile 1 has no cookies for this site. Press Import and pick the Chrome profile that is signed in.",
+  );
+  const failure = auditLine({
+    domain: "experian.com",
+    count: 0,
+    at: 10,
+    reason: explainImportError(new Error("could not import cookies")),
+    profile: "Default",
+  });
+  assert.equal(failure.includes("site-token"), false);
+  assert.equal(failure.includes("The browser rejected every cookie"), true);
+  assert.equal(failure.includes("\"profile\":\"Default\""), true);
 });
 
 test("import-login stays on the confirm step and does not read Chrome", async () => {
@@ -212,4 +277,32 @@ test("after confirm, several Chrome profiles are listed and cookies stay unread"
     else process.env.BAO_CHROME_USER_DATA = previous;
     await app.close();
   }
+});
+
+test("a rejected cookie does not drop the rest of the import", async () => {
+  const sent: string[] = [];
+  const page = {
+    context() {
+      return {
+        async newCDPSession() {
+          return {
+            async send(_method: string, params: { cookies: { name: string; path: string }[] }) {
+              const cookie = params.cookies[0];
+              if (cookie.name === "bad") throw new Error("Invalid cookie fields");
+              sent.push(`${cookie.name}:${cookie.path}`);
+            },
+            async detach() {},
+          };
+        },
+      };
+    },
+  };
+  const count = await injectCookies(page, [
+    { name: "good", value: "ok", domain: "experian.com", hostOnly: true, path: "noslash", secure: true, httpOnly: true },
+    { name: "bad name", value: "nope", domain: "experian.com", hostOnly: true, path: "/", secure: true, httpOnly: true },
+    { name: "bad", value: "nope", domain: "experian.com", hostOnly: true, path: "/", secure: true, httpOnly: true },
+  ]);
+  assert.equal(count, 1);
+  assert.deepEqual(sent, ["good:/"]);
+  assert.equal(sent.join(" ").includes("nope"), false);
 });

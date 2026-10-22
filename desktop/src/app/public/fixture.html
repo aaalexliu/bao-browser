@@ -43,6 +43,11 @@
     <button id="apply-btn" type="button" data-testid="apply">Apply</button>
   </section>
   <div id="drift"></div>
+  <form id="note-form">
+    <label>Note <input id="note-input" name="note" data-testid="note"></label>
+    <button id="save-note" type="submit" data-testid="save-note">Save note</button>
+  </form>
+  <p id="saved-note" data-testid="saved-note"></p>
   <ul id="rows">
     <li data-testid="row" data-name="Ada">Ada</li>
     <li data-testid="row" data-name="Grace">Grace</li>
@@ -89,6 +94,10 @@
     if (params.get("drift") === "1") {
       document.getElementById("drift").innerHTML = '<button id="file-submit" type="button">Upload file</button> <button id="other-upload" type="button">Upload</button>';
     }
+    document.getElementById("note-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      document.getElementById("saved-note").textContent = document.getElementById("note-input").value;
+    });
     document.getElementById("rows").addEventListener("click", (event) => {
       const li = event.target.closest("li");
       if (!li) return;

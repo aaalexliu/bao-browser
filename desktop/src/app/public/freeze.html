@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Credit freeze</title>
+  <style>
+    :root { color-scheme: light; font-size: 18px; }
+    body { font-family: sans-serif; margin: 2rem; background: #f4f7fb; color: #142033; max-width: 36rem; }
+    body.dark { background: #142033; color: #f4f7fb; }
+    body.big { font-size: 24px; }
+    fieldset { border: 1px solid #8aa; padding: 1rem; display: grid; gap: 0.6rem; }
+    button { font: inherit; padding: 0.45rem 0.8rem; }
+    #status { font-size: 1.4rem; font-weight: 700; }
+    #overlay {
+      position: fixed; inset: 0; background: rgba(20, 32, 51, 0.45);
+      display: grid; place-items: center;
+    }
+    #overlay[hidden] { display: none; }
+    #overlay .card { background: white; color: #142033; padding: 1.2rem; width: 22rem; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Credit freeze</h1>
+  <form id="freeze">
+    <fieldset>
+      <legend>Bureau status</legend>
+      <label><input id="frozen" type="radio" name="freeze" value="frozen"> Frozen</label>
+      <label><input id="open" type="radio" name="freeze" value="open"> Open</label>
+    </fieldset>
+    <button id="apply" type="button" data-testid="apply">Apply</button>
+  </form>
+  <p id="status" data-testid="status">Status: none</p>
+  <div id="overlay" role="dialog" data-bao-overlay data-testid="overlay" hidden>
+    <div class="card">
+      <p>A notice is covering the form.</p>
+      <button id="dismiss" type="button" data-testid="overlay-close">Dismiss</button>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get("theme") === "dark") document.body.classList.add("dark");
+    if (params.get("font") === "big") document.body.classList.add("big");
+    if (params.get("shift") === "1") document.body.style.marginTop = "220px";
+    if (params.get("order") === "flip") {
+      const frozen = document.getElementById("frozen").parentElement;
+      const open = document.getElementById("open").parentElement;
+      open.parentElement.insertBefore(open, frozen);
+    }
+    const apply = document.getElementById("apply");
+    const status = document.getElementById("status");
+    const overlay = document.getElementById("overlay");
+    if (params.get("heal") === "1") apply.textContent = "Continue";
+    if (params.get("overlay") === "1") {
+      overlay.hidden = false;
+      apply.hidden = true;
+    }
+    document.getElementById("dismiss").addEventListener("click", () => {
+      overlay.hidden = true;
+      apply.hidden = false;
+    });
+    apply.addEventListener("click", () => {
+      fetch("/freeze/applied", { method: "POST" }).catch(() => undefined);
+      if (params.get("stuck") === "1") return;
+      const choice = document.querySelector("input[name=freeze]:checked");
+      if (!choice) {
+        status.textContent = "Status: none";
+        return;
+      }
+      status.textContent = choice.value === "open" ? "Status: Open" : "Status: Frozen";
+    });
+  </script>
+</body>
+</html>

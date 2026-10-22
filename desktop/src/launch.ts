@@ -1,12 +1,25 @@
-// Launch an owned browser. Never connectOverCDP, never port 9222, never the
-// daily profile. The default binary is Playwright's Chromium, not the user's
-// installed Chrome. Playwright's persistent context is our child process.
+// Launch an owned browser. Never port 9222, never the daily profile.
+// Recording and replay use Playwright's Chromium. A user's own account uses
+// the installed Google Chrome, started by us and attached over a private
+// debugging port, so Playwright's automation switches are not on the command line.
 
-import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { chromium, type BrowserContext } from "playwright";
 import { assertNotDailyChrome } from "./profile";
+
+export const ACCOUNT_CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
+const BANNED_ACCOUNT_ARGS = [
+  "--enable-automation",
+  "--disable-extensions",
+  "--use-mock-keychain",
+  "--password-store=basic",
+  "--no-sandbox",
+  "--disable-blink-features=AutomationControlled",
+];
 
 const LAUNCH_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
 
@@ -22,6 +35,102 @@ const DAILY_DIR = [
   "/Application Support/Google/Chrome",
   "/Google/Chrome/User Data",
 ];
+
+/** Installed Google Chrome when it is present, otherwise the bundled browser. */
+export function resolveAccountChrome(exists: (file: string) => boolean = existsSync, env: NodeJS.ProcessEnv = process.env): string {
+  if (process.platform === "darwin" && exists(ACCOUNT_CHROME_MAC)) return ACCOUNT_CHROME_MAC;
+  const bundled = env.BAO_BROWSER;
+  if (bundled && exists(bundled)) return bundled;
+  throw new Error("Chrome was not found");
+}
+
+/** Flags for a normal Chrome window. No automation switch and no Playwright defaults. */
+export function accountLaunchArgs(port: number): string[] {
+  if (port === 9222) throw new Error("Chrome was started with remote-debugging-port 9222.");
+  const args = [
+    `--remote-debugging-port=${port}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-sync",
+  ];
+  if (process.platform === "darwin") args.push("--force-renderer-accessibility");
+  for (const flag of BANNED_ACCOUNT_ARGS) {
+    if (args.includes(flag)) throw new Error(flag);
+  }
+  return args;
+}
+
+function freeLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForCdp(port: number): Promise<void> {
+  const deadline = Date.now() + 15000;
+  let last = "not open";
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+      if (response.ok) return;
+      last = String(response.status);
+    } catch (err) {
+      last = err instanceof Error ? err.message : "not open";
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error(`Chrome debugging port did not open (${last})`);
+}
+
+/**
+ * Headed account browser: the user's Chrome, our profile, then a CDP attach.
+ * Headless callers keep Playwright's Chromium so tests do not open Google Chrome.
+ * noDefaults skips focus and media emulation. Runtime.enable happens only when
+ * the page is attached for a read, not as a launch flag.
+ */
+export async function launchAccountChrome(opts: {
+  userDataDir: string;
+  headless?: boolean;
+}): Promise<BrowserContext> {
+  if (opts.headless) return launchOwnedChrome(opts);
+  assertNotDailyChrome(opts.userDataDir);
+  const exe = resolveAccountChrome();
+  let port = await freeLoopbackPort();
+  if (port === 9222) port = await freeLoopbackPort();
+  const args = accountLaunchArgs(port);
+  const child: ChildProcess = spawn(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], { stdio: "ignore" });
+  const stop = () => {
+    if (child.exitCode == null) child.kill("SIGTERM");
+  };
+  try {
+    await waitForCdp(port);
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { noDefaults: true });
+    const context = browser.contexts()[0];
+    if (!context) throw new Error("Chrome opened without a profile context");
+    const verdict = assessOwnedCommand(readOwnedCommand(child.pid, opts.userDataDir, process.platform), opts.userDataDir);
+    if (!verdict.ok) throw new Error(verdict.reason);
+    browser.on("disconnected", stop);
+    const orig = context.close.bind(context);
+    context.close = async () => {
+      try {
+        await orig();
+      } finally {
+        stop();
+        await browser.close().catch(() => undefined);
+      }
+    };
+    return context;
+  } catch (err) {
+    stop();
+    throw err;
+  }
+}
 
 export async function launchOwnedChrome(opts: {
   userDataDir: string;

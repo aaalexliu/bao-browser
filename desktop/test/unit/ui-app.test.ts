@@ -120,6 +120,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
         index: 0,
         action: "click",
         label: "click Upload",
+        intent: "Send the file",
         surface: "dom",
         identity: ident({ name: "Upload", id: "file-submit" }),
         timeoutMs: 1000,
@@ -150,12 +151,24 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(table, /70/);
 
     process.env.BAO_HEAL_FIXTURE = "1";
-    const healWf = workflow(app.port, "wf-heal", "textedit write", "/fixture", [
+    app.library.save(workflow(app.port, "wf-text", "textedit write", "/fixture", [
+      {
+        id: "write",
+        index: 0,
+        action: "click",
+        label: "Click write",
+        surface: "dom",
+        identity: ident({ name: "Write" }),
+        timeoutMs: 500,
+      },
+    ]));
+    const healWf = workflow(app.port, "wf-heal", "fixture login", "/fixture", [
       {
         id: "login",
         index: 0,
         action: "click",
         label: "Click login",
+        intent: "the missing control",
         surface: "dom",
         identity: ident({ testId: "missing-login" }),
         timeoutMs: 500,
@@ -171,9 +184,14 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     const before = JSON.stringify(app.library.readRun(healed.runId).heals);
     await page.click("button[data-screen=heals]");
     await page.waitForSelector("[data-heal]");
+    const inbox = await page.locator("#heal-inbox").innerText();
+    assert.match(inbox, /fixture login/);
+    assert.equal(inbox.includes("textedit write"), false);
     await page.click("[data-heal]");
     await page.waitForSelector("article#heal-detail");
     const detail = await page.locator("#heal-detail").innerText();
+    assert.match(detail, /fixture login/);
+    assert.equal(detail.includes("textedit write"), false);
     assert.match(detail, /Recorded/);
     assert.match(detail, /Proposed/);
     assert.match(detail, /missing-login|login/);

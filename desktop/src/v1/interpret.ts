@@ -2,7 +2,8 @@
 // Secrets become inputs. File paths are dropped. No model is required.
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
-import type { Identity, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { locatorsFromIdentity } from "./locators";
+import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
 
 export interface TrailEvent {
@@ -20,6 +21,7 @@ export interface TrailEvent {
   checked?: boolean;
   provenance?: WorkflowStep["provenance"];
   identity?: Identity;
+  locators?: StepLocator[];
   beforeUrl?: string;
   afterUrl?: string;
   afterText?: string;
@@ -37,17 +39,19 @@ export interface InterpretMeta {
 }
 
 const NOISE = new Set([
-  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "navigate",
+  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "navigate", "mark",
 ]);
 
 const DIGIT = /^[0-9]$/;
 const OP = new Set(["+", "-", "*", "/", "×", "÷", "="]);
 
 export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
+  const secrets = secretStrings(events, meta.secrets ?? []);
+  const seen: InterpretMeta = { ...meta, secrets };
   const kept = events.filter(keep);
   const merged = mergeTyping(kept);
   const inputs: WorkflowInput[] = [];
-  let steps = merged.map((event, index) => toStep(event, index, meta, inputs));
+  let steps = merged.map((event, index) => toStep(event, index, seen, inputs));
   steps = parameterizeDigits(steps, inputs);
   steps = steps.map((step, index) => ({ ...step, index, id: `${meta.id}-${index}` }));
   const doc: WorkflowV2 = {
@@ -60,8 +64,20 @@ export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): W
     steps,
     createdAt: events[0]?.ts ?? 0,
   };
-  assertClean(doc, meta.secrets ?? []);
+  assertClean(doc, secrets);
   return doc;
+}
+
+/** A password field's typed text is a secret even when the caller did not list it. */
+function secretStrings(events: readonly TrailEvent[], listed: string[]): string[] {
+  const out = [...listed];
+  for (const event of events) {
+    const password = event.sensitive || event.identity?.role === "password";
+    const value = event.value;
+    if (!password || !value || value.length < 8 || out.includes(value)) continue;
+    out.push(value);
+  }
+  return out;
 }
 
 function keep(event: TrailEvent): boolean {
@@ -111,16 +127,46 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
 
 function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[]): WorkflowStep {
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
+  const identity = stripSecretValue(event.identity, meta.secrets ?? []);
   const step: WorkflowStep = {
     id: `${meta.id}-${index}`,
     index,
     action: "click",
     label: event.op,
     surface,
-    identity: stripSecretValue(event.identity, meta.secrets ?? []),
+    identity,
+    locators: scrubLocators(event.locators?.length ? event.locators : locatorsFromIdentity(identity), meta.secrets ?? []),
     timeoutMs: 8000,
     provenance: event.provenance,
   };
+  if (event.op === "login" || event.op === "confirm") {
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: event.op,
+      label: event.op === "login"
+        ? "ensure logged in (import from chrome, else wait for user)"
+        : "confirm before applying",
+      surface: "dom",
+      human: true,
+      timeoutMs: 8000,
+      postcondition: post(event, undefined, meta.secrets ?? []),
+    };
+  }
+  if (event.op === "verify") {
+    const read = post(event, undefined, meta.secrets ?? []);
+    const match = scrub(event.afterText, meta.secrets ?? []);
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: "verify",
+      label: "re-read the status",
+      surface: "dom",
+      timeoutMs: 8000,
+      expect: match ? { kind: "text", match, timeoutMs: 8000 } : undefined,
+      postcondition: read,
+    };
+  }
   if (event.op === "keypress" || event.op === "key") {
     return {
       ...step,
@@ -240,10 +286,26 @@ function addInput(inputs: WorkflowInput[], type: WorkflowInput["type"], hint: st
   return input;
 }
 
+function scrubLocators(list: StepLocator[] | undefined, secrets: string[]): StepLocator[] | undefined {
+  if (!list || list.length === 0) return undefined;
+  const out = list.flatMap((locator) => {
+    const blob = `${locator.name || ""} ${locator.value || ""}`;
+    if (secrets.some((secret) => secret && blob.includes(secret))) return [];
+    return [locator];
+  });
+  return out.length ? out : undefined;
+}
+
 function stripSecretValue(identity: Identity | undefined, secrets: string[]): Identity | undefined {
   if (!identity) return undefined;
   const copy = { ...identity, path: identity.path.map((seg) => ({ ...seg })) };
-  if (copy.value && (secrets.includes(copy.value) || isSensitiveValue(copy.value))) delete copy.value;
+  for (const key of ["value", "text", "name", "label", "title"] as const) {
+    const current = copy[key];
+    if (typeof current !== "string") continue;
+    if (secrets.some((secret) => secret && current.includes(secret)) || (key === "value" && isSensitiveValue(current))) {
+      delete copy[key];
+    }
+  }
   return copy;
 }
 
@@ -269,6 +331,7 @@ function parameterizeDigits(steps: WorkflowStep[], inputs: WorkflowInput[]): Wor
       value: `{{${input.name}}}`,
       label: `Enter {{${input.name}}}`,
       identity: sample.identity ? { ...sample.identity, name: undefined, text: undefined, title: undefined } : undefined,
+      locators: undefined,
       postcondition: { kind: "element", timeoutMs: 4000 },
     });
     i += run.length;

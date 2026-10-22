@@ -15,6 +15,8 @@
     "updatedAt": { "type": "number" },
     "heal": { "enum": ["auto", "approve"] },
     "replayed": { "type": "boolean" },
+    "readBack": { "$ref": "#/$defs/readBack" },
+    "precondition": { "$ref": "#/$defs/precondition" },
     "inputs": {
       "type": "array",
       "items": { "$ref": "#/$defs/input" }
@@ -69,11 +71,46 @@
         "label": { "type": "string" },
         "text": { "type": "string" },
         "cssPath": { "type": "string" },
+        "xpath": { "type": "string" },
         "windowTitle": { "type": "string" },
         "bundleId": { "type": "string" },
         "app": { "type": "string" },
         "path": { "type": "array", "items": { "$ref": "#/$defs/pathSeg" } },
         "siblingIndex": { "type": "number" }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "timeoutMs"],
+      "properties": {
+        "kind": { "enum": ["text", "url", "state"] },
+        "match": { "type": "string" },
+        "state": { "enum": ["checked", "unchecked", "enabled", "disabled", "visible"] },
+        "identity": { "$ref": "#/$defs/identity" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "relation"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/identity" },
+        "relation": { "enum": ["below", "above", "right", "left"] }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["role", "text", "testid", "css", "xpath", "anchor"] },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "relation": { "enum": ["below", "above", "right", "left"] },
+        "anchor": { "$ref": "#/$defs/identity" }
       }
     },
     "postcondition": {
@@ -87,6 +124,39 @@
         "timeoutMs": { "type": "number" }
       }
     },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "timeoutMs"],
+      "properties": {
+        "kind": { "enum": ["text", "url", "element", "value"] },
+        "match": { "type": "string" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "match", "phase"],
+      "properties": {
+        "kind": { "const": "url" },
+        "match": { "type": "string", "minLength": 1 },
+        "phase": { "const": "auth" }
+      }
+    },
+    "readBack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "match", "timeoutMs"],
+      "properties": {
+        "source": { "enum": ["value", "text", "url", "file"] },
+        "match": { "type": "string" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "fileInput": { "type": "string" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
     "step": {
       "type": "object",
       "additionalProperties": false,
@@ -94,7 +164,7 @@
       "properties": {
         "id": { "type": "string" },
         "index": { "type": "number" },
-        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login"] },
+        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login", "verify"] },
         "label": { "type": "string" },
         "surface": { "enum": ["dom", "os"] },
         "identity": { "$ref": "#/$defs/identity" },
@@ -113,7 +183,18 @@
         "checked": { "type": "boolean" },
         "sensitive": { "type": "boolean" },
         "human": { "type": "boolean" },
+        "intent": { "type": "string" },
         "postcondition": { "$ref": "#/$defs/postcondition" },
+        "expect": { "$ref": "#/$defs/expect" },
+        "waitFor": { "$ref": "#/$defs/check" },
+        "gone": { "$ref": "#/$defs/check" },
+        "anchor": { "$ref": "#/$defs/anchor" },
+        "reveal": { "$ref": "#/$defs/locator" },
+        "readBack": { "$ref": "#/$defs/readBack" },
+        "locators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/locator" }
+        },
         "timeoutMs": { "type": "number" },
         "provenance": {
           "type": "object",

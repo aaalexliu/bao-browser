@@ -327,6 +327,19 @@ is still the source of truth for the extension.
   `live-model` logged into the-internet and uploaded a file; interpret
   dropped the screenshots and the unresolved file click; replay had no model.
   The GTK calculator capture of 7+5 replayed 7+7 and 5+7 on a moved window.
+- **2026-10-21 — Expect, cheap repair, and provisional heal.** A step can
+  declare `expect` (text, state, or URL). A trailing `verify` step re-reads
+  it. A miss names the phase: locate, act, or expect. The local credit-freeze
+  fixture (`/freeze`) has Frozen and Open radios and Apply. The saved workflow
+  checks the radio and verifies `Status: Frozen`. Before any model call,
+  replay tries label similarity, an anchor, closing a known overlay, and a
+  wait, and logs which one ran. A model heal stays provisional until the
+  drift suite and the next two replays pass, and reverts if either fails.
+  Those states are promotion events on the trail. Drift stayed 24/24
+  (`docs/drift-linux.md`). A Cursor-billed heal, not a vendor API call,
+  patched the renamed Apply button from the failure screenshot and was
+  promoted. `BAO_HEAL_FIXTURE` is still the canned stand-in and was not used
+  for that run.
 - **2026-10-21 — Desktop window: sidebar, act bar, run viewer, heal review.**
   First UI pass. The five top tabs are a left rail (Library, Capture, Runs,
   Heals, Settings) with recording, helper, model, and a count of items waiting
@@ -341,6 +354,22 @@ is still the source of truth for the extension.
   backend is unchanged. Linux: desktop unit tests 61 pass, and the live
   browser capture, replay, heal, and replay drop zone passed. One MCP
   `tools/list` wait of 300ms missed once under load and passed on the next run.
+- **2026-10-22 — Desktop window, second pass.** Merged onto
+  `cursor/logged-out-masked-login-28c2` so the window covers expect, cheap
+  repairs, provisional heals, read-back receipts, trajectory diffs, auth
+  stops, masked secrets, and the Chrome import card. Two static directions
+  were shot first (native macOS light, and a dense dark list). The native
+  light layout won: bao is a workflow a person runs, and the calm spec fits
+  a system sidebar better than a debugger skin. Dark mode is the same layout
+  with inverted tokens. Borrowed the step cards from Shortcuts, the command
+  list and status color from Raycast and Linear, the filmstrip scrubber from
+  the Playwright trace viewer and rrweb-player, the pass grid and plain
+  failure line from Momentic and Skyvern, and the floating record bar from
+  Screen Studio and Loom. The step list stayed a list; a node canvas was the
+  worse fit for short human steps. A heal row is named from that heal's
+  workflow id, so a login heal no longer picks up a sibling named
+  `textedit write`. OpenAdapt and Simular did not have public app screens
+  worth copying.
 
 ---
 

@@ -8,6 +8,12 @@ export interface DriftRow {
   passed: boolean;
   brokenAttr?: string;
   reason?: string;
+  /** Locator kind that hit, when the step stored more than one. */
+  locator?: string;
+  /** Repair, later locator, or heal that recovered a miss. Empty when the first locator hit. */
+  fixedBy?: string;
+  /** wait_for, find, action, or expect when the step failed or a check ran. */
+  phase?: string;
   /** The change cannot be performed. Not counted as a pass or a failure. */
   na?: boolean;
 }
@@ -86,11 +92,25 @@ export function windowChangeRows(opts: {
   return rows;
 }
 
+export interface DriftWorkflowRate {
+  workflow: string;
+  passed: number;
+  failed: number;
+  na: number;
+  rate: number;
+}
+
 export interface DriftReport {
   generatedAt: string;
   rows: DriftRow[];
   summary: DriftSummary[];
   steps: DriftStepRate[];
+  workflows: DriftWorkflowRate[];
+}
+
+function phaseOf(reason: string | undefined): string | undefined {
+  const match = reason?.match(/^(wait_for|find|action|expect):/);
+  return match?.[1];
 }
 
 function totals(rows: DriftRow[], key: (row: DriftRow) => string): { key: string; label?: string; passed: number; failed: number; na: number; rate: number }[] {
@@ -125,7 +145,61 @@ export function driftReport(rows: DriftRow[], generatedAt: string): DriftReport 
     na: row.na,
     rate: row.rate,
   }));
-  return { generatedAt, rows, summary, steps };
+  const workflows = totals(rows, (row) => row.workflow).map((row) => ({
+    workflow: row.key,
+    passed: row.passed,
+    failed: row.failed,
+    na: row.na,
+    rate: row.rate,
+  }));
+  return { generatedAt, rows, summary, steps, workflows };
+}
+
+export function recoveryRows(input: {
+  workflow: string;
+  change: string;
+  steps: { id: string; label?: string; passed: boolean; reason?: string; brokenAttr?: string; phase?: string }[];
+  locatorHits?: { stepId: string; kind: string; detail?: string }[];
+  repairs?: { stepId: string; repair: string; detail?: string }[];
+  healedStepIds?: string[];
+  firstLocator?: Record<string, string | undefined>;
+}): DriftRow[] {
+  return input.steps.map((step) => {
+    const hit = (input.locatorHits ?? []).filter((item) => item.stepId === step.id).at(-1);
+    const repairs = (input.repairs ?? []).filter((item) => item.stepId === step.id);
+    const healed = (input.healedStepIds ?? []).includes(step.id);
+    const first = input.firstLocator?.[step.id];
+    let fixedBy: string | undefined;
+    let brokenAttr = step.brokenAttr;
+    if (!step.passed) {
+      fixedBy = "none";
+      brokenAttr = brokenAttr || first;
+    } else if (healed) {
+      fixedBy = "heal";
+      brokenAttr = brokenAttr || first || "identity";
+    } else if (repairs.length) {
+      fixedBy = repairs.map((item) => item.repair).join("+");
+      const expectWait = repairs.some((item) => (item.detail || "").includes("expect"));
+      brokenAttr = expectWait ? "expect" : (brokenAttr || first || "identity");
+    } else if (hit && first && hit.kind !== first) {
+      fixedBy = `locator:${hit.kind}`;
+      brokenAttr = first;
+    }
+    const reason = step.reason || repairs.map((item) => item.detail).filter(Boolean).join("; ") || hit?.detail;
+    const phase = step.phase || phaseOf(reason);
+    return {
+      workflow: input.workflow,
+      change: input.change,
+      stepId: step.id,
+      label: step.label,
+      passed: step.passed,
+      brokenAttr: fixedBy || !step.passed ? brokenAttr : undefined,
+      fixedBy,
+      locator: hit?.kind,
+      phase: !step.passed ? phase : undefined,
+      reason,
+    };
+  });
 }
 
 export function driftMarkdown(report: DriftReport): string {
@@ -144,11 +218,23 @@ export function driftMarkdown(report: DriftReport): string {
   for (const row of report.steps) {
     lines.push(`| ${row.stepId} | ${row.label || ""} | ${row.passed} | ${row.failed} | ${row.na} | ${(row.rate * 100).toFixed(0)}% |`);
   }
-  lines.push(``, `## Failures`, ``, `| workflow | change | step | attribute | reason |`, `| --- | --- | --- | --- | --- |`);
-  for (const row of report.rows.filter((item) => !item.passed && !item.na)) {
-    lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.brokenAttr || ""} | ${row.reason || ""} |`);
+  lines.push(``, `## Workflows`, ``, `| workflow | passed | failed | n/a | rate |`, `| --- | --- | --- | --- | --- |`);
+  for (const row of report.workflows) {
+    lines.push(`| ${row.workflow} | ${row.passed} | ${row.failed} | ${row.na} | ${(row.rate * 100).toFixed(0)}% |`);
   }
-  if (!report.rows.some((row) => !row.passed && !row.na)) lines.push(`| | | | | none |`);
+  lines.push(``, `## Failures`, ``, `| workflow | change | step | phase | attribute | fixed by | reason |`, `| --- | --- | --- | --- | --- | --- | --- |`);
+  const failed = report.rows.filter((item) => !item.passed && !item.na);
+  for (const row of failed) {
+    lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.phase || ""} | ${row.brokenAttr || ""} | ${row.fixedBy || "none"} | ${row.reason || ""} |`);
+  }
+  if (!failed.length) lines.push(`| | | | | | | none |`);
+  const recovered = report.rows.filter((item) => item.passed && item.fixedBy);
+  if (recovered.length) {
+    lines.push(``, `## Recovered`, ``, `The first locator missed. A later locator, a repair, or a heal made the step pass.`, ``, `| workflow | change | step | phase | attribute | fixed by | reason |`, `| --- | --- | --- | --- | --- | --- | --- |`);
+    for (const row of recovered) {
+      lines.push(`| ${row.workflow} | ${row.change} | ${row.stepId} | ${row.phase || ""} | ${row.brokenAttr || ""} | ${row.fixedBy || ""} | ${row.reason || ""} |`);
+    }
+  }
   const harness = report.rows.filter((row) => row.na && (row.reason || "").includes("n/a-harness"));
   if (harness.length) {
     lines.push(``, `## Harness`, ``, `These rows are n/a. The window never reached the requested bounds, so the replay steps were not scored.`, ``, `| workflow | change | reason |`, `| --- | --- | --- |`);

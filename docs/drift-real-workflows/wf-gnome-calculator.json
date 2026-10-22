@@ -1,0 +1,379 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-gnome-calculator",
+  "name": "GNOME Calculator",
+  "startUrl": "desktop://gnome-calculator",
+  "inputs": [
+    {
+      "name": "a",
+      "type": "number",
+      "required": true,
+      "label": "a",
+      "default": "7"
+    },
+    {
+      "name": "b",
+      "type": "number",
+      "required": true,
+      "label": "b",
+      "default": "5"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-gnome-calculator-0",
+      "index": 0,
+      "action": "digits",
+      "label": "Enter {{a}}",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "button",
+        "app": "gnome-calculator",
+        "path": [
+          {
+            "name": "gnome-calculator",
+            "role": "application"
+          },
+          {
+            "name": "Calculator",
+            "role": "application"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          }
+        ]
+      },
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 32,
+        "y": 22,
+        "space": "screen"
+      },
+      "postcondition": {
+        "kind": "element",
+        "timeoutMs": 4000
+      },
+      "input": "a",
+      "value": "{{a}}"
+    },
+    {
+      "id": "wf-gnome-calculator-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"+\"",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "button",
+        "name": "+",
+        "app": "gnome-calculator",
+        "path": [
+          {
+            "name": "gnome-calculator",
+            "role": "application"
+          },
+          {
+            "name": "Calculator",
+            "role": "application"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          }
+        ]
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "+"
+        },
+        {
+          "kind": "text",
+          "value": "+"
+        }
+      ],
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 32,
+        "y": 22,
+        "space": "screen"
+      },
+      "postcondition": {
+        "kind": "element",
+        "identity": {
+          "surface": "atspi",
+          "role": "button",
+          "name": "+",
+          "app": "gnome-calculator",
+          "path": [
+            {
+              "name": "gnome-calculator",
+              "role": "application"
+            },
+            {
+              "name": "Calculator",
+              "role": "application"
+            },
+            {
+              "name": "",
+              "role": "generic"
+            },
+            {
+              "name": "",
+              "role": "generic"
+            },
+            {
+              "name": "",
+              "role": "generic"
+            },
+            {
+              "name": "",
+              "role": "group"
+            },
+            {
+              "name": "",
+              "role": "group"
+            },
+            {
+              "name": "",
+              "role": "generic"
+            },
+            {
+              "name": "",
+              "role": "generic"
+            },
+            {
+              "name": "",
+              "role": "generic"
+            },
+            {
+              "name": "",
+              "role": "generic"
+            }
+          ]
+        },
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-gnome-calculator-2",
+      "index": 2,
+      "action": "digits",
+      "label": "Enter {{b}}",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "button",
+        "app": "gnome-calculator",
+        "path": [
+          {
+            "name": "gnome-calculator",
+            "role": "application"
+          },
+          {
+            "name": "Calculator",
+            "role": "application"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          }
+        ]
+      },
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 32,
+        "y": 22,
+        "space": "screen"
+      },
+      "postcondition": {
+        "kind": "element",
+        "timeoutMs": 4000
+      },
+      "input": "b",
+      "value": "{{b}}"
+    },
+    {
+      "id": "wf-gnome-calculator-3",
+      "index": 3,
+      "action": "click",
+      "label": "Click \"=\"",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "button",
+        "name": "=",
+        "app": "gnome-calculator",
+        "path": [
+          {
+            "name": "gnome-calculator",
+            "role": "application"
+          },
+          {
+            "name": "Calculator",
+            "role": "application"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "group"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          },
+          {
+            "name": "",
+            "role": "generic"
+          }
+        ]
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "="
+        },
+        {
+          "kind": "text",
+          "value": "="
+        }
+      ],
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 32,
+        "y": 46,
+        "space": "screen"
+      },
+      "expect": {
+        "kind": "text",
+        "match": "12",
+        "timeoutMs": 6000
+      }
+    }
+  ],
+  "createdAt": 1
+}

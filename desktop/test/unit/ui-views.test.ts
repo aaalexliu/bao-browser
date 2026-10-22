@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, healDetail, identityTable, importErrorCard, rail, runViewer, stopHeadline } from "../../src/app/views";
+import { actBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, importErrorCard, libraryTable, onboarding, passGrid, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
@@ -207,6 +207,154 @@ test("heal review shows both targets, hides the prompt, and masks a secret", () 
   assert.match(html, /data-revert="heal-1"/);
   assert.match(html, /Candidates/);
   assert.match(html, /The heal record is not edited/);
+});
+
+test("a heal shows its own workflow, never a sibling name", () => {
+  const html = healInbox([
+    {
+      id: "run-login",
+      workflowId: "wf-text",
+      status: "passed",
+      decisions: [],
+      heals: [{ id: "h1", workflowId: "wf-login", failedStep: { id: "login", label: "Click login" } }],
+    },
+  ], [
+    { id: "wf-login", name: "fixture login", steps: 1 },
+    { id: "wf-text", name: "textedit write", steps: 2 },
+  ]);
+  assert.match(html, /fixture login/);
+  assert.equal(html.includes("textedit write"), false);
+  assert.equal(healWorkflowName(
+    { workflowId: "missing", failedStep: { label: "Click login" } },
+    { workflowId: "wf-text" },
+    new Map([["wf-text", "textedit write"]]),
+  ), "Click login");
+});
+
+test("library cards show a sparkline, inputs, and search", () => {
+  const html = libraryTable([
+    {
+      id: "wf",
+      name: "fixture apply",
+      steps: 2,
+      waits: 1,
+      expects: 1,
+      firstStep: { label: "Sign in" },
+      inputs: [{ name: "note", type: "text" }, { name: "password", type: "secret" }, { name: "upload", type: "file" }],
+    },
+  ], [
+    { id: "r1", workflowId: "wf", status: "passed", at: 1 },
+    { id: "r2", workflowId: "wf", status: "failed", at: 2 },
+  ]);
+  assert.match(html, /data-screen="replay"/);
+  assert.match(html, /class="spark"/);
+  assert.match(html, /\{\{note\}\}/);
+  assert.match(html, /secret/);
+  assert.match(html, />file</);
+  assert.match(html, /id="library-search"/);
+  assert.match(html, /⌘K/);
+  assert.match(html, /class="status failed"/);
+  assert.match(libraryTable([], []), /No workflows yet/);
+});
+
+test("workflow steps are cards with identity, inputs, expect, and human styling", () => {
+  const html = workflowDetail({
+    id: "wf",
+    name: "fixture apply",
+    steps: [
+      { id: "a", action: "login", label: "Sign in", human: true, intent: "sign in first", sensitive: true },
+      { id: "b", action: "type", label: "Type {{note}}", value: "{{note}}", input: "note", identity: { role: "textbox", name: "Note" }, expect: { kind: "text" } },
+      { id: "c", action: "verify", label: "re-read the status" },
+      { id: "d", action: "upload", label: "Upload file" },
+      { id: "e", action: "confirm", label: "confirm before applying", human: true, intent: "you press Apply" },
+    ],
+  });
+  assert.match(html, /class="step-card human"/);
+  assert.match(html, /textbox · Note/);
+  assert.match(html, /\{\{note\}\}/);
+  assert.match(html, /secret/);
+  assert.match(html, />file</);
+  assert.match(html, /badge expect">expect/);
+  assert.match(html, /badge expect">verify/);
+  assert.match(html, /data-screen="replay"/);
+  assert.match(html, /you press Apply/);
+});
+
+test("a failed run says the phase, the change, what bao tried, and shows the grid", () => {
+  const html = runViewer({
+    id: "run-14",
+    workflowId: "wf",
+    status: "failed",
+    modelCalls: 0,
+    repairs: [{ stepId: "c", repair: "label", detail: "visible label" }],
+    receipts: [{ stepId: "c", source: "dom", expected: "Applied", actual: "Waiting", pass: false }],
+    trajectory: [{ stepId: "c", action: "click", target: "button#file-submit", postcondition: "text Applied", timing: "lt1s" }],
+    steps: [{ id: "c", status: "failed", phase: "find", reason: "tie", startedAt: 1, endedAt: 2 }],
+    failure: { stepId: "c", index: 0, phase: "find", reason: "tie", identity: { accepted: false, changed: 'name "Upload" → "Upload file"', candidates: [] } },
+  }, {
+    name: "upload note",
+    steps: [{ id: "c", label: "click Upload" }],
+  }, "c", {
+    recent: [
+      { id: "run-14", workflowId: "wf", status: "failed", steps: [{ id: "c", status: "failed" }] },
+      { id: "run-2", workflowId: "wf", status: "passed", steps: [{ id: "c", status: "passed" }], heals: [{ id: "h", failedStep: { id: "c" } }] },
+    ],
+    recorded: [{ stepId: "c", action: "click", target: "button[testid=missing]", postcondition: "text Applied", timing: "lt1s" }],
+  });
+  assert.match(html, /id="plain-failure"/);
+  assert.match(html, /Phase find/);
+  assert.match(html, /What changed: name/);
+  assert.match(html, /Bao tried label/);
+  assert.match(html, /id="scrubber"/);
+  assert.match(html, /id="pass-grid"/);
+  assert.match(html, /class="cell failed"/);
+  assert.match(html, /class="cell healed"/);
+  assert.match(html, /id="repairs"/);
+  assert.match(html, /does not match/);
+  assert.match(html, /id="trajectory"/);
+  assert.match(html, /aimed at/);
+  assert.match(plainFailure({ phase: "auth" }), /did not heal the redirect/);
+  assert.equal(passGrid([], []).includes("pass-grid"), false);
+});
+
+test("a provisional heal can be shown as promoted without editing the record", () => {
+  const open = promotionLine({ status: "provisional", drift: "pending", replays: 1 });
+  assert.match(open, /data-status="provisional"/);
+  assert.match(open, /1 of 2/);
+  const kept = promotionLine({ status: "promoted", replays: 2 });
+  assert.match(kept, /data-status="promoted"/);
+  const detail = healDetail({
+    id: "run-9", workflowId: "wf-login", status: "passed", decisions: [], heals: [],
+  }, {
+    id: "heal-1",
+    workflowId: "wf-login",
+    failedStep: { label: "Click login" },
+    proposedPatch: { identity: { testId: "login" } },
+  }, [], {
+    workflowName: "fixture login",
+    promotion: { status: "provisional", drift: "passed", replays: 1, healId: "heal-1" },
+  });
+  assert.match(detail, /id="heal-workflow">fixture login/);
+  assert.match(detail, /data-status="provisional"/);
+  assert.match(detail, /data-keep="heal-1"/);
+  assert.equal(detail.includes("textedit write"), false);
+});
+
+test("the record bar and the permission card follow live state", () => {
+  const bar = recordBar({ recording: true, capturePaused: true, recordingSince: 10 });
+  assert.match(bar, /id="rec-timer"/);
+  assert.match(bar, /id="rec-stop"/);
+  assert.match(bar, /Mark step/);
+  assert.match(bar, />Resume</);
+  const off = onboarding({ label: "helper off", accessibility: false, screenCapture: false });
+  assert.match(off, /data-perm="accessibility" data-ok="false"/);
+  assert.match(off, /data-perm="screen" data-ok="false"/);
+  assert.match(off, /not granted yet/);
+  assert.equal(off.includes("data-ok=\"true\""), false);
+  const on = onboarding({ label: "helper ok", accessibility: true, screenCapture: true });
+  assert.match(on, /data-ok="true"/);
+  assert.match(on, /allowed/);
+  assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
 });
 
 test("a trail with a missing timestamp gets one", () => {

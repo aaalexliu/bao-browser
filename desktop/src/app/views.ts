@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
+import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import type { IdentityView, StepView } from "./view-types";
 
 export interface WorkflowSummary {
@@ -11,9 +12,21 @@ export interface WorkflowSummary {
   name: string;
   steps: number;
   waits?: number;
+  expects?: number;
   heal?: string;
   replayed?: boolean;
+  firstStep?: { action?: string; label?: string };
   inputs?: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }[];
+}
+
+export interface PromotionView {
+  healId?: string;
+  workflowId?: string;
+  stepId?: string;
+  status?: string;
+  drift?: string;
+  replays?: number;
+  reason?: string;
 }
 
 export interface RunSummary {
@@ -29,6 +42,11 @@ export interface RunSummary {
   inputs?: Record<string, string>;
   video?: string;
   videoStartedAt?: number;
+  repairs?: { stepId?: string; repair: string; detail?: string }[];
+  receipts?: { stepId?: string; source?: string; expected?: string; actual?: string; pass?: boolean }[];
+  trajectory?: TrajectoryStep[];
+  precondition?: { phase?: string; reason?: string; recovered?: boolean; stepId?: string };
+  promotion?: PromotionView;
 }
 
 export interface FailureView {
@@ -36,6 +54,7 @@ export interface FailureView {
   index?: number;
   intent?: string;
   reason?: string;
+  phase?: string;
   brokenAttr?: string;
   identity?: IdentityView;
   beforeShot?: string;
@@ -44,6 +63,7 @@ export interface FailureView {
 
 export interface HealView {
   id: string;
+  workflowId?: string;
   ts?: number;
   mode?: string;
   intent?: string;
@@ -71,12 +91,24 @@ export interface ImportPending {
 
 export interface ShellState {
   recording?: boolean;
-  helper?: { label: string };
+  capturePaused?: boolean;
+  recordingSince?: number;
+  helper?: { label: string; accessibility?: boolean; screenCapture?: boolean };
   model?: { label: string };
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
+  promotions?: PromotionView[];
   activeAsk?: HumanAsk | null;
   pendingImport?: ImportPending | null;
+}
+
+export interface CommandItem {
+  id: string;
+  label: string;
+  hint?: string;
+  kind: "screen" | "workflow" | "theme";
+  screen?: string;
+  workflowId?: string;
 }
 
 export function esc(value: unknown): string {
@@ -96,6 +128,17 @@ export function maskSecrets(text: string, secrets: string[]): string {
   return out;
 }
 
+function icon(name: string): string {
+  const paths: Record<string, string> = {
+    library: "M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z",
+    capture: "M12 8a4 4 0 100 8 4 4 0 000-8zm8.5 4a8.5 8.5 0 11-17 0 8.5 8.5 0 0117 0z",
+    runs: "M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h10v3H4v-3z",
+    heals: "M12 4l2.2 4.6L19 9.2l-3.5 3.4.8 4.9L12 15.8 7.7 17.5l.8-4.9L5 9.2l4.8-.6L12 4z",
+    settings: "M12 8.5A3.5 3.5 0 1012 15.5 3.5 3.5 0 0012 8.5zM4 12l2-.6.4-1.6-1.2-1.6 1.8-1.8 1.6 1.2 1.6-.4L11 5h2l.4 2.2 1.6.4 1.6-1.2 1.8 1.8-1.2 1.6.4 1.6 2 .6v2l-2 .6-.4 1.6 1.2 1.6-1.8 1.8-1.6-1.2-1.6.4L13 21h-2l-.4-2.2-1.6-.4-1.6 1.2-1.8-1.8 1.2-1.6-.4-1.6L4 14v-2z",
+  };
+  return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
+}
+
 export function rail(state: ShellState): string {
   const heals = pendingHealCount(state.runs || []);
   const waiting = attentionCount({
@@ -109,11 +152,11 @@ export function rail(state: ShellState): string {
   const healBadge = heals > 0 ? `<span class="count" id="heal-count">${heals}</span>` : "";
   return `<div class="brand"><strong>bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
     <nav>
-      <button data-screen="library">Library</button>
-      <button data-screen="capture">Capture</button>
-      <button data-screen="runs">Runs</button>
-      <button data-screen="heals">Heals ${healBadge}</button>
-      <button data-screen="settings">Settings</button>
+      <button data-screen="library">${icon("library")} Library</button>
+      <button data-screen="capture">${icon("capture")} Capture</button>
+      <button data-screen="runs">${icon("runs")} Runs</button>
+      <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
+      <button data-screen="settings">${icon("settings")} Settings</button>
     </nav>
     <div class="rail-foot">
       <div id="attention-label">${waiting} waiting</div>
@@ -240,7 +283,17 @@ function stepLabel(step: StepView, workflowSteps: { id: string; label?: string; 
   return step.label || match?.label || match?.action || step.id;
 }
 
-export function runViewer(run: RunSummary, workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number }[] }, selectedId?: string): string {
+export interface ViewerContext {
+  recent?: RunSummary[];
+  recorded?: TrajectoryStep[];
+}
+
+export function runViewer(
+  run: RunSummary,
+  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number }[] },
+  selectedId?: string,
+  context: ViewerContext = {},
+): string {
   const steps = (run.steps || []).map((step) => ({
     ...step,
     label: stepLabel(step, workflow.steps),
@@ -248,6 +301,7 @@ export function runViewer(run: RunSummary, workflow: { name: string; steps: { id
   }));
   const failed = steps.find((step) => step.status === "failed" || step.status === "paused");
   const selected = steps.find((step) => step.id === selectedId) || failed || steps[steps.length - 1];
+  const selectedIndex = Math.max(0, selected ? steps.indexOf(selected) : 0);
   const modelCalls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
   const passed = steps.filter((step) => step.status === "passed").length;
   const stopped = failed ? steps.indexOf(failed) + 1 : steps.length;
@@ -279,22 +333,45 @@ export function runViewer(run: RunSummary, workflow: { name: string; steps: { id
   const table = identityTable(identity);
   const video = videoBar(run, steps);
   const safeHeadline = failed ? esc(headline) : headline;
+  const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
+  const stepRepairs = (run.repairs || []).filter((item) => !selected || item.stepId === selected.id);
+  const stepReceipts = (run.receipts || []).filter((item) => !selected || item.stepId === selected.id);
+  const showPlain = !!failed || phase === "auth";
+  const words = showPlain ? plainFailure({
+    phase,
+    changed: identity?.changed || (failure && failure.stepId === selected?.id ? failure.identity?.changed : undefined),
+    reason: selected?.reason || failure?.reason,
+    repairs: stepRepairs.length ? stepRepairs : (run.repairs || []),
+    authRecovered: run.precondition?.recovered,
+  }) : "";
+  const film = steps.map((step, index) => {
+    const src = png(step.afterShot || step.beforeShot || (failure && failure.stepId === step.id ? (failure.snapshot?.screenshot || failure.beforeShot) : undefined));
+    const frame = src ? `<img alt="" src="${src}">` : `<span>${esc(step.label || String(index + 1))}</span>`;
+    return `<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}">${frame}</button>`;
+  }).join("");
+  const recent = context.recent && context.recent.length ? context.recent : [run];
   return `<section id="run-viewer" data-run="${esc(run.id)}" data-status="${esc(run.status)}">
     <header class="run-head">
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
     </header>
-    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p>` : ""}</div>
+    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
+    <div class="filmstrip" id="filmstrip">${film}</div>
+    <input id="scrubber" type="range" min="0" max="${Math.max(0, steps.length - 1)}" value="${selectedIndex}" aria-label="Step timeline">
     <div class="split">
       <div class="step-list" id="step-list">${list}</div>
       <div class="step-detail" id="step-detail">
         <div class="row"><strong>${esc(selected?.label || "")}</strong></div>
         ${shot}
+        ${stepRepairs.length ? repairLines(stepRepairs) : ""}
+        ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
         ${table}
         <p class="quiet">${identity ? `Postcondition ${selected?.status === "passed" ? "reached" : "not reached"}` : ""}</p>
       </div>
     </div>
+    ${passGrid(recent, workflow.steps)}
+    ${trajectoryPane(context.recorded, run.trajectory)}
     ${video}
     <div class="tabs" id="run-tabs">
       <button type="button" data-run-tab="trail">Trail</button>
@@ -425,7 +502,7 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
         heal,
         run,
         bucket,
-        workflow: names.get(run.workflowId) || run.workflowId,
+        workflow: healWorkflowName(heal, run, names),
         step: heal.failedStep?.label || heal.intent || heal.failedStep?.id || "step",
         when: heal.ts ? new Date(heal.ts).toISOString() : "",
       });
@@ -434,7 +511,7 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
   return rows;
 }
 
-export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = []): string {
+export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = [], extra: { promotion?: PromotionView; workflowName?: string } = {}): string {
   const recorded = heal.failedStep?.identity;
   const proposed = heal.proposedPatch?.identity;
   const before = png(heal.beforeShot);
@@ -456,8 +533,11 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
   const decisions = (run.decisions || []).filter((item) => item.healId === heal.id);
   const decisionLine = decisions.map((item) => `${item.decision} at ${item.ts}`).join(", ");
   const model = heal.model ? `${heal.model.name || ""} ${heal.model.version || ""}`.trim() : "no model";
+  const name = extra.workflowName || healWorkflowName(heal, run, new Map());
   return `<article id="heal-detail" data-heal="${esc(heal.id)}" data-run="${esc(run.id)}">
     <header class="row"><h3>${esc(heal.intent || heal.failedStep?.label || "Heal")}</h3><span class="quiet">${esc(heal.mode || "")} · ${esc(model)}</span></header>
+    <p id="heal-workflow">${esc(name)}</p>
+    ${promotionLine(extra.promotion || (run.promotion?.healId === heal.id ? run.promotion : undefined))}
     <p class="quiet">candidate → you keep or revert. The heal record is not edited.</p>
     <div class="split">
       <div><h4>Recorded</h4><p>${targetLines(recorded, heal.failedStep?.label)}</p></div>
@@ -476,40 +556,292 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
   </article>`;
 }
 
-export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[]): string {
-  const latest = new Map<string, RunSummary>();
+export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], promotions: PromotionView[] = []): string {
+  const byWorkflow = new Map<string, RunSummary[]>();
   for (const run of runs) {
-    const prev = latest.get(run.workflowId);
-    if (!prev || (run.at || 0) >= (prev.at || 0)) latest.set(run.workflowId, run);
+    const list = byWorkflow.get(run.workflowId) || [];
+    list.push(run);
+    byWorkflow.set(run.workflowId, list);
   }
-  const rows = workflows.map((workflow) => {
-    const run = latest.get(workflow.id);
-    const calls = run ? (run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length) : 0;
-    const last = !run ? "never" : run.status === "passed" ? "passed" : run.status === "paused" ? "waiting" : "refused";
-    const bolt = run && calls === 0 && run.status === "passed" ? `<span class="badge quiet-badge" title="no model calls">0 model calls</span>` : "";
-    const healN = (run?.heals || []).length;
-    const decided = new Set((run?.decisions || []).map((item) => item.healId));
-    const pending = (run?.heals || []).filter((heal) => heal.id && !decided.has(heal.id)).length;
-    const heals = healN === 0 ? "—" : pending ? `${pending} pending` : `${healN} kept or open`;
-    const waits = workflow.waits ? `<span class="quiet" title="steps that wait for you"> ${workflow.waits} wait</span>` : "";
-    return `<tr>
-      <td><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button>${waits}</td>
-      <td>${workflow.steps}</td>
-      <td>${esc(last)} ${bolt}</td>
-      <td>${esc(heals)}</td>
-      <td><button type="button" data-screen="replay" data-workflow="${esc(workflow.id)}">Run</button></td>
-    </tr>`;
+  const cards = workflows.map((workflow) => {
+    const history = (byWorkflow.get(workflow.id) || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
+    const run = history[0];
+    const kind = run ? runKind(run, promotions.find((item) => item.workflowId === workflow.id)) : "";
+    const label = run ? statusLabel(kind) : "never run";
+    const inputs = (workflow.inputs || []).map((input) => {
+      if (input.type === "secret") return `<span class="chip secret">secret</span>`;
+      if (input.type === "file") return `<span class="chip">file</span>`;
+      return `<span class="chip">{{${esc(input.name)}}}</span>`;
+    }).join("");
+    const waits = workflow.waits ? `<span class="chip">you · ${workflow.waits}</span>` : "";
+    const expects = workflow.expects ? `<span class="badge expect">expect</span>` : "";
+    const thumb = run
+      ? `<div class="thumb" data-thumb-run="${esc(run.id)}"><span>${esc(workflow.firstStep?.label || "Last step")}</span></div>`
+      : `<div class="thumb"><span>${esc(workflow.firstStep?.label || "No picture yet")}</span></div>`;
+    return `<article class="wf-card" data-workflow="${esc(workflow.id)}">
+      ${thumb}
+      <div>
+        <h3><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
+        <span class="status ${esc(kind)}">${esc(label)}</span>
+        ${expects}
+        ${sparkline(history)}
+        <div class="chips">${inputs}${waits}</div>
+        <div class="row"><button type="button" data-screen="replay" data-workflow="${esc(workflow.id)}">Run</button></div>
+      </div>
+    </article>`;
   }).join("");
+  const empty = `<div class="empty" id="library-empty"><strong>No workflows yet</strong>Capture a task, or import a workflow JSON file.</div>`;
   return `<section id="library">
-    <header class="row"><h2>Library</h2></header>
-    <table class="grid">
-      <thead><tr><th>Name</th><th>Steps</th><th>Last run</th><th>Heals</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="5">No workflows yet.</td></tr>`}</tbody>
-    </table>
+    <header><h2>Library</h2><p class="lede">Workflows you can run again.</p></header>
+    <div class="tools">
+      <input id="library-search" type="search" placeholder="Search workflows" aria-label="Search workflows">
+      <button type="button" id="palette-open" class="kbd">⌘K</button>
+    </div>
+    <div class="wf-grid">${cards || empty}</div>
     <div id="library-extra"></div>
   </section>`;
 }
 
 export function notices(items: { title?: string; body?: string }[]): string {
   return items.map((item) => `<div class="notice"><strong>${esc(item.title)}</strong><div>${esc(item.body)}</div></div>`).join("");
+}
+
+export function healWorkflowName(
+  heal: { workflowId?: string; failedStep?: { label?: string }; intent?: string },
+  run: { workflowId?: string },
+  names: Map<string, string>,
+): string {
+  const id = heal.workflowId || run.workflowId || "";
+  const named = id ? names.get(id) : undefined;
+  if (named) return named;
+  return heal.failedStep?.label || heal.intent || "this step";
+}
+
+export function runKind(run: RunSummary, promotion?: PromotionView): string {
+  if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
+  if (run.status === "paused") return "paused";
+  if (run.status === "failed") return "failed";
+  if ((run.heals || []).length > 0) return "healed";
+  return "passed";
+}
+
+export function statusLabel(kind: string): string {
+  if (kind === "paused") return "needs you";
+  if (kind === "failed") return "failed";
+  if (kind === "healed") return "healed";
+  if (kind === "provisional") return "provisional";
+  if (kind === "passed") return "passed";
+  return kind || "never run";
+}
+
+function sparkline(runs: RunSummary[]): string {
+  const recent = runs.slice().sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
+  if (!recent.length) return `<p class="quiet">No runs yet</p>`;
+  return `<div class="spark" aria-label="recent runs">${recent.map((run) => `<i class="${esc(runKind(run))}"></i>`).join("")}</div>`;
+}
+
+export function plainFailure(input: {
+  phase?: string;
+  changed?: string;
+  reason?: string;
+  repairs?: { repair: string; detail?: string }[];
+  authRecovered?: boolean;
+}): string {
+  const phase = input.phase || "";
+  if (phase === "auth") {
+    return input.authRecovered
+      ? "Phase auth. The page redirected to a login. Bao waited and continued. It did not heal the redirect."
+      : "Phase auth. The page redirected to a login. Bao stopped and did not heal the redirect.";
+  }
+  const bits = [`Phase ${phase || "the step"}.`];
+  if (input.changed) bits.push(`What changed: ${input.changed}.`);
+  else if (input.reason) bits.push(`Bao stopped because ${input.reason}.`);
+  const repairs = input.repairs || [];
+  if (repairs.length === 0) bits.push("Bao did not try a cheap repair.");
+  else bits.push(`Bao tried ${repairs.map((item) => `${item.repair}${item.detail ? ` (${item.detail})` : ""}`).join(", then ")}.`);
+  return bits.join(" ");
+}
+
+export function repairLines(repairs: { repair: string; detail?: string }[]): string {
+  if (!repairs.length) return `<p class="quiet" id="repairs">No cheap repair ran on this step.</p>`;
+  return `<ul id="repairs">${repairs.map((item) => `<li><span class="chip">${esc(item.repair)}</span> ${esc(item.detail || "")}</li>`).join("")}</ul>`;
+}
+
+export function receiptLines(receipts: { source?: string; expected?: string; actual?: string; pass?: boolean }[]): string {
+  if (!receipts.length) return `<p class="quiet" id="receipts">No read-back on this step.</p>`;
+  return `<ul id="receipts">${receipts.map((item) => {
+    const word = item.pass ? "matches" : "does not match";
+    return `<li class="${item.pass ? "passed" : "failed"}">Read back ${esc(item.source || "value")}: expected ${esc(item.expected || "")}, saw ${esc(item.actual || "")}. ${word}.</li>`;
+  }).join("")}</ul>`;
+}
+
+export function passGrid(runs: RunSummary[], steps: { id: string; label?: string }[]): string {
+  const cols = runs.slice(0, 8);
+  if (!cols.length || !steps.length) return "";
+  const head = cols.map((run) => `<th>${esc(statusLabel(runKind(run)))}</th>`).join("");
+  const body = steps.map((step) => {
+    const cells = cols.map((run) => {
+      const found = (run.steps || []).find((item) => item.id === step.id);
+      const healed = (run.heals || []).some((heal) => heal.failedStep?.id === step.id) && found?.status === "passed";
+      const kind = !found ? "empty" : found.status === "paused" ? "paused" : found.status === "failed" ? "failed" : healed ? "healed" : found.status === "passed" ? "passed" : "empty";
+      const label = kind === "paused" ? "needs you" : kind === "empty" ? "not run" : kind;
+      return `<td><span class="cell ${kind}" title="${esc(label)}"></span></td>`;
+    }).join("");
+    return `<tr><th>${esc(step.label || step.id)}</th>${cells}</tr>`;
+  }).join("");
+  return `<table id="pass-grid" aria-label="Recent runs"><thead><tr><th>Step</th>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+export function trajectoryPane(recorded: TrajectoryStep[] | undefined, replayed: TrajectoryStep[] | undefined): string {
+  if (!replayed || replayed.length === 0) return `<p class="quiet" id="trajectory">No trajectory was stored for this run.</p>`;
+  const lines = recorded && recorded.length
+    ? diffTrajectory(recorded, replayed)
+    : replayed.map((step) => `Replay ${step.stepId}: ${step.action} on ${step.target}, ${step.postcondition}, ${bucketWords(step.timing as TimingBucket)}.`);
+  return `<div id="trajectory"><h3>Trajectory</h3><ul>${lines.map((line) => `<li>${esc(line)}</li>`).join("")}</ul></div>`;
+}
+
+export function promotionLine(promotion: PromotionView | undefined): string {
+  if (!promotion?.status) return "";
+  if (promotion.status === "promoted") {
+    return `<p id="promotion" data-status="promoted">Promoted. Drift passed and ${promotion.replays ?? 2} later replays passed.</p>`;
+  }
+  if (promotion.status === "reverted") {
+    return `<p id="promotion" data-status="reverted">Reverted. ${esc(promotion.reason || "A later check failed")} put the saved step back.</p>`;
+  }
+  const drift = promotion.drift === "passed" ? "Drift passed." : promotion.drift === "failed" ? "Drift failed." : "Drift is still pending.";
+  return `<p id="promotion" data-status="provisional">Provisional. ${drift} ${promotion.replays ?? 0} of 2 later replays have passed.</p>`;
+}
+
+export interface StepCard {
+  id: string;
+  index?: number;
+  action?: string;
+  label?: string;
+  intent?: string;
+  human?: boolean;
+  sensitive?: boolean;
+  input?: string;
+  value?: string;
+  expect?: { kind?: string };
+  readBack?: { source?: string };
+  identity?: { role?: string; name?: string; text?: string; testId?: string; id?: string };
+}
+
+export function identityChip(identity: StepCard["identity"]): string {
+  if (!identity) return "";
+  const bits = [
+    identity.role,
+    identity.name || identity.text,
+    identity.testId ? `testId ${identity.testId}` : "",
+    identity.id ? `id ${identity.id}` : "",
+  ].filter(Boolean);
+  if (!bits.length) return "";
+  return `<span class="chip id-chip">${esc(bits.join(" · "))}</span>`;
+}
+
+export function inputChips(step: StepCard): string {
+  const chips: string[] = [];
+  const template = step.value && step.value.includes("{{") ? step.value : step.input ? `{{${step.input}}}` : "";
+  if (template) chips.push(`<span class="chip">${esc(template)}</span>`);
+  if (step.sensitive) chips.push(`<span class="chip secret">secret</span>`);
+  if (step.action === "upload" || step.action === "drop") chips.push(`<span class="chip">file</span>`);
+  return chips.join("");
+}
+
+function expectBadge(step: StepCard): string {
+  if (step.action === "verify") return `<span class="badge expect">verify</span>`;
+  if (step.expect) return `<span class="badge expect">expect</span>`;
+  if (step.readBack) return `<span class="badge expect">read back</span>`;
+  return "";
+}
+
+export function workflowDetail(doc: { id: string; name: string; steps: StepCard[] }, lastRunId = ""): string {
+  const cards = doc.steps.map((step, index) => {
+    const human = step.human || step.action === "login" || step.action === "confirm";
+    const thumb = lastRunId
+      ? `<div class="thumb" data-thumb-run="${esc(lastRunId)}" data-thumb-step="${esc(step.id)}"><span>${index + 1}</span></div>`
+      : `<div class="thumb"><span>${index + 1}</span></div>`;
+    return `<article class="step-card ${human ? "human" : ""}" data-step-card="${esc(step.id)}">
+      ${thumb}
+      <div>
+        <div class="row"><strong>${esc(step.label || step.action || step.id)}</strong> ${expectBadge(step)} ${human ? `<span class="badge need">you</span>` : ""}</div>
+        <p>${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
+        <div class="chips">${identityChip(step.identity)}${inputChips(step)}</div>
+      </div>
+    </article>`;
+  }).join("");
+  return `<section id="workflow-detail" data-workflow="${esc(doc.id)}">
+    <header class="row"><h2>${esc(doc.name)}</h2><button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button></header>
+    ${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}
+  </section>`;
+}
+
+export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): string {
+  const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
+  if (!runs.length) {
+    return `<section id="runs"><h2>Runs</h2><div class="empty"><strong>No runs yet</strong>Open a workflow and run it.</div></section>`;
+  }
+  const rows = runs.map((run) => {
+    const kind = runKind(run);
+    const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+    const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
+    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(run.id)}</td></tr>`;
+  }).join("");
+  return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>Run</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+}
+
+export function commandItems(workflows: { id: string; name: string }[]): CommandItem[] {
+  const screens: CommandItem[] = [
+    { id: "library", label: "Library", kind: "screen", screen: "library", hint: "Go" },
+    { id: "capture", label: "Capture", kind: "screen", screen: "capture", hint: "Go" },
+    { id: "runs", label: "Runs", kind: "screen", screen: "runs", hint: "Go" },
+    { id: "heals", label: "Heals", kind: "screen", screen: "heals", hint: "Go" },
+    { id: "settings", label: "Settings", kind: "screen", screen: "settings", hint: "Go" },
+    { id: "theme", label: "Toggle appearance", kind: "theme", hint: "Light or dark" },
+  ];
+  const open = workflows.map((workflow) => ({ id: `open-${workflow.id}`, label: `Open ${workflow.name}`, kind: "workflow" as const, workflowId: workflow.id, hint: "Workflow" }));
+  const run = workflows.map((workflow) => ({ id: `run-${workflow.id}`, label: `Run ${workflow.name}`, kind: "workflow" as const, workflowId: workflow.id, screen: "replay", hint: "Run" }));
+  return [...screens, ...open, ...run];
+}
+
+export function paletteView(items: CommandItem[], query: string, active: number): string {
+  const q = query.trim().toLowerCase();
+  const shown = items.filter((item) => !q || item.label.toLowerCase().includes(q));
+  const rows = shown.map((item, index) =>
+    `<button type="button" class="hit ${index === active ? "on" : ""}" data-command="${esc(item.id)}">${esc(item.label)} <span class="quiet">${esc(item.hint || "")}</span></button>`).join("");
+  return `<div class="panel" role="dialog" aria-label="Commands">
+    <input id="palette-input" placeholder="Jump to a workflow or screen" value="${esc(query)}" aria-label="Command">
+    <div id="palette-list">${rows || `<p class="quiet">No matches.</p>`}</div>
+  </div>`;
+}
+
+export function recordBar(state: { recording?: boolean; capturePaused?: boolean; recordingSince?: number }): string {
+  if (!state.recording) return "";
+  const paused = state.capturePaused ? "Resume" : "Pause";
+  return `<div id="record-bar" data-paused="${state.capturePaused ? "true" : "false"}">
+    <span class="rec-dot" aria-hidden="true"></span>
+    <span id="rec-timer" data-since="${state.recordingSince || 0}">0:00</span>
+    <button type="button" id="rec-pause">${paused}</button>
+    <button type="button" id="rec-mark">Mark step</button>
+    <button type="button" id="rec-stop">Stop</button>
+  </div>`;
+}
+
+export function liveStepList(events: { id?: string; op?: string; kind?: string }[]): string {
+  if (!events.length) return `<p class="quiet" id="live-steps-empty">Steps show up here as you record.</p>`;
+  return `<ol id="live-step-list">${events.map((event, index) => `<li><span class="quiet">${index + 1}</span> ${esc(event.op || event.kind || "step")}</li>`).join("")}</ol>`;
+}
+
+export function onboarding(helper?: { label?: string; accessibility?: boolean; screenCapture?: boolean }): string {
+  const access = !!helper?.accessibility;
+  const screen = !!helper?.screenCapture;
+  return `<section id="onboarding">
+    <h2>Two permissions on the Mac</h2>
+    <p>Accessibility lets bao see the control you used. Screen Recording lets bao keep a picture of each step. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper off")}”.</p>
+    <ul class="perms">
+      <li class="perm" data-perm="accessibility" data-ok="${access ? "true" : "false"}"><span class="mark"></span><span><strong>Accessibility</strong> ${access ? "allowed" : "not granted yet"}</span></li>
+      <li class="perm" data-perm="screen" data-ok="${screen ? "true" : "false"}"><span class="mark"></span><span><strong>Screen Recording</strong> ${screen ? "allowed" : "not granted yet"}</span></li>
+    </ul>
+    <button type="button" id="onboard-done">Continue</button>
+  </section>`;
 }

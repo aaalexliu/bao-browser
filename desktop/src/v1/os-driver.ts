@@ -1,6 +1,7 @@
 // Linux AT-SPI driver. Presses by role and name. Never by the stored coordinate.
 
-import { fromAtspiNode, assignSiblingIndex, lookup } from "./identity";
+import { execFileSync } from "node:child_process";
+import { fromAtspiNode, assignSiblingIndex, lookup, normRole } from "./identity";
 import type { HealNotice } from "./replay";
 import type { Driver, LiveTree } from "./replay";
 import type { FileArg, Identity } from "./schema";
@@ -30,12 +31,13 @@ export class AtspiDriver implements Driver {
     await osPress(this.bin, this.screen, node.app || "", node.role, node.name || "");
   }
 
-  async fill(): Promise<void> {
-    throw new Error("AT-SPI fill is set-text, not a browser fill");
+  async fill(node: Identity, text: string): Promise<void> {
+    await this.setText(node.app || "", node.role, node.name || "", text);
   }
 
-  async key(): Promise<void> {
-    throw new Error("page keys are not an AT-SPI press");
+  async key(key: string): Promise<void> {
+    const seq = key.replace(/Control\+/g, "ctrl+").replace(/Meta\+/g, "super+").replace(/Alt\+/g, "alt+");
+    execFileSync("xdotool", ["key", "--clearmodifiers", seq], { stdio: "ignore" });
   }
 
   async upload(): Promise<void> {
@@ -51,8 +53,10 @@ export class AtspiDriver implements Driver {
       const tree = await this.tree();
       const query: Identity = { surface: "atspi", role, name: ch, app, path: [] };
       const hit = lookup(query, tree.nodes);
-      if (!hit.ok || hit.index == null) throw new Error(`digit ${ch} ${hit.reason}`);
-      await this.click(tree.nodes[hit.index]!);
+      const exact = uniqueNamedRole(tree.nodes, app, role, ch);
+      const node = hit.ok && hit.index != null ? tree.nodes[hit.index] : hit.reason === "tie" ? exact : undefined;
+      if (!node) throw new Error(`digit ${ch} ${hit.reason || "missing"}`);
+      await this.click(node);
       await sleep(180);
     }
   }
@@ -69,6 +73,15 @@ export class AtspiDriver implements Driver {
     this.onNotify?.(notice);
     await notifyOs(notice.title, notice.body);
   }
+}
+
+/** The scorer ties a button with the label of the same name. Role plus name is one control. */
+export function uniqueNamedRole(nodes: Identity[], app: string | undefined, role: string, name: string): Identity | undefined {
+  const hits = nodes.filter((node) => {
+    if (app && node.app && node.app.toLowerCase() !== app.toLowerCase()) return false;
+    return normRole(node.role) === normRole(role) && (node.name || "") === name;
+  });
+  return hits.length === 1 ? hits[0] : undefined;
 }
 
 function sleep(ms: number): Promise<void> {

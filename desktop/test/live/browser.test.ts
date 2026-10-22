@@ -93,6 +93,11 @@ test("capture login, upload, and drop, then replay with two input sets", async (
     const login = saved.steps.find((step) => step.identity?.testId === "login" || step.identity?.id === "login-btn");
     assert.ok(login);
     if (login.identity) {
+      login.label = "Click missing control";
+      login.intent = "missing control";
+      delete login.anchor;
+      delete login.locators;
+      login.timeoutMs = 0;
       login.identity = { surface: "dom", role: "button", testId: "missing-login", path: [] };
     }
     app.library.save(saved);

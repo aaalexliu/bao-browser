@@ -1,18 +1,29 @@
 // Desktop window. Talks only to this machine's bao server.
 
 import { formatWait } from "../v1/human-ask";
+import { trajectoryFromWorkflow } from "../v1/trajectory";
+import type { WorkflowV2 } from "../v1/schema";
 import {
   actBar,
+  commandItems,
   esc,
   healDetail,
   healInbox,
+  healWorkflowName,
   importCard,
   inputsPane,
   libraryTable,
+  liveStepList,
   notices,
+  onboarding,
+  paletteView,
   rail,
+  recordBar,
+  runsList,
   runViewer,
   trailPane,
+  workflowDetail,
+  type CommandItem,
   type HealView,
   type ImportPending,
   type RunSummary,
@@ -31,6 +42,7 @@ let state: ShellState & {
 } = {};
 let screen: Screen = "library";
 let lastWf = "";
+let argsWorkflow = "";
 let healFilter: "pending" | "kept" | "reverted" = "pending";
 let openHeal: { runId: string; healId: string } | null = null;
 let openRun = "";
@@ -38,6 +50,17 @@ let selectedStep = "";
 let banner: { title: string; body: string } | null = null;
 let renderKey = "";
 let notified = "";
+let libraryQuery = "";
+let paletteOpen = false;
+let paletteQuery = "";
+let paletteActive = 0;
+let onboarded = false;
+let theme: "light" | "dark" = "light";
+try {
+  onboarded = localStorage.getItem("bao-onboarded") === "1";
+  theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
+} catch { /* private mode */ }
+const shotCache = new Map<string, { steps: Record<string, string>; any: string }>();
 
 const railEl = () => document.getElementById("rail")!;
 const actEl = () => document.getElementById("act")!;
@@ -55,6 +78,9 @@ async function refresh(): Promise<void> {
     runs: (state.runs || []).map((run) => ({ id: run.id, status: run.status, decisions: run.decisions, heals: (run.heals || []).map((heal) => heal.id) })),
     helper: state.helper,
     model: state.model,
+    paused: state.capturePaused,
+    since: state.recordingSince,
+    promotions: state.promotions,
     screen,
     healFilter,
     openHeal,
@@ -63,6 +89,7 @@ async function refresh(): Promise<void> {
     banner,
   });
   noteAsk();
+  paintLive();
   if (key === renderKey) return;
   renderKey = key;
   render();
@@ -81,19 +108,41 @@ function noteAsk(): void {
 }
 
 function render(): void {
+  applyTheme();
   railEl().innerHTML = rail(state);
   actEl().innerHTML = actBar(state) + importCard(state.pendingImport as ImportPending);
-  const body = screen === "capture" ? capture()
-    : screen === "runs" ? runsList()
-    : screen === "run" ? `<section id="run-host"><p class="quiet">Loading run…</p></section>`
-    : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
-    : screen === "settings" ? settings()
-    : screen === "replay" ? replayForm()
-    : libraryTable(state.workflows || [], state.runs || []);
-  mainEl().innerHTML = notices(banner ? [banner, ...(state.notices || [])] : (state.notices || [])) + body;
+  const onboard = document.getElementById("onboard");
+  if (onboard) onboard.innerHTML = onboarded ? "" : onboarding(state.helper);
+  const float = document.getElementById("float");
+  if (float) float.innerHTML = recordBar(state);
+  const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
+  const openArgs = document.getElementById("args");
+  const keepReplay = screen === "replay" && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
+  if (!keepReplay) {
+    const body = screen === "capture" ? capture()
+      : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
+      : screen === "run" ? `<section id="run-host"><p class="quiet">Loading run…</p></section>`
+      : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
+      : screen === "settings" ? settings()
+      : screen === "replay" ? replayForm()
+      : libraryTable(state.workflows || [], state.runs || [], state.promotions || []);
+    const typingSearch = document.activeElement?.id === "library-search";
+    const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
+    mainEl().innerHTML = notices(banner ? [banner, ...(state.notices || [])] : (state.notices || [])) + body;
+    const search = document.getElementById("library-search") as HTMLInputElement | null;
+    if (search) search.value = libraryQuery;
+    if (typingSearch && search) {
+      search.focus();
+      if (caret != null) search.setSelectionRange(caret, caret);
+    }
+    if (screen === "replay") void fillArgs(replayId);
+  }
   markNav();
   bind();
-  if (screen === "replay") void fillArgs(lastWf || (state.workflows && state.workflows[0]?.id) || "");
+  applySearch();
+  paintPalette();
+  paintLive();
+  void paintThumbs();
   if (screen === "run" && openRun) void showRun(openRun);
   if (screen === "heals" && openHeal) void showHeal(openHeal.runId, openHeal.healId);
 }
@@ -124,6 +173,10 @@ function capture(): string {
       <h3>Proxy and MCP</h3>
       <p>MCP is a stdio process, <code>bao mcp</code>. It records screenshot, click, type, key, and scroll into the local trail. No call leaves the machine unless you set a model key for healing.</p>
     </div>
+    <div class="card">
+      <h3>Steps</h3>
+      <div id="live-steps"></div>
+    </div>
     <div class="card" id="trail-tab">
       <h3>Trail</h3>
       <p class="quiet">Trail is the evidence for a capture, not a place in the sidebar.</p>
@@ -134,16 +187,6 @@ function capture(): string {
   </section>`;
 }
 
-function runsList(): string {
-  const names = new Map((state.workflows || []).map((workflow) => [workflow.id, workflow.name]));
-  const rows = (state.runs || []).map((run) => {
-    const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
-    const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
-    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td>${esc(run.status)} ${bolt}</td><td>${esc(run.id)}</td></tr>`;
-  }).join("");
-  return `<section><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>Run</th></tr></thead><tbody>${rows || `<tr><td colspan="3">No runs yet.</td></tr>`}</tbody></table></section>`;
-}
-
 function replayForm(): string {
   const selected = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const current = (state.workflows || []).find((workflow) => workflow.id === selected);
@@ -151,7 +194,8 @@ function replayForm(): string {
   const globalHeal = (state.settings && state.settings.heal) || "auto";
   const options = (state.workflows || []).map((workflow) =>
     `<option value="${esc(workflow.id)}" ${workflow.id === selected ? "selected" : ""}>${esc(workflow.name)}</option>`).join("");
-  return `<section><h2>Run</h2>
+  return `<section id="run-form"><h2>Run ${esc(current?.name || "")}</h2>
+    <p class="lede">Inputs are asked once, before the run. Secrets stay masked.</p>
     <label>Workflow <select id="wf">${options}</select></label>
     <label>Healing for this workflow <select id="wf-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
@@ -173,10 +217,16 @@ function settings(): string {
     </select></label>
     <p class="quiet">Auto is the default. Healing runs only when a model key is set, or when this build is started with the fixture healer. Otherwise replay stops on the failed step.</p>
     <button id="save-settings" type="button">Save</button>
+    <h3>Appearance</h3>
+    <label>Theme <select id="theme">
+      <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
+      <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
+    </select></label>
     <h3>Model</h3>
     <p id="settings-model">${esc(state.model?.label || "no model")}</p>
     <h3>Mac</h3>
     <p>${esc(state.helper?.label || "helper off")}</p>
+    ${onboarding(state.helper).replace('id="onboarding"', 'id="settings-perms"').replace('id="onboard-done"', 'id="onboard-done-hidden" hidden')}
   </section>`;
 }
 
@@ -272,6 +322,48 @@ function bind(): void {
   document.querySelectorAll("[data-open-workflow]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => void openEditor((btn as HTMLButtonElement).dataset.openWorkflow || "");
   });
+  const search = document.getElementById("library-search") as HTMLInputElement | null;
+  if (search) search.oninput = () => {
+    libraryQuery = search.value;
+    applySearch();
+  };
+  const paletteBtn = document.getElementById("palette-open");
+  if (paletteBtn) paletteBtn.onclick = () => {
+    paletteOpen = true;
+    paletteQuery = "";
+    paletteActive = 0;
+    paintPalette();
+  };
+  const done = document.getElementById("onboard-done");
+  if (done) done.onclick = () => {
+    onboarded = true;
+    try { localStorage.setItem("bao-onboarded", "1"); } catch { /* ignore */ }
+    renderKey = "";
+    render();
+  };
+  const themeSel = document.getElementById("theme") as HTMLSelectElement | null;
+  if (themeSel) themeSel.onchange = () => {
+    theme = themeSel.value === "dark" ? "dark" : "light";
+    applyTheme();
+  };
+  const pause = document.getElementById("rec-pause");
+  if (pause) pause.onclick = async () => {
+    await fetch("/api/sessions/pause", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
+  const mark = document.getElementById("rec-mark");
+  if (mark) mark.onclick = async () => {
+    await fetch("/api/sessions/mark", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
+  const recStop = document.getElementById("rec-stop");
+  if (recStop) recStop.onclick = async () => {
+    await fetch("/api/sessions/stop", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
 }
 
 function bindAsk(): void {
@@ -332,7 +424,10 @@ async function showRun(id: string): Promise<void> {
   const workflow = await (await fetch("/api/workflows/" + encodeURIComponent(run.workflowId))).json() as { name: string; id: string; steps: { id: string; label?: string; action?: string }[] };
   const host = document.getElementById("run-host");
   if (!host || screen !== "run" || openRun !== id) return;
-  host.innerHTML = runViewer(run, workflow, selectedStep);
+  const timings = (run.steps || []).map((step) => Math.max(0, (step.endedAt || 0) - (step.startedAt || 0)));
+  const recorded = workflow.steps ? trajectoryFromWorkflow(workflow as unknown as WorkflowV2, timings) : [];
+  const recent = (state.runs || []).filter((item) => item.workflowId === run.workflowId);
+  host.innerHTML = runViewer(run, workflow, selectedStep, { recent: recent.length ? recent : [run], recorded });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       selectedStep = (btn as HTMLButtonElement).dataset.selectStep || "";
@@ -348,13 +443,19 @@ async function showRun(id: string): Promise<void> {
       if (src) img.src = src;
     };
   });
+  const scrub = host.querySelector("#scrubber") as HTMLInputElement | null;
+  if (scrub) scrub.onchange = () => {
+    const index = Number(scrub.value);
+    const step = (run.steps || [])[index];
+    if (!step) return;
+    selectedStep = step.id;
+    seekVideo(step.startedAt);
+    void showRun(id);
+  };
   host.querySelectorAll("[data-marker]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       selectedStep = (btn as HTMLButtonElement).dataset.marker || "";
-      const video = document.getElementById("run-video") as HTMLVideoElement | null;
-      const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
-      const at = Number((btn as HTMLButtonElement).dataset.at || 0);
-      if (video && at && origin) video.currentTime = Math.max(0, (at - origin) / 1000);
+      seekVideo(Number((btn as HTMLButtonElement).dataset.at || 0));
       void showRun(id);
     };
   });
@@ -378,7 +479,13 @@ async function showHeal(runId: string, healId: string): Promise<void> {
   const heal = (run.heals || []).find((item) => item.id === healId);
   const host = document.getElementById("heal-detail");
   if (!host || !heal || screen !== "heals") return;
-  host.outerHTML = healDetail(run, heal as HealView);
+  const names = new Map((state.workflows || []).map((workflow) => [workflow.id, workflow.name]));
+  const promotion = (state.promotions || []).find((item) => item.healId === heal.id)
+    || (run.promotion && run.promotion.healId === heal.id ? run.promotion : undefined);
+  host.outerHTML = healDetail(run, heal as HealView, [], {
+    workflowName: healWorkflowName(heal, run, names),
+    promotion,
+  });
   bindHeal();
   const slider = document.getElementById("shot-slider") as HTMLInputElement | null;
   const top = document.getElementById("compare-top") as HTMLImageElement | null;
@@ -407,7 +514,8 @@ async function openEditor(id: string): Promise<void> {
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
   const host = document.getElementById("library-extra");
   if (!host) return;
-  host.innerHTML = `<div class="card"><h3>Edit ${esc(doc.name)}</h3>
+  const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+  host.innerHTML = workflowDetail(doc, last?.id || "") + `<div class="card"><h3>Edit ${esc(doc.name)}</h3>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
       <button type="button" data-export="${esc(id)}">Export</button>
@@ -467,6 +575,15 @@ async function openEditor(id: string): Promise<void> {
     renderKey = "";
     await refresh();
   };
+  host.querySelectorAll("[data-screen=replay]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      lastWf = (btn as HTMLButtonElement).dataset.workflow || id;
+      screen = "replay";
+      renderKey = "";
+      render();
+    };
+  });
+  void paintThumbs();
 }
 
 async function fillArgs(id: string): Promise<void> {
@@ -476,7 +593,10 @@ async function fillArgs(id: string): Promise<void> {
   };
   const form = document.getElementById("args");
   if (!form || screen !== "replay") return;
-  form.innerHTML = doc.inputs.map((input) => field(input)).join("") || "<p>This workflow has no inputs.</p>";
+  const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+  const prev = last?.inputs || {};
+  form.innerHTML = doc.inputs.map((input) => field(input, prev[input.name])).join("") || "<p>This workflow has no inputs.</p>";
+  argsWorkflow = id;
   form.querySelectorAll(".drop").forEach((zone) => {
     const el = zone as HTMLElement;
     el.ondragover = (event) => { event.preventDefault(); el.classList.add("over"); };
@@ -497,16 +617,23 @@ async function fillArgs(id: string): Promise<void> {
   });
 }
 
-function field(input: { name: string; type: string; label?: string; default?: string; choices?: string[]; multiple?: boolean }): string {
+function field(input: { name: string; type: string; label?: string; default?: string; choices?: string[]; multiple?: boolean }, previous?: string): string {
   const label = esc(input.label || input.name);
-  if (input.type === "secret") return `<label>${label} <input name="${esc(input.name)}" type="password" autocomplete="off"></label>`;
-  if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(input.default || "")}"></label>`;
+  if (input.type === "secret") {
+    const hint = previous ? "Last run used a secret" : "";
+    return `<label>${label} <input name="${esc(input.name)}" type="password" autocomplete="off" placeholder="${esc(hint)}"></label>`;
+  }
+  if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || input.default || "")}"></label>`;
   if (input.type === "choice") {
-    const opts = (input.choices || []).map((choice) => `<option>${esc(choice)}</option>`).join("");
+    const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
     return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
   }
-  if (input.type === "file") return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""}> <span>Drop a file here, or choose one.</span></label>`;
-  return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(input.default || "")}</textarea></label>`;
+  if (input.type === "file") {
+    const hint = previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
+    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""}> <span>${esc(hint)}</span></label>`;
+  }
+  const text = previous && previous !== "••••" ? previous : input.default || "";
+  return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(text)}</textarea></label>`;
 }
 
 async function runReplay(): Promise<void> {
@@ -561,11 +688,173 @@ async function answerImport(body: { accept: boolean; profile?: string }): Promis
 
 function tickClock(): void {
   const node = document.getElementById("act-timeout");
-  if (!node || !node.dataset.deadline) return;
-  const deadline = Number(node.dataset.deadline);
-  if (!deadline) return;
-  node.textContent = formatWait(Date.now(), deadline, node.dataset.effect || "run stops, nothing applied");
+  if (node && node.dataset.deadline) {
+    const deadline = Number(node.dataset.deadline);
+    if (deadline) node.textContent = formatWait(Date.now(), deadline, node.dataset.effect || "run stops, nothing applied");
+  }
+  const timer = document.getElementById("rec-timer");
+  if (!timer?.dataset.since) return;
+  const since = Number(timer.dataset.since);
+  if (!since) return;
+  const sec = Math.max(0, Math.floor((Date.now() - since) / 1000));
+  timer.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }
+
+function applyTheme(): void {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem("bao-theme", theme); } catch { /* ignore */ }
+}
+
+function applySearch(): void {
+  const q = libraryQuery.trim().toLowerCase();
+  document.querySelectorAll<HTMLElement>(".wf-card").forEach((card) => {
+    const name = (card.querySelector("h3")?.textContent || "").toLowerCase();
+    card.hidden = !!q && !name.includes(q);
+  });
+}
+
+function paintLive(): void {
+  const host = document.getElementById("live-steps");
+  if (!host) return;
+  const live = (state as ShellState & { liveTrail?: { id?: string; op?: string; kind?: string }[] }).liveTrail || [];
+  const html = liveStepList(live);
+  if (host.innerHTML !== html) host.innerHTML = html;
+}
+
+function filteredCommands(): CommandItem[] {
+  const q = paletteQuery.trim().toLowerCase();
+  return commandItems(state.workflows || []).filter((item) => !q || item.label.toLowerCase().includes(q));
+}
+
+function paintPalette(): void {
+  const host = document.getElementById("palette");
+  if (!host) return;
+  host.toggleAttribute("hidden", !paletteOpen);
+  if (!paletteOpen) {
+    host.innerHTML = "";
+    return;
+  }
+  const had = document.activeElement?.id === "palette-input";
+  const pos = had ? (document.activeElement as HTMLInputElement).selectionStart : null;
+  host.innerHTML = paletteView(commandItems(state.workflows || []), paletteQuery, paletteActive);
+  const input = document.getElementById("palette-input") as HTMLInputElement | null;
+  if (input) input.oninput = () => {
+    paletteQuery = input.value;
+    paletteActive = 0;
+    paintPalette();
+  };
+  host.querySelectorAll("[data-command]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const id = (btn as HTMLButtonElement).dataset.command || "";
+      runCommand(filteredCommands().find((item) => item.id === id));
+    };
+  });
+  if (input) {
+    input.focus();
+    if (pos != null) input.setSelectionRange(pos, pos);
+  }
+}
+
+function runCommand(item?: CommandItem): void {
+  if (!item) return;
+  paletteOpen = false;
+  if (item.kind === "theme") theme = theme === "dark" ? "light" : "dark";
+  else if (item.screen === "replay" && item.workflowId) {
+    lastWf = item.workflowId;
+    screen = "replay";
+  } else if (item.kind === "workflow" && item.workflowId) {
+    screen = "library";
+    renderKey = "";
+    render();
+    void openEditor(item.workflowId);
+    return;
+  } else if (item.screen) screen = item.screen as Screen;
+  renderKey = "";
+  render();
+}
+
+function seekVideo(at: number | undefined): void {
+  const video = document.getElementById("run-video") as HTMLVideoElement | null;
+  const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
+  if (video && at && origin) video.currentTime = Math.max(0, (at - origin) / 1000);
+}
+
+async function paintThumbs(): Promise<void> {
+  const nodes = [...document.querySelectorAll<HTMLElement>("[data-thumb-run]")];
+  const ids = [...new Set(nodes.map((node) => node.dataset.thumbRun || "").filter(Boolean))];
+  await Promise.all(ids.map(async (id) => {
+    if (shotCache.has(id)) return;
+    const run = await (await fetch("/api/runs/" + encodeURIComponent(id))).json() as RunSummary & {
+      failure?: { stepId?: string; beforeShot?: string; snapshot?: { screenshot?: string } };
+    };
+    const steps: Record<string, string> = {};
+    let any = "";
+    for (const step of run.steps || []) {
+      const shot = step.afterShot || step.beforeShot || "";
+      if (shot && /^[A-Za-z0-9+/=]+$/.test(shot)) {
+        steps[step.id] = shot;
+        any = shot;
+      }
+    }
+    const failShot = run.failure?.snapshot?.screenshot || run.failure?.beforeShot || "";
+    if (failShot && /^[A-Za-z0-9+/=]+$/.test(failShot)) {
+      if (run.failure?.stepId) steps[run.failure.stepId] = steps[run.failure.stepId] || failShot;
+      any = any || failShot;
+    }
+    shotCache.set(id, { steps, any });
+  }));
+  for (const node of document.querySelectorAll<HTMLElement>("[data-thumb-run]")) {
+    if (node.querySelector("img")) continue;
+    const cached = shotCache.get(node.dataset.thumbRun || "");
+    const shot = (node.dataset.thumbStep && cached?.steps[node.dataset.thumbStep]) || cached?.any || "";
+    if (!shot) continue;
+    const img = document.createElement("img");
+    img.alt = "";
+    img.src = `data:image/png;base64,${shot}`;
+    node.prepend(img);
+  }
+}
+
+document.addEventListener("keydown", (event) => {
+  const meta = event.metaKey || event.ctrlKey;
+  if (meta && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    paletteOpen = !paletteOpen;
+    if (paletteOpen) {
+      paletteQuery = "";
+      paletteActive = 0;
+    }
+    paintPalette();
+    return;
+  }
+  if (!paletteOpen) {
+    const tag = document.activeElement?.tagName;
+    if (event.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+      const search = document.getElementById("library-search");
+      if (search) {
+        event.preventDefault();
+        search.focus();
+      }
+    }
+    return;
+  }
+  const items = filteredCommands();
+  if (event.key === "Escape") {
+    paletteOpen = false;
+    paintPalette();
+  } else if (event.key === "ArrowDown") {
+    event.preventDefault();
+    paletteActive = Math.min(Math.max(0, items.length - 1), paletteActive + 1);
+    paintPalette();
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    paletteActive = Math.max(0, paletteActive - 1);
+    paintPalette();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    runCommand(items[paletteActive]);
+  }
+});
 
 if ("Notification" in window && Notification.permission === "default") {
   void Notification.requestPermission().catch(() => undefined);

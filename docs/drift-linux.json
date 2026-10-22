@@ -1,171 +1,171 @@
 {
-  "generatedAt": "2026-10-21T03:22:56.632Z",
+  "generatedAt": "2026-10-21T15:55:33.426Z",
   "rows": [
     {
       "workflow": "browser-form",
       "change": "shift",
-      "stepId": "wf-1792552974746-0",
+      "stepId": "wf-1792598131624-0",
       "label": "Type {{username}}",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "shift",
-      "stepId": "wf-1792552974746-1",
+      "stepId": "wf-1792598131624-1",
       "label": "Type secret",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "shift",
-      "stepId": "wf-1792552974746-2",
+      "stepId": "wf-1792598131624-2",
       "label": "Click \"Log in\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "shift",
-      "stepId": "wf-1792552974746-3",
+      "stepId": "wf-1792598131624-3",
       "label": "Click \"Grace\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "theme",
-      "stepId": "wf-1792552974746-0",
+      "stepId": "wf-1792598131624-0",
       "label": "Type {{username}}",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "theme",
-      "stepId": "wf-1792552974746-1",
+      "stepId": "wf-1792598131624-1",
       "label": "Type secret",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "theme",
-      "stepId": "wf-1792552974746-2",
+      "stepId": "wf-1792598131624-2",
       "label": "Click \"Log in\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "theme",
-      "stepId": "wf-1792552974746-3",
+      "stepId": "wf-1792598131624-3",
       "label": "Click \"Grace\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "font",
-      "stepId": "wf-1792552974746-0",
+      "stepId": "wf-1792598131624-0",
       "label": "Type {{username}}",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "font",
-      "stepId": "wf-1792552974746-1",
+      "stepId": "wf-1792598131624-1",
       "label": "Type secret",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "font",
-      "stepId": "wf-1792552974746-2",
+      "stepId": "wf-1792598131624-2",
       "label": "Click \"Log in\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "font",
-      "stepId": "wf-1792552974746-3",
+      "stepId": "wf-1792598131624-3",
       "label": "Click \"Grace\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "order",
-      "stepId": "wf-1792552974746-0",
+      "stepId": "wf-1792598131624-0",
       "label": "Type {{username}}",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "order",
-      "stepId": "wf-1792552974746-1",
+      "stepId": "wf-1792598131624-1",
       "label": "Type secret",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "order",
-      "stepId": "wf-1792552974746-2",
+      "stepId": "wf-1792598131624-2",
       "label": "Click \"Log in\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "order",
-      "stepId": "wf-1792552974746-3",
+      "stepId": "wf-1792598131624-3",
       "label": "Click \"Grace\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "slow",
-      "stepId": "wf-1792552974746-0",
+      "stepId": "wf-1792598131624-0",
       "label": "Type {{username}}",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "slow",
-      "stepId": "wf-1792552974746-1",
+      "stepId": "wf-1792598131624-1",
       "label": "Type secret",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "slow",
-      "stepId": "wf-1792552974746-2",
+      "stepId": "wf-1792598131624-2",
       "label": "Click \"Log in\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "slow",
-      "stepId": "wf-1792552974746-3",
+      "stepId": "wf-1792598131624-3",
       "label": "Click \"Grace\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "scale-2x",
-      "stepId": "wf-1792552974746-0",
+      "stepId": "wf-1792598131624-0",
       "label": "Type {{username}}",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "scale-2x",
-      "stepId": "wf-1792552974746-1",
+      "stepId": "wf-1792598131624-1",
       "label": "Type secret",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "scale-2x",
-      "stepId": "wf-1792552974746-2",
+      "stepId": "wf-1792598131624-2",
       "label": "Click \"Log in\"",
       "passed": true
     },
     {
       "workflow": "browser-form",
       "change": "scale-2x",
-      "stepId": "wf-1792552974746-3",
+      "stepId": "wf-1792598131624-3",
       "label": "Click \"Grace\"",
       "passed": true
     }
@@ -216,7 +216,7 @@
   ],
   "steps": [
     {
-      "stepId": "wf-1792552974746-0",
+      "stepId": "wf-1792598131624-0",
       "label": "Type {{username}}",
       "passed": 6,
       "failed": 0,
@@ -224,7 +224,7 @@
       "rate": 1
     },
     {
-      "stepId": "wf-1792552974746-1",
+      "stepId": "wf-1792598131624-1",
       "label": "Type secret",
       "passed": 6,
       "failed": 0,
@@ -232,7 +232,7 @@
       "rate": 1
     },
     {
-      "stepId": "wf-1792552974746-2",
+      "stepId": "wf-1792598131624-2",
       "label": "Click \"Log in\"",
       "passed": 6,
       "failed": 0,
@@ -240,7 +240,7 @@
       "rate": 1
     },
     {
-      "stepId": "wf-1792552974746-3",
+      "stepId": "wf-1792598131624-3",
       "label": "Click \"Grace\"",
       "passed": 6,
       "failed": 0,

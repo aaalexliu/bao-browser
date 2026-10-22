@@ -3,6 +3,7 @@
 // approve pauses at the proposal. The saved workflow changes only if the user keeps the patch.
 
 import type { IdentityView } from "../app/view-types";
+import { locatorsFromIdentity } from "./locators";
 import type { HealMode, Identity, WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface FailureSnapshot {
@@ -13,10 +14,15 @@ export interface FailureSnapshot {
   ax?: unknown;
 }
 
+/** wait_for, then find, then action, then expect. `gone` fails in expect. `auth` is a login redirect and is not healed. */
+export type ReplayPhase = "wait_for" | "find" | "action" | "expect" | "auth";
+
 export interface StepFailure {
   stepId: string;
   index: number;
   intent: string;
+  /** wait_for, find, action, expect, or auth. The reason is what failed inside that phase. */
+  phase: ReplayPhase;
   reason: string;
   brokenAttr?: string;
   snapshot: FailureSnapshot;
@@ -101,6 +107,7 @@ export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: s
   const body = [
     "A replay step missed its target or its postcondition.",
     `Intent: ${failure.intent}`,
+    `Phase: ${failure.phase}`,
     `Reason: ${failure.reason}`,
     failure.brokenAttr ? `Attribute that broke: ${failure.brokenAttr}` : "",
     `Step: ${JSON.stringify(step)}`,
@@ -202,6 +209,55 @@ export function cursorSessionHeal(readResponse: () => string): HealProvider {
   };
 }
 
+/**
+ * Live Cursor heal. Writes the failure and waits for a response file.
+ * This process does not invent the patch.
+ */
+export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env): HealProvider {
+  return {
+    available: () => true,
+    async propose(failure, step) {
+      const { mkdirSync, readFileSync, unlinkSync, writeFileSync } = await import("node:fs");
+      const path = await import("node:path");
+      mkdirSync(dir, { recursive: true });
+      if (failure.snapshot.screenshot) {
+        writeFileSync(path.join(dir, "heal-shot.png"), Buffer.from(failure.snapshot.screenshot, "base64"));
+      }
+      const prompt = buildPrompt(failure, step, []);
+      writeFileSync(path.join(dir, "heal-request.json"), JSON.stringify({
+        intent: failure.intent,
+        phase: failure.phase,
+        reason: failure.reason,
+        step,
+        dom: failure.snapshot.dom,
+        prompt,
+      }, null, 2));
+      const responsePath = path.join(dir, "heal-response.json");
+      try { unlinkSync(responsePath); } catch { /* first request */ }
+      const deadline = Date.now() + Number(env.BAO_HEAL_WAIT_MS || 180000);
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        let raw = "";
+        try { raw = readFileSync(responsePath, "utf8"); } catch { continue; }
+        if (!raw.trim()) continue;
+        try {
+          const parsed = JSON.parse(raw) as { identity?: Identity; note?: string };
+          if (!parsed.identity) return null;
+          return {
+            patch: { identity: parsed.identity },
+            model: { provider: "cursor", name: "cursor", version: "live" },
+            prompt,
+            rawResponse: raw,
+          };
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    },
+  };
+}
+
 function patchFromText(raw: string): HealProposal["patch"] {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
@@ -216,11 +272,12 @@ function patchFromText(raw: string): HealProposal["patch"] {
 }
 
 export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): WorkflowStep {
-  return {
-    ...step,
-    ...patch,
-    identity: patch.identity ? { ...step.identity, ...patch.identity, path: patch.identity.path || step.identity?.path || [] } : step.identity,
-  };
+  const identity = patch.identity
+    ? { ...patch.identity, path: patch.identity.path || [] }
+    : step.identity;
+  const next: WorkflowStep = { ...step, ...patch, identity };
+  if (patch.identity) next.locators = locatorsFromIdentity(identity);
+  return next;
 }
 
 export function keepPatch(workflow: WorkflowV2, stepId: string, patch: HealProposal["patch"]): WorkflowV2 {
