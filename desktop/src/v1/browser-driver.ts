@@ -146,20 +146,7 @@ export class BrowserDriver implements Driver {
   }
 
   async shot(target?: ShotTarget): Promise<Buffer | undefined> {
-    try {
-      await this.page.evaluate(maskPasswordFields).catch(() => undefined);
-      const found = await locateTarget(this.page, target);
-      if (!found) return;
-      await found.mark();
-      const view = this.page.viewportSize() || await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-      const clip = paddedClip(found.box, view);
-      return await shotWithBlur(this.page, { type: "png", clip });
-    } catch {
-      return undefined;
-    } finally {
-      await clearShotMarks(this.page);
-      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
-    }
+    return elementShot(this.page, target);
   }
 
   async snapshot(): Promise<FailureSnapshot> {
@@ -392,6 +379,25 @@ export class BrowserDriver implements Driver {
     const clip = paddedClip(box, view);
     const png = await this.page.screenshot({ type: "png", clip }).catch(() => undefined);
     return png?.toString("base64");
+  }
+}
+
+/** Crop around the step's target and outline it. A full-page picture is not used. */
+export async function elementShot(page: Page, target?: ShotTarget, opts?: { blur?: boolean }): Promise<Buffer | undefined> {
+  try {
+    await page.evaluate(maskPasswordFields).catch(() => undefined);
+    const found = await locateTarget(page, target);
+    if (!found) return;
+    await found.mark();
+    const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const clip = paddedClip(found.box, view);
+    if (opts?.blur === false) return await page.screenshot({ type: "png", clip });
+    return await shotWithBlur(page, { type: "png", clip });
+  } catch {
+    return undefined;
+  } finally {
+    await clearShotMarks(page);
+    await page.evaluate(unmaskPasswordFields).catch(() => undefined);
   }
 }
 

@@ -13,7 +13,7 @@ import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launc
 import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
-import { BrowserDriver, clearOsNotify, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, clearOsNotify, elementShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import type { HumanAsk } from "../v1/human-ask";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
@@ -52,6 +52,7 @@ import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
+import { isElementCrop } from "../v1/redacted-png";
 import {
   decide,
   decisionEvent,
@@ -65,7 +66,6 @@ import {
   type TeachCorrection,
   type TeachDecision,
 } from "../v1/teach";
-import { clipBox } from "../v1/browser-driver";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
@@ -89,7 +89,7 @@ import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
-import { keepMine, openConflict, pairDevice, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus } from "../v1/sync";
+import { keepMine, openConflict, pairDevice, publishWorkflow, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
@@ -470,6 +470,20 @@ export async function startApp(opts: {
         const file = newestPng(path.join(library.root, "shots", "workflows", id));
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPng(res, file);
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/share")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        return json(res, await workflowShare(library, id));
+      }
+      if (req.method === "POST" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/publish")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        try {
+          const result = await publishWorkflow(library, id);
+          return json(res, result, result.ok ? 200 : 409);
+        } catch (err) {
+          const why = err instanceof Error ? err.message : "The clean replay did not pass.";
+          return json(res, { ok: false, why }, 409);
+        }
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/inputs")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -1132,18 +1146,21 @@ export async function startApp(opts: {
     const dest = path.join(dir, `${stored.id}.png`);
     if (sessionMode === "teach") void narrateSoon();
     try {
-      const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
-      if (!clip) return;
+      const target = { identity: payload.identity, action: payload.op, label: payload.identity?.text };
       if (sessionMode === "teach") {
         const blurred = await page.evaluate(blurSensitiveFields);
         try {
-          await page.screenshot({ path: dest, type: "png", clip });
+          const png = await elementShot(page, target, { blur: false });
+          if (!png) return;
+          writeFileSync(dest, png);
         } finally {
           await page.evaluate(unblurSensitiveFields).catch(() => undefined);
         }
         if (blurred > 0) blurredShots += 1;
       } else {
-        await shotWithBlur(page, { path: dest, type: "png", clip });
+        const png = await elementShot(page, target);
+        if (!png) return;
+        writeFileSync(dest, png);
       }
       captureShots.set(stored.id, dest);
     } catch { /* headed Chromium can refuse captureScreenshot */ }
@@ -2099,11 +2116,9 @@ function newestPng(dir: string): string | undefined {
   return ranked[0]?.file;
 }
 
-/** A poster is a crop around a control. A full-page capture stays off the card. */
+/** A poster is an element crop. A stripe fixture and a full-page capture stay off the card. */
 function croppedPng(file: string): boolean {
-  const buf = readFileSync(file);
-  if (buf.length < 24 || buf.toString("ascii", 12, 16) !== "IHDR") return false;
-  return buf.readUInt32BE(16) <= 720 && buf.readUInt32BE(20) <= 480;
+  return isElementCrop(readFileSync(file));
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {

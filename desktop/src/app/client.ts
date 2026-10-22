@@ -749,11 +749,16 @@ async function showRun(id: string): Promise<void> {
       void showRun(id);
     };
   });
-  host.querySelectorAll("#filmstrip img").forEach((img) => {
-    img.addEventListener("error", () => {
+  host.querySelectorAll("#filmstrip img").forEach((node) => {
+    const img = node as HTMLImageElement;
+    const drop = () => {
       const frame = img.parentElement;
       img.remove();
       frame?.classList.remove("has-shot");
+    };
+    img.addEventListener("error", drop);
+    img.addEventListener("load", () => {
+      if (img.naturalWidth === 96 && img.naturalHeight === 54) drop();
     });
   });
   host.querySelectorAll("[data-frame]").forEach((btn) => {
@@ -918,16 +923,19 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
 
 async function openEditor(id: string): Promise<void> {
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
-  const listed = await (await fetch("/api/workflows/" + encodeURIComponent(id) + "/versions")).json() as {
-    versions?: { n: number; role: string; source: string; createdAt: number }[];
-  };
+  const [listed, shareRes] = await Promise.all([
+    fetch("/api/workflows/" + encodeURIComponent(id) + "/versions").then((res) => res.json()) as Promise<{
+      versions?: { n: number; role: string; source: string; createdAt: number }[];
+    }>,
+    fetch("/api/workflows/" + encodeURIComponent(id) + "/share").then((res) => res.ok ? res.json() : undefined),
+  ]);
   const host = document.getElementById("workflow-host");
   if (!host || !host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}${typeof last.at === "number" ? ` · ${formatWhen(last.at)}` : ""}` : "Not run yet";
   const shots = last?.id ? await stepCrops(last.id) : {};
   if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
-  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel, shots }) + versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
+  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel, shots, share: shareRes }) + versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
       <button type="button" data-export="${esc(id)}">Export</button>
@@ -1025,6 +1033,7 @@ async function openEditor(id: string): Promise<void> {
       render();
     };
   });
+  bindShare(host, id);
   host.querySelectorAll("[data-promote-version], [data-restore-version]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = async () => {
       const el = btn as HTMLButtonElement;
@@ -1711,6 +1720,49 @@ function paintToasts(): void {
   });
 }
 
+function bindShare(host: HTMLElement, id: string): void {
+  const opener = host.querySelector("[data-testid=share-open]") as HTMLButtonElement | null;
+  const panel = host.querySelector("[data-testid=share-panel]") as HTMLElement | null;
+  opener?.addEventListener("click", () => {
+    if (!panel || !opener) return;
+    const open = panel.hasAttribute("hidden");
+    if (open) panel.removeAttribute("hidden");
+    else panel.setAttribute("hidden", "");
+    opener.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  const copy = host.querySelector("[data-testid=share-copy]") as HTMLButtonElement | null;
+  copy?.addEventListener("click", () => {
+    const link = copy.dataset.copy || "";
+    if (navigator.clipboard) void navigator.clipboard.writeText(link).catch(() => undefined);
+  });
+  const publish = host.querySelector("[data-testid=share-publish]") as HTMLButtonElement | null;
+  if (publish && !publish.disabled) {
+    publish.addEventListener("click", async () => {
+      const res = await fetch("/api/workflows/" + encodeURIComponent(id) + "/publish", { method: "POST" });
+      const body = await res.json() as { why?: string; error?: string };
+      if (res.ok && body.why === undefined) return;
+      publish.disabled = true;
+      const why = host.querySelector("[data-testid=share-publish-why]");
+      const sentence = body.why || body.error || "The clean replay did not pass.";
+      if (why) why.textContent = sentence;
+      else publish.insertAdjacentHTML("afterend", `<p class="share-why" data-testid="share-publish-why">${esc(sentence)}</p>`);
+    });
+  }
+  const exp = host.querySelector("[data-testid=share-export]") as HTMLButtonElement | null;
+  if (exp && !exp.disabled) {
+    exp.addEventListener("click", async () => {
+      const body = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
+      const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${id}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+}
+
 async function stepCrops(runId: string): Promise<Record<string, string>> {
   const shots: Record<string, string> = {};
   try {
@@ -1742,6 +1794,10 @@ function mountShots(root: ParentNode = document): void {
       img.alt = "";
       img.onload = () => {
         if (!node.isConnected) return;
+        if (img.naturalWidth === 96 && img.naturalHeight === 54) {
+          if (next) load(next);
+          return;
+        }
         node.classList.add("has-shot");
         node.prepend(img);
       };
@@ -1756,10 +1812,24 @@ function mountShots(root: ParentNode = document): void {
         if (node.isConnected) node.classList.add("has-shot");
       };
       if (existing.complete && existing.naturalWidth > 0) {
+        if (existing.naturalWidth === 96 && existing.naturalHeight === 54) {
+          existing.remove();
+          node.classList.remove("has-shot");
+          if (fallback) load(fallback);
+          return;
+        }
         show();
         return;
       }
-      existing.addEventListener("load", show);
+      existing.addEventListener("load", () => {
+        if (existing.naturalWidth === 96 && existing.naturalHeight === 54) {
+          existing.remove();
+          node.classList.remove("has-shot");
+          if (fallback) load(fallback);
+          return;
+        }
+        show();
+      });
       existing.addEventListener("error", () => {
         existing.remove();
         node.classList.remove("has-shot");

@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
-import { HttpError, listRuns, listVersions, pull } from "@/lib/registry";
+import { ShareMenu } from "@/app/share-menu";
+import { HttpError, listRuns, listVersions, previewPublication, pull } from "@/lib/registry";
+import { plainReplayReason } from "@/lib/review-gate";
 import { principal, rate, when } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +26,19 @@ export default async function WorkflowPage({
     if (err instanceof HttpError && err.status === 404) notFound();
     throw err;
   }
-  const [versions, runs] = await Promise.all([listVersions(user, id), listRuns(user, id)]);
+  const [versions, runs, preview] = await Promise.all([
+    listVersions(user, id),
+    listRuns(user, id),
+    previewPublication(user, id),
+  ]);
   const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string; askOnImport?: boolean }[]; steps?: { id: string; label?: string }[] };
+  const steps = doc.steps ?? [];
+  const publishEnabled = preview.reviewed && !preview.gateStep;
+  const publishWhy = publishEnabled
+    ? ""
+    : !preview.reviewed
+      ? "Replay on a device before listing."
+      : (plainReplayReason(String(preview.gateReason || "")) || "The clean replay did not pass.");
   return (
     <article>
       <h1>{doc.name || id}</h1>
@@ -39,8 +52,16 @@ export default async function WorkflowPage({
       <div className="chips" data-testid="domains">
         {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
       </div>
-      <p className="mono" data-testid="deeplink">{workflow.link}</p>
-      <p className="mono" data-testid="import-link">{workflow.importLink}</p>
+      <ShareMenu
+        link={workflow.link}
+        publishHref={`/workflows/${id}/publish`}
+        publishEnabled={publishEnabled}
+        publishWhy={publishWhy}
+        fileName={`${id}.json`}
+        fileText={JSON.stringify(workflow.document, null, 2)}
+        exportEnabled={steps.length > 0}
+        exportWhy="This workflow has no steps to export."
+      />
       <p className="row">
         <a className="button" href={`/workflows/${id}/publish`}>Preview what goes public</a>
       </p>
@@ -48,17 +69,17 @@ export default async function WorkflowPage({
         <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission}). Personal values were cleared from the shared copy.</p>
       ) : null}
       <h2>Steps</h2>
-      <ol className="film">
+      <ol className="film" data-testid="step-crops">
         {workflow.shots.map((shot) => (
           <li key={shot.stepId}>
             <img src={shot.url} alt="" />
-            <span>{doc.steps?.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
+            <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
           </li>
         ))}
       </ol>
-      <p className="muted">Redacted on the device.</p>
+      <p className="muted">The picture is the element crop, with the control outlined.</p>
       <ol className="steps">
-        {(doc.steps ?? []).map((step) => <li key={step.id}>{step.label}</li>)}
+        {steps.map((step) => <li key={step.id}>{step.label}</li>)}
       </ol>
       <h2>Inputs</h2>
       <form action={`/api/workflows/${id}/inputs`} method="post">
@@ -74,30 +95,19 @@ export default async function WorkflowPage({
         </ul>
         <button type="submit">Save import questions</button>
       </form>
-      <h2>Share</h2>
-      <div className="row">
-        <form action={`/api/workflows/${id}/share`} method="post">
-          <input type="hidden" name="permission" value="view" />
-          <button type="submit">Copy a view link</button>
-        </form>
-        <form action={`/api/workflows/${id}/share`} method="post">
-          <input type="hidden" name="permission" value="fork" />
-          <button type="submit">Copy an install link</button>
-        </form>
-      </div>
       <h2>Versions</h2>
       <ul>
         {versions.map((version) => (
-          <li key={version.version}>v{version.version}{version.heal ? " · heal" : ""} · {String(version.created_at)}</li>
+          <li key={version.version}>v{version.version}{version.heal ? " · heal" : ""} · {when(version.created_at)}</li>
         ))}
       </ul>
       <h2>Runs</h2>
       <ul>
         {runs.map((run) => (
-          <li key={run.id}>{run.status} · {String(run.at)} · {run.shots.length} redacted shots</li>
+          <li key={run.id}>{run.status} · {when(run.at)} · {run.shots.length} element crop{run.shots.length === 1 ? "" : "s"}</li>
         ))}
       </ul>
-      {runs.length ? null : <p className="muted">No runs pushed from a device yet. Status only. Screenshots are redacted swatches.</p>}
+      {runs.length ? null : <p className="muted">No runs pushed from a device yet.</p>}
     </article>
   );
 }

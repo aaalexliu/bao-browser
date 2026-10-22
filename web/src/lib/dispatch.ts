@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { actor, answersFrom, fail, formPost, readBody, requireUser, session } from "./http";
+import { plainReplayReason } from "./review-gate";
 import {
   activePairCode,
   catalog,
@@ -171,6 +172,21 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
       const names = Object.keys(body).filter((key) => key.startsWith("ask_") && body[key]).map((key) => key.slice(4));
       const result = await setImportMarks(principal, parts[1] || "", names);
       return finish(req, result, `/workflows/${parts[1]}`);
+    }
+    if (parts[0] === "workflows" && parts[2] === "publish" && method === "GET") {
+      const principal = await requireUser(req);
+      const preview = await previewPublication(principal, parts[1] || "");
+      const why = !preview.reviewed
+        ? "Replay on a device before listing."
+        : preview.gateStep
+          ? (plainReplayReason(String(preview.gateReason || "")) || "The clean replay did not pass.")
+          : "";
+      return NextResponse.json({
+        enabled: preview.reviewed && !preview.gateStep,
+        why,
+        link: preview.link,
+        importLink: preview.importLink,
+      });
     }
     if (parts[0] === "workflows" && parts[2] === "publish" && method === "POST") {
       const principal = await requireUser(req);
