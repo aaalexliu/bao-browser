@@ -88,7 +88,19 @@ async function main(): Promise<void> {
     process.stdout.write(result.markdown);
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao eval drivers | bao eval intent");
+  if (cmd === "eval" && rest[0] === "heldout" && rest[1] === "capture") {
+    const { captureHeldout } = await import("../eval/heldout/capture");
+    const dir = flag(rest, "--dir") || "docs/eval/heldout/batch1";
+    await captureHeldout(dir);
+    return;
+  }
+  if (cmd === "eval" && rest[0] === "heldout") {
+    const { evalHeldout } = await import("../eval/heldout/run");
+    const result = await evalHeldout(rest.slice(1));
+    process.stdout.write(result.markdown);
+    return;
+  }
+  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file");
   process.exit(1);
 }
 

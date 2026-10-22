@@ -1,0 +1,109 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642657215,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642657255,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642657296,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642657335,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Add Element",
+      "cssPath": "#content > div:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/add_remove_elements/",
+    "afterUrl": "https://the-internet.herokuapp.com/add_remove_elements/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642657582,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Delete",
+      "cssPath": "#elements > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/add_remove_elements/",
+    "afterUrl": "https://the-internet.herokuapp.com/add_remove_elements/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642672828,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://the-internet.herokuapp.com/add_remove_elements/",
+    "afterUrl": "https://the-internet.herokuapp.com/add_remove_elements/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642672861,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Add Element",
+      "cssPath": "#content > div:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/add_remove_elements/",
+    "afterUrl": "https://the-internet.herokuapp.com/add_remove_elements/"
+  }
+]

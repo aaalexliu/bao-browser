@@ -1,0 +1,104 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642601206,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642601248,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642601288,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642601329,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "<dt>",
+      "cssPath": "#main-sidebar > nav:nth-of-type(1) > div:nth-of-type(2) > ol:nth-of-type(1) > li:nth-of-type(11) > details:nth-of-type(1) > ol:nth-of-type(1) > li:nth-of-type(35) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "ol"
+        },
+        {
+          "role": "li"
+        },
+        {
+          "role": "details"
+        },
+        {
+          "role": "ol"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form",
+    "afterUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dt"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642601828,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642601869,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dt",
+    "afterUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642601984,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "<input>",
+      "cssPath": "#content > div:nth-of-type(2) > section:nth-of-type(3) > dl:nth-of-type(1) > dd:nth-of-type(2) > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "dl"
+        },
+        {
+          "role": "dd"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form",
+    "afterUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input"
+  }
+]
