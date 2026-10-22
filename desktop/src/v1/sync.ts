@@ -11,7 +11,7 @@ import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type Settings } from "./store";
-import { clearConflict, noteConflict } from "./versions";
+import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
 
 export const SYNC_CATEGORIES = ["workflows", "run history", "heal records", "settings"] as const;
 export type SyncCategory = (typeof SYNC_CATEGORIES)[number];
@@ -571,9 +571,10 @@ async function pushDocument(
     library.clearKeptHeal(doc.id);
     return { kind: "pushed" };
   } catch (err) {
-    const conflict = err as Error & { status?: number; current?: PullBody };
+    const conflict = err as Error & { status?: number; current?: PullBody; draft?: { version?: number } };
     if (conflict.status === 409 && conflict.current?.document) {
-      stash(library, state, doc, conflict.current);
+      const history = await cloudVersions(state, doc.id);
+      stash(library, state, doc, conflict.current, history, conflict.draft?.version);
       state.outbox = (state.outbox ?? []).filter((item) => item.id !== doc.id);
       return { kind: "conflict" };
     }
@@ -618,7 +619,14 @@ function adoptIfNeeded(library: Library, state: SyncState, id: string, remote: P
   return "skip";
 }
 
-function stash(library: Library, state: SyncState, local: WorkflowV2, remote: PullBody): void {
+function stash(
+  library: Library,
+  state: SyncState,
+  local: WorkflowV2,
+  remote: PullBody,
+  history?: CloudVersionRow[],
+  draftVersion?: number,
+): void {
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, toJson(local));
@@ -631,6 +639,8 @@ function stash(library: Library, state: SyncState, local: WorkflowV2, remote: Pu
     mineDevice: state.deviceName || "This Mac",
     theirsDevice: remote.deviceName || "The other Mac",
     remoteVersion: remote.version,
+    draftVersion,
+    history,
   });
   state.conflicts = [
     { id: local.id, remoteVersion: remote.version, at: Date.now(), file },
@@ -785,6 +795,15 @@ function authHeaders(state: SyncState): Record<string, string> {
   return { authorization: `Bearer ${state.deviceToken}` };
 }
 
+async function cloudVersions(state: SyncState, id: string): Promise<CloudVersionRow[]> {
+  try {
+    const listed = await request<{ versions: CloudVersionRow[] }>(state, "GET", `/api/workflows/${encodeURIComponent(id)}/versions`);
+    return listed.versions ?? [];
+  } catch {
+    return [];
+  }
+}
+
 async function request<T>(state: SyncState, method: string, pathname: string, body?: unknown, auth = true): Promise<T> {
   if (!state.server) throw new Error("set a sync server");
   const headers: Record<string, string> = auth ? authHeaders(state) : {};
@@ -795,18 +814,23 @@ async function request<T>(state: SyncState, method: string, pathname: string, bo
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  let parsed: { error?: string; current?: PullBody } = {};
+  let parsed: { error?: string; current?: PullBody; draft?: { version?: number; parent?: number } } = {};
   if (text) {
     try {
-      parsed = JSON.parse(text) as { error?: string; current?: PullBody };
+      parsed = JSON.parse(text) as { error?: string; current?: PullBody; draft?: { version?: number; parent?: number } };
     } catch {
       parsed = { error: text.slice(0, 200) };
     }
   }
   if (!res.ok) {
-    const err = new Error(parsed.error || `sync ${res.status}`) as Error & { status?: number; current?: PullBody };
+    const err = new Error(parsed.error || `sync ${res.status}`) as Error & {
+      status?: number;
+      current?: PullBody;
+      draft?: { version?: number; parent?: number };
+    };
     err.status = res.status;
     err.current = parsed.current;
+    err.draft = parsed.draft;
     throw err;
   }
   return parsed as T;
