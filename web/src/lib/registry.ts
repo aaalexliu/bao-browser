@@ -4,7 +4,9 @@ import { getPng, putPng } from "./blobstore";
 import { isPlaceholderSwatch } from "./png";
 import { query } from "./db";
 import { assertSyncSafe, type SyncShot } from "./guard";
-import { categoryFor, domainsOf, redactForRelease, releaseHash, summaryOf } from "./publish";
+import { applyImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
+import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
+import { runPublishGate } from "./review-gate";
 import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
 import schema from "./workflow-v2.schema.json";
 import { SEED_WORKFLOWS } from "./seeds";
@@ -13,9 +15,11 @@ const ajv = new Ajv({ allErrors: true, strict: false });
 const validateWorkflow = ajv.compile(schema);
 
 export class HttpError extends Error {
-  constructor(message: string, readonly status: number) {
+  detail?: Record<string, unknown>;
+  constructor(message: string, readonly status: number, detail?: Record<string, unknown>) {
     super(message);
     this.name = "HttpError";
+    this.detail = detail;
   }
 }
 
@@ -238,6 +242,7 @@ export async function pull(principal: Principal, id: string, version?: number) {
     visibility: row.visibility,
     lastGreenAt: row.last_green_at,
     link: `bao://workflow/${id}`,
+    importLink: `bao://import/${id}`,
     domains: domainsOf(json(found.document)),
     passRate: await passRate(id),
   };
@@ -275,9 +280,7 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
      ON CONFLICT (id) DO NOTHING`,
     [id, workflowId, principal.deviceId ?? null, status, new Date(body.at || Date.now()).toISOString(), JSON.stringify(steps)],
   );
-  if (status === "passed" || status === "ok") {
-    await query(`UPDATE workflows SET last_green_at = now() WHERE id = $1`, [workflowId]);
-  }
+  // Last green is the clean publish replay, not a device run.
   for (const shot of body.shots ?? []) {
     if (shot.redacted !== true || !shot.stepId || !shot.png) continue;
     const key = `runs/${id}/${shot.stepId}.png`;
@@ -318,7 +321,7 @@ export async function listRuns(principal: Principal, workflowId: string) {
 export async function createShare(principal: Principal, workflowId: string, permission: string) {
   if (permission !== "view" && permission !== "fork") throw new HttpError("permission", 400);
   const head = await pull(principal, workflowId);
-  const released = redactForRelease(head.document);
+  const released = prepareImport(head.document);
   const token = randomBytes(18).toString("hex");
   await query(
     `INSERT INTO shares (token, workflow_id, permission, document) VALUES ($1, $2, $3, $4::jsonb)`,
@@ -343,6 +346,7 @@ export async function getShare(token: string) {
     questions: questions(document),
     domains: domainsOf(document),
     link: `bao://workflow/${row.workflow_id}`,
+    importLink: `bao://import/${row.workflow_id}`,
   };
 }
 
@@ -368,7 +372,7 @@ export async function installShare(principal: Principal, token: string, answers:
   rejectSecretAnswers(share.document, answers);
   if (share.permission !== "fork") throw new HttpError("this link is view only", 403);
   const user = await mustUser(principal.userId);
-  const installed = applyAnswers(share.document, answers);
+  const installed = answered(share.document, answers);
   const id = `wf-${randomUUID()}`;
   const doc = { ...(installed as Record<string, unknown>), id, name: `Fork of ${(installed as { name?: string }).name || "workflow"}` };
   const errors = workflowErrors(doc);
@@ -379,8 +383,9 @@ export async function installShare(principal: Principal, token: string, answers:
 
 export async function previewPublication(principal: Principal, id: string) {
   const head = await pull(principal, id);
-  const released = redactForRelease(head.document);
+  const released = prepareImport(head.document);
   const documentHash = releaseHash(released.document);
+  const gate = await gateRow(id);
   const reviewed = await query(
     `SELECT at FROM reviews WHERE workflow_id = $1 AND document_hash = $2`,
     [id, documentHash],
@@ -397,29 +402,53 @@ export async function previewPublication(principal: Principal, id: string) {
     lastGreenAt: head.lastGreenAt,
     reviewed: reviewed.length > 0,
     link: head.link,
+    importLink: `bao://import/${id}`,
+    gateStep: gate.gate_step,
+    gateReason: gate.gate_reason,
+    ciVerified: Boolean(gate.ci_verified),
   };
 }
 
-export async function recordReview(principal: Principal, id: string, documentHash: string, shots: ShotIn[] = []) {
+export async function recordReview(
+  principal: Principal,
+  id: string,
+  documentHash: string,
+  shots: ShotIn[] = [],
+  samples: Record<string, unknown> = {},
+) {
   const preview = await previewPublication(principal, id);
   if (preview.documentHash !== documentHash) throw new HttpError("replay the public preview, then review that hash", 409);
   const real = shots.filter((shot) => shot.redacted === true && shot.stepId && shot.png && !isPlaceholderSwatch(Buffer.from(shot.png, "base64")));
   if (real.length) await writeShots(id, preview.version, real);
   await query(
-    `INSERT INTO reviews (workflow_id, document_hash) VALUES ($1, $2)
-     ON CONFLICT (workflow_id, document_hash) DO UPDATE SET at = now()`,
-    [id, documentHash],
+    `INSERT INTO reviews (workflow_id, document_hash, samples) VALUES ($1, $2, $3::jsonb)
+     ON CONFLICT (workflow_id, document_hash) DO UPDATE SET at = now(), samples = EXCLUDED.samples`,
+    [id, documentHash, JSON.stringify(publicSamples(samples))],
   );
-  await query(
-    `UPDATE workflows SET reviewed_hash = $2, last_green_at = now() WHERE id = $1`,
-    [id, documentHash],
-  );
-  return { ok: true, lastGreenAt: new Date().toISOString() };
+  await query(`UPDATE workflows SET reviewed_hash = $2 WHERE id = $1`, [id, documentHash]);
+  return { ok: true };
 }
 
 export async function confirmPublish(principal: Principal, id: string) {
   const preview = await previewPublication(principal, id);
   if (!preview.reviewed) throw new HttpError("replay this workflow before listing it", 409);
+  const samples = await reviewSamples(id, preview.documentHash);
+  const gate = await runPublishGate(preview.document, samples);
+  if (!gate.ok) {
+    await query(
+      `UPDATE workflows SET gate_step = $2, gate_reason = $3, ci_verified = false WHERE id = $1`,
+      [id, gate.stepLabel || gate.stepId || "step", gate.reason || "replay failed"],
+    );
+    throw new HttpError(`replay failed: ${gate.stepLabel || gate.stepId || "step"}`, 409, {
+      stepId: gate.stepId || "",
+      stepLabel: gate.stepLabel || "",
+      reason: gate.reason || "replay failed",
+    });
+  }
+  await query(
+    `UPDATE workflows SET last_green_at = now(), ci_verified = true, gate_step = NULL, gate_reason = NULL, reviewed_hash = $2 WHERE id = $1`,
+    [id, preview.documentHash],
+  );
   const user = await mustUser(principal.userId);
   const name = String((preview.document as { name?: string }).name || id);
   const bumped = await query<{ version: number }>(
@@ -502,6 +531,8 @@ export async function publicWorkflow(id: string) {
     shots: await shotUrls(id, row.published_version),
     reports: reports[0]?.count ?? 0,
     link: `bao://workflow/${id}`,
+    importLink: `bao://import/${id}`,
+    ciVerified: Boolean((await gateRow(id)).ci_verified),
   };
 }
 
@@ -510,7 +541,7 @@ export async function forkPublic(principal: Principal, id: string, answers: Reco
   const pub = await publicWorkflow(id);
   rejectSecretAnswers(pub.document, answers);
   const user = await mustUser(principal.userId);
-  const installed = applyAnswers(pub.document, answers);
+  const installed = answered(pub.document, answers);
   const nextId = `wf-${randomUUID()}`;
   const doc = { ...(installed as Record<string, unknown>), id: nextId, name: `Fork of ${pub.name}` };
   const errors = workflowErrors(doc);
@@ -589,15 +620,15 @@ export function workflowErrors(document: unknown): string[] {
 }
 
 export function questions(document: unknown) {
-  const inputs = (document as { inputs?: { name: string; type: string; label?: string; required?: boolean; choices?: string[] }[] }).inputs ?? [];
-  return inputs.map((input) => ({
-    name: input.name,
-    type: input.type,
-    label: input.label || input.name,
-    required: input.required !== false,
-    choices: input.choices,
-    prompt: input.type === "secret" ? "You enter this on your device. It is not saved here." : `What should ${input.label || input.name} be?`,
-  }));
+  return importQuestions(document);
+}
+
+export async function setImportMarks(principal: Principal, id: string, names: string[]) {
+  const head = await pull(principal, id);
+  const doc = structuredClone(head.document) as { id?: string; inputs?: { name: string; askOnImport?: boolean }[] };
+  const want = new Set(names);
+  for (const input of doc.inputs ?? []) input.askOnImport = want.has(input.name);
+  return pushVersion(principal, id, { baseVersion: head.version, document: doc });
 }
 
 async function insertOwned(
@@ -714,6 +745,7 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
   verified: boolean;
   lastGreenAt: string | null;
   link: string;
+  importLink: string;
   domains: string[];
   thumbnail: string;
 }> {
@@ -739,6 +771,7 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
     verified: row.verified,
     lastGreenAt: row.last_green_at,
     link: `bao://workflow/${row.id}`,
+    importLink: `bao://import/${row.id}`,
     domains: domainsOf(document),
     thumbnail: await pickThumbnail(parsed, row.id, ver),
   };
@@ -781,22 +814,34 @@ function rejectSecretAnswers(document: unknown, answers: Record<string, unknown>
   }
 }
 
-function applyAnswers(document: unknown, answers: Record<string, unknown>) {
-  const doc = structuredClone(document) as { inputs?: { name: string; type: string; default?: string }[] };
-  for (const input of doc.inputs ?? []) {
-    if (input.type === "secret" || input.type === "file") {
-      delete input.default;
-      continue;
-    }
-    const answer = answers[input.name];
-    if (typeof answer === "string" && answer && !looksPersonal(answer)) input.default = answer;
-    else delete input.default;
+function answered(document: unknown, answers: Record<string, unknown>) {
+  try {
+    return applyImportAnswers(document, answers);
+  } catch (err) {
+    throw new HttpError(err instanceof Error ? err.message : "answer the import questions", 400);
   }
-  return doc;
 }
 
-function looksPersonal(value: string): boolean {
-  return /@/.test(value) || /\d{3}-\d{2}-\d{4}/.test(value) || /(?:\d[ -]?){13,19}/.test(value);
+async function gateRow(id: string) {
+  const rows = await query<{ gate_step: string | null; gate_reason: string | null; ci_verified: boolean | null }>(
+    `SELECT gate_step, gate_reason, ci_verified FROM workflows WHERE id = $1`,
+    [id],
+  );
+  return rows[0] || { gate_step: null, gate_reason: null, ci_verified: false };
+}
+
+async function reviewSamples(id: string, documentHash: string): Promise<Record<string, string>> {
+  const rows = await query<{ samples: unknown }>(
+    `SELECT samples FROM reviews WHERE workflow_id = $1 AND document_hash = $2`,
+    [id, documentHash],
+  );
+  const value = json(rows[0]?.samples);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === "string" && item) out[key] = item;
+  }
+  return out;
 }
 
 async function upsertUser(email: string, name: string, verified: boolean): Promise<User> {

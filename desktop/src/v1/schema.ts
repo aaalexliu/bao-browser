@@ -18,6 +18,12 @@ export interface WorkflowInput {
   required?: boolean;
   /** Never a secret, and never an absolute path. */
   default?: string;
+  /** Asked again on import. Personal defaults are cleared either way. */
+  askOnImport?: boolean;
+  /** Why a default was removed. The value itself is not stored. */
+  cleared?: "email" | "name" | "path" | "phone" | "ssn";
+  /** A non-personal sample shown on the import sheet. Not a path. */
+  example?: string;
   choices?: string[];
   multiple?: boolean;
   accept?: string;

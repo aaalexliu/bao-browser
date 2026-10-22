@@ -31,10 +31,13 @@ export default async function PublicWorkflowPage({
       <div className="chips">
         <span className="chip">{workflow.category}</span>
         {workflow.verified ? <span className="badge" data-testid="verified">Verified author</span> : <span className="chip">{workflow.author}</span>}
+        {workflow.ciVerified ? <span className="badge" data-testid="replay-verified">Verified</span> : null}
         <span className="chip">{rate(workflow.passRate)}</span>
       </div>
       <p>By {workflow.author}</p>
       <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
+      <p className="mono" data-testid="deeplink">{workflow.link}</p>
+      <p className="mono" data-testid="import-link">{workflow.importLink}</p>
       <h2>Domains</h2>
       <div className="chips" data-testid="domains">
         {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}

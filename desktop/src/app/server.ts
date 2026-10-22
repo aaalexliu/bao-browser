@@ -73,7 +73,9 @@ import {
 } from "../v1/pending-prompt";
 import { Library } from "../v1/store";
 import { keepMine, openConflict, pairDevice, syncAll, syncStatus } from "../v1/sync";
-import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
+import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
+import { decideOpen, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
 
 export interface Notice extends HealNotice {
@@ -127,6 +129,8 @@ export async function startApp(opts: {
   let replaying = false;
   let recordingSince = 0;
   const notifications: { title: string; body: string }[] = [];
+  let opened: OpenedView | null = null;
+  let pendingDoc: WorkflowV2 | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
   let tail: Promise<void> = Promise.resolve();
   function enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -193,6 +197,16 @@ export async function startApp(opts: {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     }));
+  }
+
+  function localWorkflow(link: string): WorkflowV2 | null {
+    const match = link.trim().match(/^bao:\/\/(?:workflow|import)\/([A-Za-z0-9_-]+)$/);
+    if (!match?.[1]) return null;
+    try {
+      return library.read(match[1]);
+    } catch {
+      return null;
+    }
   }
 
   const server = createServer(async (req, res) => {
@@ -266,7 +280,37 @@ export async function startApp(opts: {
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
+          opened,
         });
+      }
+      if (req.method === "POST" && url.pathname === "/api/open") {
+        const body = await readBody(req) as { link?: string; document?: unknown };
+        const parsed = decideOpen(String(body.link || ""), localWorkflow(String(body.link || "")), body.document);
+        if ("error" in parsed) return json(res, { ok: false, error: parsed.error }, 404);
+        opened = parsed.opened;
+        pendingDoc = parsed.pending;
+        return json(res, { ok: true, opened });
+      }
+      if (req.method === "POST" && url.pathname === "/api/open/install") {
+        if (!pendingDoc) return json(res, { ok: false, error: "nothing to import" }, 400);
+        const body = await readBody(req) as { answers?: Record<string, unknown> };
+        try {
+          const installed = migrate(applyImportAnswers(pendingDoc, body.answers || {}));
+          library.save(installed);
+          pendingDoc = null;
+          opened = {
+            kind: "workflow",
+            id: installed.id,
+            name: installed.name,
+            link: `bao://workflow/${installed.id}`,
+            importLink: `bao://import/${installed.id}`,
+            questions: importQuestions(installed),
+            saved: true,
+          };
+          return json(res, { ok: true, id: installed.id, opened });
+        } catch (err) {
+          return json(res, { ok: false, error: err instanceof Error ? err.message : "answer the import questions" }, 400);
+        }
       }
       if (req.method === "GET" && url.pathname === "/api/import-login") {
         if (!pending || pending.id !== url.searchParams.get("id")) return json(res, { error: "no import" }, 404);

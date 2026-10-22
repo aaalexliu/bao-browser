@@ -13,7 +13,7 @@ export function fail(err: unknown) {
   if (err instanceof SyncRejected) return NextResponse.json({ error: err.message }, { status: 400 });
   if (err instanceof HttpError) {
     const current = (err as HttpError & { current?: unknown }).current;
-    return NextResponse.json(current ? { error: err.message, current } : { error: err.message }, { status: err.status });
+    return NextResponse.json({ error: err.message, ...(err.detail || {}), ...(current ? { current } : {}) }, { status: err.status });
   }
   console.error(err);
   return NextResponse.json({ error: err instanceof Error ? err.message : "error" }, { status: 500 });
