@@ -15,6 +15,16 @@ import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
+/** Chromium app mode uses the document title as the window title. */
+export function productWindowTitle(): string {
+  return "Bao";
+}
+
+/** Default capture target. A path, so the product window does not show the listen address. */
+export function fixtureStartValue(): string {
+  return "/fixture";
+}
+
 export interface WorkflowSummary {
   id: string;
   name: string;
@@ -1739,7 +1749,7 @@ export function teachHome(workflows: { id: string; name: string }[]): string {
     <h2>Teach</h2>
     <p class="lede">Show Bao a flow once. It narrates each step. Correct it on the spot, and the saved workflow keeps the intent.</p>
     <div class="card">
-      <label>Start URL <input id="teach-url" value="${esc(typeof location !== "undefined" ? `${location.origin}/fixture` : "/fixture")}"></label>
+      <label>Start URL <input id="teach-url" value="${esc(fixtureStartValue())}"></label>
       <button class="primary" id="teach-start" type="button">Start teaching</button>
     </div>
     <div class="card">

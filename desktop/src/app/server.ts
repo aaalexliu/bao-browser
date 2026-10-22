@@ -11,6 +11,7 @@ import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
 import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
 import { Capture, actNotice } from "./capture";
+import { resolveCaptureUrl } from "./capture-url";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
@@ -702,10 +703,10 @@ export async function startApp(opts: {
             nextFix = { workflowId: body.fix.workflowId, stepId: body.fix.stepId };
             if (!nextUrl) nextUrl = saved.startUrl;
           }
-          await enqueue(() => beginTeach(nextUrl || `http://127.0.0.1:${boundPort}/fixture`, nextFix));
+          await enqueue(() => beginTeach(nextUrl, nextFix));
           return json(res, { recording: capture.recording, teach: true });
         }
-        await enqueue(() => beginSession(body.url || `http://127.0.0.1:${boundPort}/fixture`));
+        await enqueue(() => beginSession(body.url || ""));
         return json(res, { recording: capture.recording, paused: capture.paused });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/resume") {
@@ -1369,6 +1370,7 @@ export async function startApp(opts: {
   }
 
   async function beginSession(startUrl: string): Promise<void> {
+    startUrl = resolveCaptureUrl(startUrl, boundPort);
     await stopBrowser();
     capture.start();
     recordingSince = Date.now();
@@ -1483,6 +1485,7 @@ export async function startApp(opts: {
   }
 
   async function beginTeach(startUrl: string, fix: { workflowId: string; stepId: string } | null): Promise<void> {
+    startUrl = resolveCaptureUrl(startUrl, boundPort);
     teachDecisions = [];
     cardSeen.clear();
     narrationCache.clear();
@@ -1566,7 +1569,7 @@ export async function startApp(opts: {
       await discardSession();
       return;
     } else if (event.event === "hotkey" && event.name === "start") {
-      if (!capture.recording) await beginSession(`http://127.0.0.1:${boundPort}/fixture`);
+      if (!capture.recording) await beginSession("");
       return;
     } else if (event.event === "hotkey" && event.name === "stop") {
       if (capture.recording) await saveSession();

@@ -74,7 +74,7 @@ echo "BUNDLED_BROWSER $FOUND"
 /usr/bin/clang -fobjc-arc -O2 \
   -framework Foundation -framework AppKit -framework UserNotifications \
   -o "$APP/Contents/MacOS/bao" \
-  desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-notify.m
+  desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c desktop/packaging/macos/bao-notify.m
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"
