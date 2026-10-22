@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -313,6 +314,10 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         await page.getByRole("button", { name: "Open my copy" }).click();
         await page.getByTestId("my-copy").waitFor();
         assert.match(await page.getByTestId("my-copy").innerText(), /Edited on the second Mac/);
+        assert.match(await page.getByTestId("sync-result").innerText(), /conflicts 1/);
+        assert.equal(await page.locator("#theme-toggle").count(), 0);
+        await page.locator(".card", { has: page.locator("#settings-model") }).waitFor();
+        await page.locator(".card", { has: page.locator("#settings-helper") }).waitFor();
         assert.equal(await page.getByText("Two permissions on the Mac").count(), 0);
         const deviceTime = await page.getByTestId("device-row").first().innerText();
         assert.match(deviceTime, /just now|min ago|hour ago|day ago/);
@@ -323,6 +328,9 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         await page.locator("#theme").selectOption("dark");
         await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
         await page.screenshot({ path: path.join(shots, "desktop-sync-dark.png"), fullPage: true });
+        const lightHash = createHash("md5").update(readFileSync(path.join(shots, "desktop-sync-light.png"))).digest("hex");
+        const darkHash = createHash("md5").update(readFileSync(path.join(shots, "desktop-sync-dark.png"))).digest("hex");
+        assert.notEqual(lightHash, darkHash);
         await page.locator("#theme").selectOption("light");
         await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
         const secretDoc = localCopy("fixture-username", "secret-push", fixture);

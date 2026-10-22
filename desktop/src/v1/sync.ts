@@ -151,17 +151,13 @@ export async function syncAll(library: Library, mode: "sync" | "push" | "pull" =
   ensureBackup(library, state);
   let pushed = 0;
   let pulled = 0;
-  let conflicts = 0;
   if (mode !== "push") {
-    const incoming = await pullRemote(library, state);
-    pulled = incoming.pulled;
-    conflicts += incoming.conflicts;
+    pulled = (await pullRemote(library, state)).pulled;
   }
   let refused = "";
   if (mode !== "pull") {
     const outgoing = await pushLocal(library, state);
     pushed = outgoing.pushed;
-    conflicts += outgoing.conflicts;
     refused = outgoing.refused;
     if (!refused) await pushRuns(library, state);
   }
@@ -169,7 +165,7 @@ export async function syncAll(library: Library, mode: "sync" | "push" | "pull" =
   state.lastSyncedAt = new Date().toISOString();
   state.lastResult = refused
     ? `Push refused: ${refused}`
-    : `pushed ${pushed}, pulled ${pulled}, conflicts ${conflicts}`;
+    : `pushed ${pushed}, pulled ${pulled}, conflicts ${state.conflicts.length}`;
   saveState(library.root, state);
   return syncStatus(library);
 }
