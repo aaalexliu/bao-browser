@@ -55,6 +55,11 @@ export const TOOLS = [
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export async function mcpMain(): Promise<void> {
+  if (process.env.BAO_MCP_LIVE === "1") {
+    const { liveMcpMain } = await import("../eval/live-mcp");
+    await liveMcpMain();
+    return;
+  }
   const home = process.env.BAO_HOME || path.join(process.cwd(), ".bao-mcp");
   const library = new Library(home);
   let buf = Buffer.alloc(0);

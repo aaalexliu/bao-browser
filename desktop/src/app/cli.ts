@@ -76,7 +76,19 @@ async function main(): Promise<void> {
     console.log("use the app replay screen, or POST /api/replay");
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id>");
+  if (cmd === "eval" && rest[0] === "drivers") {
+    const { evalDrivers } = await import("../eval/drivers");
+    const result = await evalDrivers(rest.slice(1));
+    process.stdout.write(result.markdown);
+    return;
+  }
+  if (cmd === "eval" && rest[0] === "intent") {
+    const { evalIntent } = await import("../eval/intent/run");
+    const result = await evalIntent(rest.slice(1));
+    process.stdout.write(result.markdown);
+    return;
+  }
+  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao eval drivers | bao eval intent");
   process.exit(1);
 }
 

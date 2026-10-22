@@ -391,3 +391,52 @@ Do this yourself when you want a hosted registry. This repo does not create the 
 8. Redeploy so the function sees `DATABASE_URL` and the Blob store.
 
 The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres URL, and the `pg` driver for `localhost`. Blob uploads use the private store when `BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID` is set. With neither, the files stay on disk, which is the local path above.
+
+# Bao MCP drivers
+
+`bao mcp` is the stdio server a driver talks to. Live mode is `BAO_MCP_LIVE=1` with `BAO_FIXTURE_URL` set to a page bao opened. The default server does not open a browser. It appends the call to `trail.jsonl` and returns text.
+
+## Live tools
+
+| Tool | Arguments | What the driver gets back | Trail |
+| --- | --- | --- | --- |
+| `screenshot` | none | PNG | read, with a snapshot |
+| `snapshot` | none | JSON boxes (`id`, `role`, `name`, layout `x` `y` `w` `h`, visible intersection `vx` `vy` `vw` `vh`) and a PNG | read, with a snapshot |
+| `click` | `x` and `y` in viewport CSS pixels, origin top left. Optional `ref` | `OK`, or `STOP login`, or `STOP confirm` | act, with a snapshot |
+| `type` | `text` | `OK`, or `STOP login` when the focused field is a password | act, with a snapshot |
+| `key` | `key`, a Playwright key name | `OK` | act, with a snapshot |
+| `scroll` | `x`, `y`, `dx`, `dy` | `OK` | act, with a snapshot |
+| `upload` | `id` DOM id, `path` local file | `OK` | act, with a snapshot. The line stores the basename, not `path` |
+
+`ref` is the element's DOM `id`. It is not a macOS AX identifier and not a Linux AT-SPI name. If `ref` is set, bao ignores `x` and `y`, clicks the center of that element, and records that center as provenance.
+
+A password `type` is not performed. A `click` on an element with `data-bao-gate="login"` or `data-bao-gate="confirm"`, or a button whose text is `Log in`, `Sign in`, or `Confirm`, is not performed. The trail line has `gate` and `performed: false`. Replay of the derived workflow does perform the step, using the inputs supplied for that run.
+
+Every read and every act stores `snapshot.sha256` and `snapshot.path`. The file is a PNG. `latencyMs` is the time inside the tool call, including the snapshot.
+
+## Stub tools
+
+With `BAO_MCP_LIVE` unset, the tools are `screenshot`, `click`, `type`, `key`, and `scroll`. `click` requires `x` and `y`. The server does not take a snapshot, does not return a PNG, and does not change a page.
+
+## What each driver can send
+
+Computer-use tool names are not this server. Claude's `left_click` and `coordinate` pair is the proxy adapter in `desktop/src/proxy/claude.ts`. Codex does not publish a pixel action schema. Neither shape is accepted by `bao mcp`.
+
+| Driver | How it would attach | Tool names it can call here | Screenshots | Coordinates | AX or AT-SPI ids |
+| --- | --- | --- | --- | --- | --- |
+| Claude CLI | MCP client pointed at `bao mcp`. This machine has no `claude` binary and no `ANTHROPIC_API_KEY`, so the eval did not start it | bao's tool names above, not `left_click` | PNG on `screenshot` and `snapshot`, if the CLI renders MCP image content | `click` `x`, `y` | not accepted. `ref` is a DOM id |
+| Claude Agent SDK | `@anthropic-ai/claude-agent-sdk` is not installed here | same as the CLI, if the SDK is configured as an MCP client | same | same | not accepted |
+| Codex CLI | MCP server in the Codex config. This machine has no `codex` binary and no `OPENAI_API_KEY` | bao's tool names, if Codex calls them. Codex has no pixel schema of its own | PNG only when Codex calls `screenshot` or `snapshot` and keeps the image | `click` `x`, `y` when it calls `click` | not accepted |
+| Cursor `cursor-agent` | MCP client. `cursor-agent` is not on `PATH` here | bao's tool names | PNG on `screenshot` and `snapshot` | `click` `x`, `y` | not accepted. `ref` is a DOM id |
+| Scripted client in `bao eval drivers` | spawns `bao mcp` and speaks the live tools. No model | all live tools | yes, and the trail snapshot is checked | yes. The client reads boxes from `snapshot` and sends the center | one `click` on the form task sends `ref` `noop`, a DOM id. No AX id |
+
+The viewport is the page. The browser tab strip is not in it. The tabs task is in-page tabs. The dialog task is a page element with `role="dialog"`, not an OS file dialog.
+
+## Commands
+
+```sh
+npm run bao -- eval drivers
+npm run bao -- eval intent
+```
+
+`eval drivers` writes `docs/eval/drivers.md`. `eval intent` writes `docs/eval/intent.md`. A missing CLI or a missing key is a `not run` cell. The command does not invent a pass.

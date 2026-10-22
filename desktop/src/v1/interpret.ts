@@ -28,6 +28,10 @@ export interface TrailEvent {
   /** Basename only. A path here is stripped, not stored. */
   fileName?: string;
   rawPath?: string;
+  /** Set when capture refused the action and a person has to do it. */
+  gate?: "login" | "confirm";
+  /** False when the tool recorded the act and did not change the page. */
+  performed?: boolean;
 }
 
 export interface InterpretMeta {
@@ -205,6 +209,8 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: read,
     };
   }
+  const gate = inferGate(event, meta.secrets ?? []);
+  if (gate) step.gate = gate;
   if (event.op === "keypress" || event.op === "key") {
     return {
       ...step,
@@ -263,7 +269,9 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
 }
 
 function post(event: TrailEvent, input: string | undefined, secrets: string[]): WorkflowStep["postcondition"] {
-  if (event.afterUrl && event.beforeUrl && event.afterUrl !== event.beforeUrl) {
+  // A stopped act leaves before-state on the event. That text is not the effect.
+  const acted = event.performed !== false;
+  if (acted && event.afterUrl && event.beforeUrl && event.afterUrl !== event.beforeUrl) {
     const cleaned = scrub(event.afterUrl, secrets);
     if (cleaned) {
       const url = new URL(cleaned, "https://bao.local");
@@ -271,7 +279,7 @@ function post(event: TrailEvent, input: string | undefined, secrets: string[]): 
     }
   }
   if (input) return { kind: "value", match: `{{${input}}}`, timeoutMs: 4000 };
-  const text = scrub(event.afterText, secrets);
+  const text = acted ? scrub(event.afterText, secrets) : undefined;
   if (text) return { kind: "text", match: text, timeoutMs: 4000 };
   if (event.identity) return { kind: "element", identity: stripSecretValue(event.identity, secrets), timeoutMs: 4000 };
   return undefined;
@@ -284,6 +292,17 @@ function scrub(value: string | undefined, secrets: string[]): string | undefined
     if (secret) out = out.split(secret).join("");
   }
   return out.trim() ? out : undefined;
+}
+
+function inferGate(event: TrailEvent, secrets: string[]): "login" | "confirm" | undefined {
+  if (event.gate === "login" || event.gate === "confirm") return event.gate;
+  if (isSecret(event, secrets)) return "login";
+  const name = [event.identity?.name, event.identity?.text, event.identity?.label, event.identity?.nameAttr]
+    .filter(Boolean)
+    .join(" ");
+  if (/\bconfirm\b/i.test(name)) return "confirm";
+  if (/\b(log in|sign in)\b/i.test(name)) return "login";
+  return undefined;
 }
 
 function isSecret(event: TrailEvent, secrets: string[]): boolean {

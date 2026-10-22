@@ -184,6 +184,7 @@
         "sensitive": { "type": "boolean" },
         "human": { "type": "boolean" },
         "intent": { "type": "string" },
+        "gate": { "enum": ["login", "confirm"] },
         "postcondition": { "$ref": "#/$defs/postcondition" },
         "expect": { "$ref": "#/$defs/expect" },
         "waitFor": { "$ref": "#/$defs/check" },

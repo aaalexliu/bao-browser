@@ -146,6 +146,8 @@ export interface WorkflowStep {
   human?: boolean;
   /** Recorded purpose of the step. Repairs compare this to the live label. */
   intent?: string;
+  /** A person has to do this step. Replay still runs it from the saved inputs. */
+  gate?: "login" | "confirm";
   postcondition?: Postcondition;
   expect?: Expectation;
   /** Must become true before find. A miss is phase `wait_for`. */
