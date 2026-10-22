@@ -20,6 +20,9 @@ out/
 *.log
 npm-debug.log*
 
+# Nightly runs are local. The committed comparison is docs/evals/nightly/baseline.
+docs/evals/nightly/runs/
+
 # TypeScript build output (esbuild)
 dist/
 *.tsbuildinfo

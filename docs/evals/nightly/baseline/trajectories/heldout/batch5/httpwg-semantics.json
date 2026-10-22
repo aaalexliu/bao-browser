@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/httpwg-semantics",
+  "steps": [
+    {
+      "stepId": "httpwg-semantics-0",
+      "action": "click",
+      "target": "link:HTTP Semantics",
+      "postcondition": "url /specs/rfc9110.html",
+      "timing": "lt1s"
+    }
+  ]
+}

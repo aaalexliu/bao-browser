@@ -1,0 +1,19 @@
+{
+  "caseId": "drivers/scripted/drift",
+  "steps": [
+    {
+      "stepId": "drv-drift-0",
+      "action": "type",
+      "target": "textbox#note",
+      "postcondition": "value {{note}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-drift-1",
+      "action": "click",
+      "target": "button#save",
+      "postcondition": "text Saved",
+      "timing": "lt1s"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch2/playwright-todo",
+  "steps": [
+    {
+      "stepId": "playwright-todo-0",
+      "action": "type",
+      "target": "textbox",
+      "postcondition": "value {{text}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "playwright-todo-1",
+      "action": "key",
+      "target": "page",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}
