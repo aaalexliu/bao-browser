@@ -1890,18 +1890,6 @@ async function runRecorded(
     ...(recorded.wrote ? { video: `${runId}.webm`, videoStartedAt } : {}),
   }), secretList)) as Parameters<Library["saveRun"]>[0];
   library.saveRun(saved);
-  if (result.status === "failed" && result.failure?.stepId) {
-    const label = workflow.steps.find((step) => step.id === result.failure?.stepId)?.label || result.failure.stepId;
-    notices.unshift({
-      id: `fail-${result.runId}`,
-      at: Date.now(),
-      title: "Run failed",
-      body: `${workflow.name} stopped at ${label}.`,
-      workflowId: workflow.id,
-      runId: result.runId,
-      stepId: result.failure.stepId,
-    });
-  }
   if (result.status !== "paused") clearPendingPrompt(library.root);
   const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
   if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));

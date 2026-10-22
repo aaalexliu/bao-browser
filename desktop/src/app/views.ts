@@ -7,7 +7,7 @@ import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
-import { filmstripSpans, idleSkippedMs, markerPoints, playbackSkips, skipLabel, videoSpanMs } from "../v1/filmstrip";
+import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
 import { stepsNeedingReview, type StepReview } from "../v1/triage";
 import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import { tokenFields, type TokenInput } from "../v1/input-token";
@@ -239,7 +239,6 @@ export function actBar(state: ShellState, now = Date.now()): string {
     const extra = ask.kind === "login"
       ? `<button id="act-continue" type="button">I'm signed in, continue</button>`
       : "";
-    const runAttr = ask.runId ? ` data-open-run="${esc(ask.runId)}"` : "";
     return `<section id="act-bar" data-ask="${ask.kind}" data-step="${esc(ask.stepId)}">
       <p class="kicker">${esc(kicker)}</p>
       <p class="instruction">${esc(ask.instruction)}</p>
@@ -247,7 +246,6 @@ export function actBar(state: ShellState, now = Date.now()): string {
       <div class="row">
         <button id="act-show" type="button">Show window</button>
         ${extra}
-        <button id="act-open-step" type="button"${runAttr} data-open-step="${esc(ask.stepId)}" data-workflow="${esc(ask.workflowId)}">Open this step</button>
         <button id="act-cancel" type="button">Cancel run</button>
       </div>
     </section>`;
@@ -641,35 +639,28 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
   const timed = steps.filter((step) => typeof step.startedAt === "number");
   if (timed.length === 0) return `<div id="video-bar" hidden></div>`;
   const origin = run.videoStartedAt || timed[0]!.startedAt || 0;
-  const span = videoSpanMs(steps, origin);
-  const points = new Map(markerPoints(steps, origin).map((point) => [point.id, point]));
-  const skips = playbackSkips(steps, origin, run.trail);
-  const shades = skips.map((skip) => {
-    const left = (skip.from * 1000 / span) * 100;
-    const width = Math.max(0, ((skip.to - skip.from) * 1000 / span) * 100);
-    return `<span class="idle-shade" data-idle="${esc(skip.kind)}" data-skipped="${skip.ms}" style="left:${pct(left)}%;width:${pct(width)}%" title="${esc(skip.label)}"></span>`;
-  }).join("");
-  const markers = steps.map((step, index) => {
-    const point = points.get(step.id);
-    if (!point || typeof step.startedAt !== "number") return "";
+  const spans = filmstripSpans(steps);
+  const total = spans.reduce((sum, span) => sum + span.flex, 0) || 1;
+  let cursor = 0;
+  const markers = spans.map((span) => {
+    const step = steps.find((item) => item.id === span.id);
+    const at = (cursor / total) * 100;
+    cursor += span.flex;
+    if (!step || typeof step.startedAt !== "number") return "";
+    const index = steps.indexOf(step);
     const mark = step.status === "failed" ? "✗" : String(index + 1);
-    return `<button type="button" class="marker ${esc(step.status)}" data-marker="${esc(step.id)}" data-at="${step.startedAt}" style="left:${pct(point.left)}%">${mark}</button>`;
+    const gap = span.skippedMs > 0 ? skipMark(span.skippedMs, `${at}%`) : "";
+    return `${gap}<button type="button" class="marker ${esc(step.status)}" data-marker="${esc(step.id)}" data-at="${step.startedAt}" style="left:${at}%">${mark}</button>`;
   }).join("");
   const src = run.video ? `/api/runs/${encodeURIComponent(run.id)}/video` : "";
-  const skipData = esc(JSON.stringify(skips.map((item) => ({ from: item.from, to: item.to, label: item.label, kind: item.kind }))));
-  const note = skips.length ? `<p class="quiet" id="idle-video">Shaded stretches are skipped.</p>` : "";
-  if (!src) return `<div id="video-bar" hidden data-origin="${origin}" data-span="${span}">${shades}${markers}</div>`;
-  return `<div id="video-bar" data-origin="${origin}" data-span="${span}">
+  const skipData = esc(JSON.stringify(idleSkips(steps, origin).map((item) => ({ from: item.from, to: item.to, label: item.label }))));
+  if (!src) return `<div id="video-bar" hidden data-origin="${origin}">${markers}</div>`;
+  return `<div id="video-bar" data-origin="${origin}">
     <video id="run-video" src="${esc(src)}" poster="/api/runs/${encodeURIComponent(run.id)}/poster" data-skips="${skipData}" controls preload="auto" style="display:block;width:100%;height:240px;object-fit:contain;background:#1c1915"></video>
-    <div class="timeline">${shades}${markers}</div>
-    ${note}
+    <div class="timeline">${markers}</div>
     <p id="skip-live" class="quiet"></p>
     <div class="row"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button></div>
   </div>`;
-}
-
-function pct(value: number): string {
-  return value.toFixed(4);
 }
 
 function triageWord(value: string): string {
@@ -874,10 +865,6 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     const run = history[0];
     const kind = run ? runKind(run, promotions.find((item) => item.workflowId === workflow.id)) : "";
     const label = run ? statusLabel(kind) : "never run";
-    const failedId = run ? failedStepId(run) : "";
-    const status = run && failedId
-      ? `<button type="button" class="status ${esc(kind)}" data-open-run="${esc(run.id)}" data-open-step="${esc(failedId)}">${esc(label)}</button>`
-      : `<span class="status ${esc(kind)}">${esc(label)}</span>`;
     const inputs = (workflow.inputs || []).map((input) => {
       if (input.type === "secret") return `<span class="chip secret">secret</span>`;
       if (input.type === "file") return `<span class="chip">file</span>`;
@@ -896,7 +883,7 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
         <div class="chips">${inputs}${waits}${expects}</div>
       </div>
       <div class="wf-foot">
-        ${status}
+        <span class="status ${esc(kind)}">${esc(label)}</span>
         ${sparkline(history)}
         <button type="button" data-screen="replay" data-workflow="${esc(workflow.id)}">Run</button>
       </div>
@@ -914,26 +901,8 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
   </section>`;
 }
 
-export function notices(items: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[]): string {
-  return items.map((item) => {
-    const open = item.runId && item.stepId
-      ? `<button type="button" data-open-run="${esc(item.runId)}" data-open-step="${esc(item.stepId)}">Open this step</button>`
-      : "";
-    return `<div class="toast" data-notice="${esc(item.id || item.title || "")}"><div><strong>${esc(item.title)}</strong><div>${esc(item.body)}</div>${open}</div><button type="button" data-dismiss="${esc(item.id || item.title || "")}" aria-label="Dismiss">Close</button></div>`;
-  }).join("");
-}
-
-/** The step a failure click should select. Empty when the run did not fail on a step. */
-export function failedStepId(run: RunSummary): string {
-  if (run.status !== "failed" && run.status !== "timed-out") return "";
-  if (run.failure?.stepId) return run.failure.stepId;
-  return (run.steps || []).find((step) => step.status === "failed")?.id || "";
-}
-
-/** A secret is a hint, never a value. Every other stored input is safe to show again. */
-export function rerunPrevious(type: string, value: string | undefined): string | undefined {
-  if (type === "secret") return value ? "••••" : undefined;
-  return value;
+export function notices(items: { id?: string; title?: string; body?: string }[]): string {
+  return items.map((item) => `<div class="toast" data-notice="${esc(item.id || item.title || "")}"><div><strong>${esc(item.title)}</strong><div>${esc(item.body)}</div></div><button type="button" data-dismiss="${esc(item.id || item.title || "")}" aria-label="Dismiss">Close</button></div>`).join("");
 }
 
 export function healWorkflowName(
@@ -971,10 +940,6 @@ function sparkline(runs: RunSummary[]): string {
   if (!recent.length) return `<p class="meta">No runs yet</p>`;
   return `<div class="spark" aria-label="${recent.length} recent runs">${recent.map((run) => {
     const kind = runKind(run);
-    const failed = failedStepId(run);
-    if (failed) {
-      return `<button type="button" class="swatch failed" data-open-run="${esc(run.id)}" data-open-step="${esc(failed)}" title="${esc(statusLabel("failed"))}" aria-label="Open the failed step"></button>`;
-    }
     return `<i class="swatch ${esc(kind)}" title="${esc(statusLabel(kind))}"></i>`;
   }).join("")}</div>`;
 }
@@ -1035,10 +1000,7 @@ export function passGrid(runs: RunSummary[], steps: { id: string; label?: string
       const healed = (run.heals || []).some((heal) => heal.failedStep?.id === step.id) && found?.status === "passed";
       const kind = !found ? "empty" : found.status === "paused" ? "paused" : found.status === "failed" ? "failed" : healed ? "healed" : found.status === "passed" ? "passed" : "empty";
       const label = kind === "paused" ? "needs you" : kind === "empty" ? "not run" : kind;
-      const face = kind === "failed"
-        ? `<button type="button" class="cell failed" data-open-run="${esc(run.id)}" data-open-step="${esc(step.id)}" aria-label="Open the failed step"></button>`
-        : `<span class="cell ${kind}"></span>`;
-      return `<td title="${esc(`${runTitle(run)} · ${label}`)}">${face}</td>`;
+      return `<td title="${esc(`${runTitle(run)} · ${label}`)}"><span class="cell ${kind}"></span></td>`;
     }).join("");
     return `<tr><th scope="row">${esc(step.label || step.id)}</th>${cells}</tr>`;
   }).join("");
@@ -1430,13 +1392,9 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): stri
     const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
     const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
     const when = typeof run.at === "number" ? formatWhen(run.at) : "";
-    const failed = failedStepId(run);
-    const status = failed
-      ? `<button type="button" class="status ${esc(kind)}" data-open-run="${esc(run.id)}" data-open-step="${esc(failed)}">${esc(statusLabel(kind))}</button>`
-      : `<span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span>`;
-    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}" aria-label="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td>${status} ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td><td><button type="button" data-rerun="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Re-run with this run's inputs</button></td></tr>`;
+    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}" aria-label="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td></tr>`;
   }).join("");
-  return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>When</th><th>Run</th><th></th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>When</th><th>Run</th></tr></thead><tbody>${rows}</tbody></table></section>`;
 }
 
 export function commandItems(workflows: { id: string; name: string }[]): CommandItem[] {
