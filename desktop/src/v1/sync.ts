@@ -592,7 +592,12 @@ async function pushRuns(library: Library, state: SyncState): Promise<void> {
       at: run.at,
       steps,
     }, { crops: runCrops(library, run.id, steps) });
-    await request(state, "POST", `/api/workflows/${encodeURIComponent(run.workflowId)}/runs`, body);
+    try {
+      await request(state, "POST", `/api/workflows/${encodeURIComponent(run.workflowId)}/runs`, body);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 404 && status !== 403) throw err;
+    }
     state.pushedRuns.push(run.id);
   }
 }

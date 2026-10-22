@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { describeWorkflow, originLabel, runWorkflow, searchWorkflows } from "../../src/mcp/catalog";
+import { compareSearchHits, describeWorkflow, originLabel, runWorkflow, searchWorkflows, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
@@ -29,6 +29,35 @@ test("source names this Mac, the other device, or the marketplace", () => {
   assert.equal(originLabel({ local: false, bucket: "public" }), "marketplace");
 });
 
+test("equal scores rank this Mac, then another device, then marketplace", () => {
+  const hits = [
+    hit("m", "marketplace", 10, "Span marketplace"),
+    hit("a", "Mac A", 10, "Span from Mac A"),
+    hit("here", "this Mac", 10, "Span on this Mac"),
+    hit("better", "marketplace", 30, "Better marketplace"),
+  ].sort(compareSearchHits);
+  assert.deepEqual(hits.map((item) => item.id), ["better", "here", "a", "m"]);
+});
+
+test("a passed run stamps last green for search and describe", async () => {
+  const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
+  library.save(workflow("wf-green", "Search workflow green"));
+  const before = await describeWorkflow(library, "wf-green");
+  assert.equal(before.lastGreen, "Not replayed yet");
+  library.saveRun({
+    id: "run-green",
+    workflowId: "wf-green",
+    status: "passed",
+    at: Date.now(),
+    heals: [],
+    steps: [],
+  });
+  const described = await describeWorkflow(library, "wf-green");
+  assert.notEqual(described.lastGreen, "Not replayed yet");
+  const hits = await searchWorkflows(library, "green");
+  assert.equal(hits[0]?.lastGreen, described.lastGreen);
+});
+
 test("describe omits secret defaults and a missing secret does not launch a browser", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
   const doc = workflow("sign-in", "Sign in");
@@ -47,6 +76,21 @@ test("describe omits secret defaults and a missing secret does not launch a brow
   assert.match(outcome.resume || "", /^r_[a-f0-9]+$/);
   assert.equal(JSON.stringify(outcome).includes("SuperSecret"), false);
 });
+
+function hit(id: string, source: string, score: number, title: string): SearchHit {
+  return {
+    id,
+    title,
+    summary: "",
+    site: "",
+    category: "",
+    source,
+    lastGreen: "Not replayed yet",
+    score,
+    inputs: [],
+    link: `bao://workflow/${id}`,
+  };
+}
 
 function workflow(id: string, name: string): WorkflowV2 {
   return {

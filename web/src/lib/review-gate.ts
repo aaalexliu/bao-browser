@@ -1,5 +1,5 @@
-// Publishing runs the public copy in a clean browser. Last green is stamped
-// only when that run passes.
+// Publishing runs the public copy in a clean browser. That pass stamps Verified.
+// A passed replay on a Mac also moves last green.
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";

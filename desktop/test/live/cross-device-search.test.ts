@@ -9,11 +9,15 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { prepareImport } from "../../../web/src/lib/import-sheet";
+import { releaseHash } from "../../../web/src/lib/publish";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 
 const WORKFLOW_ID = "span-from-a";
+const LOCAL_ID = "span-here";
+const LISTING_ID = "span-listing";
 
 test("device B searches and runs a workflow saved on device A", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";
@@ -51,16 +55,26 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
     assert.equal(health.driver, "pglite");
 
     const cookie = await signIn(origin, "owner@bao.local");
+    const sellerCookie = await signIn(origin, "seller@bao.local");
     const homeA = path.join(root, "mac-a");
     const homeB = path.join(root, "mac-b");
+    const homeSeller = path.join(root, "seller");
     const libA = new Library(homeA);
     const libB = new Library(homeB);
+    const seller = new Library(homeSeller);
     libA.save(workflow(fixture.origin));
+    seller.save(workflow(fixture.origin, LISTING_ID, "Span on the marketplace"));
+    await pairDevice(seller, { code: await pairCode(origin, sellerCookie), server: origin, name: "Listing Mac" });
+    const sellerPush = await syncAll(seller, "push");
+    assert.match(sellerPush.lastResult || "", /pushed 1/);
+    await publish(origin, sellerCookie, seller.read(LISTING_ID));
     await pairDevice(libA, { code: await pairCode(origin, cookie), server: origin, name: "Mac A" });
     const pushed = await syncAll(libA, "push");
     assert.equal(pushed.lastResult, "pushed 1, pulled 0, conflicts 0");
+    libB.save(workflow(fixture.origin, LOCAL_ID, "Span on this Mac"));
     await pairDevice(libB, { code: await pairCode(origin, cookie), server: origin, name: "Mac B" });
     assert.throws(() => libB.read(WORKFLOW_ID));
+    assert.throws(() => libB.read(LISTING_ID));
 
     mcp = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
       env: {
@@ -85,14 +99,14 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
-      params: { name: "search_workflows", arguments: { query: "Span from Mac A" } },
+      params: { name: "search_workflows", arguments: { query: "Span" } },
     });
-    const searchBody = toolJson(search) as { hits: { id: string; source: string; lastGreen: string; inputs: unknown[] }[] };
-    const hit = searchBody.hits.find((item) => item.id === WORKFLOW_ID);
-    if (!hit) throw new Error(JSON.stringify(searchBody));
-    assert.equal(hit.source, "Mac A");
-    assert.equal(hit.lastGreen, "Not replayed yet");
-    assert.ok(Array.isArray(hit.inputs));
+    const searchBody = toolJson(search) as { hits: Hit[] };
+    assert.deepEqual(searchBody.hits.map((item) => item.id), [LOCAL_ID, WORKFLOW_ID, LISTING_ID], JSON.stringify(searchBody.hits));
+    assert.deepEqual(searchBody.hits.map((item) => item.source), ["this Mac", "Mac A", "marketplace"]);
+    const deviceHit = searchBody.hits[1];
+    assert.equal(deviceHit?.lastGreen, "Not replayed yet");
+    assert.ok(Array.isArray(deviceHit?.inputs));
 
     const described = await client.call({
       jsonrpc: "2.0",
@@ -113,20 +127,78 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
       params: { name: "run_workflow", arguments: { id: WORKFLOW_ID, inputs: {} } },
     });
     const runBody = toolJson(ran) as { outcome: string; reason?: string; source?: string; lastGreen?: string; workflowId: string };
-    const transcript = {
-      tools,
-      search: searchBody,
-      describe: describeBody,
-      run: runBody,
-    };
-    const artifact = "/opt/cursor/artifacts/cross-device-mcp.json";
-    mkdirSync(path.dirname(artifact), { recursive: true });
-    writeFileSync(artifact, JSON.stringify(transcript, null, 2));
     assert.equal(runBody.outcome, "ok", runBody.reason || JSON.stringify(runBody));
     assert.equal(runBody.source, "Mac A");
-    assert.equal(runBody.lastGreen, "Not replayed yet");
     assert.equal(runBody.workflowId, WORKFLOW_ID);
     assert.equal(libB.read(WORKFLOW_ID).name, "Span from Mac A");
+    assertGreen(runBody.lastGreen);
+
+    const searchAgain = await client.call({
+      jsonrpc: "2.0",
+      id: 6,
+      method: "tools/call",
+      params: { name: "search_workflows", arguments: { query: "Span from Mac A" } },
+    });
+    const againBody = toolJson(searchAgain) as { hits: Hit[] };
+    const again = againBody.hits.find((item) => item.id === WORKFLOW_ID);
+    if (!again) throw new Error(JSON.stringify(againBody));
+    assert.equal(again.lastGreen, runBody.lastGreen);
+
+    const describedAgain = await client.call({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: { name: "describe_workflow", arguments: { id: WORKFLOW_ID } },
+    });
+    const describeAgain = toolJson(describedAgain) as { source: string; lastGreen: string };
+    assert.equal(describeAgain.lastGreen, runBody.lastGreen);
+
+    const installed = await client.call({
+      jsonrpc: "2.0",
+      id: 8,
+      method: "tools/call",
+      params: { name: "run_workflow", arguments: { id: LISTING_ID, inputs: {} } },
+    });
+    const installBody = toolJson(installed) as { outcome: string; reason?: string; source?: string; lastGreen?: string; workflowId: string };
+    assert.equal(installBody.outcome, "ok", installBody.reason || JSON.stringify(installBody));
+    assert.equal(installBody.source, "marketplace");
+    assert.equal(installBody.workflowId, LISTING_ID);
+    assert.equal(libB.read(LISTING_ID).name, "Span on the marketplace");
+    assertGreen(installBody.lastGreen);
+
+    const syncedB = await syncAll(libB);
+    assert.match(syncedB.lastResult || "", /conflicts 0/);
+    const syncedA = await syncAll(libA);
+    assert.match(syncedA.lastResult || "", /conflicts 0/);
+    const macA = await mcpSession(env, homeA);
+    let macAHit: Hit | undefined;
+    try {
+      const seen = await macA.client.call({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "search_workflows", arguments: { query: "Span from Mac A" } },
+      });
+      const seenBody = toolJson(seen) as { hits: Hit[] };
+      macAHit = seenBody.hits.find((item) => item.id === WORKFLOW_ID);
+      if (!macAHit) throw new Error(JSON.stringify(seenBody));
+      const transcript = {
+        tools,
+        search: searchBody.hits.map((item) => ({ id: item.id, title: item.title, source: item.source, lastGreen: item.lastGreen, score: item.score })),
+        describe: { id: WORKFLOW_ID, source: describeBody.source, lastGreen: describeBody.lastGreen },
+        run: { id: WORKFLOW_ID, outcome: runBody.outcome, source: runBody.source, lastGreen: runBody.lastGreen },
+        searchAfterRun: { id: again.id, source: again.source, lastGreen: again.lastGreen },
+        describeAfterRun: { id: WORKFLOW_ID, lastGreen: describeAgain.lastGreen },
+        marketplaceRun: { id: LISTING_ID, outcome: installBody.outcome, source: installBody.source, lastGreen: installBody.lastGreen, installed: true },
+        macAAfterSync: { id: WORKFLOW_ID, source: macAHit.source, lastGreen: macAHit.lastGreen },
+      };
+      const artifact = "/opt/cursor/artifacts/cross-device-mcp.json";
+      mkdirSync(path.dirname(artifact), { recursive: true });
+      writeFileSync(artifact, JSON.stringify(transcript, null, 2));
+      assert.equal(macAHit.lastGreen, runBody.lastGreen);
+    } finally {
+      macA.child.kill();
+    }
   } finally {
     mcp?.kill();
     await stop(web);
@@ -134,12 +206,61 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
   }
 });
 
-function workflow(startUrl: string): WorkflowV2 {
+interface Hit {
+  id: string;
+  title?: string;
+  source: string;
+  lastGreen: string;
+  score?: number;
+  inputs?: unknown[];
+}
+
+function assertGreen(value: string | undefined): asserts value is string {
+  if (!value || value === "Not replayed yet" || !/·.+(EDT|EST)/.test(value)) {
+    throw new Error(`expected a green time, got ${value}`);
+  }
+}
+
+async function publish(origin: string, cookie: string, doc: WorkflowV2): Promise<void> {
+  const preview = prepareImport(doc);
+  const reviewed = await fetch(`${origin}/api/workflows/${doc.id}/review`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ documentHash: releaseHash(preview.document), shots: [] }),
+  });
+  assert.equal(reviewed.status, 200, await reviewed.text());
+  const listed = await fetch(`${origin}/api/workflows/${doc.id}/publish`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+  });
+  assert.equal(listed.status, 200, await listed.text());
+}
+
+async function mcpSession(env: NodeJS.ProcessEnv, home: string): Promise<{ child: ChildProcess; client: ReturnType<typeof mcpClient> }> {
+  const child = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
+    env: {
+      ...env,
+      BAO_HOME: home,
+      BAO_HEAL_CURSOR_ACCOUNT: "0",
+      OPENAI_API_KEY: "",
+      ANTHROPIC_API_KEY: "",
+      GROQ_API_KEY: "",
+      CURSOR_API_KEY: "",
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const client = mcpClient(child);
+  await client.call({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "scripted", version: "0" } } });
+  client.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+  return { child, client };
+}
+
+function workflow(startUrl: string, id = WORKFLOW_ID, name = "Span from Mac A"): WorkflowV2 {
   return {
     schema: "bao.workflow/v2",
     version: 2,
-    id: WORKFLOW_ID,
-    name: "Span from Mac A",
+    id,
+    name,
     startUrl,
     createdAt: Date.now(),
     inputs: [],

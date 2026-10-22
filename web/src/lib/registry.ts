@@ -373,6 +373,7 @@ export async function pull(principal: Principal, id: string, version?: number) {
     deviceId: found.device_id,
     deviceName: found.device_name,
     forkedFrom: row.forked_from,
+    owned: row.owner_id === principal.userId,
     parentVersion: found.parent_version,
   };
 }
@@ -407,13 +408,19 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
   if (!id) throw new HttpError("run id", 400);
   const status = String(body.status || "");
   const steps = (body.steps ?? []).map((step) => ({ id: String(step.id || ""), status: String(step.status || "") }));
+  const at = new Date(body.at || Date.now()).toISOString();
   await query(
     `INSERT INTO runs (id, workflow_id, device_id, status, at, steps)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
      ON CONFLICT (id) DO NOTHING`,
-    [id, workflowId, principal.deviceId ?? null, status, new Date(body.at || Date.now()).toISOString(), JSON.stringify(steps)],
+    [id, workflowId, principal.deviceId ?? null, status, at, JSON.stringify(steps)],
   );
-  // Last green is the clean publish replay, not a device run.
+  if (status === "passed" || status === "ok") {
+    await query(
+      `UPDATE workflows SET last_green_at = GREATEST(last_green_at, $2::timestamptz) WHERE id = $1`,
+      [workflowId, at],
+    );
+  }
   for (const shot of body.shots ?? []) {
     if (shot.redacted !== true || !shot.stepId || !shot.png) continue;
     const bytes = Buffer.from(shot.png, "base64");

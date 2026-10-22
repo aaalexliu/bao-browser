@@ -104,6 +104,17 @@ export function originLabel(input: {
   return "this Mac";
 }
 
+/** Equal scores: this Mac, then another device, then marketplace. */
+export function sourceRank(source: string): number {
+  if (source === "this Mac") return 0;
+  if (source === "marketplace") return 2;
+  return 1;
+}
+
+export function compareSearchHits(a: SearchHit, b: SearchHit): number {
+  return b.score - a.score || sourceRank(a.source) - sourceRank(b.source) || a.title.localeCompare(b.title);
+}
+
 export async function searchWorkflows(
   library: Library,
   query: string,
@@ -130,8 +141,8 @@ export async function searchWorkflows(
     byId.set(hit.id, prev ? mergeDraft(prev, hit) : hit);
   }
   return [...byId.values()]
-    .map((hit) => toSearchHit(hit, thisDevice))
-    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .map((hit) => toSearchHit(hit, thisDevice, library))
+    .sort(compareSearchHits)
     .slice(0, SEARCH_LIMIT);
 }
 
@@ -151,7 +162,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
     link: linkFor(id),
     importLink: `bao://import/${id}`,
     source: originLabel(found),
-    lastGreen: when(found.lastGreenAt),
+    lastGreen: when(latestGreen(found.lastGreenAt, localGreenAt(library, id))),
   };
 }
 
@@ -179,9 +190,11 @@ export async function runWorkflow(
   if (placed && !placed.local) materializeWorkflow(library, placed);
   const loaded = request.document ? migrate(request.document) : placed!.document;
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
-  const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => placed
-    ? { ...outcome, source: originLabel(placed), lastGreen: when(placed.lastGreenAt) }
-    : outcome;
+  const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
+    const workflowId = outcome.workflowId || placed?.document.id || "";
+    const lastGreen = when(latestGreen(placed?.lastGreenAt, workflowId ? localGreenAt(library, workflowId) : undefined));
+    return placed ? { ...outcome, source: originLabel(placed), lastGreen } : { ...outcome, lastGreen };
+  };
   const inputs: ReplayArgs = {
     ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
     ...(resumed?.publicInputs ?? {}),
@@ -737,6 +750,8 @@ interface RemotePayload {
   lastGreenAt?: unknown;
   deviceName?: string | null;
   forkedFrom?: string | null;
+  visibility?: string;
+  owned?: boolean;
 }
 
 function draftFromLocal(hit: {
@@ -780,7 +795,7 @@ function mergeDraft(prev: DraftHit, hit: DraftHit): DraftHit {
   };
 }
 
-function toSearchHit(hit: DraftHit, thisDevice: string): SearchHit {
+function toSearchHit(hit: DraftHit, thisDevice: string, library: Library): SearchHit {
   return {
     id: hit.id,
     title: hit.title,
@@ -788,11 +803,40 @@ function toSearchHit(hit: DraftHit, thisDevice: string): SearchHit {
     site: hit.site,
     category: hit.category,
     source: originLabel({ ...hit, thisDevice }),
-    lastGreen: when(hit.lastGreenAt),
+    lastGreen: when(latestGreen(hit.lastGreenAt, localGreenAt(library, hit.id))),
     score: hit.score,
     inputs: hit.inputs,
     link: hit.link || linkFor(hit.id),
   };
+}
+
+function localGreenAt(library: Library, id: string): number | undefined {
+  let latest = 0;
+  for (const run of library.listRuns()) {
+    if (run.workflowId !== id) continue;
+    if (run.status !== "passed" && run.status !== "ok") continue;
+    if (run.at > latest) latest = run.at;
+  }
+  return latest || undefined;
+}
+
+function latestGreen(...values: unknown[]): number | undefined {
+  let best = 0;
+  for (const value of values) {
+    const at = epoch(value);
+    if (at > best) best = at;
+  }
+  return best || undefined;
+}
+
+function epoch(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
 }
 
 async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): Promise<Located> {
@@ -846,7 +890,10 @@ function materializeWorkflow(library: Library, found: Located): void {
 async function remoteWorkflow(library: Library, id: string, auth?: RemoteAuth): Promise<(RemotePayload & { bucket: Bucket }) | null> {
   const state = loadState(library.root);
   const owned = await remoteFetch<RemotePayload>(state, "GET", `/api/workflows/${encodeURIComponent(id)}`, undefined, auth);
-  if (owned?.document) return { ...owned, bucket: "mine" };
+  if (owned?.document) {
+    const bucket: Bucket = owned.visibility === "public" && owned.owned === false ? "public" : "mine";
+    return { ...owned, bucket };
+  }
   const pub = await remoteFetch<RemotePayload>(state, "GET", `/api/marketplace/${encodeURIComponent(id)}`, undefined, auth);
   if (pub?.document) return { ...pub, bucket: "public" };
   return null;
