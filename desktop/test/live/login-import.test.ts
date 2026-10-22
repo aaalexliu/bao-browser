@@ -1,8 +1,9 @@
 // Real Chrome, synthetic profile only. The cookie values and storage values
 // below are fixtures. Assertions must not include them in failure text.
 
+import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { chromium, type Page } from "playwright";
@@ -20,6 +21,9 @@ const ARTIFACTS = "/opt/cursor/artifacts";
 
 test("import cookies, localStorage, and IndexedDB, then block a dead session", { timeout: 180_000 }, async () => {
   mkdirSync(ARTIFACTS, { recursive: true });
+  for (const stale of ["login-picker.png", "login-signed-in.png", "login-signed-out-bot.png", "login-keychain-missed.png"]) {
+    rmSync(path.join(ARTIFACTS, stale), { force: true });
+  }
   const server = await startSite();
   const port = (server.address() as { port: number }).port;
   const origin = `http://127.0.0.1:${port}`;
@@ -73,7 +77,10 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (selected !== "true") throw new Error("profile with the most matches was not selected");
     const initials = (await ui.locator("[data-import-profile='Profile 1'] .avatar").innerText()).trim();
     if (initials !== "GH") throw new Error("profile without a picture did not show initials");
-    if (await ui.locator("[data-import-profile=Default] img").count() !== 1) throw new Error("profile picture was not shown");
+    const adaMark = (await ui.locator("[data-import-profile=Default] .avatar").innerText()).trim();
+    if (adaMark !== "AL") throw new Error("flat profile picture did not use initials");
+    const adaBg = await ui.locator("[data-import-profile=Default] .avatar").evaluate((el) => el.style.backgroundColor || el.style.background);
+    if (!/ff8080|255,\s*128,\s*128/i.test(String(adaBg))) throw new Error("initials were not drawn on the picture color");
     const act = await ui.locator("#act-bar").innerText();
     if (!act.includes("You need to act")) throw new Error("import act bar was missing");
     if (!act.includes("Grace Hopper")) throw new Error("act bar did not name the selected profile");
@@ -83,6 +90,10 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-picker-dark.png"), fullPage: true });
     await ui.click("#theme-toggle");
     await ui.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await ui.click("#import-decline");
+    await ui.waitForFunction(() => !document.querySelector("#act-bar"));
+    await ui.click("#show-profiles");
+    await ui.waitForSelector("#act-bar");
 
     await ui.click("[data-import-profile=Default]");
     await ui.click("#import-selected");
@@ -93,8 +104,11 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (!yes.includes("IndexedDB")) throw new Error("import did not report IndexedDB");
     assertNoValue(yes, SESSION);
     assertNoValue(yes, DEVICE);
-    await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-in-light.png"), fullPage: true });
+    if (await ui.locator("#act-bar").count() !== 0) throw new Error("act bar stayed after import");
     await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Live"));
+    const savedText = await ui.locator("#saved-logins").innerText();
+    if (!/UTC|GMT|EDT|EST|PDT|PST/.test(savedText)) throw new Error("probe time has no zone label");
+    if (process.env.TZ === "America/New_York" && !/EDT|EST/.test(savedText)) throw new Error("probe time ignored America/New_York");
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-saved-light.png"), fullPage: true });
     await ui.click("#theme-toggle");
     await ui.waitForFunction(() => document.documentElement.dataset.theme === "dark");
@@ -157,6 +171,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (!missed.includes("A missed prompt does not mean the password was wrong.")) throw new Error("missed prompt copy changed");
     assertNoValue(missed, SESSION);
     if (existsSync(path.join(keyHome, "chrome-profile"))) throw new Error("a missed keychain prompt launched Chrome");
+    if (await keyUi.locator("#act-bar").count() !== 0) throw new Error("act bar stayed after the keychain result");
     await keyUi.screenshot({ path: path.join(ARTIFACTS, "login-keychain-missed-light.png"), fullPage: true });
     await keyUi.click("#theme-toggle");
     await keyUi.waitForFunction(() => document.documentElement.dataset.theme === "dark");
@@ -196,6 +211,137 @@ test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 },
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("import a public demo login, then block the run after the cookie is cleared", { timeout: 180_000 }, async () => {
+  const userData = tempDir("bao-public-chrome-");
+  const home = tempDir("bao-public-home-");
+  const baoProfile = path.join(home, "chrome-profile");
+  if (userData.includes(`${path.sep}.config${path.sep}google-chrome`) || userData.includes(`${path.sep}Google${path.sep}Chrome`)) {
+    throw new Error("the public login used a real Chrome profile");
+  }
+  await signIntoDemo(userData);
+  writeLocalState(userData, [{ directory: "Default", name: "Tom Smith", email: "tomsmith@example.com" }]);
+  const app = await startApp({
+    home,
+    chromeUserData: userData,
+    baoProfile,
+    loginKeys: { platform: "linux" },
+  });
+  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
+  const probe = "https://the-internet.herokuapp.com/secure";
+  try {
+    await ui.goto(`http://127.0.0.1:${app.port}/`);
+    await ui.evaluate(() => localStorage.removeItem("bao-theme"));
+    await ui.reload();
+    await ui.click("nav button[data-screen=logins]");
+    await ui.fill("#login-site", probe);
+    await ui.click("#show-profiles");
+    await ui.waitForSelector("[data-import-profile=Default]");
+    const picker = await ui.locator("body").innerText();
+    if (!picker.includes("Tom Smith")) throw new Error("public profile picker missed the throwaway profile");
+    if (picker.includes("SuperSecretPassword")) throw new Error("the demo password was shown");
+    await ui.click("#import-selected");
+    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("Signed in: yes"), { timeout: 60_000 });
+    if (await ui.locator("#act-bar").count() !== 0) throw new Error("act bar stayed after the public import");
+    await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Live"));
+    const signedIn = await ui.locator("body").innerText();
+    if (!signedIn.includes("Signed in: yes") || !signedIn.includes("Live")) throw new Error("public import did not show a live session");
+    if (signedIn.includes("SuperSecretPassword")) throw new Error("the demo password was shown");
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-in-light.png"), fullPage: true });
+
+    await clearBaoCookies(baoProfile);
+    const workflow: WorkflowV2 = {
+      schema: "bao.workflow/v2",
+      version: 2,
+      id: "wf-public",
+      name: "Public gate",
+      startUrl: probe,
+      inputs: [],
+      steps: [{
+        id: "s1",
+        index: 0,
+        action: "click",
+        label: "Go",
+        surface: "dom",
+        timeoutMs: 1000,
+        identity: { surface: "dom", role: "button", testId: "missing", path: [] },
+      }],
+      createdAt: 1,
+    };
+    app.library.save(workflow);
+    await ui.click("nav button[data-screen=replay]");
+    await ui.waitForSelector("#wf");
+    await ui.selectOption("#wf", workflow.id);
+    await ui.click("#run");
+    await ui.waitForFunction(() => (document.querySelector("#run-status")?.textContent || "").includes("Needs sign-in"), { timeout: 60_000 });
+    const gate = await ui.locator("#live").innerText();
+    if (!gate.includes("Needs sign-in")) throw new Error("the pre-run gate did not block");
+    if (!gate.includes("The session is not live")) throw new Error("needs sign-in copy was missing");
+    if (gate.includes("SuperSecretPassword")) throw new Error("the demo password was shown");
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-needs-sign-in-light.png"), fullPage: true });
+  } finally {
+    await browser.close().catch(() => undefined);
+    await app.close();
+  }
+  assertDistinctShots();
+});
+
+async function signIntoDemo(userData: string): Promise<void> {
+  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true });
+  try {
+    const page = ctx.pages()[0] || await ctx.newPage();
+    await page.goto("https://the-internet.herokuapp.com/login", { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.fill("#username", "tomsmith");
+    await page.fill("#password", "SuperSecretPassword!");
+    await Promise.all([
+      page.waitForURL(/\/secure/, { timeout: 20_000 }),
+      page.click("button[type=submit]"),
+    ]);
+    const body = await page.locator("body").innerText();
+    if (!body.includes("You logged into a secure area")) throw new Error("public demo login did not reach the secure area");
+    if (!page.url().includes("/secure")) throw new Error("public demo login did not stay on the secure page");
+  } finally {
+    await ctx.close();
+  }
+}
+
+async function clearBaoCookies(baoProfile: string): Promise<void> {
+  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
+  try {
+    await ctx.clearCookies();
+  } finally {
+    await ctx.close();
+  }
+}
+
+const SHOTS = [
+  "login-picker-light.png",
+  "login-picker-dark.png",
+  "login-saved-light.png",
+  "login-saved-dark.png",
+  "login-signed-out-bot-light.png",
+  "login-keychain-missed-light.png",
+  "login-keychain-missed-dark.png",
+  "login-signed-in-light.png",
+  "login-needs-sign-in-light.png",
+];
+
+function assertDistinctShots(): void {
+  const hashes = new Map<string, string>();
+  const lines: string[] = [];
+  for (const name of SHOTS) {
+    const file = path.join(ARTIFACTS, name);
+    if (!existsSync(file)) throw new Error(`missing screenshot ${name}`);
+    const hash = createHash("md5").update(readFileSync(file)).digest("hex");
+    for (const [prior, priorHash] of hashes) {
+      if (priorHash === hash) throw new Error(`${name} duplicates ${prior}`);
+    }
+    hashes.set(name, hash);
+    lines.push(`${hash}  ${name}`);
+  }
+  writeFileSync(path.join(ARTIFACTS, "login-shots.md5"), `${lines.join("\n")}\n`);
+}
 
 function sessionCookieOnDisk(profile: string): { expires: string } | null {
   const candidates = [

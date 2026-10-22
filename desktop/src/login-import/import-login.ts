@@ -7,6 +7,7 @@ import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome } from "../launch";
 import { assertNotDailyChrome } from "../profile";
+import { imageMime, presentAvatar } from "./avatar";
 import { KEYCHAIN_PREVIEW, keyRingFromSources, keychainMessage, type KeySources } from "./keys";
 import { judgeSignedIn, type ProbeObservation } from "./probe";
 import { buildReport } from "./report";
@@ -353,7 +354,7 @@ async function summarizeProfile(
     directory,
     name: info.gaia_name || info.name || directory,
     email: info.user_name || "",
-    avatarDataUrl: avatarDataUrl(profileDir, info.gaia_picture_file_name),
+    ...avatarFields(profileDir, info.gaia_picture_file_name),
     matching: summary.matching,
     expired: summary.expired,
     botManager: summary.botManager,
@@ -364,23 +365,15 @@ async function summarizeProfile(
   };
 }
 
-function avatarDataUrl(profileDir: string, fileName: string | undefined): string | null {
+function avatarFields(profileDir: string, fileName: string | undefined): { avatarDataUrl: string | null; avatarColor: string | null } {
   const name = fileName || "Google Profile Picture.png";
-  if (name.includes("/") || name.includes("\\") || name.includes("..")) return null;
+  if (name.includes("/") || name.includes("\\") || name.includes("..")) return { avatarDataUrl: null, avatarColor: null };
   const file = path.join(profileDir, name);
-  if (!existsSync(file)) return null;
+  if (!existsSync(file)) return { avatarDataUrl: null, avatarColor: null };
   const buf = readFileSync(file);
-  if (buf.length === 0 || buf.length > 512 * 1024) return null;
-  const mime = imageMime(buf);
-  if (!mime) return null;
-  return `data:${mime};base64,${buf.toString("base64")}`;
-}
-
-function imageMime(buf: Buffer): string | null {
-  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-  if (buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return "image/webp";
-  return null;
+  if (buf.length === 0 || buf.length > 512 * 1024) return { avatarDataUrl: null, avatarColor: null };
+  if (!imageMime(buf)) return { avatarDataUrl: null, avatarColor: null };
+  return presentAvatar(buf);
 }
 
 function safeDirectory(directory: string): boolean {

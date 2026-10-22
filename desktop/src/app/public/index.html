@@ -222,7 +222,7 @@
     const act = document.getElementById("act");
     let state = { recording: false, notices: [], settings: { heal: "auto" }, workflows: [], trails: [], runs: [] };
     let screen = "sessions";
-    let login = { site: "", probeUrl: "", selector: "", text: "", origins: "", botCookies: "skip", advancedOpen: false, preview: null, report: null, error: "", selected: "", saved: [] };
+    let login = { site: "", probeUrl: "", selector: "", text: "", origins: "", botCookies: "skip", advancedOpen: false, preview: null, report: null, error: "", selected: "", saved: [], settled: false };
     let lastRun = null;
     let lastWf = "";
     let banner = null;
@@ -358,6 +358,7 @@
     }
 
     function loginAct() {
+      if (login.settled) return "";
       const preview = login.preview;
       const chosen = chosenProfile();
       if (!preview || !chosen) return "";
@@ -365,7 +366,10 @@
       return `<section id="act-bar" data-ask="import">
         <p class="kicker">You need to act · import ${esc(host)}</p>
         <p class="instruction">Import ${esc(chosen.name)} for ${esc(host)}. Bao reads only this site.</p>
-        <div class="row"><button class="primary" id="import-selected" type="button">Import from ${esc(chosen.name)}</button></div>
+        <div class="row">
+          <button class="primary" id="import-selected" type="button">Import from ${esc(chosen.name)}</button>
+          <button type="button" id="import-decline">Decline</button>
+        </div>
       </section>`;
     }
 
@@ -378,7 +382,9 @@
           : site.signedIn === false
             ? `<span class="status paused">Needs sign-in</span>`
             : `<span class="status unchecked">Not checked</span>`;
-        const when = site.lastProbeAt ? `Last checked ${esc(formatWhen(site.lastProbeAt))}` : "Not checked yet";
+        const when = site.lastProbeLabel
+          ? `Last checked ${esc(site.lastProbeLabel)}`
+          : site.lastProbeAt ? `Last checked ${esc(formatWhen(site.lastProbeAt))}` : "Not checked yet";
         return `<div class="row saved-row" data-saved-origin="${esc(site.origin)}">
           <strong>${esc(site.origin)}</strong>
           ${badge}
@@ -392,7 +398,13 @@
 
     function formatWhen(at) {
       try {
-        return new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        return new Intl.DateTimeFormat("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }).format(new Date(at));
       } catch {
         return "";
       }
@@ -402,9 +414,7 @@
       const preview = login.preview;
       const profiles = preview && preview.profiles ? preview.profiles.map((profile) => {
         const on = profile.directory === login.selected;
-        const avatar = profile.avatarDataUrl
-          ? `<img alt="" src="${esc(profile.avatarDataUrl)}">`
-          : `<div class="avatar">${esc(initials(profile.name))}</div>`;
+        const avatar = profileMark(profile);
         const bot = profile.botManager ? `<div class="meta">${profile.botManager} anti-bot ${profile.botManager === 1 ? "cookie" : "cookies"} skipped</div>` : "";
         const expired = profile.expired ? `<div class="meta">${profile.expired} expired left behind</div>` : "";
         const storage = `<div class="meta">${profile.localStorageItems || 0} localStorage ${(profile.localStorageItems || 0) === 1 ? "item" : "items"} · ${profile.indexedDbOrigins || 0} IndexedDB ${(profile.indexedDbOrigins || 0) === 1 ? "origin" : "origins"}</div>`;
@@ -443,6 +453,20 @@
         <div class="profiles">${profiles}</div>
         ${report}
       </section>`;
+    }
+
+    function profileMark(profile) {
+      if (profile.avatarDataUrl) return `<img alt="" src="${esc(profile.avatarDataUrl)}">`;
+      const color = /^#[0-9a-fA-F]{6}$/.test(profile.avatarColor || "") ? profile.avatarColor : "";
+      const style = color ? ` style="background:${esc(color)};color:${esc(inkFor(color))}"` : "";
+      return `<div class="avatar"${style}>${esc(initials(profile.name))}</div>`;
+    }
+
+    function inkFor(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#1d1d1f" : "#ffffff";
     }
 
     function renderLoginReport(report) {
@@ -577,6 +601,7 @@
         readLoginForm();
         login.error = "";
         login.report = null;
+        login.settled = false;
         const res = await fetch("/api/login-import/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(loginPayload()) });
         const body = await res.json();
         await loadSaved();
@@ -589,6 +614,7 @@
       document.querySelectorAll("[data-import-profile]").forEach((btn) => btn.onclick = () => {
         readLoginForm();
         login.selected = btn.dataset.importProfile;
+        login.settled = false;
         render();
       });
       const go = document.getElementById("import-selected");
@@ -606,6 +632,13 @@
         await loadSaved();
         if (!res.ok) { login.error = body.error || "Import failed"; render(); return; }
         login.report = body;
+        login.settled = true;
+        render();
+      };
+      const decline = document.getElementById("import-decline");
+      if (decline) decline.onclick = () => {
+        readLoginForm();
+        login.settled = true;
         render();
       };
       document.querySelectorAll("[data-recheck]").forEach((btn) => btn.onclick = async () => {

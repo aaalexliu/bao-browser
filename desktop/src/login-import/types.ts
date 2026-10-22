@@ -26,6 +26,8 @@ export interface PublicProfile {
   name: string;
   email: string;
   avatarDataUrl: string | null;
+  /** Set when the picture is one flat color. The card draws initials on it. */
+  avatarColor: string | null;
   matching: number;
   expired: number;
   botManager: number;

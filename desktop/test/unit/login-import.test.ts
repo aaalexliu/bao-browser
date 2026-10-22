@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { deflateSync, crc32 } from "node:zlib";
 import { startApp } from "../../src/app/server";
+import { presentAvatar } from "../../src/login-import/avatar";
 import { keepSessionCookies, OWNED_CHROME_ARGS, RESTORE_LAST_SESSION } from "../../src/launch";
 import { classifyBotCookie } from "../../src/login-import/bot";
 import { deriveAesKey, decryptCookieValue, encryptCookieValue, LINUX_ITERATIONS, LINUX_PEANUTS, MAC_ITERATIONS, plaintextForCookie } from "../../src/login-import/crypto";
@@ -277,7 +280,8 @@ test("profile preview shows name, email, avatar, and counts, and skips other pro
   assert.ok(ada && grace);
   assert.equal(ada.name, "Ada Lovelace");
   assert.equal(ada.email, "ada@example.com");
-  assert.equal(ada.avatarDataUrl?.startsWith("data:image/png;base64,"), true);
+  assert.equal(ada.avatarDataUrl, null);
+  assert.equal(ada.avatarColor, "#ff8080");
   assert.equal(ada.matching, 2);
   assert.equal(ada.expired, 1);
   assert.equal(ada.botManager, 1);
@@ -621,6 +625,77 @@ test("saved sites keep same-host origins and unsaved origins are not gated", () 
   assert.equal(store.has("https://www.example.com"), false);
   store.remove("https://www.example.com");
 });
+
+test("a flat profile picture becomes initials on that color, and a photo stays an image", () => {
+  const flat = presentAvatar(TINY_PNG);
+  assert.equal(flat.avatarDataUrl, null);
+  assert.equal(flat.avatarColor, "#ff8080");
+  const photo = presentAvatar(rgbaPng(2, 2, Buffer.from([
+    255, 0, 0, 255,
+    0, 255, 0, 255,
+    0, 0, 255, 255,
+    255, 255, 255, 255,
+  ])));
+  assert.equal(photo.avatarColor, null);
+  assert.equal(photo.avatarDataUrl?.startsWith("data:image/png;base64,"), true);
+  const solid = presentAvatar(rgbaPng(2, 1, Buffer.from([
+    0, 0, 255, 255,
+    0, 0, 255, 255,
+  ])));
+  assert.equal(solid.avatarDataUrl, null);
+  assert.equal(solid.avatarColor, "#0000ff");
+});
+
+function rgbaPng(width: number, height: number, rgba: Buffer): Buffer {
+  const stride = 4;
+  const raw = Buffer.alloc(height * (1 + width * stride));
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (1 + width * stride);
+    raw[row] = 0;
+    rgba.copy(raw, row + 1, y * width * stride, (y + 1) * width * stride);
+  }
+  const compressed = deflateSync(raw);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", compressed),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body) >>> 0);
+  return Buffer.concat([length, body, crc]);
+}
+
+test("probe times use the machine zone", () => {
+  const at = Date.parse("2026-10-22T04:04:00.000Z");
+  const compiled = require.resolve("../../src/login-import/time");
+  const eastern = probeTime(compiled, at, "America/New_York");
+  assert.equal(eastern, "Oct 22, 12:04 AM EDT");
+  const utc = probeTime(compiled, at, "UTC");
+  assert.match(utc, /4:04 AM/);
+  assert.match(utc, /UTC|GMT/);
+  assert.equal(utc.includes("12:04"), false);
+});
+
+function probeTime(compiled: string, at: number, tz: string): string {
+  const result = spawnSync(process.execPath, ["-e", `process.stdout.write(require(${JSON.stringify(compiled)}).formatProbeTime(${at}))`], {
+    env: { ...process.env, TZ: tz },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  return result.stdout;
+}
 
 test("the profile with the most matches is preferred", () => {
   assert.equal(preferredProfile([]), null);

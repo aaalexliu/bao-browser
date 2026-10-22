@@ -12,6 +12,7 @@ import { importInOwnedChrome, openOwnedSignIn, previewChromeProfiles, probeOwned
 import { readPlatformKeys, type KeySources } from "../login-import/keys";
 import { isNeedsSignIn, runIfSignedIn } from "../login-import/session-gate";
 import { SiteStore, siteOrigin } from "../login-import/sites";
+import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
 import { launchOwnedChrome } from "../launch";
 import { BrowserDriver } from "../v1/browser-driver";
@@ -205,7 +206,7 @@ export async function startApp(opts: {
         return json(res, { ok: true });
       }
       if (req.method === "GET" && url.pathname === "/api/login-sites") {
-        return json(res, { sites: sites.list() });
+        return json(res, { sites: sites.list().map(publicSite) });
       }
       if (req.method === "PUT" && url.pathname === "/api/login-sites") {
         const body = await readBody(req) as Partial<SiteLoginConfig> & LoginBody;
@@ -487,6 +488,13 @@ interface LoginBody {
 function clickFrom(body: LoginBody): ClickInput {
   if (body.consent !== true) throw new ConsentRequired();
   return { site: body.site, clicked: true };
+}
+
+function publicSite(site: SiteLoginConfig): SiteLoginConfig & { lastProbeLabel: string | null } {
+  return {
+    ...site,
+    lastProbeLabel: typeof site.lastProbeAt === "number" ? formatProbeTime(site.lastProbeAt) : null,
+  };
 }
 
 function siteConfig(body: Partial<SiteLoginConfig> & LoginBody, prior?: SiteLoginConfig): SiteLoginConfig {

@@ -4,7 +4,7 @@ Bao can bring a single site's session from the person's Chrome into Bao's own Ch
 
 The form asks for the site. Probe URL, extra same-host origins, a signed-in selector or text, and the anti-bot choice sit under Advanced. A blank probe uses the page that was typed, when that page is an http or https URL. Otherwise it uses the origin. Anti-bot cookies are skipped unless Advanced says to include them.
 
-The profile picker lists every profile in that Chrome's `Local State`: name, email, avatar or initials, how many cookies match the site, how many of those will be imported, how many are expired, how many are anti-bot cookies, the localStorage item count, and the IndexedDB origin count. The profile with the most matching cookies is already selected. The person can choose another, then import. Bao does not assume `Default` when another profile has more matches.
+The profile picker lists every profile in that Chrome's `Local State`: name, email, avatar or initials, how many cookies match the site, how many of those will be imported, how many are expired, how many are anti-bot cookies, the localStorage item count, and the IndexedDB origin count. A picture that is only one color is shown as initials on that color. The profile with the most matching cookies is already selected. The person can import that profile or decline. The act bar stays only while that choice is open. Bao does not assume `Default` when another profile has more matches.
 
 ## What is restored
 
