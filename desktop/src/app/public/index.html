@@ -205,6 +205,41 @@
     .status.passed { background: var(--ok-bg); color: var(--ok); }
     .status.failed { background: var(--bad-bg); color: var(--bad); }
     .status.paused { background: var(--need-bg); color: var(--need); }
+    .status.unchecked { background: var(--select); color: var(--quiet); }
+    details { margin: 0.7rem 0 0.2rem; }
+    details summary { cursor: pointer; font-weight: 650; }
+    .hint { color: var(--quiet); font-size: var(--text-sm); margin: 0.35rem 0 0.2rem; }
+    .profiles { display: grid; gap: 0.6rem; }
+    button.profile {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      column-gap: 0.75rem;
+      align-items: center;
+      text-align: left;
+      width: 100%;
+      height: auto;
+      padding: 0.75rem 0.9rem;
+      border-radius: var(--radius);
+      background: var(--card);
+    }
+    button.profile.on { background: var(--select); border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+    .profile img, .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--select);
+      object-fit: cover;
+      display: grid;
+      place-items: center;
+      font-weight: 650;
+    }
+    .profile .email, .profile .meta { color: var(--quiet); font-size: var(--text-sm); }
+    .saved-row { padding: 0.45rem 0; border-top: 1px solid var(--line); }
+    .saved-row strong { min-width: 12rem; }
+    .saved-row .quiet { margin-right: auto; }
+    .result h3 { margin: 0 0 0.4rem; }
+    .result h3.pass { color: var(--ok); }
+    .result h3.fail { color: var(--need); }
     .status.healed { background: var(--heal-bg); color: var(--heal); }
     .status.provisional { background: var(--prov-bg); color: var(--prov); }
     .badge.expect { background: var(--heal-bg); color: var(--heal); }

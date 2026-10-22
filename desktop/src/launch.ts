@@ -28,7 +28,6 @@ export const OWNED_CHROME_ARGS = [
   // Continue where you left off. Chrome then keeps session cookies on a clean exit.
   "--restore-last-session",
 ];
-const LAUNCH_ARGS = OWNED_CHROME_ARGS;
 
 /** Chrome's "Continue where you left off". Session cookies survive a clean exit. */
 export const RESTORE_LAST_SESSION = 1;
@@ -52,11 +51,16 @@ export function keepSessionCookies(userDataDir: string): void {
   writeFileSync(file, JSON.stringify(prefs));
 }
 
+/** Owned Chrome only. Account Chrome never receives the sandbox opt-in. */
+export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env): string[] {
+  const mac = process.platform === "darwin" ? ["--force-renderer-accessibility"] : [];
+  const sandbox = env.BAO_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...extra];
+}
+
 /** macOS Accessibility only sees the page when the renderer publishes it. */
 function ownedLaunchArgs(extra: string[] | undefined): string[] {
-  const mac = process.platform === "darwin" ? ["--force-renderer-accessibility"] : [];
-  const sandbox = process.env.BAO_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
-  return [...LAUNCH_ARGS, ...mac, ...sandbox, ...(extra ?? [])];
+  return ownedChromeLaunchArgs(extra ?? []);
 }
 
 const DAILY_DIR = [
@@ -82,7 +86,6 @@ export function accountLaunchArgs(port: number): string[] {
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-sync",
-    "--restore-last-session",
   ];
   if (process.platform === "darwin") args.push("--force-renderer-accessibility");
   for (const flag of BANNED_ACCOUNT_ARGS) {

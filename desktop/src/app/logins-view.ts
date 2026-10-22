@@ -152,6 +152,52 @@ function renderLoginReport(report: PublicImportResult): string {
   return `<div class="card result" id="login-result"><h3 class="${tone}">${esc(report.headline)}</h3><p>${esc(report.message || "")}</p>${keychain}${rejected}${failed}<div class="row">${signIn}</div></div>`;
 }
 
+export function preferredDirectory(profiles: { directory: string; matching: number; willImport: number }[]): string {
+  let best: { directory: string; matching: number; willImport: number } | null = null;
+  for (const profile of profiles) {
+    if (!best || profile.willImport > best.willImport || (profile.willImport === best.willImport && profile.matching > best.matching)) best = profile;
+  }
+  return best?.directory || "";
+}
+
+export function syncPanel(sync: {
+  server?: string;
+  deviceName?: string;
+  paired?: boolean;
+  lastResult?: string;
+  backupPath?: string;
+  devices?: { name: string }[];
+  categories?: { category: string; count: number }[];
+  localCategories?: { category: string; count: number }[];
+  conflicts?: { id: string; remoteVersion: number; file: string }[];
+} | undefined): string {
+  const row = sync || {};
+  const devices = (row.devices || []).map((device) => `<li>${esc(device.name)}</li>`).join("") || "<li>Pair this Mac to see your devices.</li>";
+  const account = (row.categories || []).map((item) => `<li>${esc(item.category)} <strong>${esc(item.count)}</strong></li>`).join("") || "<li>None yet.</li>";
+  const local = (row.localCategories || []).map((item) => `<li>${esc(item.category)} <strong>${esc(item.count)}</strong></li>`).join("") || "<li>None yet.</li>";
+  const conflicts = (row.conflicts || []).map((item) => `<li>${esc(item.id)} kept remote v${esc(item.remoteVersion)}. Your copy is ${esc(item.file)}</li>`).join("");
+  return `<div class="card" id="sync-panel">
+    <h3>Sync</h3>
+    <p>Secrets, cookies, and unredacted screenshots stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
+    <label>Server <input id="sync-server" value="${esc(row.server || "")}" placeholder="http://127.0.0.1:3000"></label>
+    <label>Pairing code <input id="pair-code" autocomplete="off"></label>
+    <label>Device name <input id="device-name" value="${esc(row.deviceName || "")}"></label>
+    <div class="row">
+      <button id="pair" type="button">Pair</button>
+      <button class="primary" id="sync-now" type="button">Sync</button>
+      <button id="sync-push" type="button">Push</button>
+      <button id="sync-pull" type="button">Pull</button>
+    </div>
+    <p>Last result: ${esc(row.lastResult || "Not synced yet.")}</p>
+    <p>Backup: ${esc(row.backupPath || "Taken automatically before the first sync.")}</p>
+    <p>Paired: ${row.paired ? "yes" : "no"}</p>
+    <h3>Devices</h3><ul>${devices}</ul>
+    <h3>On this Mac</h3><ul>${local}</ul>
+    <h3>On the account</h3><ul>${account}</ul>
+    ${conflicts ? `<h3>Conflicts</h3><ul>${conflicts}</ul>` : ""}
+  </div>`;
+}
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return (parts.slice(0, 2).map((part) => part[0] || "").join("") || "?").toUpperCase();

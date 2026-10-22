@@ -3,7 +3,7 @@
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
-import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, type LoginForm, type SavedSite } from "./logins-view";
+import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
@@ -42,7 +42,18 @@ type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" |
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string };
+  sync?: {
+    server?: string;
+    deviceName?: string;
+    paired?: boolean;
+    lastResult?: string;
+    backupPath?: string;
+    devices?: { name: string }[];
+    categories?: { category: string; count: number }[];
+    localCategories?: { category: string; count: number }[];
+    conflicts?: { id: string; remoteVersion: number; file: string }[];
+  };
   trails?: string[];
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
@@ -224,7 +235,10 @@ function replayForm(): string {
       <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
     </select></label>
     <form id="args"></form>
-    <button class="primary" id="run" type="button">Run</button>
+    <div class="row">
+      <button class="primary" id="run" type="button">Run</button>
+      <button id="rerun" type="button">Re-run with past inputs</button>
+    </div>
     <div id="live">${gateNote ? needsSignInHtml(gateNote) : ""}</div>
   </section>`;
 }
@@ -244,6 +258,7 @@ function settings(): string {
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
     <button id="save-settings" class="primary" type="button">Save</button>
+    ${syncPanel(state.sync)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
@@ -315,6 +330,20 @@ function bind(): void {
   };
   const run = document.getElementById("run");
   if (run) run.onclick = () => void runReplay();
+  const rerun = document.getElementById("rerun");
+  if (rerun) rerun.onclick = () => void fillPastInputs();
+  const pair = document.getElementById("pair");
+  if (pair) pair.onclick = () => void postSync("/api/sync/pair", {
+    code: (document.getElementById("pair-code") as HTMLInputElement).value,
+    server: (document.getElementById("sync-server") as HTMLInputElement).value,
+    name: (document.getElementById("device-name") as HTMLInputElement).value,
+  });
+  const syncNow = document.getElementById("sync-now");
+  if (syncNow) syncNow.onclick = () => void postSync("/api/sync", { mode: "sync" });
+  const syncPush = document.getElementById("sync-push");
+  if (syncPush) syncPush.onclick = () => void postSync("/api/sync", { mode: "push" });
+  const syncPull = document.getElementById("sync-pull");
+  if (syncPull) syncPull.onclick = () => void postSync("/api/sync", { mode: "pull" });
   bindAsk();
   bindHeal();
   const save = document.getElementById("save-settings");
@@ -327,6 +356,7 @@ function bind(): void {
         promoteAfter: Number((document.getElementById("promote-after") as HTMLInputElement).value),
         actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
+        syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
       }),
     });
     renderKey = "";
@@ -864,7 +894,7 @@ function bindLogins(): void {
     }
     login.preview = body;
     const profiles = body.profiles || [];
-    login.selected = profiles.some((profile) => profile.directory === body.preferred) ? (body.preferred || "") : (profiles[0]?.directory || "");
+    login.selected = profiles.some((profile) => profile.directory === body.preferred) ? (body.preferred || "") : preferredDirectory(profiles);
     await loadSaved();
   };
   document.querySelectorAll<HTMLButtonElement>("[data-import-profile]").forEach((btn) => {
@@ -938,6 +968,33 @@ function bindLogins(): void {
 function bindGate(): void {
   const once = document.getElementById("run-sign-in");
   if (once) once.onclick = () => void signInOnce(gateUrl);
+}
+
+async function postSync(url: string, body: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    banner = { id: "sync", title: "Sync", body: err.error || "Sync failed" };
+  }
+  renderKey = "";
+  await refresh();
+}
+
+async function fillPastInputs(): Promise<void> {
+  const wf = document.getElementById("wf") as HTMLSelectElement | null;
+  if (!wf?.value) return;
+  const saved = await (await fetch("/api/workflows/" + encodeURIComponent(wf.value) + "/inputs")).json() as Record<string, string | number>;
+  const form = document.getElementById("args");
+  if (!form) return;
+  for (const el of form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[name]")) {
+    if (el instanceof HTMLInputElement && (el.type === "password" || el.type === "file")) continue;
+    const value = saved[el.name];
+    if (typeof value === "string" || typeof value === "number") el.value = String(value);
+  }
 }
 
 async function signInOnce(url?: string): Promise<void> {

@@ -19,10 +19,12 @@ export function buildReport(input: {
   includedBot: number;
   localStorageItems?: number;
   indexedDbOrigins?: number;
+  localStorageNames?: string[];
+  indexedDbNames?: string[];
 }): PublicImportResult {
   const message = (input.keychain
     ? "Bao did not load the site, because the cookies could not be decrypted."
-    : explain(input)) + storageSentence(input.localStorageItems ?? 0, input.indexedDbOrigins ?? 0);
+    : explain(input)) + storageSentence(input.localStorageItems ?? 0, input.indexedDbOrigins ?? 0) + nameSentence(input.localStorageNames ?? [], input.indexedDbNames ?? []);
   return {
     imported: input.imported,
     signedIn: input.signedIn,
@@ -102,6 +104,13 @@ function storageSentence(items: number, origins: number): string {
   if (items) parts.push(`${items} localStorage ${items === 1 ? "item" : "items"}`);
   if (origins) parts.push(`${origins} IndexedDB ${origins === 1 ? "origin" : "origins"}`);
   return ` Restored ${parts.join(" and ")}.`;
+}
+
+function nameSentence(keys: string[], databases: string[]): string {
+  const parts: string[] = [];
+  if (keys.length) parts.push(`localStorage: ${keys.join(", ")}`);
+  if (databases.length) parts.push(`IndexedDB: ${databases.join(", ")}`);
+  return parts.length ? ` ${parts.join(". ")}.` : "";
 }
 
 function publicReject(item: RejectedCookie): RejectedCookie {

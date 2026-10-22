@@ -161,7 +161,7 @@ The integration branch (pull request 58) is the tree a Mac build should use. It 
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
 
-`docs/mac-test.md` is the path from a fresh macOS account to the signed `Bao.app` on this checkout. After pull request 58 merges, that same tree is `v1/desktop`.
+`docs/mac-test.md` is the path from a fresh macOS account to the signed `Bao.app`. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 stays open until its rebase onto that line is finished. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` to Bao's owned Chrome only.
 
 # Importing one site's login
 

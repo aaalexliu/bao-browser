@@ -3,7 +3,7 @@
 // for every origin. IndexedDB is one directory per origin. Other origins are
 // not returned and not copied.
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { siteOrigin } from "./sites";
@@ -118,6 +118,16 @@ export function copyIndexedDb(sourceProfile: string, baoUserData: string, origin
     if (any) copied.push(origin);
   }
   return copied;
+}
+
+/** Chrome can leave LOCK behind after a clean exit. A stale lock blocks the next open. */
+export function clearIndexedDbLocks(profileDir: string): void {
+  const root = path.join(profileDir, "Default", "IndexedDB");
+  if (!existsSync(root)) return;
+  for (const name of readdirSync(root)) {
+    const lock = path.join(root, name, "LOCK");
+    if (existsSync(lock)) unlinkSync(lock);
+  }
 }
 
 export async function setLocalStorageItems(

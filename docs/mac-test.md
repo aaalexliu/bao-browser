@@ -114,14 +114,14 @@ There is no notarization step.
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
-git fetch origin cursor/integrate-desktop-v1-27d8
-git checkout cursor/integrate-desktop-v1-27d8
+git fetch origin v1/desktop
+git checkout v1/desktop
 git branch --show-current
 ```
 
-Pull request 58 is that branch. After it merges, `git checkout v1/desktop` is the same tree and the commands below do not change.
+Pull request 58 landed here as a merge commit, and pull request 57 followed it. Pull request 59 is still being rebased onto this line. Build from `v1/desktop`.
 
-**What you should see:** `git branch --show-current` prints `cursor/integrate-desktop-v1-27d8` (or `v1/desktop` after the merge). `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
+**What you should see:** `git branch --show-current` prints `v1/desktop`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
 
 ## Build
 

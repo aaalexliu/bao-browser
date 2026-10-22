@@ -64,7 +64,12 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     await ui.click("nav button[data-screen=logins]");
     await ui.fill("#login-site", `${origin}/account`);
     await ui.click("#show-profiles");
-    await ui.waitForSelector("[data-import-profile=Default]");
+    try {
+      await ui.waitForSelector("[data-import-profile=Default]", { timeout: 30_000 });
+    } catch {
+      const text = await ui.locator("body").innerText();
+      throw new Error(`profile picker did not open\n${text.slice(0, 800)}`);
+    }
     const picker = await ui.locator("body").innerText();
     if (!picker.includes("Ada Lovelace") || !picker.includes("ada@example.com")) throw new Error("picker missed Ada");
     if (!picker.includes("Grace Hopper") || !picker.includes("grace@example.com")) throw new Error("picker missed Grace");
@@ -187,7 +192,7 @@ test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 },
   const port = (server.address() as { port: number }).port;
   const origin = `http://127.0.0.1:${port}`;
   const baoProfile = tempDir("bao-session-profile-");
-  const first = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
+  const first = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
   try {
     const page = first.pages()[0] || await first.newPage();
     await page.goto(`${origin}/login`, { waitUntil: "domcontentloaded" });
@@ -201,7 +206,7 @@ test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 },
   const onDisk = sessionCookieOnDisk(baoProfile);
   if (!onDisk) throw new Error("session cookie was not on disk after Chrome exited");
   if (onDisk.expires !== "0") throw new Error("Chrome stored an expiry on the session cookie");
-  const again = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
+  const again = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
   try {
     const page = again.pages()[0] || await again.newPage();
     await page.goto(`${origin}/account`, { waitUntil: "domcontentloaded" });
@@ -242,7 +247,7 @@ test("import a public demo login, then block the run after the cookie is cleared
     if (!picker.includes("Tom Smith")) throw new Error("public profile picker missed the throwaway profile");
     if (picker.includes("SuperSecretPassword")) throw new Error("the demo password was shown");
     await ui.click("#import-selected");
-    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("Signed in: yes"), { timeout: 60_000 });
+    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("Signed in: yes"), undefined, { timeout: 60_000 });
     if (await ui.locator("#act-bar").count() !== 0) throw new Error("act bar stayed after the public import");
     await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Live"));
     const signedIn = await ui.locator("body").innerText();
@@ -274,12 +279,86 @@ test("import a public demo login, then block the run after the cookie is cleared
     await ui.waitForSelector("#wf");
     await ui.selectOption("#wf", workflow.id);
     await ui.click("#run");
-    await ui.waitForFunction(() => (document.querySelector("#run-status")?.textContent || "").includes("Needs sign-in"), { timeout: 60_000 });
+    await ui.waitForFunction(() => (document.querySelector("#run-status")?.textContent || "").includes("Needs sign-in"), undefined, { timeout: 60_000 });
     const gate = await ui.locator("#live").innerText();
     if (!gate.includes("Needs sign-in")) throw new Error("the pre-run gate did not block");
     if (!gate.includes("The session is not live")) throw new Error("needs sign-in copy was missing");
     if (gate.includes("SuperSecretPassword")) throw new Error("the demo password was shown");
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-needs-sign-in-light.png"), fullPage: true });
+    process.env.BAO_SIGNIN_SHOT = path.join(ARTIFACTS, "login-sign-in-window.png");
+    const opened = ui.waitForResponse((res) => res.url().includes("/api/login-import/sign-in"));
+    await ui.click("#run-sign-in");
+    const signRes = await opened;
+    const signBody = await signRes.json() as { opened?: boolean; url?: string; error?: string };
+    if (!signRes.ok() || signBody.opened !== true) throw new Error("sign-in did not open Bao's Chrome");
+    if (signBody.url !== probe) throw new Error("sign-in did not open the probe URL");
+    if (!existsSync(process.env.BAO_SIGNIN_SHOT)) throw new Error("sign-in window shot was not written");
+    if (readFileSync(process.env.BAO_SIGNIN_SHOT).length < 5000) throw new Error("sign-in window shot was empty");
+    const after = await ui.locator("body").innerText();
+    if (after.includes("SuperSecretPassword")) throw new Error("the demo password was shown");
+  } finally {
+    delete process.env.BAO_SIGNIN_SHOT;
+    await browser.close().catch(() => undefined);
+    await app.close();
+  }
+});
+
+test("a public page's localStorage and IndexedDB come back in bao's profile", { timeout: 180_000 }, async () => {
+  const stored = "storage-secret-9f3c";
+  const userData = tempDir("bao-public-storage-");
+  const home = tempDir("bao-public-storage-home-");
+  const baoProfile = path.join(home, "chrome-profile");
+  const origin = "https://the-internet.herokuapp.com";
+  const writer = await launchOwnedChrome({ userDataDir: userData, headless: true, channel: "chrome" });
+  try {
+    const page = writer.pages()[0] || await writer.newPage();
+    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const wrote = await page.evaluate(({ key, value, db }) => {
+      localStorage.setItem(key, value);
+      return new Promise((resolve) => {
+        const open = indexedDB.open(db, 1);
+        open.onupgradeneeded = () => { open.result.createObjectStore("notes", { keyPath: "id" }); };
+        open.onerror = () => resolve(false);
+        open.onsuccess = () => {
+          const database = open.result;
+          const tx = database.transaction("notes", "readwrite");
+          tx.objectStore("notes").put({ id: "1", body: value });
+          tx.oncomplete = () => { database.close(); resolve(true); };
+          tx.onerror = () => { database.close(); resolve(false); };
+        };
+      });
+    }, { key: STORAGE_KEY, value: stored, db: STORAGE_DB });
+    if (wrote !== true) throw new Error("the public page did not accept the storage write");
+  } finally {
+    await writer.close();
+  }
+  writeLocalState(userData, [{ directory: "Default", name: "Public Storage", email: "storage@example.com" }]);
+  const app = await startApp({
+    home,
+    chromeUserData: userData,
+    baoProfile,
+    loginKeys: { platform: "linux" },
+  });
+  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
+  try {
+    await ui.goto(`http://127.0.0.1:${app.port}/`);
+    await ui.evaluate(() => localStorage.removeItem("bao-theme"));
+    await ui.reload();
+    await ui.click("nav button[data-screen=logins]");
+    await ui.fill("#login-site", `${origin}/`);
+    await ui.click("#show-profiles");
+    await ui.waitForSelector("[data-import-profile=Default]");
+    await ui.click("#import-selected");
+    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("localStorage"), undefined, { timeout: 90_000 });
+    const text = await ui.locator("#login-result").innerText();
+    if (!text.includes(STORAGE_KEY)) throw new Error("localStorage name was not shown");
+    if (!text.includes(STORAGE_DB)) throw new Error("IndexedDB name was not shown");
+    if (!/\d+ localStorage item/.test(text)) throw new Error("localStorage count was not shown");
+    if (!/\d+ IndexedDB origin/.test(text)) throw new Error("IndexedDB count was not shown");
+    assertNoValue(text, stored);
+    await ui.screenshot({ path: path.join(ARTIFACTS, "login-storage-public.png"), fullPage: true });
+    await readBackPublicStorage(baoProfile, origin, stored);
   } finally {
     await browser.close().catch(() => undefined);
     await app.close();
@@ -287,17 +366,56 @@ test("import a public demo login, then block the run after the cookie is cleared
   assertDistinctShots();
 });
 
-async function signIntoDemo(userData: string): Promise<void> {
-  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true });
+async function readBackPublicStorage(baoProfile: string, origin: string, expected: string): Promise<void> {
+  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
-    await page.goto("https://the-internet.herokuapp.com/login", { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.fill("#username", "tomsmith");
-    await page.fill("#password", "SuperSecretPassword!");
-    await Promise.all([
-      page.waitForURL(/\/secure/, { timeout: 20_000 }),
-      page.click("button[type=submit]"),
-    ]);
+    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const ok = await page.evaluate(({ key, db, expected: want }) => {
+      if (localStorage.getItem(key) !== want) return false;
+      return new Promise((resolve) => {
+        const open = indexedDB.open(db);
+        open.onerror = () => resolve(false);
+        open.onsuccess = () => {
+          const database = open.result;
+          if (!database.objectStoreNames.contains("notes")) { database.close(); resolve(false); return; }
+          const req = database.transaction("notes", "readonly").objectStore("notes").get("1");
+          req.onsuccess = () => {
+            const body = req.result && typeof req.result === "object" ? (req.result as { body?: string }).body : "";
+            database.close();
+            resolve(body === want);
+          };
+          req.onerror = () => { database.close(); resolve(false); };
+        };
+      });
+    }, { key: STORAGE_KEY, db: STORAGE_DB, expected });
+    if (ok !== true) throw new Error("bao's profile did not read the public storage back");
+  } finally {
+    await ctx.close();
+  }
+}
+
+async function signIntoDemo(userData: string): Promise<void> {
+  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true, channel: "chrome" });
+  try {
+    const page = ctx.pages()[0] || await ctx.newPage();
+    let reached = false;
+    for (let attempt = 0; attempt < 2 && !reached; attempt++) {
+      await page.goto("https://the-internet.herokuapp.com/login", { waitUntil: "domcontentloaded", timeout: 45_000 });
+      const user = page.locator("#username");
+      try {
+        await user.waitFor({ state: "visible", timeout: 20_000 });
+      } catch {
+        continue;
+      }
+      await user.fill("tomsmith");
+      await page.locator("#password").fill("SuperSecretPassword!");
+      await Promise.all([
+        page.waitForURL(/\/secure/, { timeout: 30_000 }),
+        page.click("button[type=submit]"),
+      ]);
+      reached = page.url().includes("/secure");
+    }
     const body = await page.locator("body").innerText();
     if (!body.includes("You logged into a secure area")) throw new Error("public demo login did not reach the secure area");
     if (!page.url().includes("/secure")) throw new Error("public demo login did not stay on the secure page");
@@ -307,13 +425,16 @@ async function signIntoDemo(userData: string): Promise<void> {
 }
 
 async function clearBaoCookies(baoProfile: string): Promise<void> {
-  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
+  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
   try {
     await ctx.clearCookies();
   } finally {
     await ctx.close();
   }
 }
+
+const STORAGE_KEY = "bao-note";
+const STORAGE_DB = "bao-notes";
 
 const SHOTS = [
   "login-picker-light.png",
@@ -325,6 +446,8 @@ const SHOTS = [
   "login-keychain-missed-dark.png",
   "login-signed-in-light.png",
   "login-needs-sign-in-light.png",
+  "login-sign-in-window.png",
+  "login-storage-public.png",
 ];
 
 function assertDistinctShots(): void {
@@ -400,7 +523,7 @@ async function startSite(): Promise<Server> {
 }
 
 async function writeChromeStorage(userData: string, port: number): Promise<void> {
-  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true });
+  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true, channel: "chrome" });
   try {
     assertNoStealth(userData);
     const page = ctx.pages()[0] || await ctx.newPage();
@@ -448,7 +571,7 @@ async function assertRestored(baoProfile: string, origin: string, port: number):
   for (const name of names) {
     if (existsSync(path.join(idbRoot, name, "LOCK"))) throw new Error("LOCK was copied into an IndexedDB directory");
   }
-  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
+  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
   try {
     assertNoStealth(baoProfile);
     const page = ctx.pages()[0] || await ctx.newPage();

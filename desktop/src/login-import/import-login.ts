@@ -23,7 +23,7 @@ import {
 } from "./read";
 import { setCookiesOneAtATime, type CookieSetter } from "./set-cookies";
 import { siteHost, siteOrigin } from "./sites";
-import { copyIndexedDb, matchingIndexedDbOrigins, originsForSite, readLocalStorage, setLocalStorageItems, type StorageItem } from "./storage";
+import { clearIndexedDbLocks, copyIndexedDb, matchingIndexedDbOrigins, originsForSite, readLocalStorage, setLocalStorageItems, type StorageItem } from "./storage";
 import {
   ConsentRequired,
   headline,
@@ -111,7 +111,7 @@ export async function importChromeLogin(opts: {
   now?: number;
   setOne?: CookieSetter["setOne"];
   observe?: (probeUrl: string) => Promise<ProbeObservation>;
-  restoreStorage?: () => Promise<number>;
+  restoreStorage?: () => Promise<number | { count: number; keys?: string[]; databases?: string[] }>;
   indexedDbOrigins?: number;
 }): Promise<PublicImportResult> {
   assertClick(opts.click);
@@ -146,9 +146,17 @@ export async function importChromeLogin(opts: {
   const setter: CookieSetter = { setOne: opts.setOne };
   const outcomes = await setCookiesOneAtATime(setter, loaded.cookies);
   let localStorageItems = 0;
+  let localStorageNames: string[] = [];
+  let indexedDbNames: string[] = [];
   if (opts.restoreStorage) {
     try {
-      localStorageItems = await opts.restoreStorage();
+      const restored = await opts.restoreStorage();
+      if (typeof restored === "number") localStorageItems = restored;
+      else {
+        localStorageItems = restored.count;
+        localStorageNames = restored.keys ?? [];
+        indexedDbNames = restored.databases ?? [];
+      }
     } catch {
       localStorageItems = 0;
     }
@@ -194,6 +202,8 @@ export async function importChromeLogin(opts: {
     includedBot,
     localStorageItems,
     indexedDbOrigins,
+    localStorageNames,
+    indexedDbNames,
   });
 }
 
@@ -220,7 +230,7 @@ export async function importInOwnedChrome(opts: {
   const items = await readLocalStorage(profileDir, origins);
   const indexedDbOrigins = copyIndexedDb(profileDir, opts.baoProfile, origins);
   const headless = opts.headless ?? process.env.BAO_HEADED !== "1";
-  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless });
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     const cdp = await ctx.newCDPSession(page);
@@ -238,6 +248,7 @@ export async function importInOwnedChrome(opts: {
     });
   } finally {
     await ctx.close().catch(() => undefined);
+    clearIndexedDbLocks(opts.baoProfile);
   }
 }
 
@@ -248,7 +259,7 @@ export async function probeOwnedProfile(opts: {
 }): Promise<{ signedIn: boolean; how: "selector" | "text" | "login-url" }> {
   assertNotDailyChrome(opts.baoProfile);
   const headless = opts.headless ?? process.env.BAO_HEADED !== "1";
-  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless });
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     const obs = await observePage(page, opts.config.probeUrl || opts.config.origin, opts.config.signedInSelector, opts.config.signedInText);
@@ -261,19 +272,25 @@ export async function probeOwnedProfile(opts: {
   }
 }
 
-export async function openOwnedSignIn(opts: { baoProfile: string; url: string; headless: boolean }): Promise<{ close(): Promise<void> }> {
+export async function openOwnedSignIn(opts: { baoProfile: string; url: string; headless: boolean }): Promise<{ close(): Promise<void>; url: string }> {
   assertNotDailyChrome(opts.baoProfile);
-  const ctx: BrowserContext = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless: opts.headless });
+  const headless = opts.headless || (process.platform !== "darwin" && !process.env.DISPLAY);
+  const ctx: BrowserContext = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   const page = ctx.pages()[0] || await ctx.newPage();
   await page.goto(opts.url, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => undefined);
-  return { close: async () => { await ctx.close().catch(() => undefined); } };
+  const shot = process.env.BAO_SIGNIN_SHOT;
+  if (shot) await page.screenshot({ path: shot, fullPage: true }).catch(() => undefined);
+  return {
+    url: opts.url,
+    close: async () => { await ctx.close().catch(() => undefined); },
+  };
 }
 
 async function restoreLocalStorage(
   page: Page,
   send: (method: string, params?: Record<string, unknown>) => Promise<unknown>,
   items: StorageItem[],
-): Promise<number> {
+): Promise<{ count: number; keys: string[]; databases: string[] }> {
   const groups = new Map<string, StorageItem[]>();
   for (const item of items) {
     const list = groups.get(item.origin) ?? [];
@@ -281,6 +298,8 @@ async function restoreLocalStorage(
     groups.set(item.origin, list);
   }
   let stored = 0;
+  const keys: string[] = [];
+  const databases: string[] = [];
   for (const [origin, group] of groups) {
     const pattern = `${origin}/**`;
     await page.route(pattern, (route) => route.fulfill({
@@ -291,13 +310,55 @@ async function restoreLocalStorage(
     try {
       await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 20_000 });
       stored += await setLocalStorageItems(send, group);
+      const summary = await readStorageNames(page);
+      keys.push(...summary.keys);
+      databases.push(...summary.databases);
     } catch {
       // A navigation failure leaves this origin unset. Other origins still run.
     } finally {
       await page.unroute(pattern).catch(() => undefined);
     }
   }
-  return stored;
+  return { count: stored, keys, databases };
+}
+
+async function readStorageNames(page: Page): Promise<{ keys: string[]; databases: string[] }> {
+  return page.evaluate(async () => {
+    const keys = Object.keys(localStorage);
+    const databases: string[] = [];
+    const rows = typeof indexedDB.databases === "function" ? await indexedDB.databases() : [];
+    for (const row of rows) {
+      const name = row.name || "";
+      if (!name) continue;
+      const count = await new Promise<number>((resolve) => {
+        const open = indexedDB.open(name);
+        open.onerror = () => resolve(0);
+        open.onsuccess = () => {
+          const db = open.result;
+          const stores = [...db.objectStoreNames];
+          if (!stores.length) {
+            db.close();
+            resolve(0);
+            return;
+          }
+          let left = stores.length;
+          let total = 0;
+          const tx = db.transaction(stores, "readonly");
+          for (const store of stores) {
+            const req = tx.objectStore(store).count();
+            req.onerror = () => { left -= 1; if (!left) { db.close(); resolve(total); } };
+            req.onsuccess = () => {
+              total += req.result;
+              left -= 1;
+              if (!left) { db.close(); resolve(total); }
+            };
+          }
+        };
+      });
+      databases.push(`${name} (${count})`);
+    }
+    return { keys, databases };
+  });
 }
 
 export async function observePage(page: Page, probeUrl: string, selector: string, text: string): Promise<ProbeObservation> {
