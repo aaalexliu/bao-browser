@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
 import { shotWithBlur } from "./blur";
-import { dumpPage, maskPasswordFields, unmaskPasswordFields, type DomDump } from "./dom-page";
+import { dumpPage, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, type DomDump } from "./dom-page";
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
@@ -410,6 +410,84 @@ export async function elementShot(page: Page, target?: ShotTarget, opts?: { blur
     await clearShotMarks(page);
     await page.evaluate(unmaskPasswordFields).catch(() => undefined);
   }
+}
+
+/**
+ * Crop of the same control with its value cleared and no blur.
+ * A clone covers the live field, so the person's typing is left alone.
+ */
+export async function guideFieldShot(page: Page, target?: ShotTarget): Promise<Buffer | undefined> {
+  const identity = target?.identity;
+  if (!identity) return;
+  await page.evaluate(unblurSensitiveFields).catch(() => undefined);
+  await page.evaluate(unmaskPasswordFields).catch(() => undefined);
+  const found = await locateTarget(page, target);
+  if (!found) return;
+  const mounted = await page.evaluate(mountEmptyField, {
+    id: identity.id,
+    nameAttr: identity.nameAttr,
+    testId: identity.testId,
+  }).catch(() => false);
+  if (!mounted) return;
+  try {
+    const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const clip = paddedClip(found.box, view);
+    return await page.screenshot({ type: "png", clip });
+  } finally {
+    await page.evaluate(removeEmptyField).catch(() => undefined);
+  }
+}
+
+function mountEmptyField(hint: { id?: string; nameAttr?: string; testId?: string }): boolean {
+  document.querySelectorAll("[data-bao-guide-shot]").forEach((el) => el.remove());
+  let el: Element | null = null;
+  if (hint.id && document.getElementById(hint.id)) el = document.getElementById(hint.id);
+  if (!el && hint.nameAttr) el = document.querySelector(`[name="${CSS.escape(hint.nameAttr)}"]`);
+  if (!el && hint.testId) el = document.querySelector(`[data-testid="${CSS.escape(hint.testId)}"]`);
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return false;
+  const source = el.closest("label") || el;
+  const rect = source.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return false;
+  const pad = 8;
+  const host = document.createElement("div");
+  host.setAttribute("data-bao-guide-shot", "1");
+  host.style.position = "fixed";
+  host.style.left = `${rect.x - pad}px`;
+  host.style.top = `${rect.y - pad}px`;
+  host.style.width = `${rect.width + pad * 2}px`;
+  host.style.height = `${rect.height + pad * 2}px`;
+  host.style.margin = "0";
+  host.style.padding = `${pad}px`;
+  host.style.boxSizing = "border-box";
+  host.style.zIndex = "2147483647";
+  host.style.background = getComputedStyle(document.body).backgroundColor;
+  host.style.pointerEvents = "none";
+  const clone = source.cloneNode(true);
+  if (!(clone instanceof HTMLElement)) return false;
+  clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+  clone.removeAttribute("id");
+  const nodes = clone.querySelectorAll("*");
+  for (const node of [clone, ...nodes]) {
+    if (!(node instanceof HTMLElement)) continue;
+    node.style.removeProperty("filter");
+    node.style.setProperty("filter", "none", "important");
+    node.style.removeProperty("-webkit-filter");
+    node.style.setProperty("backdrop-filter", "none", "important");
+  }
+  const field = clone instanceof HTMLInputElement || clone instanceof HTMLTextAreaElement
+    ? clone
+    : clone.querySelector("input, textarea");
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.value = "";
+  clone.style.margin = "0";
+  clone.style.outline = "2px solid #d4532b";
+  clone.style.outlineOffset = "2px";
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  return true;
+}
+
+function removeEmptyField(): void {
+  document.querySelectorAll("[data-bao-guide-shot]").forEach((el) => el.remove());
 }
 
 /** Crop around the step's target. A full-page picture is not used as a thumbnail. */

@@ -163,7 +163,8 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
       const body = await readBody(req);
       const action = String(body.action || "");
       if (action !== "keep-mine" && action !== "keep-theirs" && action !== "keep-both") throw new HttpError("action", 400);
-      return NextResponse.json(await resolveConflict(principal, parts[1] || "", action));
+      const resolved = await resolveConflict(principal, parts[1] || "", action);
+      return finish(req, resolved, `/workflows/${parts[1]}`);
     }
     if (parts[0] === "workflows" && parts[2] === "versions" && method === "POST") {
       const principal = await requireUser(req);

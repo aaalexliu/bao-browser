@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch4/globalsqa-search",
+  "steps": [
+    {
+      "stepId": "globalsqa-search-0",
+      "action": "type",
+      "target": "textbox#s",
+      "postcondition": "value {{s}}",
+      "timing": "lt10s"
+    },
+    {
+      "stepId": "globalsqa-search-1",
+      "action": "click",
+      "target": "button",
+      "postcondition": "url s={{s}}",
+      "timing": "lt10s"
+    }
+  ]
+}

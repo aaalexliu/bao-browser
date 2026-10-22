@@ -13,6 +13,7 @@ import { validateWorkflow } from "../../v1/schema";
 import { INTENT_CASES, noisyTrail, type IntentCase } from "./cases";
 import { caseJudgePrompt, calibrationPrompt, HAND_LABELS } from "./labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "./model";
+import { HYBRID_GATE_RULE, modelCondensePrompt, reviseDecision, reviseStepGates } from "./revise";
 import {
   deterministicWorkflow,
   expectedHuman,
@@ -56,27 +57,8 @@ function fmt(n: number | null): string {
   return n.toFixed(2);
 }
 
-function eventTarget(event: TrailEvent): string {
-  const id = event.identity;
-  return id?.testId || id?.id || id?.name || id?.nameAttr || "";
-}
-
 function promptFor(events: TrailEvent[]): string {
-  const lines = events.map((event) => {
-    const bits = [event.id, event.kind, event.op, eventTarget(event) || "-", event.value || "-", event.key || "-"];
-    return bits.join(" ");
-  });
-  return [
-    "Condense this UI trail into the intended workflow.",
-    "Drop reads, scrolls, a value that was wiped with Backspace, a repeated click, a Help click, and a Coupon path that ends at Cancel.",
-    "Keep the actions that finish the task, in order.",
-    "Password and pin typing, and a Log in or Sign in click, are human gate login.",
-    "A Confirm click is human gate confirm.",
-    "Password and pin events are secrets.",
-    "Reply with JSON only: {\"keep\":[\"id\"],\"human\":[{\"id\":\"id\",\"gate\":\"login\"}],\"secrets\":[\"id\"]}",
-    "Events, one per line: id kind op target value key",
-    ...lines,
-  ].join("\n");
+  return modelCondensePrompt(events);
 }
 
 function hybridPrompt(workflow: WorkflowV2): string {
@@ -94,6 +76,7 @@ function hybridPrompt(workflow: WorkflowV2): string {
     "Drop a step only when its target is help. Keep every other id.",
     "Intent text is one concrete sentence. Refer to a typed value as {{its input name}}. Do not write a password, a pin, or the captured text.",
     "Flag human as login for a password or pin step and for a Log in or Sign in click. Flag human as confirm for a Confirm click.",
+    HYBRID_GATE_RULE,
     "Reply with JSON only: {\"drop\":[\"id\"],\"summary\":\"one sentence\",\"steps\":[{\"id\":\"id\",\"intent\":\"sentence\"}],\"human\":[{\"id\":\"id\",\"gate\":\"login\"}]}",
     "Every kept step appears in steps. drop contains only ids from this list.",
     "id action target input gate label",
@@ -256,7 +239,7 @@ async function modelOnlyRow(item: IntentCase, info: { provider: string; model: s
   const noisy = noisyTrail(item.events, item.noise);
   try {
     const reply = await complete(promptFor(noisy));
-    const decision = parseDecision(reply.text);
+    const decision = reviseDecision(noisy, parseDecision(reply.text));
     const kept = keepEvents(noisy, decision.keep, decision.human, decision.secrets);
     const workflow = interpret(kept, { id: item.id, name: item.name, startUrl: item.startUrl, secrets: item.secrets });
     const scored = await scoreWorkflow(item, workflow, true);
@@ -288,7 +271,8 @@ async function hybridRow(item: IntentCase, info: { provider: string; model: stri
     const asked = await askHybrid(base);
     const applied = applyHybrid(base, asked.raw, item.secrets);
     const scored = await scoreWorkflow(item, applied.workflow, true);
-    const predicted = applied.human.flatMap((mark) => {
+    const humanMarks = reviseStepGates(base.steps, applied.human);
+    const predicted = humanMarks.flatMap((mark) => {
       const step = base.steps.find((itemStep) => itemStep.id === mark.id);
       return step ? [`${mark.gate}|${targetOf(step)}`] : [];
     });

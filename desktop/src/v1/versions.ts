@@ -3,7 +3,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
 
 export type VersionRole = "live" | "draft" | "past";
@@ -15,6 +15,7 @@ export interface WorkflowVersion {
   source: VersionSource;
   createdAt: number;
   document: WorkflowV2;
+  deviceName?: string;
   conflict?: {
     mineDevice: string;
     theirsDevice: string;
@@ -52,6 +53,7 @@ export interface VersionSummary {
   /** One line, such as `Click signed in: testId signed-in → role button "Signed in"`. */
   diff: string;
   steps: VersionStepChange[];
+  deviceName?: string;
   conflict?: {
     mineDevice: string;
     theirsDevice: string;
@@ -119,6 +121,7 @@ export function summarize(row: WorkflowVersion, previous?: WorkflowV2): VersionS
     history,
     diff: change.line,
     steps: change.steps,
+    deviceName: row.deviceName,
     conflict: row.conflict
       ? {
         mineDevice: row.conflict.mineDevice,
@@ -336,18 +339,43 @@ export function promoteVersion(library: Library, id: string, n: number): Workflo
   return { ...row, role: "live", document };
 }
 
+export interface CloudVersionRow {
+  version: number;
+  kind?: string;
+  device_name?: string | null;
+  document?: unknown;
+  created_at?: string | number;
+}
+
 /** The live file stays. Theirs is the cloud head; mine is the edit that branched. */
 export function noteConflict(
   library: Library,
-  input: { mine: WorkflowV2; theirs: WorkflowV2; mineDevice: string; theirsDevice: string; remoteVersion: number },
+  input: {
+    mine: WorkflowV2;
+    theirs: WorkflowV2;
+    mineDevice: string;
+    theirsDevice: string;
+    remoteVersion: number;
+    /** Cloud version number of the conflict draft. The desktop row uses this same number. */
+    draftVersion?: number;
+    /** Accepted cloud versions, so the desktop history uses the same numbers as the web. */
+    history?: CloudVersionRow[];
+  },
 ): WorkflowVersion {
-  const versions = seed(library, input.mine.id).filter((item) => item.source !== "conflict");
+  const cloud = cloudRows(input.history ?? []);
+  const versions = cloud.length
+    ? [...cloud, ...localDrafts(library, input.mine.id, cloud)]
+    : seed(library, input.mine.id).filter((item) => item.source !== "conflict");
+  const draftVersion = input.draftVersion
+    ?? input.history?.find((item) => item.kind === "conflict")?.version
+    ?? versions.reduce((max, item) => Math.max(max, item.n), 0) + 1;
   const row: WorkflowVersion = {
-    n: versions.reduce((max, item) => Math.max(max, item.n), 0) + 1,
+    n: draftVersion,
     role: "draft",
     source: "conflict",
     createdAt: Date.now(),
     document: input.mine,
+    deviceName: input.mineDevice,
     conflict: {
       mineDevice: input.mineDevice,
       theirsDevice: input.theirsDevice,
@@ -355,9 +383,43 @@ export function noteConflict(
       remoteVersion: input.remoteVersion,
     },
   };
-  versions.push(row);
-  writeBook(library, input.mine.id, versions);
+  const book = versions.filter((item) => item.n !== row.n && item.source !== "conflict");
+  book.push(row);
+  book.sort((a, b) => a.n - b.n);
+  writeBook(library, input.mine.id, book);
   return row;
+}
+
+function cloudRows(history: CloudVersionRow[]): WorkflowVersion[] {
+  const rows: WorkflowVersion[] = [];
+  for (const item of history) {
+    if (item.kind === "conflict" || item.document === undefined) continue;
+    const document = migrate(item.document);
+    if (validateWorkflow(document).length) continue;
+    rows.push({
+      n: item.version,
+      role: "past",
+      source: "saved",
+      createdAt: cloudTime(item.created_at),
+      document,
+      deviceName: item.device_name || undefined,
+    });
+  }
+  return rows;
+}
+
+function localDrafts(library: Library, id: string, cloud: WorkflowVersion[]): WorkflowVersion[] {
+  const taken = new Set(cloud.map((item) => item.n));
+  return readBook(library, id).filter((item) => {
+    if (item.source !== "heal" && item.source !== "edit" && item.source !== "restore") return false;
+    return !taken.has(item.n);
+  });
+}
+
+function cloudTime(value: string | number | undefined): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
 export function clearConflict(library: Library, id: string): void {

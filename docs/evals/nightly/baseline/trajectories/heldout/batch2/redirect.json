@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch2/redirect",
+  "steps": [
+    {
+      "stepId": "redirect-0",
+      "action": "click",
+      "target": "link#redirect",
+      "postcondition": "url /status_codes",
+      "timing": "lt1s"
+    }
+  ]
+}

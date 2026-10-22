@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/mdn-get-say",
+  "steps": [
+    {
+      "stepId": "mdn-get-say-0",
+      "action": "type",
+      "target": "textbox#say",
+      "postcondition": "value {{say}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "mdn-get-say-1",
+      "action": "click",
+      "target": "button:Send my greetings",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}

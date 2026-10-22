@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/backbone-todo",
+  "steps": [
+    {
+      "stepId": "backbone-todo-0",
+      "action": "type",
+      "target": "textbox",
+      "postcondition": "value {{text}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "backbone-todo-1",
+      "action": "key",
+      "target": "page",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}

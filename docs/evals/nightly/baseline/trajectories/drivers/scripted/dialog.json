@@ -1,0 +1,33 @@
+{
+  "caseId": "drivers/scripted/dialog",
+  "steps": [
+    {
+      "stepId": "drv-dialog-0",
+      "action": "click",
+      "target": "button#browse",
+      "postcondition": "text Dialog",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-dialog-1",
+      "action": "click",
+      "target": "textbox#filename",
+      "postcondition": "text Dialog",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-dialog-2",
+      "action": "type",
+      "target": "textbox#filename",
+      "postcondition": "text Dialog",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-dialog-3",
+      "action": "click",
+      "target": "button#open",
+      "postcondition": "text Chosen",
+      "timing": "lt1s"
+    }
+  ]
+}

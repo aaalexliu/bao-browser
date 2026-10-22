@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/lua-manual",
+  "steps": [
+    {
+      "stepId": "lua-manual-0",
+      "action": "click",
+      "target": "link:start",
+      "postcondition": "url /manual/5.4/manual.html",
+      "timing": "lt1s"
+    }
+  ]
+}
