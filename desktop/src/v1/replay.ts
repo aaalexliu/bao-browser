@@ -24,7 +24,7 @@ import {
   type StepFailure,
   type TriedLocator,
 } from "./heal";
-import { isCollapsedBox, matchLocator, scoreLocator } from "./locators";
+import { isCollapsedBox, matchLabeledControl, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
 import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
@@ -914,6 +914,15 @@ function locate(
           tried,
         };
       }
+    }
+    const labeled = matchLabeledControl(list, step.identity, nodes, tree.boxes, tree.hidden);
+    if (labeled) {
+      return {
+        nodes,
+        hit: { ok: true, index: labeled.index, ranked: [] },
+        via: { stepId: step.id, kind: labeled.kind, detail: labeled.detail },
+        tried,
+      };
     }
     return {
       nodes,

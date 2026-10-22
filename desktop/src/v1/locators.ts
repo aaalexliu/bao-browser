@@ -1,5 +1,7 @@
 // Ordered locators, tried before the repair tiers.
-// A locator hits only when exactly one node matches. Two matches are a miss.
+// A locator hits only when exactly one node matches. Two matches are a miss,
+// unless they are checkable inputs that share a name and the recorded label
+// picks exactly one of them.
 
 import { normRole, normText } from "./identity";
 import type { Box } from "./repair";
@@ -73,6 +75,43 @@ export function matchLocator(
   const index = hits[0]!;
   const node = nodes[index];
   return { index, detail: `${locator.kind} ${shown(node)}` };
+}
+
+/**
+ * A name selector that hits several radios or checkboxes.
+ * The recorded label chooses the input inside that label.
+ * A unique locator is left untouched, and two inputs with the same label stay a miss.
+ */
+export function matchLabeledControl(
+  locators: StepLocator[],
+  identity: Identity | undefined,
+  nodes: Identity[],
+  boxes?: Box[],
+  hidden?: boolean[],
+): { index: number; kind: "css" | "xpath"; detail: string } | undefined {
+  const want = identity?.label;
+  if (!want || !identity || !isCheckable(identity.role)) return undefined;
+  for (const locator of locators) {
+    if (locator.kind !== "css" && locator.kind !== "xpath") continue;
+    const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
+    if (hits.length < 2) continue;
+    const labeled = hits.filter((index) => {
+      const node = nodes[index];
+      if (!node || !isCheckable(node.role)) return false;
+      if (identity.nameAttr && node.nameAttr !== identity.nameAttr) return false;
+      return same(want, node.label, node.name, node.text);
+    });
+    if (labeled.length !== 1) continue;
+    const index = labeled[0]!;
+    const node = nodes[index];
+    return { index, kind: locator.kind, detail: `${locator.kind} ${node?.label || want}` };
+  }
+  return undefined;
+}
+
+function isCheckable(role: string | undefined): boolean {
+  const name = normRole(role || "");
+  return name === "input" || name === "radio" || name === "checkbox";
 }
 
 /** Every node the locator names, including a 0×0 or hidden box. */
