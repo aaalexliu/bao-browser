@@ -983,7 +983,12 @@ function expectBadge(step: StepCard): string {
 
 export function workflowDetail(
   doc: { id: string; name: string; steps: StepCard[]; inputs?: { name: string; type?: string }[] },
-  meta: { lastRunId?: string; lastLabel?: string; shots?: Record<string, string> } = {},
+  meta: {
+    lastRunId?: string;
+    lastLabel?: string;
+    shots?: Record<string, string>;
+    share?: { link?: string; publishEnabled?: boolean; publishWhy?: string; exportEnabled?: boolean; exportWhy?: string };
+  } = {},
 ): string {
   const cards = doc.steps.map((step) => {
     const human = step.human || step.action === "login" || step.action === "confirm";
@@ -1020,14 +1025,34 @@ export function workflowDetail(
         <h2>${esc(doc.name)}</h2>
         <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
         <div class="chips">${inputs}</div>
-        <p class="mono" data-testid="deeplink">bao://workflow/${esc(doc.id)}</p>
-        <p class="mono" data-testid="import-link">bao://import/${esc(doc.id)}</p>
+        ${shareMenu(doc, meta.share)}
       </div>
       <button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button>
     </header>
     <h3 class="section">Steps</h3>
     <div id="workflow-steps">${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}</div>
   </section>`;
+}
+
+function shareMenu(
+  doc: { id: string; steps: { id: string }[] },
+  share: { link?: string; publishEnabled?: boolean; publishWhy?: string; exportEnabled?: boolean; exportWhy?: string } = {},
+): string {
+  const link = share.link || `bao://workflow/${doc.id}`;
+  const publishEnabled = share.publishEnabled === true;
+  const exportEnabled = share.exportEnabled !== undefined ? share.exportEnabled : doc.steps.length > 0;
+  const publishWhy = publishEnabled ? "" : (share.publishWhy || "Pair this Mac before listing.");
+  const exportWhy = exportEnabled ? "" : (share.exportWhy || "This workflow has no steps to export.");
+  return `<div class="share" data-testid="share-menu">
+    <button type="button" data-testid="share-open" aria-expanded="false" aria-haspopup="menu">Share</button>
+    <div class="share-panel" data-testid="share-panel" hidden role="menu">
+      <button type="button" role="menuitem" data-testid="share-copy" data-copy="${esc(link)}">Copy link</button>
+      <button type="button" role="menuitem" data-testid="share-publish"${publishEnabled ? "" : " disabled"}>Publish to marketplace</button>
+      ${publishWhy ? `<p class="share-why" data-testid="share-publish-why">${esc(publishWhy)}</p>` : ""}
+      <button type="button" role="menuitem" data-testid="share-export"${exportEnabled ? "" : " disabled"}>Export file</button>
+      ${exportWhy ? `<p class="share-why" data-testid="share-export-why">${esc(exportWhy)}</p>` : ""}
+    </div>
+  </div>`;
 }
 
 export interface VersionRow {

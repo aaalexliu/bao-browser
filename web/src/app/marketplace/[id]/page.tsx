@@ -74,7 +74,7 @@ export default async function PublicWorkflowPage({
       <h2>Versions</h2>
       <ul>
         {workflow.versions.map((version) => (
-          <li key={version.version}>v{version.version} · {String(version.created_at)}</li>
+          <li key={version.version}>v{version.version} · {when(version.created_at)}</li>
         ))}
       </ul>
       <h2>Report</h2>

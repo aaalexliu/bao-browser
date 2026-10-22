@@ -2,7 +2,7 @@
 // screenshot fails the check. Private sync may still carry a non-secret literal
 // such as a username. Sharing and publishing clear personal values separately.
 
-import { redactedPng } from "./png";
+import { isElementCrop } from "./png";
 
 export class SyncRejected extends Error {
   constructor(reason: string) {
@@ -50,21 +50,16 @@ export function assertSyncSafe(payload: unknown): void {
 
 export function buildPushBody(
   document: unknown,
-  opts: { baseVersion: number; heal?: unknown; category?: string },
+  opts: { baseVersion: number; heal?: unknown; category?: string; crops?: { stepId: string; png: Buffer }[] },
 ): SyncPush {
   const secrets = collectSecretStrings(document, opts.heal);
   const cleaned = stripUnsafe(structuredClone(document), secrets) as WorkflowLike;
   const heal = opts.heal === undefined ? undefined : stripUnsafe(structuredClone(opts.heal), secrets);
   const steps = Array.isArray(cleaned.steps) ? cleaned.steps : [];
-  const shots: SyncShot[] = steps.map((step, index) => ({
-    stepId: String(step.id ?? index),
-    png: redactedPng(index + 1).toString("base64"),
-    redacted: true,
-  }));
   const body: SyncPush = {
     baseVersion: opts.baseVersion,
     document: cleaned,
-    shots,
+    shots: elementShots(steps, cleaned.inputs, opts.crops),
     category: opts.category,
   };
   if (heal !== undefined) body.heal = heal;
@@ -73,12 +68,15 @@ export function buildPushBody(
   return body;
 }
 
-export function buildRunBody(run: {
-  id: string;
-  status: string;
-  at: number;
-  steps?: { id?: string; status?: string }[];
-}): SyncRun {
+export function buildRunBody(
+  run: {
+    id: string;
+    status: string;
+    at: number;
+    steps?: { id?: string; status?: string }[];
+  },
+  opts: { crops?: { stepId: string; png: Buffer }[] } = {},
+): SyncRun {
   const steps = (run.steps ?? []).map((step, index) => ({
     id: String(step.id ?? index),
     status: String(step.status ?? ""),
@@ -88,14 +86,29 @@ export function buildRunBody(run: {
     status: run.status,
     at: run.at,
     steps,
-    shots: steps.map((step, index) => ({
-      stepId: step.id,
-      png: redactedPng(index + 1).toString("base64"),
-      redacted: true,
-    })),
+    shots: elementShots(steps, [], opts.crops),
   };
   assertSyncSafe(body);
   return body;
+}
+
+function elementShots(
+  steps: { id?: string; sensitive?: boolean; input?: string }[],
+  inputs: { name?: string; type?: string }[] | undefined,
+  crops: { stepId: string; png: Buffer }[] | undefined,
+): SyncShot[] {
+  const secrets = new Set((inputs || []).filter((input) => input.type === "secret" && input.name).map((input) => String(input.name)));
+  const byId = new Map((crops || []).map((crop) => [crop.stepId, crop.png]));
+  const shots: SyncShot[] = [];
+  steps.forEach((step, index) => {
+    if (step.sensitive) return;
+    if (step.input && secrets.has(step.input)) return;
+    const id = String(step.id ?? index);
+    const png = byId.get(id);
+    if (!png || !isElementCrop(png)) return;
+    shots.push({ stepId: id, png: png.toString("base64"), redacted: true });
+  });
+  return shots;
 }
 
 export function stripUnsafe(value: unknown, secrets: string[]): unknown {

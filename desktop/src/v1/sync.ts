@@ -6,8 +6,10 @@ import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rm
 import { hostname } from "node:os";
 import path from "node:path";
 import { assertSyncSafe, buildPushBody, buildRunBody, SyncRejected } from "../../../web/src/lib/guard";
+import { isElementCrop } from "../../../web/src/lib/png";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
+import { shotFile, workflowShotName } from "./shots";
 import { Library, type Settings } from "./store";
 
 export const SYNC_CATEGORIES = ["workflows", "run history", "heal records", "settings"] as const;
@@ -516,6 +518,7 @@ async function pushDocument(
       baseVersion: known?.version ?? 0,
       heal,
       category: categoryFor(doc),
+      crops: elementCrops(library, doc),
     });
   } catch (err) {
     if (err instanceof SyncRejected) return { kind: "refused", message: err.message };
@@ -540,12 +543,13 @@ async function pushDocument(
 async function pushRuns(library: Library, state: SyncState): Promise<void> {
   for (const run of library.listRuns()) {
     if (state.pushedRuns.includes(run.id)) continue;
+    const steps = (run.steps as { id?: string; status?: string }[]) ?? [];
     const body = buildRunBody({
       id: run.id,
       status: run.status,
       at: run.at,
-      steps: (run.steps as { id?: string; status?: string }[]) ?? [],
-    });
+      steps,
+    }, { crops: runCrops(library, run.id, steps) });
     await request(state, "POST", `/api/workflows/${encodeURIComponent(run.workflowId)}/runs`, body);
     state.pushedRuns.push(run.id);
   }
@@ -626,6 +630,81 @@ function localCategoryCounts(library: Library): CategoryCount[] {
 
 function docHash(doc: WorkflowV2): string {
   return createHash("sha256").update(toJson(doc)).digest("hex");
+}
+
+function readCrop(file: string): Buffer | undefined {
+  if (!existsSync(file)) return;
+  const png = readFileSync(file);
+  return isElementCrop(png) ? png : undefined;
+}
+
+function elementCrops(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {
+  const secrets = new Set(doc.inputs.filter((input) => input.type === "secret").map((input) => input.name));
+  const runs = library.listRuns().filter((run) => run.workflowId === doc.id).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const crops: { stepId: string; png: Buffer }[] = [];
+  for (const step of doc.steps) {
+    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
+    const names = [
+      ...runs.map((run) => path.join(library.root, "shots", "runs", run.id, shotFile(step.id, "after"))),
+      path.join(library.root, "shots", "workflows", doc.id, workflowShotName(step.id)),
+    ];
+    for (const name of names) {
+      const png = readCrop(name);
+      if (!png) continue;
+      crops.push({ stepId: step.id, png });
+      break;
+    }
+  }
+  return crops;
+}
+
+function runCrops(library: Library, runId: string, steps: { id?: string }[]): { stepId: string; png: Buffer }[] {
+  const crops: { stepId: string; png: Buffer }[] = [];
+  for (const step of steps) {
+    const id = String(step.id || "");
+    if (!id) continue;
+    const png = readCrop(path.join(library.root, "shots", "runs", runId, shotFile(id, "after")));
+    if (png) crops.push({ stepId: id, png });
+  }
+  return crops;
+}
+
+export async function workflowShare(library: Library, id: string): Promise<{
+  link: string;
+  publishEnabled: boolean;
+  publishWhy: string;
+  exportEnabled: boolean;
+  exportWhy: string;
+}> {
+  const doc = library.read(id);
+  const link = `bao://workflow/${doc.id}`;
+  const exportEnabled = doc.steps.length > 0;
+  const exportWhy = exportEnabled ? "" : "This workflow has no steps to export.";
+  const state = loadState(library.root);
+  if (!state.server || !state.deviceToken) {
+    return { link, publishEnabled: false, publishWhy: "Pair this Mac before listing.", exportEnabled, exportWhy };
+  }
+  try {
+    const preview = await request<{ enabled?: boolean; why?: string }>(state, "GET", `/api/workflows/${encodeURIComponent(id)}/publish`);
+    return {
+      link,
+      publishEnabled: preview.enabled === true,
+      publishWhy: preview.enabled ? "" : (preview.why || "Replay on a device before listing."),
+      exportEnabled,
+      exportWhy,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    const why = /not found/i.test(message) ? "Push this workflow before listing." : (message || "Push this workflow before listing.");
+    return { link, publishEnabled: false, publishWhy: why, exportEnabled, exportWhy };
+  }
+}
+
+export async function publishWorkflow(library: Library, id: string): Promise<{ ok: boolean; why?: string }> {
+  const share = await workflowShare(library, id);
+  if (!share.publishEnabled) return { ok: false, why: share.publishWhy };
+  await request(loadState(library.root), "POST", `/api/workflows/${encodeURIComponent(id)}/publish`);
+  return { ok: true };
 }
 
 function safeId(id: string): string {
