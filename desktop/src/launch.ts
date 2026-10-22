@@ -4,7 +4,7 @@
 // debugging port, so Playwright's automation switches are not on the command line.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { chromium, type BrowserContext } from "playwright";
@@ -21,7 +21,36 @@ const BANNED_ACCOUNT_ARGS = [
   "--disable-blink-features=AutomationControlled",
 ];
 
-const LAUNCH_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
+export const OWNED_CHROME_ARGS = [
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-sync",
+  // Continue where you left off. Chrome then keeps session cookies on a clean exit.
+  "--restore-last-session",
+];
+const LAUNCH_ARGS = OWNED_CHROME_ARGS;
+
+/** Chrome's "Continue where you left off". Session cookies survive a clean exit. */
+export const RESTORE_LAST_SESSION = 1;
+
+export function keepSessionCookies(userDataDir: string): void {
+  const dir = path.join(userDataDir, "Default");
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "Preferences");
+  let prefs: Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+      if (parsed && typeof parsed === "object") prefs = parsed as Record<string, unknown>;
+    } catch {
+      prefs = {};
+    }
+  }
+  const session = prefs.session && typeof prefs.session === "object" ? { ...(prefs.session as Record<string, unknown>) } : {};
+  session.restore_on_startup = RESTORE_LAST_SESSION;
+  prefs.session = session;
+  writeFileSync(file, JSON.stringify(prefs));
+}
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
 function ownedLaunchArgs(extra: string[] | undefined): string[] {
@@ -52,6 +81,7 @@ export function accountLaunchArgs(port: number): string[] {
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-sync",
+    "--restore-last-session",
   ];
   if (process.platform === "darwin") args.push("--force-renderer-accessibility");
   for (const flag of BANNED_ACCOUNT_ARGS) {
@@ -100,6 +130,7 @@ export async function launchAccountChrome(opts: {
 }): Promise<BrowserContext> {
   if (opts.headless) return launchOwnedChrome(opts);
   assertNotDailyChrome(opts.userDataDir);
+  keepSessionCookies(opts.userDataDir);
   const exe = resolveAccountChrome();
   let port = await freeLoopbackPort();
   if (port === 9222) port = await freeLoopbackPort();
@@ -142,6 +173,7 @@ export async function launchOwnedChrome(opts: {
   channel?: "chrome";
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
+  keepSessionCookies(opts.userDataDir);
   const bundled = opts.channel ? undefined : process.env.BAO_BROWSER;
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     channel: opts.channel,

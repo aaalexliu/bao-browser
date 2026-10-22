@@ -345,6 +345,24 @@
     #palette input { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 0.8rem 0.9rem; }
     #palette button.hit { display: flex; justify-content: space-between; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 0; padding: 0.55rem 0.9rem; }
     #palette button.hit.on { background: var(--select); }
+    .status.unchecked { background: var(--select); color: var(--quiet); }
+    .profiles { display: grid; gap: 0.6rem; }
+    button.profile {
+      display: grid; grid-template-columns: 48px 1fr; column-gap: 0.75rem; align-items: center;
+      text-align: left; width: 100%; height: auto; padding: 0.75rem 0.9rem; border-radius: var(--radius); background: var(--card);
+    }
+    button.profile.on { background: var(--select); border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+    .profile img, .avatar {
+      width: 48px; height: 48px; border-radius: 50%; background: var(--select); object-fit: cover;
+      display: grid; place-items: center; font-weight: 650;
+    }
+    .profile .email, .profile .meta { color: var(--quiet); font-size: var(--text-sm); }
+    .saved-row { padding: 0.45rem 0; border-top: 1px solid var(--line); }
+    .saved-row strong { min-width: 12rem; }
+    .saved-row .quiet { margin-right: auto; }
+    .result h3.pass { color: var(--ok); }
+    .result h3.fail { color: var(--bad); }
+    #theme-toggle { position: fixed; top: 10px; right: 12px; z-index: 30; }
     @media (max-width: 800px) {
       #app { grid-template-columns: 1fr; }
       .split { grid-template-columns: 1fr; }
@@ -355,6 +373,7 @@
 </head>
 <body>
   <div id="toasts"></div>
+  <button type="button" id="theme-toggle" aria-pressed="false">Dark</button>
   <div id="app">
     <aside id="rail"></aside>
     <div id="content">

@@ -52,6 +52,13 @@ import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
+import { defaultChromeUserData } from "../login-import/chrome-path";
+import { importInOwnedChrome, openOwnedSignIn, previewChromeProfiles, probeOwnedProfile, type ClickInput } from "../login-import/import-login";
+import { readPlatformKeys, type KeySources } from "../login-import/keys";
+import { isNeedsSignIn, runIfSignedIn } from "../login-import/session-gate";
+import { SiteStore, siteOrigin } from "../login-import/sites";
+import { formatProbeTime } from "../login-import/time";
+import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
 import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
@@ -73,9 +80,21 @@ export interface App {
 
 const publicDir = process.env.BAO_PUBLIC || path.join(process.cwd(), "desktop/src/app/public");
 
-export async function startApp(opts: { home: string; port?: number }): Promise<App> {
+export async function startApp(opts: {
+  home: string;
+  port?: number;
+  chromeUserData?: string;
+  baoProfile?: string;
+  loginKeys?: KeySources | (() => KeySources | Promise<KeySources>);
+  /** Preview copy only. Cookie decryption follows loginKeys.platform. */
+  loginPlatform?: NodeJS.Platform;
+}): Promise<App> {
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
+  const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
+  const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
+  const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
+  let signIn: { close(): Promise<void> } | undefined;
   const notices: Notice[] = [];
   let boundPort = opts.port ?? 0;
   let recording = false;
@@ -474,7 +493,14 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const args = await materializeFiles(body.args || {});
         stopRun = false;
         loginContinued = false;
-        const run = await runWorkflow(library, workflow, args, notices, replays, prompts);
+        const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
+          baoProfile,
+          sites,
+          closeSignIn: async () => {
+            await signIn?.close();
+            signIn = undefined;
+          },
+        });
         return json(res, run);
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
@@ -620,9 +646,83 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         library.remove(id);
         return json(res, { ok: true });
       }
+      if (req.method === "GET" && url.pathname === "/api/login-sites") {
+        return json(res, { sites: sites.list().map(publicSite) });
+      }
+      if (req.method === "PUT" && url.pathname === "/api/login-sites") {
+        const body = await readBody(req) as Partial<SiteLoginConfig> & LoginBody;
+        const origin = siteOrigin(body.origin || body.site || "");
+        const prior = sites.has(origin) ? sites.get(origin) : undefined;
+        return json(res, sites.save(siteConfig(body, prior)));
+      }
+      if (req.method === "DELETE" && url.pathname === "/api/login-sites") {
+        const body = await readBody(req) as { origin?: string };
+        sites.remove(body.origin || "");
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/login-sites/recheck") {
+        const body = await readBody(req) as { origin?: string };
+        const origin = siteOrigin(body.origin || "");
+        if (!sites.has(origin)) return json(res, { error: "That site is not saved." }, 404);
+        await signIn?.close();
+        signIn = undefined;
+        const config = sites.get(origin);
+        let signedIn = false;
+        try {
+          signedIn = (await probeOwnedProfile({ baoProfile, config })).signedIn;
+        } catch {
+          signedIn = false;
+        }
+        return json(res, { site: sites.recordProbe(origin, signedIn) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/login-import/preview") {
+        const body = await readBody(req) as LoginBody;
+        const click = clickFrom(body);
+        const config = rememberSite(sites, body);
+        return json(res, await previewChromeProfiles({
+          click,
+          chromeUserData,
+          config,
+          platform: opts.loginPlatform ?? process.platform,
+        }));
+      }
+      if (req.method === "POST" && url.pathname === "/api/login-import") {
+        const body = await readBody(req) as LoginBody;
+        const click = clickFrom(body);
+        const config = rememberSite(sites, body);
+        if (!body.profile) return json(res, { error: "Choose a Chrome profile." }, 400);
+        await signIn?.close();
+        signIn = undefined;
+        const keys = await resolveLoginKeys(opts.loginKeys);
+        const result = await importInOwnedChrome({
+          click,
+          chromeUserData,
+          profileDirectory: body.profile,
+          baoProfile,
+          config,
+          keys,
+        });
+        if (result.probed) sites.recordProbe(config.origin, result.signedIn);
+        return json(res, result);
+      }
+      if (req.method === "POST" && url.pathname === "/api/login-import/sign-in") {
+        const body = await readBody(req) as LoginBody;
+        const click = clickFrom(body);
+        const config = rememberSite(sites, body);
+        await signIn?.close();
+        const signInUrl = config.probeUrl || config.origin;
+        signIn = await openOwnedSignIn({
+          baoProfile,
+          url: signInUrl,
+          headless: process.env.BAO_SIGNIN_HEADLESS === "1",
+        });
+        return json(res, { opened: true, url: signInUrl });
+      }
       json(res, { error: "not found" }, 404);
     } catch (err) {
-      json(res, { error: err instanceof Error ? err.message : String(err) }, 500);
+      const message = err instanceof Error ? err.message : String(err);
+      const status = err instanceof ConsentRequired ? 403 : message.startsWith("The site") ? 400 : 500;
+      json(res, { error: message }, status);
     }
   });
 
@@ -756,12 +856,16 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     notifications,
     get recording() { return recording; },
     async close() {
+      await signIn?.close();
+      signIn = undefined;
       await stopBrowser();
       await site?.context.close().catch(() => undefined);
       site = undefined;
       for (const session of replays.values()) {
         await session.context.close().catch(() => undefined);
-        await rm(session.profile, { recursive: true, force: true }).catch(() => undefined);
+        if (path.resolve(session.profile) !== path.resolve(baoProfile)) {
+          await rm(session.profile, { recursive: true, force: true }).catch(() => undefined);
+        }
       }
       replays.clear();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
@@ -774,6 +878,12 @@ function stepHealChoice(value: string | null | undefined): "auto" | "ask" | "nev
   return undefined;
 }
 
+interface LoginGate {
+  baoProfile: string;
+  sites: SiteStore;
+  closeSignIn: () => Promise<void>;
+}
+
 async function runWorkflow(
   library: Library,
   workflow: WorkflowV2,
@@ -781,8 +891,72 @@ async function runWorkflow(
   notices: Notice[],
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
   prompts?: PersonPrompts,
+  gate?: LoginGate,
 ) {
-  const session = await openReplay(library, workflow.id, replays);
+  if (gate) {
+    const gated = await gateSavedLogin(library, workflow, args, notices, replays, prompts, gate);
+    if (gated) return gated;
+  }
+  return runRecorded(library, workflow, args, notices, replays, prompts);
+}
+
+async function gateSavedLogin(
+  library: Library,
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  notices: Notice[],
+  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  prompts: PersonPrompts | undefined,
+  gate: LoginGate,
+) {
+  await gate.closeSignIn();
+  const origin = httpOrigin(workflow.startUrl);
+  if (!origin || !gate.sites.has(origin)) return null;
+  const config = gate.sites.get(origin);
+  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const headless = process.env.BAO_HEADED !== "1";
+  await releaseProfile(replays, gate.baoProfile);
+  const outcome = await runIfSignedIn({
+    enabled: true,
+    signInUrl: config.probeUrl || workflow.startUrl,
+    runId,
+    probe: async () => {
+      try {
+        const judged = await probeOwnedProfile({ baoProfile: gate.baoProfile, config, headless });
+        gate.sites.recordProbe(origin, judged.signedIn);
+        return judged;
+      } catch (err) {
+        gate.sites.recordProbe(origin, false);
+        throw err;
+      }
+    },
+    run: () => runRecorded(library, workflow, args, notices, replays, prompts, gate.baoProfile),
+  });
+  if (isNeedsSignIn(outcome)) {
+    library.saveRun({
+      id: outcome.runId,
+      workflowId: workflow.id,
+      status: outcome.status,
+      at: Date.now(),
+      heals: [],
+      steps: [],
+      failure: { reason: outcome.message },
+    });
+    return { ...outcome, mode: effectiveMode(workflow, library.settings()) };
+  }
+  return outcome;
+}
+
+async function runRecorded(
+  library: Library,
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  notices: Notice[],
+  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  prompts?: PersonPrompts,
+  profileDir?: string,
+) {
+  const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
   const driver = new BrowserDriver(page, (notice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
@@ -848,15 +1022,17 @@ async function openReplay(
   library: Library,
   id: string,
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  fixedDir?: string,
 ): Promise<{ context: BrowserContext; page: Page; profile: string }> {
   const existing = replays.get(id);
-  if (existing && !existing.page.isClosed()) return existing;
+  const sameDir = Boolean(existing && fixedDir && path.resolve(existing.profile) === path.resolve(fixedDir));
+  if (existing && !existing.page.isClosed() && (!fixedDir || sameDir)) return existing;
   if (existing) {
     await existing.context.close().catch(() => undefined);
-    await rm(existing.profile, { recursive: true, force: true }).catch(() => undefined);
+    if (!sameDir) await rm(existing.profile, { recursive: true, force: true }).catch(() => undefined);
     replays.delete(id);
   }
-  const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
+  const profile = fixedDir ?? await mkdtemp(path.join(tmpdir(), "bao-replay-"));
   const context = await launchOwnedChrome({
     userDataDir: profile,
     headless: process.env.BAO_HEADED !== "1",
@@ -1306,6 +1482,104 @@ function sendFile(res: ServerResponse, file: string, type: string): void {
 function json(res: ServerResponse, body: unknown, status = 200): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+interface LoginBody {
+  site?: string;
+  consent?: boolean;
+  profile?: string;
+  probeUrl?: string;
+  signedInSelector?: string;
+  signedInText?: string;
+  botCookies?: BotCookiePolicy;
+  origins?: string[] | string;
+  origin?: string;
+}
+
+function clickFrom(body: LoginBody): ClickInput {
+  if (body.consent !== true) throw new ConsentRequired();
+  return { site: body.site, clicked: true };
+}
+
+function publicSite(site: SiteLoginConfig): SiteLoginConfig & { lastProbeLabel: string | null } {
+  return {
+    ...site,
+    lastProbeLabel: typeof site.lastProbeAt === "number" ? formatProbeTime(site.lastProbeAt) : null,
+  };
+}
+
+function siteConfig(body: Partial<SiteLoginConfig> & LoginBody, prior?: SiteLoginConfig): SiteLoginConfig {
+  return {
+    origin: body.origin || body.site || "",
+    probeUrl: body.probeUrl || "",
+    signedInSelector: body.signedInSelector || "",
+    signedInText: body.signedInText || "",
+    botCookies: body.botCookies === "include" ? "include" : "skip",
+    origins: listedOrigins(body.origins, []),
+    lastProbeAt: prior?.lastProbeAt ?? null,
+    signedIn: prior?.signedIn ?? null,
+  };
+}
+
+function rememberSite(store: SiteStore, body: LoginBody): SiteLoginConfig {
+  const origin = siteOrigin(body.site || "");
+  const prior = store.get(origin);
+  return store.save({
+    origin,
+    probeUrl: chosenProbe(body.probeUrl, body.site, origin, prior.probeUrl),
+    signedInSelector: body.signedInSelector ?? prior.signedInSelector,
+    signedInText: body.signedInText ?? prior.signedInText,
+    botCookies: body.botCookies === "include" || body.botCookies === "skip" ? body.botCookies : prior.botCookies,
+    origins: listedOrigins(body.origins, prior.origins),
+    lastProbeAt: prior.lastProbeAt ?? null,
+    signedIn: prior.signedIn ?? null,
+  });
+}
+
+function chosenProbe(probe: string | undefined, site: string | undefined, origin: string, prior: string): string {
+  const typed = probe?.trim();
+  if (typed) return typed;
+  const page = site?.trim();
+  if (page && page !== origin) {
+    try {
+      const url = new URL(page);
+      if (url.protocol === "http:" || url.protocol === "https:") return page;
+    } catch {
+      // The site field is checked separately. An empty probe falls back.
+    }
+  }
+  return prior || origin;
+}
+
+function listedOrigins(value: string[] | string | undefined, fallback: string[]): string[] {
+  if (value === undefined) return fallback;
+  const raw = Array.isArray(value) ? value : value.split(/[\s,]+/);
+  return raw.map((item) => item.trim()).filter(Boolean);
+}
+
+async function resolveLoginKeys(loginKeys: KeySources | (() => KeySources | Promise<KeySources>) | undefined): Promise<KeySources> {
+  if (!loginKeys) return readPlatformKeys();
+  return typeof loginKeys === "function" ? loginKeys() : loginKeys;
+}
+
+function httpOrigin(startUrl: string): string | null {
+  try {
+    return siteOrigin(startUrl);
+  } catch {
+    return null;
+  }
+}
+
+async function releaseProfile(
+  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  dir: string,
+): Promise<void> {
+  const resolved = path.resolve(dir);
+  for (const [id, session] of replays) {
+    if (path.resolve(session.profile) !== resolved) continue;
+    await session.context.close().catch(() => undefined);
+    replays.delete(id);
+  }
 }
 
 function readBody(req: IncomingMessage, text = false): Promise<unknown> {

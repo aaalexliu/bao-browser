@@ -172,6 +172,8 @@ function icon(name: string): string {
     capture: "M12 8a4 4 0 100 8 4 4 0 000-8zm8.5 4a8.5 8.5 0 11-17 0 8.5 8.5 0 0117 0z",
     runs: "M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h10v3H4v-3z",
     heals: "M12 4l2.2 4.6L19 9.2l-3.5 3.4.8 4.9L12 15.8 7.7 17.5l.8-4.9L5 9.2l4.8-.6L12 4z",
+    replay: "M8 5v14l11-7L8 5z",
+    logins: "M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9a7 7 0 0114 0H5z",
     settings: "M12 8.5A3.5 3.5 0 1012 15.5 3.5 3.5 0 0012 8.5zM4 12l2-.6.4-1.6-1.2-1.6 1.8-1.8 1.6 1.2 1.6-.4L11 5h2l.4 2.2 1.6.4 1.6-1.2 1.8 1.8-1.2 1.6.4 1.6 2 .6v2l-2 .6-.4 1.6 1.2 1.6-1.8 1.8-1.6-1.2-1.6.4L13 21h-2l-.4-2.2-1.6-.4-1.6 1.2-1.8-1.8 1.2-1.6-.4-1.6L4 14v-2z",
   };
   return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
@@ -194,6 +196,8 @@ export function rail(state: ShellState): string {
       <button data-screen="capture">${icon("capture")} Capture</button>
       <button data-screen="runs">${icon("runs")} Runs</button>
       <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
+      <button data-screen="replay">${icon("replay")} Replay</button>
+      <button data-screen="logins">${icon("logins")} Logins</button>
       <button data-screen="settings">${icon("settings")} Settings</button>
     </nav>
     <div class="rail-foot">
