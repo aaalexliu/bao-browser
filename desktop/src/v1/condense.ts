@@ -1,7 +1,9 @@
 // Drop the noise around a trail, then interpret what is left.
 // Reads, scrolls, a typo that was backspaced, a repeated click, a click
 // undone by Back, and a Coupon-to-Cancel detour do not become steps.
-// A click that is not undone stays.
+// A click with no observed effect is dropped when nothing later sits inside
+// its subtree. A click that changed the url, a checked state, a value, or
+// the target subtree stays. A Help click stays so the hybrid pass can drop it.
 
 import { interpret, type InterpretMeta, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
@@ -12,12 +14,71 @@ const DROP_OP = new Set([
 ]);
 
 export function condense(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
+  return interpret(prepare(events), meta);
+}
+
+/** Click ids removed by the effect filter, after the other deterministic drops. */
+export function droppedNoEffectIds(events: readonly TrailEvent[]): string[] {
+  const prepared = events.filter((event) => event.kind !== "read" && !DROP_OP.has(event.op));
+  const before = collapseRetries(collapseTypos(dropAborted(dropBack(prepared))));
+  const kept = new Set(dropNoEffect(before).map((event) => event.id));
+  return before.filter((event) => event.op === "click" && !kept.has(event.id)).map((event) => event.id);
+}
+
+function prepare(events: readonly TrailEvent[]): TrailEvent[] {
   const dropped = events.filter((event) => event.kind !== "read" && !DROP_OP.has(event.op));
   const undone = dropBack(dropped);
   const aborted = dropAborted(undone);
   const typed = collapseTypos(aborted);
   const retried = collapseRetries(typed);
-  return interpret(retried, meta);
+  return dropNoEffect(retried);
+}
+
+function dropNoEffect(events: TrailEvent[]): TrailEvent[] {
+  const drop = new Set<number>();
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i]!;
+    if (event.op !== "click") continue;
+    if (isHelp(event)) continue;
+    if (clickChangedState(event)) continue;
+    if (!observedStill(event)) continue;
+    if (laterDepends(events, i)) continue;
+    drop.add(i);
+  }
+  return events.filter((_, index) => !drop.has(index));
+}
+
+function isHelp(event: TrailEvent): boolean {
+  return /\bhelp\b/i.test(label(event));
+}
+
+function clickChangedState(event: TrailEvent): boolean {
+  if (event.beforeUrl && event.afterUrl && event.beforeUrl !== event.afterUrl) return true;
+  if (typeof event.checked === "boolean") return true;
+  if (event.valueBefore != null && event.valueAfter != null && event.valueBefore !== event.valueAfter) return true;
+  if (event.subtreeBefore != null && event.subtreeAfter != null && event.subtreeBefore !== event.subtreeAfter) return true;
+  if (event.afterText) return true;
+  return false;
+}
+
+/** Both urls were recorded and they match, so the click did not navigate. */
+function observedStill(event: TrailEvent): boolean {
+  return !!event.beforeUrl && !!event.afterUrl && event.beforeUrl === event.afterUrl;
+}
+
+function laterDepends(events: TrailEvent[], index: number): boolean {
+  const path = events[index]!.identity?.cssPath;
+  if (!path) return false;
+  for (let j = index + 1; j < events.length; j++) {
+    const later = events[j]!;
+    if (later.kind === "read" || DROP_OP.has(later.op) || later.op === "back") continue;
+    const laterPath = later.identity?.cssPath;
+    if (!laterPath || laterPath === path) continue;
+    if (laterPath.startsWith(`${path} >`) || laterPath.startsWith(`${path}>`) || laterPath.startsWith(`${path} `)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function label(event: TrailEvent): string {

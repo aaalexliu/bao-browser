@@ -5,13 +5,15 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { applyHybrid, isNoiseStep, parseHybrid } from "../../v1/hybrid";
 import { interpret, type TrailEvent } from "../../v1/interpret";
-import { condense } from "../../v1/condense";
+import { condense, droppedNoEffectIds } from "../../v1/condense";
 import { BrowserDriver } from "../../v1/browser-driver";
 import { launchOwnedChrome } from "../../launch";
 import { replay } from "../../v1/replay";
 import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
 import { validateWorkflow } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
+import { GOOD_INTENTS } from "../intent/good-intents";
+import { lintIntent, type LintTarget } from "../intent/lint";
 import { caseJudgePrompt } from "../intent/labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "../intent/model";
 import {
@@ -51,6 +53,7 @@ export interface BadJudgeRow {
   text: string;
   judge: boolean | null;
   low: boolean;
+  lint: string;
 }
 
 function fmt(n: number | null): string {
@@ -392,22 +395,25 @@ function blank(note: string): Omit<HeldRow, "caseId" | "condenser"> {
 
 export async function evalHeldout(args: string[] = []): Promise<{ markdown: string; rows: HeldRow[]; bad: BadJudgeRow[] }> {
   if (args.includes("--judge")) {
-    const out = flag(args, "--out") || path.join("docs", "eval", "heldout", "bad-judge.md");
+    const out = flag(args, "--out") || path.join("docs", "eval", "heldout", "lint-judge.md");
     const info = configuredModel();
-    const judged = info.available ? await scoreBadTexts() : { rows: BAD_INTENT_TEXTS.map((label) => ({ id: label.id, text: label.text, judge: null, low: false })), note: info.reason };
+    const judged = await scoreBadTexts();
+    const goods = goodRejects();
     const low = judged.rows.filter((row) => row.low).length;
     const markdown = [
-      "# Bad intent texts",
+      "# Intent lint and bad texts",
       "",
       `Model access: ${info.available ? `${info.provider} / ${info.model}` : info.reason}. ${judged.note}`,
       "",
-      "This call uses the same rubric as calibration. The example JSON uses b1 and b2, because the first held-out call followed the calibration example keys l1-l10 and left these rows blank. That first table is in `batch1.md` and is unchanged.",
+      "The lint runs first. It rejects a generic verb-only sentence, a destructive verb the step does not do, a Help goal, and a literal that matches a secret or a param slot. The rubric is unchanged. The model scores only the texts the lint passes. The earlier 5/10 table stays in `bad-judge.md`.",
       "",
-      `${low}/${judged.rows.length} scored bad.`,
+      `${low}/${judged.rows.length} bad texts caught. ${goods.length}/${GOOD_INTENTS.length} good intents falsely rejected.`,
       "",
-      "| id | judge | low | text |",
-      "| --- | --- | --- | --- |",
-      ...judged.rows.map((row) => `| ${row.id} | ${row.judge == null ? "" : row.judge ? "good" : "bad"} | ${row.judge == null ? "" : row.low ? "yes" : "no"} | ${row.text.replace(/\|/g, "/")} |`),
+      "| id | lint | judge | caught | text |",
+      "| --- | --- | --- | --- | --- |",
+      ...judged.rows.map((row) => `| ${row.id} | ${row.lint || ""} | ${row.judge == null ? "" : row.judge ? "good" : "bad"} | ${row.low ? "yes" : "no"} | ${row.text.replace(/\|/g, "/")} |`),
+      "",
+      goods.length ? `False rejects: ${goods.map((item) => `${item.id} ${item.reason}`).join(", ")}.` : "False rejects: none.",
       "",
     ].join("\n");
     mkdirSync(path.dirname(out), { recursive: true });
@@ -417,6 +423,7 @@ export async function evalHeldout(args: string[] = []): Promise<{ markdown: stri
   const dir = flag(args, "--dir") || path.join("docs", "eval", "heldout", "batch1");
   const out = flag(args, "--out") || path.join("docs", "eval", "heldout", "batch1.md");
   const bundle = loadBundle(dir);
+  const drops = effectDrops(bundle);
   const rows: HeldRow[] = [];
   const profile = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join("/tmp", "bao-held-replay-")));
   const context = await launchOwnedChrome({
@@ -430,14 +437,16 @@ export async function evalHeldout(args: string[] = []): Promise<{ markdown: stri
     }
     const info = configuredModel();
     let modelNote = info.reason;
-    let bad: BadJudgeRow[] = BAD_INTENT_TEXTS.map((label) => ({ id: label.id, text: label.text, judge: null, low: false }));
+    let bad: BadJudgeRow[] = BAD_INTENT_TEXTS.map((label) => {
+      const lint = lintBad(label) || "";
+      return { id: label.id, text: label.text, judge: lint ? false as const : null, low: !!lint, lint };
+    });
     if (!info.available) {
       for (const item of bundle) {
         rows.push({ caseId: item.truth.id, condenser: "model", ...blank(modelNote) });
         rows.push({ caseId: item.truth.id, condenser: "hybrid", ...blank(modelNote) });
       }
-      bad = BAD_INTENT_TEXTS.map((label) => ({ id: label.id, text: label.text, judge: null, low: false }));
-      const markdown = render(rows, bad, modelNote);
+      const markdown = render(rows, bad, modelNote, drops);
       mkdirSync(path.dirname(out), { recursive: true });
       writeFileSync(out, markdown);
       return { markdown, rows, bad };
@@ -451,7 +460,7 @@ export async function evalHeldout(args: string[] = []): Promise<{ markdown: stri
         rows.push({ caseId: item.truth.id, condenser: info.model || "model", ...blank(modelNote) });
         rows.push({ caseId: item.truth.id, condenser: "hybrid", ...blank(modelNote) });
       }
-      const markdown = render(rows, bad, modelNote);
+      const markdown = render(rows, bad, modelNote, drops);
       mkdirSync(path.dirname(out), { recursive: true });
       writeFileSync(out, markdown);
       return { markdown, rows, bad };
@@ -461,7 +470,7 @@ export async function evalHeldout(args: string[] = []): Promise<{ markdown: stri
     if (judged.note) modelNote += `. ${judged.note}`;
     for (const item of bundle) rows.push(await modelOnlyRow(item.truth, item.events, info, context));
     for (const item of bundle) rows.push(await hybridRow(item.truth, item.events, info, context));
-    const markdown = render(rows, bad, modelNote);
+    const markdown = render(rows, bad, modelNote, drops);
     mkdirSync(path.dirname(out), { recursive: true });
     writeFileSync(out, markdown);
     return { markdown, rows, bad };
@@ -538,13 +547,9 @@ async function hybridRow(
     let tokens = asked.tokens;
     let judgeNote = "";
     try {
-      const reply = await complete(caseJudgePrompt(
-        applied.workflow.summary || "",
-        applied.workflow.steps.map((step) => ({ id: step.id, intent: step.intent || "" })),
-      ));
-      tokens += reply.tokens || 0;
-      const parsed = parseCaseJudge(reply.text);
-      judge = judgeFraction(parsed.summary, parsed.steps, applied.workflow.steps.map((step) => step.id));
+      const judged = await judgeHybrid(applied.workflow, truth.secrets);
+      judge = judged.score;
+      tokens += judged.tokens;
     } catch (err) {
       judgeNote = err instanceof Error ? err.message : String(err);
     }
@@ -569,31 +574,99 @@ async function hybridRow(
   }
 }
 
-async function scoreBadTexts(): Promise<{ rows: BadJudgeRow[]; note: string }> {
-  try {
-    const reply = await complete(badJudgePrompt());
-    const scores = parseFlagMap(reply.text);
-    const rows = BAD_INTENT_TEXTS.map((label) => {
-      const judge = Object.prototype.hasOwnProperty.call(scores, label.id) ? scores[label.id]! : null;
-      return { id: label.id, text: label.text, judge, low: judge === false };
-    });
-    const note = rows.some((row) => row.judge != null) ? "" : `bad-text judge keys: ${Object.keys(scores).join(", ") || "none"}`;
-    return { rows, note };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      rows: BAD_INTENT_TEXTS.map((label) => ({ id: label.id, text: label.text, judge: null, low: false })),
-      note: `bad-text judge failed: ${message.slice(0, 180)}`,
-    };
-  }
+function lintBad(label: (typeof BAD_INTENT_TEXTS)[number]): string | null {
+  return lintIntent(label.text, label.target, label.secrets || []);
 }
 
-function render(rows: HeldRow[], bad: BadJudgeRow[], modelNote: string): string {
+async function scoreBadTexts(): Promise<{ rows: BadJudgeRow[]; note: string }> {
+  const pending = BAD_INTENT_TEXTS.filter((label) => !lintBad(label));
+  let scores: Record<string, boolean> = {};
+  let note = pending.length ? "" : "lint rejected every bad text before the model";
+  if (pending.length) {
+    try {
+      const reply = await complete(badJudgePrompt(pending));
+      scores = parseFlagMap(reply.text);
+      if (!pending.some((label) => Object.prototype.hasOwnProperty.call(scores, label.id))) {
+        note = `bad-text judge keys: ${Object.keys(scores).join(", ") || "none"}`;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      note = `bad-text judge failed: ${message.slice(0, 180)}`;
+    }
+  }
+  const rows = BAD_INTENT_TEXTS.map((label) => {
+    const lint = lintBad(label) || "";
+    if (lint) return { id: label.id, text: label.text, judge: false, low: true, lint };
+    const judge = Object.prototype.hasOwnProperty.call(scores, label.id) ? scores[label.id]! : null;
+    return { id: label.id, text: label.text, judge, low: judge === false, lint };
+  });
+  return { rows, note };
+}
+
+function goodRejects(): { id: string; reason: string }[] {
+  return GOOD_INTENTS.flatMap((item) => {
+    const reason = lintIntent(item.text, item.target, item.secrets || []);
+    return reason ? [{ id: item.id, reason }] : [];
+  });
+}
+
+function effectDrops(bundle: { truth: HeldTruth; events: TrailEvent[] }[]): { caseId: string; eventId: string }[] {
+  const out: { caseId: string; eventId: string }[] = [];
+  for (const item of bundle) {
+    const dropped = new Set(droppedNoEffectIds(item.events));
+    for (const id of item.truth.keep) {
+      if (dropped.has(id)) out.push({ caseId: item.truth.id, eventId: id });
+    }
+  }
+  return out;
+}
+
+async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ score: number; tokens: number }> {
+  const failed = new Set<string>();
+  const passing: { id: string; intent: string }[] = [];
+  for (const step of workflow.steps) {
+    const input = workflow.inputs.find((item) => item.name === step.input);
+    const target: LintTarget = {
+      action: step.action,
+      name: step.identity?.name || step.identity?.text || step.identity?.label,
+      label: step.identity?.label,
+      text: step.identity?.text,
+      input: step.input,
+      literal: input?.default,
+    };
+    if (lintIntent(step.intent || "", target, secrets)) failed.add(step.id);
+    else passing.push({ id: step.id, intent: step.intent || "" });
+  }
+  const summary = workflow.summary || "";
+  const summaryFail = lintIntent(summary, undefined, secrets);
+  const ids = workflow.steps.map((step) => step.id);
+  if (summaryFail && passing.length === 0) return { score: 0, tokens: 0 };
+  const reply = await complete(caseJudgePrompt(summaryFail ? "" : summary, passing));
+  const parsed = parseCaseJudge(reply.text);
+  const steps = { ...parsed.steps };
+  for (const id of failed) steps[id] = false;
+  return { score: judgeFraction(summaryFail ? false : parsed.summary, steps, ids), tokens: reply.tokens || 0 };
+}
+
+function render(
+  rows: HeldRow[],
+  bad: BadJudgeRow[],
+  modelNote: string,
+  drops: { caseId: string; eventId: string }[] = [],
+): string {
   const low = bad.filter((row) => row.low).length;
+  const goods = goodRejects();
+  const dropText = drops.length
+    ? drops.map((item) => `${item.caseId} ${item.eventId}`).join(", ")
+    : "none";
   const header = [
     "# Held-out intent",
     "",
-    "Trails were captured from public pages and the ground truth was committed before this run. Deterministic, model-only, and hybrid ran with no condenser changes in between. Numbers below are that run.",
+    "Trails were captured from public pages and the ground truth was committed before this run. Replay uses multi-locator lookup and the search-toggle reveal. A click is dropped only when the trail shows no url, checked, value, or subtree change and no later step sits in its subtree. A Help click is kept.",
+    "",
+    `Effect filter wrongly dropped ${drops.length} true keep steps: ${dropText}.`,
+    "",
+    `Intent lint caught ${low}/${bad.length} bad texts and falsely rejected ${goods.length}/${GOOD_INTENTS.length} good intents.`,
     "",
     `Model access: ${modelNote}.`,
     "",
@@ -624,12 +697,12 @@ function render(rows: HeldRow[], bad: BadJudgeRow[], modelNote: string): string 
     "",
     "## Bad intent texts",
     "",
-    `The judge scored ${bad.length} texts written to be bad. ${low}/${bad.length} came back bad (low). The rubric was not edited, and these texts were not added to the calibration set. A concrete wrong verb or a non-secret value can still score good under that rubric.`,
+    `Lint runs before the judge. ${low}/${bad.length} bad texts were caught. ${goods.length}/${GOOD_INTENTS.length} good intents were falsely rejected. The rubric was not edited.`,
     "",
-    "| id | judge | low | text |",
-    "| --- | --- | --- | --- |",
+    "| id | lint | judge | caught | text |",
+    "| --- | --- | --- | --- | --- |",
   ];
-  const judgeLines = bad.map((row) => `| ${row.id} | ${row.judge == null ? "" : row.judge ? "good" : "bad"} | ${row.judge == null ? "" : row.low ? "yes" : "no"} | ${row.text.replace(/\|/g, "/")} |`);
+  const judgeLines = bad.map((row) => `| ${row.id} | ${row.lint || ""} | ${row.judge == null ? "" : row.judge ? "good" : "bad"} | ${row.low ? "yes" : "no"} | ${row.text.replace(/\|/g, "/")} |`);
   return [...header, ...lines, ...judgeHeader, ...judgeLines, ""].join("\n");
 }
 

@@ -25,6 +25,12 @@ export interface TrailEvent {
   beforeUrl?: string;
   afterUrl?: string;
   afterText?: string;
+  /** Target subtree text before and after a click. Equal means no subtree diff. */
+  subtreeBefore?: string;
+  subtreeAfter?: string;
+  /** Target value before and after a click, when the target has a value. */
+  valueBefore?: string;
+  valueAfter?: string;
   /** Basename only. A path here is stripped, not stored. */
   fileName?: string;
   rawPath?: string;

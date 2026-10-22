@@ -171,12 +171,16 @@ async function runStep(page: Page, step: HeldStep, index: number, before: string
     }];
   }
   const selector = step.selector || "button";
+  const locator = page.locator(selector).first();
   const identity = await actIdentity(page, selector);
   if (!identity) throw new Error(`no identity for ${selector}`);
-  await page.locator(selector).first().click({ timeout: 15000 });
+  const beforeFx = await readEffect(locator);
+  await locator.click({ timeout: 15000 });
   await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => undefined);
   await page.waitForTimeout(200);
-  const checked = await page.locator(selector).first().isChecked().catch(() => undefined);
+  const afterFx = await readEffect(locator);
+  const checked = await locator.isChecked().catch(() => undefined);
+  const subtreeAfter = afterFx.missing ? (beforeFx.subtree === "" ? "\u0000" : "") : afterFx.subtree;
   return [{
     id: `e${index}`,
     ts,
@@ -185,9 +189,28 @@ async function runStep(page: Page, step: HeldStep, index: number, before: string
     identity,
     gate: step.human,
     checked: typeof checked === "boolean" ? checked : undefined,
+    subtreeBefore: beforeFx.subtree,
+    subtreeAfter,
+    valueBefore: beforeFx.value,
+    valueAfter: afterFx.missing ? undefined : afterFx.value,
     beforeUrl: before,
     afterUrl: page.url(),
   }];
+}
+
+async function readEffect(locator: import("playwright").Locator): Promise<{ subtree: string; value?: string; missing?: boolean }> {
+  try {
+    return await locator.evaluate((el) => {
+      const node = el as HTMLElement;
+      const text = (node.innerText || node.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
+      const input = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
+        ? el.value
+        : undefined;
+      return { subtree: text, value: input };
+    });
+  } catch {
+    return { subtree: "", missing: true };
+  }
 }
 
 async function actIdentity(page: Page, selector: string): Promise<Identity | undefined> {
