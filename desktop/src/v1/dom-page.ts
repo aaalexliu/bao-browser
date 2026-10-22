@@ -13,6 +13,7 @@ export interface DomDump {
   text?: string;
   cssPath?: string;
   xpath?: string;
+  href?: string;
   path: { role: string; name?: string }[];
   value?: string;
   bbox?: { x: number; y: number; w: number; h: number };
@@ -55,19 +56,37 @@ export function dumpPage(): PageDump {
     return tag;
   };
 
+  const parentOf = (node: Element): Element | null => {
+    if (node.parentElement) return node.parentElement;
+    const root = node.getRootNode();
+    return root instanceof ShadowRoot ? root.host : null;
+  };
+
+  const byId = (id: string, from: Node): Element | null => {
+    const root = from.getRootNode();
+    if (root instanceof Document || root instanceof ShadowRoot) {
+      const found = root.getElementById(id);
+      if (found) return found;
+    }
+    return document.getElementById(id);
+  };
+
   const labelFor = (el: Element): string => {
+    const aria = norm(el.getAttribute("aria-label") || "");
+    if (aria) return aria;
     const labelled = el.getAttribute("aria-labelledby");
     if (labelled) {
-      const text = labelled.split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" ");
+      const text = labelled.split(/\s+/).map((id) => byId(id, el)?.textContent || "").join(" ");
       if (norm(text)) return norm(text);
     }
     if (el.id) {
       const label = document.querySelector(`label[for="${cssEscape(el.id)}"]`);
       if (label) return norm(label.textContent || "");
     }
-    const wrap = el.closest("label");
-    if (wrap) return norm(wrap.textContent || "");
-    return el.getAttribute("aria-label") || "";
+    let wrap: Element | null = el;
+    while (wrap && wrap.tagName !== "LABEL") wrap = parentOf(wrap);
+    if (wrap && wrap.tagName === "LABEL") return norm(wrap.textContent || "");
+    return norm(el.getAttribute("title") || "");
   };
 
   const xpathOf = (el: Element): string => {
@@ -114,6 +133,9 @@ export function dumpPage(): PageDump {
     return /^(A|BUTTON|INPUT|TEXTAREA|SELECT|LABEL|H1|H2|H3|H4|SUMMARY)$/.test(tag)
       || el.hasAttribute("role")
       || el.hasAttribute("data-testid")
+      || el.hasAttribute("data-qa")
+      || el.hasAttribute("data-test")
+      || el.hasAttribute("data-cy")
       || el.hasAttribute("data-bao-drop");
   };
 
@@ -121,36 +143,50 @@ export function dumpPage(): PageDump {
   const values: { handle: string; value: string }[] = [];
   const texts: string[] = [];
   let n = 0;
-  document.querySelectorAll("body *").forEach((el) => {
+  const shownText = (el: Element): string => {
+    if (el instanceof HTMLSelectElement) {
+      const option = el.selectedOptions[0];
+      return norm(option?.label || option?.text || "").slice(0, 80);
+    }
+    return norm((el as HTMLElement).innerText || el.textContent || "").slice(0, 80);
+  };
+  const consider = (el: Element): void => {
     if (!(el instanceof HTMLElement)) return;
+    if (el.shadowRoot) el.shadowRoot.querySelectorAll("*").forEach((child) => consider(child));
     if (el.hidden || el.closest("[hidden]")) return;
-    const leaf = el.childElementCount === 0 ? norm(el.innerText || el.textContent || "").slice(0, 80) : "";
+    const leaf = el.childElementCount === 0 ? shownText(el) : "";
     if (!interesting(el)) {
       if (leaf && leaf.length < 80) texts.push(leaf);
       return;
     }
     const handle = String(n++);
     el.setAttribute("data-bao-i", handle);
-    const text = norm(el.innerText || el.textContent || "").slice(0, 80);
+    const text = shownText(el);
     if (text && text.length < 80) texts.push(text);
+    // A file input's chosen name is not innerText. The upload check looks for it.
+    if (el instanceof HTMLInputElement && el.type === "file") {
+      const chosen = el.files?.[0]?.name || "";
+      if (chosen && chosen.length < 180) texts.push(chosen);
+    }
     const input = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
     if (input && input.type !== "password" && input.type !== "file") {
       values.push({ handle, value: input.value });
     }
     const path: { role: string; name?: string }[] = [];
-    let parent: Element | null = el.parentElement;
+    let parent: Element | null = parentOf(el);
     while (parent && parent !== document.body && path.length < 6) {
       path.unshift({ role: roleOf(parent), name: norm(parent.getAttribute("aria-label") || "").slice(0, 40) || undefined });
-      parent = parent.parentElement;
+      parent = parentOf(parent);
     }
+    const accessible = labelFor(el)
+      || (el instanceof HTMLInputElement && (el.type === "submit" || el.type === "button") ? el.value : "");
     nodes.push({
       handle,
       surface: "dom",
       role: roleOf(el),
-      name: el.getAttribute("aria-label")
-        || (el instanceof HTMLInputElement && (el.type === "submit" || el.type === "button") ? el.value : undefined)
-        || undefined,
-      testId: el.getAttribute("data-testid") || undefined,
+      name: norm(accessible).slice(0, 80) || undefined,
+      testId: el.getAttribute("data-testid") || el.getAttribute("data-qa") || el.getAttribute("data-test") || el.getAttribute("data-cy") || undefined,
+      href: el.tagName === "A" ? (el.getAttribute("href") || undefined) : undefined,
       id: el.id || undefined,
       nameAttr: el.getAttribute("name") || undefined,
       tag: el.tagName.toLowerCase(),
@@ -172,7 +208,8 @@ export function dumpPage(): PageDump {
         return style.display === "none" || style.visibility === "hidden" || el.getAttribute("aria-hidden") === "true";
       })(),
     });
-  });
+  };
+  document.querySelectorAll("body *").forEach((el) => consider(el));
   return { url: location.href, title: document.title, nodes, texts, values };
 }
 

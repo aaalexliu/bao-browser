@@ -109,6 +109,20 @@ test("a url template uses a param only when the recorded url contained that valu
   assert.equal(plain.steps[1]?.expect?.match?.includes("{{"), false);
 });
 
+test("a hash-only url change is not a navigation", () => {
+  const doc = interpret([
+    act({
+      id: "go",
+      op: "click",
+      identity: ident({ id: "continue-button", text: "Continue" }),
+      beforeUrl: "https://automationexercise.com/account_created",
+      afterUrl: "https://automationexercise.com/account_created#google_vignette",
+    }),
+  ], { id: "wf", startUrl: "https://automationexercise.com/login" });
+  assert.notEqual(doc.steps[0]?.expect?.match, "/account_created");
+  assert.notEqual(doc.steps[0]?.postcondition?.kind, "url");
+});
+
 test("a browser error page is not an oracle", () => {
   const doc = interpret([
     act({

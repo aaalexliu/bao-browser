@@ -1,0 +1,1337 @@
+{
+  "args": {
+    "prompt": "beta-prompt"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [
+      {
+        "stepId": "wf-1792682913207-1",
+        "kind": "css",
+        "detail": "css edit"
+      },
+      {
+        "stepId": "wf-1792682913207-3",
+        "kind": "role",
+        "detail": "role Gallery"
+      },
+      {
+        "stepId": "wf-1792682913207-5",
+        "kind": "role",
+        "detail": "role Click Here"
+      },
+      {
+        "stepId": "wf-1792682913207-7",
+        "kind": "role",
+        "detail": "role Click for JS Alert"
+      },
+      {
+        "stepId": "wf-1792682913207-8",
+        "kind": "role",
+        "detail": "role Click for JS Confirm"
+      },
+      {
+        "stepId": "wf-1792682913207-9",
+        "kind": "role",
+        "detail": "role Click for JS Prompt"
+      }
+    ],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792682913207-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url the-internet.herokuapp.com",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-1",
+        "action": "click",
+        "target": "link:edit",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url the-internet.herokuapp.com",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-3",
+        "action": "click",
+        "target": "link:Gallery",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url the-internet.herokuapp.com",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-5",
+        "action": "click",
+        "target": "link:Click Here",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url the-internet.herokuapp.com",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-7",
+        "action": "click",
+        "target": "button:Click for JS Alert",
+        "postcondition": "text You successfully clicked an alert",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-8",
+        "action": "click",
+        "target": "button:Click for JS Confirm",
+        "postcondition": "text You clicked: Ok",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792682913207-9",
+        "action": "click",
+        "target": "button:Click for JS Prompt",
+        "postcondition": "text You entered: {{prompt}}",
+        "timing": "lt1s"
+      }
+    ],
+    "trail": [
+      {
+        "kind": "click",
+        "stepId": "wf-1792682913207-1",
+        "target": "edit"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792682913207-3",
+        "target": "Gallery"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792682913207-5",
+        "target": "Click Here"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792682913207-7",
+        "target": "Click for JS Alert"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792682913207-8",
+        "target": "Click for JS Confirm"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792682913207-9",
+        "target": "Click for JS Prompt"
+      }
+    ],
+    "pageClasses": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945115
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945170
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945170
+      },
+      {
+        "stepId": "wf-1792682913207-1",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945301
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945346
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945346
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945346
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945346
+      },
+      {
+        "stepId": "wf-1792682913207-3",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945417
+      },
+      {
+        "stepId": "wf-1792682913207-3",
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 ()",
+        "ts": 1792682945426
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945550
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-7",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792682945734
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/challenging_dom",
+        "status": 200,
+        "ts": 1792682945097
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792682945101
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792682945114
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-mono.woff2",
+        "status": 200,
+        "ts": 1792682945115
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792682945115
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/challenging_dom",
+        "status": 200,
+        "ts": 1792682945156
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792682945159
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792682945159
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792682945160
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792682945160
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792682945160
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792682945160
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792682945160
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792682945160
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792682945160
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792682945170
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-mono.woff2",
+        "status": 200,
+        "ts": 1792682945170
+      },
+      {
+        "stepId": "wf-1792682913207-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792682945170
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/shifting_content/menu",
+        "status": 200,
+        "ts": 1792682945331
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792682945334
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792682945335
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792682945345
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-mono.woff2",
+        "status": 200,
+        "ts": 1792682945345
+      },
+      {
+        "stepId": "wf-1792682913207-2",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792682945345
+      },
+      {
+        "stepId": "wf-1792682913207-3",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/gallery/",
+        "status": 404,
+        "ts": 1792682945424
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/windows",
+        "status": 200,
+        "ts": 1792682945464
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792682945467
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792682945467
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792682945467
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792682945467
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792682945468
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792682945468
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792682945468
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792682945468
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792682945468
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-mono.woff2",
+        "status": 200,
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-4",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792682945476
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/javascript_alerts",
+        "status": 200,
+        "ts": 1792682945571
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792682945574
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792682945574
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792682945576
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792682945576
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792682945576
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792682945576
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792682945576
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792682945576
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792682945576
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-mono.woff2",
+        "status": 200,
+        "ts": 1792682945586
+      },
+      {
+        "stepId": "wf-1792682913207-6",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792682945586
+      }
+    ],
+    "runId": "run-mvjp517l-xjvf",
+    "status": "passed",
+    "steps": [
+      {
+        "id": "wf-1792682913207-0",
+        "status": "passed",
+        "startedAt": 1792682945130,
+        "endedAt": 1792682945185,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Challenging DOM"
+            },
+            {
+              "role": "link",
+              "text": "baz",
+              "id": "51fde2cc-707f-4481-b0d0-759be78d3fa5"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "3686eb63-f5ef-4b81-bdbd-c2ded84efe81"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "28695f1e-e2c3-415b-b51e-e78b3ee3e944"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"Challenging DOM\" [level=3]\n- paragraph: The hardest part in automated web testing is finding the best locators (e.g., ones that well named, unique, and unlikely to change). It's more often than not that the application you're testing was not built with this concept in mind. This example demonstrates that with unique IDs, a table with no helpful locators, and a canvas element.\n- separator\n- link \"baz\":\n  - /url: \"\"\n- link \"foo\":\n  - /url: \"\"\n- link \"foo\":\n  - /url: \"\"\n- table:\n  - rowgroup:\n    - row \"Lorem Ipsum Dolor Sit Amet Diceret Action\":\n      - columnheader \"Lorem\"\n      - columnheader \"Ipsum\"\n      - columnheader \"Dolor\"\n      - columnheader \"Sit\"\n      - columnheader \"Amet\"\n      - columnheader \"Diceret\"\n      - columnheader \"Action\"\n  - rowgroup:\n    - row \"Iuvaret0 Apeirian0 Adipisci0 Definiebas0 Consequuntur0 Phaedrum0 edit delete\":\n      - cell \"Iuvaret0\"\n      - cell \"Apeirian0\"\n      - cell \"Adipisci0\"\n      - cell \"Definiebas0\"\n      - cell \"Consequuntur0\"\n      - cell \"Phaedrum0\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret1 Apeirian1 Adipisci1 Definiebas1 Consequuntur1 Phaedrum1 edit delete\":\n      - cell \"Iuvaret1\"\n      - cell \"Apeirian1\"\n      - cell \"Adipisci1\"\n      - cell \"Definiebas1\"\n      - cell \"Consequuntur1\"\n      - cell \"Phaedrum1\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret2 Apeirian2 Adipisci2 Definiebas2 Consequuntur2 Phaedrum2 edit delete\":\n      - cell \"Iuvaret2\"\n      - cell \"Apeirian2\"\n      - cell \"Adipisci2\"\n      - cell \"Definiebas2\"\n      - cell \"Consequuntur2\"\n      - cell \"Phaedrum2\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret3 Apeirian3 Adipisci3 Definiebas3 Consequuntur3 Phaedrum3 edit delete\":\n      - cell \"Iuvaret3\"\n      - cell \"Apeirian3\"\n      - cell \"Adipisci3\"\n      - cell \"Definiebas3\"\n      - cell \"Consequuntur3\"\n      - cell \"Phaedrum3\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret4 Apeirian4 Adipisci4 Definiebas4 Consequuntur4 Phaedrum4 edit delete\":\n      - cell \"Iuvaret4\"\n      - cell \"Apeirian4\"\n      - cell \"Adipisci4\"\n      - cell \"Definiebas4\"\n      - cell \"Consequuntur4\"\n      - cell \"Phaedrum4\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret5 Apeirian5 Adipisci5 Definiebas5 Consequuntur5 Phaedrum5 edit delete\":\n      - cell \"Iuvaret5\"\n      - cell \"Apeirian5\"\n      - cell \"Adipisci5\"\n      - cell \"Definiebas5\"\n      - cell \"Consequuntur5\"\n      - cell \"Phaedrum5\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret6 Apeirian6 Adipisci6 Definiebas6 Consequuntur6 Phaedrum6 edit delete\":\n      - cell \"Iuvaret6\"\n      - cell \"Apeirian6\"\n      - cell \"Adipisci6\"\n      - cell \"Definiebas6\"\n      - cell \"Consequuntur6\"\n      - cell \"Phaedrum6\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret7 Apeirian7 Adipisci7 Definiebas7 Consequuntur7 Phaedrum7 edit delete\":\n      - cell \"Iuvaret7\"\n      - cell \"Apeirian7\"\n      - cell \"Adipisci7\"\n      - cell \"Definiebas7\"\n      - cell \"Consequuntur7\"\n      - cell \"Phaedrum7\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret8 Apeirian8 Adipisci8 Definiebas8 Consequuntur8 Phaedrum8 edit delete\":\n  "
+        }
+      },
+      {
+        "id": "wf-1792682913207-1",
+        "status": "passed",
+        "startedAt": 1792682945203,
+        "endedAt": 1792682945298,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Challenging DOM"
+            },
+            {
+              "role": "link",
+              "text": "baz",
+              "id": "51fde2cc-707f-4481-b0d0-759be78d3fa5"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "3686eb63-f5ef-4b81-bdbd-c2ded84efe81"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "28695f1e-e2c3-415b-b51e-e78b3ee3e944"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"Challenging DOM\" [level=3]\n- paragraph: The hardest part in automated web testing is finding the best locators (e.g., ones that well named, unique, and unlikely to change). It's more often than not that the application you're testing was not built with this concept in mind. This example demonstrates that with unique IDs, a table with no helpful locators, and a canvas element.\n- separator\n- link \"baz\":\n  - /url: \"\"\n- link \"foo\":\n  - /url: \"\"\n- link \"foo\":\n  - /url: \"\"\n- table:\n  - rowgroup:\n    - row \"Lorem Ipsum Dolor Sit Amet Diceret Action\":\n      - columnheader \"Lorem\"\n      - columnheader \"Ipsum\"\n      - columnheader \"Dolor\"\n      - columnheader \"Sit\"\n      - columnheader \"Amet\"\n      - columnheader \"Diceret\"\n      - columnheader \"Action\"\n  - rowgroup:\n    - row \"Iuvaret0 Apeirian0 Adipisci0 Definiebas0 Consequuntur0 Phaedrum0 edit delete\":\n      - cell \"Iuvaret0\"\n      - cell \"Apeirian0\"\n      - cell \"Adipisci0\"\n      - cell \"Definiebas0\"\n      - cell \"Consequuntur0\"\n      - cell \"Phaedrum0\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret1 Apeirian1 Adipisci1 Definiebas1 Consequuntur1 Phaedrum1 edit delete\":\n      - cell \"Iuvaret1\"\n      - cell \"Apeirian1\"\n      - cell \"Adipisci1\"\n      - cell \"Definiebas1\"\n      - cell \"Consequuntur1\"\n      - cell \"Phaedrum1\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret2 Apeirian2 Adipisci2 Definiebas2 Consequuntur2 Phaedrum2 edit delete\":\n      - cell \"Iuvaret2\"\n      - cell \"Apeirian2\"\n      - cell \"Adipisci2\"\n      - cell \"Definiebas2\"\n      - cell \"Consequuntur2\"\n      - cell \"Phaedrum2\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret3 Apeirian3 Adipisci3 Definiebas3 Consequuntur3 Phaedrum3 edit delete\":\n      - cell \"Iuvaret3\"\n      - cell \"Apeirian3\"\n      - cell \"Adipisci3\"\n      - cell \"Definiebas3\"\n      - cell \"Consequuntur3\"\n      - cell \"Phaedrum3\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret4 Apeirian4 Adipisci4 Definiebas4 Consequuntur4 Phaedrum4 edit delete\":\n      - cell \"Iuvaret4\"\n      - cell \"Apeirian4\"\n      - cell \"Adipisci4\"\n      - cell \"Definiebas4\"\n      - cell \"Consequuntur4\"\n      - cell \"Phaedrum4\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret5 Apeirian5 Adipisci5 Definiebas5 Consequuntur5 Phaedrum5 edit delete\":\n      - cell \"Iuvaret5\"\n      - cell \"Apeirian5\"\n      - cell \"Adipisci5\"\n      - cell \"Definiebas5\"\n      - cell \"Consequuntur5\"\n      - cell \"Phaedrum5\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret6 Apeirian6 Adipisci6 Definiebas6 Consequuntur6 Phaedrum6 edit delete\":\n      - cell \"Iuvaret6\"\n      - cell \"Apeirian6\"\n      - cell \"Adipisci6\"\n      - cell \"Definiebas6\"\n      - cell \"Consequuntur6\"\n      - cell \"Phaedrum6\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret7 Apeirian7 Adipisci7 Definiebas7 Consequuntur7 Phaedrum7 edit delete\":\n      - cell \"Iuvaret7\"\n      - cell \"Apeirian7\"\n      - cell \"Adipisci7\"\n      - cell \"Definiebas7\"\n      - cell \"Consequuntur7\"\n      - cell \"Phaedrum7\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret8 Apeirian8 Adipisci8 Definiebas8 Consequuntur8 Phaedrum8 edit delete\":\n  "
+        }
+      },
+      {
+        "id": "wf-1792682913207-2",
+        "status": "passed",
+        "startedAt": 1792682945307,
+        "endedAt": 1792682945352,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Shifting Content: Menu Element"
+            },
+            {
+              "role": "link",
+              "text": "click here"
+            },
+            {
+              "role": "link",
+              "text": "click here"
+            },
+            {
+              "role": "link",
+              "text": "click here"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": "About"
+            },
+            {
+              "role": "link",
+              "text": "Contact Us"
+            },
+            {
+              "role": "link",
+              "text": "Portfolio"
+            },
+            {
+              "role": "link",
+              "text": "Gallery"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- 'heading \"Shifting Content: Menu Element\" [level=3]'\n- paragraph: This example demonstrates a menu element shifting a few pixels in either direction on each page load.\n- paragraph:\n  - text: To load it randomly, append\n  - code: \"?mode=random\"\n  - text: to the URL. Or\n  - link \"click here\":\n    - /url: /shifting_content/menu?mode=random\n  - text: .\n- paragraph:\n  - text: To specify a differant numbor of pixels to shift the example, append\n  - code: \"?pixel_shift=100\"\n  - text: to the URL. Or\n  - link \"click here\":\n    - /url: /shifting_content/menu?pixel_shift=100\n  - text: .\n- paragraph:\n  - text: To do both together, use\n  - code: \"?mode=random&pixel_shift=100\"\n  - text: . Or\n  - link \"click here\":\n    - /url: /shifting_content/menu?mode=random&pixel_shift=100\n  - text: .\n- separator\n- list:\n  - listitem:\n    - link \"Home\":\n      - /url: /\n  - listitem:\n    - link \"About\":\n      - /url: /about/\n  - listitem:\n    - link \"Contact Us\":\n      - /url: /contact-us/\n  - listitem:\n    - link \"Portfolio\":\n      - /url: /portfolio/\n  - listitem:\n    - link \"Gallery\":\n      - /url: /gallery/\n  - list\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      },
+      {
+        "id": "wf-1792682913207-3",
+        "status": "passed",
+        "startedAt": 1792682945365,
+        "endedAt": 1792682945430,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "heading",
+              "text": "Not Found"
+            }
+          ],
+          "ax": "- heading \"Not Found\" [level=1]"
+        }
+      },
+      {
+        "id": "wf-1792682913207-4",
+        "status": "passed",
+        "startedAt": 1792682945441,
+        "endedAt": 1792682945481,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Opening a new window"
+            },
+            {
+              "role": "link",
+              "text": "Click Here"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"Opening a new window\" [level=3]\n- link \"Click Here\":\n  - /url: /windows/new\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      },
+      {
+        "id": "wf-1792682913207-5",
+        "status": "passed",
+        "startedAt": 1792682945492,
+        "endedAt": 1792682945543,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Opening a new window"
+            },
+            {
+              "role": "link",
+              "text": "Click Here"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"Opening a new window\" [level=3]\n- link \"Click Here\":\n  - /url: /windows/new\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      },
+      {
+        "id": "wf-1792682913207-6",
+        "status": "passed",
+        "startedAt": 1792682945548,
+        "endedAt": 1792682945591,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "JavaScript Alerts"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Alert"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Confirm"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Prompt"
+            },
+            {
+              "role": "heading",
+              "text": "Result:"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"JavaScript Alerts\" [level=3]\n- paragraph: Here are some examples of different JavaScript alerts which can be troublesome for automation\n- list:\n  - listitem:\n    - button \"Click for JS Alert\"\n  - listitem:\n    - button \"Click for JS Confirm\"\n  - listitem:\n    - button \"Click for JS Prompt\"\n- heading \"Result:\" [level=4]\n- paragraph\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      },
+      {
+        "id": "wf-1792682913207-7",
+        "status": "passed",
+        "startedAt": 1792682945607,
+        "endedAt": 1792682945726,
+        "beforeShot": "wf-1792682913207-7-before.png",
+        "afterShot": "wf-1792682913207-7-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "JavaScript Alerts"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Alert"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Confirm"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Prompt"
+            },
+            {
+              "role": "heading",
+              "text": "Result:"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"JavaScript Alerts\" [level=3]\n- paragraph: Here are some examples of different JavaScript alerts which can be troublesome for automation\n- list:\n  - listitem:\n    - button \"Click for JS Alert\"\n  - listitem:\n    - button \"Click for JS Confirm\"\n  - listitem:\n    - button \"Click for JS Prompt\"\n- heading \"Result:\" [level=4]\n- paragraph: You successfully clicked an alert\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      },
+      {
+        "id": "wf-1792682913207-8",
+        "status": "passed",
+        "startedAt": 1792682945790,
+        "endedAt": 1792682945923,
+        "beforeShot": "wf-1792682913207-8-before.png",
+        "afterShot": "wf-1792682913207-8-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "JavaScript Alerts"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Alert"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Confirm"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Prompt"
+            },
+            {
+              "role": "heading",
+              "text": "Result:"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"JavaScript Alerts\" [level=3]\n- paragraph: Here are some examples of different JavaScript alerts which can be troublesome for automation\n- list:\n  - listitem:\n    - button \"Click for JS Alert\"\n  - listitem:\n    - button \"Click for JS Confirm\"\n  - listitem:\n    - button \"Click for JS Prompt\"\n- heading \"Result:\" [level=4]\n- paragraph: \"You clicked: Ok\"\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      },
+      {
+        "id": "wf-1792682913207-9",
+        "status": "passed",
+        "startedAt": 1792682945989,
+        "endedAt": 1792682946124,
+        "beforeShot": "wf-1792682913207-9-before.png",
+        "afterShot": "wf-1792682913207-9-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "JavaScript Alerts"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Alert"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Confirm"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Prompt"
+            },
+            {
+              "role": "heading",
+              "text": "Result:"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"JavaScript Alerts\" [level=3]\n- paragraph: Here are some examples of different JavaScript alerts which can be troublesome for automation\n- list:\n  - listitem:\n    - button \"Click for JS Alert\"\n  - listitem:\n    - button \"Click for JS Confirm\"\n  - listitem:\n    - button \"Click for JS Prompt\"\n- heading \"Result:\" [level=4]\n- paragraph: \"You entered: beta-prompt\"\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      }
+    ],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://the-internet.herokuapp.com/javascript_alerts",
+    "title": "The Internet\nNew Window\nNew Window",
+    "text": "JavaScript Alerts Here are some examples of different JavaScript alerts which can be troublesome for automation Click for JS Alert Click for JS Confirm Click for JS Prompt Result: You entered: beta-prompt Powered by Elemental Selenium and Sauce Labs\nNew Window\nNew Window"
+  },
+  "downloaded": []
+}

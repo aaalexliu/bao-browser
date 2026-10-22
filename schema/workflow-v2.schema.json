@@ -77,6 +77,7 @@
         "text": { "type": "string" },
         "cssPath": { "type": "string" },
         "xpath": { "type": "string" },
+        "href": { "type": "string" },
         "windowTitle": { "type": "string" },
         "bundleId": { "type": "string" },
         "app": { "type": "string" },
@@ -187,7 +188,7 @@
       "properties": {
         "id": { "type": "string" },
         "index": { "type": "number" },
-        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login", "verify", "note", "extract", "for_each"] },
+        "action": { "enum": ["navigate", "click", "type", "key", "upload", "drop", "digits", "check", "select", "confirm", "login", "verify", "note", "extract", "for_each"] },
         "label": { "type": "string" },
         "surface": { "enum": ["dom", "os"] },
         "identity": { "$ref": "#/$defs/identity" },

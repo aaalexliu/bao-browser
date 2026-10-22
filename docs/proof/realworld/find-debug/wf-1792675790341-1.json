@@ -1,0 +1,144 @@
+{
+  "stepId": "wf-1792675790341-1",
+  "action": "click",
+  "label": "Click \"edit\"",
+  "url": "https://the-internet.herokuapp.com/challenging_dom",
+  "reason": "below-threshold",
+  "brokenAttr": "role",
+  "locators": [
+    {
+      "kind": "role",
+      "label": "role link edit",
+      "score": 40
+    },
+    {
+      "kind": "text",
+      "label": "text edit",
+      "score": 40
+    }
+  ],
+  "direct": [
+    {
+      "kind": "role",
+      "query": "link edit",
+      "count": 10,
+      "visible": 10
+    },
+    {
+      "kind": "text",
+      "query": "edit",
+      "count": 10,
+      "visible": 10
+    }
+  ],
+  "candidates": [
+    {
+      "index": 5,
+      "score": 110,
+      "role": "link",
+      "text": "edit",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "score": 110,
+      "role": "link",
+      "text": "edit",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "score": 110,
+      "role": "link",
+      "text": "edit",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "score": 110,
+      "role": "link",
+      "text": "edit",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "score": 110,
+      "role": "link",
+      "text": "edit",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    }
+  ],
+  "identity": {
+    "surface": "dom",
+    "role": "link",
+    "tag": "a",
+    "text": "edit",
+    "path": []
+  },
+  "recordedLocators": [
+    {
+      "kind": "role",
+      "role": "link",
+      "name": "edit"
+    },
+    {
+      "kind": "text",
+      "value": "edit"
+    }
+  ]
+}

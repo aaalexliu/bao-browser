@@ -87,7 +87,7 @@ test("a note lands on the step within a second and a fix is a labelled correctio
 
     await post(app.port, "/api/sessions/note", { text: "alpha note" });
     const noted = await readState(app.port);
-    assert.equal(noted.teach.cards[0]?.intent, "Click username");
+    assert.equal(noted.teach.cards[0]?.intent, "Click Username");
     assert.equal(noted.teach.cards[0]?.note, "alpha note");
     assert.equal(noted.teach.cards[0]?.noteAsIntent, true);
     assert.equal(noted.teach.cards[0]?.shownAt, card.shownAt);
@@ -116,7 +116,7 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     assert.equal(flagged.teach.cards.find((item) => item.id === login.id)?.human, true);
     assert.equal(flagged.teach.decisions.some((decision) => decision.detail === "you do this"), true);
     const notedCard = flagged.teach.cards.find((item) => item.id === card.id);
-    assert.equal(notedCard?.intent, "Click username");
+    assert.equal(notedCard?.intent, "Click Username");
     assert.equal(notedCard?.note, "alpha note");
     assert.equal(notedCard?.noteAsIntent, true);
 

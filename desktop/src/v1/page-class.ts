@@ -51,6 +51,10 @@ export interface PageSignals {
   recordedLogin?: boolean;
   nodes?: PageNode[];
   closes?: CloseControl[];
+  /** Visible challenge frames. An ad iframe with no box is not a widget. */
+  widgets?: { src?: string; w: number; h: number }[];
+  /** The recorded target is on this page. A wall also requires it to be missing. */
+  targetPresent?: boolean;
 }
 
 export interface PageClassDecision {
@@ -136,6 +140,7 @@ export function classifyPage(input: PageSignals): PageClassDecision {
 }
 
 function botWall(input: PageSignals): PageClassDecision | undefined {
+  if (input.targetPresent === true) return undefined;
   const title = input.title || "";
   const texts = shortTexts(input);
   const markers = (input.markers || []).join("\n");
@@ -192,9 +197,9 @@ function botWall(input: PageSignals): PageClassDecision | undefined {
   }
   const human = texts.find((text) => HUMAN.test(text)) || (HUMAN.test(title) ? title : "");
   if (human) return { class: "bot_wall", reason: "bot check", vendor: "captcha", evidence: [{ source: HUMAN.test(title) && !texts.includes(human) ? "title" : "text", detail: clip(human) }] };
-  if (/\bcaptcha\b/i.test(title) || texts.some((text) => text.length < 80 && /\bcaptcha\b/i.test(text)) || /\bcaptcha\b/i.test(markers)) {
-    const detail = (/\bcaptcha\b/i.test(title) ? title : texts.find((text) => /\bcaptcha\b/i.test(text)) || markers).trim();
-    return { class: "bot_wall", reason: "bot check", vendor: "captcha", evidence: [{ source: /\bcaptcha\b/i.test(title) ? "title" : "dom", detail: clip(detail) }] };
+  if (/\bcaptcha\b/i.test(title) || texts.some((text) => text.length < 80 && /\bcaptcha\b/i.test(text))) {
+    const detail = (/\bcaptcha\b/i.test(title) ? title : texts.find((text) => /\bcaptcha\b/i.test(text)) || title).trim();
+    return { class: "bot_wall", reason: "bot check", vendor: "captcha", evidence: [{ source: /\bcaptcha\b/i.test(title) ? "title" : "text", detail: clip(detail) }] };
   }
   const blocked = blockedDocument(input);
   if (blocked) {
@@ -227,19 +232,15 @@ function botWall(input: PageSignals): PageClassDecision | undefined {
 }
 
 function vendorHit(
-  _input: PageSignals,
+  input: PageSignals,
   title: string,
   texts: string[],
-  markers: string,
-  iframes: string[],
+  _markers: string,
+  _iframes: string[],
   rule: { iframe?: RegExp; marker?: RegExp; title?: RegExp; text?: RegExp },
 ): PageEvidence | undefined {
-  const frame = rule.iframe ? iframes.find((src) => rule.iframe!.test(src)) : undefined;
-  if (frame) return { source: "iframe", detail: clip(frame) };
-  if (rule.marker && rule.marker.test(markers)) {
-    const line = markers.split("\n").find((item) => rule.marker!.test(item)) || markers;
-    return { source: "dom", detail: clip(line) };
-  }
+  const widget = (input.widgets || []).find((item) => item.w >= 40 && item.h >= 40 && !!item.src && !!rule.iframe?.test(item.src));
+  if (widget?.src) return { source: "iframe", detail: clip(widget.src) };
   if (rule.title && rule.title.test(title)) return { source: "title", detail: clip(title) };
   const text = rule.text ? texts.find((item) => rule.text!.test(item)) : undefined;
   if (text) return { source: "text", detail: clip(text) };
@@ -395,6 +396,7 @@ export interface PageMarkerDump {
   texts: string[];
   iframeSrcs: string[];
   markers: string[];
+  widgets: { src?: string; w: number; h: number }[];
   hasPassword: boolean;
   closes: CloseControl[];
 }
@@ -405,9 +407,15 @@ export function readPageMarkers(): PageMarkerDump {
   const closeText = /^(accept|accept all|agree|allow|allow all|got it|ok|okay|dismiss|close|not now|no thanks|maybe later|no, thanks|skip|×|✕|✗)$/i;
   const captchaControl = /captcha|recaptcha|hcaptcha|turnstile|not a robot|verify you are human/i;
   const iframeSrcs: string[] = [];
-  document.querySelectorAll("iframe, frame, script").forEach((el) => {
+  const widgets: { src?: string; w: number; h: number }[] = [];
+  document.querySelectorAll("iframe, frame").forEach((el) => {
     const src = el.getAttribute("src") || "";
-    if (src) iframeSrcs.push(src.slice(0, 300));
+    if (!src) return;
+    iframeSrcs.push(src.slice(0, 300));
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const hidden = style.display === "none" || style.visibility === "hidden" || el.getAttribute("aria-hidden") === "true";
+    if (!hidden && rect.width >= 40 && rect.height >= 40) widgets.push({ src: src.slice(0, 300), w: Math.round(rect.width), h: Math.round(rect.height) });
   });
   const markers: string[] = [];
   const interesting = /recaptcha|hcaptcha|turnstile|cf-|challenge|captcha|incapsula|imperva|datadome|px-captcha|g-recaptcha|h-captcha|akamai|modal|dialog|cookie|intercom|consent/i;
@@ -432,6 +440,7 @@ export function readPageMarkers(): PageMarkerDump {
     texts: body ? [body] : [],
     iframeSrcs: iframeSrcs.slice(0, 40),
     markers: markers.slice(0, 40),
+    widgets: widgets.slice(0, 12),
     hasPassword: !!document.querySelector("input[type=password]"),
     closes,
   };
@@ -441,6 +450,26 @@ export function readPageMarkers(): PageMarkerDump {
  * Clicks a known close control in the page. Refuses captcha and challenge
  * controls. Returns whether something was clicked.
  */
+/** A full-page ad vignette is not the recorded control. Small ad slots stay. */
+export function dismissCoveringAds(): void {
+  if (location.hash === "#google_vignette") {
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  document.querySelectorAll("ins.adsbygoogle, iframe, [data-vignette-loaded], .google-auto-placed").forEach((el) => {
+    const box = el.getBoundingClientRect();
+    const id = el.id || "";
+    const src = el instanceof HTMLIFrameElement ? el.src : "";
+    const title = el.getAttribute("title") || "";
+    const vignette = el.hasAttribute("data-vignette-loaded")
+      || el.classList.contains("adsbygoogle")
+      || el.classList.contains("google-auto-placed")
+      || /vignette|aswift|googlesyndication|doubleclick|googleads/i.test(`${id} ${src} ${title}`);
+    if (!vignette && (el.tagName !== "IFRAME" || box.width * box.height < 400 * 240)) return;
+    if (!vignette && el.tagName === "IFRAME" && title !== "Advertisement") return;
+    el.remove();
+  });
+}
+
 export function clickKnownClose(): boolean {
   const norm = (value: string) => value.replace(/\s+/g, " ").trim();
   const closeText = /^(accept|accept all|agree|allow|allow all|got it|ok|okay|dismiss|close|not now|no thanks|maybe later|no, thanks|skip|×|✕|✗)$/i;

@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
+import { findDebugDir, queriesForLocators, writeFindDebug } from "./find-debug";
 import { lookup, normRole } from "./identity";
 import { actWaitMs, confirmButton, makeAsk, siteHost, wallInstruction, type HumanAsk } from "./human-ask";
 import { formatClock } from "./time";
@@ -27,7 +28,7 @@ import {
   type StepFailure,
   type TriedLocator,
 } from "./heal";
-import { isCollapsedBox, matchLabeledControl, matchLocator, scoreLocator } from "./locators";
+import { isCollapsedBox, locatorIndexes, matchLabeledControl, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
 import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
 import {
@@ -111,13 +112,21 @@ export interface GuideAct {
 export interface Driver {
   tree(): Promise<LiveTree>;
   snapshot(): Promise<FailureSnapshot>;
+  /** Count the recorded locator in the live DOM. Debug only. Not a score. */
+  probe?(queries: { kind: "css" | "text" | "role" | "xpath"; query: string; role?: string; name?: string }[]): Promise<{ url: string; hits: { kind: string; query: string; count: number; visible: number }[] }>;
   click(node: Identity): Promise<void>;
+  /** The next native prompt accepts this text. Alert and confirm stay empty. */
+  answerDialog?(value: string): void;
   fill(node: Identity, text: string, secret: boolean): Promise<void>;
   key(key: string): Promise<void>;
   upload(node: Identity, files: FileArg[]): Promise<void>;
   drop(node: Identity, files: FileArg[]): Promise<void>;
   digits(app: string | undefined, role: string, text: string): Promise<void>;
   check(node: Identity, checked: boolean): Promise<void>;
+  /** Open a recorded URL. Absent when the host already loaded startUrl. */
+  goto?(url: string): Promise<void>;
+  /** Choose an option by its visible label, or by its value when the label misses. */
+  select?(node: Identity, value: string): Promise<void>;
   /** Move focus onto the key step's target before the key is pressed. */
   focus?(node: Identity): Promise<void>;
   notify(notice: HealNotice): Promise<void>;
@@ -138,6 +147,8 @@ export interface Driver {
   loginContinued?(): boolean;
   /** Page PNG of the target, when the driver can see it. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
+  /** Full viewport. Unit-test drivers omit this. */
+  pageShot?(): Promise<Buffer | undefined>;
   /** Tags console and network lines with the step that is running. */
   markStep?(id: string): void;
   /** DOM and accessibility tree at the end of the step. Browser drivers only. */
@@ -148,8 +159,6 @@ export interface Driver {
   highlightTarget?(node: Identity): Promise<void>;
   /** The next person action, if the driver is watching the page. */
   performed?(): Promise<GuideAct | null>;
-  /** Open a URL in this browser. */
-  goto?(url: string): Promise<void>;
   /** Arm CDP download capture, trigger the download, and return the saved path. */
   download?(spec: { dir: string; filename: string; timeoutMs: number; url?: string; node?: Identity }): Promise<{ suggestedFilename: string; path: string }>;
   /** Click or drag the cell for a resolved date. Recorded day clicks are not replayed. */
@@ -428,7 +437,7 @@ export async function replay(
             return { next: true };
           }
           if ("paused" in retried) return { outcome: retried };
-          const again = await classifyLive(driver, workflow);
+          const again = await classifyLive(driver, workflow, step);
           if (again.class === "bot_wall" || again.class === "login_wall") {
             noteClass(again);
             await driver.showAsk?.(ask);
@@ -444,7 +453,7 @@ export async function replay(
       stamp({ id: step.id, status: "failed", reason: "stopped, timed out" });
       return { result: finish({ runId, status: "failed", steps, failure: await fail(driver, step, "find", "stopped, timed out", undefined, secrets) }) };
     };
-    const before = step.action === "note" ? undefined : await classifyLive(driver, workflow);
+    const before = step.action === "note" ? undefined : await classifyLive(driver, workflow, step);
     let outcome: StepOutcome | undefined;
     if (before && (before.class === "bot_wall" || before.class === "login_wall")) {
       const held = await holdWall(before);
@@ -497,7 +506,7 @@ export async function replay(
       return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind, ask: outcome.ask });
     }
     let failure = outcome.failure;
-    const missed = await classifyLive(driver, workflow);
+    const missed = await classifyLive(driver, workflow, step);
     noteClass(missed, true);
     if (missed.class === "bot_wall" || missed.class === "login_wall") {
       const held = await holdWall(missed);
@@ -527,7 +536,7 @@ export async function replay(
             stamp({ id: step.id, status: "paused", reason });
             return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: retried.paused === "signin" || retried.paused === "confirm" ? retried.paused : undefined, ask: retried.ask });
           }
-          const again = await classifyLive(driver, workflow);
+          const again = await classifyLive(driver, workflow, step);
           noteClass(again, true);
           if (again.class === "bot_wall" || again.class === "login_wall") {
             const held = await holdWall(again);
@@ -674,7 +683,40 @@ export async function replay(
       if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot, ...(snapshot ? { snapshot } : {}) };
     }
   }
+  const executed = steps.filter((step) => step.status === "passed" && step.reason !== "other branch" && step.reason !== "not re-run");
+  const lastId = executed[executed.length - 1]?.id;
+  const last = workflow.steps.find((step) => step.id === lastId && step.action !== "note");
+  let finalCheckFailed = false;
+  if (last && (last.expect || last.postcondition)) {
+    finalCheckFailed = !(await expectationsHold(last, await driver.tree(), args));
+  }
+  if (!runPassed(steps, finalCheckFailed)) {
+    const reason = executed.length === 0 ? "no steps executed" : "final check failed";
+    const snapshot = maskSnapshot(await driver.snapshot().catch(() => ({})), secrets);
+    return finish({
+      runId,
+      status: "failed",
+      steps,
+      failure: {
+        stepId: last?.id || workflow.id,
+        index: last?.index ?? 0,
+        intent: last?.intent || last?.label || workflow.name,
+        phase: "expect",
+        reason,
+        snapshot,
+      },
+    });
+  }
   return finish({ runId, status: "passed", steps });
+}
+
+/** A run with nothing executed, or a failed final check, is not a pass. */
+export function runPassed(
+  steps: { status: string; reason?: string }[],
+  finalCheckFailed = false,
+): boolean {
+  if (finalCheckFailed) return false;
+  return steps.some((step) => step.status === "passed" && step.reason !== "other branch" && step.reason !== "not re-run");
 }
 
 type StepOutcome =
@@ -719,6 +761,20 @@ async function runStep(
       return { ok: false, repairs, failure: await fail(driver, step, "action", data.reason, undefined, secrets) };
     }
     return { ok: true, repairs, detail: data.detail };
+  }
+  if (step.action === "navigate") {
+    const url = step.value || workflow.startUrl;
+    try {
+      if (url && driver.goto) await driver.goto(url);
+    } catch (err) {
+      const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+      return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
+    }
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) {
+      return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    }
+    return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.waitFor) {
     const ready = await holdCheck(step.waitFor, args, driver, true);
@@ -916,9 +972,55 @@ async function findTarget(
     return { ...waited, recovered };
   }
   if (waited.hit.ok) {
-    return { nodes: waited.nodes, hit: { ok: false, reason: "below-threshold", brokenAttr: "box", ranked: [] }, tried: waited.tried, recovered };
+    const hit = { ok: false as const, reason: "below-threshold" as const, brokenAttr: "box", ranked: [] as ReturnType<typeof lookup>["ranked"] };
+    await captureFindMiss(step, driver, waited.nodes, hit, waited.tried);
+    return { nodes: waited.nodes, hit, tried: waited.tried, recovered };
   }
+  await captureFindMiss(step, driver, waited.nodes, waited.hit, waited.tried);
   return { ...waited, recovered };
+}
+
+async function captureFindMiss(
+  step: WorkflowStep,
+  driver: Driver,
+  nodes: Identity[],
+  hit: ReturnType<typeof lookup>,
+  tried: TriedLocator[],
+): Promise<void> {
+  const dir = findDebugDir();
+  if (!dir || hit.ok) return;
+  const ranked = step.identity ? lookup(step.identity, nodes).ranked.slice(0, 5) : [];
+  const candidates = ranked.map((score) => {
+    const node = nodes[score.index];
+    return {
+      index: score.index,
+      score: score.score,
+      role: node?.role,
+      name: node?.name,
+      label: node?.label,
+      text: node?.text,
+      id: node?.id,
+      nameAttr: node?.nameAttr,
+      testId: node?.testId,
+      parts: score.parts,
+    };
+  });
+  const probed = driver.probe ? await driver.probe(queriesForLocators(step.locators)).catch(() => undefined) : undefined;
+  const snap = await driver.snapshot().catch(() => undefined);
+  const png = snap?.screenshot ? Buffer.from(snap.screenshot, "base64") : undefined;
+  writeFindDebug(dir, step.id, {
+    stepId: step.id,
+    action: step.action,
+    label: step.label,
+    url: probed?.url,
+    reason: hit.reason,
+    brokenAttr: hit.brokenAttr,
+    locators: tried,
+    direct: probed?.hits || [],
+    candidates,
+    identity: step.identity,
+    recordedLocators: step.locators,
+  }, png);
 }
 
 function shouldReveal(
@@ -1324,6 +1426,19 @@ function locate(
         tried,
       };
     }
+    if (step.identity) {
+      const hit = lookup(step.identity, nodes);
+      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden)) {
+        const node = nodes[hit.index];
+        const detail = node?.name || node?.label || node?.text || node?.nameAttr || node?.id || "identity";
+        return {
+          nodes,
+          hit,
+          via: { stepId: step.id, kind: "identity", detail: `identity ${detail}` },
+          tried,
+        };
+      }
+    }
     return {
       nodes,
       hit: { ok: false, reason: "below-threshold", brokenAttr: list[0]?.kind || "locator", ranked: [] },
@@ -1375,10 +1490,26 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     await driver.check(node, !!step.checked);
     return;
   }
+  if (step.action === "select") {
+    const text = step.input ? String(args[step.input] ?? "") : String(step.value ?? "");
+    if (!driver.select) throw new Error("select is not supported");
+    await driver.select(node, text);
+    return;
+  }
+  if (step.action === "navigate") {
+    const url = step.value || "";
+    if (!url || !driver.goto) return;
+    await driver.goto(url);
+    return;
+  }
   if (step.action === "key") {
     await driver.focus?.(node);
     await driver.key(step.key || "Enter");
     return;
+  }
+  if (step.input && driver.answerDialog) {
+    const answer = String(args[step.input] ?? "");
+    if (answer) driver.answerDialog(answer);
   }
   if (!await guardedClick(driver, gate, step.id, node)) {
     throw new Error("refusing to click Apply without a human confirm");
@@ -1717,9 +1848,10 @@ function noteAuth(trail: RunTrailEvent[], stepId: string, recovered: boolean): v
   });
 }
 
-async function classifyLive(driver: Driver, workflow: WorkflowV2): Promise<PageClassDecision> {
+async function classifyLive(driver: Driver, workflow: WorkflowV2, step?: WorkflowStep): Promise<PageClassDecision> {
   const recorded = recordingExpectsLogin(workflow.steps);
   const startedUrl = workflow.startUrl;
+  const targetPresent = await targetHere(driver, step);
   if (driver.pageSignals) {
     const signals = await driver.pageSignals().catch(() => undefined);
     if (signals) {
@@ -1728,6 +1860,7 @@ async function classifyLive(driver: Driver, workflow: WorkflowV2): Promise<PageC
         startedUrl,
         recordedPassword: recorded.password,
         recordedLogin: recorded.login,
+        targetPresent,
       });
     }
   }
@@ -1745,7 +1878,25 @@ async function classifyLive(driver: Driver, workflow: WorkflowV2): Promise<PageC
     hasPassword: nodes.some((node) => node.role === "password" || node.nameAttr === "password" || node.id === "password"),
     recordedPassword: recorded.password,
     recordedLogin: recorded.login,
+    targetPresent,
   });
+}
+
+/** True when the recorded control is on the page, including an ambiguous match. */
+async function targetHere(driver: Driver, step?: WorkflowStep): Promise<boolean | undefined> {
+  if (!step || step.action === "note" || step.action === "navigate" || step.action === "verify" || step.action === "login" || step.action === "confirm") {
+    return undefined;
+  }
+  if (step.locators?.length && driver.probe) {
+    const probed = await driver.probe(queriesForLocators(step.locators)).catch(() => undefined);
+    if (probed) return probed.hits.some((hit) => hit.count > 0);
+  }
+  const tree = await driver.tree().catch(() => undefined);
+  if (!tree) return undefined;
+  if (step.locators?.length) return step.locators.some((locator) => locatorIndexes(locator, tree.nodes).length > 0);
+  if (!step.identity) return undefined;
+  const hit = lookup(step.identity, tree.nodes);
+  return hit.ok || hit.reason === "tie";
 }
 
 async function dismissNamed(driver: Driver, decision: PageClassDecision): Promise<boolean> {
@@ -1771,8 +1922,16 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<string | undefined> {
-  if (!dir || !driver.shot) return;
+  if (!dir) return;
   try {
+    if (process.env.BAO_PROOF_PAGE === "1" && which === "before" && /delete account/i.test(step.label || "")) {
+      const full = await driver.pageShot?.();
+      if (full && full.length > 24 && full[0] === 0x89) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, "identity.png"), full);
+      }
+    }
+    if (!driver.shot) return;
     const png = await driver.shot({
       identity: step.identity,
       action: step.action,

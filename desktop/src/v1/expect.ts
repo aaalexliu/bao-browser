@@ -136,13 +136,24 @@ function templateText(text: string, known: readonly KnownTyped[]): string {
   return text.split(inner.value).join(`{{${inner.name}}}`);
 }
 
+/** A hash-only change, such as an ad appending #google_vignette, is the same document. */
+function sameDocument(beforeUrl: string, afterUrl: string): boolean {
+  try {
+    const before = new URL(beforeUrl);
+    const after = new URL(afterUrl);
+    return before.origin === after.origin && before.pathname === after.pathname && before.search === after.search;
+  } catch {
+    return beforeUrl.split("#")[0] === afterUrl.split("#")[0];
+  }
+}
+
 function urlCheck(
   beforeUrl: string | undefined,
   afterUrl: string | undefined,
   known: readonly KnownTyped[],
   secrets: string[],
 ): string | undefined {
-  if (!beforeUrl || !afterUrl || beforeUrl === afterUrl) return undefined;
+  if (!beforeUrl || !afterUrl || beforeUrl === afterUrl || sameDocument(beforeUrl, afterUrl)) return undefined;
   const cleaned = scrub(afterUrl, secrets);
   if (!cleaned || isBrowserError(cleaned)) return undefined;
   let url: URL;

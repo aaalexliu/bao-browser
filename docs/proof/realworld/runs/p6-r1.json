@@ -1,0 +1,29 @@
+{
+  "note": "Rerun on 42a80cc. Replay paused before Click Add and was not written by the harness, because the person hold is two hours. Replay 2 was not started.",
+  "page": {
+    "url": "https://demoqa.com/webtables",
+    "title": "demosite"
+  },
+  "replay": {
+    "status": "paused",
+    "pausedKind": "wall",
+    "modelCalls": 0,
+    "heals": [],
+    "ask": {
+      "kind": "wall",
+      "label": "Click \"Add\"",
+      "instruction": "Demoqa is showing a bot check. Finish it in the Bao window, then press Continue."
+    }
+  },
+  "classifier": {
+    "class": "bot_wall",
+    "reason": "bot check",
+    "vendor": "reCAPTCHA",
+    "evidence": [
+      {
+        "source": "iframe",
+        "detail": "https://www.google.com/recaptcha/api2/aframe"
+      }
+    ]
+  }
+}

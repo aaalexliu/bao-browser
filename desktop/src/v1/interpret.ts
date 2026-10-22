@@ -70,6 +70,8 @@ export interface TrailEvent {
   dialogType?: "alert" | "confirm" | "prompt";
   /** Which button closed the dialog. An alert records accept. */
   dialogDecision?: "accept" | "dismiss";
+  /** Text the prompt returned. Replay types it again. */
+  dialogValue?: string;
   /** Name this click from an input. The recorded text is the sample default. */
   parameter?: string;
   /** Rows the person selected or copied. */
@@ -89,7 +91,7 @@ export interface InterpretMeta {
 }
 
 const NOISE = new Set([
-  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "navigate", "mark",
+  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "mark",
 ]);
 
 const DIGIT = /^[0-9]$/;
@@ -322,7 +324,7 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
     || (left.name != null && left.name === right.name && left.role === right.role && left.app === right.app);
 }
 
-function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: readonly KnownTyped[]): WorkflowStep {
+function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: KnownTyped[]): WorkflowStep {
   event = normalizeFile(event);
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const identity = stripSecretValue(event.identity, meta.secrets ?? []);
@@ -337,6 +339,32 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     timeoutMs: 8000,
     provenance: event.provenance,
   };
+  if (event.op === "navigate") {
+    const url = event.afterUrl || event.beforeUrl || meta.startUrl;
+    const match = openMatch(url);
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: "navigate",
+      label: url ? `Open ${url}` : "Open",
+      surface: "dom",
+      value: url || undefined,
+      timeoutMs: 8000,
+      ...(match ? { expect: { kind: "url" as const, match, timeoutMs: 8000 } } : {}),
+    };
+  }
+  if (event.op === "select") {
+    const input = addInput(inputs, "text", nameHint(event, false));
+    if (event.value) input.default = event.value;
+    return {
+      ...step,
+      action: "select",
+      input: input.name,
+      value: `{{${input.name}}}`,
+      label: `Select {{${input.name}}}`,
+      ...observed(event, input.name, false, known, meta.secrets ?? []),
+    };
+  }
   if (event.op === "login" || event.op === "confirm") {
     return {
       id: `${meta.id}-${index}`,
@@ -452,12 +480,14 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       ...observed(event, secret ? undefined : input.name, secret, known, meta.secrets ?? []),
     };
   }
-  if (typeof event.checked === "boolean") {
+  if (typeof event.checked === "boolean" || event.op === "check") {
+    const checked = event.checked !== false;
+    const name = event.identity?.name || event.identity?.label || event.identity?.text;
     return {
       ...step,
       action: "check",
-      checked: event.checked,
-      label: event.checked ? "Check" : "Uncheck",
+      checked,
+      label: `${checked ? "Check" : "Uncheck"}${name ? ` "${name}"` : ""}`,
       ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
@@ -477,10 +507,28 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   const name = event.identity?.name || event.identity?.text || event.identity?.label;
+  if (event.op === "click" && /^reserve now$/i.test((name || "").trim())) {
+    return {
+      ...step,
+      action: "confirm",
+      human: true,
+      gate: "confirm",
+      label: `Confirm "${name}"`,
+    };
+  }
+  let promptInput: string | undefined;
+  if (event.dialogType === "prompt" && event.dialogValue) {
+    const input = addInput(inputs, "text", "prompt");
+    const typed = scrub(event.dialogValue, meta.secrets ?? []) || event.dialogValue;
+    input.default = typed;
+    promptInput = input.name;
+    if (typed && !meta.secrets?.includes(typed)) known.push({ name: input.name, value: typed });
+  }
   return {
     ...step,
     action: "click",
     label: name ? `Click "${name}"` : "Click",
+    ...(promptInput ? { input: promptInput, value: `{{${promptInput}}}` } : {}),
     ...observed(event, undefined, false, known, meta.secrets ?? []),
   };
 }
@@ -550,6 +598,15 @@ function isSecret(event: TrailEvent, secrets: string[]): boolean {
     ariaLabel: id?.label || id?.name,
     value: event.value,
   });
+}
+
+/** Host only. The step loads the full URL; a same-site redirect must not fail the open. */
+function openMatch(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 function numberLike(value: string | undefined): boolean {

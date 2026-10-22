@@ -78,13 +78,13 @@ function countingHeal() {
 test("a vendor challenge is a bot wall and a plain 200 is not", () => {
   const cases: { vendor: string; signals: PageSignals }[] = [
     { vendor: "reCAPTCHA", signals: { iframeSrcs: ["https://www.google.com/recaptcha/api2/anchor"], texts: ["I'm not a robot"] } },
-    { vendor: "hCaptcha", signals: { markers: ["h-captcha"], iframeSrcs: ["https://newassets.hcaptcha.com/captcha"] } },
-    { vendor: "Turnstile", signals: { markers: ["cf-turnstile"], iframeSrcs: ["https://challenges.cloudflare.com/turnstile"] } },
+    { vendor: "hCaptcha", signals: { markers: ["h-captcha"], widgets: [{ src: "https://newassets.hcaptcha.com/captcha", w: 304, h: 78 }] } },
+    { vendor: "Turnstile", signals: { markers: ["cf-turnstile"], widgets: [{ src: "https://challenges.cloudflare.com/turnstile", w: 300, h: 65 }] } },
     { vendor: "Cloudflare", signals: { title: "Just a moment...", texts: ["Checking your browser before accessing the site"] } },
     { vendor: "Akamai", signals: { title: "Access Denied", texts: ["Reference #18.6f4a"], markers: ["akamai"] } },
     { vendor: "Imperva", signals: { iframeSrcs: ["/_Incapsula_Resource"], texts: ["Incapsula incident ID: 123"] } },
     { vendor: "PerimeterX", signals: { markers: ["px-captcha"], texts: ["Press & Hold"] } },
-    { vendor: "DataDome", signals: { iframeSrcs: ["https://geo.captcha-delivery.com/captcha"], markers: ["datadome"] } },
+    { vendor: "DataDome", signals: { markers: ["datadome"], widgets: [{ src: "https://geo.captcha-delivery.com/captcha", w: 300, h: 150 }] } },
     { vendor: "captcha", signals: { texts: ["Verify you are human"] } },
   ];
   for (const item of cases) {
@@ -106,6 +106,28 @@ test("a vendor challenge is a bot wall and a plain 200 is not", () => {
     texts: ["Your account"],
   }).class, "changed");
   assert.equal(classifyPage({ title: "Access Denied", texts: ["Try again later"] }).class, "changed");
+  assert.equal(classifyPage({
+    iframeSrcs: ["https://www.google.com/recaptcha/api2/aframe"],
+    widgets: [{ src: "https://www.google.com/recaptcha/api2/aframe", w: 0, h: 0 }],
+    texts: ["Web Tables", "Add"],
+    targetPresent: true,
+  }).class, "changed");
+  assert.equal(classifyPage({
+    iframeSrcs: ["https://www.google.com/recaptcha/api2/aframe"],
+    texts: ["Web Tables"],
+  }).class, "changed");
+  assert.equal(classifyPage({
+    title: "Just a moment...",
+    texts: ["Checking your browser before accessing the site"],
+    targetPresent: true,
+  }).class, "changed");
+  const widget = classifyPage({
+    widgets: [{ src: "https://www.google.com/recaptcha/api2/anchor", w: 304, h: 78 }],
+    texts: ["I'm not a robot"],
+    targetPresent: false,
+  });
+  assert.equal(widget.class, "bot_wall");
+  assert.equal(widget.vendor, "reCAPTCHA");
 });
 
 test("a member url that settles on a login url is a login wall, with no http redirect", () => {
@@ -204,7 +226,7 @@ test("cookie, newsletter, ad, and chat clutter name a close control", () => {
 test("a bot wall and a login wall stop before the step, and clutter retries once", async () => {
   const quiet = countingHeal();
   const botDriver = fake(
-    [tree([ident({ testId: "apply", text: "Apply" })])],
+    [tree([ident({ role: "button", text: "Verify you are human", testId: "captcha" })])],
     { iframeSrcs: ["https://www.google.com/recaptcha/enterprise/anchor"], texts: ["I'm not a robot"] },
   );
   const bot = await replay(doc("https://shop.example/cart", [clickApply]), {}, botDriver, { heal: quiet.heal });
@@ -217,6 +239,13 @@ test("a bot wall and a login wall stop before the step, and clutter retries once
   assert.equal(botDriver.clicks.length, 0);
   assert.match(bot.ask?.instruction || "", /bot check/);
   assert.match(bot.ask?.instruction || "", /Continue/);
+  const adsDriver = fake(
+    [tree([ident({ testId: "apply", text: "Apply" })])],
+    { iframeSrcs: ["https://www.google.com/recaptcha/api2/aframe"], texts: ["Web Tables"], widgets: [{ src: "https://www.google.com/recaptcha/api2/aframe", w: 0, h: 0 }] },
+  );
+  const ads = await replay(doc("https://demoqa.com/webtables", [clickApply]), {}, adsDriver, { heal: quiet.heal });
+  assert.equal(ads.status, "passed");
+  assert.deepEqual(adsDriver.clicks, ["apply"]);
 
   const loginDriver = fake(
     [tree([ident({ testId: "apply", text: "Apply" })])],

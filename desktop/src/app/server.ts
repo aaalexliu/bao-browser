@@ -32,6 +32,7 @@ import {
   sessionStatus,
   type FreezeSession,
 } from "../v1/freeze-session";
+import { dismissCoveringAds } from "../v1/page-class";
 import { recorderSource } from "../v1/recorder";
 import { armBrowserDownloads, captureDownloads } from "../v1/files-dates";
 import { armFileChooser, queueChooserFile, storedFileEvent } from "../v1/file-chooser";
@@ -170,6 +171,7 @@ export async function startApp(opts: {
   });
   let context: BrowserContext | undefined;
   let page: Page | undefined;
+  let nextDialogAnswer: string | undefined;
   let profile: string | undefined;
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
@@ -185,6 +187,8 @@ export async function startApp(opts: {
   let loginContinued = false;
   let replaying = false;
   let recordingSince = 0;
+  /** URL passed to beginSession. page.url() at stop is a later navigation. */
+  let captureOpenUrl = "";
   let sessionMode: "capture" | "teach" = "capture";
   let teachPhase: "idle" | "live" | "review" = "idle";
   let teachDecisions: TeachDecision[] = [];
@@ -729,6 +733,10 @@ export async function startApp(opts: {
         await enqueue(() => discardSession());
         return json(res, { recording: false });
       }
+      if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/sessions/page") {
+        if (!page || page.isClosed()) return json(res, { open: false }, 404);
+        return json(res, { open: true, ...(await drivePageView(page)) });
+      }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/sessions/drive") {
         if (!page) return json(res, { error: "no session" }, 409);
         const body = await readBody(req) as {
@@ -739,7 +747,14 @@ export async function startApp(opts: {
           chooser?: { selector: string; path: string };
           box?: string;
           scroll?: string;
+          select?: { selector: string; value?: string; label?: string };
+          press?: string;
+          goto?: string;
+          drag?: { from?: string; to?: string };
+          prompt?: string;
+          timeout?: number;
         };
+        const timeout = typeof body.timeout === "number" && body.timeout > 0 ? body.timeout : undefined;
         if (typeof body.scroll === "string" && /^#[A-Za-z][\w-]*$/.test(body.scroll)) {
           await page.evaluate((selector) => {
             const el = document.querySelector(selector);
@@ -773,8 +788,39 @@ export async function startApp(opts: {
           }, body.box);
           return json(res, { box, events: capture.events.length });
         }
-        if (body.fill) await page.fill(body.fill.selector, body.fill.value);
-        if (body.click) await page.click(body.click);
+        if (body.goto) {
+          const beforeUrl = page.url();
+          await page.goto(body.goto, { waitUntil: "domcontentloaded", timeout: timeout ?? 30000 });
+          // page.goto does not go through the in-page recorder. A capture that
+          // jumps to the next page otherwise replays the following click on the
+          // page it just left.
+          if (capture.recording) capture.push({ kind: "act", op: "navigate", beforeUrl, afterUrl: page.url() });
+        }
+        if (body.drag?.from && body.drag.to) {
+          const from = page.locator(body.drag.from).first();
+          const to = page.locator(body.drag.to).first();
+          await from.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" })).catch(() => undefined);
+          const startBox = await from.boundingBox();
+          const endBox = await to.boundingBox();
+          if (!startBox || !endBox) throw new Error("drag target is not visible");
+          await page.mouse.move(startBox.x + startBox.width / 2, startBox.y + startBox.height / 2);
+          await page.mouse.down();
+          await page.mouse.move(endBox.x + endBox.width / 2, endBox.y + endBox.height / 2, { steps: 18 });
+          await page.mouse.up();
+        }
+        if (body.fill) await page.fill(body.fill.selector, body.fill.value, timeout ? { timeout } : undefined);
+        if (typeof body.prompt === "string") nextDialogAnswer = body.prompt;
+        if (body.click) {
+          await page.evaluate(dismissCoveringAds).catch(() => undefined);
+          const loc = page.locator(body.click).first();
+          await loc.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" })).catch(() => undefined);
+          await loc.click(timeout ? { timeout } : undefined);
+        }
+        if (body.press) await page.keyboard.press(body.press);
+        if (body.select?.selector) {
+          const choice = body.select.label ? { label: body.select.label } : body.select.value ?? "";
+          await page.selectOption(body.select.selector, choice, timeout ? { timeout } : undefined);
+        }
         if (body.chooser?.selector && body.chooser.path) {
           const landed = queueChooserFile(body.chooser.path);
           await page.click(body.chooser.selector);
@@ -852,10 +898,17 @@ export async function startApp(opts: {
         return json(res, workflow);
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
-        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean };
+        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
+        if (body.fresh) {
+          const existing = replays.get(saved.id);
+          if (existing) {
+            await existing.context.close().catch(() => undefined);
+            replays.delete(saved.id);
+          }
+        }
         stopRun = false;
         loginContinued = false;
         replaying = true;
@@ -885,13 +938,18 @@ export async function startApp(opts: {
         const current = new URL(session.page.url());
         const hasPassword = await session.page.locator("input[type=password]:visible").count().then((count) => count > 0).catch(() => false);
         const status = await session.page.locator("#status").innerText().catch(() => "");
-        const text = await session.page.locator("body").innerText().then((value) => value.slice(0, 8000)).catch(() => "");
-        return json(res, { open: true, pathname: current.pathname, hasPassword, status, text });
+        const openPages = session.context.pages().filter((item) => !item.isClosed());
+        const views = [];
+        for (const item of openPages) views.push(await drivePageView(item));
+        const view = views[0] || await drivePageView(session.page);
+        const text = views.map((item) => item.text || "").filter(Boolean).join("\n");
+        const title = views.map((item) => item.title || "").filter(Boolean).join("\n");
+        return json(res, { open: true, pathname: current.pathname, hasPassword, status, ...view, title: title || view.title, text });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/sessions/page") {
         if (!page || page.isClosed()) return json(res, { open: false }, 404);
-        const text = await page.locator("body").innerText().then((value) => value.slice(0, 8000)).catch(() => "");
-        return json(res, { open: true, url: page.url(), text });
+        const view = await drivePageView(page);
+        return json(res, { open: true, ...view });
       }
       if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
         loginContinued = true;
@@ -1301,7 +1359,10 @@ export async function startApp(opts: {
       await context.addInitScript(recorderSource());
       page = context.pages()[0] || await context.newPage();
       page.on("dialog", (dialog) => {
-        dialog.accept().catch(() => undefined);
+        const answer = nextDialogAnswer;
+        nextDialogAnswer = undefined;
+        if (dialog.type() === "prompt" && answer != null) dialog.accept(answer).catch(() => undefined);
+        else dialog.accept().catch(() => undefined);
       });
       fileChooser = await armFileChooser(page, async (chosen) => {
         await watchShot(recordCaptured({
@@ -1321,7 +1382,11 @@ export async function startApp(opts: {
           fileName: info.suggestedFilename,
         }));
       });
+      captureOpenUrl = startUrl;
       await page.goto(startUrl);
+      // The init script does not observe this goto, and a later page.url() is not
+      // the URL the capture began on. Record that opening navigation explicitly.
+      if (sessionMode === "capture") capture.push({ kind: "act", op: "navigate", beforeUrl: startUrl, afterUrl: startUrl });
       await (fileChooser as { send(method: string, params?: object): Promise<unknown> }).send(
         "Page.setInterceptFileChooserDialog",
         { enabled: true },
@@ -1329,6 +1394,7 @@ export async function startApp(opts: {
     } catch (err) {
       capture.discard();
       recordingSince = 0;
+      captureOpenUrl = "";
       await stopBrowser();
       publishCapture();
       throw err;
@@ -1420,6 +1486,8 @@ export async function startApp(opts: {
     const raw = capture.stop();
     recordingSince = 0;
     const id = `wf-${Date.now()}`;
+    const opened = captureOpenUrl || (page && !page.isClosed() ? page.url() : "");
+    captureOpenUrl = "";
     const clean = raw.map((event) => {
       const file = storedFileEvent(event);
       if (!file.sensitive && file.identity?.role !== "password") return file;
@@ -1427,7 +1495,7 @@ export async function startApp(opts: {
       delete copy.value;
       return copy;
     });
-    const startUrl = captureStartUrl(clean, page && !page.isClosed() ? page.url() : "");
+    const startUrl = captureStartUrl(clean, opened);
     extractProposal = undefined;
     const built = explain(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
     const workflow = built.workflow;
@@ -1453,6 +1521,7 @@ export async function startApp(opts: {
     capture.discard();
     recordingSince = 0;
     extractProposal = undefined;
+    captureOpenUrl = "";
     await stopBrowser();
     publishCapture();
   }
@@ -2247,6 +2316,14 @@ function publicPending(pending: PendingImport) {
     error: pending.error,
     audit: pending.audit,
   };
+}
+
+/** Read-only view for the proof harness. Recording and replay are unchanged. */
+async function drivePageView(page: Page): Promise<{ url: string; title: string; text: string }> {
+  const url = page.url();
+  const title = await page.title().catch(() => "");
+  const text = await page.locator("body").innerText().then((value) => value.replace(/\s+/g, " ").trim().slice(0, 20000)).catch(() => "");
+  return { url, title, text };
 }
 
 async function siteSignals(page: Page): Promise<{ url: string; hasPassword: boolean }> {
