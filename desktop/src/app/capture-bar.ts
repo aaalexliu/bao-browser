@@ -9,6 +9,9 @@ export interface BarEvent {
   event?: string;
   name?: string;
   text?: string;
+  title?: string;
+  button?: string;
+  url?: string;
 }
 
 export function findCaptureBar(env: NodeJS.ProcessEnv = process.env): string | undefined {

@@ -13,7 +13,7 @@ import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launc
 import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
-import { BrowserDriver, elementShot, notifyOs, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, clearOsNotify, elementShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import type { HumanAsk } from "../v1/human-ask";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
@@ -131,6 +131,11 @@ export async function startApp(opts: {
   let boundPort = opts.port ?? 0;
   const capture = new Capture();
   const bar = new CaptureBar();
+  watchOsNotify((report) => {
+    if (!bar.running) return;
+    if (report.authorization === "denied") bar.send({ cmd: "notify-off" });
+    else if (report.authorization === "authorized" || report.authorization === "provisional") bar.send({ cmd: "notify-clear" });
+  });
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let profile: string | undefined;
@@ -179,10 +184,11 @@ export async function startApp(opts: {
     const notice = actNotice(detail);
     notifications.push({ title: notice.title, body: notice.body });
     if (bar.running) bar.send({ cmd: "act", title: notice.title, body: notice.body, badge: notice.badge });
-    else void notifyOs(notice.title, notice.body);
+    void notifyOs(notice.title, notice.body);
   }
   function clearAct(): void {
     if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
+    void clearOsNotify();
   }
   const prompts: PersonPrompts = {
     showConfirm(_label) {
@@ -1236,6 +1242,9 @@ export async function startApp(opts: {
     } else if (event.event === "hotkey" && event.name === "stop") {
       if (capture.recording) await saveSession();
       return;
+    } else if (event.event === "notify-off") {
+      console.log(`bao notify off ${JSON.stringify({ title: event.title || "", button: event.button || "", url: event.url || "" })}`);
+      return;
     } else if (event.event === "hotkey" && event.name === "pause") {
       if (!capture.recording) return;
       if (capture.paused) capture.resume();
@@ -1528,6 +1537,7 @@ export async function startApp(opts: {
     notifications,
     get recording() { return capture.recording; },
     async close() {
+      watchOsNotify(() => {});
       bar.close();
       capture.discard();
       await signIn?.close();

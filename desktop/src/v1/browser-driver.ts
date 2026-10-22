@@ -478,16 +478,87 @@ function publicUrl(raw: string): string {
   }
 }
 
-export async function notifyOs(title: string, body: string): Promise<void> {
+export type NotifyReport = {
+  ok: boolean;
+  authorization?: string;
+  prompt?: boolean;
+  delivered?: boolean;
+  badge?: string;
+  titles?: string[];
+  bodies?: string[];
+  error?: string;
+};
+
+/** Darwin posts through the signed Bao.app process. osascript display notification does not. */
+async function baoNotify(cmd: "act" | "clear", title = "", body = ""): Promise<NotifyReport> {
+  const sock = process.env.BAO_NOTIFY_SOCK;
+  if (!sock) return { ok: false, error: "no bao notifier", delivered: false };
+  const { createConnection } = await import("node:net");
+  return new Promise((resolve) => {
+    const socket = createConnection(sock);
+    let buf = "";
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve({ ok: false, error: "timeout", delivered: false });
+    }, 8000);
+    const finish = (report: NotifyReport) => {
+      clearTimeout(timer);
+      socket.end();
+      resolve(report);
+    };
+    socket.on("connect", () => {
+      socket.write(`${JSON.stringify({ cmd, title, body })}\n`);
+    });
+    socket.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      const nl = buf.indexOf("\n");
+      if (nl < 0) return;
+      try {
+        finish(JSON.parse(buf.slice(0, nl)) as NotifyReport);
+      } catch {
+        finish({ ok: false, error: "bad response", delivered: false });
+      }
+    });
+    socket.on("error", () => finish({ ok: false, error: "unreachable", delivered: false }));
+  });
+}
+
+let onOsNotify: (report: NotifyReport) => void = () => {};
+
+/** startApp registers this so a denied notification updates the capture bar. */
+export function watchOsNotify(watch: (report: NotifyReport) => void): void {
+  onOsNotify = watch;
+}
+
+export async function notifyOs(title: string, body: string): Promise<NotifyReport> {
+  if (process.platform === "darwin") {
+    const report = await baoNotify("act", title, body);
+    console.log(`bao notify ${JSON.stringify({
+      authorization: report.authorization || "",
+      prompt: report.prompt === true,
+      delivered: report.delivered === true,
+      badge: report.badge || "",
+      titles: report.titles || [],
+      bodies: report.bodies || [],
+      error: report.error || "",
+    })}`);
+    onOsNotify(report);
+    return report;
+  }
   const { spawn } = await import("node:child_process");
-  const cmd = process.platform === "darwin"
-    ? ["/usr/bin/osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`]]
-    : ["notify-send", ["-a", "Bao", "-u", "normal", "-t", "15000", title, body]];
   await new Promise<void>((resolve) => {
-    const child = spawn(cmd[0] as string, cmd[1] as string[], { stdio: "ignore" });
+    const child = spawn("notify-send", ["-a", "Bao", "-u", "normal", "-t", "15000", title, body], { stdio: "ignore" });
     child.on("error", () => resolve());
     child.on("close", () => resolve());
   });
+  const report: NotifyReport = { ok: true, delivered: false };
+  onOsNotify(report);
+  return report;
+}
+
+export async function clearOsNotify(): Promise<void> {
+  if (process.platform !== "darwin" || !process.env.BAO_NOTIFY_SOCK) return;
+  await baoNotify("clear");
 }
 
 function toIdentity(node: DomDump): Identity {
