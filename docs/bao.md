@@ -425,7 +425,7 @@ The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres
 
 A password `type` is not performed. A `click` on an element with `data-bao-gate="login"` or `data-bao-gate="confirm"`, or a button whose text is `Log in`, `Sign in`, or `Confirm`, is not performed. The trail line has `gate` and `performed: false`. A login stop also records a sign-in click when the driver does not click Log in. That click stays in the derived workflow, and its postcondition is the Welcome line. Replay performs the step with the inputs supplied for that run.
 
-A file input is a file parameter whether the driver called `upload`, dropped a file, or typed a path. The absolute path is not written into `trail.jsonl`. `eval drivers` retries an HTTP 429 with backoff. If the driver still exits without finishing, the cell is `driver-error` and the run directory still has a partial trail. That cell is separate from a bao replay failure.
+A file input is a file parameter whether the driver called `upload`, dropped a file, or typed a path. The absolute path is not written into `trail.jsonl`. `eval drivers` retries an HTTP 429 once after a 45 second backoff. If the driver still exits without finishing, the cell is `infra` and the run directory still has a partial trail. That cell is not a bao replay failure.
 
 Every read and every act stores `snapshot.sha256` and `snapshot.path`. The file is a PNG. `latencyMs` is the time inside the tool call, including the snapshot.
 

@@ -31,7 +31,7 @@ import {
 export interface DriverCell {
   driver: string;
   task: string;
-  status: "pass" | "fail" | "not run" | "driver-error";
+  status: "pass" | "fail" | "not run" | "driver-error" | "infra";
   reason: string;
   taskComplete: string;
   trailComplete: string;
@@ -278,13 +278,14 @@ async function grade(
 ): Promise<{ cell: DriverCell; video?: string; workflow?: WorkflowV2 }> {
   const captureReason = !view ? failed || "no final snapshot" : captureOk(task, view, stops);
   const taskComplete = !captureReason;
-  if (crashStatus(opts.driverCrash, taskComplete)) {
+  const crashed = crashStatus(opts.driverCrash, taskComplete);
+  if (crashed) {
     ensurePartialTrail(home, opts.driverCrash || "driver-error");
     return {
       cell: {
         driver,
         task: task.id,
-        status: "driver-error",
+        status: crashed,
         reason: opts.driverCrash || "driver-error",
         taskComplete: "no",
         trailComplete: "partial",
@@ -375,9 +376,10 @@ async function grade(
   };
 }
 
-/** A crash with an unfinished task is a driver-error. A finished task stays on the bao grade. */
-export function crashStatus(crash: string | null, taskComplete: boolean): "driver-error" | null {
+/** A crash with an unfinished task is a driver-error. HTTP 429 is an infra miss, not a bao failure. A finished task stays on the bao grade. */
+export function crashStatus(crash: string | null, taskComplete: boolean): "driver-error" | "infra" | null {
   if (!crash || taskComplete) return null;
+  if (crash === "HTTP 429") return "infra";
   return "driver-error";
 }
 
