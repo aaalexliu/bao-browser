@@ -2,6 +2,7 @@
 // The default policy is auto: apply the patch and keep going.
 // approve pauses at the proposal. The saved workflow changes only if the user keeps the patch.
 
+import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
 import type { HealMode, Identity, WorkflowStep, WorkflowV2 } from "./schema";
 
@@ -25,6 +26,10 @@ export interface StepFailure {
   reason: string;
   brokenAttr?: string;
   snapshot: FailureSnapshot;
+  /** Ranked candidates from the lookup that stopped the step. */
+  identity?: IdentityView;
+  /** PNG from the start of the step, when the server asked for shots. */
+  beforeShot?: string;
 }
 
 export interface HealProposal {
@@ -57,6 +62,10 @@ export interface HealRecord {
   executed?: { action: string; identity?: Identity };
   postconditionPassed?: boolean;
   kept?: boolean;
+  /** PNG from the start of the failed step. Absent when shots were not captured. */
+  beforeShot?: string;
+  /** Candidates at the time of the miss. Keep and Revert do not change this. */
+  identity?: IdentityView;
 }
 
 export interface HealProvider {

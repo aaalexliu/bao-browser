@@ -96,6 +96,7 @@ test("capture login, upload, and drop, then replay with two input sets", async (
       login.label = "Click missing control";
       login.intent = "missing control";
       delete login.anchor;
+      delete login.locators;
       login.timeoutMs = 0;
       login.identity = { surface: "dom", role: "button", testId: "missing-login", path: [] };
     }

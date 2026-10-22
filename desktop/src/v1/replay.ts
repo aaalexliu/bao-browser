@@ -8,6 +8,8 @@ import path from "node:path";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { lookup } from "./identity";
+import { confirmButton, makeAsk, type HumanAsk } from "./human-ask";
+import { identityView } from "./run-trace";
 import {
   applyPatch,
   effectiveMode,
@@ -35,6 +37,7 @@ import {
   type WorkflowStep,
   type WorkflowV2,
 } from "./schema";
+import { shotFile } from "./shots";
 import { postKey, targetKey, timingBucket, type TrajectoryStep } from "./trajectory";
 
 export interface LocatorHit {
@@ -82,12 +85,34 @@ export interface Driver {
   clearConfirm?(): void | Promise<void>;
   showLoginWait?(label: string): void | Promise<void>;
   clearLoginWait?(): void | Promise<void>;
+  /** The product window's act bar. Replay still does not press the site button. */
+  showAsk?(ask: HumanAsk): void | Promise<void>;
+  shouldStop?(): boolean;
+  loginContinued?(): boolean;
+  /** Page PNG of the target, when the driver can see it. Unit-test drivers omit this. */
+  shot?(target?: ShotTarget): Promise<Buffer | undefined>;
+}
+
+export interface ShotTarget {
+  identity?: Identity;
+  action?: string;
+  label?: string;
+  text?: string;
 }
 
 export interface RunResult {
   runId: string;
   status: "passed" | "failed" | "paused";
-  steps: { id: string; status: "passed" | "failed" | "paused" | "pending"; reason?: string; phase?: ReplayPhase }[];
+  steps: {
+    id: string;
+    status: "passed" | "failed" | "paused" | "pending";
+    reason?: string;
+    phase?: ReplayPhase;
+    startedAt?: number;
+    endedAt?: number;
+    beforeShot?: string;
+    afterShot?: string;
+  }[];
   failure?: StepFailure;
   heals: HealRecord[];
   repairs: RepairLog[];
@@ -99,6 +124,8 @@ export interface RunResult {
   precondition?: { phase: "auth"; reason: string; recovered: boolean; stepId: string };
   proposal?: HealProposal;
   pausedStepId?: string;
+  /** Heal proposals that named a model. Zero is a run that did not call one. */
+  modelCalls: number;
 }
 
 export interface ReplayOptions {
@@ -112,6 +139,8 @@ export interface ReplayOptions {
   /** Append-only receipt file. Absent keeps the receipts on the run only. */
   receipts?: ReceiptLog;
   nowMs?: () => number;
+  /** Directory for per-step PNGs. Absent skips capture. */
+  shotDir?: string;
 }
 
 let seq = 0;
@@ -122,7 +151,7 @@ export async function replay(
   driver: Driver,
   opts: ReplayOptions = {},
 ): Promise<RunResult> {
-  const runId = opts.runId || `run-${++seq}`;
+  const runId = opts.runId || `run-${++seq}-${Date.now().toString(36)}`;
   const now = opts.now ?? (() => 0);
   const settings = opts.settings ?? {};
   const heal = opts.heal;
@@ -140,7 +169,7 @@ export async function replay(
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
 
-  const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory"> & Partial<RunResult>): RunResult => ({
+  const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls"> & Partial<RunResult>): RunResult => ({
     heals,
     repairs,
     locatorHits,
@@ -149,15 +178,22 @@ export async function replay(
     trail,
     precondition,
     ...partial,
+    modelCalls: heals.filter((item) => item.model).length,
   });
 
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
+    let pictured = step;
     const started = clock();
+    const beforeShot = await writeStepShot(driver, opts.shotDir, step, "before");
+    const stamp = (patch: RunResult["steps"][number]) => {
+      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot };
+    };
+    try {
     const extra = i === workflow.steps.length - 1 ? workflow.readBack : undefined;
     if (step.unresolved) {
       const failure = await fail(driver, step, "find", "unresolved step", undefined, secrets);
-      steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase };
+      stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, undefined, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
@@ -176,15 +212,15 @@ export async function replay(
       if (outcome.authRecovered || precondition?.stepId === step.id) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
-        steps[i] = { id: step.id, status: "passed", phase: "auth", reason: "auth: redirected to login" };
+        stamp({ id: step.id, status: "passed", phase: "auth", reason: "auth: redirected to login" });
       } else {
-        steps[i] = { id: step.id, status: "passed" };
+        stamp({ id: step.id, status: "passed" });
       }
       noteTrajectory(trajectory, step, outcome.acted, true, clock() - started);
       continue;
     }
     if ("paused" in outcome) {
-      steps[i] = { id: step.id, status: "paused", reason: "confirm" };
+      stamp({ id: step.id, status: "paused", reason: "confirm" });
       noteTrajectory(trajectory, step, undefined, true, clock() - started);
       return finish({ runId, status: "paused", steps, pausedStepId: step.id });
     }
@@ -192,12 +228,12 @@ export async function replay(
     if (failure.phase === "auth") {
       noteAuth(trail, step.id, false);
       precondition = { phase: "auth", reason: failure.reason, recovered: false, stepId: step.id };
-      steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase };
+      stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
     if (!heal || !heal.available()) {
-      steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase };
+      stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
@@ -222,10 +258,12 @@ export async function replay(
         : undefined,
       rawResponse: proposal ? maskText(proposal.rawResponse, secrets) : undefined,
       proposedPatch: proposal?.patch,
+      beforeShot: failure.beforeShot || beforeShot,
+      identity: failure.identity,
     };
     if (!proposal) {
       heals.push(record);
-      steps[i] = { id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase };
+      stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
@@ -238,18 +276,19 @@ export async function replay(
     });
     if (mode === "approve") {
       heals.push(record);
-      steps[i] = { id: step.id, status: "paused", reason: "approve", phase: failure.phase };
+      stamp({ id: step.id, status: "paused", reason: "approve", phase: failure.phase });
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
       return finish({ runId, status: "paused", steps, failure, proposal, pausedStepId: step.id });
     }
     const patched = applyPatch(step, proposal.patch);
+    pictured = patched;
     const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok && "paused" in retried) {
-      steps[i] = { id: step.id, status: "paused", reason: "confirm" };
+      stamp({ id: step.id, status: "paused", reason: "confirm" });
       noteTrajectory(trajectory, patched, undefined, true, clock() - started);
       return finish({ runId, status: "paused", steps, pausedStepId: step.id });
     }
@@ -258,12 +297,16 @@ export async function replay(
         noteAuth(trail, step.id, false);
         precondition = { phase: "auth", reason: retried.failure.reason, recovered: false, stepId: step.id };
       }
-      steps[i] = { id: step.id, status: "failed", reason: phaseReason(retried.failure), phase: retried.failure.phase };
+      stamp({ id: step.id, status: "failed", reason: phaseReason(retried.failure), phase: retried.failure.phase });
       noteTrajectory(trajectory, patched, retried.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure: retried.failure });
     }
-    steps[i] = { id: step.id, status: "passed" };
+    stamp({ id: step.id, status: "passed" });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
+    } finally {
+      const afterShot = await writeStepShot(driver, opts.shotDir, pictured, "after");
+      if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot };
+    }
   }
   return finish({ runId, status: "passed", steps });
 }
@@ -359,11 +402,9 @@ async function runStepAction(
   }
   const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate);
   if (!found.hit.ok || found.hit.index == null) {
-    return {
-      ok: false,
-      repairs,
-      failure: await fail(driver, step, "find", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets),
-    };
+    const failure = await fail(driver, step, "find", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets);
+    if (step.identity) failure.identity = identityView(step.identity, found.nodes, found.hit);
+    return { ok: false, repairs, failure };
   }
   const node = found.nodes[found.hit.index];
   if (!node) {
@@ -511,6 +552,18 @@ async function runConfirm(
   secrets: string[],
   gate: ApplyGate,
 ): Promise<StepOutcome> {
+  const workflow = gate.workflow;
+  await driver.showAsk?.(makeAsk({
+    kind: "confirm",
+    workflowId: workflow.id,
+    workflowName: workflow.name,
+    stepId: step.id,
+    stepIndex: step.index + 1,
+    stepCount: workflow.steps.length,
+    label: step.label,
+    button: confirmButton(step),
+    timeoutMs: step.timeoutMs ?? 0,
+  }));
   await driver.showConfirm?.(step.label);
   if (!step.postcondition) {
     return { ok: false, paused: "confirm", repairs: [] };
@@ -520,11 +573,15 @@ async function runConfirm(
     const start = Date.now();
     let seen = await driver.tree();
     while (!holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
+      if (driver.shouldStop?.()) {
+        return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "cancelled", undefined, secrets) };
+      }
       await (driver.sleep ? driver.sleep(200) : sleep(200));
       seen = await driver.tree();
     }
     if (!holds(step.postcondition, seen, args)) {
-      return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "postcondition", undefined, secrets) };
+      const reason = driver.shouldStop?.() ? "cancelled" : "nothing applied";
+      return { ok: false, repairs: [], failure: await fail(driver, step, "expect", reason, undefined, secrets) };
     }
     gate.trail.push({ kind: "human-confirm", stepId: step.id });
     return { ok: true, repairs: [] };
@@ -577,6 +634,16 @@ async function settleLogin(
       return false;
     }
   } else {
+    await driver.showAsk?.(makeAsk({
+      kind: "login",
+      workflowId: workflow.id,
+      workflowName: workflow.name,
+      stepId: step.id,
+      stepIndex: step.index + 1,
+      stepCount: workflow.steps.length,
+      label: step.label,
+      timeoutMs: step.timeoutMs ?? 0,
+    }));
     await driver.showLoginWait?.(step.label || "Sign in on the site window");
   }
   try {
@@ -602,8 +669,11 @@ async function waitForLogin(workflow: WorkflowV2, step: WorkflowStep, args: Repl
   const timeout = step.timeoutMs ?? 0;
   const start = Date.now();
   let seen = await driver.tree();
+  if (driver.loginContinued?.()) return true;
   if (loginSatisfied(workflow, step, seen, args)) return true;
   while (Date.now() - start < timeout) {
+    if (driver.loginContinued?.()) return true;
+    if (driver.shouldStop?.()) return false;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
     seen = await driver.tree();
     if (loginSatisfied(workflow, step, seen, args)) return true;
@@ -988,4 +1058,23 @@ function noteAuth(trail: RunTrailEvent[], stepId: string, recovered: boolean): v
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<string | undefined> {
+  if (!dir || !driver.shot) return;
+  try {
+    const png = await driver.shot({
+      identity: step.identity,
+      action: step.action,
+      label: step.label,
+      text: step.expect?.match || step.postcondition?.match,
+    });
+    if (!png || png.length < 24 || png[0] !== 0x89 || png[1] !== 0x50) return;
+    mkdirSync(dir, { recursive: true });
+    const name = shotFile(step.id, which);
+    writeFileSync(path.join(dir, name), png);
+    return name;
+  } catch {
+    return;
+  }
 }

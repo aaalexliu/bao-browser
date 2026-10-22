@@ -1,471 +1,364 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <title>Bao</title>
   <style>
-    :root { color-scheme: light; --bg: #f4f0e8; --ink: #1d1a16; --line: #d9d1c4; --accent: #9a3412; --ok: #166534; --bad: #991b1b; }
+    :root {
+      color-scheme: light;
+      --bg: #f5f5f7;
+      --side: #ececef;
+      --card: #ffffff;
+      --ink: #1d1d1f;
+      --quiet: #6e6e73;
+      --line: #d2d2d7;
+      --accent: #0071e3;
+      --select: #e8e8ed;
+      --ok: #248a3d;
+      --ok-bg: #e7f6ec;
+      --heal: #0a7ea4;
+      --heal-bg: #e5f4f8;
+      --prov: #8a5a00;
+      --prov-bg: #fff4d6;
+      --need: #c93400;
+      --need-bg: #fff1e8;
+      --bad: #d70015;
+      --bad-bg: #fdecea;
+      --warn-bg: #fff6e0;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      --radius: 12px;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 24px;
+      --text-xs: 11px;
+      --text-sm: 12px;
+      --text-md: 13px;
+      --text-lg: 15px;
+      --text-xl: 22px;
+      --text-2xl: 28px;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #1c1c1e;
+      --side: #2c2c2e;
+      --card: #2c2c2e;
+      --ink: #f5f5f7;
+      --quiet: #98989d;
+      --line: #3a3a3c;
+      --accent: #0a84ff;
+      --select: #3a3a3c;
+      --ok: #30d158;
+      --ok-bg: #16301f;
+      --heal: #64d2ff;
+      --heal-bg: #0e2a33;
+      --prov: #ffd60a;
+      --prov-bg: #332b0d;
+      --need: #ff9f0a;
+      --need-bg: #33240d;
+      --bad: #ff453a;
+      --bad-bg: #3a1614;
+      --warn-bg: #33280f;
+      --shadow: none;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 15px/1.45 "Iowan Old Style", Palatino, serif; background: var(--bg); color: var(--ink); }
-    header { display: flex; gap: 1rem; align-items: center; padding: 0.8rem 1.2rem; border-bottom: 1px solid var(--line); }
-    nav { display: flex; gap: 0.4rem; }
-    button, input, select, textarea { font: inherit; }
-    button { background: white; border: 1px solid var(--line); padding: 0.35rem 0.7rem; cursor: pointer; }
-    button.primary { background: var(--ink); color: white; border-color: var(--ink); }
-    main { padding: 1.2rem; max-width: 52rem; }
-    .rec { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; }
-    .dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #ccc; }
-    .dot.on { background: var(--accent); box-shadow: 0 0 0 4px rgba(154, 52, 18, 0.2); }
-    .card { border: 1px solid var(--line); background: white; padding: 0.9rem; margin: 0.7rem 0; }
-    .card.ask { border: 3px solid var(--accent); background: #fff7ed; }
-    .ask-title { font-size: 1.7rem; line-height: 1.2; font-weight: 700; margin: 0 0 0.5rem; }
-    label { display: grid; gap: 0.25rem; margin: 0.4rem 0; }
-    input, select, textarea { padding: 0.4rem; border: 1px solid var(--line); width: 100%; background: white; }
-    .drop { outline: 1px dashed var(--line); padding: 0.6rem; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font: var(--text-md)/1.45 var(--font);
+    }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      height: 32px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: var(--text-md);
+    }
+    button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    button.link { border: 0; background: transparent; padding: 0; height: auto; color: var(--accent); font-weight: 600; }
+    button.toggle.on { background: var(--select); border-color: var(--accent); }
+    button:disabled { opacity: 0.45; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    h2, h3, h4 { font-weight: 650; letter-spacing: -0.02em; }
+    h2 { font-size: var(--text-xl); line-height: 1.2; margin: 0; }
+    h3 { font-size: var(--text-lg); margin: 0; }
+    h3.section { font-size: var(--text-md); margin: 1.1rem 0 0.45rem; }
+    .lede, .meta, .quiet { color: var(--quiet); font-size: var(--text-sm); }
+    .lede { font-size: var(--text-md); margin: 0.35rem 0 var(--space-4); }
+    .crumb { margin: 0 0 0.7rem; color: var(--quiet); font-size: var(--text-sm); display: flex; gap: 0.35rem; align-items: center; }
+    .wf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.4rem; }
+    .wf-head .chips { margin-top: 0.45rem; }
+    #app { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
+    #rail {
+      background: var(--side);
+      padding: var(--space-4) var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      border-right: 1px solid var(--line);
+    }
+    #rail .brand { display: flex; align-items: center; justify-content: space-between; padding: 0.2rem 0.45rem 0.7rem; font-size: var(--text-lg); }
+    #rail nav { display: flex; flex-direction: column; gap: 2px; }
+    #rail nav button {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      text-align: left;
+      background: transparent;
+      border-color: transparent;
+      border-radius: 8px;
+      height: auto;
+      padding: 0.4rem 0.5rem;
+    }
+    #rail nav button.on { background: var(--card); box-shadow: var(--shadow); }
+    .ico { width: 16px; height: 16px; flex: none; }
+    .rail-foot { margin-top: auto; padding: 0.7rem 0.45rem 0.2rem; color: var(--quiet); display: grid; gap: 0.3rem; font-size: var(--text-sm); }
+    .channel { display: flex; align-items: center; gap: 0.4rem; }
+    .count {
+      min-width: 1.15rem;
+      text-align: center;
+      background: var(--need);
+      color: white;
+      border-radius: 999px;
+      font-size: var(--text-xs);
+      padding: 0 0.35rem;
+    }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #c7c7cc; display: inline-block; }
+    .dot.on { background: #ff3b30; }
+    #content { min-width: 0; }
+    #act { padding: var(--space-4) var(--space-5) 0; }
+    #onboard { padding: 0 var(--space-5); }
+    #main { padding: var(--space-3) var(--space-5) 4rem; }
+    .card, .why, #heal-detail, #run-viewer, .wf-card, .step-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 0.9rem 1rem;
+      margin: 0.55rem 0;
+      box-shadow: var(--shadow);
+    }
+    #act-bar {
+      background: var(--need-bg);
+      border: 1px solid var(--need);
+      border-left: 4px solid var(--need);
+      border-radius: var(--radius);
+      padding: 0.9rem 1rem;
+      margin-bottom: 0.35rem;
+    }
+    #act-bar .kicker { margin: 0; font-weight: 700; color: var(--need); font-size: var(--text-sm); letter-spacing: 0.01em; }
+    #act-bar .instruction { margin: 0.3rem 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+    #act-bar .timeout { margin: 0.1rem 0 0.5rem; color: var(--quiet); }
+    label { display: grid; gap: 0.25rem; margin: 0.5rem 0; }
+    input, select, textarea {
+      padding: 0.4rem 0.5rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      width: 100%;
+    }
+    .row { display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap; }
+    .tools { display: flex; gap: var(--space-2); align-items: center; margin: 0 0 var(--space-4); }
+    .tools input { max-width: 420px; }
+    .kbd {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--quiet);
+      border-radius: 8px;
+      padding: 0.4rem 0.6rem;
+      font-size: var(--text-sm);
+    }
+    .drop { outline: 1px dashed var(--line); border-radius: 10px; padding: 0.7rem; background: var(--bg); }
     .drop.over { outline-color: var(--accent); }
-    .pass { color: var(--ok); } .fail, .failed, .paused { color: var(--bad); }
-    .phase { display: inline-block; font: 12px/1 ui-monospace, monospace; background: var(--ink); color: var(--bg); padding: 0.12rem 0.35rem; margin-right: 0.35rem; }
-    .receipt { font: 13px/1.4 ui-monospace, monospace; border: 1px solid var(--line); background: white; padding: 0.45rem 0.6rem; margin: 0.35rem 0; }
-    .badge { display: inline-block; background: var(--accent); color: white; padding: 0.05rem 0.4rem; font-size: 0.8rem; }
-    .notice { background: #fff7ed; border: 1px solid #fdba74; padding: 0.6rem; margin: 0.4rem 0; }
-    pre { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
-    .row { display: flex; gap: 0.5rem; align-items: center; }
+    .pass, .passed { color: var(--ok); }
+    .fail, .failed { color: var(--bad); }
+    .paused { color: var(--need); }
+    .healed { color: var(--heal); }
+    .provisional { color: var(--prov); }
+    .badge, .status {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 0.05rem 0.5rem;
+      font-size: var(--text-xs);
+      font-weight: 650;
+    }
+    .badge { background: var(--ink); color: var(--bg); }
+    .quiet-badge { background: var(--select); color: var(--ink); }
+    .status.passed { background: var(--ok-bg); color: var(--ok); }
+    .status.failed { background: var(--bad-bg); color: var(--bad); }
+    .status.paused { background: var(--need-bg); color: var(--need); }
+    .status.healed { background: var(--heal-bg); color: var(--heal); }
+    .status.provisional { background: var(--prov-bg); color: var(--prov); }
+    .badge.expect { background: var(--heal-bg); color: var(--heal); }
+    .badge.need { background: var(--need-bg); color: var(--need); }
+    .badge.you { background: #eef2f8; color: #33415c; }
+    [data-theme="dark"] .badge.you { background: #2a3142; color: #d5dbee; }
+    #toasts { position: fixed; top: 16px; right: 16px; z-index: 45; display: grid; gap: 8px; width: min(340px, calc(100vw - 32px)); }
+    .toast { display: flex; gap: 10px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 0.7rem 0.75rem; box-shadow: var(--shadow); }
+    .toast strong { display: block; font-size: var(--text-sm); }
+    .toast button { height: 28px; padding: 0 10px; }
+    pre { white-space: pre-wrap; font: var(--text-sm)/1.45 var(--mono); }
+    table.grid, table.identity, #pass-grid { width: 100%; border-collapse: collapse; }
+    table.grid th, table.grid td, table.identity th, table.identity td, #pass-grid th, #pass-grid td {
+      text-align: left;
+      padding: 0.4rem 0.45rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
+    }
+    .wf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--space-3); align-items: stretch; }
+    .wf-card {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-areas: "title" "thumb" "mid" "foot";
+      grid-template-rows: 28px 148px minmax(28px, 1fr) 32px;
+      gap: 8px;
+      margin: 0;
+      align-items: stretch;
+      height: 276px;
+      padding: 12px;
+    }
+    .wf-title { grid-area: title; margin: 0; text-align: left; align-self: center; }
+    .wf-title button.link { color: var(--ink); font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.02em; }
+    .wf-mid { grid-area: mid; min-width: 0; align-self: center; }
+    .wf-foot { grid-area: foot; display: flex; align-items: center; gap: 10px; min-width: 0; height: 32px; }
+    .wf-foot .spark { flex: 1; }
+    .wf-foot button { margin-left: auto; }
+    .thumb {
+      grid-area: thumb;
+      height: 112px;
+      border-radius: 10px;
+      background: var(--select);
+      overflow: hidden;
+      position: relative;
+    }
+    .wf-card .thumb { height: 148px; }
+    .thumb.mini { width: 96px; height: 64px; flex: none; }
+    .thumb img, .frame img, .shot-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; border: 0; }
+    .ph { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 4px; padding: 6px; color: var(--quiet); text-align: center; }
+    .ph-ico svg { width: 18px; height: 18px; }
+    .ph-label { font-size: 11px; line-height: 1.2; max-width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .has-shot .ph { display: none; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 14px; color: var(--quiet); font-size: var(--text-xs); margin: 0 0 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; background: var(--line); }
+    .swatch.passed { background: var(--ok); }
+    .swatch.healed { background: var(--heal); }
+    .swatch.provisional { background: var(--prov); }
+    .swatch.paused { background: var(--need); }
+    .swatch.failed { background: var(--bad); }
+    .spark { display: flex; gap: 4px; align-items: center; min-height: 10px; }
+    .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 0.35rem; }
+    .chip { background: var(--select); border-radius: 999px; padding: 0.05rem 0.45rem; font-size: var(--text-xs); }
+    .chip.secret { background: var(--prov-bg); color: var(--prov); }
+    .chip.id-chip { font-family: var(--mono); }
+    #workflow-steps { display: flex; flex-direction: column; gap: 8px; }
+    .step-card { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 12px; }
+    .step-card .thumb { width: 120px; height: 72px; flex: none; grid-area: auto; border-radius: 8px; }
+    .step-card .thumb img { object-fit: cover; object-position: center; }
+    .step-copy { display: grid; gap: 2px; min-width: 0; }
+    .step-copy p { margin: 0; }
+    .step-copy .chips { margin-top: 0; }
+    .step-card.human { background: var(--card); border-color: var(--line); box-shadow: inset 3px 0 0 #8d6a3a; }
+    .split { display: grid; grid-template-columns: 240px 1fr; gap: 0.9rem; }
+    .step-list { display: flex; flex-direction: column; gap: 0.25rem; }
+    .step { text-align: left; background: transparent; width: 100%; }
+    .step.on { background: var(--select); }
+    .step em { color: var(--quiet); font-style: normal; margin-left: 0.3rem; }
+    .bar { display: flex; gap: 3px; align-items: center; margin: 0.7rem 0; }
+    .seg { height: 8px; flex: 1; border-radius: 99px; background: var(--select); }
+    .seg.passed { background: var(--ok); }
+    .seg.failed { background: var(--bad); }
+    .seg.paused { background: var(--need); }
+    .bar-count { color: var(--quiet); margin-left: 0.4rem; }
+    .shot-stage, .compare { position: relative; height: 220px; border-radius: 10px; overflow: hidden; background: var(--select); border: 1px solid var(--line); }
+    .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; border: 0; }
+    #shot-slider { position: absolute; left: 12px; right: 12px; bottom: 10px; width: auto; }
+    .filmstrip { display: flex; gap: 8px; overflow: auto; padding: 4px 0 10px; }
+    .frame { width: 220px; height: 140px; flex: none; padding: 0; position: relative; overflow: hidden; background: var(--select); border-radius: 8px; }
+    .frame.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+    #scrubber { width: 100%; accent-color: var(--accent); }
+    .timeline { position: relative; height: 28px; margin: 0.4rem 0; background: var(--select); border-radius: 6px; }
+    .marker { position: absolute; top: 2px; transform: translateX(-50%); min-width: 1.3rem; padding: 0.1rem 0.25rem; }
+    .marker.failed { color: var(--bad); }
+    .heal-row { display: block; width: 100%; text-align: left; margin: 0.3rem 0; }
+    .cell { width: 16px; height: 16px; border-radius: 4px; display: inline-block; background: var(--select); }
+    #pass-grid th { font-size: var(--text-sm); font-weight: 600; color: var(--quiet); }
+    table.identity { font-size: var(--text-sm); }
+    table.identity th { color: var(--quiet); font-weight: 600; white-space: nowrap; }
+    .grid-wrap { margin-top: 0.6rem; }
+    #live-step-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+    .live-step { display: flex; gap: 10px; align-items: center; }
+    details#trajectory { margin-top: 0.8rem; }
+    details#trajectory summary { cursor: pointer; font-weight: 600; }
+    .cell.passed { background: var(--ok); }
+    .cell.failed { background: var(--bad); }
+    .cell.paused { background: var(--need); }
+    .cell.healed { background: var(--heal); }
+    .cell.empty { background: transparent; border: 1px solid var(--line); }
+    details { margin: 0.45rem 0; }
+    .empty { padding: 1.6rem 0.2rem; color: var(--quiet); }
+    .empty strong { display: block; color: var(--ink); font-size: var(--text-lg); margin-bottom: 0.25rem; }
+    #record-bar {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+      background: var(--ink);
+      color: var(--bg);
+      border-radius: 999px;
+      padding: 0.4rem 0.45rem 0.4rem 0.85rem;
+      z-index: 30;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+    }
+    #record-bar button { background: transparent; color: inherit; border-color: transparent; }
+    #record-bar button:hover { background: rgba(255, 255, 255, 0.12); }
+    #rec-timer { font-variant-numeric: tabular-nums; min-width: 2.8rem; }
+    .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3b30; }
+    #record-bar[data-paused="true"] .rec-dot { background: var(--need); }
+    #onboarding { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1rem 1.1rem; margin-top: var(--space-3); }
+    .perms { list-style: none; padding: 0; margin: 0.6rem 0; display: grid; gap: 0.35rem; }
+    .perm { display: flex; gap: 0.5rem; align-items: center; }
+    .perm .mark { width: 1.1rem; text-align: center; }
+    .perm[data-ok="true"] .mark::before { content: "✓"; color: var(--ok); font-weight: 700; }
+    .perm[data-ok="false"] .mark::before { content: "○"; color: var(--quiet); }
+    #palette { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.28); z-index: 40; display: grid; align-items: start; justify-content: center; padding-top: 12vh; }
+    #palette[hidden] { display: none; }
+    #palette .panel { width: min(520px, 92vw); background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18); }
+    #palette input { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 0.8rem 0.9rem; }
+    #palette button.hit { display: flex; justify-content: space-between; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 0; padding: 0.55rem 0.9rem; }
+    #palette button.hit.on { background: var(--select); }
+    @media (max-width: 800px) {
+      #app { grid-template-columns: 1fr; }
+      .split { grid-template-columns: 1fr; }
+      .wf-card { grid-template-columns: 1fr; }
+      #main, #act, #onboard { padding-left: var(--space-3); padding-right: var(--space-3); }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <strong>Bao</strong>
-    <nav>
-      <button data-screen="sessions">Sessions</button>
-      <button data-screen="trail">Trail</button>
-      <button data-screen="library">Library</button>
-      <button data-screen="replay">Replay</button>
-      <button data-screen="settings">Settings</button>
-    </nav>
-    <div class="rec"><span class="dot" id="dot"></span><span id="rec-label">Idle</span></div>
-  </header>
-  <main id="main"></main>
-  <script>
-    const main = document.getElementById("main");
-    let state = { recording: false, notices: [], settings: { heal: "auto" }, workflows: [], trails: [], runs: [] };
-    let screen = "sessions";
-    let lastRun = null;
-    let lastWf = "";
-    let banner = null;
-    let trailText = "";
-
-    let renderKey = "";
-
-    async function refresh() {
-      state = await (await fetch("/api/state")).json();
-      document.getElementById("dot").classList.toggle("on", state.recording);
-      document.getElementById("rec-label").textContent = state.recording ? "Recording" : "Idle";
-      const key = JSON.stringify({
-        recording: state.recording,
-        pending: state.pendingImport,
-        loginWait: state.loginWait,
-        humanConfirm: state.humanConfirm,
-        notices: state.notices,
-        workflows: state.workflows,
-        settings: state.settings,
-        runs: state.runs,
-        screen,
-      });
-      if (key === renderKey) return;
-      renderKey = key;
-      render();
-    }
-
-    function typedArgs() {
-      const form = document.getElementById("args");
-      if (!form) return null;
-      const values = {};
-      for (const el of form.querySelectorAll("input[name], textarea[name], select[name]")) {
-        if (el.type === "file" || !el.value) continue;
-        values[el.name] = el.value;
-      }
-      return values;
-    }
-
-    function render() {
-      const kept = typedArgs();
-      const views = { sessions, trail, library, replay, settings };
-      main.innerHTML = promptCards() + notices() + views[screen]();
-      bind(kept);
-    }
-
-    function promptCards() {
-      const pending = state.pendingImport;
-      const cards = [];
-      if (pending && pending.phase !== "done" && pending.phase !== "cancelled") {
-        if (pending.phase === "confirm") {
-          cards.push(`<div class="card ask" id="import-confirm"><p class="ask-title">Press Import, then approve the keychain prompt.</p><p>${esc(pending.message)}</p>
-            <p>If more than one Chrome profile is listed, pick the one that is signed in to Experian.</p>
-            <div class="row"><button class="primary" id="import-yes">Import</button><button id="import-no">Cancel</button></div></div>`);
-        } else if (pending.phase === "pick") {
-          const buttons = (pending.profiles || []).map((profile) => {
-            const label = profile.lastUsed ? `${profile.name} (last used)` : profile.name;
-            return `<button data-import-profile="${esc(profile.directory)}">${esc(label)}</button>`;
-          }).join(" ");
-          cards.push(`<div class="card ask" id="import-pick"><p class="ask-title">Pick the Chrome profile that is signed in to Experian.</p><p>Chrome has more than one profile. Pick the one that is signed in to ${esc(pending.domain)}.</p>
-            <div class="row">${buttons}</div><button id="import-no">Cancel</button></div>`);
-        } else if (pending.phase === "running") {
-          cards.push(`<div class="card ask" id="import-running"><p class="ask-title">Approve the keychain prompt.</p><p>Approve the macOS keychain prompt if it appears. Bao does not save that key.</p></div>`);
-        } else if (pending.phase === "error") {
-          const title = /keychain/i.test(pending.error || "") ? "Approve the keychain prompt." : "Import did not finish.";
-          cards.push(`<div class="card ask" id="import-error"><p class="ask-title">${esc(title)}</p><p>${esc(pending.error || "Import failed. Press Import again.")}</p></div>`);
-        }
-      } else if (pending && pending.phase === "done" && pending.audit) {
-        if (pending.audit.count === 0) {
-          cards.push(`<div class="card ask" id="import-done"><p class="ask-title">That profile had no ${esc(pending.audit.domain)} cookies.</p><p>Press Import and pick the Chrome profile that is signed in to Experian.</p></div>`);
-        } else {
-          cards.push(`<div class="card" id="import-done"><p>Imported ${esc(pending.audit.count)} cookies for ${esc(pending.audit.domain)}.</p></div>`);
-        }
-      }
-      if (state.loginWait) {
-        const title = state.loginWait.detail || "Sign in on the Experian window.";
-        cards.push(`<div class="card ask" id="login-wait"><p class="ask-title">${esc(title)}</p><p>${esc(state.loginWait.message)}</p><p>Bao will not type your password or a code, and it will not click the check.</p></div>`);
-      }
-      if (state.humanConfirm) {
-        const title = state.humanConfirm.detail || "Press Apply on the site window.";
-        cards.push(`<div class="card ask" id="human-confirm"><p class="ask-title">${esc(title)}</p><p>${esc(state.humanConfirm.message)}</p><p>Bao will not press Apply.</p></div>`);
-      }
-      return cards.join("");
-    }
-
-    function sessions() {
-      return `<section>
-        <h2>Sessions</h2>
-        <p>Nothing is recorded until you start a session. The capture browser uses an app-owned profile, not your daily Chrome.</p>
-        <div class="card">
-          <h3>Browser</h3>
-          <label>Start URL <input id="start-url" value="${location.origin}/fixture"></label>
-          <button class="primary" id="start">Start capture</button>
-          <button id="stop">Stop and save</button>
-        </div>
-        <div class="card">
-          <h3>Desktop</h3>
-          <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). Bao launches that copy. The first launch on a clean account asks for Accessibility and Screen Recording for BaoOSHelper. On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
-        </div>
-        <div class="card">
-          <h3>Proxy and MCP</h3>
-          <p>The OpenAI and Claude computer-use executors live in the desktop proxy code from the spikes. This server does not mount those HTTP routes. MCP is a stdio process, <code>bao mcp</code>, and it records screenshot, click, type, key, and scroll into the local trail. No call leaves the machine unless you set a model key for healing.</p>
-        </div>
-      </section>`;
-    }
-
-    function trail() {
-      const ids = state.trails.map((id) => `<option value="${id}">${id}</option>`).join("");
-      return `<section><h2>Audit trail</h2>
-        <label>Trail <select id="trail-id">${ids}</select></label>
-        <button id="load-trail">Load</button>
-        <pre id="trail-view">${trailText ? esc(trailText) : "Values are masked. File paths are not stored."}</pre>
-      </section>`;
-    }
-
-    function library() {
-      const cards = state.workflows.map((wf) => {
-        const healed = state.runs.some((run) => run.workflowId === wf.id && run.heals && run.heals.length);
-        const fresh = wf.replayed === false ? '<span class="badge">not yet replayed</span>' : "";
-        return `<div class="card"><div class="row"><strong>${esc(wf.name)}</strong> ${healed ? '<span class="badge" data-workflow-heal="' + esc(wf.id) + '">healed</span>' : ""} ${fresh}</div>
-          <div>${wf.steps} steps</div>
-          <div class="row">
-            <button data-open="${wf.id}">Edit</button>
-            <button data-export="${wf.id}">Export</button>
-            <button data-rename="${wf.id}">Rename</button>
-            <button data-delete="${wf.id}">Delete</button>
-          </div></div>`;
-      }).join("");
-      return `<section><h2>Library</h2>${cards || "<p>No workflows yet.</p>"}
-        <div class="card"><h3>Import</h3><textarea id="import-json" rows="4"></textarea><button id="import">Import JSON</button></div>
-        <div id="editor"></div></section>`;
-    }
-
-    function replay() {
-      const selected = lastWf || (state.workflows[0] && state.workflows[0].id) || "";
-      const current = state.workflows.find((wf) => wf.id === selected);
-      const mode = (current && current.heal) || "";
-      const globalHeal = (state.settings && state.settings.heal) || "auto";
-      const options = state.workflows.map((wf) => `<option value="${esc(wf.id)}" ${wf.id === selected ? "selected" : ""}>${esc(wf.name)}</option>`).join("");
-      return `<section><h2>Replay</h2>
-        <label>Workflow <select id="wf">${options}</select></label>
-        <label>Healing for this workflow <select id="wf-heal">
-          <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
-          <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
-          <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
-        </select></label>
-        <form id="args"></form>
-        <button class="primary" id="run">Run</button>
-        <div id="live">${lastRun ? renderRun(lastRun) : ""}</div>
-      </section>`;
-    }
-
-    function settings() {
-      const heal = state.settings.heal || "auto";
-      return `<section><h2>Settings</h2>
-        <label>When a step misses <select id="heal">
-          <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
-          <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
-        </select></label>
-        <p>Auto is the default. A miss tries a cheap repair first. A model heal runs only after those fail, and only when a model key is set or this process is waiting on a Cursor heal. Otherwise replay stops and names the phase: wait_for, find, action, expect, or auth. An auth miss is a login redirect and is not sent to a model.</p>
-        <button id="save-settings">Save</button></section>`;
-    }
-
-    function notices() {
-      const items = banner ? [banner, ...(state.notices || [])] : (state.notices || []);
-      return items.map((n) => `<div class="notice" data-notice="${esc(n.title)}"><strong>${esc(n.title)}</strong><div>${esc(n.body)}</div></div>`).join("");
-    }
-
-    function esc(value) {
-      return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
-    }
-
-    function bind(kept) {
-      document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; render(); });
-      const start = document.getElementById("start");
-      if (start) start.onclick = async () => {
-        await fetch("/api/sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: document.getElementById("start-url").value }) });
-        refresh();
-      };
-      const stop = document.getElementById("stop");
-      if (stop) stop.onclick = async () => { await fetch("/api/sessions/stop", { method: "POST" }); refresh(); };
-      const load = document.getElementById("load-trail");
-      if (load) load.onclick = async () => {
-        const id = document.getElementById("trail-id").value;
-        const trail = await (await fetch("/api/trails/" + encodeURIComponent(id))).json();
-        trailText = JSON.stringify(trail, null, 2);
-        const view = document.getElementById("trail-view");
-        if (view) view.textContent = trailText;
-      };
-      document.querySelectorAll("[data-rename]").forEach((btn) => btn.onclick = async () => {
-        const name = prompt("Name");
-        if (!name) return;
-        await fetch("/api/workflows/" + btn.dataset.rename, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
-        refresh();
-      });
-      document.querySelectorAll("[data-delete]").forEach((btn) => btn.onclick = async () => {
-        if (!confirm("Delete this workflow?")) return;
-        await fetch("/api/workflows/" + btn.dataset.delete, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
-        refresh();
-      });
-      document.querySelectorAll("[data-export]").forEach((btn) => btn.onclick = async () => {
-        const doc = await (await fetch("/api/workflows/" + btn.dataset.export)).json();
-        document.getElementById("import-json").value = JSON.stringify(doc, null, 2);
-      });
-      document.querySelectorAll("[data-open]").forEach((btn) => btn.onclick = () => openEditor(btn.dataset.open));
-      const imp = document.getElementById("import");
-      if (imp) imp.onclick = async () => {
-        await fetch("/api/workflows/import", { method: "POST", headers: { "content-type": "application/json" }, body: document.getElementById("import-json").value });
-        refresh();
-      };
-      const wf = document.getElementById("wf");
-      if (wf) {
-        wf.onchange = () => { lastWf = wf.value; refresh(); };
-        if (wf.value) fillArgs(wf.value, kept);
-      }
-      const wfHeal = document.getElementById("wf-heal");
-      if (wfHeal) wfHeal.onchange = async () => {
-        const id = document.getElementById("wf").value;
-        const heal = wfHeal.value || null;
-        await fetch("/api/workflows/" + encodeURIComponent(id), {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ heal }),
-        });
-        refresh();
-      };
-      const run = document.getElementById("run");
-      if (run) run.onclick = runReplay;
-      const check = document.getElementById("check-promotion");
-      if (check) check.onclick = checkPromotion;
-      document.querySelectorAll("[data-keep]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.keep, "keep"));
-      document.querySelectorAll("[data-revert]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.revert, "revert"));
-      const importYes = document.getElementById("import-yes");
-      if (importYes) importYes.onclick = () => answerImport({ accept: true });
-      const importNo = document.getElementById("import-no");
-      if (importNo) importNo.onclick = () => answerImport({ accept: false });
-      document.querySelectorAll("[data-import-profile]").forEach((btn) => {
-        btn.onclick = () => answerImport({ accept: true, profile: btn.dataset.importProfile });
-      });
-      const save = document.getElementById("save-settings");
-      if (save) save.onclick = async () => {
-        await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ heal: document.getElementById("heal").value }) });
-        refresh();
-      };
-    }
-
-    async function openEditor(id) {
-      const doc = await (await fetch("/api/workflows/" + id)).json();
-      document.getElementById("editor").innerHTML = `<div class="card"><h3>Edit ${doc.name}</h3><textarea id="edit-json" rows="16">${JSON.stringify(doc, null, 2)}</textarea><button id="save-edit">Save steps</button></div>`;
-      document.getElementById("save-edit").onclick = async () => {
-        const workflow = JSON.parse(document.getElementById("edit-json").value);
-        await fetch("/api/workflows/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ workflow }) });
-        refresh();
-      };
-    }
-
-    async function fillArgs(id, kept) {
-      const doc = await (await fetch("/api/workflows/" + id)).json();
-      const form = document.getElementById("args");
-      form.innerHTML = doc.inputs.map((input) => field(input)).join("") || "<p>This workflow has no inputs.</p>";
-      if (kept) {
-        for (const el of form.querySelectorAll("input[name], textarea[name], select[name]")) {
-          const value = kept[el.name];
-          if (typeof value === "string" && value) el.value = value;
-        }
-      }
-      form.querySelectorAll(".drop").forEach((zone) => {
-        zone.ondragover = (event) => { event.preventDefault(); zone.classList.add("over"); };
-        zone.ondragleave = () => zone.classList.remove("over");
-        zone.ondrop = (event) => {
-          event.preventDefault();
-          zone.classList.remove("over");
-          const list = event.dataTransfer && event.dataTransfer.files;
-          const file = list && list[0];
-          const input = zone.querySelector("input");
-          if (input && list && list.length) {
-            try { input.files = list; } catch (err) { /* some engines reject the assignment */ }
-          }
-          zone._baoFile = file || null;
-          zone.querySelector("span").textContent = file ? file.name : "Drop a file here, or choose one.";
-        };
-      });
-    }
-
-    function field(input) {
-      if (input.type === "secret") return `<label>${input.label || input.name} <input name="${input.name}" type="password" autocomplete="off"></label>`;
-      if (input.type === "number") return `<label>${input.label || input.name} <input name="${input.name}" type="number" value="${input.default || ""}"></label>`;
-      if (input.type === "choice") {
-        const opts = (input.choices || []).map((c) => `<option>${c}</option>`).join("");
-        return `<label>${input.label || input.name} <select name="${input.name}">${opts}</select></label>`;
-      }
-      if (input.type === "file") return `<label class="drop">${input.label || input.name} <input name="${input.name}" type="file" ${input.multiple ? "multiple" : ""}> <span>Drop a file here, or choose one.</span></label>`;
-      return `<label>${input.label || input.name} <textarea name="${input.name}" rows="2">${input.default || ""}</textarea></label>`;
-    }
-
-    function renderRun(run) {
-      const healed = (run.heals || []).length > 0;
-      const lines = (run.steps || []).map((step) => {
-        const phase = step.phase ? `<span class="phase">${esc(step.phase)}</span>` : "";
-        return `<div class="step-row ${esc(step.status)}" data-phase="${esc(step.phase || "")}">${phase}${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`;
-      }).join("");
-      const repairs = (run.repairs || []).map((item) => `<div id="repair-${esc(item.repair)}">repair ${esc(item.repair)}: ${esc(item.detail)}</div>`).join("");
-      const receipts = (run.receipts || []).map((item) => `<div class="receipt" id="receipt-${esc(item.stepId)}"><strong>receipt ${item.pass ? "pass" : "fail"}</strong> expected ${esc(item.expected)} · read ${esc(item.actual)} · ${esc(String(item.hash || "").slice(0, 16))}</div>`).join("");
-      const promo = run.promotion;
-      const promoHtml = promo ? `<div class="row" id="promotion" data-status="${esc(promo.status)}"><span class="badge">${esc(promo.status)}</span><span>drift ${esc(promo.drift)} · replays ${esc(promo.replays)}${promo.reason ? " · " + esc(promo.reason) : ""}</span></div>${promo.status === "provisional" ? '<button id="check-promotion" class="primary">Check promotion</button>' : ""}` : "";
-      const heals = (run.heals || []).map((item) => reviewHeal(run, item)).join("");
-      const failure = run.failure ? `<p id="failure-phase"><strong>phase ${esc(run.failure.phase)}</strong> ${esc(run.failure.reason)}</p><pre id="failure" style="max-height:8rem; overflow:auto">${esc(JSON.stringify(publicFailure(run.failure), null, 2))}</pre>` : "";
-      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${repairs}${receipts}${promoHtml}${heals}${failure}`;
-    }
-
-    function reviewHeal(run, item) {
-      const shot = item.snapshot && item.snapshot.screenshot;
-      const img = shot ? `<img alt="Snapshot sent with the heal" src="data:image/png;base64,${shot}" style="max-width:100%; max-height:140px; object-fit:contain; border:1px solid var(--line)">` : "";
-      const audit = {
-        intent: item.intent,
-        model: item.model,
-        prompt: item.prompt,
-        rawResponse: item.rawResponse,
-        proposedPatch: item.proposedPatch,
-        executed: item.executed,
-        postconditionPassed: item.postconditionPassed,
-        snapshot: item.snapshot ? { screenshotRef: item.snapshot.screenshotRef, dom: item.snapshot.dom, ax: item.snapshot.ax } : undefined,
-      };
-      return `<div class="notice">
-        <div class="row"><span class="badge">heal</span> <span>${esc(item.intent || "")}</span></div>
-        <div>model ${esc(item.model && item.model.name)} version ${esc(item.model && item.model.version)} · postcondition ${esc(item.postconditionPassed === undefined ? "waiting" : item.postconditionPassed)}</div>
-        <div class="row">
-          <button data-keep="${esc(item.id)}">Keep patch</button>
-          <button data-revert="${esc(item.id)}">Revert</button>
-        </div>
-        ${img}
-        <pre style="max-height:9rem; overflow:auto">${esc(JSON.stringify(audit, null, 2))}</pre>
-      </div>`;
-    }
-
-    function publicFailure(failure) {
-      if (!failure || !failure.snapshot) return failure;
-      const snap = failure.snapshot;
-      return { ...failure, snapshot: { screenshotRef: snap.screenshotRef, dom: snap.dom, ax: snap.ax } };
-    }
-
-    async function decideHeal(healId, decision) {
-      if (!lastRun) return;
-      const item = (lastRun.heals || []).find((heal) => heal.id === healId);
-      if (!item) return;
-      const id = document.getElementById("wf").value;
-      if (decision === "keep") {
-        await fetch("/api/heal/keep", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id, stepId: item.failedStep.id, patch: item.proposedPatch, runId: lastRun.runId, healId }),
-        });
-      } else {
-        await fetch("/api/heal/revert", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id, runId: lastRun.runId, healId }),
-        });
-      }
-      banner = {
-        title: decision === "keep" ? "Patch kept" : "Patch reverted",
-        body: decision === "keep" ? "Kept the heal in the saved workflow." : "Reverted the saved workflow to the failed step.",
-      };
-      refresh();
-    }
-
-    async function checkPromotion() {
-      const id = document.getElementById("wf").value;
-      const button = document.getElementById("check-promotion");
-      if (button) button.textContent = "Checking drift and two replays…";
-      const res = await fetch("/api/promotions/check", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      const promotion = await res.json();
-      if (lastRun) lastRun.promotion = promotion;
-      refresh();
-    }
-
-    async function runReplay() {
-      const id = document.getElementById("wf").value;
-      lastWf = id;
-      const form = document.getElementById("args");
-      const args = {};
-      for (const el of form.querySelectorAll("[name]")) {
-        if (el.type === "file") {
-          const zone = el.closest(".drop");
-          const file = el.files[0] || (zone && zone._baoFile);
-          if (!file) continue;
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          let bin = "";
-          for (const b of bytes) bin += String.fromCharCode(b);
-          args[el.name] = { name: file.name, base64: btoa(bin) };
-        } else if (el.type === "number") args[el.name] = Number(el.value);
-        else args[el.name] = el.value;
-      }
-      document.getElementById("live").textContent = "Running…";
-      const res = await fetch("/api/replay", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, args }) });
-      lastRun = await res.json();
-      refresh();
-    }
-
-    async function answerImport(body) {
-      const pending = state.pendingImport;
-      if (!pending) return;
-      renderKey = "";
-      await fetch("/api/import-login/answer", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: pending.id, ...body }),
-      });
-      refresh();
-    }
-
-    document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; renderKey = ""; render(); });
-    refresh();
-    setInterval(() => { refresh().catch(() => {}); }, 1000);
-  </script>
+  <div id="toasts"></div>
+  <div id="app">
+    <aside id="rail"></aside>
+    <div id="content">
+      <div id="act"></div>
+      <div id="onboard"></div>
+      <main id="main"></main>
+    </div>
+  </div>
+  <div id="float"></div>
+  <div id="palette" hidden></div>
+  <script src="/app.js"></script>
 </body>
 </html>

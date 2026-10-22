@@ -340,6 +340,43 @@ is still the source of truth for the extension.
   patched the renamed Apply button from the failure screenshot and was
   promoted. `BAO_HEAL_FIXTURE` is still the canned stand-in and was not used
   for that run.
+- **2026-10-21 — Desktop window: sidebar, act bar, run viewer, heal review.**
+  First UI pass. The five top tabs are a left rail (Library, Capture, Runs,
+  Heals, Settings) with recording, helper, model, and a count of items waiting
+  on the person. Trail is a tab on Capture and on a run. A confirm step shows
+  an act bar that names the site button and the window and counts down; Bao
+  does not press that button. On the fixture page, pressing Apply satisfies
+  the postcondition and the run passes with `0 model calls`. A drifted Upload
+  button stops as `click Upload` with scores 80 and 70 (lead 10) and the name
+  change `Upload` → `Upload file`. Keep and Revert append decisions and leave
+  the heal JSON unchanged. Import failures render `code`, `cause`, and `hint`
+  (`ImportLoginError` in `desktop/src/v1/import-login-error.ts`); the import
+  backend is unchanged. Linux: desktop unit tests 61 pass, and the live
+  browser capture, replay, heal, and replay drop zone passed. One MCP
+  `tools/list` wait of 300ms missed once under load and passed on the next run.
+- **2026-10-22 — Desktop window, second pass.** Merged onto
+  `cursor/logged-out-masked-login-28c2` so the window covers expect, cheap
+  repairs, provisional heals, read-back receipts, trajectory diffs, auth
+  stops, masked secrets, and the Chrome import card. Two static directions
+  were shot first (native macOS light, and a dense dark list). The native
+  light layout won: bao is a workflow a person runs, and the calm spec fits
+  a system sidebar better than a debugger skin. Dark mode is the same layout
+  with inverted tokens. Borrowed the step cards from Shortcuts, the command
+  list and status color from Raycast and Linear, the filmstrip scrubber from
+  the Playwright trace viewer and rrweb-player, the pass grid and plain
+  failure line from Momentic and Skyvern, and the floating record bar from
+  Screen Studio and Loom. The step list stayed a list; a node canvas was the
+  worse fit for short human steps. A heal row is named from that heal's
+  workflow id, so a login heal no longer picks up a sibling named
+  `textedit write`. OpenAdapt and Simular did not have public app screens
+  worth copying. A follow-up replaced empty thumbnails with per-step PNGs
+  from capture and replay, gave the workflow its own page, and drew one
+  sparkline cell per recent run. A missing picture is an icon and the target
+  text. Red is reserved for a failed step. A later polish shows every saved
+  step on the workflow page, turns the heal notice into a dismissible toast,
+  and crops each thumbnail around the target instead of shrinking the page.
+  Step rows stay about one line tall, and a healed step keeps a crop of the
+  control it actually used.
 
 ---
 

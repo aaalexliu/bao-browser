@@ -2,13 +2,16 @@
 // Nothing is recorded unless a session was started.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
 import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
-import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, notifyOs, type PersonPrompts } from "../v1/browser-driver";
+import type { HumanAsk } from "../v1/human-ask";
+import { ensureTrailTimes } from "../v1/trail-time";
 import { maskPasswordFields, unmaskPasswordFields } from "../v1/dom-page";
 import {
   cookieHeader,
@@ -42,7 +45,9 @@ import {
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
-import { interpret, type TrailEvent } from "../v1/interpret";
+import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
+import { clipBox } from "../v1/browser-driver";
+import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { ReceiptLog } from "../v1/receipt";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
@@ -58,6 +63,7 @@ export interface App {
   library: Library;
   port: number;
   notices: Notice[];
+  notifications: { title: string; body: string }[];
   recording: boolean;
   close(): Promise<void>;
 }
@@ -73,22 +79,46 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   let page: Page | undefined;
   let profile: string | undefined;
   const events: TrailEvent[] = [];
+  const captureShots = new Map<string, string>();
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
   let importing = false;
   let loginWait: { message: string; detail?: string } | null = null;
   let humanConfirm: { message: string; detail?: string } | null = null;
+  let activeAsk: HumanAsk | null = null;
+  let stopRun = false;
+  let loginContinued = false;
+  let capturePaused = false;
+  let recordingSince = 0;
+  const notifications: { title: string; body: string }[] = [];
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
+  const note = (title: string, body: string) => {
+    notifications.push({ title, body });
+    void notifyOs(title, body);
+  };
   const prompts: PersonPrompts = {
     showConfirm(_label) {
       humanConfirm = { message: "confirm before applying", detail: "Press Apply on the site window." };
     },
-    clearConfirm() { humanConfirm = null; },
+    clearConfirm() {
+      humanConfirm = null;
+      if (activeAsk?.kind === "confirm") activeAsk = null;
+    },
     showLoginWait(label) {
       const detail = label && label.length <= 120 ? label : "Sign in on the site window";
       loginWait = { message: "waiting for you to log in", detail };
     },
-    clearLoginWait() { loginWait = null; },
+    clearLoginWait() {
+      loginWait = null;
+      loginContinued = false;
+      if (activeAsk?.kind === "login") activeAsk = null;
+    },
+    showAsk(ask) {
+      activeAsk = ask;
+      note("You need to act", ask.instruction);
+    },
+    shouldStop: () => stopRun,
+    loginContinued: () => loginContinued,
   };
   const sessions = new Map<string, FreezeSession>();
   const pendings = new Map<string, { user: string; exp: number }>();
@@ -106,6 +136,12 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
       const url = new URL(req.url || "/", "http://127.0.0.1");
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
         return sendFile(res, path.join(publicDir, "index.html"), "text/html");
+      }
+      if (req.method === "GET" && url.pathname === "/app.js") {
+        const js = await browserScript();
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
+        res.end(js);
+        return;
       }
       if (req.method === "GET" && (url.pathname === "/fixture" || url.pathname === "/secure")) {
         return sendFile(res, path.join(publicDir, "fixture.html"), "text/html");
@@ -146,11 +182,19 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           settings: library.settings(),
           workflows: library.list().map(summary),
           trails: library.listTrails(),
-          runs: library.listRuns(),
-          helper: bundledHelperApp() || null,
+          runs: library.listRuns().map(slimRun),
+          helper: helperStatus(helperReport),
+          helperApp: bundledHelperApp() || null,
+          model: modelStatus(),
           pendingImport: pending ? publicPending(pending) : null,
           loginWait,
           humanConfirm,
+          activeAsk,
+          capturePaused,
+          recordingSince: recording ? recordingSince : 0,
+          liveTrail: events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
+          notifications,
+          promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
         });
       }
       if (req.method === "GET" && url.pathname === "/api/import-login") {
@@ -263,11 +307,56 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         }
         return json(res, { helper: bundledHelperApp() || null, helperReport, product, capture, replay });
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.includes("/shots/")) {
+        const parts = url.pathname.split("/");
+        const id = decodeURIComponent(parts[3] || "");
+        const file = path.basename(decodeURIComponent(parts[5] || ""));
+        return sendPng(res, path.join(library.root, "shots", "workflows", id, file));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/poster")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const file = newestPng(path.join(library.root, "shots", "workflows", id));
+        if (!file) return json(res, { error: "no picture" }, 404);
+        return sendPng(res, file);
+      }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/capture/shots/")) {
+        const file = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
+        return sendPng(res, path.join(library.root, "shots", "capture", file));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/video")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const run = library.readRun(id);
+        const file = path.join(library.root, "videos", `${run.id}.webm`);
+        if (!existsSync(file)) return json(res, { error: "no video" }, 404);
+        res.writeHead(200, { "content-type": "video/webm" });
+        res.end(readFileSync(file));
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.includes("/shots/")) {
+        const parts = url.pathname.split("/");
+        const id = decodeURIComponent(parts[3] || "");
+        const file = path.basename(decodeURIComponent(parts[5] || ""));
+        return sendPng(res, path.join(library.root, "shots", "runs", id, file));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/poster")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const file = newestPng(path.join(library.root, "shots", "runs", id));
+        if (!file) return json(res, { error: "no picture" }, 404);
+        return sendPng(res, file);
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/")) {
+        return json(res, library.readRun(decodeURIComponent(url.pathname.split("/")[3] || "")));
+      }
       if (req.method === "GET" && url.pathname.startsWith("/api/trails/")) {
-        return json(res, library.readTrail(decodeURIComponent(url.pathname.split("/")[3] || "")));
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const raw = library.readTrail(id);
+        const events = Array.isArray(raw) ? raw as { ts?: number }[] : [];
+        const timed = ensureTrailTimes(events);
+        if (timed.filled) library.saveTrail(id, timed.events);
+        return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
         const body = await readBody(req) as { heal?: HealMode };
@@ -281,12 +370,26 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const body = await readBody(req) as { url?: string };
         await stopBrowser();
         recording = true;
+        recordingSince = Date.now();
         events.length = 0;
         profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
         context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
+        capturePaused = false;
+        captureShots.clear();
         await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
-          if (!recording) return;
-          events.push({ ...payload, id: `evt-${events.length}`, ts: Date.now() });
+          if (!recording || capturePaused) return;
+          const id = `evt-${events.length}`;
+          events.push({ ...payload, id, ts: Date.now() });
+          if (!page || page.isClosed()) return;
+          const dir = path.join(opts.home, "shots", "capture");
+          mkdirSync(dir, { recursive: true });
+          const dest = path.join(dir, `${id}.png`);
+          try {
+            const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
+            if (!clip) return;
+            await page.screenshot({ path: dest, type: "png", clip });
+            captureShots.set(id, dest);
+          } catch { /* headed Chromium can refuse captureScreenshot */ }
         });
         await context.addInitScript(recorderSource());
         page = context.pages()[0] || await context.newPage();
@@ -324,6 +427,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/stop") {
         recording = false;
+        recordingSince = 0;
         const id = `wf-${Date.now()}`;
         const startUrl = page ? page.url() : "";
         const clean = events.map((event) => {
@@ -333,8 +437,18 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           return copy;
         });
         const workflow = interpret(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
+        const kept = retainedEvents(clean);
+        const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
+        mkdirSync(shotDest, { recursive: true });
+        for (let i = 0; i < workflow.steps.length; i++) {
+          const event = kept[i];
+          const step = workflow.steps[i];
+          const src = event ? captureShots.get(event.id) : undefined;
+          if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+        }
         library.save(workflow);
-        library.saveTrail(id, clean);
+        library.saveTrail(id, ensureTrailTimes(clean).events);
+        capturePaused = false;
         await stopBrowser();
         return json(res, workflow);
       }
@@ -343,6 +457,8 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
+        stopRun = false;
+        loginContinued = false;
         const run = await runWorkflow(library, workflow, args, notices, replays, prompts);
         return json(res, run);
       }
@@ -353,6 +469,35 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const hasPassword = await session.page.locator("input[type=password]:visible").count().then((count) => count > 0).catch(() => false);
         const status = await session.page.locator("#status").innerText().catch(() => "");
         return json(res, { open: true, pathname: current.pathname, hasPassword, status });
+      }
+      if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
+        loginContinued = true;
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
+        stopRun = true;
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/replay/show") {
+        const session = [...replays.values()].find((item) => !item.page.isClosed());
+        if (session) await session.page.bringToFront().catch(() => undefined);
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/pause") {
+        capturePaused = !capturePaused;
+        return json(res, { paused: capturePaused, recording });
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/mark") {
+        events.push({ id: `evt-${events.length}`, ts: Date.now(), kind: "act", op: "mark" });
+        return json(res, { events: events.length });
+      }
+      if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/press") {
+        const body = await readBody(req) as { name?: string; fill?: { selector: string; value: string } };
+        const session = [...replays.values()].find((item) => !item.page.isClosed());
+        if (!session) return json(res, { error: "replay window is not open" }, 409);
+        if (body.fill) await session.page.fill(body.fill.selector, body.fill.value);
+        if (body.name) await session.page.getByRole("button", { name: body.name, exact: true }).click();
+        return json(res, { ok: true });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/drive") {
         const body = await readBody(req) as { id?: string; fill?: { selector?: string; value?: string }; click?: string };
@@ -576,6 +721,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
     library,
     port,
     notices,
+    notifications,
     get recording() { return recording; },
     async close() {
       await stopBrowser();
@@ -607,12 +753,17 @@ async function runWorkflow(
   }, prompts);
   const heal = healProvider();
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
+  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const shotDir = path.join(library.root, "shots", "runs", runId);
   const result = await replay(workflow, args, driver, {
+    runId,
+    shotDir,
     settings: library.settings(),
     heal,
     now: () => Date.now(),
     receipts: receiptLog,
   } satisfies ReplayOptions);
+  spillBinaryShots(result, shotDir);
   for (const repair of result.repairs) {
     library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
   }
@@ -637,7 +788,10 @@ async function runWorkflow(
     receipts: result.receipts,
     trail: result.trail,
     precondition: result.precondition,
+    trajectory: result.trajectory,
     promotion,
+    modelCalls: result.modelCalls,
+    inputs: maskedInputs(workflow, args),
   }), secretList)) as Parameters<Library["saveRun"]>[0];
   library.saveRun(saved);
   const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
@@ -953,7 +1107,128 @@ function summary(doc: WorkflowV2) {
     heal: doc.heal,
     heals: doc.steps.filter((step) => step.label.startsWith("healed")).length,
     replayed: doc.replayed,
+    waits: doc.steps.filter((step) => step.action === "login" || step.action === "confirm").length,
+    expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
+    firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
   };
+}
+
+function sendPng(res: ServerResponse, file: string): void {
+  if (!/^[\w.-]+\.png$/.test(path.basename(file)) || !existsSync(file)) {
+    json(res, { error: "no picture" }, 404);
+    return;
+  }
+  res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
+  res.end(readFileSync(file));
+}
+
+function newestPng(dir: string): string | undefined {
+  if (!existsSync(dir)) return;
+  const ranked = readdirSync(dir)
+    .filter((name) => /^[\w.-]+\.png$/.test(name))
+    .map((name) => {
+      const file = path.join(dir, name);
+      return { file, mtime: statSync(file).mtimeMs, after: name.endsWith("-after.png"), cropped: croppedPng(file) };
+    })
+    .filter((item) => item.cropped)
+    .sort((a, b) => Number(b.after) - Number(a.after) || b.mtime - a.mtime);
+  return ranked[0]?.file;
+}
+
+/** A poster is a crop around a control. A full-page capture stays off the card. */
+function croppedPng(file: string): boolean {
+  const buf = readFileSync(file);
+  if (buf.length < 24 || buf.toString("ascii", 12, 16) !== "IHDR") return false;
+  return buf.readUInt32BE(16) <= 720 && buf.readUInt32BE(20) <= 480;
+}
+
+function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  const write = (name: string, b64?: string): string | undefined => {
+    if (!b64 || !b64.startsWith("iVBORw0KGgo")) return;
+    const buf = Buffer.from(b64, "base64");
+    if (buf.length < 24 || buf[0] !== 0x89) return;
+    const file = path.basename(name);
+    if (!/^[\w.-]+\.png$/.test(file)) return;
+    writeFileSync(path.join(dir, file), buf);
+    return file;
+  };
+  for (const heal of result.heals) {
+    const before = write(shotFile(heal.id, "before"), heal.beforeShot);
+    if (before) heal.beforeShot = before;
+    const after = write(shotFile(heal.id, "after"), heal.snapshot?.screenshot);
+    if (after && heal.snapshot) heal.snapshot = { ...heal.snapshot, screenshot: undefined, screenshotRef: after };
+  }
+  const failed = write("failure.png", result.failure?.snapshot?.screenshot);
+  if (failed && result.failure?.snapshot) {
+    result.failure.snapshot = { ...result.failure.snapshot, screenshot: undefined, screenshotRef: failed };
+  }
+}
+
+function slimRun(run: ReturnType<Library["readRun"]>) {
+  const steps = Array.isArray(run.steps) ? run.steps.map((step) => {
+    const row = step as { beforeShot?: string; afterShot?: string };
+    const { beforeShot, afterShot, ...rest } = row;
+    void beforeShot;
+    void afterShot;
+    return rest;
+  }) : [];
+  const failure = run.failure && typeof run.failure === "object"
+    ? { ...(run.failure as Record<string, unknown>), snapshot: undefined, beforeShot: undefined }
+    : run.failure;
+  const heals = Array.isArray(run.heals) ? run.heals.map((heal) => {
+    const row = heal as { snapshot?: unknown; beforeShot?: string };
+    return { ...row, snapshot: undefined, beforeShot: undefined };
+  }) : [];
+  return { ...run, steps, failure, heals };
+}
+
+function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const input of workflow.inputs) {
+    const value = args[input.name];
+    if (input.type === "secret") out[input.name] = value ? "••••" : "";
+    else if (value && typeof value === "object" && !Array.isArray(value) && "name" in value) out[input.name] = String((value as { name?: string }).name || "");
+    else if (Array.isArray(value)) out[input.name] = value.map((file) => file && typeof file === "object" && "name" in file ? String(file.name) : "").filter(Boolean).join(", ");
+    else out[input.name] = value === undefined || value === null ? "" : String(value);
+  }
+  return out;
+}
+
+function helperStatus(report: unknown): { label: string; accessibility: boolean; screenCapture: boolean } {
+  const row = report as { accessibility?: boolean; screenCapture?: boolean } | undefined;
+  if (process.platform !== "darwin" || !bundledHelperApp()) {
+    return { label: "helper off", accessibility: false, screenCapture: false };
+  }
+  const accessibility = !!row?.accessibility;
+  const screenCapture = !!row?.screenCapture;
+  return {
+    label: accessibility && screenCapture ? "helper ok" : "helper needs permission",
+    accessibility,
+    screenCapture,
+  };
+}
+
+function modelStatus(): { label: string } {
+  if (process.env.BAO_HEAL_FIXTURE === "1" || process.env.BAO_HEAL_CURSOR === "1") return { label: "fixture model" };
+  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) return { label: "model ready" };
+  return { label: "no model" };
+}
+
+let bundledClient = "";
+async function browserScript(): Promise<string> {
+  if (bundledClient) return bundledClient;
+  const result = await esbuild.build({
+    absWorkingDir: process.cwd(),
+    entryPoints: ["desktop/src/app/client.ts"],
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    write: false,
+    target: "es2022",
+  });
+  bundledClient = result.outputFiles[0]?.text || "";
+  return bundledClient;
 }
 
 async function materializeFiles(args: ReplayArgs): Promise<ReplayArgs> {

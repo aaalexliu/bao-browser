@@ -39,11 +39,16 @@ export interface InterpretMeta {
 }
 
 const NOISE = new Set([
-  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "navigate",
+  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "navigate", "mark",
 ]);
 
 const DIGIT = /^[0-9]$/;
 const OP = new Set(["+", "-", "*", "/", "×", "÷", "="]);
+
+/** Events that become steps, in step order. A merged type keeps the first event id. */
+export function retainedEvents(events: readonly TrailEvent[]): TrailEvent[] {
+  return mergeTyping(events.filter(keep));
+}
 
 export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
   const secrets = secretStrings(events, meta.secrets ?? []);
