@@ -433,8 +433,18 @@
     #ax-snapshot { max-height: 240px; overflow: auto; background: var(--bg); border-radius: 8px; padding: 0.5rem 0.6rem; }
     .frame.on { outline: 2px solid var(--accent); outline-offset: 1px; }
     #scrubber { width: 100%; accent-color: var(--accent); }
-    .timeline { position: relative; height: 28px; margin: 0.4rem 0; background: var(--select); border-radius: 6px; }
-    .marker { position: absolute; top: 2px; transform: translateX(-50%); min-width: 1.3rem; padding: 0.1rem 0.25rem; }
+    .timeline { position: relative; height: 28px; margin: 0.4rem 0; background: var(--select); border-radius: 6px; overflow: hidden; }
+    .idle-shade {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: repeating-linear-gradient(-45deg, var(--warn-bg), var(--warn-bg) 4px, transparent 4px, transparent 8px);
+      pointer-events: none;
+    }
+    .marker { position: absolute; top: 2px; transform: translateX(-50%); min-width: 1.3rem; padding: 0.1rem 0.25rem; z-index: 1; height: auto; }
+    button.status { height: auto; }
+    button.swatch { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 3px; }
+    button.cell { width: 16px; height: 16px; padding: 0; border: 0; }
     .marker.failed { color: var(--bad); }
     .heal-row { display: block; width: 100%; text-align: left; margin: 0.3rem 0; }
     .cell { width: 16px; height: 16px; border-radius: 4px; display: inline-block; background: var(--select); }
