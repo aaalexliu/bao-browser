@@ -15,11 +15,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+static void raise_waiting_window(void);
 static int listen_fd = -1;
 static char sock_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 static BOOL auth_requested = NO;
 static NSString *const kCategory = @"bao.act";
-static NSString *const kOpenAction = @"open-bao";
+static NSString *const kShowAction = @"show-window";
 
 @interface BaoNotify : NSObject <UNUserNotificationCenterDelegate>
 @end
@@ -40,9 +41,9 @@ static BaoNotify *notify_owner;
 didReceiveNotificationResponse:(UNNotificationResponse *)response
          withCompletionHandler:(void (^)(void))completionHandler {
     (void)center;
-    if ([response.actionIdentifier isEqualToString:kOpenAction] ||
+    if ([response.actionIdentifier isEqualToString:kShowAction] ||
         [response.actionIdentifier isEqualToString:UNNotificationDefaultActionIdentifier]) {
-        [NSApp activate];
+        raise_waiting_window();
     }
     completionHandler();
 }
@@ -80,12 +81,38 @@ static void log_delivered(NSArray<UNNotification *> *notes) {
     fflush(stderr);
 }
 
-static NSString *badge_on_main(NSString *label);
+static void raise_waiting_window(void) {
+    const char *port = getenv("BAO_PORT");
+    if (!port || !port[0]) port = "4787";
+    NSString *urlText = [NSString stringWithFormat:@"http://127.0.0.1:%s/api/replay/show", port];
+    NSURL *url = [NSURL URLWithString:urlText];
+    if (!url) return;
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"POST";
+    req.HTTPBody = [NSData data];
+    req.timeoutInterval = 3;
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        (void)data;
+        (void)response;
+        fprintf(stderr, "bao show window notify %s\n", error ? (error.localizedDescription.UTF8String ?: "error") : "ok");
+        fflush(stderr);
+    }] resume];
+}
 
-static void set_badge(NSString *label) {
+static NSString *clip_text(id value, NSUInteger maxLen, NSString *fallback) {
+    NSString *text = [value isKindOfClass:[NSString class]] ? (NSString *)value : (fallback ?: @"");
+    text = [[text stringByReplacingOccurrencesOfString:@"\n" withString:@" "] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (text.length > maxLen) text = [text substringToIndex:maxLen];
+    return text ?: @"";
+}
+
+static void set_badge(NSString *label, NSString *tip) {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-    [[NSApp dockTile] setBadgeLabel:label.length ? label : nil];
-    [[NSApp dockTile] display];
+    NSDockTile *tile = [NSApp dockTile];
+    [tile setBadgeLabel:label.length ? label : nil];
+    NSString *text = tip ?: @"";
+    [NSApp setAccessibilityHelp:text.length ? text : nil];
+    [tile display];
 }
 
 static void write_reply(int fd, NSDictionary *payload) {
@@ -108,8 +135,8 @@ static void write_reply(int fd, NSDictionary *payload) {
 }
 
 static void install_category(UNUserNotificationCenter *center) {
-    UNNotificationAction *open = [UNNotificationAction actionWithIdentifier:kOpenAction
-                                                                      title:@"Open bao"
+    UNNotificationAction *open = [UNNotificationAction actionWithIdentifier:kShowAction
+                                                                      title:@"Show window"
                                                                     options:UNNotificationActionOptionForeground];
     UNNotificationCategory *category = [UNNotificationCategory categoryWithIdentifier:kCategory
                                                                               actions:@[open]
@@ -118,7 +145,7 @@ static void install_category(UNUserNotificationCenter *center) {
     [center setNotificationCategories:[NSSet setWithObject:category]];
 }
 
-static void reply_delivered(int fd, NSString *identifier, NSString *authorization, NSString *badge) {
+static void reply_delivered(int fd, NSString *identifier, NSString *authorization, NSString *badge, NSString *title, NSString *body, NSString *tooltip) {
     UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
     [center getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *notes) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -140,17 +167,17 @@ static void reply_delivered(int fd, NSString *identifier, NSString *authorizatio
                 @"titles": titles,
                 @"bodies": bodies,
                 @"badge": badge ?: @"",
+                @"title": title ?: @"",
+                @"body": body ?: @"",
+                @"tooltip": tooltip ?: @"",
             });
         });
     }];
 }
 
-static void post_act(int fd, NSDictionary *msg, NSString *authorization) {
-    NSString *title = [msg[@"title"] isKindOfClass:[NSString class]] ? msg[@"title"] : @"You need to act";
-    NSString *body = [msg[@"body"] isKindOfClass:[NSString class]] ? msg[@"body"] : @"Bao is waiting.";
-    if (title.length > 80) title = [title substringToIndex:80];
-    if (body.length > 180) body = [body substringToIndex:180];
-    NSString *badge = badge_on_main(@"!");
+static void post_act(int fd, NSString *title, NSString *body, NSString *tooltip, NSString *authorization, NSString *badge) {
+    fprintf(stderr, "bao notify text title=%s body=%s tooltip=%s\n", utf8(title), utf8(body), utf8(tooltip));
+    fflush(stderr);
     UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
     install_category(center);
     UNMutableNotificationContent *content = [UNMutableNotificationContent new];
@@ -169,27 +196,30 @@ static void post_act(int fd, NSDictionary *msg, NSString *authorization) {
                     @"prompt": @NO,
                     @"delivered": @NO,
                     @"badge": badge_label(),
+                    @"title": title ?: @"",
+                    @"body": body ?: @"",
+                    @"tooltip": tooltip ?: @"",
                     @"error": message,
                 });
             });
             return;
         }
-        reply_delivered(fd, identifier, authorization, badge);
+        reply_delivered(fd, identifier, authorization, badge, title, body, tooltip);
     }];
 }
 
-static NSString *badge_on_main(NSString *label) {
+static NSString *badge_on_main(NSString *label, NSString *tip) {
     __block NSString *shown = @"";
-    if ([NSThread isMainThread]) {
-        set_badge(label);
+    __block NSString *help = @"";
+    void (^apply)(void) = ^{
+        set_badge(label, tip);
         shown = badge_label();
-    } else {
-        dispatch_sync(dispatch_get_main_queue(), ^{
-            set_badge(label);
-            shown = badge_label();
-        });
-    }
+        help = NSApp.accessibilityHelp ?: @"";
+    };
+    if ([NSThread isMainThread]) apply();
+    else dispatch_sync(dispatch_get_main_queue(), apply);
     fprintf(stderr, "bao notify badgeLabel=%s\n", utf8(shown));
+    fprintf(stderr, "bao notify tooltip=%s\n", utf8(help));
     fflush(stderr);
     return shown;
 }
@@ -202,7 +232,7 @@ static void handle_message(int fd, NSDictionary *msg) {
         center.delegate = notify_owner;
     });
     if ([cmd isEqualToString:@"clear"]) {
-        NSString *badge = badge_on_main(nil);
+        NSString *badge = badge_on_main(nil, @"");
         [center getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *notes) {
             NSMutableArray *ids = [NSMutableArray array];
             for (UNNotification *note in notes) {
@@ -221,7 +251,11 @@ static void handle_message(int fd, NSDictionary *msg) {
     }
     NSString *requested = [msg[@"badge"] isKindOfClass:[NSString class]] ? msg[@"badge"] : @"!";
     if (requested.length > 4) requested = [requested substringToIndex:4];
-    NSString *badge = badge_on_main(requested);
+    NSString *title = clip_text(msg[@"title"], 240, @"You need to act");
+    NSString *body = clip_text(msg[@"body"], 240, title);
+    NSString *tooltip = clip_text(msg[@"tooltip"], 240, title);
+    NSString *badge = badge_on_main(requested, tooltip);
+    fprintf(stderr, "bao notify text title=%s body=%s tooltip=%s\n", utf8(title), utf8(body), utf8(tooltip));
     fprintf(stderr, "bao notify settings\n");
     fflush(stderr);
     [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
@@ -246,6 +280,9 @@ static void handle_message(int fd, NSDictionary *msg) {
                 @"prompt": @YES,
                 @"delivered": @NO,
                 @"badge": badge,
+                @"title": title,
+                @"body": body,
+                @"tooltip": tooltip,
             });
             return;
         }
@@ -266,11 +303,14 @@ static void handle_message(int fd, NSDictionary *msg) {
                     @"titles": titles,
                     @"bodies": bodies,
                     @"badge": badge,
+                    @"title": title,
+                    @"body": body,
+                    @"tooltip": tooltip,
                 });
             }];
             return;
         }
-        post_act(fd, msg, name);
+        post_act(fd, title, body, tooltip, name, badge);
     }];
 }
 
