@@ -27,7 +27,9 @@ import {
   recordBar,
   runsList,
   runKind,
+  reviewItems,
   runViewer,
+  secretInput,
   statusLabel,
   trailPane,
   workflowDetail,
@@ -82,6 +84,9 @@ let theme: "light" | "dark" = "light";
 let login: LoginForm = emptyLogin();
 let gateNote = "";
 let gateUrl = "";
+let pinnedRunId = "";
+let pinnedInputs: Record<string, string> | null = null;
+let debugStepId = "";
 try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
@@ -104,6 +109,7 @@ async function refresh(): Promise<void> {
     workflows: state.workflows,
     settings: state.settings,
     runs: (state.runs || []).map((run) => ({ id: run.id, status: run.status, decisions: run.decisions, heals: (run.heals || []).map((heal) => heal.id) })),
+    reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
     helper: state.helper,
     model: state.model,
     paused: state.capturePaused,
@@ -235,6 +241,7 @@ function replayForm(): string {
     `<option value="${esc(workflow.id)}" ${workflow.id === selected ? "selected" : ""}>${esc(workflow.name)}</option>`).join("");
   return `<section id="run-form"><h2>Run ${esc(current?.name || "")}</h2>
     <p class="lede">Inputs are asked once, before the run. Secrets stay masked.</p>
+    ${debugStepId ? `<p id="debug-note">Debug from this step (${esc(debugStepId)}). Earlier steps are not re-run. A secret is asked again.</p>` : ""}
     <label>Workflow <select id="wf">${options}</select></label>
     <label>Healing for this workflow <select id="wf-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
@@ -328,7 +335,14 @@ function bind(): void {
   const load = document.getElementById("load-trail");
   if (load) load.onclick = () => loadTrail((document.getElementById("trail-id") as HTMLSelectElement).value, "");
   const wf = document.getElementById("wf") as HTMLSelectElement | null;
-  if (wf) wf.onchange = () => { lastWf = wf.value; renderKey = ""; render(); };
+  if (wf) wf.onchange = () => {
+    lastWf = wf.value;
+    pinnedRunId = "";
+    pinnedInputs = null;
+    debugStepId = "";
+    renderKey = "";
+    render();
+  };
   const wfHeal = document.getElementById("wf-heal") as HTMLSelectElement | null;
   if (wfHeal) wfHeal.onchange = async () => {
     const id = (document.getElementById("wf") as HTMLSelectElement).value;
@@ -344,6 +358,22 @@ function bind(): void {
   if (run) run.onclick = () => void runReplay();
   const rerun = document.getElementById("rerun");
   if (rerun) rerun.onclick = () => void fillPastInputs();
+  const review = document.getElementById("act-review");
+  if (review) review.onclick = () => {
+    const workflowId = review.dataset.workflow || "";
+    const stepId = review.dataset.step || "";
+    const run = (state.runs || []).filter((item) => item.workflowId === workflowId).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+    if (run) {
+      openRun = run.id;
+      selectedStep = stepId;
+      screen = "run";
+    } else {
+      openWorkflow = workflowId;
+      screen = "workflow";
+    }
+    renderKey = "";
+    render();
+  };
   const pair = document.getElementById("pair");
   if (pair) pair.onclick = () => void postSync("/api/sync/pair", {
     code: (document.getElementById("pair-code") as HTMLInputElement).value,
@@ -524,7 +554,8 @@ async function showRun(id: string): Promise<void> {
   const merged = new Map(recent.map((item) => [item.id, item]));
   merged.set(run.id, run);
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
-  host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded });
+  const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
+  host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       selectedStep = (btn as HTMLButtonElement).dataset.selectStep || "";
@@ -583,6 +614,36 @@ async function showRun(id: string): Promise<void> {
   if (networkTab) (networkTab as HTMLButtonElement).onclick = () => {
     const extra = document.getElementById("run-extra");
     if (extra) extra.innerHTML = networkPane(run.network, selectedStep);
+  };
+  const rerunRun = host.querySelector("#rerun-run");
+  if (rerunRun) (rerunRun as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, "", run.inputs);
+  const debug = host.querySelector("#debug-step");
+  if (debug) (debug as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, (debug as HTMLButtonElement).dataset.step || "", run.inputs);
+  bindVideoSkip();
+}
+
+function openPastRun(workflowId: string, runId: string, stepId: string, inputs?: Record<string, string>): void {
+  pinnedRunId = runId;
+  pinnedInputs = inputs || null;
+  debugStepId = stepId;
+  lastWf = workflowId;
+  screen = "replay";
+  renderKey = "";
+  render();
+}
+
+function bindVideoSkip(): void {
+  const video = document.getElementById("run-video") as HTMLVideoElement | null;
+  if (!video) return;
+  let skips: { from: number; to: number; label: string }[] = [];
+  try { skips = JSON.parse(video.dataset.skips || "[]") as { from: number; to: number; label: string }[]; } catch { skips = []; }
+  video.ontimeupdate = () => {
+    if (video.paused) return;
+    const hit = skips.find((item) => video.currentTime >= item.from && video.currentTime < item.to - 0.05);
+    if (!hit) return;
+    video.currentTime = hit.to;
+    const live = document.getElementById("skip-live");
+    if (live) live.textContent = hit.label;
   };
 }
 
@@ -720,8 +781,9 @@ async function fillArgs(id: string): Promise<void> {
   };
   const form = document.getElementById("args");
   if (!form || screen !== "replay") return;
+  const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-  const prev = last?.inputs || {};
+  const prev = (pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {};
   form.innerHTML = doc.inputs.map((input) => field(input, prev[input.name])).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   form.querySelectorAll(".drop").forEach((zone) => {
@@ -746,10 +808,7 @@ async function fillArgs(id: string): Promise<void> {
 
 function field(input: { name: string; type: string; label?: string; default?: string; choices?: string[]; multiple?: boolean }, previous?: string): string {
   const label = esc(input.label || input.name);
-  if (input.type === "secret") {
-    const hint = previous ? "Last run used a secret" : "";
-    return `<label>${label} <input name="${esc(input.name)}" type="password" autocomplete="off" placeholder="${esc(hint)}"></label>`;
-  }
+  if (input.type === "secret") return secretInput(input.name, input.label || input.name, Boolean(previous));
   if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || input.default || "")}"></label>`;
   if (input.type === "choice") {
     const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
@@ -784,10 +843,11 @@ async function runReplay(): Promise<void> {
   const live = document.getElementById("live");
   if (live) live.textContent = "Running…";
   gateNote = "";
+  const fromStep = debugStepId;
   const res = await fetch("/api/replay", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ id, args }),
+    body: JSON.stringify({ id, args, fromStep: fromStep || undefined }),
   });
   const run = await res.json() as RunSummary & { runId?: string; error?: string; message?: string; signInUrl?: string };
   if (run.status === "needs-sign-in") {
@@ -803,7 +863,10 @@ async function runReplay(): Promise<void> {
     return;
   }
   openRun = runId;
-  selectedStep = "";
+  selectedStep = fromStep;
+  pinnedRunId = "";
+  pinnedInputs = null;
+  debugStepId = "";
   screen = "run";
   renderKey = "";
   await refresh();
@@ -840,6 +903,7 @@ function paintDockBadge(): void {
     ask: state.activeAsk,
     importPhase: state.pendingImport?.phase,
     pendingHeals: pendingHealCount(state.runs || []),
+    reviews: reviewItems(state.runs).length,
   });
   document.title = count > 0 ? `(${count}) bao` : "bao";
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
