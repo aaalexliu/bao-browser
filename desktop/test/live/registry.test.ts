@@ -275,12 +275,14 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       await page.locator(`[data-testid=listing][data-id="wikipedia-search"]`).click();
       await page.getByTestId("workflow").waitFor();
       await page.getByTestId("verified").waitFor();
-      await page.getByTestId("domains").waitFor();
+      await page.getByTestId("perm-sites").waitFor();
       await page.getByTestId("setup-questions").waitFor();
-      assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
+      assert.match(await page.getByTestId("last-green").innerText(), /Publisher replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
       assert.equal(await page.getByTestId("import-link").getAttribute("data-copy"), "bao://import/wikipedia-search");
       assert.equal(await page.getByTestId("deeplink").getAttribute("data-copy"), "bao://workflow/wikipedia-search");
       assert.equal((await page.getByTestId("workflow").innerText()).includes("bao://"), false);
+      await page.getByTestId("allow").click();
+      await page.getByTestId("install").waitFor();
       assert.equal(await page.getByTestId("install").getAttribute("href"), "bao://import/wikipedia-search");
       await page.screenshot({ path: path.join(shots, "workflow-light.png"), fullPage: true });
       await page.screenshot({ path: path.join(shots, "workflow.png"), fullPage: true });

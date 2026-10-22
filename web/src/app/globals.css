@@ -158,6 +158,7 @@ form.inline { display: inline; }
 .filters { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
 .filters a { text-decoration: none; }
 .share { position: relative; display: inline-block; margin: 0.6rem 0; }
+.share-panel[hidden] { display: none; }
 .share-panel {
   position: absolute;
   z-index: 5;
@@ -193,6 +194,11 @@ form.inline { display: inline; }
 .listing-layout { display: grid; grid-template-columns: minmax(0, 1fr) 16rem; gap: 1.25rem; align-items: start; }
 .listing-side h2 { margin-top: 0.9rem; }
 .listing-side h2:first-child { margin-top: 0; }
+.permissions dl { margin: 0; }
+.permissions dt { color: var(--quiet); font-size: 12px; margin-top: 0.55rem; }
+.permissions dd { margin: 0.15rem 0 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.permissions .chip[data-secret="true"] { color: var(--bad); border: 1px solid var(--bad); }
+.listing-install form { display: grid; gap: 0.35rem; justify-items: end; }
 .listing-steps, .versions, .ask { list-style: none; padding: 0; margin: 0.4rem 0 1.2rem; }
 .listing-steps li {
   display: grid;
@@ -203,6 +209,8 @@ form.inline { display: inline; }
   border-top: 1px solid var(--line);
 }
 .listing-steps .n { color: var(--quiet); font-variant-numeric: tabular-nums; }
+.step-name { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.listing-copy button:disabled { opacity: 0.45; }
 .listing-steps img, .crop-empty {
   width: 9rem;
   height: 5rem;
@@ -221,5 +229,6 @@ form.inline { display: inline; }
 .crumb a { color: inherit; }
 @media (max-width: 800px) {
   .listing-hero, .listing-layout { display: block; }
-  .listing-install { justify-items: start; margin-top: 0.8rem; }
+  .listing-install, .listing-install form { justify-items: start; }
+  .listing-install { margin-top: 0.8rem; }
 }

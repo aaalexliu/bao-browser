@@ -1,0 +1,64 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666910654,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666910694,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666910735,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666910775,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "2",
+      "cssPath": "a:nth-of-type(2)",
+      "path": []
+    },
+    "subtreeBefore": "1",
+    "subtreeAfter": "0",
+    "beforeUrl": "https://httpbin.org/links/10/0",
+    "afterUrl": "https://httpbin.org/links/10/2"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666941722,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://httpbin.org/links/10/2",
+    "afterUrl": "https://httpbin.org/links/10/0"
+  },
+  {
+    "id": "e5",
+    "ts": 1792666941782,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "1",
+      "cssPath": "a:nth-of-type(1)",
+      "path": []
+    },
+    "subtreeBefore": "1",
+    "subtreeAfter": "0",
+    "beforeUrl": "https://httpbin.org/links/10/0",
+    "afterUrl": "https://httpbin.org/links/10/1"
+  }
+]

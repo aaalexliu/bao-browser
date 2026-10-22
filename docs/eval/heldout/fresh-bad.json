@@ -1,0 +1,41 @@
+{
+  "note": "Fresh known-bad intents for the step-mismatch rule. Kind is the ground truth, written before that rule was run on this file. These sentences are not b1-b10.",
+  "intents": [
+    {
+      "id": "c1",
+      "kind": "wrong-action",
+      "text": "Remove the email address.",
+      "target": { "action": "type", "role": "textbox", "name": "Email", "label": "Email", "input": "email" }
+    },
+    {
+      "id": "c2",
+      "kind": "wrong-action",
+      "text": "Erase the coupon code.",
+      "target": { "action": "type", "role": "textbox", "name": "Coupon", "label": "Coupon", "input": "coupon" }
+    },
+    {
+      "id": "c3",
+      "kind": "wrong-action",
+      "text": "Uncheck the newsletter box.",
+      "target": { "action": "click", "role": "link", "name": "Newsletter", "label": "Newsletter" }
+    },
+    {
+      "id": "c4",
+      "kind": "wrong-action",
+      "text": "Clear the comment and wipe the draft.",
+      "target": { "action": "type", "role": "textbox", "name": "comment", "label": "comment", "input": "comment" }
+    },
+    {
+      "id": "c5",
+      "kind": "baked-literal",
+      "text": "Type Grace Hopper into the author field.",
+      "target": { "action": "type", "role": "textbox", "name": "author", "label": "author", "input": "author", "literal": "Grace Hopper" }
+    },
+    {
+      "id": "c6",
+      "kind": "baked-literal",
+      "text": "Type 10001 into the zip field.",
+      "target": { "action": "type", "role": "textbox", "name": "zip", "label": "zip", "input": "zip", "literal": "10001" }
+    }
+  ]
+}

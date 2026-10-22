@@ -374,7 +374,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   if (event.op === "upload" || event.op === "drop") {
-    const input = addInput(inputs, "file", event.op === "drop" ? "drop" : "file");
+    const input = addInput(inputs, "file", "file");
     return {
       ...step,
       action: event.op === "drop" ? "drop" : "upload",

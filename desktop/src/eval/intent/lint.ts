@@ -74,3 +74,59 @@ function contentWords(text: string): string[] {
 function escapeReg(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+export interface PrejudgeInput {
+  text: string;
+  target?: LintTarget;
+  secrets?: readonly string[];
+  /** False when the trail recorded no url, value, checked, subtree, or dialog change. */
+  effect?: boolean;
+}
+
+/**
+ * Deterministic checks in front of the LLM judge.
+ * Order: missing input, secret literal, step mismatch, step with no effect.
+ * A reason means the text is bad. Null means the judge still has to score it.
+ */
+export function prejudgeLint(input: PrejudgeInput): string | null {
+  const text = input.text.trim();
+  if (missingInput(text, input.target)) return "missing-input";
+  if (secretLiteral(text, input.secrets || [], input.target)) return "secret-literal";
+  if (stepMismatch(text, input.target)) return "step-mismatch";
+  if (input.effect === false || /\bhelp\b/i.test(text)) return "no-effect";
+  return null;
+}
+
+/** The sentence names an effect the step does not perform, or it quotes the captured value. */
+function stepMismatch(text: string, target?: LintTarget): boolean {
+  if (!target || !text) return false;
+  const verbs = clauseVerbs(text);
+  if (verbs.some((verb) => DESTRUCTIVE.has(verb.toLowerCase()) && !stepDoes(verb, target))) return true;
+  return !!target.input && !!target.literal && target.literal.length >= 3 && text.includes(target.literal);
+}
+
+function missingInput(text: string, target?: LintTarget): boolean {
+  if (!text) return true;
+  if (!target) return false;
+  if (/\{\{[^}]+\}\}/.test(text)) return false;
+  const names = [target.name, target.label, target.text].filter((item): item is string => !!item && item.trim().length >= 2);
+  const lower = text.toLowerCase();
+  if (names.some((name) => lower.includes(name.toLowerCase()))) return false;
+  if (target.input && new RegExp(`\\b${escapeReg(target.input)}\\b`, "i").test(text)) return false;
+  return names.length > 0 || !!target.input;
+}
+
+function secretLiteral(text: string, secrets: readonly string[], target?: LintTarget): boolean {
+  const sentence = text.replace(/\{\{[^}]+\}\}/g, " ");
+  for (const secret of secrets) {
+    if (secret && secret.length >= 3 && sentence.includes(secret)) return true;
+  }
+  if (target?.literal && looksSecret(target.literal) && sentence.includes(target.literal)) return true;
+  if (/\bpin-\d{3,}\b/i.test(sentence)) return true;
+  const tokens = sentence.split(/[^A-Za-z0-9!@#$%^&*]+/);
+  return tokens.some((token) => token.length >= 8 && /[A-Za-z]/.test(token) && /[!@#$%^&*]/.test(token));
+}
+
+function looksSecret(value: string): boolean {
+  return /\bpin-\d{3,}\b/i.test(value) || (value.length >= 8 && /[A-Za-z]/.test(value) && /[!@#$%^&*]/.test(value));
+}

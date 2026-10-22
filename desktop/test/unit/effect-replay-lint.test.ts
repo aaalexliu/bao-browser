@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds, condense } from "../../src/v1/condense";
-import { lintIntent } from "../../src/eval/intent/lint";
+import { lintIntent, prejudgeLint } from "../../src/eval/intent/lint";
 import { GOOD_INTENTS } from "../../src/eval/intent/good-intents";
 import { BAD_INTENT_TEXTS } from "../../src/eval/heldout/bad-judge";
 import { buildLocators, matchLabeledControl } from "../../src/v1/locators";
@@ -142,6 +142,54 @@ test("a click with no recorded urls is kept", () => {
     { id: "c", ts: 1, kind: "act", op: "click", identity: heading },
   ], { id: "bare", name: "bare", startUrl: url });
   assert.equal(workflow.steps.length, 1);
+});
+
+test("prejudge lint catches missing inputs, secret literals, step mismatches, and steps with no effect", () => {
+  assert.equal(BAD_INTENT_TEXTS.length, 10);
+  assert.equal(GOOD_INTENTS.length, 24);
+  const reasons = BAD_INTENT_TEXTS.map((item) => prejudgeLint({
+    text: item.text,
+    target: item.target,
+    secrets: item.secrets || [],
+  }));
+  assert.deepEqual(reasons, [
+    "missing-input",
+    "missing-input",
+    "missing-input",
+    "secret-literal",
+    "secret-literal",
+    "secret-literal",
+    "step-mismatch",
+    "step-mismatch",
+    "step-mismatch",
+    "no-effect",
+  ]);
+  const goods = GOOD_INTENTS.flatMap((item) => {
+    const reason = prejudgeLint({ text: item.text, target: item.target, secrets: item.secrets || [] });
+    return reason ? [`${item.id} ${reason}`] : [];
+  });
+  assert.deepEqual(goods, []);
+});
+
+test("a step the trail marked effectless is rejected and a quoted captured value is a mismatch", () => {
+  const save = { action: "click", name: "Save", label: "Save" };
+  assert.equal(prejudgeLint({
+    text: "Click Save to store the form.",
+    target: save,
+    effect: false,
+  }), "no-effect");
+  assert.equal(prejudgeLint({
+    text: "Open https://evil.example/login and click Save.",
+    target: save,
+  }), null);
+  assert.equal(prejudgeLint({
+    text: "Type USD into the currency field.",
+    target: { action: "type", name: "currency", label: "currency", input: "currency", literal: "USD" },
+  }), "step-mismatch");
+  assert.equal(prejudgeLint({
+    text: "Type USD into the currency field.",
+    target: { action: "type", name: "currency", label: "currency" },
+  }), null);
 });
 
 test("intent lint catches the bad texts and keeps the good ones", () => {

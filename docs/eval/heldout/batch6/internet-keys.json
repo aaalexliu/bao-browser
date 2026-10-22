@@ -1,0 +1,143 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666972532,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666972572,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666972613,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666972653,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Key Presses",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Key Presses",
+    "subtreeAfter": "Key Presses",
+    "beforeUrl": "https://the-internet.herokuapp.com/key_presses",
+    "afterUrl": "https://the-internet.herokuapp.com/key_presses"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666972917,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Key Presses",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Key Presses",
+    "subtreeAfter": "Key Presses",
+    "beforeUrl": "https://the-internet.herokuapp.com/key_presses",
+    "afterUrl": "https://the-internet.herokuapp.com/key_presses"
+  },
+  {
+    "id": "e5",
+    "ts": 1792666973145,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "target",
+      "tag": "input",
+      "cssPath": "#target",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "",
+    "valueAfter": "",
+    "beforeUrl": "https://the-internet.herokuapp.com/key_presses",
+    "afterUrl": "https://the-internet.herokuapp.com/key_presses"
+  },
+  {
+    "id": "e6",
+    "ts": 1792666973379,
+    "kind": "act",
+    "op": "key",
+    "key": "A",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "target",
+      "tag": "input",
+      "cssPath": "#target",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "",
+    "valueAfter": "A",
+    "beforeUrl": "https://the-internet.herokuapp.com/key_presses",
+    "afterUrl": "https://the-internet.herokuapp.com/key_presses"
+  }
+]

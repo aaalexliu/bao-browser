@@ -53,8 +53,9 @@ test("a drop with a file name is a file input", () => {
   }], { id: "wf-drop", name: "Drop", startUrl: "http://127.0.0.1/fixture" });
   assert.equal(doc.steps[0]?.action, "drop");
   assert.equal(doc.inputs[0]?.type, "file");
-  assert.equal(doc.inputs[0]?.name, "drop");
-  assert.equal(doc.steps[0]?.postcondition?.match, "Dropped file: {{drop}}");
+  assert.equal(doc.inputs[0]?.name, "file");
+  assert.equal(doc.steps[0]?.value, "{{file}}");
+  assert.equal(doc.steps[0]?.postcondition?.match, "Dropped file: {{file}}");
   assert.equal(JSON.stringify(doc).includes("/tmp/bao"), false);
 });
 
@@ -64,6 +65,10 @@ test("the page recorder skips a file-input click and a path-shaped name", () => 
   assert.match(src, /input\[type=file\]/);
   assert.match(src, /__baoSkipNextFile/);
   assert.match(src, /dataTransfer\.files/);
+  assert.match(src, /dragover/);
+  assert.match(src, /data-bao-drop/);
+  assert.match(src, /parentElement/);
+  assert.match(src, /dropHover/);
   assert.equal(src.includes("rawPath"), false);
   const client = readFileSync("desktop/src/app/client.ts", "utf8");
   assert.equal(client.includes("requestPermission"), false);
