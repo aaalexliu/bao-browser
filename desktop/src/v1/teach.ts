@@ -130,7 +130,7 @@ export function projectTeach(
     return {
       id,
       events: group.map((item) => ({ ...item })),
-      step: { ...step, intent: card.intent },
+      step: { ...step, intent: card.intent, label: card.intent },
       card,
       dropped: false,
       merged: false,
@@ -412,7 +412,7 @@ function applyDecision(
     draft.step.human = true;
     delete draft.step.provenance;
     draft.step.timeoutMs = Math.max(draft.step.timeoutMs || 0, 15000);
-    const intent = draft.card.intent || (login ? "you sign in" : "you confirm");
+    const intent = draft.card.intent || (login ? "Sign in" : "You confirm");
     draft.step.intent = intent;
     draft.step.label = intent;
     if (draft.card.outcome) {
@@ -432,7 +432,7 @@ function applyDecision(
     delete draft.step.sensitive;
     draft.step.expect = { kind: "text", match, timeoutMs: 8000 };
     draft.step.postcondition = { kind: "text", match, timeoutMs: 8000 };
-    draft.step.intent = draft.card.intent || "check the outcome";
+    draft.step.intent = draft.card.intent || "Check";
     draft.step.label = draft.step.intent;
     draft.card.verify = true;
     draft.card.human = false;
@@ -550,25 +550,28 @@ function valuesOf(step: WorkflowStep, event: TrailEvent | undefined): TeachValue
   return [];
 }
 
+function targetName(event: TrailEvent | undefined): string {
+  const identity = event?.identity;
+  return (identity?.name || identity?.text || identity?.label || identity?.nameAttr || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The interpret label, with a named target when that label is only "Click". */
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
-  if (step.action === "verify") return "check the outcome";
-  if (step.action === "confirm") return "you confirm";
-  if (step.action === "login") return "you sign in";
-  if (step.action === "drop") return "drop the file";
-  if (step.action === "upload") return "upload the file";
-  if (step.action === "digits") return "enter the number";
-  if (step.action === "type" && (step.sensitive || event?.sensitive)) return "type the secret";
-  if (step.action === "type") {
-    const name = step.input || event?.identity?.nameAttr || "text";
-    if (/note/i.test(name)) return "type the note";
-    if (/user|email/i.test(name)) return "type the username";
-    if (/pass|secret/i.test(name)) return "type the secret";
-    return `type the ${name.replace(/[_-]/g, " ")}`;
-  }
-  if (step.action === "key") return `press ${step.key || "key"}`;
-  if (step.action === "check") return step.checked === false ? "uncheck" : "check the box";
-  const name = event?.identity?.text || event?.identity?.name || event?.identity?.label || "";
-  return name ? `click ${name}` : "click";
+  const fromLabel = (step.label || "").trim().replace(/^Click "(.+)"$/, "Click $1");
+  if (fromLabel && fromLabel !== "Click") return fromLabel;
+  const target = targetName(event);
+  if (target) return `Click ${target}`;
+  if (fromLabel) return fromLabel;
+  if (step.action === "verify") return "Check";
+  if (step.action === "confirm") return "You confirm";
+  if (step.action === "login") return "Sign in";
+  if (step.action === "drop") return "Drop file";
+  if (step.action === "upload") return "Upload file";
+  if (step.action === "type" && (step.sensitive || event?.sensitive)) return "Type secret";
+  if (step.action === "type" && step.input) return `Type {{${step.input}}}`;
+  return "Click";
 }
 
 function heuristicOutcome(step: WorkflowStep, event: TrailEvent | undefined): string {

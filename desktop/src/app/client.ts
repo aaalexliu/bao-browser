@@ -103,6 +103,8 @@ let debugStepId = "";
 let pendingSeek: number | undefined;
 let seenOpen = "";
 const noteTimers = new Map<string, number>();
+let teachOpenId = "";
+let teachHighlighted = "";
 try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
@@ -257,7 +259,7 @@ function teachScreen(): string {
   const teach = state.teach;
   if (teach?.phase === "review") return teachReview(teach);
   if (teach?.phase === "live") {
-    const fixing = teach.fix ? `<p class="lede">Teaching a fix for <code>${esc(teach.fix.stepId)}</code>. Demonstrate that step, then stop.</p>` : `<p class="lede">The teach panel is following along. Correct a card while it is still on screen.</p>`;
+    const fixing = teach.fix ? `<p class="lede">Teaching a fix for <code>${esc(teach.fix.stepId)}</code>. Demonstrate that step, then stop.</p>` : `<p class="lede">The teach panel names each step as it lands. Click a row to correct it.</p>`;
     return `<section><h2>Teach</h2>${fixing}</section>`;
   }
   return teachHome(state.workflows || []);
@@ -1327,22 +1329,50 @@ function teachMarkup(root: HTMLElement): string {
   const clone = root.cloneNode(true) as HTMLElement;
   const timer = clone.querySelector("#rec-timer");
   if (timer) timer.textContent = "0:00";
+  clone.querySelectorAll(".teach-card.open").forEach((el) => el.classList.remove("open"));
+  clone.querySelectorAll(".teach-row[aria-expanded]").forEach((el) => el.setAttribute("aria-expanded", "false"));
+  clone.querySelectorAll(".thumb img").forEach((img) => img.remove());
+  clone.querySelectorAll(".has-shot").forEach((el) => el.classList.remove("has-shot"));
+  clone.querySelectorAll("[data-shot-mounted]").forEach((el) => el.removeAttribute("data-shot-mounted"));
   return clone.innerHTML;
+}
+
+function retryShots(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>("[data-shot]:not(.has-shot)").forEach((node) => {
+    delete node.dataset.shotMounted;
+  });
+  mountShots(root);
 }
 
 function paintTeach(): void {
   const float = document.getElementById("float");
   if (!float || state.teach?.phase !== "live") return;
   const html = teachPanel(state.teach);
-  if (float.querySelector("#teach-panel") && teachMarkup(float) === html) return;
+  if (float.querySelector("#teach-panel") && teachMarkup(float) === html) {
+    retryShots(float);
+    return;
+  }
   const active = document.activeElement;
   const editing = active instanceof HTMLInputElement && float.contains(active) ? teachFieldKey(active) : "";
   const value = editing && active instanceof HTMLInputElement ? active.value : "";
   const start = editing && active instanceof HTMLInputElement ? active.selectionStart : null;
   const end = editing && active instanceof HTMLInputElement ? active.selectionEnd : null;
   if (active instanceof HTMLInputElement && float.contains(active)) active.onchange = null;
+  const openId = float.querySelector(".teach-card.open")?.getAttribute("data-card") || teachOpenId;
   float.innerHTML = html;
+  if (openId) {
+    const opened = float.querySelector(`[data-card="${CSS.escape(openId)}"]`);
+    opened?.classList.add("open");
+    opened?.querySelector(".teach-row")?.setAttribute("aria-expanded", "true");
+  }
   bindTeach(float);
+  mountShots(float);
+  const highlighted = float.querySelector(".teach-card.on");
+  const highlightedId = highlighted?.getAttribute("data-card") || "";
+  if (highlightedId && highlightedId !== teachHighlighted) {
+    teachHighlighted = highlightedId;
+    highlighted?.scrollIntoView({ block: "nearest" });
+  }
   if (!editing) return;
   const next = float.querySelector(editing) as HTMLInputElement | null;
   if (!next) return;
@@ -1390,6 +1420,17 @@ function bindTeach(root: ParentNode): void {
   };
   root.querySelectorAll<HTMLElement>("[data-card]").forEach((card) => {
     const id = card.dataset.card || "";
+    const row = card.querySelector(".teach-row");
+    if (row instanceof HTMLElement) row.onclick = () => {
+      const opening = !card.classList.contains("open");
+      root.querySelectorAll(".teach-card.open").forEach((el) => {
+        el.classList.remove("open");
+        el.querySelector(".teach-row")?.setAttribute("aria-expanded", "false");
+      });
+      card.classList.toggle("open", opening);
+      row.setAttribute("aria-expanded", opening ? "true" : "false");
+      teachOpenId = opening ? id : "";
+    };
     card.querySelectorAll<HTMLButtonElement>("[data-correct]").forEach((btn) => {
       btn.onclick = () => {
         const kind = btn.dataset.correct || "";

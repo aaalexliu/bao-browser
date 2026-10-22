@@ -75,17 +75,22 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     const apply = live.teach.cards.find((card) => card.action === "click" && /apply/i.test(card.intent));
     const stray = live.teach.cards.find((card) => card.action === "click" && card.id !== apply?.id);
     assert.ok(note && apply && stray, JSON.stringify(live.teach.cards));
-    assert.equal(note.intent, "type the note");
+    assert.equal(note.intent, "Type {{note}}");
     assert.equal(note.narrator, "heuristic");
+    assert.match(apply.intent, /^Click /);
 
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.waitForSelector("#teach-panel");
+    const box = await page.locator("#teach-panel").boundingBox();
+    assert.ok(box && box.width <= 380 && box.width >= 340, `panel width ${box?.width}`);
+    await page.locator(`#teach-panel [data-card="${note.id}"] .teach-row`).click();
     const panel = await page.locator("#teach-panel").innerText();
-    assert.match(panel, /type the note/);
+    assert.match(panel, /Type \{\{note\}\}/);
     assert.match(panel, /heuristic/);
     assert.match(panel, /Sensitive fields blurred/);
     assert.match(panel, /Add check/);
     assert.match(panel, /You do this/);
+    assert.equal(await page.locator("#teach-panel .teach-card.on").count(), 1);
 
     await post(app.port, "/api/teach/correct", { kind: "drop", cardId: stray.id });
     await post(app.port, "/api/teach/correct", { kind: "note", cardId: note.id, note: "type the note" });
@@ -97,9 +102,10 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     await page.click("button[data-screen=teach]");
     await page.waitForSelector("#teach-review");
     const reviewText = await page.locator("#teach-review").innerText();
-    assert.match(reviewText, /Workflow/);
     assert.match(reviewText, /Raw trail/);
     assert.match(reviewText, /type the note/);
+    assert.match(reviewText, /edited/);
+    assert.match(reviewText, /Dropped \(1\)/);
 
     const saved = await post(app.port, "/api/teach/save", { name: "Fixture teach" }) as {
       id: string;

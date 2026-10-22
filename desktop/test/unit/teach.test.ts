@@ -20,7 +20,7 @@ import {
   projectTeach,
   spliceFix,
 } from "../../src/v1/teach";
-import { rail, teachPanel, type TeachCardView } from "../../src/app/views";
+import { rail, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -62,14 +62,16 @@ test("the heuristic narrates the fixture and a note becomes the intent", () => {
   const hidden = projected.cards.find((card) => card.id === "type-secret");
   const drop = projected.cards.find((card) => card.id === "drop-file");
   const apply = projected.cards.find((card) => card.id === "click-apply");
-  assert.equal(note?.intent, "type the note");
+  assert.equal(note?.intent, "Type {{note}}");
   assert.equal(note?.narrator, "heuristic");
   assert.equal(note?.values[0]?.label, "{{note}}");
-  assert.equal(hidden?.intent, "type the secret");
+  assert.equal(hidden?.intent, "Type secret");
   assert.equal(hidden?.values[0]?.role, "secret");
-  assert.equal(drop?.intent, "drop the file");
-  assert.equal(apply?.intent, "click Apply");
+  assert.equal(drop?.intent, "Drop file");
+  assert.equal(apply?.intent, "Click Apply");
   assert.equal(apply?.outcome, "Applied");
+  const named = projected.cards.find((card) => card.id === "click-note");
+  assert.equal(named?.intent, "Click note");
   const decisions = decide([], { kind: "note", cardId: "type-note", note: "type the note" }, 10);
   const corrected = projectTeach(fixtureEvents(), decisions, meta);
   assert.equal(corrected.workflow.steps.find((step) => step.input === "note")?.intent, "type the note");
@@ -134,8 +136,29 @@ test("a model narration is labeled, and a failed model call stays on the heurist
   assert.match(html, />Resume</);
   assert.match(html, /Sensitive fields blurred/);
   assert.match(html, /data-narrator="heuristic"/);
+  assert.match(html, /teach-row/);
+  assert.match(html, /\/api\/capture\/shots\//);
+  assert.match(html, /class="step-card teach-card[^"]* on"/);
+  assert.doesNotMatch(html, /No expected outcome yet/);
   assert.match(html, /You do this/);
-  assert.match(html, /This is a check/);
+  assert.match(html, /Check/);
+  const dropped = projectTeach(fixtureEvents(), decide([], { kind: "drop", cardId: "click-note" }, 1), meta);
+  const review = teachReview({
+    phase: "review",
+    cards: dropped.cards as TeachCardView[],
+    decisions: [
+      { kind: "drop", detail: "dropped", cardId: "click-note" },
+      { kind: "note", detail: "note became intent", cardId: "type-note" },
+    ],
+    review: { raw: [{ kind: "act", op: "click" }], workflow: { name: "Taught", inputs: [], steps: [] } },
+  });
+  assert.match(review, /Dropped \(1\)/);
+  assert.match(review, /id="teach-trail"/);
+  assert.match(review, /Raw trail/);
+  assert.match(review, /badge edited/);
+  assert.match(review, /data-shot=/);
+  assert.doesNotMatch(review, /You do this/);
+  assert.doesNotMatch(review, /<h3 class="section">Workflow/);
   const nav = rail({});
   assert.ok(nav.indexOf('data-screen="capture"') < nav.indexOf('data-screen="teach"'));
 });
