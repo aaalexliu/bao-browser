@@ -24,14 +24,16 @@ export function buildLocators(
   const roleName = target.name || target.label || target.text;
   if (target.role && target.role !== "unknown" && roleName) {
     out.push({ kind: "role", role: target.role, name: roleName });
-  } else if (target.role && /text/i.test(target.role)) {
-    out.push({ kind: "role", role: target.role, name: "" });
   }
   const text = target.text || target.name;
   if (text && text.length <= 80) out.push({ kind: "text", value: text });
   if (target.testId) out.push({ kind: "testid", value: target.testId });
   const css = stableCss(target);
   if (css) out.push({ kind: "css", value: css });
+  if (target.cssPath && target.cssPath !== css) out.push({ kind: "css", value: target.cssPath });
+  if (target.tag === "a" && target.href && !target.href.includes("\"")) {
+    out.push({ kind: "css", value: `a[href="${cssAttr(target.href)}"]` });
+  }
   const xpath = target.xpath || stableXPath(target);
   if (xpath) out.push({ kind: "xpath", value: xpath });
   const anchor = anchorLocator(target, nodes, boxes, targetIndex);
@@ -192,7 +194,9 @@ function cssMatches(selector: string, node: Identity): boolean {
   if (node.cssPath && node.cssPath === selector) return true;
   if (selector.startsWith("#") && node.id === cssUnescape(selector.slice(1))) return true;
   const test = selector.match(/^\[data-testid="([^"]+)"\]$/);
-  if (test && node.testId === test[1]) return true;
+  if (test && node.testId === cssUnescape(test[1] || "")) return true;
+  const linked = selector.match(/^a\[href="([^"]*)"\]$/);
+  if (linked && node.tag === "a" && node.href === cssUnescape(linked[1] || "")) return true;
   const named = selector.match(/^(?:[a-z0-9]+)?\[name="([^"]+)"\]$/);
   return !!named && node.nameAttr === named[1];
 }

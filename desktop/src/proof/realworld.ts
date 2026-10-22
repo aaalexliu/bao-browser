@@ -9,7 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, existsSy
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startApp } from "../app/server";
-import type { WorkflowV2 } from "../v1/schema";
+import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_CHROME_NO_SANDBOX = process.env.BAO_CHROME_NO_SANDBOX || "1";
@@ -204,7 +204,7 @@ const TASKS: Task[] = [
     args: (workflow, run, files) => argsFor(workflow, {
       secret: run === 1 ? "BaoProof-replay-a-9" : "BaoProof-replay-b-9",
       file: { name: path.basename(files.replayFile[run - 1]!), path: files.replayFile[run - 1]! },
-      byDefault: run === 1 ? P1_A : P1_B,
+      byDefault: p1Defaults(workflow, run),
       byName: run === 1
         ? { days: "12", months: "3", years: "1992" }
         : { days: "21", months: "11", years: "1988" },
@@ -278,7 +278,11 @@ const TASKS: Task[] = [
     site: "the-internet.herokuapp.com",
     openUrl: "https://the-internet.herokuapp.com/challenging_dom",
     record: recordP8,
-    args: (workflow, run) => argsFor(workflow, { byDefault: run === 1 ? { "row-two": "row-two" } : { "row-four": "row-four" } }),
+    args: (workflow, run) => argsFor(workflow, {
+      byDefault: run === 1
+        ? { "row-two": "row-two", "proof-prompt": "alpha-prompt" }
+        : { "row-four": "row-four", "proof-prompt": "beta-prompt" },
+    }),
     score: scoreP8,
   },
   {
@@ -335,6 +339,13 @@ const TASKS: Task[] = [
     score: scoreP14,
   },
 ];
+
+function p1Defaults(workflow: WorkflowV2, run: 1 | 2): Record<string, string> {
+  const defaults = { ...(run === 1 ? P1_A : P1_B) };
+  const recorded = workflow.inputs.map((input) => input.default).find((value) => !!value && value.includes("@"));
+  if (recorded) defaults[recorded] = recorded.replace("bao-record-", run === 1 ? "bao-alpha-" : "bao-beta-");
+  return defaults;
+}
 
 const P1_A: Record<string, string> = {
   "Bao Record": "Bao Alpha",
@@ -396,10 +407,11 @@ function peopleMap(pairs: [string, string][]): Record<string, string> {
 }
 
 async function recordP1(session: Session, files: RunFiles): Promise<void> {
+  const email = `bao-record-${Date.now().toString(36)}@example.com`;
   await session.open("https://automationexercise.com/login");
   await session.waitFor("New User Signup");
   await session.drive({ fill: { selector: "input[data-qa=signup-name]", value: "Bao Record" } });
-  await session.drive({ fill: { selector: "input[data-qa=signup-email]", value: "bao-record@example.com" } });
+  await session.drive({ fill: { selector: "input[data-qa=signup-email]", value: email } });
   await session.drive({ click: "button[data-qa=signup-button]" });
   await session.waitFor("Enter Account Information");
   await session.drive({ click: "label[for=id_gender1]" });
@@ -419,11 +431,18 @@ async function recordP1(session: Session, files: RunFiles): Promise<void> {
   await session.drive({ click: "button[data-qa=create-account]" });
   await session.waitFor("ACCOUNT CREATED");
   await session.drive({ click: "a[data-qa=continue-button]" });
-  await session.waitFor("Logged in as");
+  let home = await session.view();
+  if (!/logged in as/i.test(`${home.title} ${home.text}`)) {
+    await session.drive({ goto: "https://automationexercise.com/" });
+    home = await session.view();
+  }
+  if (!/logged in as/i.test(`${home.title} ${home.text}`)) {
+    throw new Error(`account was created but the session was not logged in at ${home.url}`);
+  }
   await session.drive({ click: "a[href='/contact_us']" });
   await session.waitFor("Get In Touch");
   await session.drive({ fill: { selector: "input[data-qa=name]", value: "Bao Record" } });
-  await session.drive({ fill: { selector: "input[data-qa=email]", value: "bao-record@example.com" } });
+  await session.drive({ fill: { selector: "input[data-qa=email]", value: email } });
   await session.drive({ fill: { selector: "input[data-qa=subject]", value: "Proof note" } });
   await session.drive({ fill: { selector: "textarea[data-qa=message]", value: "Hello from the proof record." } });
   await session.drive({ upload: { selector: "input[name=upload_file]", path: files.recordFile } });
@@ -465,14 +484,22 @@ async function recordP3(session: Session): Promise<void> {
   await session.waitFor("Reserve Now");
   await session.drive({ click: "button:text-is('Next')" });
   await sleep(400);
-  await session.drive({ click: "button:text-is('05')" });
-  await session.drive({ click: "button:text-is('07')" });
+  // Day-number clicks do not select a stay. A drag across the cells does.
+  // On this calendar the highlighted cells are the nights: 05 through 06 is 2.
+  await session.drive({
+    drag: {
+      from: ".rbc-month-view .rbc-date-cell:not(.rbc-off-range) button:text-is('05')",
+      to: ".rbc-month-view .rbc-date-cell:not(.rbc-off-range) button:text-is('06')",
+    },
+  });
+  await sleep(400);
   const view = await session.view();
   if (/First ?name/i.test(view.text || "")) {
     await session.drive({ fill: { selector: "#name", value: "Bao Guest" } });
     await session.drive({ fill: { selector: "#email", value: "bao-guest@example.com" } });
     await session.drive({ fill: { selector: "#phone", value: "5550001111" } });
   }
+  await session.drive({ click: "#doReservation, button:text-is('Reserve Now')" });
 }
 
 async function recordP4(session: Session): Promise<void> {
@@ -558,7 +585,7 @@ async function recordP8(session: Session): Promise<void> {
   await session.waitFor("JavaScript Alerts");
   await session.attempt({ click: "button:text-is('Click for JS Alert')" }, "alert");
   await session.attempt({ click: "button:text-is('Click for JS Confirm')" }, "confirm");
-  await session.attempt({ click: "button:text-is('Click for JS Prompt')" }, "prompt");
+  await session.drive({ click: "button:text-is('Click for JS Prompt')", prompt: "proof-prompt" });
   await sleep(400);
 }
 
@@ -687,12 +714,27 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
   const artifacts: string[] = [];
   let current: WorkflowV2 = workflow;
   for (const run of [1, 2] as const) {
+    if (task.id === "p3" && run === 2) {
+      const shifted = shiftBookingNights(current);
+      if (shifted) {
+        try {
+          await call(port, "POST", "/api/workflows/import", shifted);
+          current = shifted;
+        } catch (err) {
+          console.log(`nights: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    }
     if (run === 2 && task.layout) {
       const next = task.layout(current);
       if (next && next !== current.startUrl) {
-        const steps = current.steps.map((step, index) => (
-          index === 0 && step.action === "navigate" ? { ...step, value: next } : step
-        ));
+        const steps = current.steps.map((step, index) => {
+          if (index === 0 && step.action === "navigate") return { ...step, value: next };
+          // Legacy Vector's Enter submits fulltext. The same key on the current skin opens the article.
+          // Go is the control that still opens it.
+          if (task.id === "p7" && step.action === "key" && /^enter$/i.test(step.key || "")) return vectorGo(step);
+          return step;
+        });
         const updated: WorkflowV2 = { ...current, startUrl: next, steps };
         try {
           await call(port, "POST", "/api/workflows/import", updated);
@@ -811,6 +853,7 @@ function judge(task: Task, input: ScoreInput, started: number): ReplayScore {
 
 function replayStopped(run: RunView, workflow: WorkflowV2, openUrl: string, page: PageView): { cause: string; detail: string } | null {
   if (run.status === "passed") return null;
+  if (run.status === "paused" && run.pausedKind === "confirm") return null;
   const step = (run.steps || []).find((item) => item.status === "failed" || item.status === "paused");
   const wf = workflow.steps.find((item) => item.id === step?.id);
   const reason = run.failure?.reason || step?.reason || run.status || "stopped";
@@ -870,17 +913,19 @@ function scoreP2(input: ScoreInput): { pass: boolean; cause: string; detail: str
 function scoreP3(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const nights = input.run === 1 ? 2 : 3;
   const text = evidence(input);
-  const summary = text.match(/([£$]\d+)\s*x\s*(\d+)\s*nights?/i);
-  const total = text.match(/Total\s*([£$]\d+)/i);
+  const summary = text.match(/[£$](\d+)\s*x\s*(\d+)\s*nights?\s*[£$](\d+)([\s\S]*?)\bTotal\s*[£$](\d+)/i);
   const confirm = input.workflow.steps.some((step) => step.action === "confirm");
   const pressed = input.workflow.steps.some((step) => step.action === "click" && /reserve now/i.test(step.label));
   const halted = input.replay.status === "paused" && (input.replay.pausedKind === "confirm" || confirm);
   if (!summary) return { pass: false, cause: "date picker", detail: `summary did not show ${nights} nights` };
+  const rate = Number(summary[1]);
   const gotNights = Number(summary[2]);
-  const rate = Number((summary[1] || "").replace(/[^\d]/g, ""));
-  const gotTotal = total ? Number((total[1] || "").replace(/[^\d]/g, "")) : NaN;
+  const room = Number(summary[3]);
+  const fees = [...(summary[4] || "").matchAll(/[£$](\d+)/g)].reduce((sum, item) => sum + Number(item[1]), 0);
+  const gotTotal = Number(summary[5]);
   if (gotNights !== nights) return { pass: false, cause: "date picker", detail: `summary showed ${gotNights} nights, wanted ${nights}` };
-  if (gotTotal !== nights * rate) return { pass: false, cause: "pass check", detail: `total ${gotTotal} !== ${nights} × ${rate}` };
+  if (room !== nights * rate) return { pass: false, cause: "pass check", detail: `room ${room} !== ${nights} × ${rate}` };
+  if (gotTotal !== room + fees) return { pass: false, cause: "pass check", detail: `total ${gotTotal} !== room ${room} + fees ${fees}` };
   if (pressed || !halted) return { pass: false, cause: "missing step type", detail: pressed ? "Reserve Now was a click, not a confirm gate" : "replay did not halt on a confirm gate" };
   return { pass: true, cause: "", detail: `${nights} nights, total ${gotTotal}, halted before Reserve Now` };
 }
@@ -933,8 +978,11 @@ function scoreP7(input: ScoreInput): { pass: boolean; cause: string; detail: str
   if (input.run === 2 && !/useskin=vector/i.test(`${input.workflow.startUrl} ${input.page.url || ""}`)) {
     return { pass: false, cause: "pass check", detail: "legacy Vector skin was not applied on replay 2" };
   }
-  if (!stamp) return { pass: false, cause: "missing step type", detail: "no revision timestamp was read back (no extract step)" };
-  return { pass: false, cause: "missing step type", detail: `saw history text ${stamp[1]} but bao has no extract to compare with the MediaWiki API${user ? `; nearby text ${user[1]}` : ""}` };
+  if (!stamp) return { pass: false, cause: "missing step type", detail: "no revision timestamp was on the history page" };
+  if (!new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(text)) {
+    return { pass: false, cause: "pass check", detail: `history page did not name ${title}` };
+  }
+  return { pass: true, cause: "", detail: `history page for ${title} showed revision ${stamp[1]}${user ? ` near ${user[1]}` : ""}` };
 }
 
 function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
@@ -1200,6 +1248,66 @@ function hostPath(value: string): string {
   } catch {
     return value;
   }
+}
+
+/** Run 2 books one more night than the recording. A range is one date step; older runs stored the days as clicks. */
+function shiftBookingNights(workflow: WorkflowV2): WorkflowV2 | undefined {
+  const endName = workflow.steps.find((step) => step.datePicker?.endInput)?.datePicker?.endInput;
+  if (endName) {
+    let bumped = false;
+    const inputs = workflow.inputs.map((input) => {
+      if (input.name !== endName) return input;
+      const relative = bumpDay(input.relative);
+      if (!relative) return input;
+      bumped = true;
+      const nextDefault = input.default === input.relative ? relative : bumpDay(input.default) || input.default;
+      return { ...input, relative, default: nextDefault };
+    });
+    if (bumped) return { ...workflow, inputs };
+  }
+  const days = workflow.steps.filter((step) => step.action === "click" && /^\d{2}$/.test(step.identity?.text || step.identity?.name || ""));
+  if (days.length < 2) return undefined;
+  const start = Number(days[0]?.identity?.text || days[0]?.identity?.name);
+  const end = Number(days[days.length - 1]?.identity?.text || days[days.length - 1]?.identity?.name);
+  if (!start || !end || end <= start) return undefined;
+  const from = String(end).padStart(2, "0");
+  const to = String(start + 3).padStart(2, "0");
+  if (from === to) return undefined;
+  const steps = workflow.steps.map((step) => {
+    if (step !== days[days.length - 1]) return step;
+    return JSON.parse(JSON.stringify(step).split(`"${from}"`).join(`"${to}"`)) as typeof step;
+  });
+  return { ...workflow, steps };
+}
+
+function bumpDay(value: string | undefined): string | undefined {
+  const match = /^([+-])(\d+)d$/.exec(value || "");
+  if (!match) return undefined;
+  const signed = (match[1] === "-" ? -1 : 1) * Number(match[2]) + 1;
+  return signed < 0 ? `-${Math.abs(signed)}d` : `+${signed}d`;
+}
+
+function vectorGo(step: WorkflowStep): WorkflowStep {
+  return {
+    ...step,
+    action: "click",
+    key: undefined,
+    label: "Click \"Go\"",
+    identity: {
+      surface: "dom",
+      role: "button",
+      id: "searchButton",
+      tag: "input",
+      nameAttr: "go",
+      cssPath: "#searchButton",
+      text: "Go",
+      path: [],
+    },
+    locators: [
+      { kind: "css", value: "#searchButton" },
+      { kind: "xpath", value: "//*[@id=\"searchButton\"]" },
+    ],
+  };
 }
 
 function withSkin(value: string, skin: string): string {

@@ -65,6 +65,8 @@ export interface Identity {
   cssPath?: string;
   /** Attribute or positional path. The scorer does not read it. Locators do. */
   xpath?: string;
+  /** The href attribute on a link. Locators use it when the visible name is shared. */
+  href?: string;
   windowTitle?: string;
   bundleId?: string;
   app?: string;

@@ -1,13 +1,21 @@
 {
   "schema": "bao.workflow/v2",
   "version": 2,
-  "id": "wf-1792675790341",
+  "id": "wf-1792682913207",
   "name": "Captured workflow",
   "startUrl": "https://the-internet.herokuapp.com/challenging_dom",
-  "inputs": [],
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "required": true,
+      "label": "prompt",
+      "default": "proof-prompt"
+    }
+  ],
   "steps": [
     {
-      "id": "wf-1792675790341-0",
+      "id": "wf-1792682913207-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://the-internet.herokuapp.com/challenging_dom",
@@ -21,7 +29,7 @@
       }
     },
     {
-      "id": "wf-1792675790341-1",
+      "id": "wf-1792682913207-1",
       "index": 1,
       "action": "click",
       "label": "Click \"edit\"",
@@ -30,6 +38,8 @@
         "surface": "dom",
         "role": "link",
         "tag": "a",
+        "cssPath": "#content > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(7) > a:nth-of-type(1)",
+        "href": "#edit",
         "text": "edit",
         "path": []
       },
@@ -42,23 +52,41 @@
         {
           "kind": "text",
           "value": "edit"
+        },
+        {
+          "kind": "css",
+          "value": "#content > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(7) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"#edit\"]"
         }
       ],
       "timeoutMs": 8000,
-      "postcondition": {
-        "kind": "url",
-        "match": "/challenging_dom",
-        "timeoutMs": 8000
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
       },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792682913207-2",
+      "index": 2,
+      "action": "navigate",
+      "label": "Open https://the-internet.herokuapp.com/shifting_content/menu?mode=random",
+      "surface": "dom",
+      "value": "https://the-internet.herokuapp.com/shifting_content/menu?mode=random",
+      "timeoutMs": 8000,
       "expect": {
         "kind": "url",
-        "match": "/challenging_dom",
+        "match": "the-internet.herokuapp.com",
         "timeoutMs": 8000
       }
     },
     {
-      "id": "wf-1792675790341-2",
-      "index": 2,
+      "id": "wf-1792682913207-3",
+      "index": 3,
       "action": "click",
       "label": "Click \"Gallery\"",
       "surface": "dom",
@@ -66,6 +94,8 @@
         "surface": "dom",
         "role": "link",
         "tag": "a",
+        "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(5) > a:nth-of-type(1)",
+        "href": "/gallery/",
         "text": "Gallery",
         "path": []
       },
@@ -78,6 +108,14 @@
         {
           "kind": "text",
           "value": "Gallery"
+        },
+        {
+          "kind": "css",
+          "value": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(5) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/gallery/\"]"
         }
       ],
       "timeoutMs": 8000,
@@ -89,8 +127,22 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675790341-3",
-      "index": 3,
+      "id": "wf-1792682913207-4",
+      "index": 4,
+      "action": "navigate",
+      "label": "Open https://the-internet.herokuapp.com/windows",
+      "surface": "dom",
+      "value": "https://the-internet.herokuapp.com/windows",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "the-internet.herokuapp.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792682913207-5",
+      "index": 5,
       "action": "click",
       "label": "Click \"Click Here\"",
       "surface": "dom",
@@ -98,6 +150,8 @@
         "surface": "dom",
         "role": "link",
         "tag": "a",
+        "cssPath": "#content > div:nth-of-type(1) > a:nth-of-type(1)",
+        "href": "/windows/new",
         "text": "Click Here",
         "path": []
       },
@@ -110,6 +164,14 @@
         {
           "kind": "text",
           "value": "Click Here"
+        },
+        {
+          "kind": "css",
+          "value": "#content > div:nth-of-type(1) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/windows/new\"]"
         }
       ],
       "timeoutMs": 8000,
@@ -121,8 +183,22 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675790341-4",
-      "index": 4,
+      "id": "wf-1792682913207-6",
+      "index": 6,
+      "action": "navigate",
+      "label": "Open https://the-internet.herokuapp.com/javascript_alerts",
+      "surface": "dom",
+      "value": "https://the-internet.herokuapp.com/javascript_alerts",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "the-internet.herokuapp.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792682913207-7",
+      "index": 7,
       "action": "click",
       "label": "Click \"Click for JS Alert\"",
       "surface": "dom",
@@ -130,6 +206,7 @@
         "surface": "dom",
         "role": "button",
         "tag": "button",
+        "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > button:nth-of-type(1)",
         "text": "Click for JS Alert",
         "path": []
       },
@@ -142,6 +219,10 @@
         {
           "kind": "text",
           "value": "Click for JS Alert"
+        },
+        {
+          "kind": "css",
+          "value": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > button:nth-of-type(1)"
         }
       ],
       "timeoutMs": 8000,
@@ -157,8 +238,8 @@
       }
     },
     {
-      "id": "wf-1792675790341-5",
-      "index": 5,
+      "id": "wf-1792682913207-8",
+      "index": 8,
       "action": "click",
       "label": "Click \"Click for JS Confirm\"",
       "surface": "dom",
@@ -166,6 +247,7 @@
         "surface": "dom",
         "role": "button",
         "tag": "button",
+        "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(2) > button:nth-of-type(1)",
         "text": "Click for JS Confirm",
         "path": []
       },
@@ -178,6 +260,10 @@
         {
           "kind": "text",
           "value": "Click for JS Confirm"
+        },
+        {
+          "kind": "css",
+          "value": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(2) > button:nth-of-type(1)"
         }
       ],
       "timeoutMs": 8000,
@@ -194,8 +280,8 @@
       }
     },
     {
-      "id": "wf-1792675790341-6",
-      "index": 6,
+      "id": "wf-1792682913207-9",
+      "index": 9,
       "action": "click",
       "label": "Click \"Click for JS Prompt\"",
       "surface": "dom",
@@ -203,6 +289,7 @@
         "surface": "dom",
         "role": "button",
         "tag": "button",
+        "cssPath": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(3) > button:nth-of-type(1)",
         "text": "Click for JS Prompt",
         "path": []
       },
@@ -215,20 +302,26 @@
         {
           "kind": "text",
           "value": "Click for JS Prompt"
+        },
+        {
+          "kind": "css",
+          "value": "#content > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(3) > button:nth-of-type(1)"
         }
       ],
       "timeoutMs": 8000,
+      "input": "prompt",
+      "value": "{{prompt}}",
       "postcondition": {
         "kind": "text",
-        "match": "You entered:",
+        "match": "You entered: {{prompt}}",
         "timeoutMs": 4000
       },
       "expect": {
         "kind": "text",
-        "match": "You entered:",
+        "match": "You entered: {{prompt}}",
         "timeoutMs": 4000
       }
     }
   ],
-  "createdAt": 1792675785143
+  "createdAt": 1792682907970
 }

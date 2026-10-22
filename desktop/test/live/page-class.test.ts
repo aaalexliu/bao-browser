@@ -30,20 +30,26 @@ const ARTIFACTS = "/opt/cursor/artifacts";
 const LINE = "Experian is showing a bot check. Finish it in the Bao window, then press Continue.";
 const LOGIN_LINE = "Sign in in the Bao window, then press Continue.";
 
-function pageOf(title: string, body: string): string {
-  return `<!doctype html><html><head><title>${title}</title></head><body>${body}<button id="apply" data-testid="apply">Apply</button></body></html>`;
+function pageOf(title: string, body: string, withApply = true): string {
+  const apply = withApply ? `<button id="apply" data-testid="apply">Apply</button>` : "";
+  return `<!doctype html><html><head><title>${title}</title></head><body>${body}${apply}</body></html>`;
+}
+
+function wall(title: string, body: string): string {
+  return pageOf(title, body, false);
 }
 
 const PAGES: Record<string, string> = {
-  "/recaptcha": pageOf("Check", `<div class="g-recaptcha" data-sitekey="site"></div><iframe src="https://www.google.com/recaptcha/api2/anchor"></iframe><p>I'm not a robot</p>`),
-  "/hcaptcha": pageOf("Check", `<div class="h-captcha"></div><iframe src="https://newassets.hcaptcha.com/captcha"></iframe>`),
-  "/turnstile": pageOf("Check", `<div class="cf-turnstile"></div><iframe src="https://challenges.cloudflare.com/turnstile"></iframe>`),
-  "/cloudflare": pageOf("Just a moment...", `<div id="cf-challenge"></div><p>Checking your browser before accessing the site</p>`),
-  "/akamai": pageOf("Access Denied", `<div class="akamai"></div><p>Reference #18.6f4a</p>`),
-  "/imperva": pageOf("Request unsuccessful", `<iframe src="/_Incapsula_Resource?SWUDNSAI=1"></iframe><p>Incapsula incident ID: 123</p>`),
-  "/perimeterx": pageOf("Access denied", `<div id="px-captcha"></div><p>Press &amp; Hold</p>`),
-  "/datadome": pageOf("Check", `<div class="datadome"></div><iframe src="https://geo.captcha-delivery.com/captcha"></iframe>`),
-  "/human": pageOf("Human", `<p>Verify you are human</p>`),
+  "/recaptcha": wall("Check", `<div class="g-recaptcha" data-sitekey="site"></div><iframe src="https://www.google.com/recaptcha/api2/anchor"></iframe><p>I'm not a robot</p>`),
+  "/hcaptcha": wall("Check", `<div class="h-captcha"></div><iframe src="https://newassets.hcaptcha.com/captcha"></iframe>`),
+  "/turnstile": wall("Check", `<div class="cf-turnstile"></div><iframe src="https://challenges.cloudflare.com/turnstile"></iframe>`),
+  "/cloudflare": wall("Just a moment...", `<div id="cf-challenge"></div><p>Checking your browser before accessing the site</p>`),
+  "/akamai": wall("Access Denied", `<div class="akamai"></div><p>Reference #18.6f4a</p>`),
+  "/imperva": wall("Request unsuccessful", `<iframe src="/_Incapsula_Resource?SWUDNSAI=1"></iframe><p>Incapsula incident ID: 123</p>`),
+  "/perimeterx": wall("Access denied", `<div id="px-captcha"></div><p>Press &amp; Hold</p>`),
+  "/datadome": wall("Check", `<div class="datadome"></div><iframe src="https://geo.captcha-delivery.com/captcha"></iframe>`),
+  "/human": wall("Human", `<p>Verify you are human</p>`),
+  "/ads": pageOf("Tables", `<p>Web Tables</p><iframe src="https://www.google.com/recaptcha/api2/aframe" style="display:none;width:0;height:0" aria-hidden="true"></iframe>`),
   "/newsletter": pageOf("News", `<h2>Sign up for our newsletter</h2><p onclick="this.remove()">No thanks</p>`),
   "/ad": pageOf("Ad", `<div class="modal"><h3>This is an advertisement</h3><p onclick="this.parentElement.remove()">Close</p></div>`),
   "/chat": pageOf("Chat", `<div class="chat"><p>Chat with us</p><p onclick="this.parentElement.remove()">Close</p></div>`),
@@ -64,7 +70,7 @@ function serve(reqPath: string, res: ServerResponse): void {
   }
   if (reqPath === "/blocked") {
     res.writeHead(403, { "content-type": "text/html", "cf-mitigated": "challenge" });
-    res.end(pageOf("Blocked", `<p>blocked</p>`));
+    res.end(pageOf("Blocked", `<p>blocked</p>`, false));
     return;
   }
   const html = PAGES[reqPath];
@@ -167,6 +173,10 @@ test("local fixtures classify each wall and dismiss clutter with no heal", { tim
     assert.equal(open.result.status, "passed");
     assert.equal(open.proposed, 0);
     assert.equal(open.result.heals.length, 0);
+    const ads = await play(page, `${base}/ads`);
+    assert.equal(ads.result.status, "passed", `${ads.result.status} ${ads.result.failure?.reason || ads.result.steps[0]?.reason || ""}`);
+    assert.notEqual(ads.result.pausedKind, "wall");
+    assert.equal((ads.result.pageClasses || []).some((note) => note.class === "bot_wall"), false);
 
     library.save(workflow(`${base}/imperva`, "imperva"));
     const outcome = await runWorkflow(library, { id: "imperva" });

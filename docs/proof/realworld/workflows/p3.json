@@ -1,13 +1,34 @@
 {
   "schema": "bao.workflow/v2",
-  "version": 2,
-  "id": "wf-1792675070495",
+  "version": 3,
+  "id": "wf-1792681340536",
   "name": "Captured workflow",
   "startUrl": "https://automationintesting.online/",
-  "inputs": [],
+  "inputs": [
+    {
+      "name": "checkIn",
+      "type": "date",
+      "required": true,
+      "label": "checkIn",
+      "format": "YYYY-MM-DD",
+      "relative": "+14d",
+      "zone": "UTC",
+      "default": "+14d"
+    },
+    {
+      "name": "checkOut",
+      "type": "date",
+      "required": true,
+      "label": "checkOut",
+      "format": "YYYY-MM-DD",
+      "relative": "+15d",
+      "zone": "UTC",
+      "default": "+15d"
+    }
+  ],
   "steps": [
     {
-      "id": "wf-1792675070495-0",
+      "id": "wf-1792681340536-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://automationintesting.online/",
@@ -21,7 +42,7 @@
       }
     },
     {
-      "id": "wf-1792675070495-1",
+      "id": "wf-1792681340536-1",
       "index": 1,
       "action": "click",
       "label": "Click \"Book now\"",
@@ -30,6 +51,8 @@
         "surface": "dom",
         "role": "link",
         "tag": "a",
+        "cssPath": "#rooms > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > a:nth-of-type(1)",
+        "href": "/reservation/1?checkin=2026-10-22&checkout=2026-10-23",
         "text": "Book now",
         "path": []
       },
@@ -42,6 +65,14 @@
         {
           "kind": "text",
           "value": "Book now"
+        },
+        {
+          "kind": "css",
+          "value": "#rooms > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/reservation/1?checkin=2026-10-22&checkout=2026-10-23\"]"
         }
       ],
       "timeoutMs": 8000,
@@ -53,105 +84,87 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675070495-2",
+      "id": "wf-1792681340536-2",
       "index": 2,
       "action": "click",
-      "label": "Click \"Next\"",
+      "label": "Pick {{checkIn}} to {{checkOut}}",
       "surface": "dom",
       "identity": {
         "surface": "dom",
-        "role": "button",
-        "tag": "button",
-        "text": "Next",
+        "role": "div",
+        "tag": "div",
+        "cssPath": "#root-container > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+        "text": "TodayBackNext November 2026 Sun Mon Tue Wed Thu Fri Sat 01 02 03 04 05 06 07 Sel",
         "path": []
       },
       "locators": [
         {
           "kind": "role",
-          "role": "button",
-          "name": "Next"
+          "role": "div",
+          "name": "TodayBackNext November 2026 Sun Mon Tue Wed Thu Fri Sat 01 02 03 04 05 06 07 Sel"
         },
         {
           "kind": "text",
-          "value": "Next"
+          "value": "TodayBackNext November 2026 Sun Mon Tue Wed Thu Fri Sat 01 02 03 04 05 06 07 Sel"
+        },
+        {
+          "kind": "css",
+          "value": "#root-container > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)"
         }
       ],
       "timeoutMs": 8000,
-      "postcondition": {
-        "kind": "text",
-        "match": "01",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
         "timeoutMs": 4000
       },
-      "expect": {
-        "kind": "text",
-        "match": "01",
-        "timeoutMs": 4000
+      "confidence": "low",
+      "input": "checkIn",
+      "value": "{{checkIn}}",
+      "datePicker": {
+        "input": "checkIn",
+        "endInput": "checkOut"
       }
     },
     {
-      "id": "wf-1792675070495-3",
+      "id": "wf-1792681340536-3",
       "index": 3,
-      "action": "click",
-      "label": "Click \"05\"",
+      "action": "confirm",
+      "label": "Confirm \"Reserve Now\"",
       "surface": "dom",
       "identity": {
         "surface": "dom",
         "role": "button",
+        "id": "doReservation",
         "tag": "button",
-        "text": "05",
+        "cssPath": "#doReservation",
+        "text": "Reserve Now",
         "path": []
       },
       "locators": [
         {
           "kind": "role",
           "role": "button",
-          "name": "05"
+          "name": "Reserve Now"
         },
         {
           "kind": "text",
-          "value": "05"
-        }
-      ],
-      "timeoutMs": 8000,
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792675070495-4",
-      "index": 4,
-      "action": "click",
-      "label": "Click \"07\"",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "button",
-        "tag": "button",
-        "text": "07",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "button",
-          "name": "07"
+          "value": "Reserve Now"
         },
         {
-          "kind": "text",
-          "value": "07"
+          "kind": "css",
+          "value": "#doReservation"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"doReservation\"]"
         }
       ],
       "timeoutMs": 8000,
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
+      "human": true,
+      "gate": "confirm"
     }
   ],
-  "createdAt": 1792675067371
+  "createdAt": 1792681334586,
+  "filesDates": 1
 }

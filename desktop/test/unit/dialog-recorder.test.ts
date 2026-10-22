@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { BrowserDriver } from "../../src/v1/browser-driver";
 import { condense } from "../../src/v1/condense";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { recorderSource, smallestChange } from "../../src/v1/recorder";
@@ -96,6 +97,31 @@ test("the recorder stores the dialog and the text that appears after it closes",
     assert.equal(confirm?.dialogType, "confirm");
     assert.equal(confirm?.dialogDecision, "dismiss");
     assert.equal(confirm?.dialog, "Leave?");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("a second driver on the same page supplies the prompt text", async () => {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html><button id="ask">Ask</button><p id="out"></p>
+      <script>
+        document.getElementById("ask").onclick = () => {
+          const value = prompt("Name?");
+          document.getElementById("out").textContent = "You entered: " + (value == null ? "" : value);
+        };
+      </script>`);
+    const first = new BrowserDriver(page);
+    first.answerDialog("alpha-prompt");
+    await page.locator("#ask").click();
+    assert.equal(await page.locator("#out").textContent(), "You entered: alpha-prompt");
+    const second = new BrowserDriver(page);
+    second.answerDialog("beta-prompt");
+    await page.locator("#ask").click();
+    assert.equal(await page.locator("#out").textContent(), "You entered: beta-prompt");
   } finally {
     await browser.close();
   }

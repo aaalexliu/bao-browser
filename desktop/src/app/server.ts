@@ -32,6 +32,7 @@ import {
   sessionStatus,
   type FreezeSession,
 } from "../v1/freeze-session";
+import { dismissCoveringAds } from "../v1/page-class";
 import { recorderSource } from "../v1/recorder";
 import { armBrowserDownloads, captureDownloads } from "../v1/files-dates";
 import { armFileChooser, queueChooserFile, storedFileEvent } from "../v1/file-chooser";
@@ -170,6 +171,7 @@ export async function startApp(opts: {
   });
   let context: BrowserContext | undefined;
   let page: Page | undefined;
+  let nextDialogAnswer: string | undefined;
   let profile: string | undefined;
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
@@ -748,6 +750,8 @@ export async function startApp(opts: {
           select?: { selector: string; value?: string; label?: string };
           press?: string;
           goto?: string;
+          drag?: { from?: string; to?: string };
+          prompt?: string;
           timeout?: number;
         };
         const timeout = typeof body.timeout === "number" && body.timeout > 0 ? body.timeout : undefined;
@@ -784,9 +788,34 @@ export async function startApp(opts: {
           }, body.box);
           return json(res, { box, events: capture.events.length });
         }
-        if (body.goto) await page.goto(body.goto, { waitUntil: "domcontentloaded", timeout: timeout ?? 30000 });
+        if (body.goto) {
+          const beforeUrl = page.url();
+          await page.goto(body.goto, { waitUntil: "domcontentloaded", timeout: timeout ?? 30000 });
+          // page.goto does not go through the in-page recorder. A capture that
+          // jumps to the next page otherwise replays the following click on the
+          // page it just left.
+          if (capture.recording) capture.push({ kind: "act", op: "navigate", beforeUrl, afterUrl: page.url() });
+        }
+        if (body.drag?.from && body.drag.to) {
+          const from = page.locator(body.drag.from).first();
+          const to = page.locator(body.drag.to).first();
+          await from.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" })).catch(() => undefined);
+          const startBox = await from.boundingBox();
+          const endBox = await to.boundingBox();
+          if (!startBox || !endBox) throw new Error("drag target is not visible");
+          await page.mouse.move(startBox.x + startBox.width / 2, startBox.y + startBox.height / 2);
+          await page.mouse.down();
+          await page.mouse.move(endBox.x + endBox.width / 2, endBox.y + endBox.height / 2, { steps: 18 });
+          await page.mouse.up();
+        }
         if (body.fill) await page.fill(body.fill.selector, body.fill.value, timeout ? { timeout } : undefined);
-        if (body.click) await page.click(body.click, timeout ? { timeout } : undefined);
+        if (typeof body.prompt === "string") nextDialogAnswer = body.prompt;
+        if (body.click) {
+          await page.evaluate(dismissCoveringAds).catch(() => undefined);
+          const loc = page.locator(body.click).first();
+          await loc.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" })).catch(() => undefined);
+          await loc.click(timeout ? { timeout } : undefined);
+        }
         if (body.press) await page.keyboard.press(body.press);
         if (body.select?.selector) {
           const choice = body.select.label ? { label: body.select.label } : body.select.value ?? "";
@@ -902,8 +931,13 @@ export async function startApp(opts: {
         const current = new URL(session.page.url());
         const hasPassword = await session.page.locator("input[type=password]:visible").count().then((count) => count > 0).catch(() => false);
         const status = await session.page.locator("#status").innerText().catch(() => "");
-        const view = await drivePageView(session.page);
-        return json(res, { open: true, pathname: current.pathname, hasPassword, status, ...view });
+        const openPages = session.context.pages().filter((item) => !item.isClosed());
+        const views = [];
+        for (const item of openPages) views.push(await drivePageView(item));
+        const view = views[0] || await drivePageView(session.page);
+        const text = views.map((item) => item.text || "").filter(Boolean).join("\n");
+        const title = views.map((item) => item.title || "").filter(Boolean).join("\n");
+        return json(res, { open: true, pathname: current.pathname, hasPassword, status, ...view, title: title || view.title, text });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/sessions/page") {
         if (!page || page.isClosed()) return json(res, { open: false }, 404);
@@ -1318,7 +1352,10 @@ export async function startApp(opts: {
       await context.addInitScript(recorderSource());
       page = context.pages()[0] || await context.newPage();
       page.on("dialog", (dialog) => {
-        dialog.accept().catch(() => undefined);
+        const answer = nextDialogAnswer;
+        nextDialogAnswer = undefined;
+        if (dialog.type() === "prompt" && answer != null) dialog.accept(answer).catch(() => undefined);
+        else dialog.accept().catch(() => undefined);
       });
       fileChooser = await armFileChooser(page, async (chosen) => {
         await watchShot(recordCaptured({

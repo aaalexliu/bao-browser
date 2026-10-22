@@ -70,6 +70,8 @@ export interface TrailEvent {
   dialogType?: "alert" | "confirm" | "prompt";
   /** Which button closed the dialog. An alert records accept. */
   dialogDecision?: "accept" | "dismiss";
+  /** Text the prompt returned. Replay types it again. */
+  dialogValue?: string;
   /** Name this click from an input. The recorded text is the sample default. */
   parameter?: string;
   /** Rows the person selected or copied. */
@@ -322,7 +324,7 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
     || (left.name != null && left.name === right.name && left.role === right.role && left.app === right.app);
 }
 
-function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: readonly KnownTyped[]): WorkflowStep {
+function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: KnownTyped[]): WorkflowStep {
   event = normalizeFile(event);
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const identity = stripSecretValue(event.identity, meta.secrets ?? []);
@@ -505,10 +507,28 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   const name = event.identity?.name || event.identity?.text || event.identity?.label;
+  if (event.op === "click" && /^reserve now$/i.test((name || "").trim())) {
+    return {
+      ...step,
+      action: "confirm",
+      human: true,
+      gate: "confirm",
+      label: `Confirm "${name}"`,
+    };
+  }
+  let promptInput: string | undefined;
+  if (event.dialogType === "prompt" && event.dialogValue) {
+    const input = addInput(inputs, "text", "prompt");
+    const typed = scrub(event.dialogValue, meta.secrets ?? []) || event.dialogValue;
+    input.default = typed;
+    promptInput = input.name;
+    if (typed && !meta.secrets?.includes(typed)) known.push({ name: input.name, value: typed });
+  }
   return {
     ...step,
     action: "click",
     label: name ? `Click "${name}"` : "Click",
+    ...(promptInput ? { input: promptInput, value: `{{${promptInput}}}` } : {}),
     ...observed(event, undefined, false, known, meta.secrets ?? []),
   };
 }

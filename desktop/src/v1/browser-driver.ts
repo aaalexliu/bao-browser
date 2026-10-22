@@ -2,7 +2,7 @@
 // receives one action on the element the scorer already accepted.
 
 import { readFileSync } from "node:fs";
-import type { Page } from "playwright";
+import type { Dialog, Page } from "playwright";
 import { shotWithBlur } from "./blur";
 import { installDataPage } from "./data-page";
 import type { ExtractSpec } from "./data-steps";
@@ -10,11 +10,23 @@ import { dumpPage, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFiel
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
-import { clickKnownClose, readPageMarkers, type PageSignals } from "./page-class";
+import { clickKnownClose, dismissCoveringAds, readPageMarkers, type PageSignals } from "./page-class";
 import type { Driver, GuideAct, HealNotice, LiveTree, ShotTarget } from "./replay";
 import { armBrowserDownloads, inspectDatePicker, readCalendarSelection, waitForDownloadFile, watchDownload } from "./files-dates";
 import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
+
+const dialogHandlers = new WeakMap<Page, (dialog: Dialog) => void>();
+
+function samePath(before: string, after: string): boolean {
+  try {
+    const left = new URL(before);
+    const right = new URL(after);
+    return left.origin === right.origin && left.pathname === right.pathname && left.search === right.search;
+  } catch {
+    return before.split("#")[0] === after.split("#")[0];
+  }
+}
 
 export interface FileProof {
   action: "upload" | "drop";
@@ -60,6 +72,7 @@ export class BrowserDriver implements Driver {
   private readonly networkLines: TraceRequest[] = [];
   private readonly headerNotes: { url: string; headers: { name: string; value: string }[] }[] = [];
   private automated = 0;
+  private nextPrompt: string | undefined;
   private guideBound = false;
   private readonly guideEvents: GuideAct[] = [];
 
@@ -68,9 +81,18 @@ export class BrowserDriver implements Driver {
     private readonly onNotify?: (notice: HealNotice) => void,
     private readonly prompts?: PersonPrompts,
   ) {
-    page.on("dialog", (dialog) => {
-      dialog.accept().catch(() => undefined);
-    });
+    // A second replay on the same page must not leave the first handler in
+    // front. That handler would accept the prompt before this one supplies the text.
+    const previous = dialogHandlers.get(page);
+    if (previous) page.off("dialog", previous);
+    const onDialog = (dialog: Dialog) => {
+      const answer = this.nextPrompt;
+      this.nextPrompt = undefined;
+      if (dialog.type() === "prompt" && answer != null) dialog.accept(answer).catch(() => undefined);
+      else dialog.accept().catch(() => undefined);
+    };
+    dialogHandlers.set(page, onDialog);
+    page.on("dialog", onDialog);
     page.on("console", (msg) => {
       const text = maskTrace(msg.text());
       if (!text) return;
@@ -96,6 +118,10 @@ export class BrowserDriver implements Driver {
     });
   }
 
+  answerDialog(value: string): void {
+    this.nextPrompt = value;
+  }
+
   markStep(id: string): void {
     this.currentStep = id;
   }
@@ -113,6 +139,7 @@ export class BrowserDriver implements Driver {
       texts: markers.texts,
       iframeSrcs: markers.iframeSrcs,
       markers: markers.markers,
+      widgets: markers.widgets,
       hasPassword: markers.hasPassword,
       closes: markers.closes,
       cookies: cookies.map((cookie) => ({ name: cookie.name })),
@@ -217,6 +244,27 @@ export class BrowserDriver implements Driver {
     return elementShot(this.page, target);
   }
 
+  async probe(queries: { kind: "css" | "text" | "role" | "xpath"; query: string; role?: string; name?: string }[]): Promise<{ url: string; hits: { kind: string; query: string; count: number; visible: number }[] }> {
+    const hits: { kind: string; query: string; count: number; visible: number }[] = [];
+    for (const query of queries) {
+      const loc = query.kind === "css"
+        ? this.page.locator(query.query)
+        : query.kind === "xpath"
+          ? this.page.locator(`xpath=${query.query}`)
+          : query.kind === "text"
+            ? this.page.getByText(query.query, { exact: true })
+            : this.page.getByRole(query.role as "button", { name: query.name || undefined, exact: true });
+      const count = await loc.count().catch(() => -1);
+      let visible = 0;
+      const cap = Math.min(Math.max(count, 0), 12);
+      for (let i = 0; i < cap; i++) {
+        if (await loc.nth(i).isVisible().catch(() => false)) visible += 1;
+      }
+      hits.push({ kind: query.kind, query: query.query, count, visible });
+    }
+    return { url: this.page.url(), hits };
+  }
+
   async snapshot(): Promise<FailureSnapshot> {
     await this.page.evaluate(maskPasswordFields).catch(() => undefined);
     let png: Buffer;
@@ -281,7 +329,17 @@ export class BrowserDriver implements Driver {
 
   async click(node: Identity): Promise<void> {
     this.automated += 1;
-    await this.page.locator(this.sel(node)).click();
+    await this.page.evaluate(dismissCoveringAds).catch(() => undefined);
+    const loc = this.page.locator(this.sel(node));
+    const before = this.page.url();
+    await loc.click();
+    // A Google vignette swallows the click that would have followed the link.
+    const href = node.href || "";
+    if (node.tag !== "a" || !href || href.startsWith("#") || href.startsWith("javascript:")) return;
+    const after = this.page.url();
+    if (!after.includes("#google_vignette") || !samePath(before, after)) return;
+    await this.page.evaluate(dismissCoveringAds).catch(() => undefined);
+    await this.page.goto(new URL(href, before).href, { waitUntil: "domcontentloaded" });
   }
 
   async goto(url: string): Promise<void> {
@@ -933,6 +991,7 @@ function toIdentity(node: DomDump): Identity {
     text: node.text,
     cssPath: node.cssPath,
     xpath: node.xpath,
+    href: node.href,
     path: node.path,
     value: node.value,
   };

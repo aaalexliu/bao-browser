@@ -77,6 +77,7 @@
         "text": { "type": "string" },
         "cssPath": { "type": "string" },
         "xpath": { "type": "string" },
+        "href": { "type": "string" },
         "windowTitle": { "type": "string" },
         "bundleId": { "type": "string" },
         "app": { "type": "string" },

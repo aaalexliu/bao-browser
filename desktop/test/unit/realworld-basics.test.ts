@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ACCEPT, lookup, type Identity } from "../../src/v1/identity";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
-import { matchLocator, scoreLocator } from "../../src/v1/locators";
+import { buildLocators, matchLocator, scoreLocator } from "../../src/v1/locators";
 import { replay, runPassed, type Driver, type LiveTree } from "../../src/v1/replay";
 import { unavailableHeal } from "../../src/v1/heal";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -119,6 +119,40 @@ test("radios, checkboxes, and selects are check and select steps", () => {
   assert.equal(doc.steps.some((step) => step.action === "type"), false);
 });
 
+test("a shared name loses to the recorded css path, test id, and href", () => {
+  const signup = dom({ role: "textbox", tag: "input", nameAttr: "email", testId: "signup-email", cssPath: "form:nth-of-type(2) > input:nth-of-type(2)" });
+  const login = dom({ role: "textbox", tag: "input", nameAttr: "email", cssPath: "form:nth-of-type(1) > input:nth-of-type(1)" });
+  const fields = [login, signup];
+  assert.equal(scoreLocator({ kind: "css", value: 'input[name="email"]' }, fields).score, 40);
+  assert.equal(scoreLocator({ kind: "testid", value: "signup-email" }, fields).score, 100);
+  assert.equal(matchLocator({ kind: "css", value: signup.cssPath || "" }, fields)?.index, 1);
+  const first = dom({ role: "link", tag: "a", text: "Book now", name: "Book now", href: "/reservation/1", cssPath: "section:nth-of-type(1) > a:nth-of-type(1)" });
+  const second = dom({ role: "link", tag: "a", text: "Book now", name: "Book now", href: "/reservation/2", cssPath: "section:nth-of-type(2) > a:nth-of-type(1)" });
+  const rooms = [first, second];
+  assert.equal(scoreLocator({ kind: "role", role: "link", name: "Book now" }, rooms).score, 40);
+  assert.equal(matchLocator({ kind: "css", value: 'a[href="/reservation/1"]' }, rooms)?.index, 0);
+  const locs = buildLocators(first, rooms);
+  assert.equal(locs.some((item) => item.kind === "css" && item.value === 'a[href="/reservation/1"]'), true);
+  assert.equal(locs.some((item) => item.value === first.cssPath), true);
+  assert.equal(locs.some((item) => item.kind === "role" && item.name === ""), false);
+});
+
+test("Reserve Now is a confirm step and a prompt keeps the text it returned", () => {
+  const events: TrailEvent[] = [
+    { id: "r", ts: 1, kind: "act", op: "click", identity: dom({ role: "button", text: "Reserve Now", name: "Reserve Now" }) },
+    { id: "p", ts: 2, kind: "act", op: "click", dialogType: "prompt", dialogValue: "proof-prompt", dialogDecision: "accept", afterText: "You entered: proof-prompt", identity: dom({ role: "button", text: "Click for JS Prompt" }) },
+  ];
+  const doc = interpret(events, { id: "wf-gate", name: "Gate", startUrl: "https://example.test/" });
+  assert.equal(doc.steps[0]?.action, "confirm");
+  assert.equal(doc.steps[0]?.human, true);
+  assert.equal(doc.steps[0]?.gate, "confirm");
+  assert.equal(doc.steps[1]?.action, "click");
+  assert.equal(doc.steps[1]?.value, "{{prompt}}");
+  assert.equal(doc.inputs.find((input) => input.name === "prompt")?.default, "proof-prompt");
+  assert.equal(doc.steps[1]?.expect?.match, "You entered: {{prompt}}");
+  assert.equal(doc.steps[1]?.postcondition?.match, "You entered: {{prompt}}");
+});
+
 test("zero executed steps and a failed final check are not passes", () => {
   assert.equal(runPassed([]), false);
   assert.equal(runPassed([{ status: "pending" }]), false);
@@ -147,6 +181,8 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
     await context.addInitScript(recorderSource());
     const page = await context.newPage();
     const html = `<!doctype html><shop-app></shop-app>
+      <input id="closed" style="display:none" value="">
+      <input data-qa="signup-email" name="email">
       <label>Gender<input id="gender-radio-1" type="radio" name="gender" value="Male"></label>
       <select id="months"><option>January</option><option>February</option></select>
       <script>
@@ -160,9 +196,14 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
         customElements.define("shop-app", Shop);
       </script>`;
     await page.goto(`data:text/html,${encodeURIComponent(html)}`);
+    await page.evaluate(() => document.getElementById("closed")?.dispatchEvent(new Event("change", { bubbles: true })));
     const dumped = await page.evaluate(dumpPage);
     const ladies = dumped.nodes.find((node) => node.text === "Ladies Outerwear");
     assert.equal(ladies?.role, "link");
+    assert.equal(ladies?.href, "#ladies");
+    const email = dumped.nodes.find((node) => node.nameAttr === "email");
+    assert.equal(email?.testId, "signup-email");
+    assert.ok(email?.cssPath);
     await page.locator("shop-app").locator("a").click();
     await page.locator("#gender-radio-1").check();
     await page.locator("#months").selectOption({ label: "February" });

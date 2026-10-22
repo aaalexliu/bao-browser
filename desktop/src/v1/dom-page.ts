@@ -13,6 +13,7 @@ export interface DomDump {
   text?: string;
   cssPath?: string;
   xpath?: string;
+  href?: string;
   path: { role: string; name?: string }[];
   value?: string;
   bbox?: { x: number; y: number; w: number; h: number };
@@ -132,6 +133,9 @@ export function dumpPage(): PageDump {
     return /^(A|BUTTON|INPUT|TEXTAREA|SELECT|LABEL|H1|H2|H3|H4|SUMMARY)$/.test(tag)
       || el.hasAttribute("role")
       || el.hasAttribute("data-testid")
+      || el.hasAttribute("data-qa")
+      || el.hasAttribute("data-test")
+      || el.hasAttribute("data-cy")
       || el.hasAttribute("data-bao-drop");
   };
 
@@ -159,6 +163,11 @@ export function dumpPage(): PageDump {
     el.setAttribute("data-bao-i", handle);
     const text = shownText(el);
     if (text && text.length < 80) texts.push(text);
+    // A file input's chosen name is not innerText. The upload check looks for it.
+    if (el instanceof HTMLInputElement && el.type === "file") {
+      const chosen = el.files?.[0]?.name || "";
+      if (chosen && chosen.length < 180) texts.push(chosen);
+    }
     const input = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
     if (input && input.type !== "password" && input.type !== "file") {
       values.push({ handle, value: input.value });
@@ -176,7 +185,8 @@ export function dumpPage(): PageDump {
       surface: "dom",
       role: roleOf(el),
       name: norm(accessible).slice(0, 80) || undefined,
-      testId: el.getAttribute("data-testid") || undefined,
+      testId: el.getAttribute("data-testid") || el.getAttribute("data-qa") || el.getAttribute("data-test") || el.getAttribute("data-cy") || undefined,
+      href: el.tagName === "A" ? (el.getAttribute("href") || undefined) : undefined,
       id: el.id || undefined,
       nameAttr: el.getAttribute("name") || undefined,
       tag: el.tagName.toLowerCase(),

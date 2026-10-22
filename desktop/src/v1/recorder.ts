@@ -68,9 +68,10 @@ export function recorderSource(): string {
     const norm = (v) => (v || "").replace(/\\s+/g, " ").trim();
     const send = (payload) => { if (window.__baoRecord) window.__baoRecord(payload); };
     let pending;
-    const noteDialog = (type, message, decision) => {
+    const noteDialog = (type, message, decision, value) => {
       const text = String(message == null ? "" : message).replace(/\\s+/g, " ").trim().slice(0, 180) || "dialog";
-      pending = { type, message: text, decision };
+      const typed = value == null ? undefined : String(value).replace(/\\s+/g, " ").trim().slice(0, 180);
+      pending = { type, message: text, decision, value: typed || undefined };
     };
     const nativeAlert = window.alert;
     window.alert = function(message) {
@@ -86,8 +87,35 @@ export function recorderSource(): string {
     const nativePrompt = window.prompt;
     window.prompt = function(message, value) {
       const typed = nativePrompt.call(window, message, value);
-      noteDialog("prompt", message, typed == null ? "dismiss" : "accept");
+      noteDialog("prompt", message, typed == null ? "dismiss" : "accept", typed);
       return typed;
+    };
+    const cssPathOf = (el) => {
+      const parts = [];
+      let node = el;
+      while (node && node !== document.body) {
+        if (node.id && !/\\d{4,}/.test(node.id)) {
+          const esc = window.CSS && CSS.escape ? CSS.escape(node.id) : String(node.id).replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
+          parts.unshift("#" + esc);
+          break;
+        }
+        let nth = 1;
+        let sib = node;
+        while ((sib = sib.previousElementSibling)) if (sib.tagName === node.tagName) nth++;
+        parts.unshift(node.tagName.toLowerCase() + ":nth-of-type(" + nth + ")");
+        node = node.parentElement;
+      }
+      return parts.join(" > ");
+    };
+    const testIdOf = (el) => el.getAttribute("data-testid") || el.getAttribute("data-qa") || el.getAttribute("data-test") || el.getAttribute("data-cy") || undefined;
+    const fieldClosed = (el) => {
+      if (!el || el.disabled || el.hidden) return true;
+      if (el.closest && (el.closest("[hidden]") || el.closest("[aria-hidden='true']"))) return true;
+      if (el.getAttribute && el.getAttribute("aria-hidden") === "true") return true;
+      const style = window.getComputedStyle ? getComputedStyle(el) : null;
+      if (style && (style.display === "none" || style.visibility === "hidden")) return true;
+      const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      return !!(rect && rect.width < 1 && rect.height < 1);
     };
     const fieldValues = () => new Set([...document.querySelectorAll("input, textarea")].map((el) => norm(el.value)).filter(Boolean));
     const visible = () => [...document.querySelectorAll("[data-testid]")].map((el) => norm(el.innerText || el.value || "")).filter(Boolean);
@@ -151,10 +179,12 @@ export function recorderSource(): string {
       return {
         surface: "dom",
         role: roleOf(el),
-        testId: el.getAttribute("data-testid") || undefined,
+        testId: testIdOf(el),
         id: el.id || undefined,
         nameAttr: el.getAttribute("name") || undefined,
         tag: el.tagName.toLowerCase(),
+        cssPath: cssPathOf(el),
+        href: el.tagName === "A" ? (el.getAttribute("href") || undefined) : undefined,
         name: name || undefined,
         label: name || undefined,
         text: text || undefined,
@@ -236,11 +266,26 @@ export function recorderSource(): string {
       const year = Number(label[2]);
       return { start: isoDate(year, month, days[0]), end: isoDate(year, month, days[days.length - 1]) };
     };
+    let suppressClickUntil = 0;
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.repeat) return;
+      const raw = eventEl(event);
+      if (!raw || raw.tagName === "TEXTAREA" || raw.isContentEditable) return;
+      // Enter in a text field activates the form's submit control with a click
+      // whose detail is 0. That click is not a pointer choice. Record the key.
+      suppressClickUntil = Date.now() + 700;
+      const beforeUrl = location.href;
+      const el = raw;
+      setTimeout(() => {
+        send({ kind: "act", op: "key", key: "Enter", identity: ident(el), beforeUrl, afterUrl: location.href });
+      }, 0);
+    }, true);
     document.addEventListener("click", (event) => {
       if (window.__baoPicking) return;
+      if (event.detail === 0 && Date.now() < suppressClickUntil) return;
       const raw = eventEl(event);
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
-      const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid]") : raw;
+      const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid],[data-qa],[data-test],[data-cy]") : raw;
       if (!el) return;
       pending = undefined;
       const leaves = leafTexts();
@@ -258,6 +303,7 @@ export function recorderSource(): string {
           payload.dialog = dialog.message;
           payload.dialogType = dialog.type;
           payload.dialogDecision = dialog.decision;
+          if (dialog.value) payload.dialogValue = dialog.value;
         }
         if (change) {
           payload.subtreeBefore = change.before;
@@ -272,11 +318,16 @@ export function recorderSource(): string {
     document.addEventListener("mouseup", (event) => {
       const cal = document.querySelector(".rbc-calendar");
       if (!cal || !event.target || !cal.contains(event.target)) return;
+      const nav = event.target.closest && event.target.closest("button");
+      const navText = nav && norm(nav.innerText || "").toLowerCase();
+      if (navText === "today" || navText === "back" || navText === "next") return;
+      // The selection bar is painted after mouseup. Reading it immediately
+      // still sees the previous range.
       setTimeout(() => {
         const range = calendarRange(cal);
         if (!range) return;
         send({ kind: "act", op: "click", picker: true, value: range.start, endValue: range.end, identity: ident(cal) });
-      }, 0);
+      }, 250);
     }, true);
     document.addEventListener("input", (event) => {
       const el = eventEl(event);
@@ -287,6 +338,7 @@ export function recorderSource(): string {
       const el = eventEl(event);
       if (!el) return;
       if (el.closest && el.closest(".react-datepicker, .rbc-calendar, [data-bao-picker]")) return;
+      if (!norm(el.value == null ? "" : String(el.value)) && fieldClosed(el)) return;
       if (el.tagName === "SELECT") {
         const option = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
         const label = norm(option && (option.label || option.text) || "");
