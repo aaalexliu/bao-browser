@@ -28,8 +28,17 @@ export interface StepFailure {
   snapshot: FailureSnapshot;
   /** Ranked candidates from the lookup that stopped the step. */
   identity?: IdentityView;
+  /** Locators tried for this step, highest score first is not required. 100 is a unique hit. */
+  locators?: TriedLocator[];
   /** PNG from the start of the step, when the server asked for shots. */
   beforeShot?: string;
+}
+
+/** One locator the replay tried. Score 100 is a unique visible hit. */
+export interface TriedLocator {
+  kind: string;
+  label: string;
+  score: number;
 }
 
 export interface HealProposal {

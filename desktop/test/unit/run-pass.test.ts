@@ -54,8 +54,9 @@ test("a secret is asked again and is not written into the re-run field", () => {
   assert.match(viewer, /Re-run with this run's inputs/);
   assert.match(viewer, /Debug from this step/);
   assert.match(viewer, /data-step="save"/);
-  assert.match(viewer, /ada note/);
-  assert.match(viewer, /••••/);
+  assert.match(viewer, /note: ada note/);
+  assert.match(viewer, /password: ••••/);
+  assert.equal(viewer.includes("note ada note"), false);
   assert.match(viewer, /A secret is asked again and is not kept in the run/);
   assert.equal(viewer.includes("SuperSecretPassword!"), false);
   assert.equal(viewer.includes("BaoSecretFixture9kQ7m"), false);

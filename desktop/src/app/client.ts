@@ -97,6 +97,7 @@ let gateUrl = "";
 let pinnedRunId = "";
 let pinnedInputs: Record<string, string> | null = null;
 let debugStepId = "";
+let pendingSeek: number | undefined;
 let seenOpen = "";
 try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
@@ -138,12 +139,12 @@ async function refresh(): Promise<void> {
     paused: state.capturePaused,
     since: state.recordingSince,
     promotions: state.promotions,
+    // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
     screen,
     healFilter,
     openHeal,
     openRun,
     openWorkflow,
-    selectedStep,
     banner,
     opened: state.opened,
   });
@@ -625,9 +626,19 @@ async function showRun(id: string): Promise<void> {
   host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      selectedStep = (btn as HTMLButtonElement).dataset.selectStep || "";
+      const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";
+      const step = (run.steps || []).find((item) => item.id === stepId);
+      selectedStep = stepId;
+      pendingSeek = step?.startedAt;
       void showRun(id);
     };
+  });
+  host.querySelectorAll("#filmstrip img").forEach((img) => {
+    img.addEventListener("error", () => {
+      const frame = img.parentElement;
+      img.remove();
+      frame?.classList.remove("has-shot");
+    });
   });
   host.querySelectorAll("[data-frame]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
@@ -638,6 +649,9 @@ async function showRun(id: string): Promise<void> {
       stage.dataset.which = which;
       host.querySelectorAll("[data-frame]").forEach((el) => el.classList.toggle("on", (el as HTMLElement).dataset.frame === which));
       mountStage(stage);
+      const thumb = host.querySelector("#filmstrip .frame.on img") as HTMLImageElement | null;
+      const next = which === "before" ? thumb?.dataset.before : thumb?.dataset.after;
+      if (thumb && next) thumb.src = next;
     };
   });
   mountShots(host);
@@ -649,13 +663,15 @@ async function showRun(id: string): Promise<void> {
     const step = (run.steps || [])[index];
     if (!step) return;
     selectedStep = step.id;
-    seekVideo(step.startedAt);
+    pendingSeek = step.startedAt;
     void showRun(id);
   };
   host.querySelectorAll("[data-marker]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      selectedStep = (btn as HTMLButtonElement).dataset.marker || "";
-      seekVideo(Number((btn as HTMLButtonElement).dataset.at || 0));
+      const stepId = (btn as HTMLButtonElement).dataset.marker || "";
+      const step = (run.steps || []).find((item) => item.id === stepId);
+      selectedStep = stepId;
+      pendingSeek = step?.startedAt ?? Number((btn as HTMLButtonElement).dataset.at || 0);
       void showRun(id);
     };
   });
@@ -687,6 +703,11 @@ async function showRun(id: string): Promise<void> {
   const debug = host.querySelector("#debug-step");
   if (debug) (debug as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, (debug as HTMLButtonElement).dataset.step || "", run.inputs);
   bindVideoSkip();
+  if (typeof pendingSeek === "number") {
+    const at = pendingSeek;
+    pendingSeek = undefined;
+    seekVideo(at);
+  }
 }
 
 function openPastRun(workflowId: string, runId: string, stepId: string, inputs?: Record<string, string>): void {
@@ -704,14 +725,47 @@ function bindVideoSkip(): void {
   if (!video) return;
   let skips: { from: number; to: number; label: string }[] = [];
   try { skips = JSON.parse(video.dataset.skips || "[]") as { from: number; to: number; label: string }[]; } catch { skips = []; }
+  const follow = () => highlightStepAt(video.currentTime);
   video.ontimeupdate = () => {
-    if (video.paused) return;
-    const hit = skips.find((item) => video.currentTime >= item.from && video.currentTime < item.to - 0.05);
-    if (!hit) return;
-    video.currentTime = hit.to;
-    const live = document.getElementById("skip-live");
-    if (live) live.textContent = hit.label;
+    if (!video.paused) {
+      const hit = skips.find((item) => video.currentTime >= item.from && video.currentTime < item.to - 0.05);
+      if (hit) {
+        video.currentTime = hit.to;
+        const live = document.getElementById("skip-live");
+        if (live) live.textContent = hit.label;
+        return;
+      }
+    }
+    follow();
   };
+  video.onseeked = follow;
+}
+
+/** The step whose start is at or before the video time stays highlighted. */
+function highlightStepAt(time: number): void {
+  const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
+  const frames = [...document.querySelectorAll<HTMLElement>("#filmstrip [data-select-step]")];
+  let chosen = "";
+  let best = -Infinity;
+  for (const frame of frames) {
+    const at = Number(frame.dataset.at);
+    if (!Number.isFinite(at)) continue;
+    const start = (at - origin) / 1000;
+    if (start <= time + 0.04 && start >= best) {
+      best = start;
+      chosen = frame.dataset.selectStep || "";
+    }
+  }
+  if (!chosen) return;
+  selectedStep = chosen;
+  document.querySelectorAll<HTMLElement>("[data-select-step], [data-marker]").forEach((el) => {
+    const id = el.dataset.selectStep || el.dataset.marker || "";
+    el.classList.toggle("on", id === chosen);
+  });
+  const listed = [...document.querySelectorAll<HTMLElement>("#step-list [data-select-step]")];
+  const index = listed.findIndex((el) => el.dataset.selectStep === chosen);
+  const scrub = document.getElementById("scrubber") as HTMLInputElement | null;
+  if (scrub && index >= 0) scrub.value = String(index);
 }
 
 async function showHeal(runId: string, healId: string): Promise<void> {
@@ -1233,7 +1287,26 @@ function runCommand(item?: CommandItem): void {
 function seekVideo(at: number | undefined): void {
   const video = document.getElementById("run-video") as HTMLVideoElement | null;
   const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
-  if (video && at && origin) video.currentTime = Math.max(0, (at - origin) / 1000);
+  if (!video || typeof at !== "number" || !Number.isFinite(at)) return;
+  const target = Math.max(0, (at - origin) / 1000);
+  const apply = () => {
+    if (video.seekable.length === 0) return false;
+    const end = video.seekable.end(video.seekable.length - 1);
+    if (!(end > 0)) return false;
+    const clamped = Math.min(target, Math.max(0, end - 0.001));
+    if (Math.abs(video.currentTime - clamped) > 0.05) video.currentTime = clamped;
+    return true;
+  };
+  if (apply()) return;
+  const retry = () => {
+    if (!apply()) return;
+    video.removeEventListener("loadedmetadata", retry);
+    video.removeEventListener("progress", retry);
+    video.removeEventListener("canplay", retry);
+  };
+  video.addEventListener("loadedmetadata", retry);
+  video.addEventListener("progress", retry);
+  video.addEventListener("canplay", retry);
 }
 
 function paintToasts(): void {
