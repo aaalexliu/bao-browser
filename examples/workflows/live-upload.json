@@ -1,0 +1,72 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-live-upload",
+  "name": "Live model upload",
+  "startUrl": "https://the-internet.herokuapp.com/upload",
+  "inputs": [
+    {
+      "name": "file",
+      "type": "file",
+      "required": true,
+      "label": "file"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-live-upload-0",
+      "index": 0,
+      "action": "upload",
+      "label": "Upload file",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "file-upload",
+        "nameAttr": "file",
+        "path": []
+      },
+      "timeoutMs": 8000,
+      "input": "file",
+      "value": "{{file}}",
+      "postcondition": {
+        "kind": "element",
+        "identity": {
+          "surface": "dom",
+          "role": "input",
+          "id": "file-upload",
+          "nameAttr": "file",
+          "path": []
+        },
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-live-upload-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"Upload\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "file-submit",
+        "text": "Upload",
+        "name": "Upload",
+        "path": []
+      },
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 208,
+        "y": 297,
+        "space": "viewport"
+      },
+      "postcondition": {
+        "kind": "text",
+        "match": "File Uploaded!",
+        "timeoutMs": 4000
+      }
+    }
+  ],
+  "createdAt": 1792553132416
+}

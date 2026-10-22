@@ -19,6 +19,9 @@ export interface StoredRun {
   decisions?: { ts: number; healId: string; decision: "keep" | "revert" }[];
   failure?: unknown;
   steps: unknown[];
+  repairs?: unknown[];
+  receipts?: unknown[];
+  promotion?: unknown;
 }
 
 const DEFAULT_SETTINGS: Settings = { heal: "auto" };
@@ -29,6 +32,7 @@ export class Library {
     mkdirSync(path.join(root, "trails"), { recursive: true });
     mkdirSync(path.join(root, "runs"), { recursive: true });
     mkdirSync(path.join(root, "shots"), { recursive: true });
+    mkdirSync(path.join(root, "promotions"), { recursive: true });
   }
 
   list(): WorkflowV2[] {
@@ -76,6 +80,33 @@ export class Library {
 
   saveTrail(id: string, events: unknown): void {
     writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(events, null, 2));
+  }
+
+  appendTrail(id: string, event: unknown): unknown[] {
+    const file = path.join(this.root, "trails", `${id}.json`);
+    let events: unknown[] = [];
+    try {
+      const current = JSON.parse(readFileSync(file, "utf8")) as unknown;
+      events = Array.isArray(current) ? current : [current];
+    } catch { /* first event */ }
+    events.push(event);
+    writeFileSync(file, JSON.stringify(events, null, 2));
+    return events;
+  }
+
+  savePromotion(promotion: unknown & { workflowId: string }): void {
+    mkdirSync(path.join(this.root, "promotions"), { recursive: true });
+    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(promotion, null, 2));
+  }
+
+  readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string } | undefined {
+    try {
+      return JSON.parse(readFileSync(path.join(this.root, "promotions", `${workflowId}.json`), "utf8")) as {
+        workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string;
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   readTrail(id: string): unknown {
@@ -126,9 +157,29 @@ export class Library {
     return settings;
   }
 
+  readBounds(id: string): { x: number; y: number; width: number; height: number } | null {
+    try {
+      const raw = JSON.parse(readFileSync(this.boundsFile(id), "utf8")) as { x?: number; y?: number; width?: number; height?: number };
+      if (typeof raw.x !== "number" || typeof raw.y !== "number" || typeof raw.width !== "number" || typeof raw.height !== "number") return null;
+      return { x: raw.x, y: raw.y, width: raw.width, height: raw.height };
+    } catch {
+      return null;
+    }
+  }
+
+  writeBounds(id: string, bounds: { x: number; y: number; width: number; height: number }): void {
+    mkdirSync(path.join(this.root, "bounds"), { recursive: true });
+    writeFileSync(this.boundsFile(id), JSON.stringify(bounds));
+  }
+
   private file(id: string): string {
     if (id.includes("/") || id.includes("..")) throw new Error("bad workflow id");
     return path.join(this.root, "workflows", `${id}.json`);
+  }
+
+  private boundsFile(id: string): string {
+    if (id.includes("/") || id.includes("..")) throw new Error("bad workflow id");
+    return path.join(this.root, "bounds", `${id}.json`);
   }
 }
 

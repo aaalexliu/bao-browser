@@ -17,11 +17,15 @@
     .dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #ccc; }
     .dot.on { background: var(--accent); box-shadow: 0 0 0 4px rgba(154, 52, 18, 0.2); }
     .card { border: 1px solid var(--line); background: white; padding: 0.9rem; margin: 0.7rem 0; }
+    .card.ask { border: 3px solid var(--accent); background: #fff7ed; }
+    .ask-title { font-size: 1.7rem; line-height: 1.2; font-weight: 700; margin: 0 0 0.5rem; }
     label { display: grid; gap: 0.25rem; margin: 0.4rem 0; }
     input, select, textarea { padding: 0.4rem; border: 1px solid var(--line); width: 100%; background: white; }
     .drop { outline: 1px dashed var(--line); padding: 0.6rem; }
     .drop.over { outline-color: var(--accent); }
-    .pass { color: var(--ok); } .fail, .paused { color: var(--bad); }
+    .pass { color: var(--ok); } .fail, .failed, .paused { color: var(--bad); }
+    .phase { display: inline-block; font: 12px/1 ui-monospace, monospace; background: var(--ink); color: var(--bg); padding: 0.12rem 0.35rem; margin-right: 0.35rem; }
+    .receipt { font: 13px/1.4 ui-monospace, monospace; border: 1px solid var(--line); background: white; padding: 0.45rem 0.6rem; margin: 0.35rem 0; }
     .badge { display: inline-block; background: var(--accent); color: white; padding: 0.05rem 0.4rem; font-size: 0.8rem; }
     .notice { background: #fff7ed; border: 1px solid #fdba74; padding: 0.6rem; margin: 0.4rem 0; }
     pre { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
@@ -48,18 +52,85 @@
     let lastRun = null;
     let lastWf = "";
     let banner = null;
+    let trailText = "";
+
+    let renderKey = "";
 
     async function refresh() {
       state = await (await fetch("/api/state")).json();
       document.getElementById("dot").classList.toggle("on", state.recording);
       document.getElementById("rec-label").textContent = state.recording ? "Recording" : "Idle";
+      const key = JSON.stringify({
+        recording: state.recording,
+        pending: state.pendingImport,
+        loginWait: state.loginWait,
+        humanConfirm: state.humanConfirm,
+        notices: state.notices,
+        workflows: state.workflows,
+        settings: state.settings,
+        runs: state.runs,
+        screen,
+      });
+      if (key === renderKey) return;
+      renderKey = key;
       render();
     }
 
+    function typedArgs() {
+      const form = document.getElementById("args");
+      if (!form) return null;
+      const values = {};
+      for (const el of form.querySelectorAll("input[name], textarea[name], select[name]")) {
+        if (el.type === "file" || !el.value) continue;
+        values[el.name] = el.value;
+      }
+      return values;
+    }
+
     function render() {
+      const kept = typedArgs();
       const views = { sessions, trail, library, replay, settings };
-      main.innerHTML = notices() + views[screen]();
-      bind();
+      main.innerHTML = promptCards() + notices() + views[screen]();
+      bind(kept);
+    }
+
+    function promptCards() {
+      const pending = state.pendingImport;
+      const cards = [];
+      if (pending && pending.phase !== "done" && pending.phase !== "cancelled") {
+        if (pending.phase === "confirm") {
+          cards.push(`<div class="card ask" id="import-confirm"><p class="ask-title">Press Import, then approve the keychain prompt.</p><p>${esc(pending.message)}</p>
+            <p>If more than one Chrome profile is listed, pick the one that is signed in to Experian.</p>
+            <div class="row"><button class="primary" id="import-yes">Import</button><button id="import-no">Cancel</button></div></div>`);
+        } else if (pending.phase === "pick") {
+          const buttons = (pending.profiles || []).map((profile) => {
+            const label = profile.lastUsed ? `${profile.name} (last used)` : profile.name;
+            return `<button data-import-profile="${esc(profile.directory)}">${esc(label)}</button>`;
+          }).join(" ");
+          cards.push(`<div class="card ask" id="import-pick"><p class="ask-title">Pick the Chrome profile that is signed in to Experian.</p><p>Chrome has more than one profile. Pick the one that is signed in to ${esc(pending.domain)}.</p>
+            <div class="row">${buttons}</div><button id="import-no">Cancel</button></div>`);
+        } else if (pending.phase === "running") {
+          cards.push(`<div class="card ask" id="import-running"><p class="ask-title">Approve the keychain prompt.</p><p>Approve the macOS keychain prompt if it appears. Bao does not save that key.</p></div>`);
+        } else if (pending.phase === "error") {
+          const title = /keychain/i.test(pending.error || "") ? "Approve the keychain prompt." : "Import did not finish.";
+          cards.push(`<div class="card ask" id="import-error"><p class="ask-title">${esc(title)}</p><p>${esc(pending.error || "Import failed. Press Import again.")}</p></div>`);
+        }
+      } else if (pending && pending.phase === "done" && pending.audit) {
+        if (pending.audit.count === 0) {
+          cards.push(`<div class="card ask" id="import-done"><p class="ask-title">That profile had no ${esc(pending.audit.domain)} cookies.</p><p>Press Import and pick the Chrome profile that is signed in to Experian.</p></div>`);
+        } else {
+          cards.push(`<div class="card" id="import-done"><p>Imported ${esc(pending.audit.count)} cookies for ${esc(pending.audit.domain)}.</p></div>`);
+        }
+      }
+      if (state.loginWait) {
+        const title = state.loginWait.detail || "Sign in on the Experian window.";
+        cards.push(`<div class="card ask" id="login-wait"><p class="ask-title">${esc(title)}</p><p>${esc(state.loginWait.message)}</p><p>Bao will not type your password or a code, and it will not click the check.</p></div>`);
+      }
+      if (state.humanConfirm) {
+        const title = state.humanConfirm.detail || "Press Apply on the site window.";
+        cards.push(`<div class="card ask" id="human-confirm"><p class="ask-title">${esc(title)}</p><p>${esc(state.humanConfirm.message)}</p><p>Bao will not press Apply.</p></div>`);
+      }
+      return cards.join("");
     }
 
     function sessions() {
@@ -74,7 +145,7 @@
         </div>
         <div class="card">
           <h3>Desktop</h3>
-          <p>On macOS, start <code>BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>) and grant Accessibility and Screen Recording. On Linux the AT-SPI helper is <code>bao-os-helper</code>. Computer-use clicks land through the proxy or the MCP server, and the trail is the record.</p>
+          <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). Bao launches that copy. The first launch on a clean account asks for Accessibility and Screen Recording for BaoOSHelper. On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
         </div>
         <div class="card">
           <h3>Proxy and MCP</h3>
@@ -88,14 +159,15 @@
       return `<section><h2>Audit trail</h2>
         <label>Trail <select id="trail-id">${ids}</select></label>
         <button id="load-trail">Load</button>
-        <pre id="trail-view">Values are masked. File paths are not stored.</pre>
+        <pre id="trail-view">${trailText ? esc(trailText) : "Values are masked. File paths are not stored."}</pre>
       </section>`;
     }
 
     function library() {
       const cards = state.workflows.map((wf) => {
         const healed = state.runs.some((run) => run.workflowId === wf.id && run.heals && run.heals.length);
-        return `<div class="card"><div class="row"><strong>${esc(wf.name)}</strong> ${healed ? '<span class="badge" data-workflow-heal="' + esc(wf.id) + '">healed</span>' : ""}</div>
+        const fresh = wf.replayed === false ? '<span class="badge">not yet replayed</span>' : "";
+        return `<div class="card"><div class="row"><strong>${esc(wf.name)}</strong> ${healed ? '<span class="badge" data-workflow-heal="' + esc(wf.id) + '">healed</span>' : ""} ${fresh}</div>
           <div>${wf.steps} steps</div>
           <div class="row">
             <button data-open="${wf.id}">Edit</button>
@@ -135,7 +207,7 @@
           <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
           <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
         </select></label>
-        <p>Auto is the default. Healing runs only when a model key is set, or when this build is started with the fixture healer for a demo. Otherwise replay stops on the failed step.</p>
+        <p>Auto is the default. A miss tries a cheap repair first. A model heal runs only after those fail, and only when a model key is set or this process is waiting on a Cursor heal. Otherwise replay stops and names the phase: wait_for, find, action, expect, or auth. An auth miss is a login redirect and is not sent to a model.</p>
         <button id="save-settings">Save</button></section>`;
     }
 
@@ -148,7 +220,7 @@
       return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
     }
 
-    function bind() {
+    function bind(kept) {
       document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; render(); });
       const start = document.getElementById("start");
       if (start) start.onclick = async () => {
@@ -161,7 +233,9 @@
       if (load) load.onclick = async () => {
         const id = document.getElementById("trail-id").value;
         const trail = await (await fetch("/api/trails/" + encodeURIComponent(id))).json();
-        document.getElementById("trail-view").textContent = JSON.stringify(trail, null, 2);
+        trailText = JSON.stringify(trail, null, 2);
+        const view = document.getElementById("trail-view");
+        if (view) view.textContent = trailText;
       };
       document.querySelectorAll("[data-rename]").forEach((btn) => btn.onclick = async () => {
         const name = prompt("Name");
@@ -187,7 +261,7 @@
       const wf = document.getElementById("wf");
       if (wf) {
         wf.onchange = () => { lastWf = wf.value; refresh(); };
-        if (wf.value) fillArgs(wf.value);
+        if (wf.value) fillArgs(wf.value, kept);
       }
       const wfHeal = document.getElementById("wf-heal");
       if (wfHeal) wfHeal.onchange = async () => {
@@ -202,8 +276,17 @@
       };
       const run = document.getElementById("run");
       if (run) run.onclick = runReplay;
+      const check = document.getElementById("check-promotion");
+      if (check) check.onclick = checkPromotion;
       document.querySelectorAll("[data-keep]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.keep, "keep"));
       document.querySelectorAll("[data-revert]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.revert, "revert"));
+      const importYes = document.getElementById("import-yes");
+      if (importYes) importYes.onclick = () => answerImport({ accept: true });
+      const importNo = document.getElementById("import-no");
+      if (importNo) importNo.onclick = () => answerImport({ accept: false });
+      document.querySelectorAll("[data-import-profile]").forEach((btn) => {
+        btn.onclick = () => answerImport({ accept: true, profile: btn.dataset.importProfile });
+      });
       const save = document.getElementById("save-settings");
       if (save) save.onclick = async () => {
         await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ heal: document.getElementById("heal").value }) });
@@ -221,19 +304,30 @@
       };
     }
 
-    async function fillArgs(id) {
+    async function fillArgs(id, kept) {
       const doc = await (await fetch("/api/workflows/" + id)).json();
       const form = document.getElementById("args");
       form.innerHTML = doc.inputs.map((input) => field(input)).join("") || "<p>This workflow has no inputs.</p>";
+      if (kept) {
+        for (const el of form.querySelectorAll("input[name], textarea[name], select[name]")) {
+          const value = kept[el.name];
+          if (typeof value === "string" && value) el.value = value;
+        }
+      }
       form.querySelectorAll(".drop").forEach((zone) => {
         zone.ondragover = (event) => { event.preventDefault(); zone.classList.add("over"); };
         zone.ondragleave = () => zone.classList.remove("over");
         zone.ondrop = (event) => {
           event.preventDefault();
           zone.classList.remove("over");
-          const file = event.dataTransfer.files[0];
-          zone.querySelector("input").files = event.dataTransfer.files;
-          zone.querySelector("span").textContent = file ? file.name : "";
+          const list = event.dataTransfer && event.dataTransfer.files;
+          const file = list && list[0];
+          const input = zone.querySelector("input");
+          if (input && list && list.length) {
+            try { input.files = list; } catch (err) { /* some engines reject the assignment */ }
+          }
+          zone._baoFile = file || null;
+          zone.querySelector("span").textContent = file ? file.name : "Drop a file here, or choose one.";
         };
       });
     }
@@ -251,10 +345,17 @@
 
     function renderRun(run) {
       const healed = (run.heals || []).length > 0;
-      const lines = (run.steps || []).map((step) => `<div class="${esc(step.status)}">${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`).join("");
+      const lines = (run.steps || []).map((step) => {
+        const phase = step.phase ? `<span class="phase">${esc(step.phase)}</span>` : "";
+        return `<div class="step-row ${esc(step.status)}" data-phase="${esc(step.phase || "")}">${phase}${esc(step.id)} ${esc(step.status)} ${esc(step.reason || "")}</div>`;
+      }).join("");
+      const repairs = (run.repairs || []).map((item) => `<div id="repair-${esc(item.repair)}">repair ${esc(item.repair)}: ${esc(item.detail)}</div>`).join("");
+      const receipts = (run.receipts || []).map((item) => `<div class="receipt" id="receipt-${esc(item.stepId)}"><strong>receipt ${item.pass ? "pass" : "fail"}</strong> expected ${esc(item.expected)} · read ${esc(item.actual)} · ${esc(String(item.hash || "").slice(0, 16))}</div>`).join("");
+      const promo = run.promotion;
+      const promoHtml = promo ? `<div class="row" id="promotion" data-status="${esc(promo.status)}"><span class="badge">${esc(promo.status)}</span><span>drift ${esc(promo.drift)} · replays ${esc(promo.replays)}${promo.reason ? " · " + esc(promo.reason) : ""}</span></div>${promo.status === "provisional" ? '<button id="check-promotion" class="primary">Check promotion</button>' : ""}` : "";
       const heals = (run.heals || []).map((item) => reviewHeal(run, item)).join("");
-      const failure = run.failure ? `<pre>${esc(JSON.stringify(publicFailure(run.failure), null, 2))}</pre>` : "";
-      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${heals}${failure}`;
+      const failure = run.failure ? `<p id="failure-phase"><strong>phase ${esc(run.failure.phase)}</strong> ${esc(run.failure.reason)}</p><pre id="failure" style="max-height:8rem; overflow:auto">${esc(JSON.stringify(publicFailure(run.failure), null, 2))}</pre>` : "";
+      return `<div class="row ${esc(run.status)}" id="run-status"><strong>${esc(run.status)}</strong> ${healed ? '<span class="badge" id="run-heal-badge">healed</span>' : ""}</div>${lines}${repairs}${receipts}${promoHtml}${heals}${failure}`;
     }
 
     function reviewHeal(run, item) {
@@ -313,6 +414,20 @@
       refresh();
     }
 
+    async function checkPromotion() {
+      const id = document.getElementById("wf").value;
+      const button = document.getElementById("check-promotion");
+      if (button) button.textContent = "Checking drift and two replays…";
+      const res = await fetch("/api/promotions/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const promotion = await res.json();
+      if (lastRun) lastRun.promotion = promotion;
+      refresh();
+    }
+
     async function runReplay() {
       const id = document.getElementById("wf").value;
       lastWf = id;
@@ -320,7 +435,8 @@
       const args = {};
       for (const el of form.querySelectorAll("[name]")) {
         if (el.type === "file") {
-          const file = el.files[0];
+          const zone = el.closest(".drop");
+          const file = el.files[0] || (zone && zone._baoFile);
           if (!file) continue;
           const bytes = new Uint8Array(await file.arrayBuffer());
           let bin = "";
@@ -335,8 +451,21 @@
       refresh();
     }
 
-    document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; render(); });
+    async function answerImport(body) {
+      const pending = state.pendingImport;
+      if (!pending) return;
+      renderKey = "";
+      await fetch("/api/import-login/answer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: pending.id, ...body }),
+      });
+      refresh();
+    }
+
+    document.querySelectorAll("nav button").forEach((btn) => btn.onclick = () => { screen = btn.dataset.screen; renderKey = ""; render(); });
     refresh();
+    setInterval(() => { refresh().catch(() => {}); }, 1000);
   </script>
 </body>
 </html>

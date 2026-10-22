@@ -1,0 +1,5 @@
+{"kind":"heal","status":"passed","model":{"provider":"cursor","name":"cursor","version":"live"},"patch":{"identity":{"surface":"dom","role":"button","name":"Add Element","text":"Add Element","path":[]}},"postconditionPassed":true,"repairs":[]}
+{"kind":"promotion","ts":1792609798201,"healId":"heal-1","workflowId":"wf-heal-add","stepId":"add","status":"provisional","drift":"pending","replays":0}
+{"kind":"promotion","ts":1792609798377,"healId":"heal-1","workflowId":"wf-heal-add","stepId":"add","status":"provisional","drift":"passed","replays":0}
+{"kind":"promotion","ts":1792609798460,"healId":"heal-1","workflowId":"wf-heal-add","stepId":"add","status":"provisional","drift":"passed","replays":1}
+{"kind":"promotion","ts":1792609798543,"healId":"heal-1","workflowId":"wf-heal-add","stepId":"add","status":"promoted","drift":"passed","replays":2}

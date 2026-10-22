@@ -96,6 +96,10 @@ test("interpret is deterministic and lifts a secret and a file without storing e
   assert.equal(blob.includes("taxes.pdf"), false);
   assert.equal(once.inputs.find((item) => item.type === "secret")?.name, "password");
   assert.equal(once.inputs.some((item) => item.type === "file"), true);
+  const upload = once.steps.find((step) => step.action === "upload");
+  assert.equal(upload?.postcondition?.kind, "text");
+  assert.equal(upload?.postcondition?.match, "{{file}}");
+  assert.equal(JSON.stringify(upload).includes("taxes.pdf"), false);
   assert.equal(once.steps.some((step) => step.unresolved), false);
   const typed = once.steps.find((step) => step.input === "username");
   assert.equal(typed?.value, "{{username}}");
@@ -257,6 +261,7 @@ test("the prompt text leaves the screenshot bytes on the audit snapshot", () => 
   const prompt = buildPrompt({
     stepId: "s0",
     index: 0,
+    phase: "find",
     intent: "Click login",
     reason: "below-threshold",
     snapshot: { screenshot: "AAAASECRETBYTES", screenshotRef: "png:16", dom: [{ testId: "login" }], ax: "button login" },
@@ -289,7 +294,7 @@ test("llm provider is unavailable without a key and does not fetch", async () =>
   const heal = llmHealFromEnv({}, (async () => { fetched += 1; return new Response("{}"); }) as typeof fetch);
   assert.equal(heal.available(), false);
   assert.equal(await heal.propose({
-    stepId: "s", index: 0, intent: "x", reason: "miss", snapshot: {},
+    stepId: "s", index: 0, phase: "find", intent: "x", reason: "miss", snapshot: {},
   }, workflow(id({ testId: "a" })).steps[0]!), null);
   assert.equal(fetched, 0);
   assert.equal(unavailableHeal().available(), false);
@@ -304,6 +309,130 @@ test("selection rule picks the row named by the input", () => {
   const hit = lookup(id({ role: "row", name: "Ada", testId: "row" }), filtered);
   assert.equal(hit.ok, true);
   assert.equal(filtered[hit.index!]?.name, "Grace");
+});
+
+test("a drop postcondition is the visible echo and a bare filename does not pass", () => {
+  const doc = interpret([
+    {
+      id: "d", ts: 1, kind: "act", op: "drop", fileName: "note.txt", rawPath: "/tmp/note.txt",
+      identity: id({ id: "drop", role: "div", testId: "drop", text: "Drop a file here" }),
+    },
+  ], { id: "wf-drop", name: "Drop", startUrl: "https://example.test/fixture" });
+  const step = doc.steps.find((item) => item.action === "drop");
+  assert.equal(step?.postcondition?.match, "Dropped file: {{drop}}");
+  assert.equal(JSON.stringify(doc).includes("note.txt"), false);
+  assert.equal(JSON.stringify(doc).includes("/tmp/note.txt"), false);
+  const args = { drop: { name: "bao-fix-run1.txt", path: "/tmp/bao-fix-run1.txt" } };
+  assert.equal(holds(step!.postcondition!, tree([], { texts: ["Waiting for a file", "Welcome grace"] }), args), false);
+  assert.equal(holds(step!.postcondition!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
+});
+
+test("interpret keeps login and confirm as human steps with no coordinates", () => {
+  const doc = interpret([
+    {
+      id: "login", ts: 1, kind: "act", op: "login",
+      provenance: { x: 4, y: 5, space: "viewport" },
+    },
+    {
+      id: "open", ts: 2, kind: "act", op: "click",
+      identity: id({ role: "radio", name: "Open" }),
+      afterText: "Open",
+    },
+    {
+      id: "apply", ts: 3, kind: "act", op: "confirm",
+      provenance: { x: 9, y: 9, space: "screen" },
+      afterText: "Security freeze is off",
+    },
+  ], { id: "wf-human", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  assert.equal(validateWorkflow(doc).length, 0);
+  assert.equal(doc.steps[0]?.action, "login");
+  assert.equal(doc.steps[0]?.human, true);
+  assert.equal(doc.steps[0]?.provenance, undefined);
+  assert.equal(doc.steps[0]?.label, "ensure logged in (import from chrome, else wait for user)");
+  assert.equal(doc.steps[1]?.action, "click");
+  assert.equal(doc.steps[1]?.identity?.name, "Open");
+  assert.equal(doc.steps[2]?.action, "confirm");
+  assert.equal(doc.steps[2]?.human, true);
+  assert.equal(doc.steps[2]?.provenance, undefined);
+  assert.equal(doc.steps[2]?.label, "confirm before applying");
+  assert.equal(doc.steps[2]?.postcondition?.match, "Security freeze is off");
+});
+
+test("interpret turns a status re-read into a verify step", () => {
+  const doc = interpret([
+    {
+      id: "open", ts: 1, kind: "act", op: "click",
+      identity: id({ role: "radio", name: "Open" }),
+    },
+    {
+      id: "apply", ts: 2, kind: "act", op: "confirm",
+    },
+    {
+      id: "status", ts: 3, kind: "act", op: "verify",
+      afterText: "Open",
+      provenance: { x: 1, y: 2, space: "viewport" },
+    },
+  ], { id: "wf-verify", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  assert.equal(validateWorkflow(doc).length, 0);
+  assert.equal(doc.steps[2]?.action, "verify");
+  assert.equal(doc.steps[2]?.label, "re-read the status");
+  assert.equal(doc.steps[2]?.human, undefined);
+  assert.equal(doc.steps[2]?.provenance, undefined);
+  assert.equal(doc.steps[2]?.expect?.kind, "text");
+  assert.equal(doc.steps[2]?.expect?.match, "Open");
+});
+
+test("a confirm step waits for a person and does not click", async () => {
+  let shown = "";
+  const apply = id({ name: "Apply", role: "button" });
+  const d = driver([apply], { texts: ["Your file is open"] });
+  d.showConfirm = (label) => { shown = label; };
+  const doc = workflow(apply);
+  doc.steps[0] = {
+    id: "c",
+    index: 0,
+    action: "confirm",
+    human: true,
+    label: "confirm before applying",
+    surface: "dom",
+    identity: apply,
+    timeoutMs: 0,
+    postcondition: { kind: "text", match: "Your file is open", timeoutMs: 0 },
+  };
+  const result = await replay(doc, {}, d);
+  assert.equal(result.status, "passed");
+  assert.equal(d.clicks, 0);
+  assert.equal(shown, "confirm before applying");
+  assert.equal(validate(doc), true);
+  assert.deepEqual(validateWorkflow(doc), []);
+});
+
+test("a login step never types", async () => {
+  let fills = 0;
+  const d = driver([], { url: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
+  d.fill = async () => { fills += 1; };
+  const doc = workflow(id({ role: "textbox" }));
+  doc.replayed = false;
+  doc.steps[0] = {
+    id: "login",
+    index: 0,
+    action: "login",
+    human: true,
+    label: "ensure logged in (import from chrome, else wait for user)",
+    surface: "dom",
+    timeoutMs: 0,
+    postcondition: { kind: "url", match: "usa.experian.com/mfe/protection", timeoutMs: 0 },
+  };
+  const ready = await replay(doc, {}, d);
+  assert.equal(ready.status, "passed");
+  assert.equal(fills, 0);
+  assert.equal(d.clicks, 0);
+  d.tree = async () => tree([], { url: "https://usa.experian.com/login" });
+  const waiting = await replay(doc, {}, d);
+  assert.equal(waiting.status, "failed");
+  assert.equal(waiting.failure?.reason, "waiting for you to log in");
+  assert.equal(fills, 0);
+  assert.equal(validate(doc), true);
 });
 
 test("value postcondition reads the live text", () => {

@@ -21,6 +21,27 @@ pub fn bundle_id_for_pid(pid: i32) -> String {
     }
 }
 
+/// Bring this pid's app forward. AXPosition on a background Chrome window is ignored.
+pub fn activate_pid(pid: i32) -> Result<(), String> {
+    unsafe {
+        let Some(cls) = AnyClass::get(c"NSRunningApplication") else {
+            return Err("NSRunningApplication is missing".into());
+        };
+        let app: Option<Retained<AnyObject>> =
+            msg_send![cls, runningApplicationWithProcessIdentifier: pid];
+        let Some(app) = app else {
+            return Err(format!("no running application for pid {pid}"));
+        };
+        let _: () = msg_send![&*app, unhide];
+        // NSApplicationActivateIgnoringOtherApps | NSApplicationActivateAllWindows
+        let ok: bool = msg_send![&*app, activateWithOptions: 3usize];
+        if !ok {
+            return Err(format!("activate failed for pid {pid}"));
+        }
+        Ok(())
+    }
+}
+
 pub fn pids_for_bundle(bundle: &str) -> Vec<i32> {
     unsafe {
         let Some(cls) = AnyClass::get(c"NSRunningApplication") else {

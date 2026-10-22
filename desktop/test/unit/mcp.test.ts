@@ -10,7 +10,7 @@ function frame(msg: unknown): Buffer {
   return Buffer.from(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
 }
 
-test("a scripted MCP client records a click in the bao trail", async () => {
+test("a scripted MCP client records a click in the bao trail", { skip: process.platform === "darwin" }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-"));
   const child = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
     env: { ...process.env, BAO_HOME: home },

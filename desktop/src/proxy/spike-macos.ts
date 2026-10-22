@@ -4,12 +4,17 @@
 import { execFile } from "node:child_process";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
+import type { Workflow } from "../../../src/types";
 import { MacOsHelper } from "./os-macos";
 import {
   clearDisplay, isTwelve, measureKeys, outsidePoint, readout, recordCalc, relaunchCalc, replayCalc,
 } from "./spike-macos-calc";
 import { runTextEdit } from "./spike-macos-edit";
-import { ARTIFACTS, CALC_BUNDLE, HELPER, ensureArtifacts, quitOwned, sleep, workDir, writeJson } from "./spike-macos-host";
+import {
+  ARTIFACTS, CALC_BUNDLE, HELPER, captureRegion, ensureArtifacts, quitOwned, sleep, workDir, writeJson,
+} from "./spike-macos-host";
+
+const FFMPEG = process.env.BAO_FFMPEG || "/etc/profiles/per-user/alexliu/bin/ffmpeg";
 
 async function gate(helper: MacOsHelper): Promise<Record<string, unknown>> {
   let perm = await helper.permissions(false);
@@ -35,8 +40,8 @@ async function encode(dir: string, out: string): Promise<string> {
   const frames = (await readdir(dir)).filter((name) => name.endsWith(".png")).sort();
   if (frames.length < 2) return "skipped";
   await new Promise<void>((resolve, reject) => {
-    execFile("ffmpeg", [
-      "-y", "-framerate", "2", "-i", path.join(dir, "frame-%02d.png"),
+    execFile(FFMPEG, [
+      "-y", "-framerate", "2", "-start_number", "1", "-i", path.join(dir, "frame-%02d.png"),
       "-c:v", "libx264", "-pix_fmt", "yuv420p", out,
     ], { timeout: 30000 }, (err) => err ? reject(err) : resolve());
   });
@@ -57,6 +62,7 @@ async function calculator(helper: MacOsHelper): Promise<Record<string, unknown>>
     if (!win) throw new Error("Calculator has no window");
     const blank = outsidePoint(win);
     await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, "calc-before.png"));
+    await captureRegion(blank.x - 60, blank.y + 16, 160, 110, path.join(ARTIFACTS, "calc-unresolved.png"));
     const openai = await recordCalc(helper, "openai", keys, blank);
     const openaiShown = readout((await helper.nodes(CALC_BUNDLE)).nodes ?? []);
     await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, "calc-openai-recorded.png"));
@@ -81,11 +87,27 @@ async function calculator(helper: MacOsHelper): Promise<Record<string, unknown>>
       cleared, blank, keys: keys.map((k) => ({ label: k.label, x: k.x, y: k.y, role: k.node.role, name: k.node.name })),
       openai: { shown: openaiShown, replayed: openaiAfter, ...openaiReplay, unresolved: openai.workflow.steps.filter((s) => s.unresolved).length, workflow: openai.workflow, trail: openai.trail },
       claude: { shown: claudeShown, replayed: claudeAfter, ...claudeReplay, workflow: claude.workflow, trail: claude.trail },
-      pass: isTwelve(openaiAfter) && isTwelve(claudeAfter) && !openaiReplay.coordinateReplay && !claudeReplay.coordinateReplay,
+      workflowsMatch: sameClicks(openai.workflow, claude.workflow),
+      pass: isTwelve(openaiAfter) && isTwelve(claudeAfter)
+        && !openaiReplay.coordinateReplay && !claudeReplay.coordinateReplay
+        && sameClicks(openai.workflow, claude.workflow)
+        && openai.workflow.steps.filter((s) => s.unresolved).length === 1,
     };
   } finally {
     await quitOwned(pid, "Calculator");
   }
+}
+
+function clickNames(workflow: Workflow): string[] {
+  return workflow.steps
+    .filter((step) => step.action === "osClick" && !step.unresolved && step.os)
+    .map((step) => `${step.os!.target.role}:${step.os!.target.name}`);
+}
+
+function sameClicks(a: Workflow, b: Workflow): boolean {
+  const left = clickNames(a);
+  const right = clickNames(b);
+  return left.length === 4 && left.join("|") === right.join("|");
 }
 
 async function launchOwned(): Promise<number> {
@@ -123,6 +145,12 @@ async function main(): Promise<void> {
     report.textedit = await runTextEdit(helper);
     report.videoOpenai = await encode(path.join(ARTIFACTS, "frames-openai"), path.join(ARTIFACTS, "calc-openai-replay.mp4"));
     report.videoClaude = await encode(path.join(ARTIFACTS, "frames-claude"), path.join(ARTIFACTS, "calc-claude-replay.mp4"));
+    const calc = report.calculator as { pass?: boolean } | undefined;
+    const edit = report.textedit as { pass?: boolean } | undefined;
+    if (!calc?.pass || !edit?.pass) process.exitCode = 1;
+  } catch (err) {
+    report.error = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.exitCode = 1;
   } finally {
     await writeJson("spike-macos-result.json", report);
     await rm(workDir(), { recursive: true, force: true });

@@ -22,6 +22,13 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const BIN = {
+  pgrep: "/usr/bin/pgrep",
+  open: "/usr/bin/open",
+  kill: "/bin/kill",
+  screencapture: "/usr/sbin/screencapture",
+};
+
 function exec(cmd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     execFile(cmd, args, { timeout: 20000 }, (err, stdout, stderr) => {
@@ -32,7 +39,7 @@ function exec(cmd: string, args: string[]): Promise<{ code: number; stdout: stri
 }
 
 export async function pidsOf(name: string): Promise<number[]> {
-  const { code, stdout } = await exec("pgrep", ["-x", name]);
+  const { code, stdout } = await exec(BIN.pgrep, ["-x", name]);
   if (code !== 0) return [];
   return stdout.split("\n").map((s) => Number(s.trim())).filter((n) => n > 0);
 }
@@ -41,7 +48,7 @@ export async function pidsOf(name: string): Promise<number[]> {
 export async function launchIfDown(app: string, processName: string): Promise<number | null> {
   const before = await pidsOf(processName);
   if (before.length > 0) return null;
-  const opened = await exec("open", ["-a", app]);
+  const opened = await exec(BIN.open, ["-a", app]);
   if (opened.code !== 0) throw new Error(`open -a ${app} failed: ${opened.stderr}`);
   for (let i = 0; i < 40; i++) {
     const now = await pidsOf(processName);
@@ -56,17 +63,38 @@ export async function quitOwned(pid: number | null, processName: string): Promis
   if (pid == null) return;
   const live = await pidsOf(processName);
   if (!live.includes(pid)) return;
-  await exec("kill", [String(pid)]);
+  await exec(BIN.kill, [String(pid)]);
   for (let i = 0; i < 20; i++) {
     if (!(await pidsOf(processName)).includes(pid)) return;
     await sleep(150);
   }
-  await exec("kill", ["-TERM", String(pid)]);
+  await exec(BIN.kill, ["-KILL", String(pid)]);
+  for (let i = 0; i < 20; i++) {
+    if (!(await pidsOf(processName)).includes(pid)) return;
+    await sleep(150);
+  }
+}
+
+/** A rectangle in screen points. This is not a full-screen grab. */
+export async function captureRegion(x: number, y: number, w: number, h: number, out: string): Promise<void> {
+  const rx = Math.max(0, Math.round(x));
+  const ry = Math.max(0, Math.round(y));
+  const rw = Math.max(40, Math.min(220, Math.round(w)));
+  const rh = Math.max(40, Math.min(160, Math.round(h)));
+  const shot = await exec(BIN.screencapture, ["-R", `${rx},${ry},${rw},${rh}`, "-o", "-x", out]);
+  if (shot.code !== 0) throw new Error(shot.stderr || "region capture failed");
 }
 
 export async function namesIn(dir: string): Promise<Set<string>> {
+  if (process.env.BAO_SKIP_AUTOSAVE === "1") return new Set();
   try {
-    return new Set(await readdir(dir));
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("readdir timed out")), 4000);
+      readdir(dir).then(
+        (names) => { clearTimeout(timer); resolve(new Set(names)); },
+        (err) => { clearTimeout(timer); reject(err); },
+      );
+    });
   } catch {
     return new Set();
   }

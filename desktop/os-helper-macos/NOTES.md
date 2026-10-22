@@ -179,3 +179,117 @@ Cursor.app is not in that chain. Its bundle id is `com.todesktop.230313mzl4w4u92
 (Team ID `VDXQ22DGB9`). `CGPreflightScreenCaptureAccess` inside `bao-os-macos`
 is what turned true, so the grant that matters for this check is the
 `bao-os-macos` row, not the Node row and not Cursor.app.
+
+## 2026-10-20, scripted replay
+
+Both privacy checks stayed true after rebuilds signed with `bao dev signing`.
+The designated requirement did not change. No further prompt.
+
+Calculator's keypad is still absent from `AXChildren`. A grid of
+`AXUIElementCopyElementAtPosition` inside the window records the buttons, and
+`press` uses that same harvest. The display number is the `AXStaticText` value
+(a leading left-to-right mark is stripped). Scroll areas named `Edit field` and
+`Last Expression` can read `0` after equals, so the static text wins.
+
+`AXPosition` moves the window. `AXSize` returns `-25200` even for the current
+size, and the helper reports `resized: false` instead of failing the move.
+
+Scripted OpenAI and Claude 7 + 5 = both replayed to `12` with no coordinate
+flags on `press`. The OpenAI loop has one unresolved off-window click.
+TextEdit's first window is an Open panel. `New Document` opens Untitled.
+A restored document with any other title still aborts without reading it.
+The untitled value `bao mac spike` was set and replayed.
+
+`open -W` can return before the helper writes `--result`, so the Node client
+polls that file.
+
+## 2026-10-20, live model
+
+`desktop/src/proxy/mcp-bao.ts` is a stdio MCP server. It accepts Calculator and
+TextEdit only. A click outside those windows is unresolved and is not pressed.
+Screenshot pixels are mapped onto the CoreGraphics window, then resolved to an
+accessibility element. The audit trail stores the before and after hashes.
+
+Claude Code's `auth status` was not logged in. No login browser was opened.
+Homebrew Codex 0.151.0 cannot call `gpt-6-astra`. The newer CLI bundled in
+ChatGPT.app can, and `codex login status` said it was logged in. MCP tool
+calls with `approval_policy` `never` fail unless the server sets
+`default_tools_approval_mode` to `approve`. That override was passed with `-c`.
+The user config file was not written.
+
+Codex pressed Clear and All Clear before the successful `7`, `Add`, `5`,
+`Equals` sequence. The display it reported was `12`. Replay bound `{{a}}` and
+`{{b}}` to `3+4` and `8+1`.
+
+TextEdit's window title is `Untitled` on one launch and `Untitled.rtf` on
+another. A title that does not start with `Untitled` and is not `Open` still
+aborts unread. Replay matches the text area by role and name (`First Text
+View`) and ignores that window-title path. `AXSize` on TextEdit did change the
+width. It did not on Calculator.
+
+Listing TextEdit's autosave directory hung in this session, so new Untitled
+autosave files were not deleted. Their contents were not read.
+
+## 2026-10-20, fixtures
+
+`fixture` writes one window: role, subrole, identifier, title, description,
+label, value, frame, enabled, focused, actions, child order, and the other
+attribute names. Element references are the word `element`. A title filter
+skips every other window before its value is copied. The menu bar is skipped.
+`type-keys` posts US ANSI characters, including `/`. `cg-key` and `cg-type`
+post the same chords through CGEvent only after `AXFrontmost` is true.
+`drag` posts a left-button drag and records whether the pointer moved.
+
+On this machine CGEvent mouse positions match accessibility top-left points.
+A drag from a Finder file icon onto TextEdit moved the pointer and did not
+change the document value. AX keyboard posting is accepted and TextEdit
+ignores it. CGEvent posting opens the Open panel and the Go to Folder sheet
+when TextEdit is frontmost. The sheet field exposes `AXConfirm`.
+
+Calculator keys are in `AXChildren` in this dump. Description is the visible
+label and identifier is the stable token (`Seven`, `AllClear`). TextEdit's
+text area identifier is `First Text View`. Safari's private-window address
+field accepts `AXValue` plus `AXConfirm`. An Electron window stays one empty
+role until `app.accessibilitySupportEnabled` is set after `app.whenReady`.
+
+## 2026-10-20, v1 desktop build
+
+`origin/v1/desktop` is `4153139` ("Merge spike/proxy-macos signing notes into
+the desktop v1 line"). That tip does not include the fixture walker. The app
+was built from a detached worktree of that commit. The worktree was removed
+after the build.
+
+`desktop/os-helper-macos/package-app.sh` and
+`desktop/packaging/macos/package-app.sh` signed with `bao dev signing`.
+`codesign --verify --deep --strict` passed for `Bao.app` and for the nested
+helper.
+
+- `Bao.app` designated requirement: identifier `dev.bao.desktop` and
+  certificate leaf `H"a522e15d431a2f36ace451dd575a02e9e877fbd1"`. The
+  executable is a shell script, so the host line is `com.apple.bash`.
+- Nested `BaoOSHelper.app`: identifier `dev.bao.oshelper` and the same
+  certificate leaf.
+
+Copies are in the agent store under `bao-mac-spike/v1/`: `Bao.app`, `Bao.dmg`
+(676K, UDZO), and `BaoOSHelper.app`. They are not in git.
+
+A `permissions` run of that helper copy, with no `--prompt`, reported
+accessibility true, screen capture true, prompted false, and ppid 1.
+
+`docs/mac-test.md` on that branch is a clean-account procedure. It was not
+run. `Bao.app` was not launched, because its launcher opens Google Chrome.
+The fresh-user grant, the record pass, and the two replays remain a manual
+test. `examples/workflows/calculator.json` was not replayed on this v1 binary.
+
+The live drift test "shift, theme, font, order, slow network, and 2x scale"
+failed in 914ms with `Cannot inspect /proc to confirm the owned Chrome
+process.` `desktop/src/launch.ts` reads `/proc` after Chrome has started.
+macOS has no `/proc`, so the check throws before any variant runs. The
+desktop server returned that string from the drive call. No `drift.json` was
+written. The throwaway Chrome stayed open (headless, a temp `bao-profile`
+directory, not the daily profile) until that process was quit, and the
+runner waited on the handle. The profile directory was deleted. The next
+check in the same function treats a command line containing `Google/Chrome`
+as the daily profile. The macOS Chrome binary path contains that string, so
+replacing the `/proc` read would still stop there. That function was not
+patched.

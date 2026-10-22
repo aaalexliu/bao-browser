@@ -3,19 +3,37 @@
 
 import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
-import { dumpPage, type DomDump } from "./dom-page";
+import { dumpPage, maskPasswordFields, unmaskPasswordFields, type DomDump } from "./dom-page";
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { Driver, HealNotice, LiveTree } from "./replay";
 import type { FileArg, Identity } from "./schema";
 
+export interface FileProof {
+  action: "upload" | "drop";
+  name: string;
+  via: "input.files" | "echo";
+}
+
+export interface PersonPrompts {
+  showConfirm?(label: string): void;
+  clearConfirm?(): void;
+  showLoginWait?(label: string): void;
+  clearLoginWait?(): void;
+}
+
 export class BrowserDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
+  readonly proofs: FileProof[] = [];
 
-  constructor(private readonly page: Page, private readonly onNotify?: (notice: HealNotice) => void) {}
+  constructor(
+    private readonly page: Page,
+    private readonly onNotify?: (notice: HealNotice) => void,
+    private readonly prompts?: PersonPrompts,
+  ) {}
 
   async tree(): Promise<LiveTree> {
-    const dump = await this.page.evaluate(dumpPage);
+    const dump = await this.evaluateDump();
     const nodes = assignSiblingIndex(dump.nodes.map((node) => toIdentity(node)));
     nodes.forEach((node, index) => {
       const handle = dump.nodes[index]?.handle;
@@ -25,17 +43,49 @@ export class BrowserDriver implements Driver {
       const identity = nodes.find((node) => this.handles.get(node) === item.handle);
       return identity ? [{ identity, value: item.value }] : [];
     });
-    return { nodes, url: dump.url, texts: dump.texts, values };
+    return {
+      nodes,
+      url: dump.url,
+      texts: dump.texts,
+      values,
+      boxes: dump.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 }),
+      hidden: dump.nodes.map((node) => !!node.hidden),
+      flags: dump.nodes.map((node) => ({ checked: node.checked, enabled: node.enabled })),
+    };
+  }
+
+  async waitIdle(timeoutMs: number): Promise<void> {
+    await this.page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => undefined);
+  }
+
+  private async evaluateDump() {
+    try {
+      return await this.page.evaluate(dumpPage);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/context was destroyed|Execution context/i.test(message)) throw err;
+      await this.page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => undefined);
+      return await this.page.evaluate(dumpPage);
+    }
   }
 
   async snapshot(): Promise<FailureSnapshot> {
-    const png = await this.page.screenshot({ type: "png" });
-    const dump = await this.page.evaluate(dumpPage);
-    let ax: string | undefined;
+    await this.page.evaluate(maskPasswordFields).catch(() => undefined);
+    let png: Buffer;
     try {
-      ax = await this.page.locator("body").ariaSnapshot();
-    } catch {
-      ax = undefined;
+      png = await this.page.screenshot({ type: "png" });
+    } finally {
+      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
+    }
+    const dump = await this.evaluateDump();
+    const secretField = dump.nodes.some((node) => node.id === "password" || node.nameAttr === "password");
+    let ax: string | undefined;
+    if (!secretField) {
+      try {
+        ax = await this.page.locator("body").ariaSnapshot();
+      } catch {
+        ax = undefined;
+      }
     }
     return {
       screenshot: png.toString("base64"),
@@ -55,25 +105,58 @@ export class BrowserDriver implements Driver {
     await this.page.locator(this.sel(node)).click();
   }
 
-  async fill(node: Identity, text: string): Promise<void> {
-    await this.page.locator(this.sel(node)).fill(text);
+  async fill(node: Identity, text: string, secret = false): Promise<void> {
+    const loc = this.page.locator(this.sel(node));
+    if (!secret) {
+      await loc.fill(text);
+      return;
+    }
+    try {
+      await loc.evaluate((el, value) => {
+        if (!(el instanceof HTMLInputElement)) throw new Error("not a field");
+        el.focus();
+        el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }, text);
+    } catch {
+      throw new Error("could not fill the secret field");
+    }
   }
 
   async key(key: string): Promise<void> {
-    await this.page.keyboard.press(key);
+    const named = key.replace(/^ctrl\+/i, "Control+").replace(/^cmd\+/i, "Meta+").replace(/^alt\+/i, "Alt+");
+    await this.page.keyboard.press(named);
   }
 
   async upload(node: Identity, files: FileArg[]): Promise<void> {
-    await this.page.locator(this.sel(node)).setInputFiles(files.map((file) => file.path));
+    const want = files[0]?.name || "";
+    if (!want) throw new Error("upload has no file");
+    const loc = this.page.locator(this.sel(node));
+    await loc.setInputFiles(files.map((file) => file.path));
+    const got = await loc.evaluate((el, name) => {
+      const input = el instanceof HTMLInputElement && el.type === "file"
+        ? el
+        : el.querySelector("input[type=file]");
+      const field = input instanceof HTMLInputElement ? input : null;
+      const file = field?.files?.[0];
+      if (field && file && file.name === name) field.dispatchEvent(new Event("change", { bubbles: true }));
+      return file?.name || "";
+    }, want);
+    if (got !== want) throw new Error(`upload did not land: wanted ${want}, input.files[0].name is ${got || "empty"}`);
+    this.proofs.push({ action: "upload", name: got, via: "input.files" });
   }
 
   async drop(node: Identity, files: FileArg[]): Promise<void> {
+    const want = files[0]?.name || "";
+    if (!want) throw new Error("drop has no file");
     const payload = files.map((file) => ({
       name: file.name,
       b64: readFileSync(file.path).toString("base64"),
     }));
+    const phrase = `Dropped file: ${want}`;
     const handle = this.handle(node);
-    await this.page.evaluate(({ handle, payload }) => {
+    const landed = await this.page.evaluate(({ handle, payload, phrase }) => {
       const el = document.querySelector(`[data-bao-i="${handle}"]`);
       if (!el) throw new Error("drop target missing");
       const dt = new DataTransfer();
@@ -86,7 +169,25 @@ export class BrowserDriver implements Driver {
       for (const type of ["dragenter", "dragover", "drop"]) {
         el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
       }
-    }, { handle, payload });
+      const echo = document.querySelector("[data-testid='received-drop']");
+      if (echo instanceof HTMLElement) echo.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const text = echo instanceof HTMLElement ? (echo.innerText || "").replace(/\s+/g, " ").trim() : "";
+      const rect = echo instanceof HTMLElement ? echo.getBoundingClientRect() : null;
+      const visible = !!rect
+        && rect.width > 0
+        && rect.height > 0
+        && rect.top >= 0
+        && rect.left >= 0
+        && rect.bottom <= window.innerHeight + 1
+        && rect.right <= window.innerWidth + 1;
+      return { text, visible };
+    }, { handle, payload, phrase });
+    if (landed.text !== phrase || !landed.visible) {
+      const where = landed.text ? `"${landed.text}"` : "absent";
+      const place = landed.visible ? "" : " and offscreen";
+      throw new Error(`drop did not land: wanted visible "${phrase}", echo is ${where}${place}`);
+    }
+    this.proofs.push({ action: "drop", name: want, via: "echo" });
   }
 
   async digits(): Promise<void> {
@@ -95,6 +196,22 @@ export class BrowserDriver implements Driver {
 
   async check(node: Identity, checked: boolean): Promise<void> {
     await this.page.locator(this.sel(node)).setChecked(checked);
+  }
+
+  showConfirm(label: string): void {
+    this.prompts?.showConfirm?.(label);
+  }
+
+  clearConfirm(): void {
+    this.prompts?.clearConfirm?.();
+  }
+
+  showLoginWait(label: string): void {
+    this.prompts?.showLoginWait?.(label);
+  }
+
+  clearLoginWait(): void {
+    this.prompts?.clearLoginWait?.();
   }
 
   async notify(notice: HealNotice): Promise<void> {
@@ -137,6 +254,7 @@ function toIdentity(node: DomDump): Identity {
     label: node.label,
     text: node.text,
     cssPath: node.cssPath,
+    xpath: node.xpath,
     path: node.path,
     value: node.value,
   };

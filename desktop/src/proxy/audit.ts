@@ -58,6 +58,7 @@ export interface AuditEvent {
     identifier?: string;
     path: { role: string; name?: string }[];
     value?: string;
+    key?: string;
   };
   /** sha256 of a screenshot crop kept for an unresolved pixel. */
   crop?: string;
@@ -178,6 +179,7 @@ function targetOf(e: AuditEvent): Step["target"] {
 
 function osAction(op: string): Step["action"] {
   if (op === "osClick") return "osClick";
+  if (op === "osKey") return "osKey";
   if (op === "osSetValue") return "osSetValue";
   return "osType";
 }
@@ -207,7 +209,7 @@ export function deriveWorkflow(
   const steps: Step[] = [];
   for (const e of events) {
     if (e.kind !== "act") continue;
-    if (e.op === "osClick" || e.op === "osType" || e.op === "osSetValue") {
+    if (e.op === "osClick" || e.op === "osType" || e.op === "osSetValue" || e.op === "osKey") {
       const action = osAction(e.op);
       const osBase: Step = {
         ts: e.ts,
@@ -227,7 +229,7 @@ export function deriveWorkflow(
       const platform = osPlatform(e);
       steps.push({
         ...osBase,
-        label: osLabel(e, action),
+        label: action === "osKey" ? `Key ${e.os.key || e.os.name || "key"}` : osLabel(e, action),
         os: {
           target: {
             platform,
@@ -241,6 +243,7 @@ export function deriveWorkflow(
             path: e.os.path,
           },
           value: e.sensitive ? undefined : e.os.value,
+          key: e.os.key,
         },
         sensitive: e.sensitive || undefined,
       });

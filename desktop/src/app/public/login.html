@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Sign in</title>
+  <style>
+    :root { color-scheme: light; font-size: 18px; }
+    body { font-family: sans-serif; margin: 2rem; background: #f4f7fb; color: #142033; max-width: 28rem; }
+    form { display: grid; gap: 0.8rem; }
+    label { display: grid; gap: 0.3rem; }
+    input, button { font: inherit; padding: 0.45rem 0.6rem; }
+    h1 { font-size: 1.6rem; margin-bottom: 0.4rem; }
+    #who { margin: 0; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Sign in</h1>
+  <form id="login" action="/login" method="post">
+    <section id="stage-user">
+      <label>Username <input id="username" name="username" type="text" autocomplete="username" data-testid="username"></label>
+      <button id="continue" type="button" data-testid="login-continue">Continue</button>
+    </section>
+    <section id="stage-password" hidden>
+      <p id="who" data-testid="who"></p>
+      <label>Password <input id="password" name="password" type="password" autocomplete="current-password" data-testid="password"></label>
+      <button id="signin" type="button" data-testid="login-submit">Sign in</button>
+    </section>
+    <section id="stage-code" hidden>
+      <h2 id="verify-title">Verify it's you</h2>
+      <label>Code <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" data-testid="verify-code"></label>
+      <button id="verify" type="button" data-testid="verify-submit">Verify</button>
+    </section>
+  </form>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const verify = params.get("verify") === "1";
+    const next = params.get("next") || "/freeze";
+    const userStage = document.getElementById("stage-user");
+    const passStage = document.getElementById("stage-password");
+    const codeStage = document.getElementById("stage-code");
+    const username = document.getElementById("username");
+    const password = document.getElementById("password");
+    const code = document.getElementById("code");
+    document.getElementById("continue").addEventListener("click", () => {
+      const name = username.value.trim();
+      if (!name) return;
+      document.getElementById("who").textContent = name;
+      userStage.hidden = true;
+      passStage.hidden = false;
+      password.focus();
+    });
+    document.getElementById("signin").addEventListener("click", async () => {
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ username: username.value.trim(), password: password.value, next, verify }),
+      });
+      const body = await res.json();
+      if (body.stage === "code" && codeStage) {
+        passStage.hidden = true;
+        codeStage.hidden = false;
+        password.value = "";
+        return;
+      }
+      if (body.ok && body.next) location.assign(body.next);
+    });
+    const verifyButton = document.getElementById("verify");
+    if (verifyButton) verifyButton.addEventListener("click", async () => {
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ code: code.value, next }),
+      });
+      const body = await res.json();
+      if (body.ok && body.next) location.assign(body.next);
+    });
+  </script>
+</body>
+</html>

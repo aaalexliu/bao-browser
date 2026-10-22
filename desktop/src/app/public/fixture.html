@@ -16,25 +16,33 @@
       padding: 1.2rem;
       min-height: 3rem;
     }
-    #flash, #files, #dropped { font-weight: 600; }
+    #status { position: sticky; top: 0; z-index: 2; display: grid; gap: 0.35rem; background: #f6f4ef; padding-bottom: 0.6rem; }
+    #flash, #files, #dropped { font-weight: 700; font-size: 1.6rem; margin: 0; min-height: 2.4rem; background: #efe7d2; padding: 0.45rem 0.7rem; }
     ul { padding-left: 1.2rem; }
     li { padding: 0.2rem 0; }
   </style>
 </head>
 <body>
   <h1>Bao fixture</h1>
+  <div id="status">
+    <p id="flash" data-testid="flash"></p>
+    <p id="dropped" data-testid="received-drop">Waiting for a drop</p>
+  </div>
   <form id="login">
     <label>Username <input id="username" name="username" autocomplete="username"></label>
     <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
     <button id="login-btn" type="submit" data-testid="login">Log in</button>
   </form>
-  <p id="flash"></p>
   <section>
     <label>Upload <input id="file" name="file" type="file" data-testid="file"></label>
-    <p id="files"></p>
+    <p id="files" data-testid="received-file">Waiting for a file</p>
     <div id="drop" data-testid="drop" data-bao-drop="1">Drop a file here</div>
-    <p id="dropped"></p>
   </section>
+  <form id="note-form">
+    <label>Note <input id="note-input" name="note" data-testid="note"></label>
+    <button id="save-note" type="submit" data-testid="save-note">Save note</button>
+  </form>
+  <p id="saved-note" data-testid="saved-note"></p>
   <ul id="rows">
     <li data-testid="row" data-name="Ada">Ada</li>
     <li data-testid="row" data-name="Grace">Grace</li>
@@ -62,16 +70,22 @@
       flash.textContent = "Welcome " + user;
       history.pushState({}, "", "/secure");
     });
-    document.getElementById("file").addEventListener("change", (event) => {
-      const file = event.target.files && event.target.files[0];
-      document.getElementById("files").textContent = file ? file.name : "";
-    });
+    const showFile = (file) => {
+      document.getElementById("files").textContent = file ? "Received file: " + file.name : "Waiting for a file";
+    };
+    const fileInput = document.getElementById("file");
+    fileInput.addEventListener("change", (event) => showFile(event.target.files && event.target.files[0]));
+    fileInput.addEventListener("input", (event) => showFile(event.target.files && event.target.files[0]));
     const drop = document.getElementById("drop");
     drop.addEventListener("dragover", (event) => event.preventDefault());
     drop.addEventListener("drop", (event) => {
       event.preventDefault();
       const file = event.dataTransfer && event.dataTransfer.files[0];
-      document.getElementById("dropped").textContent = file ? file.name : "";
+      document.getElementById("dropped").textContent = file ? "Dropped file: " + file.name : "";
+    });
+    document.getElementById("note-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      document.getElementById("saved-note").textContent = document.getElementById("note-input").value;
     });
     document.getElementById("rows").addEventListener("click", (event) => {
       const li = event.target.closest("li");
