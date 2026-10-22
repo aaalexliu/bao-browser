@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
+import { CopyMenu } from "@/app/share-menu";
 import { listingStat } from "@/lib/listing";
 import { HttpError, publicWorkflow } from "@/lib/registry";
 import { principal, when } from "@/lib/viewer";
-import { SetupForm } from "../../setup-form";
+import type { SetupQuestion } from "../../setup-form";
 
 export const dynamic = "force-dynamic";
 
@@ -63,20 +64,19 @@ export default async function PublicWorkflowPage({
               );
             })}
           </ol>
-          <section data-testid="inputs">
+          <section data-testid="inputs" className="listing-inputs">
             <h2>Inputs</h2>
-            {workflow.questions.length ? (
-              <ul className="ask" data-testid="setup-questions">
-                {workflow.questions.map((question) => (
-                  <li key={question.name}>
-                    <strong>{question.label || question.prompt}</strong>
-                    <span className="chip">{question.type}</span>
-                    {question.prompt && question.prompt !== question.label ? <p className="muted">{question.prompt}</p> : null}
-                    {question.hint ? <p className="muted">{question.hint}</p> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="muted" data-testid="setup-questions">This workflow asks for nothing.</p>}
+            {user ? (
+              <form className="listing-copy" action={`/api/marketplace/${workflow.id}/fork`} method="post">
+                <InputList questions={workflow.questions} fields />
+                <button className="primary" type="submit">Copy to my library</button>
+              </form>
+            ) : (
+              <>
+                <InputList questions={workflow.questions} fields={false} />
+                <p className="listing-copy"><a href="/login">Sign in</a> to copy this into your library.</p>
+              </>
+            )}
           </section>
           <h2>Versions</h2>
           <ol className="versions" data-testid="versions">
@@ -84,12 +84,6 @@ export default async function PublicWorkflowPage({
               <li key={version.version}>v{version.version} · {when(version.created_at)}</li>
             ))}
           </ol>
-          <h2>Inputs on this account</h2>
-          {user ? (
-            <SetupForm action={`/api/marketplace/${workflow.id}/fork`} questions={workflow.questions} submit="Copy to my library" />
-          ) : (
-            <p><a href="/login">Sign in</a> to copy this into your library.</p>
-          )}
         </div>
         <aside className="card listing-side">
           <h2>Sites</h2>
@@ -99,21 +93,59 @@ export default async function PublicWorkflowPage({
           </div>
           <h2>Replay</h2>
           <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
-          <p className="mono" data-testid="import-link">{workflow.importLink}</p>
-          <p className="mono" data-testid="deeplink">{workflow.link}</p>
+          <CopyMenu link={workflow.link} importLink={workflow.importLink} />
         </aside>
       </div>
-      <h2>Report</h2>
-      {query.reported ? <p className="notice">Report received.</p> : null}
-      <p className="muted">{workflow.reports} report{workflow.reports === 1 ? "" : "s"}</p>
-      {user ? (
-        <form action={`/api/marketplace/${workflow.id}/report`} method="post">
-          <label>What is wrong?
-            <input name="reason" required />
-          </label>
-          <button type="submit">Report</button>
-        </form>
-      ) : null}
+      <details className="report" data-testid="report">
+        <summary>Report a problem</summary>
+        {query.reported ? <p className="notice">Report received.</p> : null}
+        <p className="count">{workflow.reports} report{workflow.reports === 1 ? "" : "s"}</p>
+        {user ? (
+          <form action={`/api/marketplace/${workflow.id}/report`} method="post">
+            <label>What is wrong?
+              <input name="reason" required />
+            </label>
+            <button type="submit">Send report</button>
+          </form>
+        ) : <p><a href="/login">Sign in</a> to send a report.</p>}
+      </details>
     </article>
+  );
+}
+
+function InputList({ questions, fields }: { questions: SetupQuestion[]; fields: boolean }) {
+  if (!questions.length) return <p className="muted" data-testid="setup-questions">This workflow asks for nothing.</p>;
+  return (
+    <ul className="ask" data-testid="setup-questions">
+      {questions.map((question) => (
+        <li key={question.name}>
+          <strong>{question.label || question.prompt}</strong>
+          <span className="chip">{question.type}</span>
+          {question.prompt && question.prompt !== question.label ? <p className="muted">{question.prompt}</p> : null}
+          {question.hint ? <p className="muted">{question.hint}</p> : null}
+          {fields ? <Answer question={question} /> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Answer({ question }: { question: SetupQuestion }) {
+  if (question.type === "file") return <input type="file" disabled aria-label={question.prompt} />;
+  if (question.type === "secret") return <input disabled placeholder="Entered on your device, never sent" aria-label={question.prompt} />;
+  if (question.type === "choice") {
+    return (
+      <select name={`a_${question.name}`} aria-label={question.prompt}>
+        {(question.choices ?? []).map((choice) => <option key={choice}>{choice}</option>)}
+      </select>
+    );
+  }
+  return (
+    <input
+      name={`a_${question.name}`}
+      required={question.required}
+      aria-label={question.prompt}
+      placeholder={question.example ? `for example ${question.example}` : undefined}
+    />
   );
 }

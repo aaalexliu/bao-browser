@@ -8,7 +8,7 @@ import path from "node:path";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { lookup } from "./identity";
-import { actWaitMs, confirmButton, makeAsk, type HumanAsk } from "./human-ask";
+import { actWaitMs, confirmButton, makeAsk, siteHost, type HumanAsk } from "./human-ask";
 import { identityView } from "./run-trace";
 import {
   applyPatch,
@@ -722,6 +722,7 @@ async function runConfirm(
     stepCount: workflow.steps.length,
     label: step.label,
     button: confirmButton(step),
+    site: siteHost(workflow.startUrl),
     timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
     runId: gate.runId,
   }));
@@ -807,6 +808,7 @@ async function settleLogin(
       stepIndex: step.index + 1,
       stepCount: workflow.steps.length,
       label: step.label,
+      site: siteHost(workflow.startUrl),
       timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
       runId: gate.runId,
     }));

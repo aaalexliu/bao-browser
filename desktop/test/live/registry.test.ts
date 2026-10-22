@@ -278,8 +278,9 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       await page.getByTestId("domains").waitFor();
       await page.getByTestId("setup-questions").waitFor();
       assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
-      assert.match(await page.getByTestId("import-link").innerText(), /bao:\/\/import\/wikipedia-search/);
-      assert.match(await page.getByTestId("deeplink").innerText(), /bao:\/\/workflow\/wikipedia-search/);
+      assert.equal(await page.getByTestId("import-link").getAttribute("data-copy"), "bao://import/wikipedia-search");
+      assert.equal(await page.getByTestId("deeplink").getAttribute("data-copy"), "bao://workflow/wikipedia-search");
+      assert.equal((await page.getByTestId("workflow").innerText()).includes("bao://"), false);
       assert.equal(await page.getByTestId("install").getAttribute("href"), "bao://import/wikipedia-search");
       await page.screenshot({ path: path.join(shots, "workflow-light.png"), fullPage: true });
       await page.screenshot({ path: path.join(shots, "workflow.png"), fullPage: true });

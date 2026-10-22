@@ -46,6 +46,8 @@ export interface HeldRow {
   modelCalls: number | null;
   tokens: number | null;
   note: string;
+  /** Set when the site cannot satisfy the oracle. Empty means the row counts. */
+  invalid: string;
 }
 
 export interface BadJudgeRow {
@@ -390,6 +392,7 @@ function blank(note: string): Omit<HeldRow, "caseId" | "condenser"> {
     modelCalls: null,
     tokens: null,
     note: note.slice(0, 400),
+    invalid: "",
   };
 }
 
@@ -487,9 +490,9 @@ async function deterministicRow(
   try {
     const workflow = condense(events, metaOf(truth));
     const scored = await scoreWorkflow(truth, events, workflow, true, context);
-    return { caseId: truth.id, condenser: "condense", modelHumanRecall: null, modelSecretRecall: null, judge: null, tokens: null, ...scored };
+    return { caseId: truth.id, condenser: "condense", modelHumanRecall: null, modelSecretRecall: null, judge: null, tokens: null, invalid: fixtureCell(truth), ...scored };
   } catch (err) {
-    return { caseId: truth.id, condenser: "condense", ...blank(err instanceof Error ? err.message : String(err)), replay: "fail" };
+    return { caseId: truth.id, condenser: "condense", ...blank(err instanceof Error ? err.message : String(err)), replay: "fail", invalid: fixtureCell(truth) };
   }
 }
 
@@ -518,10 +521,11 @@ async function modelOnlyRow(
       modelSecretRecall: secret.recall,
       judge: null,
       tokens: reply.tokens,
+      invalid: fixtureCell(truth),
       ...scored,
     };
   } catch (err) {
-    return { caseId: truth.id, condenser, ...blank(err instanceof Error ? err.message : String(err)), replay: "fail" };
+    return { caseId: truth.id, condenser, ...blank(err instanceof Error ? err.message : String(err)), replay: "fail", invalid: fixtureCell(truth) };
   }
 }
 
@@ -566,11 +570,12 @@ async function hybridRow(
       modelSecretRecall: null,
       judge,
       tokens,
+      invalid: fixtureCell(truth),
       ...scored,
       note: notes.join("; ").slice(0, 400),
     };
   } catch (err) {
-    return { caseId: truth.id, condenser, ...blank(err instanceof Error ? err.message : String(err)), replay: "fail" };
+    return { caseId: truth.id, condenser, ...blank(err instanceof Error ? err.message : String(err)), replay: "fail", invalid: fixtureCell(truth) };
   }
 }
 
@@ -648,6 +653,33 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
   return { score: judgeFraction(summaryFail ? false : parsed.summary, steps, ids), tokens: reply.tokens || 0 };
 }
 
+function fixtureCell(truth: HeldTruth): string {
+  if (!truth.invalid) return "";
+  return `${truth.invalid.reason} ${truth.invalid.evidence}`.replace(/\|/g, "/");
+}
+
+function rowKind(row: HeldRow): "condense" | "model" | "hybrid" {
+  if (row.condenser === "condense") return "condense";
+  if (row.condenser.startsWith("hybrid/")) return "hybrid";
+  return "model";
+}
+
+/** Step precision, recall, and replay. Invalid fixtures drop out when includeInvalid is false. */
+export function heldAverages(rows: readonly HeldRow[], includeInvalid: boolean): { condenser: string; n: number; precision: number; recall: number; replay: string }[] {
+  return (["condense", "model", "hybrid"] as const).map((kind) => {
+    const mine = rows.filter((row) => rowKind(row) === kind && (includeInvalid || !row.invalid));
+    const scored = mine.filter((row) => row.stepPrecision != null && row.stepRecall != null);
+    const precision = scored.length ? scored.reduce((sum, row) => sum + (row.stepPrecision || 0), 0) / scored.length : 0;
+    const recall = scored.length ? scored.reduce((sum, row) => sum + (row.stepRecall || 0), 0) / scored.length : 0;
+    const pass = mine.filter((row) => row.replay === "pass").length;
+    return { condenser: kind, n: mine.length, precision, recall, replay: `${pass}/${mine.length || 0}` };
+  });
+}
+
+function formatRates(rates: ReturnType<typeof heldAverages>): string {
+  return rates.map((rate) => `${rate.condenser} P ${rate.precision.toFixed(3)} R ${rate.recall.toFixed(3)} replay ${rate.replay}`).join("; ");
+}
+
 function replayPasses(rows: HeldRow[], pred: (row: HeldRow) => boolean): string {
   const mine = rows.filter(pred);
   const ok = mine.filter((row) => row.replay === "pass").length;
@@ -674,7 +706,13 @@ function render(
     "",
     `Effect filter wrongly dropped ${drops.length} true keep steps: ${dropText}.`,
     "",
-    `Replay pass rate: condense ${replayPasses(rows, (row) => row.condenser === "condense")}, model ${replayPasses(rows, (row) => row.condenser !== "condense" && !row.condenser.startsWith("hybrid/"))}, hybrid ${replayPasses(rows, (row) => row.condenser.startsWith("hybrid/"))}.`,
+    rows.some((row) => row.invalid)
+      ? [
+          "Invalid fixtures stay in the table and are not counted as bao misses.",
+          `Including invalid fixtures: ${formatRates(heldAverages(rows, true))}.`,
+          `Excluding invalid fixtures: ${formatRates(heldAverages(rows, false))}.`,
+        ].join("\n\n")
+      : `Replay pass rate: condense ${replayPasses(rows, (row) => row.condenser === "condense")}, model ${replayPasses(rows, (row) => row.condenser !== "condense" && !row.condenser.startsWith("hybrid/"))}, hybrid ${replayPasses(rows, (row) => row.condenser.startsWith("hybrid/"))}.`,
     "",
     `Intent lint caught ${low}/${bad.length} bad texts and falsely rejected ${goods.length}/${GOOD_INTENTS.length} good intents.`,
     "",
@@ -682,8 +720,8 @@ function render(
     "",
     "Step precision and recall use action, id, name attribute, accessible name, text (60 chars), css path, gate, input, and key. Param recall, secret, and human gates use the same scorers as `bao eval intent`. Replay is two runs in a real browser with new inputs. A replay that misses its page oracle is not a pass. Model calls are heal calls. The judge rubric is the one in `desktop/src/eval/intent/labels.ts`, unchanged.",
     "",
-    "| case | condenser | step P | step R | param | secret | human P | human R | model human | model secret | judge | replay | model calls | tokens | note |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| case | condenser | step P | step R | param | secret | human P | human R | model human | model secret | judge | replay | model calls | tokens | note | invalid fixture |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
   const body = rows.map((row) => [
     row.caseId,
@@ -701,6 +739,7 @@ function render(
     row.modelCalls == null ? "" : String(row.modelCalls),
     row.tokens == null ? "" : String(row.tokens),
     row.note.replace(/\|/g, "/"),
+    row.invalid.replace(/\|/g, "/"),
   ].join(" | "));
   const lines = body.map((line) => `| ${line} |`);
   const judgeHeader = [

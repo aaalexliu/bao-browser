@@ -180,7 +180,7 @@ A past run can be started again from the run viewer. Re-run with this run's inpu
 The integration branch (pull request 58) is the tree a Mac build should use. It already contains the desktop window, and this pass landed the rest of the open desktop work on that same branch:
 
 - Step pictures in the filmstrip and in Before / After are cropped around the target element's box, with padding, the control centered and fully in frame, and a thin outline on it. A type step shows the field before the value and after it. A secret is covered.
-- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. The act bar says "Sign in on the Bao Chrome window."
+- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. The act bar says "Sign in to the site in the Bao window."
 - The Mac permission card is only on macOS, and only while Accessibility or Screen Recording is missing. Library shows it once, collapsed until opened. After Continue, a sidebar dot is the only copy. Linux does not list those grants as missing.
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
@@ -319,7 +319,7 @@ npm --prefix web run dev
 
 The dev server uses PGlite under `web/.data/pglite` and files under `web/.data/blobs` when `DATABASE_URL` is unset. `BAO_AUTH_STUB=1` (or any non-production run) returns the email sign-in link in the response instead of sending mail. The GitHub button signs you in as a verified stub user.
 
-Pair a Mac from Devices, then:
+Pair a Mac from Devices. The page shows a code. Type it in the Mac app under Settings → Sync. The command line is the other way:
 
 ```bash
 npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/share/bao
@@ -355,7 +355,7 @@ Listing stays disabled until a device replays that redacted copy:
 npm run bao -- sync review <id> --inputs inputs.json
 ```
 
-`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace card counts that clean replay: when no device run was stored it says “Verified by 1 replay” instead of “0 runs.” The listing page shows the step list with redacted crops, the inputs it asks for, the sites it touches, and the version history. Install opens `bao://import/<id>`. Fork uses the same import sheet. Report sends a reason. There is no payment step.
+`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace card counts that clean replay: when no device run was stored it says “Verified by 1 replay” instead of “0 runs.” The listing page shows the step list with redacted crops, one Inputs section, the sites it touches, and the version history. Install opens `bao://import/<id>`. Share copies the workflow link and the import link. Copy to my library sits with the inputs. Report a problem is a quiet link at the bottom of the page. There is no payment step.
 
 Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted: the password is not stored, so the clean replay cannot sign in.
 

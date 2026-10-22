@@ -28,7 +28,7 @@ test("confirm act bar names the button and has no approve control", () => {
   });
   const html = actBar({ activeAsk: ask }, 1_000);
   assert.match(html, /You need to act · experian: unfreeze · step 5 of 6/);
-  assert.match(html, /Press Apply in the Bao Chrome window\. bao will not press it\./);
+  assert.match(html, /Press Apply on the site in the Bao window/);
   assert.match(html, /Waiting 2:05 · times out /);
   assert.match(html, /run stops, nothing applied/);
   assert.equal(html.includes("act-continue"), false);
@@ -50,8 +50,7 @@ test("login act bar offers continue and does not press the site button", () => {
     now: 0,
   });
   const html = actBar({ activeAsk: ask }, 0);
-  assert.match(html, /Sign in on the Bao Chrome window/);
-  assert.match(html, /not recording keystrokes in password fields/);
+  assert.match(html, /Sign in to the site in the Bao window/);
   assert.match(html, /I'm signed in, continue/);
   assert.equal(html.includes(">Approve<"), false);
   assert.equal(html.includes("Press Apply"), false);
