@@ -164,7 +164,7 @@
       "properties": {
         "id": { "type": "string" },
         "index": { "type": "number" },
-        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login", "verify"] },
+        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check", "confirm", "login", "verify", "note"] },
         "label": { "type": "string" },
         "surface": { "enum": ["dom", "os"] },
         "identity": { "$ref": "#/$defs/identity" },

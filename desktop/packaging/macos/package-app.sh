@@ -24,6 +24,8 @@ cp -a node_modules/playwright node_modules/playwright-core "$APP/Contents/Resour
 if [[ -d desktop/os-helper-macos/BaoOSHelper.app ]]; then
   cp -a desktop/os-helper-macos/BaoOSHelper.app "$APP/Contents/Resources/BaoOSHelper.app"
 fi
+bash desktop/packaging/macos/build-capture-bar.sh
+cp -a "$DIST/BaoCaptureBar.app" "$APP/Contents/Resources/BaoCaptureBar.app"
 
 BROWSER="$(node -e "const {chromium}=require('playwright'); process.stdout.write(chromium.executablePath())")"
 if [[ ! -x "$BROWSER" ]]; then
@@ -50,7 +52,7 @@ if [[ -z "$FOUND" ]]; then
 fi
 echo "BUNDLED_BROWSER $FOUND"
 
-clang -O2 -o "$APP/Contents/MacOS/bao" desktop/packaging/macos/bao-main.c
+/usr/bin/clang -O2 -o "$APP/Contents/MacOS/bao" desktop/packaging/macos/bao-main.c
 codesign --force --deep --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"
 echo "WROTE $APP"

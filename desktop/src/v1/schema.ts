@@ -9,7 +9,7 @@ export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 export type InputType = "text" | "secret" | "number" | "choice" | "file";
 export type HealMode = "auto" | "approve";
 export type Surface = "dom" | "ax" | "atspi";
-export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify";
+export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify" | "note";
 
 export interface WorkflowInput {
   name: string;

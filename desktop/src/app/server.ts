@@ -9,6 +9,9 @@ import { tmpdir } from "node:os";
 import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
 import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
+import { Capture, actNotice } from "./capture";
+import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
+import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, notifyOs, type PersonPrompts } from "../v1/browser-driver";
 import type { HumanAsk } from "../v1/human-ask";
 import { ensureTrailTimes } from "../v1/trail-time";
@@ -105,11 +108,11 @@ export async function startApp(opts: {
   let signIn: { close(): Promise<void> } | undefined;
   const notices: Notice[] = [];
   let boundPort = opts.port ?? 0;
-  let recording = false;
+  const capture = new Capture();
+  const bar = new CaptureBar();
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let profile: string | undefined;
-  const events: TrailEvent[] = [];
   const captureShots = new Map<string, string>();
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
@@ -120,14 +123,32 @@ export async function startApp(opts: {
   let stopRun = false;
   let loginContinued = false;
   let replaying = false;
-  let capturePaused = false;
   let recordingSince = 0;
   const notifications: { title: string; body: string }[] = [];
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
-  const note = (title: string, body: string) => {
-    notifications.push({ title, body });
-    void notifyOs(title, body);
-  };
+  let tail: Promise<void> = Promise.resolve();
+  function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = tail.then(fn, fn);
+    tail = run.then(() => undefined, () => undefined);
+    return run;
+  }
+  function publishCapture(): void {
+    if (!bar.running) return;
+    if (!capture.recording) {
+      bar.send({ cmd: "hide" });
+      return;
+    }
+    bar.send({ cmd: "show", paused: capture.paused, steps: capture.steps.map((step) => step.label) });
+  }
+  function raiseAct(detail: string): void {
+    const notice = actNotice(detail);
+    notifications.push({ title: notice.title, body: notice.body });
+    if (bar.running) bar.send({ cmd: "act", title: notice.title, body: notice.body, badge: notice.badge });
+    else void notifyOs(notice.title, notice.body);
+  }
+  function clearAct(): void {
+    if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
+  }
   const prompts: PersonPrompts = {
     showConfirm(_label) {
       humanConfirm = { message: "confirm before applying", detail: "Press Apply on the site window." };
@@ -138,6 +159,7 @@ export async function startApp(opts: {
         activeAsk = null;
         clearPendingPrompt(library.root);
       }
+      clearAct();
     },
     showLoginWait(label) {
       const detail = label && label.length <= 120 ? label : "Sign in on the site window";
@@ -150,11 +172,12 @@ export async function startApp(opts: {
         activeAsk = null;
         clearPendingPrompt(library.root);
       }
+      clearAct();
     },
     showAsk(ask) {
       activeAsk = ask;
       rememberPending(ask);
-      note("You need to act", ask.instruction);
+      raiseAct(ask.instruction);
     },
     shouldStop: () => stopRun,
     loginContinued: () => loginContinued,
@@ -217,7 +240,12 @@ export async function startApp(opts: {
       if (req.method === "GET" && url.pathname === "/api/state") {
         syncPending();
         return json(res, {
-          recording,
+          recording: capture.recording,
+          capture: {
+            recording: capture.recording,
+            paused: capture.paused,
+            steps: capture.steps.map((step) => step.label),
+          },
           notices,
           settings: library.settings(),
           workflows: library.list().map(summary),
@@ -230,9 +258,9 @@ export async function startApp(opts: {
           loginWait,
           humanConfirm,
           activeAsk,
-          capturePaused,
-          recordingSince: recording ? recordingSince : 0,
-          liveTrail: events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
+          capturePaused: capture.paused,
+          recordingSince: capture.recording ? recordingSince : 0,
+          liveTrail: capture.events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
@@ -335,7 +363,7 @@ export async function startApp(opts: {
         const shots = path.join(opts.home, "shots");
         mkdirSync(shots, { recursive: true });
         const dest = path.join(shots, base);
-        await page.screenshot({ path: dest, clip: box });
+        await shotWithBlur(page, { path: dest, clip: box });
         return json(res, { file: base });
       }
       if (req.method === "GET" && url.pathname === "/api/pids") {
@@ -442,33 +470,36 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/sessions") {
         const body = await readBody(req) as { url?: string };
-        await stopBrowser();
-        recording = true;
-        recordingSince = Date.now();
-        events.length = 0;
-        profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
-        context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
-        capturePaused = false;
-        captureShots.clear();
-        await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
-          if (!recording || capturePaused) return;
-          const id = `evt-${events.length}`;
-          events.push({ ...payload, id, ts: Date.now() });
-          if (!page || page.isClosed()) return;
-          const dir = path.join(opts.home, "shots", "capture");
-          mkdirSync(dir, { recursive: true });
-          const dest = path.join(dir, `${id}.png`);
-          try {
-            const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
-            if (!clip) return;
-            await page.screenshot({ path: dest, type: "png", clip });
-            captureShots.set(id, dest);
-          } catch { /* headed Chromium can refuse captureScreenshot */ }
+        await enqueue(() => beginSession(body.url || `http://127.0.0.1:${boundPort}/fixture`));
+        return json(res, { recording: capture.recording, paused: capture.paused });
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/resume") {
+        await enqueue(async () => {
+          if (capture.recording) capture.resume();
+          publishCapture();
         });
-        await context.addInitScript(recorderSource());
-        page = context.pages()[0] || await context.newPage();
-        await page.goto(body.url || `http://127.0.0.1:${boundPort}/fixture`);
-        return json(res, { recording: true });
+        return json(res, { recording: capture.recording, paused: capture.paused });
+      }
+      if (req.method === "POST" && (url.pathname === "/api/sessions/note" || url.pathname === "/api/sessions/check")) {
+        const body = await readBody(req) as { text?: string };
+        const text = typeof body.text === "string" ? body.text : "";
+        try {
+          const step = await enqueue(async () => {
+            const saved = url.pathname.endsWith("/check") ? capture.check(text) : capture.note(text);
+            publishCapture();
+            return saved;
+          });
+          return json(res, { id: step.id, label: step.label });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "";
+          if (message === "not recording") return json(res, { error: "not recording" }, 409);
+          if (message === "note") return json(res, { error: "note" }, 400);
+          throw err;
+        }
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/discard") {
+        await enqueue(() => discardSession());
+        return json(res, { recording: false });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/sessions/drive") {
         if (!page) return json(res, { error: "no session" }, 409);
@@ -497,33 +528,10 @@ export async function startApp(opts: {
           }, { selector: body.drop.selector, name: body.drop.name, b64 });
         }
         await page.waitForTimeout(50);
-        return json(res, { events: events.length });
+        return json(res, { events: capture.events.length });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/stop") {
-        recording = false;
-        recordingSince = 0;
-        const id = `wf-${Date.now()}`;
-        const startUrl = page ? page.url() : "";
-        const clean = events.map((event) => {
-          if (!event.sensitive && event.identity?.role !== "password") return event;
-          const copy = { ...event, sensitive: true };
-          delete copy.value;
-          return copy;
-        });
-        const workflow = interpret(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
-        const kept = retainedEvents(clean);
-        const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
-        mkdirSync(shotDest, { recursive: true });
-        for (let i = 0; i < workflow.steps.length; i++) {
-          const event = kept[i];
-          const step = workflow.steps[i];
-          const src = event ? captureShots.get(event.id) : undefined;
-          if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
-        }
-        library.save(workflow);
-        library.saveTrail(id, ensureTrailTimes(clean).events);
-        capturePaused = false;
-        await stopBrowser();
+        const workflow = await enqueue(() => saveSession());
         return json(res, workflow);
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
@@ -569,6 +577,7 @@ export async function startApp(opts: {
           loginWait = null;
           humanConfirm = null;
           loginContinued = false;
+          clearAct();
         }
         return json(res, { ok: true });
       }
@@ -578,12 +587,18 @@ export async function startApp(opts: {
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/pause") {
-        capturePaused = !capturePaused;
-        return json(res, { paused: capturePaused, recording });
+        await enqueue(async () => {
+          if (!capture.recording) return;
+          if (capture.paused) capture.resume();
+          else capture.pause();
+          publishCapture();
+        });
+        return json(res, { paused: capture.paused, recording: capture.recording });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/mark") {
-        events.push({ id: `evt-${events.length}`, ts: Date.now(), kind: "act", op: "mark" });
-        return json(res, { events: events.length });
+        if (capture.recording) capture.push({ kind: "act", op: "mark" });
+        publishCapture();
+        return json(res, { events: capture.events.length });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/press") {
         const body = await readBody(req) as { name?: string; fill?: { selector: string; value: string } };
@@ -812,6 +827,7 @@ export async function startApp(opts: {
       } else {
         humanConfirm = null;
       }
+      clearAct();
       return;
     }
     if (!activeAsk) activeAsk = prompt.ask;
@@ -823,9 +839,112 @@ export async function startApp(opts: {
   const port = typeof address === "object" && address ? address.port : 0;
   boundPort = port;
   writeFileSync(path.join(opts.home, "server.json"), JSON.stringify({ port }));
+  if (process.env.BAO_CAPTURE_BAR === "1") {
+    const bin = findCaptureBar();
+    if (bin) {
+      bar.onEvent = (event) => { void enqueue(() => onBar(event)).catch(() => undefined); };
+      bar.open(bin);
+    }
+  }
+
+  async function beginSession(startUrl: string): Promise<void> {
+    await stopBrowser();
+    capture.start();
+    recordingSince = Date.now();
+    captureShots.clear();
+    try {
+      profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
+      context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
+      await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
+        if (!capture.push(payload)) return;
+        const stored = capture.events[capture.events.length - 1];
+        publishCapture();
+        if (!stored || !page || page.isClosed()) return;
+        const dir = path.join(opts.home, "shots", "capture");
+        mkdirSync(dir, { recursive: true });
+        const dest = path.join(dir, `${stored.id}.png`);
+        try {
+          const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
+          if (!clip) return;
+          await shotWithBlur(page, { path: dest, type: "png", clip });
+          captureShots.set(stored.id, dest);
+        } catch { /* headed Chromium can refuse captureScreenshot */ }
+      });
+      await context.addInitScript(recorderSource());
+      page = context.pages()[0] || await context.newPage();
+      await page.goto(startUrl);
+    } catch (err) {
+      capture.discard();
+      recordingSince = 0;
+      await stopBrowser();
+      publishCapture();
+      throw err;
+    }
+    publishCapture();
+  }
+
+  async function saveSession(): Promise<WorkflowV2> {
+    const raw = capture.stop();
+    recordingSince = 0;
+    const id = `wf-${Date.now()}`;
+    const startUrl = page ? page.url() : "";
+    const clean = raw.map((event) => {
+      if (!event.sensitive && event.identity?.role !== "password") return event;
+      const copy = { ...event, sensitive: true };
+      delete copy.value;
+      return copy;
+    });
+    const workflow = interpret(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
+    const kept = retainedEvents(clean);
+    const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
+    mkdirSync(shotDest, { recursive: true });
+    for (let i = 0; i < workflow.steps.length; i++) {
+      const event = kept[i];
+      const step = workflow.steps[i];
+      const src = event ? captureShots.get(event.id) : undefined;
+      if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+    }
+    library.save(workflow);
+    library.saveTrail(id, ensureTrailTimes(clean).events);
+    await stopBrowser();
+    publishCapture();
+    return workflow;
+  }
+
+  async function discardSession(): Promise<void> {
+    capture.discard();
+    recordingSince = 0;
+    await stopBrowser();
+    publishCapture();
+  }
+
+  async function onBar(event: BarEvent): Promise<void> {
+    if (event.event === "pause") {
+      if (capture.recording) capture.pause();
+    } else if (event.event === "resume") {
+      if (capture.recording) capture.resume();
+    } else if (event.event === "note") {
+      try { capture.note(event.text || ""); } catch { return; }
+    } else if (event.event === "check") {
+      try { capture.check(event.text || ""); } catch { return; }
+    } else if (event.event === "discard") {
+      await discardSession();
+      return;
+    } else if (event.event === "hotkey" && event.name === "start") {
+      if (!capture.recording) await beginSession(`http://127.0.0.1:${boundPort}/fixture`);
+      return;
+    } else if (event.event === "hotkey" && event.name === "stop") {
+      if (capture.recording) await saveSession();
+      return;
+    } else if (event.event === "hotkey" && event.name === "pause") {
+      if (!capture.recording) return;
+      if (capture.paused) capture.resume();
+      else capture.pause();
+    } else return;
+    publishCapture();
+  }
 
   async function stopBrowser(): Promise<void> {
-    recording = false;
     await context?.close().catch(() => undefined);
     context = undefined;
     page = undefined;
@@ -946,8 +1065,10 @@ export async function startApp(opts: {
     port,
     notices,
     notifications,
-    get recording() { return recording; },
+    get recording() { return capture.recording; },
     async close() {
+      bar.close();
+      capture.discard();
       await signIn?.close();
       signIn = undefined;
       await stopBrowser();

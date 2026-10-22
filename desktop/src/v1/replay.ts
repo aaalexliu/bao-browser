@@ -365,6 +365,7 @@ async function runStep(
   extra?: ReadBack,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
+  if (step.action === "note") return { ok: true, repairs };
   if (step.waitFor) {
     const ready = await holdCheck(step.waitFor, args, driver, true);
     if (!ready) {
