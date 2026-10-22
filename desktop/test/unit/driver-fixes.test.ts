@@ -159,7 +159,7 @@ test("a 429 is retried, and a leftover crash writes a partial trail as driver-er
   }, { waitsMs: [1, 1], sleep: async () => {} });
   assert.equal(stuck, 3);
   assert.equal(liveCrashReason(failed), "HTTP 429");
-  assert.equal(crashStatus(liveCrashReason(failed), false), "driver-error");
+  assert.equal(crashStatus(liveCrashReason(failed), false), "infra");
   assert.equal(crashStatus("cli exit 1", true), null);
 
   let once = 0;

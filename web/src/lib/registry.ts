@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import Ajv from "ajv/dist/2020";
 import { getPng, putPng } from "./blobstore";
-import { isPlaceholderSwatch } from "./png";
+import { isElementCrop } from "./png";
 import { query } from "./db";
 import { assertSyncSafe, type SyncShot } from "./guard";
 import { applyImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
@@ -171,6 +171,75 @@ export async function categoryCounts(userId: string) {
   );
 }
 
+const SETTINGS_KEYS = ["heal", "promoteAfter", "actTimeoutMs", "circuitLimit", "circuitWindowMs", "backupSchedule"] as const;
+
+export async function syncSnapshot(principal: Principal) {
+  const workflows = await ownedRows(principal.userId);
+  const runs = await query<{ id: string; workflow_id: string; status: string; at: string; steps: unknown }>(
+    `SELECT r.id, r.workflow_id, r.status, r.at, r.steps
+     FROM runs r JOIN workflows w ON w.id = r.workflow_id
+     WHERE w.owner_id = $1 ORDER BY r.at`,
+    [principal.userId],
+  );
+  const heals = await query<{ workflow_id: string; version: number; heal: unknown }>(
+    `SELECT v.workflow_id, v.version, v.heal
+     FROM workflow_versions v JOIN workflows w ON w.id = v.workflow_id
+     WHERE w.owner_id = $1 AND v.heal IS NOT NULL
+     ORDER BY v.workflow_id, v.version`,
+    [principal.userId],
+  );
+  const stored = await query<{ document: unknown; updated_at: string }>(
+    `SELECT document, updated_at FROM account_settings WHERE user_id = $1`,
+    [principal.userId],
+  );
+  const settings = stored[0] ? pickAccountSettings(json(stored[0].document)) : null;
+  return {
+    counts: {
+      workflows: workflows.length,
+      "run history": runs.length,
+      "heal records": heals.length,
+      settings: settings ? 1 : 0,
+    },
+    runs: runs.map((run) => ({
+      id: run.id,
+      workflowId: run.workflow_id,
+      status: run.status,
+      at: run.at,
+      steps: json(run.steps),
+    })),
+    heals: heals.map((heal) => ({
+      id: `heal-${heal.workflow_id}-v${heal.version}`,
+      workflowId: heal.workflow_id,
+      heal: json(heal.heal),
+    })),
+    settings,
+    settingsUpdatedAt: stored[0]?.updated_at ?? null,
+  };
+}
+
+export async function saveAccountSettings(principal: Principal, document: unknown) {
+  const clean = pickAccountSettings(document);
+  await query(
+    `INSERT INTO account_settings (user_id, document, updated_at) VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (user_id) DO UPDATE SET document = EXCLUDED.document, updated_at = now()`,
+    [principal.userId, JSON.stringify(clean)],
+  );
+  return { ok: true };
+}
+
+function pickAccountSettings(document: unknown): Record<string, unknown> {
+  const source = document && typeof document === "object" ? document as Record<string, unknown> : {};
+  const picked: Record<string, unknown> = {};
+  for (const key of SETTINGS_KEYS) {
+    if (source[key] !== undefined) picked[key] = source[key];
+  }
+  if (picked.backupSchedule !== "off" && picked.backupSchedule !== "daily" && picked.backupSchedule !== "weekly") {
+    delete picked.backupSchedule;
+  }
+  if (picked.heal !== "auto" && picked.heal !== "approve") delete picked.heal;
+  return picked;
+}
+
 export async function pushVersion(
   principal: Principal,
   id: string,
@@ -283,8 +352,10 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
   // Last green is the clean publish replay, not a device run.
   for (const shot of body.shots ?? []) {
     if (shot.redacted !== true || !shot.stepId || !shot.png) continue;
+    const bytes = Buffer.from(shot.png, "base64");
+    if (!isElementCrop(bytes)) continue;
     const key = `runs/${id}/${shot.stepId}.png`;
-    await putPng(key, Buffer.from(shot.png, "base64"));
+    await putPng(key, bytes);
     await query(
       `INSERT INTO run_shots (run_id, step_id, blob_key) VALUES ($1, $2, $3)
        ON CONFLICT (run_id, step_id) DO NOTHING`,
@@ -306,13 +377,19 @@ export async function listRuns(principal: Principal, workflowId: string) {
       `SELECT step_id, blob_key FROM run_shots WHERE run_id = $1`,
       [run.id],
     );
+    const visible = [];
+    for (const shot of shots) {
+      const bytes = await getPng(shot.blob_key);
+      if (!bytes || !isElementCrop(bytes)) continue;
+      visible.push({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` });
+    }
     out.push({
       id: run.id,
       status: run.status,
       at: run.at,
       steps: json(run.steps),
       deviceId: run.device_id,
-      shots: shots.map((shot) => ({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` })),
+      shots: visible,
     });
   }
   return out;
@@ -418,7 +495,7 @@ export async function recordReview(
 ) {
   const preview = await previewPublication(principal, id);
   if (preview.documentHash !== documentHash) throw new HttpError("replay the public preview, then review that hash", 409);
-  const real = shots.filter((shot) => shot.redacted === true && shot.stepId && shot.png && !isPlaceholderSwatch(Buffer.from(shot.png, "base64")));
+  const real = shots.filter((shot) => shot.redacted === true && shot.stepId && shot.png && isElementCrop(Buffer.from(shot.png, "base64")));
   if (real.length) await writeShots(id, preview.version, real);
   await query(
     `INSERT INTO reviews (workflow_id, document_hash, samples) VALUES ($1, $2, $3::jsonb)
@@ -666,8 +743,10 @@ async function insertOwned(
 async function writeShots(workflowId: string, version: number, shots: ShotIn[]) {
   for (const shot of shots) {
     if (shot.redacted !== true || !shot.stepId || !shot.png) throw new HttpError("unredacted screenshot", 400);
+    const bytes = Buffer.from(shot.png, "base64");
+    if (!isElementCrop(bytes)) continue;
     const key = `shots/${workflowId}/v${version}/${shot.stepId}.png`;
-    await putPng(key, Buffer.from(shot.png, "base64"));
+    await putPng(key, bytes);
     await query(
       `INSERT INTO workflow_shots (workflow_id, version, step_id, blob_key) VALUES ($1, $2, $3, $4)
        ON CONFLICT (workflow_id, version, step_id) DO UPDATE SET blob_key = EXCLUDED.blob_key`,
@@ -677,8 +756,13 @@ async function writeShots(workflowId: string, version: number, shots: ShotIn[]) 
 }
 
 async function shotUrls(workflowId: string, version: number) {
-  const shots = await listShotRows(workflowId, version);
-  return shots.map((shot) => ({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` }));
+  const visible = [];
+  for (const shot of await listShotRows(workflowId, version)) {
+    const bytes = await getPng(shot.blob_key);
+    if (!bytes || !isElementCrop(bytes)) continue;
+    visible.push({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` });
+  }
+  return visible;
 }
 
 async function listShotRows(workflowId: string, version: number) {
@@ -691,7 +775,7 @@ async function listShotRows(workflowId: string, version: number) {
 async function copyRealShots(workflowId: string, fromVersion: number, toVersion: number) {
   for (const row of await listShotRows(workflowId, fromVersion)) {
     const bytes = await getPng(row.blob_key);
-    if (!bytes || isPlaceholderSwatch(bytes)) continue;
+    if (!bytes || !isElementCrop(bytes)) continue;
     await writeShots(workflowId, toVersion, [{ stepId: row.step_id, png: bytes.toString("base64"), redacted: true }]);
   }
 }
@@ -711,7 +795,7 @@ async function pickThumbnail(document: unknown, workflowId: string, version: num
     const key = byId.get(String(step.id ?? ""));
     if (!key) continue;
     const bytes = await getPng(key);
-    if (!bytes || isPlaceholderSwatch(bytes)) continue;
+    if (!bytes || !isElementCrop(bytes)) continue;
     return `/api/blobs/${key}`;
   }
   return "";

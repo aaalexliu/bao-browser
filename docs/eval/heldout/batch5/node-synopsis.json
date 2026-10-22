@@ -1,0 +1,145 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792656443747,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792656443788,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792656443828,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792656443868,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "About this documentation",
+      "cssPath": "#column2 > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "navigation"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "About this documentation",
+    "subtreeAfter": "About this documentation",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792656444393,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792656444424,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792656444494,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "About this documentation",
+      "cssPath": "#column2 > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "navigation"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "About this documentation",
+    "subtreeAfter": "About this documentation",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/documentation.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792656445000,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/documentation.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792656445067,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/assert.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792656445099,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Usage and example",
+      "cssPath": "#column2 > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "navigation"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "Usage and example",
+    "subtreeAfter": "Usage and example",
+    "beforeUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "afterUrl": "https://nodejs.org/docs/latest/api/synopsis.html"
+  }
+]

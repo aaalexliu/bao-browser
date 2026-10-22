@@ -1,0 +1,163 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792656351702,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792656351742,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792656351782,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792656351823,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Option<T>",
+      "cssPath": "#main-content > details:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(3)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "details"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "Option<T>",
+    "subtreeAfter": "",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792656382217,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792656382249,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792656382317,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Option<T>",
+      "cssPath": "#main-content > details:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(3)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "details"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "Option<T>",
+    "subtreeAfter": "",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/option/enum.Option.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792656412724,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://doc.rust-lang.org/std/option/enum.Option.html",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792656412792,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792656412824,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Vec<T>",
+      "cssPath": "#main-content > details:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(2)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "details"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "Vec<T>",
+    "subtreeAfter": "",
+    "beforeUrl": "https://doc.rust-lang.org/std/",
+    "afterUrl": "https://doc.rust-lang.org/std/vec/struct.Vec.html"
+  }
+]

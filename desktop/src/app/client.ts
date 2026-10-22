@@ -1,6 +1,7 @@
 // Desktop window. Talks only to this machine's bao server.
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
+import { sitesForTrust } from "../v1/site-trust";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
@@ -29,9 +30,16 @@ import {
   runKind,
   reviewItems,
   runViewer,
-  secretInput,
   statusLabel,
+  runField,
+  siteTrustPanel,
+  tryResult,
+  teachHome,
+  teachPanel,
+  teachReview,
   trailPane,
+  imageRef,
+  versionsPanel,
   workflowDetail,
   type CommandItem,
   type HealView,
@@ -41,7 +49,7 @@ import {
   type WorkflowSummary,
 } from "./views";
 
-type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import";
+type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import" | "teach";
 
 interface OpenedState {
   kind: "workflow" | "import";
@@ -55,7 +63,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; siteTrust?: Record<string, "ask" | "allow"> };
   sync?: {
     server?: string;
     deviceName?: string;
@@ -97,8 +105,13 @@ let gateUrl = "";
 let pinnedRunId = "";
 let pinnedInputs: Record<string, string> | null = null;
 let debugStepId = "";
+let runFromN = 0;
+let fromNote: "" | "run" | "debug" = "";
 let pendingSeek: number | undefined;
 let seenOpen = "";
+const noteTimers = new Map<string, number>();
+let teachOpenId = "";
+let teachHighlighted = "";
 try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
@@ -139,7 +152,9 @@ async function refresh(): Promise<void> {
     paused: state.capturePaused,
     since: state.recordingSince,
     promotions: state.promotions,
+    sync: state.sync,
     // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
+    teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     screen,
     healFilter,
     openHeal,
@@ -150,6 +165,7 @@ async function refresh(): Promise<void> {
   });
   paintDockBadge();
   paintLive();
+  paintTeach();
   if (key === renderKey) return;
   renderKey = key;
   render();
@@ -166,7 +182,7 @@ function render(): void {
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
-  if (float) float.innerHTML = recordBar(state);
+  if (float && state.teach?.phase !== "live") float.innerHTML = recordBar(state);
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
@@ -174,6 +190,7 @@ function render(): void {
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
   if (!keepReplay && !keepWorkflow && !keepImport) {
     const body = screen === "capture" ? capture()
+      : screen === "teach" ? teachScreen()
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
@@ -222,7 +239,7 @@ function capture(): string {
     <div class="card">
       <h3>Browser</h3>
       <label>Start URL <input id="start-url" value="${location.origin}/fixture"></label>
-      <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="stop" type="button">Stop and save</button></div>
+      <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="open-teach" type="button">Teach</button><button id="stop" type="button">Stop and save</button></div>
     </div>
     <div class="card">
       <h3>Mac app</h3>
@@ -246,6 +263,16 @@ function capture(): string {
   </section>`;
 }
 
+function teachScreen(): string {
+  const teach = state.teach;
+  if (teach?.phase === "review") return teachReview(teach);
+  if (teach?.phase === "live") {
+    const fixing = teach.fix ? `<p class="lede">Teaching a fix for <code>${esc(teach.fix.stepId)}</code>. Demonstrate that step, then stop.</p>` : `<p class="lede">The teach panel names each step as it lands. Click a row to correct it.</p>`;
+    return `<section><h2>Teach</h2>${fixing}</section>`;
+  }
+  return teachHome(state.workflows || []);
+}
+
 function replayForm(): string {
   const selected = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const current = (state.workflows || []).find((workflow) => workflow.id === selected);
@@ -255,7 +282,7 @@ function replayForm(): string {
     `<option value="${esc(workflow.id)}" ${workflow.id === selected ? "selected" : ""}>${esc(workflow.name)}</option>`).join("");
   return `<section id="run-form"><h2>Run ${esc(current?.name || "")}</h2>
     <p class="lede">Inputs are asked once, before the run. Secrets stay masked.</p>
-    ${debugStepId ? `<p id="debug-note">Debug from this step (${esc(debugStepId)}). Earlier steps are not re-run. A secret is asked again.</p>` : ""}
+    ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
     <label>Healing for this workflow <select id="wf-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
@@ -273,6 +300,14 @@ function replayForm(): string {
   </section>`;
 }
 
+function fromLine(): string {
+  if (fromNote === "run" && debugStepId) {
+    return `<p id="run-from-note">Run from step ${esc(String(runFromN || debugStepId))}. Earlier steps are not re-run.</p>`;
+  }
+  if (debugStepId) return `<p id="debug-note">Debug from this step (${esc(debugStepId)}). Earlier steps are not re-run. A secret is asked again.</p>`;
+  return "";
+}
+
 function settings(): string {
   const heal = state.settings?.heal || "auto";
   const promoteAfter = state.settings?.promoteAfter ?? 3;
@@ -287,6 +322,7 @@ function settings(): string {
     <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
+    ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
@@ -346,6 +382,9 @@ function bind(): void {
   document.querySelectorAll("[data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || lastWf;
+      debugStepId = "";
+      runFromN = 0;
+      fromNote = "";
       screen = "replay";
       renderKey = "";
       render();
@@ -384,6 +423,66 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+  const openTeach = document.getElementById("open-teach");
+  if (openTeach) openTeach.onclick = () => {
+    screen = "teach";
+    renderKey = "";
+    render();
+  };
+  const teachStart = document.getElementById("teach-start");
+  if (teachStart) teachStart.onclick = async () => {
+    const url = (document.getElementById("teach-url") as HTMLInputElement | null)?.value;
+    await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url, teach: true }),
+    });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  const teachMerge = document.getElementById("teach-merge");
+  if (teachMerge) teachMerge.onclick = async () => {
+    const ids = [...document.querySelectorAll<HTMLInputElement>("input[name=merge]:checked")].map((box) => box.value);
+    const res = await fetch("/api/teach/merge", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const doc = await res.json() as { id?: string; error?: string };
+    if (doc.id) {
+      openWorkflow = doc.id;
+      screen = "workflow";
+    }
+    renderKey = "";
+    await refresh();
+  };
+  const teachSave = document.getElementById("teach-save");
+  if (teachSave) teachSave.onclick = async () => {
+    const res = await fetch("/api/teach/save", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const doc = await res.json() as { id?: string };
+    if (doc.id) {
+      openWorkflow = doc.id;
+      screen = "workflow";
+    }
+    renderKey = "";
+    await refresh();
+  };
+  const fix = document.getElementById("teach-fix");
+  if (fix) fix.onclick = async () => {
+    const workflow = fix.dataset.workflow || "";
+    const step = fix.dataset.step || "";
+    const saved = await (await fetch("/api/workflows/" + encodeURIComponent(workflow))).json() as { startUrl?: string };
+    await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: saved.startUrl, teach: true, fix: { workflowId: workflow, stepId: step } }),
+    });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  bindTeach(document);
   const start = document.getElementById("start");
   if (start) start.onclick = async () => {
     await fetch("/api/sessions", {
@@ -408,6 +507,8 @@ function bind(): void {
     pinnedRunId = "";
     pinnedInputs = null;
     debugStepId = "";
+    runFromN = 0;
+    fromNote = "";
     renderKey = "";
     render();
   };
@@ -466,6 +567,20 @@ function bind(): void {
       action: "keep",
     });
   });
+  document.querySelectorAll<HTMLInputElement>("[data-sync-category]").forEach((input) => {
+    input.onchange = () => void postSync("/api/sync/category", {
+      category: input.dataset.syncCategory,
+      enabled: input.checked,
+    });
+  });
+  const schedule = document.getElementById("backup-schedule");
+  if (schedule) schedule.onchange = () => void postSync("/api/sync/backup", {
+    schedule: (schedule as HTMLSelectElement).value,
+  });
+  const restore = document.getElementById("restore-backup");
+  if (restore) restore.onclick = () => void postSync("/api/sync/backup", { action: "restore" });
+  const reveal = document.getElementById("reveal-backup");
+  if (reveal) reveal.onclick = () => void postSync("/api/sync/reveal", {});
   bindAsk();
   bindHeal();
   const save = document.getElementById("save-settings");
@@ -479,6 +594,7 @@ function bind(): void {
         actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
         syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
+        siteTrust: readSiteTrust(),
       }),
     });
     renderKey = "";
@@ -605,7 +721,7 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
   banner = {
     id: `decision-${decision}-${Date.now()}`,
     title: decision === "keep" ? "Patch kept" : "Patch reverted",
-    body: decision === "keep" ? "Kept the heal in the saved workflow." : "Reverted the saved workflow to the failed step.",
+    body: decision === "keep" ? "Saved a draft. Replay still uses the live version until you promote it." : "Reverted the live workflow to the failed step.",
   };
   renderKey = "";
   await refresh();
@@ -633,11 +749,16 @@ async function showRun(id: string): Promise<void> {
       void showRun(id);
     };
   });
-  host.querySelectorAll("#filmstrip img").forEach((img) => {
-    img.addEventListener("error", () => {
+  host.querySelectorAll("#filmstrip img").forEach((node) => {
+    const img = node as HTMLImageElement;
+    const drop = () => {
       const frame = img.parentElement;
       img.remove();
       frame?.classList.remove("has-shot");
+    };
+    img.addEventListener("error", drop);
+    img.addEventListener("load", () => {
+      if (img.naturalWidth === 96 && img.naturalHeight === 54) drop();
     });
   });
   host.querySelectorAll("[data-frame]").forEach((btn) => {
@@ -714,6 +835,8 @@ function openPastRun(workflowId: string, runId: string, stepId: string, inputs?:
   pinnedRunId = runId;
   pinnedInputs = inputs || null;
   debugStepId = stepId;
+  runFromN = 0;
+  fromNote = stepId ? "debug" : "";
   lastWf = workflowId;
   screen = "replay";
   renderKey = "";
@@ -800,11 +923,19 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
 
 async function openEditor(id: string): Promise<void> {
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
+  const [listed, shareRes] = await Promise.all([
+    fetch("/api/workflows/" + encodeURIComponent(id) + "/versions").then((res) => res.json()) as Promise<{
+      versions?: { n: number; role: string; source: string; createdAt: number }[];
+    }>,
+    fetch("/api/workflows/" + encodeURIComponent(id) + "/share").then((res) => res.ok ? res.json() : undefined),
+  ]);
   const host = document.getElementById("workflow-host");
   if (!host || !host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}${typeof last.at === "number" ? ` · ${formatWhen(last.at)}` : ""}` : "Not run yet";
-  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel }) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
+  const shots = last?.id ? await stepCrops(last.id) : {};
+  if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
+  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel, shots, share: shareRes }) + versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
       <button type="button" data-export="${esc(id)}">Export</button>
@@ -826,6 +957,7 @@ async function openEditor(id: string): Promise<void> {
     });
     renderKey = "";
     await refresh();
+    await openEditor(id);
   };
   const rename = host.querySelector("[data-rename]") as HTMLButtonElement;
   rename.onclick = async () => {
@@ -838,6 +970,7 @@ async function openEditor(id: string): Promise<void> {
     });
     renderKey = "";
     await refresh();
+    await openEditor(id);
   };
   const del = host.querySelector("[data-delete]") as HTMLButtonElement;
   del.onclick = async () => {
@@ -867,16 +1000,53 @@ async function openEditor(id: string): Promise<void> {
   host.querySelectorAll("[data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || id;
+      debugStepId = "";
+      runFromN = 0;
+      fromNote = "";
       screen = "replay";
       renderKey = "";
       render();
     };
   });
+  host.querySelectorAll("[data-try-step]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => void tryWorkflowStep(id, (btn as HTMLButtonElement).dataset.tryStep || "");
+  });
+  host.querySelectorAll("[data-run-from]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const el = btn as HTMLButtonElement;
+      debugStepId = el.dataset.runFrom || "";
+      runFromN = Number(el.dataset.stepN || 0);
+      fromNote = "run";
+      pinnedRunId = "";
+      pinnedInputs = null;
+      lastWf = id;
+      screen = "replay";
+      renderKey = "";
+      render();
+    };
+  });
+  bindTokens(host, id);
   host.querySelectorAll("[data-screen=library]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       screen = "library";
       renderKey = "";
       render();
+    };
+  });
+  bindShare(host, id);
+  host.querySelectorAll("[data-promote-version], [data-restore-version]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = async () => {
+      const el = btn as HTMLButtonElement;
+      const n = Number(el.dataset.promoteVersion || el.dataset.restoreVersion);
+      const action = el.dataset.promoteVersion ? "promote" : "restore";
+      await fetch("/api/workflows/" + encodeURIComponent(id) + "/versions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, n }),
+      });
+      renderKey = "";
+      await refresh();
+      await openEditor(id);
     };
   });
   host.querySelectorAll("[data-step-heal]").forEach((sel) => {
@@ -890,6 +1060,7 @@ async function openEditor(id: string): Promise<void> {
       });
       renderKey = "";
       await refresh();
+      await openEditor(id);
     };
   });
   mountShots(host);
@@ -927,20 +1098,86 @@ async function fillArgs(id: string): Promise<void> {
   });
 }
 
-function field(input: { name: string; type: string; label?: string; default?: string; choices?: string[]; multiple?: boolean }, previous?: string): string {
-  const label = esc(input.label || input.name);
-  if (input.type === "secret") return secretInput(input.name, input.label || input.name, Boolean(previous));
-  if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || input.default || "")}"></label>`;
-  if (input.type === "choice") {
-    const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
-    return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
-  }
-  if (input.type === "file") {
-    const hint = previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
-    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""}> <span>${esc(hint)}</span></label>`;
-  }
-  const text = previous && previous !== "••••" ? previous : input.default || "";
-  return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(text)}</textarea></label>`;
+function field(input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }, previous?: string): string {
+  return runField(input, previous);
+}
+
+function readSiteTrust(): Record<string, "ask" | "allow"> {
+  const siteTrust: Record<string, "ask" | "allow"> = {};
+  document.querySelectorAll<HTMLSelectElement>("[data-site-trust]").forEach((sel) => {
+    const origin = sel.dataset.siteTrust || "";
+    if (!origin) return;
+    siteTrust[origin] = sel.value === "ask" ? "ask" : "allow";
+  });
+  return siteTrust;
+}
+
+async function tryWorkflowStep(id: string, stepId: string): Promise<void> {
+  const slot = document.querySelector(`[data-try-slot="${CSS.escape(stepId)}"]`);
+  if (slot) slot.innerHTML = `<p class="quiet">Looking up…</p>`;
+  const res = await fetch("/api/workflows/" + encodeURIComponent(id) + "/try", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ stepId }),
+  });
+  const body = await res.json() as { error?: string; matched?: boolean };
+  if (slot) slot.innerHTML = tryResult(res.ok ? body : { error: body.error || "Try failed" });
+}
+
+function bindTokens(host: HTMLElement, id: string): void {
+  host.querySelectorAll("[data-edit-input]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => openTokenEditor(btn as HTMLButtonElement, id);
+  });
+}
+
+function openTokenEditor(token: HTMLButtonElement, id: string): void {
+  const name = token.dataset.editInput || "";
+  const secret = token.dataset.type === "secret";
+  const editor = document.createElement("form");
+  editor.id = "input-editor";
+  editor.className = "token-editor";
+  editor.innerHTML = `<p class="quiet">Edit ${esc(token.dataset.label || name)}</p>
+    <label>Label <input name="label" value="${esc(token.dataset.label || name)}"></label>
+    <label>Type <select name="type">
+      ${["text", "secret", "number", "choice", "file"].map((type) => `<option value="${type}" ${token.dataset.type === type ? "selected" : ""}>${type}</option>`).join("")}
+    </select></label>
+    <label data-default-row ${secret ? "hidden" : ""}>Default <input name="default" value="${esc(secret ? "" : token.dataset.default || "")}" ${secret ? "disabled" : ""}></label>
+    <label>Required <input name="required" type="checkbox" ${token.dataset.required === "1" ? "checked" : ""}></label>
+    <p class="quiet" data-secret-note ${secret ? "" : "hidden"}>A secret stays masked. The value is not stored.</p>
+    <button type="button" data-save-input>Save</button>`;
+  document.getElementById("input-editor")?.remove();
+  token.closest(".step-copy")?.appendChild(editor);
+  const typeSel = editor.querySelector("[name=type]") as HTMLSelectElement;
+  const defaultRow = editor.querySelector("[data-default-row]") as HTMLElement;
+  const secretNote = editor.querySelector("[data-secret-note]") as HTMLElement;
+  const defaultInput = editor.querySelector("[name=default]") as HTMLInputElement;
+  typeSel.onchange = () => {
+    const hide = typeSel.value === "secret";
+    defaultRow.hidden = hide;
+    secretNote.hidden = !hide;
+    defaultInput.disabled = hide;
+    if (hide) defaultInput.value = "";
+  };
+  editor.querySelector("[data-save-input]")!.addEventListener("click", async () => {
+    const type = typeSel.value;
+    const res = await fetch("/api/workflows/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        inputEdit: {
+          name,
+          label: (editor.querySelector("[name=label]") as HTMLInputElement).value,
+          type,
+          default: type === "secret" ? "" : defaultInput.value,
+          required: (editor.querySelector("[name=required]") as HTMLInputElement).checked,
+        },
+      }),
+    });
+    if (!res.ok) return;
+    renderKey = "";
+    await refresh();
+    await openEditor(id);
+  });
 }
 
 async function runReplay(): Promise<void> {
@@ -988,6 +1225,8 @@ async function runReplay(): Promise<void> {
   pinnedRunId = "";
   pinnedInputs = null;
   debugStepId = "";
+  runFromN = 0;
+  fromNote = "";
   screen = "run";
   renderKey = "";
   await refresh();
@@ -1224,6 +1463,158 @@ function applySearch(): void {
   });
 }
 
+function teachFieldKey(el: HTMLInputElement): string {
+  const card = CSS.escape(el.closest("[data-card]")?.getAttribute("data-card") || "");
+  if (el.hasAttribute("data-note")) return `[data-card="${card}"] [data-note]`;
+  if (el.hasAttribute("data-intent")) return `[data-card="${card}"] [data-intent]`;
+  if (el.hasAttribute("data-param")) {
+    const role = CSS.escape(el.closest(".teach-value")?.getAttribute("data-role") || "");
+    return `[data-card="${card}"] .teach-value[data-role="${role}"] [data-param]`;
+  }
+  return "";
+}
+
+function teachMarkup(root: HTMLElement): string {
+  const clone = root.cloneNode(true) as HTMLElement;
+  const timer = clone.querySelector("#rec-timer");
+  if (timer) timer.textContent = "0:00";
+  clone.querySelectorAll(".teach-card.open").forEach((el) => el.classList.remove("open"));
+  clone.querySelectorAll(".teach-row[aria-expanded]").forEach((el) => el.setAttribute("aria-expanded", "false"));
+  clone.querySelectorAll(".thumb img").forEach((img) => img.remove());
+  clone.querySelectorAll(".has-shot").forEach((el) => el.classList.remove("has-shot"));
+  clone.querySelectorAll("[data-shot-mounted]").forEach((el) => el.removeAttribute("data-shot-mounted"));
+  return clone.innerHTML;
+}
+
+function retryShots(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>("[data-shot]:not(.has-shot)").forEach((node) => {
+    delete node.dataset.shotMounted;
+  });
+  mountShots(root);
+}
+
+function paintTeach(): void {
+  const float = document.getElementById("float");
+  if (!float || state.teach?.phase !== "live") return;
+  const html = teachPanel(state.teach);
+  if (float.querySelector("#teach-panel") && teachMarkup(float) === html) {
+    retryShots(float);
+    return;
+  }
+  const active = document.activeElement;
+  const editing = active instanceof HTMLInputElement && float.contains(active) ? teachFieldKey(active) : "";
+  const value = editing && active instanceof HTMLInputElement ? active.value : "";
+  const start = editing && active instanceof HTMLInputElement ? active.selectionStart : null;
+  const end = editing && active instanceof HTMLInputElement ? active.selectionEnd : null;
+  if (active instanceof HTMLInputElement && float.contains(active)) active.onchange = null;
+  const openId = float.querySelector(".teach-card.open")?.getAttribute("data-card") || teachOpenId;
+  float.innerHTML = html;
+  if (openId) {
+    const opened = float.querySelector(`[data-card="${CSS.escape(openId)}"]`);
+    opened?.classList.add("open");
+    opened?.querySelector(".teach-row")?.setAttribute("aria-expanded", "true");
+  }
+  bindTeach(float);
+  mountShots(float);
+  const highlighted = float.querySelector(".teach-card.on");
+  const highlightedId = highlighted?.getAttribute("data-card") || "";
+  if (highlightedId && highlightedId !== teachHighlighted) {
+    teachHighlighted = highlightedId;
+    highlighted?.scrollIntoView({ block: "nearest" });
+  }
+  if (!editing) return;
+  const next = float.querySelector(editing) as HTMLInputElement | null;
+  if (!next) return;
+  if (next.value !== value) next.value = value;
+  next.focus();
+  if (start != null && end != null) next.setSelectionRange(start, end);
+}
+
+async function correct(card: string, kind: string, extra: Record<string, string> = {}): Promise<void> {
+  await fetch("/api/teach/correct", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cardId: card, kind, ...extra }),
+  });
+  renderKey = "";
+  await refresh();
+}
+
+function bindTeach(root: ParentNode): void {
+  const pause = root.querySelector("#teach-pause");
+  if (pause) (pause as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/sessions/pause", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
+  const check = root.querySelector("#teach-check");
+  if (check) (check as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/teach/check", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
+  const discard = root.querySelector("#teach-discard");
+  if (discard) (discard as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/teach/discard", { method: "POST" });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  const stop = root.querySelector("#teach-stop");
+  if (stop) (stop as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/teach/stop", { method: "POST" });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  root.querySelectorAll<HTMLElement>("[data-card]").forEach((card) => {
+    const id = card.dataset.card || "";
+    const row = card.querySelector(".teach-row");
+    if (row instanceof HTMLElement) row.onclick = () => {
+      const opening = !card.classList.contains("open");
+      root.querySelectorAll(".teach-card.open").forEach((el) => {
+        el.classList.remove("open");
+        el.querySelector(".teach-row")?.setAttribute("aria-expanded", "false");
+      });
+      card.classList.toggle("open", opening);
+      row.setAttribute("aria-expanded", opening ? "true" : "false");
+      teachOpenId = opening ? id : "";
+    };
+    card.querySelectorAll<HTMLButtonElement>("[data-correct]").forEach((btn) => {
+      btn.onclick = () => {
+        const kind = btn.dataset.correct || "";
+        const row = btn.closest(".teach-value");
+        const name = (row?.querySelector("input[data-param]") as HTMLInputElement | null)?.value
+          || card.querySelector<HTMLInputElement>("[data-param]")?.value
+          || "";
+        const outcome = card.querySelector("p.meta")?.textContent?.replace(/^Expected:\s*/, "") || "";
+        void correct(id, kind, { name, outcome });
+      };
+    });
+    const intent = card.querySelector<HTMLInputElement>("[data-intent]");
+    if (intent) intent.onchange = () => { void correct(id, "rename", { intent: intent.value }); };
+    const note = card.querySelector<HTMLInputElement>("[data-note]");
+    if (note) {
+      const commit = () => {
+        const pending = noteTimers.get(id);
+        if (pending) window.clearTimeout(pending);
+        noteTimers.delete(id);
+        if (note.value.trim()) void correct(id, "note", { note: note.value });
+      };
+      note.oninput = () => {
+        const pending = noteTimers.get(id);
+        if (pending) window.clearTimeout(pending);
+        const text = note.value;
+        noteTimers.set(id, window.setTimeout(() => {
+          noteTimers.delete(id);
+          if (text.trim()) void correct(id, "note", { note: text });
+        }, 450));
+      };
+      note.onchange = commit;
+    }
+  });
+}
+
 function paintLive(): void {
   const host = document.getElementById("live-steps");
   if (!host) return;
@@ -1329,6 +1720,65 @@ function paintToasts(): void {
   });
 }
 
+function bindShare(host: HTMLElement, id: string): void {
+  const opener = host.querySelector("[data-testid=share-open]") as HTMLButtonElement | null;
+  const panel = host.querySelector("[data-testid=share-panel]") as HTMLElement | null;
+  opener?.addEventListener("click", () => {
+    if (!panel || !opener) return;
+    const open = panel.hasAttribute("hidden");
+    if (open) panel.removeAttribute("hidden");
+    else panel.setAttribute("hidden", "");
+    opener.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  const copy = host.querySelector("[data-testid=share-copy]") as HTMLButtonElement | null;
+  copy?.addEventListener("click", () => {
+    const link = copy.dataset.copy || "";
+    if (navigator.clipboard) void navigator.clipboard.writeText(link).catch(() => undefined);
+  });
+  const publish = host.querySelector("[data-testid=share-publish]") as HTMLButtonElement | null;
+  if (publish && !publish.disabled) {
+    publish.addEventListener("click", async () => {
+      const res = await fetch("/api/workflows/" + encodeURIComponent(id) + "/publish", { method: "POST" });
+      const body = await res.json() as { why?: string; error?: string };
+      if (res.ok && body.why === undefined) return;
+      publish.disabled = true;
+      const why = host.querySelector("[data-testid=share-publish-why]");
+      const sentence = body.why || body.error || "The clean replay did not pass.";
+      if (why) why.textContent = sentence;
+      else publish.insertAdjacentHTML("afterend", `<p class="share-why" data-testid="share-publish-why">${esc(sentence)}</p>`);
+    });
+  }
+  const exp = host.querySelector("[data-testid=share-export]") as HTMLButtonElement | null;
+  if (exp && !exp.disabled) {
+    exp.addEventListener("click", async () => {
+      const body = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
+      const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${id}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+}
+
+async function stepCrops(runId: string): Promise<Record<string, string>> {
+  const shots: Record<string, string> = {};
+  try {
+    const res = await fetch("/api/runs/" + encodeURIComponent(runId));
+    if (!res.ok) return shots;
+    const run = await res.json() as { id?: string; steps?: { id?: string; afterShot?: string; beforeShot?: string }[] };
+    const id = run.id || runId;
+    for (const step of run.steps || []) {
+      if (!step.id) continue;
+      const src = imageRef(id, step.afterShot) || imageRef(id, step.beforeShot);
+      if (src) shots[step.id] = src;
+    }
+  } catch { /* the card still tries the capture crop */ }
+  return shots;
+}
+
 function mountShots(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>("[data-shot]").forEach((node) => {
     if (node.dataset.shotMounted === "1") return;
@@ -1344,6 +1794,10 @@ function mountShots(root: ParentNode = document): void {
       img.alt = "";
       img.onload = () => {
         if (!node.isConnected) return;
+        if (img.naturalWidth === 96 && img.naturalHeight === 54) {
+          if (next) load(next);
+          return;
+        }
         node.classList.add("has-shot");
         node.prepend(img);
       };
@@ -1352,6 +1806,37 @@ function mountShots(root: ParentNode = document): void {
       };
       img.src = src;
     };
+    const existing = node.querySelector("img");
+    if (existing) {
+      const show = () => {
+        if (node.isConnected) node.classList.add("has-shot");
+      };
+      if (existing.complete && existing.naturalWidth > 0) {
+        if (existing.naturalWidth === 96 && existing.naturalHeight === 54) {
+          existing.remove();
+          node.classList.remove("has-shot");
+          if (fallback) load(fallback);
+          return;
+        }
+        show();
+        return;
+      }
+      existing.addEventListener("load", () => {
+        if (existing.naturalWidth === 96 && existing.naturalHeight === 54) {
+          existing.remove();
+          node.classList.remove("has-shot");
+          if (fallback) load(fallback);
+          return;
+        }
+        show();
+      });
+      existing.addEventListener("error", () => {
+        existing.remove();
+        node.classList.remove("has-shot");
+        if (fallback) load(fallback);
+      });
+      return;
+    }
     load(primary, fallback);
   });
 }

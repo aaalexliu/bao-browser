@@ -1,0 +1,124 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653694978,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653695018,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653695058,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653695099,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Web form",
+      "cssPath": "main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Web form",
+    "subtreeAfter": "Web form",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653695381,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Web form",
+      "cssPath": "main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Web form",
+    "subtreeAfter": "Web form",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653695629,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "my-check-2",
+      "nameAttr": "my-check",
+      "tag": "input",
+      "label": "Default checkbox",
+      "cssPath": "#my-check-2",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "checked": true,
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "on",
+    "valueAfter": "on",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  }
+]

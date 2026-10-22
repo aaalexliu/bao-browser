@@ -24,10 +24,12 @@ import {
   type StepFailure,
   type TriedLocator,
 } from "./heal";
-import { isCollapsedBox, matchLocator, scoreLocator } from "./locators";
+import { isCollapsedBox, matchLabeledControl, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
+import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
+import { consequential, type SiteTrustMode } from "./site-trust";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
-import { collapsedTarget, discoverReveal, labelCandidate, overlayClose, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
+import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
 import {
   subst,
   type FileArg,
@@ -79,6 +81,8 @@ export interface Driver {
   drop(node: Identity, files: FileArg[]): Promise<void>;
   digits(app: string | undefined, role: string, text: string): Promise<void>;
   check(node: Identity, checked: boolean): Promise<void>;
+  /** Move focus onto the key step's target before the key is pressed. */
+  focus?(node: Identity): Promise<void>;
   notify(notice: HealNotice): Promise<void>;
   sleep?(ms: number): Promise<void>;
   waitIdle?(timeoutMs: number): Promise<void>;
@@ -97,6 +101,8 @@ export interface Driver {
   markStep?(id: string): void;
   /** DOM and accessibility tree at the end of the step. Browser drivers only. */
   captureStep?(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }>;
+  /** Draw the match. Not an action: Try uses this and does not click or type. */
+  outline?(node: Identity): Promise<void>;
   trace?(): {
     console: { stepId?: string; type?: string; text: string; ts?: number }[];
     network: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
@@ -161,6 +167,11 @@ export interface ReplayOptions {
   reviewSteps?: ReadonlySet<string>;
   /** Replay starts here. Earlier steps are not run again. */
   fromStepId?: string;
+  /**
+   * Per-site trust for ordinary actions. Absent leaves those actions as they are.
+   * A confirm or login step does not read this.
+   */
+  siteTrust?: SiteTrustMode;
 }
 
 let seq = 0;
@@ -207,10 +218,15 @@ export async function replay(
 
   const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
   const startAt = fromIndex < 0 ? 0 : fromIndex;
+  const recovery: RecoveryBudget = { used: 0 };
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     if (i < startAt) {
       steps[i] = { id: step.id, status: "skipped", reason: "not re-run" };
+      continue;
+    }
+    if (step.when && String(args[step.when.input] ?? "") !== step.when.value) {
+      steps[i] = { id: step.id, status: "passed", reason: "other branch" };
       continue;
     }
     const mode = stepPolicy(step, workflow, settings);
@@ -229,14 +245,14 @@ export async function replay(
       noteTrajectory(trajectory, step, undefined, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
-    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
+    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
       const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
-        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
+        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
         repairs.push(...outcome.repairs);
       }
     }
@@ -246,17 +262,35 @@ export async function replay(
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
         stamp({ id: step.id, status: "passed", phase: "auth", reason: "auth: redirected to login" });
       } else {
-        stamp({ id: step.id, status: "passed" });
+        stamp({ id: step.id, status: "passed", ...(outcome.recovered ? { reason: `recovered: ${outcome.recovered}` } : {}) });
       }
       noteTrajectory(trajectory, step, outcome.acted, true, clock() - started);
       continue;
     }
     if ("paused" in outcome) {
-      stamp({ id: step.id, status: "paused", reason: "confirm" });
+      stamp({ id: step.id, status: "paused", reason: outcome.paused === "trust" ? "always ask" : "confirm" });
       noteTrajectory(trajectory, step, undefined, true, clock() - started);
       return finish({ runId, status: "paused", steps, pausedStepId: step.id });
     }
     const failure = outcome.failure;
+    const liveNodes = (await driver.tree().catch(() => undefined))?.nodes || [];
+    const stop = hardFailure({
+      phase: failure.phase,
+      reason: failure.reason,
+      nodes: liveNodes,
+      network: driver.trace?.().network,
+    });
+    if (stop && failure.phase !== "auth") {
+      stamp({ id: step.id, status: "failed", reason: stop, phase: failure.phase });
+      noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+      return finish({ runId, status: "failed", steps, failure: { ...failure, reason: stop } });
+    }
+    const covered = findRecovery(liveNodes);
+    if (covered && recovery.used >= RECOVERY_LIMIT) {
+      stamp({ id: step.id, status: "failed", reason: covered.kind, phase: failure.phase });
+      noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+      return finish({ runId, status: "failed", steps, failure: { ...failure, reason: covered.kind } });
+    }
     if (failure.phase === "auth") {
       noteAuth(trail, step.id, false);
       precondition = { phase: "auth", reason: failure.reason, recovered: false, stepId: step.id };
@@ -330,13 +364,13 @@ export async function replay(
     }
     const patched = applyPatch(step, proposal.patch);
     pictured = patched;
-    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
+    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok && "paused" in retried) {
-      stamp({ id: step.id, status: "paused", reason: "confirm" });
+      stamp({ id: step.id, status: "paused", reason: retried.paused === "trust" ? "always ask" : "confirm" });
       noteTrajectory(trajectory, patched, undefined, true, clock() - started);
       return finish({ runId, status: "paused", steps, pausedStepId: step.id });
     }
@@ -349,7 +383,7 @@ export async function replay(
       noteTrajectory(trajectory, patched, retried.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure: retried.failure });
     }
-    stamp({ id: step.id, status: "passed" });
+    stamp({ id: step.id, status: "passed", ...(retried.recovered ? { reason: `recovered: ${retried.recovered}` } : {}) });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
       const afterShot = await writeStepShot(driver, opts.shotDir, pictured, "after");
@@ -361,9 +395,13 @@ export async function replay(
 }
 
 type StepOutcome =
-  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean }
+  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
-  | { ok: false; paused: "confirm"; repairs: RepairLog[] };
+  | { ok: false; paused: "confirm" | "trust"; repairs: RepairLog[] };
+
+interface RecoveryBudget {
+  used: number;
+}
 
 async function runStep(
   workflow: WorkflowV2,
@@ -376,7 +414,9 @@ async function runStep(
   receiptLog: ReceiptLog,
   runId: string,
   gate: ApplyGate,
+  recovery: RecoveryBudget,
   extra?: ReadBack,
+  trust?: SiteTrustMode,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
   if (step.action === "note") return { ok: true, repairs };
@@ -386,7 +426,7 @@ async function runStep(
       return { ok: false, repairs, failure: await fail(driver, step, "wait_for", checkReason(step.waitFor), undefined, secrets) };
     }
   }
-  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate);
+  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery, trust);
   if (!outcome.ok) return outcome;
   if (step.gone) {
     const left = await holdCheck(step.gone, args, driver, false);
@@ -416,16 +456,21 @@ async function runStepAction(
   locatorHits: LocatorHit[],
   locatorMode: LocatorMode,
   gate: ApplyGate,
+  recovery: RecoveryBudget,
+  trust?: SiteTrustMode,
 ): Promise<StepOutcome> {
   if (step.action === "login") return runLogin(gate.workflow, step, args, driver, secrets, gate);
   const seen = await driver.tree();
   const miss = authPreconditionMiss(gate.workflow.precondition, seen.url);
   if (miss) return { ok: false, repairs, failure: await fail(driver, step, "auth", miss, undefined, secrets) };
   if (step.action === "confirm") return runConfirm(step, args, driver, secrets, gate);
+  if (trust === "ask" && !consequential(step) && step.action !== "verify" && step.action !== "note") {
+    return { ok: false, paused: "trust", repairs };
+  }
   if (step.action === "verify") {
-    const held = await readExpect(step, args, driver, repairs, gate);
-    if (!held) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
-    return { ok: true, repairs };
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.action === "key" && !step.identity) {
     try {
@@ -433,10 +478,11 @@ async function runStepAction(
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
-    if (!await readExpect(step, args, driver, repairs, gate)) {
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) {
       return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     }
-    return { ok: true, repairs };
+    return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.action === "digits") {
     const text = String(args[step.input || ""] ?? subst(step.value || "", args));
@@ -445,12 +491,13 @@ async function runStepAction(
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
-    if (!await readExpect(step, args, driver, repairs, gate)) {
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) {
       return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     }
-    return { ok: true, repairs, acted: step.identity };
+    return { ok: true, repairs, acted: step.identity, recovered: held.recovered };
   }
-  const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate);
+  const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate, recovery);
   if (!found.hit.ok || found.hit.index == null) {
     const failure = await fail(driver, step, "find", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets);
     if (step.identity) failure.identity = identityView(step.identity, found.nodes, found.hit);
@@ -468,15 +515,52 @@ async function runStepAction(
     const failure = await fail(driver, step, "action", reason, found.hit.brokenAttr, secrets);
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
-  if (!await readExpect(step, args, driver, repairs, gate)) {
+  const held = await readExpect(step, args, driver, repairs, gate, recovery);
+  if (!held.ok) {
     const failure = await fail(driver, step, "expect", expectReason(step), undefined, secrets);
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
-  return { ok: true, repairs, acted: node };
+  return { ok: true, repairs, acted: node, recovered: found.recovered || held.recovered };
 }
 
 function withLocators(failure: StepFailure, tried: TriedLocator[]): StepFailure {
   return tried.length ? { ...failure, locators: tried } : failure;
+}
+
+async function dismissCover(
+  driver: Driver,
+  gate: ApplyGate,
+  step: WorkflowStep,
+  repairs: RepairLog[],
+  budget: RecoveryBudget,
+): Promise<string | undefined> {
+  if (budget.used >= RECOVERY_LIMIT) return undefined;
+  const tree = await driver.tree();
+  const stop = hardFailure({ nodes: tree.nodes, network: driver.trace?.().network });
+  if (stop || hasCaptcha(tree.nodes)) return undefined;
+  const block = findRecovery(tree.nodes);
+  if (!block) return undefined;
+  const cleared = block.kind === "spinner"
+    ? await waitSpinner(driver, step)
+    : block.node ? await guardedClick(driver, gate, step.id, block.node) : false;
+  if (!cleared) return undefined;
+  repairs.push({ stepId: step.id, repair: "overlay", detail: block.kind });
+  budget.used += 1;
+  return block.kind;
+}
+
+async function waitSpinner(driver: Driver, step: WorkflowStep): Promise<boolean> {
+  const timeout = Math.min(step.timeoutMs ?? 1000, 2000);
+  if (timeout <= 0) return false;
+  const start = Date.now();
+  let spins = 0;
+  while (Date.now() - start < timeout && spins < 40) {
+    spins += 1;
+    await (driver.sleep ? driver.sleep(50) : sleep(50));
+    const block = findRecovery((await driver.tree()).nodes);
+    if (!block || block.kind !== "spinner") return true;
+  }
+  return false;
 }
 
 async function findTarget(
@@ -487,13 +571,10 @@ async function findTarget(
   locatorHits: LocatorHit[],
   locatorMode: LocatorMode,
   gate: ApplyGate,
-): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[] }> {
+  recovery: RecoveryBudget,
+): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[]; recovered?: string }> {
+  const recovered = await dismissCover(driver, gate, step, repairs, recovery);
   let tree = await driver.tree();
-  const close = overlayClose(tree.nodes);
-  if (close && await guardedClick(driver, gate, step.id, close)) {
-    repairs.push({ stepId: step.id, repair: "overlay", detail: close.text || close.name || "overlay" });
-    tree = await driver.tree();
-  }
   let located = locate(step, tree, args, locatorMode);
   if (shouldReveal(step, tree, located, locatorMode)) {
     const opened = await openReveal(step, tree, driver, repairs, locatorMode, gate);
@@ -506,29 +587,29 @@ async function findTarget(
   }
   if (located.hit.ok && located.hit.index != null && !isCollapsedBox(located.hit.index, tree.boxes, tree.hidden)) {
     if (located.via) locatorHits.push(located.via);
-    return located;
+    return { ...located, recovered };
   }
   const labeled = labelCandidate(step, tree.nodes, tree.boxes);
   if (labeled) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
-    return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried };
+    return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
   if (anchored) {
     repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
-    return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried };
+    return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
   const waited = await poll(step, args, driver, locatorMode);
   if (waited.hit.ok && waited.hit.index != null && !isCollapsedBox(waited.hit.index, waited.boxes, waited.hidden)) {
     repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
     if (waited.via) locatorHits.push(waited.via);
-    return waited;
+    return { ...waited, recovered };
   }
   if (waited.hit.ok) {
-    return { nodes: waited.nodes, hit: { ok: false, reason: "below-threshold", brokenAttr: "box", ranked: [] }, tried: waited.tried };
+    return { nodes: waited.nodes, hit: { ok: false, reason: "below-threshold", brokenAttr: "box", ranked: [] }, tried: waited.tried, recovered };
   }
-  return waited;
+  return { ...waited, recovered };
 }
 
 function shouldReveal(
@@ -573,9 +654,16 @@ async function openReveal(
   return true;
 }
 
-async function readExpect(step: WorkflowStep, args: ReplayArgs, driver: Driver, repairs: RepairLog[], gate: ApplyGate): Promise<boolean> {
-  if (!step.expect && !step.postcondition) return true;
-  if (await expectationsHold(step, await driver.tree(), args)) return true;
+async function readExpect(
+  step: WorkflowStep,
+  args: ReplayArgs,
+  driver: Driver,
+  repairs: RepairLog[],
+  gate: ApplyGate,
+  recovery: RecoveryBudget,
+): Promise<{ ok: boolean; recovered?: string }> {
+  if (!step.expect && !step.postcondition) return { ok: true };
+  if (await expectationsHold(step, await driver.tree(), args)) return { ok: true };
   const timeout = step.expect?.timeoutMs || step.postcondition?.timeoutMs || 0;
   const start = Date.now();
   if (driver.waitIdle) await driver.waitIdle(Math.min(timeout || step.timeoutMs || 1000, 2000));
@@ -583,17 +671,13 @@ async function readExpect(step: WorkflowStep, args: ReplayArgs, driver: Driver, 
     await (driver.sleep ? driver.sleep(100) : sleep(100));
     if (await expectationsHold(step, await driver.tree(), args)) {
       repairs.push({ stepId: step.id, repair: "wait", detail: "expect became true" });
-      return true;
+      return { ok: true };
     }
   }
-  if (timeout === 0 && await expectationsHold(step, await driver.tree(), args)) return true;
-  const tree = await driver.tree();
-  const close = overlayClose(tree.nodes);
-  if (close && await guardedClick(driver, gate, step.id, close)) {
-    repairs.push({ stepId: step.id, repair: "overlay", detail: close.text || close.name || "overlay" });
-    if (await expectationsHold(step, await driver.tree(), args)) return true;
-  }
-  return false;
+  if (timeout === 0 && await expectationsHold(step, await driver.tree(), args)) return { ok: true };
+  const recovered = await dismissCover(driver, gate, step, repairs, recovery);
+  if (recovered && await expectationsHold(step, await driver.tree(), args)) return { ok: true, recovered };
+  return { ok: false };
 }
 
 async function expectationsHold(step: WorkflowStep, tree: LiveTree, args: ReplayArgs): Promise<boolean> {
@@ -848,6 +932,15 @@ function locate(
         };
       }
     }
+    const labeled = matchLabeledControl(list, step.identity, nodes, tree.boxes, tree.hidden);
+    if (labeled) {
+      return {
+        nodes,
+        hit: { ok: true, index: labeled.index, ranked: [] },
+        via: { stepId: step.id, kind: labeled.kind, detail: labeled.detail },
+        tried,
+      };
+    }
     return {
       nodes,
       hit: { ok: false, reason: "below-threshold", brokenAttr: list[0]?.kind || "locator", ranked: [] },
@@ -892,6 +985,7 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     return;
   }
   if (step.action === "key") {
+    await driver.focus?.(node);
     await driver.key(step.key || "Enter");
     return;
   }
@@ -901,6 +995,7 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
 }
 
 export function holdsExpect(expect: NonNullable<WorkflowStep["expect"]>, tree: LiveTree, args: ReplayArgs): boolean {
+  if (expect.kind === "settled") return pageSettled(tree);
   if (expect.kind === "url") return urlIncludes(tree.url || "", expectedText(expect.match || "", args));
   if (expect.kind === "text") {
     const want = expectedText(expect.match || "", args);
@@ -1012,6 +1107,14 @@ function checkHolds(check: StepCheck, tree: LiveTree, args: ReplayArgs): boolean
   return lookup(check.identity, tree.nodes).ok;
 }
 
+function pageSettled(tree: LiveTree): boolean {
+  const url = tree.url || "";
+  if (!url || /^chrome-error:/i.test(url) || /chromewebdata/i.test(url) || /^about:neterror/i.test(url)) return false;
+  const blob = tree.texts.join("\n");
+  if (/this site can.t be reached|dns_probe|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION/i.test(blob)) return false;
+  return true;
+}
+
 function urlIncludes(url: string, expected: string): boolean {
   if (!expected) return false;
   let decoded = url;
@@ -1111,7 +1214,9 @@ function phaseReason(failure: StepFailure): string {
 }
 
 function expectReason(step: WorkflowStep): string {
-  if (step.expect?.kind === "text" || step.expect?.kind === "url") return step.expect.match || step.expect.kind;
+  if (step.expect?.kind === "text" || step.expect?.kind === "url" || step.expect?.kind === "settled") {
+    return step.expect.match || step.expect.kind;
+  }
   if (step.expect?.state) return step.expect.state;
   if (step.postcondition) return "postcondition";
   return "expect";

@@ -648,6 +648,12 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
   return { score: judgeFraction(summaryFail ? false : parsed.summary, steps, ids), tokens: reply.tokens || 0 };
 }
 
+function replayPasses(rows: HeldRow[], pred: (row: HeldRow) => boolean): string {
+  const mine = rows.filter(pred);
+  const ok = mine.filter((row) => row.replay === "pass").length;
+  return `${ok}/${mine.length || 0}`;
+}
+
 function render(
   rows: HeldRow[],
   bad: BadJudgeRow[],
@@ -662,9 +668,13 @@ function render(
   const header = [
     "# Held-out intent",
     "",
-    "Trails were captured from public pages and the ground truth was committed before this run. Replay uses multi-locator lookup and the search-toggle reveal. A click is dropped only when the trail shows no url, checked, value, or subtree change and no later step sits in its subtree. A Help click is kept.",
+    "Trails were captured from public pages and the ground truth was committed before this run. Replay uses multi-locator lookup and the search-toggle reveal. A click is dropped only when the trail shows no url, checked, value, subtree change, or JS dialog, and no later step sits in its subtree. A Help click is kept.",
+    "",
+    "A step expects the effect the trail recorded: text that appeared in the target subtree, then a value or checked change, then a url change. A url template uses a param only when the recorded url contained that typed value. When none of those happened, the step expects no error and the page settled, and it is marked low-confidence.",
     "",
     `Effect filter wrongly dropped ${drops.length} true keep steps: ${dropText}.`,
+    "",
+    `Replay pass rate: condense ${replayPasses(rows, (row) => row.condenser === "condense")}, model ${replayPasses(rows, (row) => row.condenser !== "condense" && !row.condenser.startsWith("hybrid/"))}, hybrid ${replayPasses(rows, (row) => row.condenser.startsWith("hybrid/"))}.`,
     "",
     `Intent lint caught ${low}/${bad.length} bad texts and falsely rejected ${goods.length}/${GOOD_INTENTS.length} good intents.`,
     "",

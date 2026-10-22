@@ -299,6 +299,24 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.equal(html.includes("id=\"library\""), false);
   assert.equal(html.includes("<img"), false);
   assert.match(html, /class="ph"/);
+  assert.match(html, /data-testid="share-menu"/);
+  assert.match(html, /data-testid="share-copy" data-copy="bao:\/\/workflow\/wf"/);
+  assert.match(html, /data-testid="share-publish" disabled/);
+  assert.match(html, /Pair this Mac before listing/);
+  assert.match(html, /data-testid="share-export"/);
+  assert.equal(html.includes('data-testid="share-export" disabled'), false);
+  assert.equal(html.includes('data-testid="deeplink"'), false);
+  assert.equal(html.includes('data-testid="import-link"'), false);
+  const empty = workflowDetail({ id: "empty", name: "Empty", steps: [] });
+  assert.match(empty, /data-testid="share-export" disabled/);
+  assert.match(empty, /This workflow has no steps to export/);
+  const cropped = workflowDetail({
+    id: "wf",
+    name: "fixture apply",
+    steps: [{ id: "signed-in", action: "click", label: "Click signed in" }],
+  }, { shots: { "signed-in": "/api/runs/run-1/shots/signed-in-after.png" } });
+  assert.match(cropped, /<img src="\/api\/runs\/run-1\/shots\/signed-in-after\.png"/);
+  assert.match(cropped, /class="thumb has-shot"/);
 });
 
 test("a failed run says the phase, the change, what bao tried, and shows the grid", () => {

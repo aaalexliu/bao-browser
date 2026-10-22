@@ -1,9 +1,10 @@
 // Heal is off unless a provider says it is available.
 // The default policy is auto: apply the patch and keep going.
-// approve pauses at the proposal. The saved workflow changes only if the user keeps the patch.
+// approve pauses at the proposal. Keeping a patch stores a draft. The live workflow changes when that draft is promoted.
 
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
+import { withHealVersion, withRevertVersion } from "./element-history";
 import type { HealMode, Identity, WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface FailureSnapshot {
@@ -312,19 +313,36 @@ export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): Wo
   return next;
 }
 
-export function keepPatch(workflow: WorkflowV2, stepId: string, patch: HealProposal["patch"]): WorkflowV2 {
+export function keepPatch(
+  workflow: WorkflowV2,
+  stepId: string,
+  patch: HealProposal["patch"],
+  meta: { at?: number; runId?: string; score?: number } = {},
+): WorkflowV2 {
+  const at = meta.at ?? Date.now();
   return {
     ...workflow,
-    updatedAt: Date.now(),
-    steps: workflow.steps.map((step) => step.id === stepId ? applyPatch(step, patch) : step),
+    updatedAt: at,
+    steps: workflow.steps.map((step) => {
+      if (step.id !== stepId) return step;
+      const patched = applyPatch(step, patch);
+      return withHealVersion(step, patched, { at, recordedAt: workflow.createdAt, runId: meta.runId, score: meta.score });
+    }),
   };
 }
 
-/** Put the failed step back. Used after a keep, and a no-op when nothing was kept. */
-export function revertPatch(workflow: WorkflowV2, failedStep: WorkflowStep): WorkflowV2 {
+/** Put the failed step back and append a revert row. Older versions stay. */
+export function revertPatch(
+  workflow: WorkflowV2,
+  failedStep: WorkflowStep,
+  meta: { at?: number; runId?: string } = {},
+): WorkflowV2 {
+  const at = meta.at ?? Date.now();
   return {
     ...workflow,
-    updatedAt: Date.now(),
-    steps: workflow.steps.map((step) => step.id === failedStep.id ? failedStep : step),
+    updatedAt: at,
+    steps: workflow.steps.map((step) => step.id === failedStep.id
+      ? withRevertVersion(step, failedStep, { at, recordedAt: workflow.createdAt, runId: meta.runId })
+      : step),
   };
 }

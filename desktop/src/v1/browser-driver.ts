@@ -57,6 +57,9 @@ export class BrowserDriver implements Driver {
     private readonly onNotify?: (notice: HealNotice) => void,
     private readonly prompts?: PersonPrompts,
   ) {
+    page.on("dialog", (dialog) => {
+      dialog.accept().catch(() => undefined);
+    });
     page.on("console", (msg) => {
       const text = maskTrace(msg.text());
       if (!text) return;
@@ -143,20 +146,7 @@ export class BrowserDriver implements Driver {
   }
 
   async shot(target?: ShotTarget): Promise<Buffer | undefined> {
-    try {
-      await this.page.evaluate(maskPasswordFields).catch(() => undefined);
-      const found = await locateTarget(this.page, target);
-      if (!found) return;
-      await found.mark();
-      const view = this.page.viewportSize() || await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-      const clip = paddedClip(found.box, view);
-      return await shotWithBlur(this.page, { type: "png", clip });
-    } catch {
-      return undefined;
-    } finally {
-      await clearShotMarks(this.page);
-      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
-    }
+    return elementShot(this.page, target);
   }
 
   async snapshot(): Promise<FailureSnapshot> {
@@ -212,6 +202,10 @@ export class BrowserDriver implements Driver {
     } catch {
       throw new Error("could not fill the secret field");
     }
+  }
+
+  async focus(node: Identity): Promise<void> {
+    await this.page.locator(this.sel(node)).focus();
   }
 
   async key(key: string): Promise<void> {
@@ -363,6 +357,48 @@ export class BrowserDriver implements Driver {
   private sel(node: Identity): string {
     return `[data-bao-i="${this.handle(node)}"]`;
   }
+
+  /** Outline the node the scorer accepted. Does not click or type. */
+  async outline(node: Identity): Promise<void> {
+    await clearShotMarks(this.page);
+    const loc = this.page.locator(this.sel(node));
+    await loc.scrollIntoViewIfNeeded().catch(() => undefined);
+    await loc.evaluate((el) => {
+      const target = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? (el.closest("label") || el) : el;
+      target.setAttribute("data-bao-shot-outline", "1");
+      (target as HTMLElement).style.outline = "2px solid #d4532b";
+      (target as HTMLElement).style.outlineOffset = "2px";
+    });
+  }
+
+  /** Crop of the outlined match. The outline stays on the live page. */
+  async outlinePreview(): Promise<string | undefined> {
+    const box = await this.page.locator("[data-bao-shot-outline]").first().boundingBox().catch(() => null);
+    if (!box || box.width < 2 || box.height < 2) return;
+    const view = this.page.viewportSize() || await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const clip = paddedClip(box, view);
+    const png = await this.page.screenshot({ type: "png", clip }).catch(() => undefined);
+    return png?.toString("base64");
+  }
+}
+
+/** Crop around the step's target and outline it. A full-page picture is not used. */
+export async function elementShot(page: Page, target?: ShotTarget, opts?: { blur?: boolean }): Promise<Buffer | undefined> {
+  try {
+    await page.evaluate(maskPasswordFields).catch(() => undefined);
+    const found = await locateTarget(page, target);
+    if (!found) return;
+    await found.mark();
+    const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const clip = paddedClip(found.box, view);
+    if (opts?.blur === false) return await page.screenshot({ type: "png", clip });
+    return await shotWithBlur(page, { type: "png", clip });
+  } catch {
+    return undefined;
+  } finally {
+    await clearShotMarks(page);
+    await page.evaluate(unmaskPasswordFields).catch(() => undefined);
+  }
 }
 
 /** Crop around the step's target. A full-page picture is not used as a thumbnail. */
@@ -442,16 +478,87 @@ function publicUrl(raw: string): string {
   }
 }
 
-export async function notifyOs(title: string, body: string): Promise<void> {
+export type NotifyReport = {
+  ok: boolean;
+  authorization?: string;
+  prompt?: boolean;
+  delivered?: boolean;
+  badge?: string;
+  titles?: string[];
+  bodies?: string[];
+  error?: string;
+};
+
+/** Darwin posts through the signed Bao.app process. osascript display notification does not. */
+async function baoNotify(cmd: "act" | "clear", title = "", body = ""): Promise<NotifyReport> {
+  const sock = process.env.BAO_NOTIFY_SOCK;
+  if (!sock) return { ok: false, error: "no bao notifier", delivered: false };
+  const { createConnection } = await import("node:net");
+  return new Promise((resolve) => {
+    const socket = createConnection(sock);
+    let buf = "";
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve({ ok: false, error: "timeout", delivered: false });
+    }, 8000);
+    const finish = (report: NotifyReport) => {
+      clearTimeout(timer);
+      socket.end();
+      resolve(report);
+    };
+    socket.on("connect", () => {
+      socket.write(`${JSON.stringify({ cmd, title, body })}\n`);
+    });
+    socket.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      const nl = buf.indexOf("\n");
+      if (nl < 0) return;
+      try {
+        finish(JSON.parse(buf.slice(0, nl)) as NotifyReport);
+      } catch {
+        finish({ ok: false, error: "bad response", delivered: false });
+      }
+    });
+    socket.on("error", () => finish({ ok: false, error: "unreachable", delivered: false }));
+  });
+}
+
+let onOsNotify: (report: NotifyReport) => void = () => {};
+
+/** startApp registers this so a denied notification updates the capture bar. */
+export function watchOsNotify(watch: (report: NotifyReport) => void): void {
+  onOsNotify = watch;
+}
+
+export async function notifyOs(title: string, body: string): Promise<NotifyReport> {
+  if (process.platform === "darwin") {
+    const report = await baoNotify("act", title, body);
+    console.log(`bao notify ${JSON.stringify({
+      authorization: report.authorization || "",
+      prompt: report.prompt === true,
+      delivered: report.delivered === true,
+      badge: report.badge || "",
+      titles: report.titles || [],
+      bodies: report.bodies || [],
+      error: report.error || "",
+    })}`);
+    onOsNotify(report);
+    return report;
+  }
   const { spawn } = await import("node:child_process");
-  const cmd = process.platform === "darwin"
-    ? ["/usr/bin/osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`]]
-    : ["notify-send", ["-a", "Bao", "-u", "normal", "-t", "15000", title, body]];
   await new Promise<void>((resolve) => {
-    const child = spawn(cmd[0] as string, cmd[1] as string[], { stdio: "ignore" });
+    const child = spawn("notify-send", ["-a", "Bao", "-u", "normal", "-t", "15000", title, body], { stdio: "ignore" });
     child.on("error", () => resolve());
     child.on("close", () => resolve());
   });
+  const report: NotifyReport = { ok: true, delivered: false };
+  onOsNotify(report);
+  return report;
+}
+
+export async function clearOsNotify(): Promise<void> {
+  if (process.platform !== "darwin" || !process.env.BAO_NOTIFY_SOCK) return;
+  await baoNotify("clear");
 }
 
 function toIdentity(node: DomDump): Identity {

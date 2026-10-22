@@ -3,6 +3,7 @@
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { canonical } from "./canonical";
+import type { ElementVersion } from "./element-history";
 
 export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 
@@ -75,7 +76,7 @@ export interface Postcondition {
 
 /** Re-read after the action. A verify step has no action of its own. */
 export interface Expectation {
-  kind: "text" | "url" | "state";
+  kind: "text" | "url" | "state" | "settled";
   match?: string;
   state?: "checked" | "unchecked" | "enabled" | "disabled" | "visible";
   identity?: Identity;
@@ -101,6 +102,12 @@ export interface ReadBack {
   identity?: Identity;
   fileInput?: string;
   timeoutMs: number;
+}
+
+/** Selects one demonstration where two teachings of the same task diverged. */
+export interface StepWhen {
+  input: string;
+  value: string;
 }
 
 /**
@@ -156,6 +163,8 @@ export interface WorkflowStep {
   gate?: "login" | "confirm";
   postcondition?: Postcondition;
   expect?: Expectation;
+  /** Set when the trail showed no subtree, value, or url effect. Replay only checks that the page settled. */
+  confidence?: "low";
   /** Must become true before find. A miss is phase `wait_for`. */
   waitFor?: StepCheck;
   /** Must be absent after the action. A miss is phase `expect`. */
@@ -167,9 +176,16 @@ export interface WorkflowStep {
   reveal?: StepLocator;
   /** Re-read after the action. The run appends a hashed receipt. */
   readBack?: ReadBack;
+  /**
+   * Run this step only when the choice input equals `value`.
+   * Steps without `when` run on every demonstration.
+   */
+  when?: StepWhen;
   timeoutMs: number;
   /** auto heals, ask pauses, never leaves the miss. Absent uses the workflow. */
   heal?: "auto" | "ask" | "never";
+  /** Append-only locator versions. Rollback adds a row and does not edit an older one. */
+  history?: ElementVersion[];
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
   unresolved?: { reason: string };
 }
@@ -257,6 +273,11 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     }
     if (step.action === "verify" && !step.expect && !step.postcondition) errors.push(`verify ${step.id}`);
     if (step.heal && step.heal !== "auto" && step.heal !== "ask" && step.heal !== "never") errors.push(`heal ${step.id}`);
+    if (step.when) {
+      const input = doc.inputs.find((item) => item.name === step.when?.input);
+      if (!input || input.type !== "choice") errors.push(`when ${step.id}`);
+      else if (!input.choices?.includes(step.when.value)) errors.push(`when value ${step.id}`);
+    }
     for (const locator of step.locators ?? []) errors.push(...locatorErrors(locator, step.id));
     if (step.reveal) errors.push(...locatorErrors(step.reveal, step.id));
     if (step.waitFor) errors.push(...checkErrors(step.waitFor, step.id, "waitFor"));
