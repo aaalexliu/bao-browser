@@ -1305,9 +1305,11 @@ export async function startApp(opts: {
     teachFix = fix;
     teachCaseId = `teach-${Date.now().toString(36)}`;
     sessionMode = "teach";
-    teachPhase = "live";
     try {
       await beginSession(startUrl);
+      // Live means the capture page exists. Publishing it earlier lets a
+      // drive land in the gap while Chrome is still launching.
+      teachPhase = "live";
       if (page && !page.isClosed()) teachBaseline = await page.evaluate(visibleStatusLines).catch(() => []);
     } catch (err) {
       sessionMode = "capture";
