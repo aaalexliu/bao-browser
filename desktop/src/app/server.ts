@@ -60,6 +60,13 @@ import { SiteStore, siteOrigin } from "../login-import/sites";
 import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
+import {
+  clearPendingPrompt,
+  markPromptTimedOut,
+  promptDue,
+  readPendingPrompt,
+  writePendingPrompt,
+} from "../v1/pending-prompt";
 import { Library } from "../v1/store";
 import { keepMine, openConflict, pairDevice, syncAll, syncStatus } from "../v1/sync";
 import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
@@ -112,6 +119,7 @@ export async function startApp(opts: {
   let activeAsk: HumanAsk | null = null;
   let stopRun = false;
   let loginContinued = false;
+  let replaying = false;
   let capturePaused = false;
   let recordingSince = 0;
   const notifications: { title: string; body: string }[] = [];
@@ -126,7 +134,10 @@ export async function startApp(opts: {
     },
     clearConfirm() {
       humanConfirm = null;
-      if (activeAsk?.kind === "confirm") activeAsk = null;
+      if (activeAsk?.kind === "confirm") {
+        activeAsk = null;
+        clearPendingPrompt(library.root);
+      }
     },
     showLoginWait(label) {
       const detail = label && label.length <= 120 ? label : "Sign in on the site window";
@@ -135,10 +146,14 @@ export async function startApp(opts: {
     clearLoginWait() {
       loginWait = null;
       loginContinued = false;
-      if (activeAsk?.kind === "login") activeAsk = null;
+      if (activeAsk?.kind === "login") {
+        activeAsk = null;
+        clearPendingPrompt(library.root);
+      }
     },
     showAsk(ask) {
       activeAsk = ask;
+      rememberPending(ask);
       note("You need to act", ask.instruction);
     },
     shouldStop: () => stopRun,
@@ -200,6 +215,7 @@ export async function startApp(opts: {
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
+        syncPending();
         return json(res, {
           recording,
           notices,
@@ -517,16 +533,21 @@ export async function startApp(opts: {
         const args = await materializeFiles(body.args || {});
         stopRun = false;
         loginContinued = false;
-        const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
-          baoProfile,
-          sites,
-          closeSignIn: async () => {
-            await signIn?.close();
-            signIn = undefined;
-          },
-        });
-        library.savePublicInputs(workflow.id, keptInputs(workflow, args));
-        return json(res, run);
+        replaying = true;
+        try {
+          const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
+            baoProfile,
+            sites,
+            closeSignIn: async () => {
+              await signIn?.close();
+              signIn = undefined;
+            },
+          });
+          library.savePublicInputs(workflow.id, keptInputs(workflow, args));
+          return json(res, run);
+        } finally {
+          replaying = false;
+        }
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
         const session = replays.get(url.searchParams.get("id") || "");
@@ -542,6 +563,13 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
         stopRun = true;
+        if (!replaying) {
+          clearPendingPrompt(library.root);
+          activeAsk = null;
+          loginWait = null;
+          humanConfirm = null;
+          loginContinued = false;
+        }
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/replay/show") {
@@ -753,6 +781,43 @@ export async function startApp(opts: {
     }
   });
 
+  function rememberPending(ask: HumanAsk): void {
+    if (!ask.runId) return;
+    writePendingPrompt(library.root, { ask, runId: ask.runId });
+    try {
+      library.readRun(ask.runId);
+    } catch {
+      library.saveRun({
+        id: ask.runId,
+        workflowId: ask.workflowId,
+        status: "paused",
+        at: Date.now(),
+        heals: [],
+        steps: [{ id: ask.stepId, status: "paused", label: ask.label }],
+      });
+    }
+  }
+
+  function syncPending(now = Date.now()): void {
+    const prompt = readPendingPrompt(library.root);
+    if (!prompt) return;
+    if (promptDue(prompt, now)) {
+      if (replaying) return;
+      markPromptTimedOut(library, prompt, now);
+      clearPendingPrompt(library.root);
+      activeAsk = null;
+      if (prompt.ask.kind === "login") {
+        loginWait = null;
+        loginContinued = false;
+      } else {
+        humanConfirm = null;
+      }
+      return;
+    }
+    if (!activeAsk) activeAsk = prompt.ask;
+  }
+
+  syncPending();
   await new Promise<void>((resolve) => server.listen(opts.port ?? 0, "127.0.0.1", resolve));
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
@@ -1038,6 +1103,7 @@ async function runRecorded(
     inputs: maskedInputs(workflow, args),
   }), secretList)) as Parameters<Library["saveRun"]>[0];
   library.saveRun(saved);
+  if (result.status !== "paused") clearPendingPrompt(library.root);
   const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
   if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
   const bounds = await readOwnedWindow(page).catch(() => null);

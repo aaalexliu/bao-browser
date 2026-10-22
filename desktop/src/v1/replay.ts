@@ -179,7 +179,7 @@ export async function replay(
   const receiptLog = opts.receipts ?? new ReceiptLog();
   const trajectory: TrajectoryStep[] = [];
   const trail: RunTrailEvent[] = [];
-  const gate: ApplyGate = { workflow, trail, actTimeoutMs: settings.actTimeoutMs };
+  const gate: ApplyGate = { workflow, trail, actTimeoutMs: settings.actTimeoutMs, runId };
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
 
@@ -598,30 +598,35 @@ async function runConfirm(
     label: step.label,
     button: confirmButton(step),
     timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
+    runId: gate.runId,
   }));
   await driver.showConfirm?.(step.label);
   if (!step.postcondition) {
     return { ok: false, paused: "confirm", repairs: [] };
   }
+  let finished = false;
   try {
     const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
     const start = Date.now();
     let seen = await driver.tree();
     while (!holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
       if (driver.shouldStop?.()) {
+        finished = true;
         return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "cancelled", undefined, secrets) };
       }
       await (driver.sleep ? driver.sleep(200) : sleep(200));
       seen = await driver.tree();
     }
     if (!holds(step.postcondition, seen, args)) {
+      finished = true;
       const reason = driver.shouldStop?.() ? "cancelled" : "nothing applied";
       return { ok: false, repairs: [], failure: await fail(driver, step, "expect", reason, undefined, secrets) };
     }
     gate.trail.push({ kind: "human-confirm", stepId: step.id });
+    finished = true;
     return { ok: true, repairs: [] };
   } finally {
-    await driver.clearConfirm?.();
+    if (finished) await driver.clearConfirm?.();
   }
 }
 
@@ -678,13 +683,17 @@ async function settleLogin(
       stepCount: workflow.steps.length,
       label: step.label,
       timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
+      runId: gate.runId,
     }));
     await driver.showLoginWait?.(step.label || "Sign in on the site window");
   }
+  let finished = false;
   try {
-    return await waitForLogin(workflow, step, args, driver, gate);
+    const ok = await waitForLogin(workflow, step, args, driver, gate);
+    finished = true;
+    return ok;
   } finally {
-    await driver.clearLoginWait?.();
+    if (finished) await driver.clearLoginWait?.();
   }
 }
 

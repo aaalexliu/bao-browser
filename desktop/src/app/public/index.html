@@ -205,6 +205,7 @@
     .quiet-badge { background: var(--select); color: var(--ink); }
     .status.passed { background: var(--ok-bg); color: var(--ok); }
     .status.failed { background: var(--bad-bg); color: var(--bad); }
+    .status.timed-out { background: var(--bad-bg); color: var(--bad); }
     .status.paused { background: var(--need-bg); color: var(--need); }
     .status.unchecked { background: var(--select); color: var(--quiet); }
     details { margin: 0.7rem 0 0.2rem; }
@@ -299,7 +300,7 @@
     .swatch.healed { background: var(--heal); }
     .swatch.provisional { background: var(--prov); }
     .swatch.paused { background: var(--need); }
-    .swatch.failed { background: var(--bad); }
+    .swatch.failed, .swatch.timed-out { background: var(--bad); }
     .spark { display: flex; gap: 4px; align-items: center; min-height: 10px; }
     .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 0.35rem; }
     .chip { background: var(--select); border-radius: 999px; padding: 0.05rem 0.45rem; font-size: var(--text-xs); }

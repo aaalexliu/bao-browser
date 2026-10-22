@@ -458,6 +458,37 @@ test("a confirm step times out without clicking and says nothing was applied", a
   assert.equal(result.modelCalls, 0);
 });
 
+test("closing the page during a confirm wait leaves the prompt in place", async () => {
+  const apply = id({ name: "Apply", role: "button" });
+  const d = driver([apply], { texts: ["Waiting to apply"] });
+  let asks = 0;
+  let clears = 0;
+  d.showAsk = async () => { asks += 1; };
+  d.clearConfirm = () => { clears += 1; };
+  let reads = 0;
+  d.tree = async () => {
+    reads += 1;
+    if (reads > 1) throw new Error("page closed");
+    return tree([apply], { texts: ["Waiting to apply"] });
+  };
+  const doc = workflow(apply);
+  doc.steps[0] = {
+    id: "c",
+    index: 0,
+    action: "confirm",
+    human: true,
+    label: 'you press "Apply"',
+    surface: "dom",
+    identity: apply,
+    timeoutMs: 40,
+    postcondition: { kind: "text", match: "Applied", timeoutMs: 40 },
+  };
+  await assert.rejects(() => replay(doc, {}, d), /page closed/);
+  assert.equal(asks, 1);
+  assert.equal(clears, 0);
+  assert.equal(d.clicks, 0);
+});
+
 test("value postcondition reads the live text", () => {
   const ok = holds(
     { kind: "value", match: "{{a}}+{{b}}", timeoutMs: 1 },

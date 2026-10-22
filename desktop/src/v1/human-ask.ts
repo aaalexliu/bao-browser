@@ -30,6 +30,8 @@ export interface HumanAsk {
   startedAt: number;
   deadline: number | null;
   timeoutMs: number;
+  /** Set while a replay is waiting, so the prompt can find its run after a restart. */
+  runId?: string;
 }
 
 export function confirmButton(step: { label: string; identity?: { name?: string; text?: string } }): string {
@@ -60,6 +62,7 @@ export function makeAsk(input: {
   timeoutMs: number;
   now?: number;
   windowName?: string;
+  runId?: string;
 }): HumanAsk {
   const now = input.now ?? Date.now();
   const windowName = input.windowName || "Bao Chrome";
@@ -79,6 +82,7 @@ export function makeAsk(input: {
     startedAt: now,
     deadline: timeoutMs > 0 ? now + timeoutMs : null,
     timeoutMs,
+    runId: input.runId,
   };
 }
 
