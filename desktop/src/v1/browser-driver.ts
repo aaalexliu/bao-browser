@@ -479,6 +479,7 @@ export type NotifyReport = {
   delivered?: boolean;
   badge?: string;
   titles?: string[];
+  bodies?: string[];
   error?: string;
 };
 
@@ -525,6 +526,7 @@ export async function notifyOs(title: string, body: string): Promise<void> {
       delivered: report.delivered === true,
       badge: report.badge || "",
       titles: report.titles || [],
+      bodies: report.bodies || [],
       error: report.error || "",
     })}`);
     return;

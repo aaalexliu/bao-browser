@@ -64,6 +64,22 @@ static NSString *badge_label(void) {
     return [NSApp dockTile].badgeLabel ?: @"";
 }
 
+static const char *utf8(NSString *text) {
+    const char *bytes = text.UTF8String;
+    return bytes ? bytes : "";
+}
+
+static void log_delivered(NSArray<UNNotification *> *notes) {
+    fprintf(stderr, "bao notify delivered count=%lu\n", (unsigned long)notes.count);
+    for (UNNotification *note in notes) {
+        NSString *title = note.request.content.title ?: @"";
+        NSString *body = note.request.content.body ?: @"";
+        body = [body stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+        fprintf(stderr, "bao notify delivered title=%s body=%s\n", utf8(title), utf8(body));
+    }
+    fflush(stderr);
+}
+
 static NSString *badge_on_main(NSString *label);
 
 static void set_badge(NSString *label) {
@@ -107,10 +123,12 @@ static void reply_delivered(int fd, NSString *identifier, NSString *authorizatio
     [center getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *notes) {
         dispatch_async(dispatch_get_main_queue(), ^{
             NSMutableArray *titles = [NSMutableArray array];
+            NSMutableArray *bodies = [NSMutableArray array];
             BOOL found = NO;
+            log_delivered(notes);
             for (UNNotification *note in notes) {
-                NSString *title = note.request.content.title ?: @"";
-                [titles addObject:title];
+                [titles addObject:note.request.content.title ?: @""];
+                [bodies addObject:note.request.content.body ?: @""];
                 if ([note.request.identifier isEqualToString:identifier]) found = YES;
             }
             write_reply(fd, @{
@@ -120,6 +138,7 @@ static void reply_delivered(int fd, NSString *identifier, NSString *authorizatio
                 @"delivered": @(found),
                 @"identifier": identifier ?: @"",
                 @"titles": titles,
+                @"bodies": bodies,
                 @"badge": badge ?: @"",
             });
         });
@@ -141,33 +160,37 @@ static void post_act(int fd, NSDictionary *msg, NSString *authorization) {
     NSString *identifier = [NSUUID UUID].UUIDString;
     UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identifier content:content trigger:nil];
     [center addNotificationRequest:request withCompletionHandler:^(NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (error) {
+        if (error) {
+            NSString *message = error.localizedDescription ?: @"add failed";
+            dispatch_async(dispatch_get_main_queue(), ^{
                 write_reply(fd, @{
                     @"ok": @NO,
                     @"authorization": authorization,
                     @"prompt": @NO,
                     @"delivered": @NO,
                     @"badge": badge_label(),
-                    @"error": error.localizedDescription ?: @"add failed",
+                    @"error": message,
                 });
-                return;
-            }
-            reply_delivered(fd, identifier, authorization, badge);
-        });
+            });
+            return;
+        }
+        reply_delivered(fd, identifier, authorization, badge);
     }];
 }
 
 static NSString *badge_on_main(NSString *label) {
+    __block NSString *shown = @"";
     if ([NSThread isMainThread]) {
         set_badge(label);
-        return badge_label();
-    }
-    __block NSString *shown = @"";
-    dispatch_sync(dispatch_get_main_queue(), ^{
-        set_badge(label);
         shown = badge_label();
-    });
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            set_badge(label);
+            shown = badge_label();
+        });
+    }
+    fprintf(stderr, "bao notify badgeLabel=%s\n", utf8(shown));
+    fflush(stderr);
     return shown;
 }
 
@@ -229,8 +252,11 @@ static void handle_message(int fd, NSDictionary *msg) {
         if (status != UNAuthorizationStatusAuthorized && status != UNAuthorizationStatusProvisional) {
             [center getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *notes) {
                 NSMutableArray *titles = [NSMutableArray array];
+                NSMutableArray *bodies = [NSMutableArray array];
+                log_delivered(notes);
                 for (UNNotification *note in notes) {
                     [titles addObject:note.request.content.title ?: @""];
+                    [bodies addObject:note.request.content.body ?: @""];
                 }
                 write_reply(fd, @{
                     @"ok": @YES,
@@ -238,6 +264,7 @@ static void handle_message(int fd, NSDictionary *msg) {
                     @"prompt": @NO,
                     @"delivered": @NO,
                     @"titles": titles,
+                    @"bodies": bodies,
                     @"badge": badge,
                 });
             }];
