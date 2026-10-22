@@ -167,12 +167,14 @@ function icon(name: string): string {
     capture: "M12 8a4 4 0 100 8 4 4 0 000-8zm8.5 4a8.5 8.5 0 11-17 0 8.5 8.5 0 0117 0z",
     runs: "M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h10v3H4v-3z",
     heals: "M12 4l2.2 4.6L19 9.2l-3.5 3.4.8 4.9L12 15.8 7.7 17.5l.8-4.9L5 9.2l4.8-.6L12 4z",
+    logins: "M8 10V7a4 4 0 118 0v3h1.5A1.5 1.5 0 0119 11.5v7a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 015 18.5v-7A1.5 1.5 0 016.5 10H8zm2 0h4V7a2 2 0 10-4 0v3z",
+    replay: "M8 6v12l10-6L8 6z",
     settings: "M12 8.5A3.5 3.5 0 1012 15.5 3.5 3.5 0 0012 8.5zM4 12l2-.6.4-1.6-1.2-1.6 1.8-1.8 1.6 1.2 1.6-.4L11 5h2l.4 2.2 1.6.4 1.6-1.2 1.8 1.8-1.2 1.6.4 1.6 2 .6v2l-2 .6-.4 1.6 1.2 1.6-1.8 1.8-1.6-1.2-1.6.4L13 21h-2l-.4-2.2-1.6-.4-1.6 1.2-1.8-1.8 1.2-1.6-.4-1.6L4 14v-2z",
   };
   return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
 }
 
-export function rail(state: ShellState): string {
+export function rail(state: ShellState, appearance: "light" | "dark" = "light"): string {
   const heals = pendingHealCount(state.runs || []);
   const waiting = attentionCount({
     ask: state.activeAsk,
@@ -187,11 +189,14 @@ export function rail(state: ShellState): string {
     <nav>
       <button data-screen="library">${icon("library")} Library</button>
       <button data-screen="capture">${icon("capture")} Capture</button>
+      <button data-screen="logins">${icon("logins")} Logins</button>
       <button data-screen="runs">${icon("runs")} Runs</button>
+      <button data-screen="replay">${icon("replay")} Replay</button>
       <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
       <button data-screen="settings">${icon("settings")} Settings</button>
     </nav>
     <div class="rail-foot">
+      <button type="button" id="theme-toggle" aria-pressed="${appearance === "dark" ? "true" : "false"}">${appearance === "dark" ? "Light" : "Dark"}</button>
       <div id="attention-label">${waiting} waiting</div>
       <div class="channel"><span class="dot ${rec}" id="dot"></span><span id="rec-label">${state.recording ? "recording" : "idle"}</span></div>
       <div class="channel" id="helper-status">${esc(helper)}</div>
@@ -851,6 +856,7 @@ export function commandItems(workflows: { id: string; name: string }[]): Command
   const screens: CommandItem[] = [
     { id: "library", label: "Library", kind: "screen", screen: "library", hint: "Go" },
     { id: "capture", label: "Capture", kind: "screen", screen: "capture", hint: "Go" },
+    { id: "logins", label: "Logins", kind: "screen", screen: "logins", hint: "Go" },
     { id: "runs", label: "Runs", kind: "screen", screen: "runs", hint: "Go" },
     { id: "heals", label: "Heals", kind: "screen", screen: "heals", hint: "Go" },
     { id: "settings", label: "Settings", kind: "screen", screen: "settings", hint: "Go" },

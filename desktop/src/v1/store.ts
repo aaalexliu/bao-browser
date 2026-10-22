@@ -7,6 +7,7 @@ import { migrate, toJson, validateWorkflow } from "./schema";
 
 export interface Settings {
   heal: HealMode;
+  syncServer?: string;
 }
 
 export interface StoredRun {
@@ -164,6 +165,30 @@ export class Library {
     const settings = { ...this.settings(), heal };
     writeFileSync(path.join(this.root, "settings.json"), JSON.stringify(settings, null, 2));
     return settings;
+  }
+
+  setSyncServer(syncServer: string): Settings {
+    const settings = { ...this.settings(), syncServer };
+    writeFileSync(path.join(this.root, "settings.json"), JSON.stringify(settings, null, 2));
+    return settings;
+  }
+
+  savePublicInputs(id: string, inputs: Record<string, string | number>): void {
+    mkdirSync(path.join(this.root, "inputs"), { recursive: true });
+    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(inputs, null, 2));
+  }
+
+  readPublicInputs(id: string): Record<string, string | number> {
+    try {
+      return JSON.parse(readFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), "utf8")) as Record<string, string | number>;
+    } catch {
+      return {};
+    }
+  }
+
+  private safe(id: string): string {
+    if (id.includes("/") || id.includes("..") || id.includes("\\")) throw new Error("bad workflow id");
+    return id;
   }
 
   readBounds(id: string): { x: number; y: number; width: number; height: number } | null {

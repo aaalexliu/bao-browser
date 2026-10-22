@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
+import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -54,6 +54,10 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   assert.equal(args.includes("--use-mock-keychain"), false);
   assert.equal(args.includes("--password-store=basic"), false);
   assert.equal(args.includes("--no-sandbox"), false);
+  assert.equal(args.includes("--restore-last-session"), false);
+  assert.equal(ownedChromeLaunchArgs([], {}).includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }).includes("--no-sandbox"), true);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }).includes("--disable-dev-shm-usage"), true);
   assert.throws(() => accountLaunchArgs(9222), /9222/);
   const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
   const bundled = "/tmp/Bao.app/Chromium";

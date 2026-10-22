@@ -4,7 +4,7 @@
 // debugging port, so Playwright's automation switches are not on the command line.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { chromium, type BrowserContext } from "playwright";
@@ -21,12 +21,42 @@ const BANNED_ACCOUNT_ARGS = [
   "--disable-blink-features=AutomationControlled",
 ];
 
-const LAUNCH_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
+/** Owned Chrome only. Account Chrome never receives these, including the sandbox opt-in. */
+export const OWNED_CHROME_ARGS = [
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-sync",
+  // Continue where you left off. Chrome then keeps session cookies on a clean exit.
+  "--restore-last-session",
+];
+
+/** Chrome's "Continue where you left off". Session cookies survive a clean exit. */
+export const RESTORE_LAST_SESSION = 1;
+
+export function keepSessionCookies(userDataDir: string): void {
+  const dir = path.join(userDataDir, "Default");
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "Preferences");
+  let prefs: Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+      if (parsed && typeof parsed === "object") prefs = parsed as Record<string, unknown>;
+    } catch {
+      prefs = {};
+    }
+  }
+  const session = prefs.session && typeof prefs.session === "object" ? { ...(prefs.session as Record<string, unknown>) } : {};
+  session.restore_on_startup = RESTORE_LAST_SESSION;
+  prefs.session = session;
+  writeFileSync(file, JSON.stringify(prefs));
+}
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
-function ownedLaunchArgs(extra: string[] | undefined): string[] {
+export function ownedChromeLaunchArgs(extra?: string[], env: NodeJS.ProcessEnv = process.env): string[] {
   const mac = process.platform === "darwin" ? ["--force-renderer-accessibility"] : [];
-  return [...LAUNCH_ARGS, ...mac, ...(extra ?? [])];
+  const sandbox = env.BAO_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
+  return [...OWNED_CHROME_ARGS, ...sandbox, ...mac, ...(extra ?? [])];
 }
 
 const DAILY_DIR = [
@@ -142,6 +172,7 @@ export async function launchOwnedChrome(opts: {
   channel?: "chrome";
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
+  keepSessionCookies(opts.userDataDir);
   const bundled = opts.channel ? undefined : process.env.BAO_BROWSER;
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     channel: opts.channel,
@@ -150,7 +181,7 @@ export async function launchOwnedChrome(opts: {
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: opts.deviceScaleFactor,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: ownedLaunchArgs(opts.args),
+    args: ownedChromeLaunchArgs(opts.args),
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);

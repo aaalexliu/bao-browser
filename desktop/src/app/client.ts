@@ -3,6 +3,7 @@
 import { formatWait } from "../v1/human-ask";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
+import { emptyLogin, loginAct, loginsScreen, preferredDirectory, syncPanel, type LoginPreview, type LoginReport, type LoginState, type SavedSite } from "./logins-view";
 import {
   actBar,
   commandItems,
@@ -33,11 +34,22 @@ import {
   type WorkflowSummary,
 } from "./views";
 
-type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow";
+type Screen = "library" | "capture" | "logins" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow";
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string }[];
-  settings?: { heal?: string };
+  settings?: { heal?: string; syncServer?: string };
+  sync?: {
+    server?: string;
+    deviceName?: string;
+    paired?: boolean;
+    lastResult?: string;
+    backupPath?: string;
+    devices?: { name: string }[];
+    categories?: { category: string; count: number }[];
+    localCategories?: { category: string; count: number }[];
+    conflicts?: { id: string; remoteVersion: number; file: string }[];
+  };
   trails?: string[];
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
@@ -60,6 +72,8 @@ let paletteQuery = "";
 let paletteActive = 0;
 let onboarded = false;
 let theme: "light" | "dark" = "light";
+let login: LoginState = emptyLogin();
+let lastRun: { status?: string; message?: string; signInUrl?: string; error?: string } | null = null;
 try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
@@ -111,9 +125,11 @@ function noteAsk(): void {
 }
 
 function render(): void {
+  if (document.getElementById("login-site")) readLoginForm();
   applyTheme();
-  railEl().innerHTML = rail(state);
-  actEl().innerHTML = actBar(state) + importCard(state.pendingImport as ImportPending);
+  railEl().innerHTML = rail(state, theme);
+  const loginBar = screen === "logins" ? loginAct(login) : "";
+  actEl().innerHTML = (loginBar || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = onboarded ? "" : onboarding(state.helper);
   const float = document.getElementById("float");
@@ -127,6 +143,7 @@ function render(): void {
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
+      : screen === "logins" ? loginsScreen(login)
       : screen === "settings" ? settings()
       : screen === "replay" ? replayForm()
       : screen === "workflow" ? `<section id="workflow-host"><p class="meta">Loading workflow…</p></section>`
@@ -155,7 +172,7 @@ function render(): void {
 }
 
 function markNav(): void {
-  const current = screen === "replay" || screen === "run" ? "runs" : screen === "workflow" ? "library" : screen;
+  const current = screen === "run" ? "runs" : screen === "workflow" ? "library" : screen;
   document.querySelectorAll("#rail nav button").forEach((btn) => {
     const el = btn as HTMLButtonElement;
     el.classList.toggle("on", el.dataset.screen === current);
@@ -210,9 +227,24 @@ function replayForm(): string {
       <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
     </select></label>
     <form id="args"></form>
-    <button class="primary" id="run" type="button">Run</button>
-    <div id="live"></div>
+    <div class="row">
+      <button class="primary" id="run" type="button">Run</button>
+      <button id="rerun" type="button">Re-run with past inputs</button>
+    </div>
+    <div id="live">${gateCard()}</div>
   </section>`;
+}
+
+function gateCard(): string {
+  if (!lastRun || lastRun.status !== "needs-sign-in") return lastRun?.error ? `<p id="run-status">${esc(lastRun.error)}</p>` : "";
+  return `<div class="card" id="run-status"><strong>Needs sign-in</strong><p>${esc(lastRun.message || "")}</p><button id="run-sign-in" type="button">Sign in once in Bao's window</button></div>`;
+}
+
+function paintGate(): void {
+  const host = document.getElementById("live");
+  if (host) host.innerHTML = gateCard();
+  const runSign = document.getElementById("run-sign-in");
+  if (runSign && lastRun?.signInUrl) runSign.onclick = () => void signInOnce(lastRun?.signInUrl || "");
 }
 
 function settings(): string {
@@ -224,6 +256,7 @@ function settings(): string {
     </select></label>
     <p class="quiet">Auto is the default. Healing runs when the Cursor CLI is logged in, when a model key is set, or when this build is started with the fixture healer. Otherwise replay stops on the failed step.</p>
     <button id="save-settings" class="primary" type="button">Save</button>
+    ${syncPanel(state.sync)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
@@ -243,6 +276,7 @@ function bind(): void {
       screen = (btn as HTMLButtonElement).dataset.screen as Screen;
       renderKey = "";
       render();
+      if (screen === "logins") void loadSaved().then(() => { renderKey = ""; render(); });
     };
   });
   document.querySelectorAll("[data-screen=replay]").forEach((btn) => {
@@ -299,14 +333,42 @@ function bind(): void {
   bindHeal();
   const save = document.getElementById("save-settings");
   if (save) save.onclick = async () => {
+    const server = document.getElementById("sync-server") as HTMLInputElement | null;
     await fetch("/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ heal: (document.getElementById("heal") as HTMLSelectElement).value }),
+      body: JSON.stringify({
+        heal: (document.getElementById("heal") as HTMLSelectElement).value,
+        syncServer: server ? server.value : undefined,
+      }),
     });
     renderKey = "";
     await refresh();
   };
+  const pair = document.getElementById("pair");
+  if (pair) pair.onclick = () => void postSync("/api/sync/pair", {
+    code: (document.getElementById("pair-code") as HTMLInputElement).value,
+    server: (document.getElementById("sync-server") as HTMLInputElement).value,
+    name: (document.getElementById("device-name") as HTMLInputElement).value,
+  });
+  const syncNow = document.getElementById("sync-now");
+  if (syncNow) syncNow.onclick = () => void postSync("/api/sync", { mode: "sync" });
+  const syncPush = document.getElementById("sync-push");
+  if (syncPush) syncPush.onclick = () => void postSync("/api/sync", { mode: "push" });
+  const syncPull = document.getElementById("sync-pull");
+  if (syncPull) syncPull.onclick = () => void postSync("/api/sync", { mode: "pull" });
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) themeToggle.onclick = () => {
+    theme = theme === "dark" ? "light" : "dark";
+    applyTheme();
+    renderKey = "";
+    render();
+  };
+  const rerun = document.getElementById("rerun");
+  if (rerun) rerun.onclick = () => void fillPastInputs();
+  bindLogins();
+  const runSign = document.getElementById("run-sign-in");
+  if (runSign && lastRun?.signInUrl) runSign.onclick = () => void signInOnce(lastRun?.signInUrl || "");
   document.querySelectorAll("[data-heal-filter]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       healFilter = (btn as HTMLButtonElement).dataset.healFilter as "pending" | "kept" | "reverted";
@@ -609,6 +671,187 @@ async function openEditor(id: string): Promise<void> {
   mountShots(host);
 }
 
+function readLoginForm(): void {
+  const site = document.getElementById("login-site") as HTMLInputElement | null;
+  if (!site) return;
+  login.site = site.value.trim();
+  const advanced = document.getElementById("login-advanced") as HTMLDetailsElement | null;
+  login.advancedOpen = Boolean(advanced && advanced.open);
+  login.probeUrl = (document.getElementById("login-probe") as HTMLInputElement).value.trim();
+  login.selector = (document.getElementById("login-selector") as HTMLInputElement).value.trim();
+  login.text = (document.getElementById("login-text") as HTMLInputElement).value.trim();
+  login.origins = (document.getElementById("login-origins") as HTMLInputElement).value.trim();
+  login.botCookies = (document.getElementById("login-bots") as HTMLSelectElement).value;
+}
+
+function loginPayload(): Record<string, unknown> {
+  return {
+    site: login.site,
+    consent: true,
+    probeUrl: login.probeUrl,
+    signedInSelector: login.selector,
+    signedInText: login.text,
+    origins: login.origins,
+    botCookies: login.botCookies,
+  };
+}
+
+async function loadSaved(): Promise<void> {
+  const body = await (await fetch("/api/login-sites")).json() as { sites?: SavedSite[] };
+  login.saved = body.sites || [];
+}
+
+function bindLogins(): void {
+  const show = document.getElementById("show-profiles");
+  if (show) show.onclick = async () => {
+    readLoginForm();
+    login.error = "";
+    login.report = null;
+    login.settled = false;
+    const res = await fetch("/api/login-import/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(loginPayload()),
+    });
+    const body = await res.json() as LoginPreview & { error?: string };
+    await loadSaved();
+    if (!res.ok) {
+      login.error = body.error || "Import failed";
+      login.preview = null;
+      login.selected = "";
+      renderKey = "";
+      render();
+      return;
+    }
+    login.preview = body;
+    const profiles = body.profiles || [];
+    login.selected = profiles.some((profile) => profile.directory === body.preferred) ? (body.preferred || "") : preferredDirectory(profiles);
+    renderKey = "";
+    render();
+  };
+  document.querySelectorAll<HTMLButtonElement>("[data-import-profile]").forEach((btn) => {
+    btn.onclick = () => {
+      readLoginForm();
+      login.selected = btn.dataset.importProfile || "";
+      login.settled = false;
+      renderKey = "";
+      render();
+    };
+  });
+  const go = document.getElementById("import-selected") as HTMLButtonElement | null;
+  if (go) go.onclick = async () => {
+    readLoginForm();
+    if (!login.selected) return;
+    login.error = "";
+    go.disabled = true;
+    const res = await fetch("/api/login-import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...loginPayload(), profile: login.selected }),
+    });
+    const body = await res.json() as LoginReport & { error?: string };
+    await loadSaved();
+    if (!res.ok) {
+      login.error = body.error || "Import failed";
+      renderKey = "";
+      render();
+      return;
+    }
+    login.report = body;
+    login.settled = true;
+    renderKey = "";
+    render();
+  };
+  const decline = document.getElementById("import-decline");
+  if (decline) decline.onclick = () => {
+    readLoginForm();
+    login.settled = true;
+    renderKey = "";
+    render();
+  };
+  document.querySelectorAll<HTMLButtonElement>("[data-recheck]").forEach((btn) => {
+    btn.onclick = async () => {
+      readLoginForm();
+      btn.disabled = true;
+      btn.textContent = "Checking…";
+      const res = await fetch("/api/login-sites/recheck", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ origin: btn.dataset.recheck }),
+      });
+      const body = await res.json() as { error?: string };
+      if (!res.ok) login.error = body.error || "Re-check failed";
+      await loadSaved();
+      renderKey = "";
+      render();
+    };
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
+    btn.onclick = async () => {
+      readLoginForm();
+      await fetch("/api/login-sites", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ origin: btn.dataset.remove }),
+      });
+      await loadSaved();
+      renderKey = "";
+      render();
+    };
+  });
+  const once = document.getElementById("sign-in-once");
+  if (once) once.onclick = () => void signInOnce(login.report?.signInUrl || login.site);
+}
+
+async function signInOnce(url: string): Promise<void> {
+  if (document.getElementById("login-site")) readLoginForm();
+  const payload = url ? { site: url, consent: true, probeUrl: url } : loginPayload();
+  const res = await fetch("/api/login-import/sign-in", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json() as { error?: string; opened?: boolean; url?: string };
+  if (!res.ok || body.opened !== true) {
+    const message = body.error || "Could not open Bao's window";
+    if (screen === "logins") {
+      login.error = message;
+      renderKey = "";
+      render();
+    } else {
+      lastRun = { ...(lastRun || {}), error: message };
+      paintGate();
+    }
+  }
+}
+
+async function postSync(url: string, body: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    banner = { id: "sync", title: "Sync", body: err.error || "Sync failed" };
+  }
+  renderKey = "";
+  await refresh();
+}
+
+async function fillPastInputs(): Promise<void> {
+  const wf = document.getElementById("wf") as HTMLSelectElement | null;
+  if (!wf?.value) return;
+  const saved = await (await fetch("/api/workflows/" + encodeURIComponent(wf.value) + "/inputs")).json() as Record<string, string | number>;
+  const form = document.getElementById("args");
+  if (!form) return;
+  for (const el of form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[name]")) {
+    if (el instanceof HTMLInputElement && (el.type === "password" || el.type === "file")) continue;
+    const value = saved[el.name];
+    if (typeof value === "string" || typeof value === "number") el.value = String(value);
+  }
+}
+
 async function fillArgs(id: string): Promise<void> {
   if (!id) return;
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json() as {
@@ -678,16 +921,23 @@ async function runReplay(): Promise<void> {
     else args[el.name] = el.value;
   }
   const live = document.getElementById("live");
+  lastRun = null;
   if (live) live.textContent = "Running…";
   const res = await fetch("/api/replay", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, args }),
   });
-  const run = await res.json() as RunSummary & { runId?: string; error?: string };
+  const run = await res.json() as RunSummary & { runId?: string; error?: string; status?: string; message?: string; signInUrl?: string };
+  if (run.status === "needs-sign-in") {
+    lastRun = { status: run.status, message: run.message, signInUrl: run.signInUrl };
+    paintGate();
+    return;
+  }
   const runId = run.id || run.runId || "";
   if (!res.ok || !runId) {
-    if (live) live.textContent = run.error || "The run did not start.";
+    lastRun = { error: run.error || "The run did not start." };
+    paintGate();
     return;
   }
   openRun = runId;
