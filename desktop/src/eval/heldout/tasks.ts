@@ -12,7 +12,7 @@ export interface HeldStep {
   keep?: boolean;
   secret?: boolean;
   human?: "login" | "confirm";
-  do: "read" | "scroll" | "back" | "click" | "type" | "backs" | "key" | "upload";
+  do: "read" | "scroll" | "jitter" | "tab" | "back" | "click" | "type" | "backs" | "key" | "upload";
   op?: string;
   selector?: string;
   text?: string;

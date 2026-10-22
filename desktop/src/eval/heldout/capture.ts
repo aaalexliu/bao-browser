@@ -121,6 +121,27 @@ async function runStep(
     await page.waitForTimeout(30);
     return [{ id: `e${index}`, ts, kind: "act", op: "scroll", beforeUrl: before, afterUrl: page.url() }];
   }
+  if (step.do === "jitter") {
+    const deltas = [120, -70, 40, -90, 160, -30];
+    const out: TrailEvent[] = [];
+    for (let i = 0; i < deltas.length; i++) {
+      await page.mouse.wheel(i % 2 === 0 ? 15 : -15, deltas[i]!);
+      await page.waitForTimeout(16);
+      out.push({ id: `e${index + i}`, ts: Date.now(), kind: "act", op: "scroll", beforeUrl: before, afterUrl: page.url() });
+    }
+    return out;
+  }
+  if (step.do === "tab") {
+    // Extra tab. The condenser already drops navigate, and the main page url stays put.
+    const extra = await page.context().newPage();
+    try {
+      await extra.goto("https://example.com/", { waitUntil: "domcontentloaded", timeout: 20000 });
+      await extra.waitForTimeout(40);
+    } finally {
+      await extra.close().catch(() => undefined);
+    }
+    return [{ id: `e${index}`, ts, kind: "act", op: "navigate", beforeUrl: before, afterUrl: page.url() }];
+  }
   if (step.do === "back") {
     await page.goBack({ waitUntil: "domcontentloaded", timeout: 20000 });
     await page.waitForTimeout(50);
