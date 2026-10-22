@@ -1,6 +1,7 @@
 // Local app. The UI, the library, and replay all stay on disk.
 // Nothing is recorded unless a session was started.
 
+import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -84,8 +85,11 @@ import {
   readPendingPrompt,
   writePendingPrompt,
 } from "../v1/pending-prompt";
+import { editInput } from "../v1/input-token";
+import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
+import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
-import { keepMine, openConflict, pairDevice, restoreScheduledBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus } from "../v1/sync";
+import { keepMine, openConflict, pairDevice, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
@@ -156,6 +160,7 @@ export async function startApp(opts: {
   let opened: OpenedView | null = null;
   let pendingDoc: WorkflowV2 | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
+  let watch: { context: BrowserContext; page: Page; profile: string } | undefined;
   let tail: Promise<void> = Promise.resolve();
   function enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const run = tail.then(fn, fn);
@@ -515,7 +520,7 @@ export async function startApp(opts: {
         return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; siteTrust?: unknown };
         const patch: Partial<Settings> = {};
         if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
@@ -528,6 +533,10 @@ export async function startApp(opts: {
           patch.circuitLimit = Math.round(body.circuitLimit);
         }
         if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
+        if ("siteTrust" in body) {
+          const siteTrust = cleanSiteTrust(body.siteTrust);
+          if (siteTrust) patch.siteTrust = siteTrust;
+        }
         if (!Object.keys(patch).length) return json(res, { error: "settings" }, 400);
         return json(res, library.updateSettings(patch));
       }
@@ -549,6 +558,15 @@ export async function startApp(opts: {
         const body = await readBody(req) as { schedule?: string; action?: string };
         if (body.action === "restore") return json(res, restoreScheduledBackup(library));
         return json(res, setBackupSchedule(library, String(body.schedule || "off")));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/reveal") {
+        const target = revealBackup(library);
+        const command = process.platform === "darwin" ? "open" : "xdg-open";
+        const args = process.platform === "darwin" ? ["-R", target] : [target];
+        const child = spawn(command, args, { stdio: "ignore", detached: true });
+        child.on("error", () => undefined);
+        child.unref();
+        return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/sync/conflict") {
         const body = await readBody(req) as { id?: string; action?: string };
@@ -849,6 +867,28 @@ export async function startApp(opts: {
         const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "revert" });
         return json(res, { workflow: next, decisions: recorded.decisions, heals: recorded.heals });
       }
+      if (req.method === "POST" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/try")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const body = await readBody(req) as { stepId?: string };
+        let doc: WorkflowV2;
+        try {
+          doc = library.read(id);
+        } catch {
+          return json(res, { error: "no workflow" }, 404);
+        }
+        const step = doc.steps.find((item) => item.id === body.stepId);
+        if (!step) return json(res, { error: "no step" }, 404);
+        try {
+          const live = await livePage(doc.startUrl);
+          const driver = new BrowserDriver(live);
+          const outcome = await tryStep(step, driver);
+          const preview = outcome.matched ? await driver.outlinePreview() : undefined;
+          return json(res, { ...outcome, preview, actions: 0, modelCalls: 0 });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "try failed";
+          return json(res, { error: message, actions: 0, modelCalls: 0 }, 500);
+        }
+      }
       if (req.method === "PATCH" && url.pathname.startsWith("/api/workflows/")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
         const body = await readBody(req) as {
@@ -856,7 +896,21 @@ export async function startApp(opts: {
           workflow?: WorkflowV2;
           heal?: HealMode | null;
           stepHeal?: { stepId?: string; heal?: string | null };
+          inputEdit?: { name?: string; label?: string; type?: string; default?: string; required?: boolean };
         };
+        if (body.inputEdit?.name) {
+          const doc = library.read(id);
+          const edited = editInput(doc, {
+            name: body.inputEdit.name,
+            label: body.inputEdit.label,
+            type: body.inputEdit.type,
+            default: body.inputEdit.default,
+            required: body.inputEdit.required,
+          });
+          if (!edited.doc) return json(res, { error: edited.error || "input" }, 400);
+          const drafted = draftVersion(library, edited.doc, "edit");
+          return json(res, promoteVersion(library, id, drafted.n).document);
+        }
         if (body.stepHeal?.stepId) {
           const doc = library.read(id);
           const policy = stepHealChoice(body.stepHeal.heal);
@@ -1430,6 +1484,26 @@ export async function startApp(opts: {
     return session;
   }
 
+  async function livePage(startUrl: string): Promise<Page> {
+    if (page && !page.isClosed()) return page;
+    for (const session of replays.values()) {
+      if (!session.page.isClosed()) return session.page;
+    }
+    if (watch && !watch.page.isClosed()) {
+      if (startUrl.startsWith("http") && !sameTarget(watch.page.url(), startUrl)) {
+        await watch.page.goto(startUrl, { waitUntil: "domcontentloaded" });
+      }
+      return watch.page;
+    }
+    const dir = await mkdtemp(path.join(tmpdir(), "bao-try-"));
+    const opened = await launchOwnedChrome({ userDataDir: dir, headless: process.env.BAO_HEADED !== "1" });
+    const live = opened.pages()[0] || await opened.newPage();
+    await live.setViewportSize({ width: 1280, height: 800 }).catch(() => undefined);
+    if (startUrl.startsWith("http")) await live.goto(startUrl, { waitUntil: "domcontentloaded" });
+    watch = { context: opened, page: live, profile: dir };
+    return live;
+  }
+
   return {
     library,
     port,
@@ -1444,6 +1518,9 @@ export async function startApp(opts: {
       await stopBrowser();
       await site?.context.close().catch(() => undefined);
       site = undefined;
+      await watch?.context.close().catch(() => undefined);
+      if (watch) await rm(watch.profile, { recursive: true, force: true }).catch(() => undefined);
+      watch = undefined;
       for (const session of replays.values()) {
         await session.context.close().catch(() => undefined);
         if (path.resolve(session.profile) !== path.resolve(baoProfile)) {
@@ -1571,6 +1648,7 @@ async function runRecorded(
     fromStepId: fromStep,
     reviewSteps,
     circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
+    siteTrust: trustMode(settings, originOf(workflow.startUrl)),
   } satisfies ReplayOptions);
   spillBinaryShots(result, shotDir);
   for (const repair of result.repairs) {
@@ -1927,7 +2005,18 @@ function summary(doc: WorkflowV2) {
     waits: doc.steps.filter((step) => step.action === "login" || step.action === "confirm").length,
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
+    startUrl: doc.startUrl,
   };
+}
+
+function sameTarget(current: string, startUrl: string): boolean {
+  try {
+    const left = new URL(current);
+    const right = new URL(startUrl);
+    return left.origin === right.origin && left.pathname === right.pathname && left.search === right.search;
+  } catch {
+    return false;
+  }
 }
 
 function sendVideo(req: IncomingMessage, res: ServerResponse, file: string): void {

@@ -96,10 +96,34 @@ test("a heal is a draft, replay stays on the live version until promote, and res
   assert.equal(listed.find((row) => row.n === 1)?.role, "past");
 });
 
+test("a version row names the step change and lists before and after", () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-version-diff-"));
+  const library = new Library(home);
+  const original = workflow("wf-diff", "signed-in");
+  original.steps[0]!.label = "Click signed in";
+  library.save(original);
+  const healed = keepPatch(original, "s0", { identity: ident({ role: "button", name: "Signed in" }) });
+  draftVersion(library, healed, "heal");
+  const listed = listVersions(library, "wf-diff");
+  const row = listed.find((item) => item.source === "heal");
+  assert.equal(row?.diff, 'Click signed in: testId signed-in → role button "Signed in"');
+  assert.equal(row?.steps[0]?.before, "testId signed-in");
+  assert.equal(row?.steps[0]?.after, 'role button "Signed in"');
+  assert.equal(row?.steps[0]?.changed, true);
+  assert.equal(listed[0]?.diff, "Click signed in: testId signed-in");
+  const html = versionsPanel(listed);
+  assert.match(html, /data-testid="version-diff"/);
+  assert.match(html, /data-testid="version-steps"/);
+  assert.match(html, /Before and after/);
+  assert.match(html, /testId signed-in/);
+  assert.match(html, /role button &quot;Signed in&quot;/);
+  assert.equal(library.read("wf-diff").steps[0]?.identity?.testId, "signed-in");
+});
+
 test("the versions panel prints the local time with the zone label", () => {
   const html = zoned(
     require.resolve("../../src/app/views"),
-    `versionsPanel([{n:1,role:"live",source:"saved",createdAt:${AT}},{n:2,role:"draft",source:"heal",createdAt:${AT}}])`,
+    `versionsPanel([{n:1,role:"live",source:"saved",createdAt:${AT},locator:{stepId:"signed-in",source:"recorded",at:${AT},score:100,changed:["testId"]}},{n:2,role:"draft",source:"heal",createdAt:${AT}}])`,
     "America/New_York",
   );
   assert.match(html, /data-testid="versions"/);
@@ -108,6 +132,10 @@ test("the versions panel prints the local time with the zone label", () => {
   assert.match(html, /Restore as draft/);
   assert.match(html, /Promote/);
   assert.match(html, /Oct 22, 12:50 AM EDT/);
+  assert.match(html, /data-testid="locator-history"/);
+  assert.match(html, /data-locator-source="recorded"/);
+  assert.equal(html.includes("4:50 AM"), false);
+  assert.equal(html.includes("UTC"), false);
   assert.equal(html.includes("2026-10-22T"), false);
   assert.equal(versionsPanel([{ n: 1, role: "live", source: "saved", createdAt: AT }]).includes("data-testid=\"version-time\""), true);
 });
