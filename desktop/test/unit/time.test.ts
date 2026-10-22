@@ -91,7 +91,7 @@ test("rendered pages have no ISO timestamp and no clock without a zone", () => {
     loginsScreen(login),
     consolePane([{ stepId: "s1", type: "info", text: "ready", ts: AT }], "s1"),
     networkPane([{ stepId: "s1", method: "GET", url: "http://127.0.0.1/fixture", status: 200, ts: AT }], "s1"),
-    `<p data-testid="last-green">Last replayed green: ${green}</p>`,
+    `<p data-testid="last-green">Publisher replayed green: ${green}</p>`,
     `<p class="muted">last green ${when(AT, NOW)}</p>`,
     driftMarkdown({
       generatedAt: "2026-10-22T04:50:16.442Z",

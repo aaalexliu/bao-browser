@@ -34,7 +34,7 @@ export const TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A passed run stamps the last green time. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a workflow on this device. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
