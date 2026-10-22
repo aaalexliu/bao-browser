@@ -27,6 +27,10 @@ mkdir -p "$APP/Contents/Resources/bao/desktop"
 cp -a desktop/src "$APP/Contents/Resources/bao/desktop/src"
 mkdir -p "$APP/Contents/Resources/bao/web"
 cp -a web/src "$APP/Contents/Resources/bao/web/src"
+# schema.ts imports ../../../src/mask. From this cwd that file is Resources/bao/src/mask.ts.
+# Without it the window's /app.js bundle fails and the sidebar never renders.
+mkdir -p "$APP/Contents/Resources/bao/src"
+cp -a src/mask.ts "$APP/Contents/Resources/bao/src/mask.ts"
 # The server requires playwright and esbuild. A copy of the app outside this repo cannot see node_modules.
 mkdir -p "$APP/Contents/Resources/bao/node_modules"
 cp -a node_modules/playwright node_modules/playwright-core node_modules/esbuild "$APP/Contents/Resources/bao/node_modules/"
