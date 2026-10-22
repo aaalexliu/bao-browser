@@ -1,0 +1,143 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792671770524",
+  "name": "Captured workflow",
+  "startUrl": "https://automationintesting.online/reservation/1?checkin=2026-10-22&checkout=2026-10-23",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-1792671770524-0",
+      "index": 0,
+      "action": "click",
+      "label": "Click \"Book now\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "a",
+        "tag": "a",
+        "text": "Book now",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "a",
+          "name": "Book now"
+        },
+        {
+          "kind": "text",
+          "value": "Book now"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671770524-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"Next\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Next",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Next"
+        },
+        {
+          "kind": "text",
+          "value": "Next"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "01",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "01",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671770524-2",
+      "index": 2,
+      "action": "click",
+      "label": "Click \"05\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "05",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "05"
+        },
+        {
+          "kind": "text",
+          "value": "05"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671770524-3",
+      "index": 3,
+      "action": "click",
+      "label": "Click \"07\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "07",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "07"
+        },
+        {
+          "kind": "text",
+          "value": "07"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792671767997
+}

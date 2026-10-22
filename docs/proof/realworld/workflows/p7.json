@@ -1,0 +1,122 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792672349041",
+  "name": "Captured workflow",
+  "startUrl": "https://en.wikipedia.org/w/index.php?title=Baozi&action=history",
+  "inputs": [
+    {
+      "name": "search",
+      "type": "text",
+      "required": true,
+      "label": "search",
+      "default": "Baozi"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792672349041-0",
+      "index": 0,
+      "action": "type",
+      "label": "Type {{search}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "searchInput",
+        "nameAttr": "search",
+        "tag": "input",
+        "label": "Search Wikipedia",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Search Wikipedia"
+        },
+        {
+          "kind": "css",
+          "value": "#searchInput"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"searchInput\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "search",
+      "value": "{{search}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{search}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792672349041-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"Search\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Search",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Search"
+        },
+        {
+          "kind": "text",
+          "value": "Search"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792672349041-2",
+      "index": 2,
+      "action": "click",
+      "label": "Click \"View history\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "a",
+        "tag": "a",
+        "text": "View history",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "a",
+          "name": "View history"
+        },
+        {
+          "kind": "text",
+          "value": "View history"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792672347115
+}

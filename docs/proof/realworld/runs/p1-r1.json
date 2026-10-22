@@ -1,0 +1,774 @@
+{
+  "args": {
+    "name": "Bao Alpha",
+    "username": "bao-alpha@example.com",
+    "title": "Mr",
+    "password": "[secret]",
+    "days": "12",
+    "months": "3",
+    "years": "1992",
+    "first_name": "Bao",
+    "last_name": "Record",
+    "country": "United States",
+    "address1": "1 Proof Street",
+    "state": "Ontario",
+    "city": "Toronto",
+    "zipcode": "M5V1A1",
+    "mobile_number": "5550100000"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792671600734-0",
+        "action": "type",
+        "target": "input[name=name]",
+        "postcondition": "missed value {{name}}",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/account_created#google_vignette' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This requ",
+        "ts": 1792671601301
+      },
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/account_created#google_vignette' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has",
+        "ts": 1792671601302
+      },
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/account_created#google_vignette' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the conten",
+        "ts": 1792671601302
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/account_created",
+        "status": 200,
+        "ts": 1792671601272
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/font-awesome.min.css",
+        "status": 200,
+        "ts": 1792671601287
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/animate.css",
+        "status": 200,
+        "ts": 1792671601289
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/jquery.prettyPhoto.js",
+        "status": 200,
+        "ts": 1792671601291
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/bootstrap.min.js",
+        "status": 200,
+        "ts": 1792671601291
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/prettyPhoto.css",
+        "status": 200,
+        "ts": 1792671601293
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/images/home/logo.png",
+        "status": 200,
+        "ts": 1792671601296
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/bootstrap.min.css",
+        "status": 200,
+        "ts": 1792671601297
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/responsive.css",
+        "status": 200,
+        "ts": 1792671601300
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/main.css",
+        "status": 200,
+        "ts": 1792671601301
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
+        "status": 200,
+        "ts": 1792671601302
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/main.js",
+        "status": 200,
+        "ts": 1792671601302
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/jquery.scrollUp.min.js",
+        "status": 200,
+        "ts": 1792671601302
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/subscription.js",
+        "status": 200,
+        "ts": 1792671601302
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/jquery.js",
+        "status": 200,
+        "ts": 1792671601303
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/icon",
+        "status": 200,
+        "ts": 1792671601356
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",
+        "status": 200,
+        "ts": 1792671601384
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/fonts/fontawesome-webfont.woff",
+        "status": 200,
+        "ts": 1792671601411
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/materialicons/v145/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2",
+        "status": 200,
+        "ts": 1792671601457
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/managed/js/adsense/m202610190101/show_ads_impl.js",
+        "status": 200,
+        "ts": 1792671601494
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/html/r20261019/r20190131/zrt_lookup.html",
+        "status": 200,
+        "ts": 1792671601552
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/ads",
+        "status": 200,
+        "ts": 1792671601625
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://automationexercise.com/cdn-cgi/rum",
+        "status": 204,
+        "ts": 1792671601670
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792671601682
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/roboto/v51/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWub2bVmUiAo.woff2",
+        "status": 200,
+        "ts": 1792671601716
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/getconfig/sodar",
+        "status": 200,
+        "ts": 1792671601725
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/i/ca-pub-1677597403311019",
+        "status": 200,
+        "ts": 1792671601739
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2.js",
+        "status": 200,
+        "ts": 1792671601791
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxXMuzfLu-B4b2u9Xiz4rfP2LAF7KP6t3xDUNMwEBX1Fpj6-VLF0SHtS3ntlWeNu54pskrxlJnN5RIAejMiAvPQhor8l8mycmS8F6m5SsZhl8_4Lqm9NIhMFijfYE4ErTwuP",
+        "status": 200,
+        "ts": 1792671601798
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2/255/runner.html",
+        "status": 200,
+        "ts": 1792671601807
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671601815
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671601815
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671601815
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/bg/Q4JUrRZKx44KoEV1oNKGtVt0B5XYxhrnEhIOwuBMW6U.js",
+        "status": 200,
+        "ts": 1792671601827
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUby-tGBB_jAijGcViTwL20Y5AfRCPOjIOs1tpZDAyzeC6dAiMKeWdIfkbw28x1iZ0m3ZITd6TaSp8fNIG9hrbGKOVH3ClXFx7QueD76Un3DcJwWZNKJ0F0sm5Cgx7mrKf",
+        "status": 204,
+        "ts": 1792671601843
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "status": 204,
+        "ts": 1792671601843
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxXkCu-3hElKh3n96Lj8I0ra9BRr-iHeBUZcLLzw4zQ6SO7hWobMJ4L77H7YnGyoTgKqXr6UMiJRgxfrpqxqxU_sp454SKAVY5P137ZzrfmUau6cfVhAKsvA7Wt6Kmb-kHnO",
+        "status": 200,
+        "ts": 1792671601844
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/ads",
+        "status": 200,
+        "ts": 1792671601851
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://www.google.com/recaptcha/api2/aframe",
+        "status": 200,
+        "ts": 1792671601855
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/generate_204",
+        "status": 204,
+        "ts": 1792671601905
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792671601911
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792671601918
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/sodar",
+        "status": 204,
+        "ts": 1792671601936
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/googlesans/v71/4Ua_rENHsxJlGDuGo1OIlJfC6l_24rlCK1Yo_Iqcsih3SAyH6cAwhX9RFD48TE63OOYKtrzjJ5llpyk.woff2",
+        "status": 200,
+        "ts": 1792671601937
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/googlesans/v71/4Ua_rENHsxJlGDuGo1OIlJfC6l_24rlCK1Yo_Iqcsih3SAyH6cAwhX9RFD48TE63OOYKtrwEIJllpyk.woff2",
+        "status": 200,
+        "ts": 1792671601937
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "status": 204,
+        "ts": 1792671602034
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/js/google_top_exp.js",
+        "status": 200,
+        "ts": 1792671602463
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/pagead/sodar",
+        "status": 204,
+        "ts": 1792671602464
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxXHuk2PjBHzKtTDBF_qgfpy3L9q17l9MGl489vxs4ilyXtQ2_-GcX3YGFXSmEhdOVirMgbGmK8eXgXKQqcczcQ8_b8S4XmWVYk9iUakNiHgsgDEme74HSmbaCygNpRKpKTX",
+        "status": 200,
+        "ts": 1792671602475
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671602477
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671602493
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671602507
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671602508
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxX9IHNh22groeqcaQMlSNntkGEFWugXBr-ZDCiOlstAK1TaKpPJzwIP2oSFCwynL_LBvR2iAC7gXm7782uHSI1RCn1MfmmVyNtQIU-lcU5o33cTu5iBfZ8hKbX8EWJzE0as",
+        "status": 200,
+        "ts": 1792671602520
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWUorlG9YGJ_-Y7VaNv8fvNYHoLKOvFvqKTrW5RsmzOnGfOrysA6MrktGM5l8xZU-L6nmCOMJlJA_Zj5Fu3R4jh2_78PgwJP1ZsplNr7S4-pzAG44dBjHeMh-q5uglyN8M",
+        "status": 204,
+        "ts": 1792671602551
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxU4-NOdBByzJjsfAJd8DcwmDgMbAvxowr4qEfnVANAqu4C_O_KLv5zVpkdvq_rdC6AN16iqQmB8VLZrdUFF4YFGD1mSyFsY940ISWb1Hv-6v2p1SS9Vn74ey1HmpzC_vm_",
+        "status": 204,
+        "ts": 1792671602563
+      },
+      {
+        "stepId": "wf-1792671600734-0",
+        "method": "POST",
+        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "status": 204,
+        "ts": 1792671609811
+      }
+    ],
+    "runId": "run-mvjidwiq-l231",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792671600734-0",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792671601640,
+        "endedAt": 1792671611134,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": " Products"
+            },
+            {
+              "role": "link",
+              "text": "Cart"
+            },
+            {
+              "role": "link",
+              "text": "Signup / Login"
+            },
+            {
+              "role": "link",
+              "text": "Test Cases"
+            },
+            {
+              "role": "link",
+              "text": "API Testing"
+            },
+            {
+              "role": "link",
+              "text": "Video Tutorials"
+            },
+            {
+              "role": "link",
+              "text": "Contact us"
+            },
+            {
+              "role": "heading",
+              "text": "ACCOUNT CREATED!"
+            },
+            {
+              "role": "link",
+              "name": "Get Writing Tools",
+              "text": "Get Writing Tools"
+            },
+            {
+              "role": "link",
+              "text": "shopping"
+            },
+            {
+              "role": "link",
+              "text": "Continue"
+            },
+            {
+              "role": "heading",
+              "text": "SUBSCRIPTION"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox",
+              "id": "susbscribe_email"
+            },
+            {
+              "role": "button",
+              "id": "subscribe"
+            },
+            {
+              "role": "link",
+              "id": "scrollUp"
+            },
+            {
+              "role": "heading",
+              "name": "These are topics related to the article that might interest you",
+              "text": "Discover more"
+            },
+            {
+              "role": "link",
+              "name": "Automation testing tools",
+              "text": "Automation testing tools"
+            },
+            {
+              "role": "link",
+              "name": "Website automation services",
+              "text": "Website automation services"
+            },
+            {
+              "role": "link",
+              "name": "E-commerce platform solutions",
+              "text": "E-commerce platform solutions"
+            }
+          ],
+          "ax": "- banner:\n  - link \"Automation Exercise website\":\n    - /url: /\n    - img \"Automation Exercise website\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Account Created!\" [level=2]\n- paragraph:\n  - text: Congratulations! Your new account has been successfully created!\n  - link \"Get Writing Tools\":\n    - img\n    - text: Get Writing Tools\n- paragraph:\n  - text: You can now take advantage of member privileges to enhance your online\n  - link \"shopping\":\n    - /url: \"#\"\n    - img\n    - text: shopping\n  - text: experience with us.\n- link \"Continue\":\n  - /url: /\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation testing tools\"\n  - link \"Website automation services\"\n  - link \"E-commerce platform solutions\""
+        }
+      },
+      {
+        "id": "wf-1792671600734-1",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-2",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-3",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-4",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-5",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-6",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-7",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-8",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-9",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-10",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-11",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-12",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-13",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-14",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-15",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-16",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-17",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-18",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792671600734-0",
+      "index": 0,
+      "intent": "Type {{name}}",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "css",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "link",
+            "text": " Products"
+          },
+          {
+            "role": "link",
+            "text": "Cart"
+          },
+          {
+            "role": "link",
+            "text": "Signup / Login"
+          },
+          {
+            "role": "link",
+            "text": "Test Cases"
+          },
+          {
+            "role": "link",
+            "text": "API Testing"
+          },
+          {
+            "role": "link",
+            "text": "Video Tutorials"
+          },
+          {
+            "role": "link",
+            "text": "Contact us"
+          },
+          {
+            "role": "heading",
+            "text": "ACCOUNT CREATED!"
+          },
+          {
+            "role": "link",
+            "name": "Get Writing Tools",
+            "text": "Get Writing Tools"
+          },
+          {
+            "role": "link",
+            "text": "shopping"
+          },
+          {
+            "role": "link",
+            "text": "Continue"
+          },
+          {
+            "role": "heading",
+            "text": "SUBSCRIPTION"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "textbox",
+            "id": "susbscribe_email"
+          },
+          {
+            "role": "button",
+            "id": "subscribe"
+          },
+          {
+            "role": "link",
+            "id": "scrollUp"
+          },
+          {
+            "role": "heading",
+            "name": "These are topics related to the article that might interest you",
+            "text": "Discover more"
+          },
+          {
+            "role": "link",
+            "name": "Automation testing tools",
+            "text": "Automation testing tools"
+          },
+          {
+            "role": "link",
+            "name": "Website automation services",
+            "text": "Website automation services"
+          },
+          {
+            "role": "link",
+            "name": "E-commerce platform solutions",
+            "text": "E-commerce platform solutions"
+          }
+        ],
+        "ax": "- banner:\n  - link \"Automation Exercise website\":\n    - /url: /\n    - img \"Automation Exercise website\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Account Created!\" [level=2]\n- paragraph:\n  - text: Congratulations! Your new account has been successfully created!\n  - link \"Get Writing Tools\":\n    - img\n    - text: Get Writing Tools\n- paragraph:\n  - text: You can now take advantage of member privileges to enhance your online\n  - link \"shopping\":\n    - /url: \"#\"\n    - img\n    - text: shopping\n  - text: experience with us.\n- link \"Continue\":\n  - /url: /\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation testing tools\"\n  - link \"Website automation services\"\n  - link \"E-commerce platform solutions\""
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "css",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "label": "css input[name=\"name\"]",
+          "score": 0
+        },
+        {
+          "kind": "xpath",
+          "label": "xpath //input[@name=\"name\"]",
+          "score": 0
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://automationexercise.com/account_created#google_vignette",
+    "title": "Automation Exercise - Account Created",
+    "text": "Home  Products Cart Signup / Login Test Cases API Testing Video Tutorials Contact us ACCOUNT CREATED! Congratulations! Your new account has been successfully created!Get Writing Tools You can now take advantage of member privileges to enhance your online shopping experience with us. Continue SUBSCRIPTION Get the most recent updates from our site and be updated your self... Copyright © 2021 All rights reserved Discover more Automation testing tools Website automation services E-commerce platform solutions"
+  },
+  "downloaded": []
+}

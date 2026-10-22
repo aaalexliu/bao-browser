@@ -1,0 +1,967 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792671770524-0",
+        "action": "click",
+        "target": "a:Book now",
+        "postcondition": "missed settled no error and the page settled",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/reservation/1",
+        "status": 200,
+        "ts": 1792671811902
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/10y2dlg~w2h~y.css",
+        "status": 200,
+        "ts": 1792671811908
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0pmesbo4x6vs3.css",
+        "status": 200,
+        "ts": 1792671811909
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0wq547-v6ykp-.css",
+        "status": 200,
+        "ts": 1792671811910
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0jr4699_v.07i.js",
+        "status": 200,
+        "ts": 1792671811910
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/07uz2g0_38qia.js",
+        "status": 200,
+        "ts": 1792671811911
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/174b7k13ybrt2.js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0yekx964af3a..js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/turbopack-0-x4z~8ovy8~k.js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/04eklj-7j4aqp.js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0sh.6aqimy6c9.js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/13g77ac8y..zv.js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0d8fo_rc4mi2b.js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0q3c-a.d.ofkx.js",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/bootstrap-icons.min.css",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css",
+        "status": 200,
+        "ts": 1792671811912
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js",
+        "status": 200,
+        "ts": 1792671811913
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js",
+        "status": 200,
+        "ts": 1792671811913
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
+        "status": 200,
+        "ts": 1792671811913
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/fonts/bootstrap-icons.woff2",
+        "status": 200,
+        "ts": 1792671811930
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "POST",
+        "url": "https://automationintesting.online/cdn-cgi/rum",
+        "status": 204,
+        "ts": 1792671811939
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/api/branding",
+        "status": 200,
+        "ts": 1792671812160
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/api/room/1",
+        "status": 200,
+        "ts": 1792671812200
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/images/room1.jpg",
+        "status": 200,
+        "ts": 1792671812203
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/api/room",
+        "status": 200,
+        "ts": 1792671812448
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/api/report/room/1",
+        "status": 200,
+        "ts": 1792671812448
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/images/room2.jpg",
+        "status": 200,
+        "ts": 1792671812449
+      },
+      {
+        "stepId": "wf-1792671770524-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/images/room3.jpg",
+        "status": 200,
+        "ts": 1792671812449
+      }
+    ],
+    "runId": "run-mvjiiesa-71bj",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792671770524-0",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792671811937,
+        "endedAt": 1792671821158,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link",
+              "text": "Shady Meadows B&B"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Rooms"
+            },
+            {
+              "role": "link",
+              "text": "Booking"
+            },
+            {
+              "role": "link",
+              "text": "Amenities"
+            },
+            {
+              "role": "link",
+              "text": "Location"
+            },
+            {
+              "role": "link",
+              "text": "Contact"
+            },
+            {
+              "role": "link",
+              "text": "Admin"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": "Rooms"
+            },
+            {
+              "role": "heading",
+              "text": "Single Room"
+            },
+            {
+              "role": "heading",
+              "text": "Room Description"
+            },
+            {
+              "role": "heading",
+              "text": "Room Features"
+            },
+            {
+              "role": "heading",
+              "text": "Room Policies"
+            },
+            {
+              "role": "heading",
+              "text": "Check-in & Check-out"
+            },
+            {
+              "role": "heading",
+              "text": "House Rules"
+            },
+            {
+              "role": "heading",
+              "text": "Book This Room"
+            },
+            {
+              "role": "button",
+              "text": "Today"
+            },
+            {
+              "role": "button",
+              "text": "Back"
+            },
+            {
+              "role": "button",
+              "text": "Next"
+            },
+            {
+              "role": "table",
+              "name": "Month View",
+              "text": "Sun Mon Tue Wed Thu Fri Sat 27 28 29 30 01 02 03 04 05 06 07 08 09 10 11 12 13 1"
+            },
+            {
+              "role": "row",
+              "text": "Sun Mon Tue Wed Thu Fri Sat"
+            },
+            {
+              "role": "columnheader",
+              "text": "Sun"
+            },
+            {
+              "role": "columnheader",
+              "text": "Mon"
+            },
+            {
+              "role": "columnheader",
+              "text": "Tue"
+            },
+            {
+              "role": "columnheader",
+              "text": "Wed"
+            },
+            {
+              "role": "columnheader",
+              "text": "Thu"
+            },
+            {
+              "role": "columnheader",
+              "text": "Fri"
+            },
+            {
+              "role": "columnheader",
+              "text": "Sat"
+            },
+            {
+              "role": "rowgroup",
+              "text": "27 28 29 30 01 02 03"
+            },
+            {
+              "role": "row",
+              "text": "27 28 29 30 01 02 03"
+            },
+            {
+              "role": "cell",
+              "text": "27"
+            },
+            {
+              "role": "button",
+              "text": "27"
+            },
+            {
+              "role": "cell",
+              "text": "28"
+            },
+            {
+              "role": "button",
+              "text": "28"
+            },
+            {
+              "role": "cell",
+              "text": "29"
+            },
+            {
+              "role": "button",
+              "text": "29"
+            },
+            {
+              "role": "cell",
+              "text": "30"
+            },
+            {
+              "role": "button",
+              "text": "30"
+            },
+            {
+              "role": "cell",
+              "text": "01"
+            }
+          ],
+          "ax": "- navigation:\n  - link \"Shady Meadows B&B\":\n    - /url: /\n  - list:\n    - listitem:\n      - link \"Rooms\":\n        - /url: /#rooms\n    - listitem:\n      - link \"Booking\":\n        - /url: /#booking\n    - listitem:\n      - link \"Amenities\":\n        - /url: /#amenities\n    - listitem:\n      - link \"Location\":\n        - /url: /#location\n    - listitem:\n      - link \"Contact\":\n        - /url: /#contact\n    - listitem:\n      - link \"Admin\":\n        - /url: /admin\n- navigation \"breadcrumb\":\n  - list:\n    - listitem:\n      - link \"Home\":\n        - /url: /\n    - listitem:\n      - text: /\n      - link \"Rooms\":\n        - /url: \"#\"\n    - listitem: / Single Room\n- heading \"Single Room\" [level=1]\n- text: Accessible  Max 2 Guests\n- img \"Room Image\"\n- heading \"Room Description\" [level=2]\n- paragraph: Aenean porttitor mauris sit amet lacinia molestie. In posuere accumsan aliquet. Maecenas sit amet nisl massa. Interdum et malesuada fames ac ante.\n- heading \"Room Features\" [level=2]\n- text:  TV  WiFi  Safe\n- heading \"Room Policies\" [level=2]\n- heading \"Check-in & Check-out\" [level=3]\n- list:\n  - listitem:\n    - text: \n    - strong: \"Check-in:\"\n    - text: 3:00 PM - 8:00 PM\n  - listitem:\n    - text: \n    - strong: \"Check-out:\"\n    - text: By 11:00 AM\n  - listitem:\n    - text: \n    - strong: \"Early/Late:\"\n    - text: By arrangement\n- heading \"House Rules\" [level=3]\n- list:\n  - listitem:  No smoking\n  - listitem:  No parties or events\n  - listitem:  Pets allowed (restrictions apply)\n- heading \"Book This Room\" [level=2]\n- text: £100 per night\n- button \"Today\"\n- button \"Back\"\n- button \"Next\"\n- text: October 2026\n- table \"Month View\":\n  - row \"Sun Mon Tue Wed Thu Fri Sat\":\n    - columnheader \"Sun\"\n    - columnheader \"Mon\"\n    - columnheader \"Tue\"\n    - columnheader \"Wed\"\n    - columnheader \"Thu\"\n    - columnheader \"Fri\"\n    - columnheader \"Sat\"\n  - rowgroup:\n    - row \"27 28 29 30 01 02 03\":\n      - cell \"27\":\n        - button \"27\"\n      - cell \"28\":\n        - button \"28\"\n      - cell \"29\":\n        - button \"29\"\n      - cell \"30\":\n        - button \"30\"\n      - cell \"01\":\n        - button \"01\"\n      - cell \"02\":\n        - button \"02\"\n      - cell \"03\":\n        - button \"03\"\n  - rowgroup:\n    - row \"04 05 06 07 08 09 10\":\n      - cell \"04\":\n        - button \"04\"\n      - cell \"05\":\n        - button \"05\"\n      - cell \"06\":\n        - button \"06\"\n      - cell \"07\":\n        - button \"07\"\n      - cell \"08\":\n        - button \"08\"\n      - cell \"09\":\n        - button \"09\"\n      - cell \"10\":\n        - button \"10\"\n  - rowgroup:\n    - row \"11 12 13 14 15 16 17\":\n      - cell \"11\":\n        - button \"11\"\n      - cell \"12\":\n        - button \"12\"\n      - cell \"13\":\n        - button \"13\"\n      - cell \"14\":\n        - button \"14\"\n      - cell \"15\":\n        - button \"15\"\n      - cell \"16\":\n        - button \"16\"\n      - cell \"17\":\n        - button \"17\"\n  - rowgroup:\n    - row \"18 19 20 21 22 23 24 Selected\":\n      - cell \"18\":\n        - button \"18\"\n      - cell \"19\":\n        - button \"19\"\n      - cell \"20\":\n        - button \"20\"\n      - cell \"21\":\n        - button \"21\"\n      - cell \"22\":\n        - button \"22\"\n      - cell \"23\":\n        - button \"23\"\n      - cell \"24\":\n        - button \"24\"\n      - text: Selected\n  - rowgroup:\n    - row \"25 26 27 28 29 30 31\":\n      - cell \"25\":\n        - button \"25\"\n      - cell \"26\":\n        - button \"26\"\n      - cell \"27\":\n        - button \"27\"\n      - cell \"28\":\n        - button \"28\"\n      - cell \"29\":\n        - button \"29\"\n      - cell \"30\":\n        - button \"30\"\n      - cell \"31\":\n        - button \"31\"\n- heading \"Price Summary\" [level=3]\n- text: £100 x 1 nights £100 Cleaning fee £25 Service fee £15\n- separator\n- text: Total £140\n- button \"Reserve Now\"\n- heading \"Similar Rooms You Might Like\" [level=2]\n- img \"Double\"\n- heading \"Double\" [level=3]\n- text:  2 Guests £150/night\n- paragraph: Vestibulum sollicitudin, lectus ac mollis consequat, lorem orci ultrices tellus, eleifend euismod tortor dui egestas erat. Phasellus et ipsum "
+        }
+      },
+      {
+        "id": "wf-1792671770524-1",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671770524-2",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671770524-3",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792671770524-0",
+      "index": 0,
+      "intent": "Click \"Book now\"",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link",
+            "text": "Shady Meadows B&B"
+          },
+          {
+            "role": "button"
+          },
+          {
+            "role": "link",
+            "text": "Rooms"
+          },
+          {
+            "role": "link",
+            "text": "Booking"
+          },
+          {
+            "role": "link",
+            "text": "Amenities"
+          },
+          {
+            "role": "link",
+            "text": "Location"
+          },
+          {
+            "role": "link",
+            "text": "Contact"
+          },
+          {
+            "role": "link",
+            "text": "Admin"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "link",
+            "text": "Rooms"
+          },
+          {
+            "role": "heading",
+            "text": "Single Room"
+          },
+          {
+            "role": "heading",
+            "text": "Room Description"
+          },
+          {
+            "role": "heading",
+            "text": "Room Features"
+          },
+          {
+            "role": "heading",
+            "text": "Room Policies"
+          },
+          {
+            "role": "heading",
+            "text": "Check-in & Check-out"
+          },
+          {
+            "role": "heading",
+            "text": "House Rules"
+          },
+          {
+            "role": "heading",
+            "text": "Book This Room"
+          },
+          {
+            "role": "button",
+            "text": "Today"
+          },
+          {
+            "role": "button",
+            "text": "Back"
+          },
+          {
+            "role": "button",
+            "text": "Next"
+          },
+          {
+            "role": "table",
+            "name": "Month View",
+            "text": "Sun Mon Tue Wed Thu Fri Sat 27 28 29 30 01 02 03 04 05 06 07 08 09 10 11 12 13 1"
+          },
+          {
+            "role": "row",
+            "text": "Sun Mon Tue Wed Thu Fri Sat"
+          },
+          {
+            "role": "columnheader",
+            "text": "Sun"
+          },
+          {
+            "role": "columnheader",
+            "text": "Mon"
+          },
+          {
+            "role": "columnheader",
+            "text": "Tue"
+          },
+          {
+            "role": "columnheader",
+            "text": "Wed"
+          },
+          {
+            "role": "columnheader",
+            "text": "Thu"
+          },
+          {
+            "role": "columnheader",
+            "text": "Fri"
+          },
+          {
+            "role": "columnheader",
+            "text": "Sat"
+          },
+          {
+            "role": "rowgroup",
+            "text": "27 28 29 30 01 02 03"
+          },
+          {
+            "role": "row",
+            "text": "27 28 29 30 01 02 03"
+          },
+          {
+            "role": "cell",
+            "text": "27"
+          },
+          {
+            "role": "button",
+            "text": "27"
+          },
+          {
+            "role": "cell",
+            "text": "28"
+          },
+          {
+            "role": "button",
+            "text": "28"
+          },
+          {
+            "role": "cell",
+            "text": "29"
+          },
+          {
+            "role": "button",
+            "text": "29"
+          },
+          {
+            "role": "cell",
+            "text": "30"
+          },
+          {
+            "role": "button",
+            "text": "30"
+          },
+          {
+            "role": "cell",
+            "text": "01"
+          },
+          {
+            "role": "button",
+            "text": "01"
+          },
+          {
+            "role": "cell",
+            "text": "02"
+          },
+          {
+            "role": "button",
+            "text": "02"
+          },
+          {
+            "role": "cell",
+            "text": "03"
+          },
+          {
+            "role": "button",
+            "text": "03"
+          },
+          {
+            "role": "rowgroup",
+            "text": "04 05 06 07 08 09 10"
+          },
+          {
+            "role": "row",
+            "text": "04 05 06 07 08 09 10"
+          },
+          {
+            "role": "cell",
+            "text": "04"
+          },
+          {
+            "role": "button",
+            "text": "04"
+          },
+          {
+            "role": "cell",
+            "text": "05"
+          },
+          {
+            "role": "button",
+            "text": "05"
+          },
+          {
+            "role": "cell",
+            "text": "06"
+          },
+          {
+            "role": "button",
+            "text": "06"
+          },
+          {
+            "role": "cell",
+            "text": "07"
+          },
+          {
+            "role": "button",
+            "text": "07"
+          },
+          {
+            "role": "cell",
+            "text": "08"
+          },
+          {
+            "role": "button",
+            "text": "08"
+          },
+          {
+            "role": "cell",
+            "text": "09"
+          },
+          {
+            "role": "button",
+            "text": "09"
+          },
+          {
+            "role": "cell",
+            "text": "10"
+          },
+          {
+            "role": "button",
+            "text": "10"
+          },
+          {
+            "role": "rowgroup",
+            "text": "11 12 13 14 15 16 17"
+          },
+          {
+            "role": "row",
+            "text": "11 12 13 14 15 16 17"
+          },
+          {
+            "role": "cell",
+            "text": "11"
+          },
+          {
+            "role": "button",
+            "text": "11"
+          },
+          {
+            "role": "cell",
+            "text": "12"
+          },
+          {
+            "role": "button",
+            "text": "12"
+          },
+          {
+            "role": "cell",
+            "text": "13"
+          },
+          {
+            "role": "button",
+            "text": "13"
+          },
+          {
+            "role": "cell",
+            "text": "14"
+          },
+          {
+            "role": "button",
+            "text": "14"
+          },
+          {
+            "role": "cell",
+            "text": "15"
+          },
+          {
+            "role": "button",
+            "text": "15"
+          },
+          {
+            "role": "cell",
+            "text": "16"
+          },
+          {
+            "role": "button",
+            "text": "16"
+          },
+          {
+            "role": "cell",
+            "text": "17"
+          },
+          {
+            "role": "button",
+            "text": "17"
+          },
+          {
+            "role": "rowgroup",
+            "text": "18 19 20 21 22 23 24 Selected"
+          },
+          {
+            "role": "row",
+            "text": "18 19 20 21 22 23 24 Selected"
+          },
+          {
+            "role": "cell",
+            "text": "18"
+          },
+          {
+            "role": "button",
+            "text": "18"
+          },
+          {
+            "role": "cell",
+            "text": "19"
+          },
+          {
+            "role": "button",
+            "text": "19"
+          },
+          {
+            "role": "cell",
+            "text": "20"
+          },
+          {
+            "role": "button",
+            "text": "20"
+          },
+          {
+            "role": "cell",
+            "text": "21"
+          },
+          {
+            "role": "button",
+            "text": "21"
+          },
+          {
+            "role": "cell",
+            "text": "22"
+          },
+          {
+            "role": "button",
+            "text": "22"
+          },
+          {
+            "role": "cell",
+            "text": "23"
+          },
+          {
+            "role": "button",
+            "text": "23"
+          },
+          {
+            "role": "cell",
+            "text": "24"
+          },
+          {
+            "role": "button",
+            "text": "24"
+          },
+          {
+            "role": "rowgroup",
+            "text": "25 26 27 28 29 30 31"
+          },
+          {
+            "role": "row",
+            "text": "25 26 27 28 29 30 31"
+          },
+          {
+            "role": "cell",
+            "text": "25"
+          },
+          {
+            "role": "button",
+            "text": "25"
+          },
+          {
+            "role": "cell",
+            "text": "26"
+          },
+          {
+            "role": "button",
+            "text": "26"
+          },
+          {
+            "role": "cell",
+            "text": "27"
+          },
+          {
+            "role": "button",
+            "text": "27"
+          },
+          {
+            "role": "cell",
+            "text": "28"
+          },
+          {
+            "role": "button",
+            "text": "28"
+          },
+          {
+            "role": "cell",
+            "text": "29"
+          },
+          {
+            "role": "button",
+            "text": "29"
+          },
+          {
+            "role": "cell",
+            "text": "30"
+          },
+          {
+            "role": "button",
+            "text": "30"
+          },
+          {
+            "role": "cell",
+            "text": "31"
+          },
+          {
+            "role": "button",
+            "text": "31"
+          },
+          {
+            "role": "heading",
+            "text": "Price Summary"
+          },
+          {
+            "role": "button",
+            "id": "doReservation",
+            "text": "Reserve Now"
+          },
+          {
+            "role": "heading",
+            "text": "Similar Rooms You Might Like"
+          },
+          {
+            "role": "heading",
+            "text": "Double"
+          },
+          {
+            "role": "link",
+            "text": "View Details"
+          },
+          {
+            "role": "heading",
+            "text": "Suite"
+          },
+          {
+            "role": "link",
+            "text": "View Details"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "link",
+            "text": "Rooms"
+          },
+          {
+            "role": "link",
+            "text": "Booking"
+          },
+          {
+            "role": "link",
+            "text": "Contact"
+          },
+          {
+            "role": "link",
+            "text": "Mark Winteringham"
+          },
+          {
+            "role": "link",
+            "text": "Cookie-Policy"
+          },
+          {
+            "role": "link",
+            "text": "Privacy-Policy"
+          },
+          {
+            "role": "link",
+            "text": "Admin panel"
+          }
+        ],
+        "ax": "- navigation:\n  - link \"Shady Meadows B&B\":\n    - /url: /\n  - list:\n    - listitem:\n      - link \"Rooms\":\n        - /url: /#rooms\n    - listitem:\n      - link \"Booking\":\n        - /url: /#booking\n    - listitem:\n      - link \"Amenities\":\n        - /url: /#amenities\n    - listitem:\n      - link \"Location\":\n        - /url: /#location\n    - listitem:\n      - link \"Contact\":\n        - /url: /#contact\n    - listitem:\n      - link \"Admin\":\n        - /url: /admin\n- navigation \"breadcrumb\":\n  - list:\n    - listitem:\n      - link \"Home\":\n        - /url: /\n    - listitem:\n      - text: /\n      - link \"Rooms\":\n        - /url: \"#\"\n    - listitem: / Single Room\n- heading \"Single Room\" [level=1]\n- text: Accessible  Max 2 Guests\n- img \"Room Image\"\n- heading \"Room Description\" [level=2]\n- paragraph: Aenean porttitor mauris sit amet lacinia molestie. In posuere accumsan aliquet. Maecenas sit amet nisl massa. Interdum et malesuada fames ac ante.\n- heading \"Room Features\" [level=2]\n- text:  TV  WiFi  Safe\n- heading \"Room Policies\" [level=2]\n- heading \"Check-in & Check-out\" [level=3]\n- list:\n  - listitem:\n    - text: \n    - strong: \"Check-in:\"\n    - text: 3:00 PM - 8:00 PM\n  - listitem:\n    - text: \n    - strong: \"Check-out:\"\n    - text: By 11:00 AM\n  - listitem:\n    - text: \n    - strong: \"Early/Late:\"\n    - text: By arrangement\n- heading \"House Rules\" [level=3]\n- list:\n  - listitem:  No smoking\n  - listitem:  No parties or events\n  - listitem:  Pets allowed (restrictions apply)\n- heading \"Book This Room\" [level=2]\n- text: £100 per night\n- button \"Today\"\n- button \"Back\"\n- button \"Next\"\n- text: October 2026\n- table \"Month View\":\n  - row \"Sun Mon Tue Wed Thu Fri Sat\":\n    - columnheader \"Sun\"\n    - columnheader \"Mon\"\n    - columnheader \"Tue\"\n    - columnheader \"Wed\"\n    - columnheader \"Thu\"\n    - columnheader \"Fri\"\n    - columnheader \"Sat\"\n  - rowgroup:\n    - row \"27 28 29 30 01 02 03\":\n      - cell \"27\":\n        - button \"27\"\n      - cell \"28\":\n        - button \"28\"\n      - cell \"29\":\n        - button \"29\"\n      - cell \"30\":\n        - button \"30\"\n      - cell \"01\":\n        - button \"01\"\n      - cell \"02\":\n        - button \"02\"\n      - cell \"03\":\n        - button \"03\"\n  - rowgroup:\n    - row \"04 05 06 07 08 09 10\":\n      - cell \"04\":\n        - button \"04\"\n      - cell \"05\":\n        - button \"05\"\n      - cell \"06\":\n        - button \"06\"\n      - cell \"07\":\n        - button \"07\"\n      - cell \"08\":\n        - button \"08\"\n      - cell \"09\":\n        - button \"09\"\n      - cell \"10\":\n        - button \"10\"\n  - rowgroup:\n    - row \"11 12 13 14 15 16 17\":\n      - cell \"11\":\n        - button \"11\"\n      - cell \"12\":\n        - button \"12\"\n      - cell \"13\":\n        - button \"13\"\n      - cell \"14\":\n        - button \"14\"\n      - cell \"15\":\n        - button \"15\"\n      - cell \"16\":\n        - button \"16\"\n      - cell \"17\":\n        - button \"17\"\n  - rowgroup:\n    - row \"18 19 20 21 22 23 24 Selected\":\n      - cell \"18\":\n        - button \"18\"\n      - cell \"19\":\n        - button \"19\"\n      - cell \"20\":\n        - button \"20\"\n      - cell \"21\":\n        - button \"21\"\n      - cell \"22\":\n        - button \"22\"\n      - cell \"23\":\n        - button \"23\"\n      - cell \"24\":\n        - button \"24\"\n      - text: Selected\n  - rowgroup:\n    - row \"25 26 27 28 29 30 31\":\n      - cell \"25\":\n        - button \"25\"\n      - cell \"26\":\n        - button \"26\"\n      - cell \"27\":\n        - button \"27\"\n      - cell \"28\":\n        - button \"28\"\n      - cell \"29\":\n        - button \"29\"\n      - cell \"30\":\n        - button \"30\"\n      - cell \"31\":\n        - button \"31\"\n- heading \"Price Summary\" [level=3]\n- text: £100 x 1 nights £100 Cleaning fee £25 Service fee £15\n- separator\n- text: Total £140\n- button \"Reserve Now\"\n- heading \"Similar Rooms You Might Like\" [level=2]\n- img \"Double\"\n- heading \"Double\" [level=3]\n- text:  2 Guests £150/night\n- paragraph: Vestibulum sollicitudin, lectus ac mollis consequat, lorem orci ultrices tellus, eleifend euismod tortor dui egestas erat. Phasellus et ipsum nisl.\n- link \"View Details\":\n  - /url: /reservation/2?checkin=2026-10-22&checkout=2026-10-23\n- img \"Suite\"\n- heading \"Suite\" [level=3]\n- text:  2 Guests £225/night\n- paragraph: Etiam metus metus, fringilla ac sagittis id, consequat vel neque. Nunc commodo quis nisl nec posuere. Etiam at accumsan ex.\n- link \"View Details\":\n  - /url: /reservation/3?checkin=2026-10-22&checkout=2026-10-23\n- contentinfo:\n  - heading \"Shady Meadows B&B\" [level=5]\n  - paragraph: Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place.\n  - link \"\":\n    - /url: \"#\"\n  - link \"\":\n    - /url: \"#\"\n  - link \"\":\n    - /url: \"#\"\n  - heading \"Contact Us\" [level=5]\n  - list:\n    - listitem:  Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA\n    - listitem:  012345678901\n "
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role a Book now",
+          "score": 0
+        },
+        {
+          "kind": "text",
+          "label": "text Book now",
+          "score": 0
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://automationintesting.online/reservation/1?checkin=2026-10-22&checkout=2026-10-23",
+    "title": "Restful-booker-platform demo",
+    "text": "Shady Meadows B&B Rooms Booking Amenities Location Contact Admin Home Rooms Single Room Single Room Accessible Max 2 Guests Room Description Aenean porttitor mauris sit amet lacinia molestie. In posuere accumsan aliquet. Maecenas sit amet nisl massa. Interdum et malesuada fames ac ante. Room Features TV WiFi Safe Room Policies Check-in & Check-out Check-in: 3:00 PM - 8:00 PM Check-out: By 11:00 AM Early/Late: By arrangement House Rules No smoking No parties or events Pets allowed (restrictions apply) Book This Room £100 per night TodayBackNext October 2026 Sun Mon Tue Wed Thu Fri Sat 27 28 29 30 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 Selected 25 26 27 28 29 30 31 Price Summary £100 x 1 nights £100 Cleaning fee £25 Service fee £15 Total £140 Reserve Now Similar Rooms You Might Like Double 2 Guests £150/night Vestibulum sollicitudin, lectus ac mollis consequat, lorem orci ultrices tellus, eleifend euismod tortor dui egestas erat. Phasellus et ipsum nisl. View Details Suite 2 Guests £225/night Etiam metus metus, fringilla ac sagittis id, consequat vel neque. Nunc commodo quis nisl nec posuere. Etiam at accumsan ex. View Details Shady Meadows B&B Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place. Contact Us Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA 012345678901 fake@fakeemail.com Quick Links Home Rooms Booking Contact restful-booker-platform v2.2 Created by Mark Winteringham - © 2019-26 Cookie-Policy - Privacy-Policy - Admin panel"
+  },
+  "downloaded": []
+}

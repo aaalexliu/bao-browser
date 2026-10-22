@@ -1,0 +1,789 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792672161233-0",
+        "action": "click",
+        "target": "a:Travel",
+        "postcondition": "missed settled no error and the page settled",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://books.toscrape.com/catalogue/category/books/travel_2/index.html' was loaded over HTTPS, but requested an insecure script 'http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js'. This request has",
+        "ts": 1792672161461
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+        "status": 200,
+        "ts": 1792672161436
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/js/bootstrap-datetimepicker/bootstrap-datetimepicker.css",
+        "status": 200,
+        "ts": 1792672161470
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/css/datetimepicker.css",
+        "status": 200,
+        "ts": 1792672161470
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/css/styles.css",
+        "status": 200,
+        "ts": 1792672161471
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/57/77/57770cac1628f4407636635f4b85e88c.jpg",
+        "status": 200,
+        "ts": 1792672161471
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/9a/7e/9a7e63f12829df4b43b31d110bf3dc2e.jpg",
+        "status": 200,
+        "ts": 1792672161495
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/d5/bf/d5bf0090470b0b8ea46d9c166f7895aa.jpg",
+        "status": 200,
+        "ts": 1792672161497
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/27/a5/27a53d0bb95bdd88288eaf66c9230d7e.jpg",
+        "status": 200,
+        "ts": 1792672161497
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/98/c2/98c2e95c5fd1a4e7cd5f2b63c52826cb.jpg",
+        "status": 200,
+        "ts": 1792672161514
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/db/46/db46159b05faa5d95262112bf9c29ddd.jpg",
+        "status": 200,
+        "ts": 1792672161531
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/d7/0f/d70f7edd92705c45a82118c3ff6c299d.jpg",
+        "status": 200,
+        "ts": 1792672161532
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/4e/15/4e15150388702ebca2c5a523ac270539.jpg",
+        "status": 200,
+        "ts": 1792672161532
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/e0/4f/e04f8eda2a2fa947aec17640202d9ab0.jpg",
+        "status": 200,
+        "ts": 1792672161532
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/76/de/76de41867f323d7f1f4fbe2fdfc1b2ba.jpg",
+        "status": 200,
+        "ts": 1792672161532
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/media/cache/06/81/0681530a7bc301caf5c3257e1b0f0750.jpg",
+        "status": 200,
+        "ts": 1792672161532
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/js/bootstrap-datetimepicker/bootstrap-datetimepicker.js",
+        "status": 200,
+        "ts": 1792672161538
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/js/oscar/ui.js",
+        "status": 200,
+        "ts": 1792672161542
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/js/bootstrap3/bootstrap.min.js",
+        "status": 200,
+        "ts": 1792672161547
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/js/bootstrap-datetimepicker/locales/bootstrap-datetimepicker.all.js",
+        "status": 200,
+        "ts": 1792672161547
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/js/jquery/jquery-1.9.1.min.js",
+        "status": 200,
+        "ts": 1792672161568
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://books.toscrape.com/static/oscar/fonts/fontawesome-webfont.woff%3Fv=3.2.1",
+        "status": 200,
+        "ts": 1792672161576
+      }
+    ],
+    "runId": "run-mvjipwkv-fy46",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792672161233-0",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792672161591,
+        "endedAt": 1792672170197,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link",
+              "text": "Books to Scrape"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": "Books"
+            },
+            {
+              "role": "link",
+              "text": "Books"
+            },
+            {
+              "role": "link",
+              "text": "Travel"
+            },
+            {
+              "role": "link",
+              "text": "Mystery"
+            },
+            {
+              "role": "link",
+              "text": "Historical Fiction"
+            },
+            {
+              "role": "link",
+              "text": "Sequential Art"
+            },
+            {
+              "role": "link",
+              "text": "Classics"
+            },
+            {
+              "role": "link",
+              "text": "Philosophy"
+            },
+            {
+              "role": "link",
+              "text": "Romance"
+            },
+            {
+              "role": "link",
+              "text": "Womens Fiction"
+            },
+            {
+              "role": "link",
+              "text": "Fiction"
+            },
+            {
+              "role": "link",
+              "text": "Childrens"
+            },
+            {
+              "role": "link",
+              "text": "Religion"
+            },
+            {
+              "role": "link",
+              "text": "Nonfiction"
+            },
+            {
+              "role": "link",
+              "text": "Music"
+            },
+            {
+              "role": "link",
+              "text": "Default"
+            },
+            {
+              "role": "link",
+              "text": "Science Fiction"
+            },
+            {
+              "role": "link",
+              "text": "Sports and Games"
+            },
+            {
+              "role": "link",
+              "text": "Add a comment"
+            },
+            {
+              "role": "link",
+              "text": "Fantasy"
+            },
+            {
+              "role": "link",
+              "text": "New Adult"
+            },
+            {
+              "role": "link",
+              "text": "Young Adult"
+            },
+            {
+              "role": "link",
+              "text": "Science"
+            },
+            {
+              "role": "link",
+              "text": "Poetry"
+            },
+            {
+              "role": "link",
+              "text": "Paranormal"
+            },
+            {
+              "role": "link",
+              "text": "Art"
+            },
+            {
+              "role": "link",
+              "text": "Psychology"
+            },
+            {
+              "role": "link",
+              "text": "Autobiography"
+            },
+            {
+              "role": "link",
+              "text": "Parenting"
+            },
+            {
+              "role": "link",
+              "text": "Adult Fiction"
+            },
+            {
+              "role": "link",
+              "text": "Humor"
+            },
+            {
+              "role": "link",
+              "text": "Horror"
+            },
+            {
+              "role": "link",
+              "text": "History"
+            },
+            {
+              "role": "link",
+              "text": "Food and Drink"
+            },
+            {
+              "role": "link",
+              "text": "Christian Fiction"
+            },
+            {
+              "role": "link",
+              "text": "Business"
+            },
+            {
+              "role": "link",
+              "text": "Biography"
+            },
+            {
+              "role": "link",
+              "text": "Thriller"
+            }
+          ],
+          "ax": "- banner:\n  - link \"Books to Scrape\":\n    - /url: ../../../../index.html\n  - text: We love being scraped!\n- list:\n  - listitem:\n    - link \"Home\":\n      - /url: ../../../../index.html\n  - listitem:\n    - text: /\n    - link \"Books\":\n      - /url: ../../books_1/index.html\n  - listitem: / Travel\n- complementary:\n  - list:\n    - listitem:\n      - link \"Books\":\n        - /url: ../../books_1/index.html\n      - list:\n        - listitem:\n          - link \"Travel\":\n            - /url: index.html\n            - strong: Travel\n        - listitem:\n          - link \"Mystery\":\n            - /url: ../mystery_3/index.html\n        - listitem:\n          - link \"Historical Fiction\":\n            - /url: ../historical-fiction_4/index.html\n        - listitem:\n          - link \"Sequential Art\":\n            - /url: ../sequential-art_5/index.html\n        - listitem:\n          - link \"Classics\":\n            - /url: ../classics_6/index.html\n        - listitem:\n          - link \"Philosophy\":\n            - /url: ../philosophy_7/index.html\n        - listitem:\n          - link \"Romance\":\n            - /url: ../romance_8/index.html\n        - listitem:\n          - link \"Womens Fiction\":\n            - /url: ../womens-fiction_9/index.html\n        - listitem:\n          - link \"Fiction\":\n            - /url: ../fiction_10/index.html\n        - listitem:\n          - link \"Childrens\":\n            - /url: ../childrens_11/index.html\n        - listitem:\n          - link \"Religion\":\n            - /url: ../religion_12/index.html\n        - listitem:\n          - link \"Nonfiction\":\n            - /url: ../nonfiction_13/index.html\n        - listitem:\n          - link \"Music\":\n            - /url: ../music_14/index.html\n        - listitem:\n          - link \"Default\":\n            - /url: ../default_15/index.html\n        - listitem:\n          - link \"Science Fiction\":\n            - /url: ../science-fiction_16/index.html\n        - listitem:\n          - link \"Sports and Games\":\n            - /url: ../sports-and-games_17/index.html\n        - listitem:\n          - link \"Add a comment\":\n            - /url: ../add-a-comment_18/index.html\n        - listitem:\n          - link \"Fantasy\":\n            - /url: ../fantasy_19/index.html\n        - listitem:\n          - link \"New Adult\":\n            - /url: ../new-adult_20/index.html\n        - listitem:\n          - link \"Young Adult\":\n            - /url: ../young-adult_21/index.html\n        - listitem:\n          - link \"Science\":\n            - /url: ../science_22/index.html\n        - listitem:\n          - link \"Poetry\":\n            - /url: ../poetry_23/index.html\n        - listitem:\n          - link \"Paranormal\":\n            - /url: ../paranormal_24/index.html\n        - listitem:\n          - link \"Art\":\n            - /url: ../art_25/index.html\n        - listitem:\n          - link \"Psychology\":\n            - /url: ../psychology_26/index.html\n        - listitem:\n          - link \"Autobiography\":\n            - /url: ../autobiography_27/index.html\n        - listitem:\n          - link \"Parenting\":\n            - /url: ../parenting_28/index.html\n        - listitem:\n          - link \"Adult Fiction\":\n            - /url: ../adult-fiction_29/index.html\n        - listitem:\n          - link \"Humor\":\n            - /url: ../humor_30/index.html\n        - listitem:\n          - link \"Horror\":\n            - /url: ../horror_31/index.html\n        - listitem:\n          - link \"History\":\n            - /url: ../history_32/index.html\n        - listitem:\n          - link \"Food and Drink\":\n            - /url: ../food-and-drink_33/index.html\n        - listitem:\n          - link \"Christian Fiction\":\n            - /url: ../christian-fiction_34/index.html\n        - listitem:\n          - link \"Business\":\n            - /url: ../business_35/index.html\n        - listitem:\n          - link \"Biography\":\n            - /url: ../biography_36/index.html\n        - listitem:\n          - link \"Thriller\":\n            - /url: ../thriller_37/index.html\n        - listitem:\n          - link \"Con"
+        }
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792672161233-0",
+      "index": 0,
+      "intent": "Click \"Travel\"",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link",
+            "text": "Books to Scrape"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "link",
+            "text": "Books"
+          },
+          {
+            "role": "link",
+            "text": "Books"
+          },
+          {
+            "role": "link",
+            "text": "Travel"
+          },
+          {
+            "role": "link",
+            "text": "Mystery"
+          },
+          {
+            "role": "link",
+            "text": "Historical Fiction"
+          },
+          {
+            "role": "link",
+            "text": "Sequential Art"
+          },
+          {
+            "role": "link",
+            "text": "Classics"
+          },
+          {
+            "role": "link",
+            "text": "Philosophy"
+          },
+          {
+            "role": "link",
+            "text": "Romance"
+          },
+          {
+            "role": "link",
+            "text": "Womens Fiction"
+          },
+          {
+            "role": "link",
+            "text": "Fiction"
+          },
+          {
+            "role": "link",
+            "text": "Childrens"
+          },
+          {
+            "role": "link",
+            "text": "Religion"
+          },
+          {
+            "role": "link",
+            "text": "Nonfiction"
+          },
+          {
+            "role": "link",
+            "text": "Music"
+          },
+          {
+            "role": "link",
+            "text": "Default"
+          },
+          {
+            "role": "link",
+            "text": "Science Fiction"
+          },
+          {
+            "role": "link",
+            "text": "Sports and Games"
+          },
+          {
+            "role": "link",
+            "text": "Add a comment"
+          },
+          {
+            "role": "link",
+            "text": "Fantasy"
+          },
+          {
+            "role": "link",
+            "text": "New Adult"
+          },
+          {
+            "role": "link",
+            "text": "Young Adult"
+          },
+          {
+            "role": "link",
+            "text": "Science"
+          },
+          {
+            "role": "link",
+            "text": "Poetry"
+          },
+          {
+            "role": "link",
+            "text": "Paranormal"
+          },
+          {
+            "role": "link",
+            "text": "Art"
+          },
+          {
+            "role": "link",
+            "text": "Psychology"
+          },
+          {
+            "role": "link",
+            "text": "Autobiography"
+          },
+          {
+            "role": "link",
+            "text": "Parenting"
+          },
+          {
+            "role": "link",
+            "text": "Adult Fiction"
+          },
+          {
+            "role": "link",
+            "text": "Humor"
+          },
+          {
+            "role": "link",
+            "text": "Horror"
+          },
+          {
+            "role": "link",
+            "text": "History"
+          },
+          {
+            "role": "link",
+            "text": "Food and Drink"
+          },
+          {
+            "role": "link",
+            "text": "Christian Fiction"
+          },
+          {
+            "role": "link",
+            "text": "Business"
+          },
+          {
+            "role": "link",
+            "text": "Biography"
+          },
+          {
+            "role": "link",
+            "text": "Thriller"
+          },
+          {
+            "role": "link",
+            "text": "Contemporary"
+          },
+          {
+            "role": "link",
+            "text": "Spirituality"
+          },
+          {
+            "role": "link",
+            "text": "Academic"
+          },
+          {
+            "role": "link",
+            "text": "Self Help"
+          },
+          {
+            "role": "link",
+            "text": "Historical"
+          },
+          {
+            "role": "link",
+            "text": "Christian"
+          },
+          {
+            "role": "link",
+            "text": "Suspense"
+          },
+          {
+            "role": "link",
+            "text": "Short Stories"
+          },
+          {
+            "role": "link",
+            "text": "Novels"
+          },
+          {
+            "role": "link",
+            "text": "Health"
+          },
+          {
+            "role": "link",
+            "text": "Politics"
+          },
+          {
+            "role": "link",
+            "text": "Cultural"
+          },
+          {
+            "role": "link",
+            "text": "Erotica"
+          },
+          {
+            "role": "link",
+            "text": "Crime"
+          },
+          {
+            "role": "heading",
+            "text": "Travel"
+          },
+          {
+            "role": "alert",
+            "text": "Warning! This is a demo website for web scraping purposes. Prices and ratings he"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "It's Only the Himalayas"
+          },
+          {
+            "role": "link",
+            "text": "It's Only the Himalayas"
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "Full Moon over Noah’s ..."
+          },
+          {
+            "role": "link",
+            "text": "Full Moon over Noah’s ..."
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "See America: A Celebration ..."
+          },
+          {
+            "role": "link",
+            "text": "See America: A Celebration ..."
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "Vagabonding: An Uncommon Guide ..."
+          },
+          {
+            "role": "link",
+            "text": "Vagabonding: An Uncommon Guide ..."
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "Under the Tuscan Sun"
+          },
+          {
+            "role": "link",
+            "text": "Under the Tuscan Sun"
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "A Summer In Europe"
+          },
+          {
+            "role": "link",
+            "text": "A Summer In Europe"
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "The Great Railway Bazaar"
+          },
+          {
+            "role": "link",
+            "text": "The Great Railway Bazaar"
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "A Year in Provence ..."
+          },
+          {
+            "role": "link",
+            "text": "A Year in Provence ..."
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "The Road to Little ..."
+          },
+          {
+            "role": "link",
+            "text": "The Road to Little ..."
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "Neither Here nor There: ..."
+          },
+          {
+            "role": "link",
+            "text": "Neither Here nor There: ..."
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "1,000 Places to See ..."
+          },
+          {
+            "role": "link",
+            "text": "1,000 Places to See ..."
+          },
+          {
+            "role": "button",
+            "text": "Add to basket"
+          }
+        ],
+        "ax": "- banner:\n  - link \"Books to Scrape\":\n    - /url: ../../../../index.html\n  - text: We love being scraped!\n- list:\n  - listitem:\n    - link \"Home\":\n      - /url: ../../../../index.html\n  - listitem:\n    - text: /\n    - link \"Books\":\n      - /url: ../../books_1/index.html\n  - listitem: / Travel\n- complementary:\n  - list:\n    - listitem:\n      - link \"Books\":\n        - /url: ../../books_1/index.html\n      - list:\n        - listitem:\n          - link \"Travel\":\n            - /url: index.html\n            - strong: Travel\n        - listitem:\n          - link \"Mystery\":\n            - /url: ../mystery_3/index.html\n        - listitem:\n          - link \"Historical Fiction\":\n            - /url: ../historical-fiction_4/index.html\n        - listitem:\n          - link \"Sequential Art\":\n            - /url: ../sequential-art_5/index.html\n        - listitem:\n          - link \"Classics\":\n            - /url: ../classics_6/index.html\n        - listitem:\n          - link \"Philosophy\":\n            - /url: ../philosophy_7/index.html\n        - listitem:\n          - link \"Romance\":\n            - /url: ../romance_8/index.html\n        - listitem:\n          - link \"Womens Fiction\":\n            - /url: ../womens-fiction_9/index.html\n        - listitem:\n          - link \"Fiction\":\n            - /url: ../fiction_10/index.html\n        - listitem:\n          - link \"Childrens\":\n            - /url: ../childrens_11/index.html\n        - listitem:\n          - link \"Religion\":\n            - /url: ../religion_12/index.html\n        - listitem:\n          - link \"Nonfiction\":\n            - /url: ../nonfiction_13/index.html\n        - listitem:\n          - link \"Music\":\n            - /url: ../music_14/index.html\n        - listitem:\n          - link \"Default\":\n            - /url: ../default_15/index.html\n        - listitem:\n          - link \"Science Fiction\":\n            - /url: ../science-fiction_16/index.html\n        - listitem:\n          - link \"Sports and Games\":\n            - /url: ../sports-and-games_17/index.html\n        - listitem:\n          - link \"Add a comment\":\n            - /url: ../add-a-comment_18/index.html\n        - listitem:\n          - link \"Fantasy\":\n            - /url: ../fantasy_19/index.html\n        - listitem:\n          - link \"New Adult\":\n            - /url: ../new-adult_20/index.html\n        - listitem:\n          - link \"Young Adult\":\n            - /url: ../young-adult_21/index.html\n        - listitem:\n          - link \"Science\":\n            - /url: ../science_22/index.html\n        - listitem:\n          - link \"Poetry\":\n            - /url: ../poetry_23/index.html\n        - listitem:\n          - link \"Paranormal\":\n            - /url: ../paranormal_24/index.html\n        - listitem:\n          - link \"Art\":\n            - /url: ../art_25/index.html\n        - listitem:\n          - link \"Psychology\":\n            - /url: ../psychology_26/index.html\n        - listitem:\n          - link \"Autobiography\":\n            - /url: ../autobiography_27/index.html\n        - listitem:\n          - link \"Parenting\":\n            - /url: ../parenting_28/index.html\n        - listitem:\n          - link \"Adult Fiction\":\n            - /url: ../adult-fiction_29/index.html\n        - listitem:\n          - link \"Humor\":\n            - /url: ../humor_30/index.html\n        - listitem:\n          - link \"Horror\":\n            - /url: ../horror_31/index.html\n        - listitem:\n          - link \"History\":\n            - /url: ../history_32/index.html\n        - listitem:\n          - link \"Food and Drink\":\n            - /url: ../food-and-drink_33/index.html\n        - listitem:\n          - link \"Christian Fiction\":\n            - /url: ../christian-fiction_34/index.html\n        - listitem:\n          - link \"Business\":\n            - /url: ../business_35/index.html\n        - listitem:\n          - link \"Biography\":\n            - /url: ../biography_36/index.html\n        - listitem:\n          - link \"Thriller\":\n            - /url: ../thriller_37/index.html\n        - listitem:\n          - link \"Contemporary\":\n            - /url: ../contemporary_38/index.html\n        - listitem:\n          - link \"Spirituality\":\n            - /url: ../spirituality_39/index.html\n        - listitem:\n          - link \"Academic\":\n            - /url: ../academic_40/index.html\n        - listitem:\n          - link \"Self Help\":\n            - /url: ../self-help_41/index.html\n        - listitem:\n          - link \"Historical\":\n            - /url: ../historical_42/index.html\n        - listitem:\n          - link \"Christian\":\n            - /url: ../christian_43/index.html\n        - listitem:\n          - link \"Suspense\":\n            - /url: ../suspense_44/index.html\n        - listitem:\n          - link \"Short Stories\":\n            - /url: ../short-stories_45/index.html\n        - listitem:\n          - link \"Novels\":\n            - /url: ../novels_46/index.html\n        - listitem:\n          - link \"Health\":\n            - /url: ../health_47/index.html\n        - listitem:\n          - link \"Politics\":\n            - /u"
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role a Travel",
+          "score": 0
+        },
+        {
+          "kind": "text",
+          "label": "text Travel",
+          "score": 40
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+    "title": "Travel | Books to Scrape - Sandbox",
+    "text": "Books to Scrape We love being scraped! Home Books Travel Books Travel Mystery Historical Fiction Sequential Art Classics Philosophy Romance Womens Fiction Fiction Childrens Religion Nonfiction Music Default Science Fiction Sports and Games Add a comment Fantasy New Adult Young Adult Science Poetry Paranormal Art Psychology Autobiography Parenting Adult Fiction Humor Horror History Food and Drink Christian Fiction Business Biography Thriller Contemporary Spirituality Academic Self Help Historical Christian Suspense Short Stories Novels Health Politics Cultural Erotica Crime Travel 11 results. Warning! This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning. It's Only the Himalayas £45.17 In stock Add to basket Full Moon over Noah’s ... £49.43 In stock Add to basket See America: A Celebration ... £48.87 In stock Add to basket Vagabonding: An Uncommon Guide ... £36.94 In stock Add to basket Under the Tuscan Sun £37.33 In stock Add to basket A Summer In Europe £44.34 In stock Add to basket The Great Railway Bazaar £30.54 In stock Add to basket A Year in Provence ... £56.88 In stock Add to basket The Road to Little ... £23.21 In stock Add to basket Neither Here nor There: ... £38.95 In stock Add to basket 1,000 Places to See ... £26.08 In stock Add to basket"
+  },
+  "downloaded": []
+}

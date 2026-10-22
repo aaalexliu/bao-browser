@@ -1,0 +1,73 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 403 ()",
+        "ts": 1792672687066
+      },
+      {
+        "stepId": "open",
+        "type": "warning",
+        "text": "No available adapters.",
+        "ts": 1792672687157
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://practicesoftwaretesting.com/",
+        "status": 307,
+        "ts": 1792672687036
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://practicesoftwaretesting.com/",
+        "status": 403,
+        "ts": 1792672687052
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://practicesoftwaretesting.com/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1",
+        "status": 200,
+        "ts": 1792672687096
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://challenges.cloudflare.com/turnstile/v0/b/d2d3316b729e/api.js",
+        "status": 200,
+        "ts": 1792672687157
+      }
+    ],
+    "runId": "run-mvjj164g-gnti",
+    "status": "passed",
+    "steps": [],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://practicesoftwaretesting.com/",
+    "title": "Just a moment...",
+    "text": "practicesoftwaretesting.com Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a4e88ea60e61c892 Performance and Security by Cloudflare Privacy"
+  },
+  "downloaded": []
+}

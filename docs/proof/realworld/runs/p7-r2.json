@@ -1,0 +1,4712 @@
+{
+  "args": {
+    "search": "Xiaolongbao"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [
+      {
+        "stepId": "wf-1792672349041-0",
+        "kind": "role",
+        "detail": "role Search Wikipedia"
+      }
+    ],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792672349041-0",
+        "action": "type",
+        "target": "input#searchInput",
+        "postcondition": "value {{search}}",
+        "timing": "lt10s"
+      },
+      {
+        "stepId": "wf-1792672349041-1",
+        "action": "click",
+        "target": "button:Search",
+        "postcondition": "missed settled no error and the page settled",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "wf-1792672349041-0",
+        "type": "warning",
+        "text": "This page is using the deprecated ResourceLoader module \"moment\". [1.44] Use mediawiki.DateFormatter or native Intl function instead. See https://phabricator.wikimedia.org/T146798",
+        "ts": 1792672387076
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/index.php",
+        "status": 200,
+        "ts": 1792672386814
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/footer/wikimedia-button.svg",
+        "status": 200,
+        "ts": 1792672386829
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/resources/assets/poweredby_mediawiki.svg",
+        "status": 200,
+        "ts": 1792672386829
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672386840
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672386841
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672386866
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672386866
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672386950
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en-25.svg",
+        "status": 200,
+        "ts": 1792672386967
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/project-logos/enwiki-25.png",
+        "status": 200,
+        "ts": 1792672386967
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles.legacy/images/link-external-small-ltr-progressive.svg",
+        "status": 200,
+        "ts": 1792672386983
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles.legacy/images/bullet-icon.svg",
+        "status": 200,
+        "ts": 1792672386983
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles.legacy/images/search.svg",
+        "status": 200,
+        "ts": 1792672386984
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/resources/src/mediawiki.feedlink/images/feed-icon.svg",
+        "status": 200,
+        "ts": 1792672386985
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672387059
+      },
+      {
+        "stepId": "wf-1792672349041-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672387091
+      },
+      {
+        "stepId": "wf-1792672349041-0",
+        "method": "POST",
+        "url": "https://en.wikipedia.org/ins-502b/v2/events",
+        "status": 202,
+        "ts": 1792672387152
+      },
+      {
+        "stepId": "wf-1792672349041-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/extensions/UniversalLanguageSelector/resources/images/cog-sprite.svg",
+        "status": 200,
+        "ts": 1792672387166
+      },
+      {
+        "stepId": "wf-1792672349041-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672388291
+      },
+      {
+        "stepId": "wf-1792672349041-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672388291
+      },
+      {
+        "stepId": "wf-1792672349041-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792672388291
+      },
+      {
+        "stepId": "wf-1792672349041-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/api.php",
+        "status": 200,
+        "ts": 1792672388320
+      }
+    ],
+    "runId": "run-mvjiuqk5-thdd",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792672349041-0",
+        "status": "passed",
+        "startedAt": 1792672387072,
+        "endedAt": 1792672388290,
+        "beforeShot": "wf-1792672349041-0-before.png",
+        "afterShot": "wf-1792672349041-0-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "main",
+              "text": "Help Baozi: Revision history View logs for this page (view filter log) Jump to n",
+              "id": "content"
+            },
+            {
+              "role": "link",
+              "id": "top"
+            },
+            {
+              "role": "link",
+              "text": "Help"
+            },
+            {
+              "role": "heading",
+              "text": "Baozi: Revision history",
+              "id": "firstHeading"
+            },
+            {
+              "role": "link",
+              "text": "View logs for this page"
+            },
+            {
+              "role": "link",
+              "text": "view filter log"
+            },
+            {
+              "role": "link",
+              "text": "Jump to navigation"
+            },
+            {
+              "role": "link",
+              "text": "Jump to search"
+            },
+            {
+              "role": "button",
+              "text": "Filter revisions show"
+            },
+            {
+              "role": "link",
+              "text": "Find addition/removal"
+            },
+            {
+              "role": "link",
+              "text": "Alternate"
+            },
+            {
+              "role": "link",
+              "text": "Find edits by user"
+            },
+            {
+              "role": "link",
+              "text": "Alternate"
+            },
+            {
+              "role": "link",
+              "text": "Page statistics"
+            },
+            {
+              "role": "link",
+              "text": "Pageviews"
+            },
+            {
+              "role": "link",
+              "text": "Fix dead links"
+            },
+            {
+              "role": "link",
+              "text": "Copyvio detector"
+            },
+            {
+              "role": "link",
+              "text": "Help:Page history"
+            },
+            {
+              "role": "link",
+              "text": "Help:Edit summary"
+            },
+            {
+              "role": "link",
+              "text": "minor edit"
+            },
+            {
+              "role": "link",
+              "text": "section edit"
+            },
+            {
+              "role": "link",
+              "text": "automatic edit summary"
+            },
+            {
+              "role": "link",
+              "text": "oldest"
+            },
+            {
+              "role": "link",
+              "text": "older 50"
+            },
+            {
+              "role": "link",
+              "text": "20"
+            },
+            {
+              "role": "link",
+              "text": "100"
+            },
+            {
+              "role": "link",
+              "text": "250"
+            },
+            {
+              "role": "link",
+              "text": "500"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "name": "Compare selected revisions"
+            },
+            {
+              "role": "heading",
+              "text": "4 October 2026"
+            },
+            {
+              "role": "link",
+              "text": "prev"
+            },
+            {
+              "role": "radio",
+              "id": "mw-oldid-null"
+            },
+            {
+              "role": "radio",
+              "id": "mw-diff-1378497946"
+            },
+            {
+              "role": "link",
+              "text": "19:53, 4 October 2026"
+            },
+            {
+              "role": "link",
+              "text": "SpiderMum"
+            },
+            {
+              "role": "link",
+              "text": "talk"
+            },
+            {
+              "role": "link",
+              "text": "contribs"
+            },
+            {
+              "role": "link",
+              "text": "Category:Dumplings"
+            },
+            {
+              "role": "link",
+              "text": "Category:Yeast dumplings"
+            }
+          ],
+          "ax": "- main:\n  - link \"Help\":\n    - /url: https://www.mediawiki.org/wiki/Special:MyLanguage/Help:History\n  - 'heading \"Baozi: Revision history\" [level=1]'\n  - link \"View logs for this page\":\n    - /url: /w/index.php?title=Special:Log&page=Baozi\n  - text: (\n  - link \"view filter log\":\n    - /url: /w/index.php?title=Special:AbuseLog&wpSearchTitle=Baozi\n  - text: )\n  - link \"Jump to navigation\":\n    - /url: \"#mw-head\"\n  - link \"Jump to search\":\n    - /url: \"#searchInput\"\n  - group \"Filter revisions show\":\n    - button \"Filter revisions show\"\n  - text: \"External tools:\"\n  - list:\n    - listitem:\n      - link \"Find addition/removal\":\n        - /url: https://wikiblame.toolforge.org/wikiblame.php?lang=en&article=Baozi\n      - superscript:\n        - text: (\n        - link \"Alternate\":\n          - /url: https://xtools.wmcloud.org/blame/en.wikipedia.org?page=Baozi\n        - text: )\n      - text: ·\n    - listitem:\n      - link \"Find edits by user\":\n        - /url: https://sigma.toolforge.org/usersearch.py?page=Baozi&server=enwiki\n      - superscript:\n        - text: (\n        - link \"Alternate\":\n          - /url: https://xtools.wmcloud.org/topedits/en.wikipedia.org?namespace=0&page=Baozi&focus=username\n        - text: )\n      - text: ·\n    - listitem:\n      - link \"Page statistics\":\n        - /url: https://xtools.wmcloud.org/articleinfo/en.wikipedia.org/Baozi\n      - text: ·\n    - listitem:\n      - link \"Pageviews\":\n        - /url: https://pageviews.wmcloud.org/?pages=Baozi&project=en.wikipedia.org\n      - text: ·\n    - listitem:\n      - link \"Fix dead links\":\n        - /url: https://iabot.wmcloud.org/index.php?page=runbotsingle&pagesearch=Baozi&wiki=enwiki\n      - text: ·\n    - listitem:\n      - link \"Copyvio detector\":\n        - /url: https://copyvios.toolforge.org/?lang=en&project=wikipedia&title=Baozi\n  - separator\n  - paragraph:\n    - text: For any version listed below, click on its date to view it. For more help, see\n    - link \"Help:Page history\":\n      - /url: /wiki/Help:Page_history\n    - text: and\n    - link \"Help:Edit summary\":\n      - /url: /wiki/Help:Edit_summary\n    - text: . (cur) = difference from current version, (prev) = difference from preceding version, m =\n    - link \"minor edit\":\n      - /url: /wiki/Help:Minor_edit\n    - text: \", → =\"\n    - link \"section edit\":\n      - /url: /wiki/Help:Section#Section_editing\n    - text: \", ← =\"\n    - link \"automatic edit summary\":\n      - /url: /wiki/Help:Automatic_edit_summaries\n  - text: (newest |\n  - link \"oldest\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&dir=prev\n  - text: ) View (newer 50 |\n  - link \"older 50\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=20250504170931%7C1288763168\n  - text: ) (\n  - link \"20\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=20\n  - text: \"| 50 |\"\n  - link \"100\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=100\n  - text: \"|\"\n  - link \"250\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=250\n  - text: \"|\"\n  - link \"500\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=500\n  - text: )\n  - button \"Compare selected revisions\"\n  - heading \"4 October 2026\" [level=4]\n  - list:\n    - listitem:\n      - text: (cur |\n      - link \"prev\":\n        - /url: /w/index.php?title=Baozi&diff=prev&oldid=1378497946\n      - text: )\n      - radio [checked]\n      - link \"19:53, 4 October 2026\":\n        - /url: /w/index.php?title=Baozi&oldid=1378497946\n      - link \"SpiderMum\":\n        - /url: /wiki/User:SpiderMum\n      - text: (\n      - link \"talk\":\n        - /url: /wiki/User_talk:SpiderMum\n      - text: \"|\"\n      - link \"contribs\":\n        - /url: /wiki/Special:Contributions/SpiderMum\n      - text: ) . . (22,384 bytes) (+6) . . (removed\n      - link \"Category:Dumplings\":\n        - /url: /wiki/Category:Dumplings\n      - text: ; added\n      - link \"Category:Yeast dumplings\":\n        - /u"
+        }
+      },
+      {
+        "id": "wf-1792672349041-1",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792672388411,
+        "endedAt": 1792672397868,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "main",
+              "text": "Help Baozi: Revision history View logs for this page (view filter log) Jump to n",
+              "id": "content"
+            },
+            {
+              "role": "link",
+              "id": "top"
+            },
+            {
+              "role": "link",
+              "text": "Help"
+            },
+            {
+              "role": "heading",
+              "text": "Baozi: Revision history",
+              "id": "firstHeading"
+            },
+            {
+              "role": "link",
+              "text": "View logs for this page"
+            },
+            {
+              "role": "link",
+              "text": "view filter log"
+            },
+            {
+              "role": "link",
+              "text": "Jump to navigation"
+            },
+            {
+              "role": "link",
+              "text": "Jump to search"
+            },
+            {
+              "role": "button",
+              "text": "Filter revisions show"
+            },
+            {
+              "role": "link",
+              "text": "Find addition/removal"
+            },
+            {
+              "role": "link",
+              "text": "Alternate"
+            },
+            {
+              "role": "link",
+              "text": "Find edits by user"
+            },
+            {
+              "role": "link",
+              "text": "Alternate"
+            },
+            {
+              "role": "link",
+              "text": "Page statistics"
+            },
+            {
+              "role": "link",
+              "text": "Pageviews"
+            },
+            {
+              "role": "link",
+              "text": "Fix dead links"
+            },
+            {
+              "role": "link",
+              "text": "Copyvio detector"
+            },
+            {
+              "role": "link",
+              "text": "Help:Page history"
+            },
+            {
+              "role": "link",
+              "text": "Help:Edit summary"
+            },
+            {
+              "role": "link",
+              "text": "minor edit"
+            },
+            {
+              "role": "link",
+              "text": "section edit"
+            },
+            {
+              "role": "link",
+              "text": "automatic edit summary"
+            },
+            {
+              "role": "link",
+              "text": "oldest"
+            },
+            {
+              "role": "link",
+              "text": "older 50"
+            },
+            {
+              "role": "link",
+              "text": "20"
+            },
+            {
+              "role": "link",
+              "text": "100"
+            },
+            {
+              "role": "link",
+              "text": "250"
+            },
+            {
+              "role": "link",
+              "text": "500"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "name": "Compare selected revisions"
+            },
+            {
+              "role": "heading",
+              "text": "4 October 2026"
+            },
+            {
+              "role": "link",
+              "text": "prev"
+            },
+            {
+              "role": "radio",
+              "id": "mw-oldid-null"
+            },
+            {
+              "role": "radio",
+              "id": "mw-diff-1378497946"
+            },
+            {
+              "role": "link",
+              "text": "19:53, 4 October 2026"
+            },
+            {
+              "role": "link",
+              "text": "SpiderMum"
+            },
+            {
+              "role": "link",
+              "text": "talk"
+            },
+            {
+              "role": "link",
+              "text": "contribs"
+            },
+            {
+              "role": "link",
+              "text": "Category:Dumplings"
+            },
+            {
+              "role": "link",
+              "text": "Category:Yeast dumplings"
+            }
+          ],
+          "ax": "- main:\n  - link \"Help\":\n    - /url: https://www.mediawiki.org/wiki/Special:MyLanguage/Help:History\n  - 'heading \"Baozi: Revision history\" [level=1]'\n  - link \"View logs for this page\":\n    - /url: /w/index.php?title=Special:Log&page=Baozi\n  - text: (\n  - link \"view filter log\":\n    - /url: /w/index.php?title=Special:AbuseLog&wpSearchTitle=Baozi\n  - text: )\n  - link \"Jump to navigation\":\n    - /url: \"#mw-head\"\n  - link \"Jump to search\":\n    - /url: \"#searchInput\"\n  - group \"Filter revisions show\":\n    - button \"Filter revisions show\"\n  - text: \"External tools:\"\n  - list:\n    - listitem:\n      - link \"Find addition/removal\":\n        - /url: https://wikiblame.toolforge.org/wikiblame.php?lang=en&article=Baozi\n      - superscript:\n        - text: (\n        - link \"Alternate\":\n          - /url: https://xtools.wmcloud.org/blame/en.wikipedia.org?page=Baozi\n        - text: )\n      - text: ·\n    - listitem:\n      - link \"Find edits by user\":\n        - /url: https://sigma.toolforge.org/usersearch.py?page=Baozi&server=enwiki\n      - superscript:\n        - text: (\n        - link \"Alternate\":\n          - /url: https://xtools.wmcloud.org/topedits/en.wikipedia.org?namespace=0&page=Baozi&focus=username\n        - text: )\n      - text: ·\n    - listitem:\n      - link \"Page statistics\":\n        - /url: https://xtools.wmcloud.org/articleinfo/en.wikipedia.org/Baozi\n      - text: ·\n    - listitem:\n      - link \"Pageviews\":\n        - /url: https://pageviews.wmcloud.org/?pages=Baozi&project=en.wikipedia.org\n      - text: ·\n    - listitem:\n      - link \"Fix dead links\":\n        - /url: https://iabot.wmcloud.org/index.php?page=runbotsingle&pagesearch=Baozi&wiki=enwiki\n      - text: ·\n    - listitem:\n      - link \"Copyvio detector\":\n        - /url: https://copyvios.toolforge.org/?lang=en&project=wikipedia&title=Baozi\n  - separator\n  - paragraph:\n    - text: For any version listed below, click on its date to view it. For more help, see\n    - link \"Help:Page history\":\n      - /url: /wiki/Help:Page_history\n    - text: and\n    - link \"Help:Edit summary\":\n      - /url: /wiki/Help:Edit_summary\n    - text: . (cur) = difference from current version, (prev) = difference from preceding version, m =\n    - link \"minor edit\":\n      - /url: /wiki/Help:Minor_edit\n    - text: \", → =\"\n    - link \"section edit\":\n      - /url: /wiki/Help:Section#Section_editing\n    - text: \", ← =\"\n    - link \"automatic edit summary\":\n      - /url: /wiki/Help:Automatic_edit_summaries\n  - text: (newest |\n  - link \"oldest\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&dir=prev\n  - text: ) View (newer 50 |\n  - link \"older 50\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=20250504170931%7C1288763168\n  - text: ) (\n  - link \"20\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=20\n  - text: \"| 50 |\"\n  - link \"100\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=100\n  - text: \"|\"\n  - link \"250\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=250\n  - text: \"|\"\n  - link \"500\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=500\n  - text: )\n  - button \"Compare selected revisions\"\n  - heading \"4 October 2026\" [level=4]\n  - list:\n    - listitem:\n      - text: (cur |\n      - link \"prev\":\n        - /url: /w/index.php?title=Baozi&diff=prev&oldid=1378497946\n      - text: )\n      - radio [checked]\n      - link \"19:53, 4 October 2026\":\n        - /url: /w/index.php?title=Baozi&oldid=1378497946\n      - link \"SpiderMum\":\n        - /url: /wiki/User:SpiderMum\n      - text: (\n      - link \"talk\":\n        - /url: /wiki/User_talk:SpiderMum\n      - text: \"|\"\n      - link \"contribs\":\n        - /url: /wiki/Special:Contributions/SpiderMum\n      - text: ) . . (22,384 bytes) (+6) . . (removed\n      - link \"Category:Dumplings\":\n        - /url: /wiki/Category:Dumplings\n      - text: ; added\n      - link \"Category:Yeast dumplings\":\n        - /u"
+        }
+      },
+      {
+        "id": "wf-1792672349041-2",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792672349041-1",
+      "index": 1,
+      "intent": "Click \"Search\"",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "main",
+            "id": "content",
+            "text": "Help Baozi: Revision history View logs for this page (view filter log) Jump to n"
+          },
+          {
+            "role": "link",
+            "id": "top"
+          },
+          {
+            "role": "link",
+            "text": "Help"
+          },
+          {
+            "role": "heading",
+            "id": "firstHeading",
+            "text": "Baozi: Revision history"
+          },
+          {
+            "role": "link",
+            "text": "View logs for this page"
+          },
+          {
+            "role": "link",
+            "text": "view filter log"
+          },
+          {
+            "role": "link",
+            "text": "Jump to navigation"
+          },
+          {
+            "role": "link",
+            "text": "Jump to search"
+          },
+          {
+            "role": "button",
+            "text": "Filter revisions show"
+          },
+          {
+            "role": "link",
+            "text": "Find addition/removal"
+          },
+          {
+            "role": "link",
+            "text": "Alternate"
+          },
+          {
+            "role": "link",
+            "text": "Find edits by user"
+          },
+          {
+            "role": "link",
+            "text": "Alternate"
+          },
+          {
+            "role": "link",
+            "text": "Page statistics"
+          },
+          {
+            "role": "link",
+            "text": "Pageviews"
+          },
+          {
+            "role": "link",
+            "text": "Fix dead links"
+          },
+          {
+            "role": "link",
+            "text": "Copyvio detector"
+          },
+          {
+            "role": "link",
+            "text": "Help:Page history"
+          },
+          {
+            "role": "link",
+            "text": "Help:Edit summary"
+          },
+          {
+            "role": "link",
+            "text": "minor edit"
+          },
+          {
+            "role": "link",
+            "text": "section edit"
+          },
+          {
+            "role": "link",
+            "text": "automatic edit summary"
+          },
+          {
+            "role": "link",
+            "text": "oldest"
+          },
+          {
+            "role": "link",
+            "text": "older 50"
+          },
+          {
+            "role": "link",
+            "text": "20"
+          },
+          {
+            "role": "link",
+            "text": "100"
+          },
+          {
+            "role": "link",
+            "text": "250"
+          },
+          {
+            "role": "link",
+            "text": "500"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "button",
+            "name": "Compare selected revisions"
+          },
+          {
+            "role": "heading",
+            "text": "4 October 2026"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-null"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1378497946"
+          },
+          {
+            "role": "link",
+            "text": "19:53, 4 October 2026"
+          },
+          {
+            "role": "link",
+            "text": "SpiderMum"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "Category:Dumplings"
+          },
+          {
+            "role": "link",
+            "text": "Category:Yeast dumplings"
+          },
+          {
+            "role": "link",
+            "text": "HotCat"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "22 September 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1376111626"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1376111626"
+          },
+          {
+            "role": "link",
+            "text": "03:38, 22 September 2026"
+          },
+          {
+            "role": "link",
+            "text": "Lelliloo"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→References"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "27 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1371637357"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1371637357"
+          },
+          {
+            "role": "link",
+            "text": "15:22, 27 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "Chickenpox4dinner"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "~2026-46164-62"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Twinkle"
+          },
+          {
+            "role": "link",
+            "text": "Undo"
+          },
+          {
+            "role": "heading",
+            "text": "24 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1371042757"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1371042757"
+          },
+          {
+            "role": "link",
+            "text": "06:55, 24 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "~2026-46164-62"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "heading",
+            "text": "16 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1369701460"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1369701460"
+          },
+          {
+            "role": "link",
+            "text": "16:29, 16 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→History and etymology"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "2 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1367376678"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1367376678"
+          },
+          {
+            "role": "link",
+            "text": "18:56, 2 August 2026"
+          },
+          {
+            "role": "link",
+            "text": "Kognise"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "23 July 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1365638145"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1365638145"
+          },
+          {
+            "role": "link",
+            "text": "15:42, 23 July 2026"
+          },
+          {
+            "role": "link",
+            "text": "WikipediholicRat"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "MOS:CURLY"
+          },
+          {
+            "role": "link",
+            "text": "WP:JWB"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "JWB"
+          },
+          {
+            "role": "heading",
+            "text": "14 July 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1364100011"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1364100011"
+          },
+          {
+            "role": "link",
+            "text": "14:00, 14 July 2026"
+          },
+          {
+            "role": "link",
+            "text": "Bender the Bot"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→History and etymology"
+          },
+          {
+            "role": "link",
+            "text": "Wayback Machine"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "AWB"
+          },
+          {
+            "role": "heading",
+            "text": "16 June 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1359641208"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1359641208"
+          },
+          {
+            "role": "link",
+            "text": "11:03, 16 June 2026"
+          },
+          {
+            "role": "link",
+            "text": "GhostInTheMachine"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Types"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "31 May 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1357055855"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1357055855"
+          },
+          {
+            "role": "link",
+            "text": "14:06, 31 May 2026"
+          },
+          {
+            "role": "link",
+            "text": "Schoppe23"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1357054822"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1357054822"
+          },
+          {
+            "role": "link",
+            "text": "13:57, 31 May 2026"
+          },
+          {
+            "role": "link",
+            "text": "Schoppe23"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1356993206"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1356993206"
+          },
+          {
+            "role": "link",
+            "text": "03:19, 31 May 2026"
+          },
+          {
+            "role": "link",
+            "text": "Schoppe23"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→History and etymology"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "heading",
+            "text": "21 May 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1355426610"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1355426610"
+          },
+          {
+            "role": "link",
+            "text": "19:43, 21 May 2026"
+          },
+          {
+            "role": "link",
+            "text": "Theses1230"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "Edit Check (references) shown"
+          },
+          {
+            "role": "heading",
+            "text": "11 March 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1342941033"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1342941033"
+          },
+          {
+            "role": "link",
+            "text": "11:35, 11 March 2026"
+          },
+          {
+            "role": "link",
+            "text": "StellariaL"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "27 February 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1340696705"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1340696705"
+          },
+          {
+            "role": "link",
+            "text": "04:11, 27 February 2026"
+          },
+          {
+            "role": "link",
+            "text": "SimLibrarian"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "MOS:DASH"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "24 February 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1340139718"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1340139718"
+          },
+          {
+            "role": "link",
+            "text": "03:50, 24 February 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Outside of China"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1340139064"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1340139064"
+          },
+          {
+            "role": "link",
+            "text": "03:46, 24 February 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Outside of China"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "29 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1335456765"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1335456765"
+          },
+          {
+            "role": "link",
+            "text": "08:55, 29 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Turaids"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1335440033"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1335440033"
+          },
+          {
+            "role": "link",
+            "text": "06:25, 29 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1335439442"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1335439442"
+          },
+          {
+            "role": "link",
+            "text": "06:20, 29 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→History and etymology"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1335438432"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1335438432"
+          },
+          {
+            "role": "link",
+            "text": "06:11, 29 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "26 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1335021498"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1335021498"
+          },
+          {
+            "role": "link",
+            "text": "22:54, 26 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Steel1943"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Types"
+          },
+          {
+            "role": "link",
+            "text": "MOS:REFSPACE"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "AWB"
+          },
+          {
+            "role": "heading",
+            "text": "13 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1332698706"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1332698706"
+          },
+          {
+            "role": "link",
+            "text": "08:41, 13 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1332698362"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1332698362"
+          },
+          {
+            "role": "link",
+            "text": "08:37, 13 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Types"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1332697058"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1332697058"
+          },
+          {
+            "role": "link",
+            "text": "08:19, 13 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→History and etymology"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "9 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1331944931"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1331944931"
+          },
+          {
+            "role": "link",
+            "text": "01:45, 9 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Dexbot"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "MOS:SECTIONS"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "7 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1331704616"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1331704616"
+          },
+          {
+            "role": "link",
+            "text": "19:23, 7 January 2026"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→History and etymology"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "27 December 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1329780138"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1329780138"
+          },
+          {
+            "role": "link",
+            "text": "23:38, 27 December 2025"
+          },
+          {
+            "role": "link",
+            "text": "Wimwamble"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "10 November 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1321404638"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1321404638"
+          },
+          {
+            "role": "link",
+            "text": "09:28, 10 November 2025"
+          },
+          {
+            "role": "link",
+            "text": "Julietdeltalima"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Outside of China"
+          },
+          {
+            "role": "link",
+            "text": "MOS:OVERLINKING"
+          },
+          {
+            "role": "link",
+            "text": "MOS:CONTRACTION"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Advanced mobile edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1321403817"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1321403817"
+          },
+          {
+            "role": "link",
+            "text": "09:18, 10 November 2025"
+          },
+          {
+            "role": "link",
+            "text": "Julietdeltalima"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→See also"
+          },
+          {
+            "role": "link",
+            "text": "MOS:SEEALSO"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Advanced mobile edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1321393641"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1321393641"
+          },
+          {
+            "role": "link",
+            "text": "07:11, 10 November 2025"
+          },
+          {
+            "role": "link",
+            "text": "~2025-32375-90"
+          },
+          {
+            "role": "presentation",
+            "text": "Temporary account has expired"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "23 October 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1318308715"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1318308715"
+          },
+          {
+            "role": "link",
+            "text": "03:45, 23 October 2025"
+          },
+          {
+            "role": "link",
+            "text": "Mat Kiyan"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Outside of China"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "1 October 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1314476512"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1314476512"
+          },
+          {
+            "role": "link",
+            "text": "16:33, 1 October 2025"
+          },
+          {
+            "role": "link",
+            "text": "Aadirulez8"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "CW project"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "WPCleaner"
+          },
+          {
+            "role": "heading",
+            "text": "30 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1314286264"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1314286264"
+          },
+          {
+            "role": "link",
+            "text": "16:44, 30 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "166.181.81.41"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "29 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1314095327"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1314095327"
+          },
+          {
+            "role": "link",
+            "text": "18:15, 29 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "50.230.201.134"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1314066434"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1314066434"
+          },
+          {
+            "role": "link",
+            "text": "14:59, 29 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "HerrGutmannsWiki"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1314066300"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1314066300"
+          },
+          {
+            "role": "link",
+            "text": "14:58, 29 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "HerrGutmannsWiki"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "27 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1313671205"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1313671205"
+          },
+          {
+            "role": "link",
+            "text": "14:30, 27 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "HerrGutmannsWiki"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "heading",
+            "text": "5 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1309594847"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1309594847"
+          },
+          {
+            "role": "link",
+            "text": "00:28, 5 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "75.80.160.211"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "→Outside of China"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1309594753"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1309594753"
+          },
+          {
+            "role": "link",
+            "text": "00:28, 5 September 2025"
+          },
+          {
+            "role": "link",
+            "text": "75.80.160.211"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "30 August 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1308682265"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1308682265"
+          },
+          {
+            "role": "link",
+            "text": "22:53, 30 August 2025"
+          },
+          {
+            "role": "link",
+            "text": "X2step"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "Burgerkingcrownup53083"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Twinkle"
+          },
+          {
+            "role": "link",
+            "text": "Undo"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1308682164"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1308682164"
+          },
+          {
+            "role": "link",
+            "text": "22:53, 30 August 2025"
+          },
+          {
+            "role": "link",
+            "text": "Burgerkingcrownup53083"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "heading",
+            "text": "7 August 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1304632534"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1304632534"
+          },
+          {
+            "role": "link",
+            "text": "06:24, 7 August 2025"
+          },
+          {
+            "role": "link",
+            "text": "Julietdeltalima"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Types"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Advanced mobile edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1304632437"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1304632437"
+          },
+          {
+            "role": "link",
+            "text": "06:23, 7 August 2025"
+          },
+          {
+            "role": "link",
+            "text": "Julietdeltalima"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Types"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Advanced mobile edit"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1304632204"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1304632204"
+          },
+          {
+            "role": "link",
+            "text": "06:21, 7 August 2025"
+          },
+          {
+            "role": "link",
+            "text": "Julietdeltalima"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "→Types"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Advanced mobile edit"
+          },
+          {
+            "role": "heading",
+            "text": "29 July 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1303247052"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1303247052"
+          },
+          {
+            "role": "link",
+            "text": "21:56, 29 July 2025"
+          },
+          {
+            "role": "link",
+            "text": "Absolutiva"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "2017 wikitext editor"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1303128667"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1303128667"
+          },
+          {
+            "role": "link",
+            "text": "06:52, 29 July 2025"
+          },
+          {
+            "role": "link",
+            "text": "Absolutiva"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "2017 wikitext editor"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1303128621"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1303128621"
+          },
+          {
+            "role": "link",
+            "text": "06:52, 29 July 2025"
+          },
+          {
+            "role": "link",
+            "text": "Absolutiva"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "short description"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tag"
+          },
+          {
+            "role": "link",
+            "text": "Shortdesc helper"
+          },
+          {
+            "role": "heading",
+            "text": "12 June 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1295261431"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1295261431"
+          },
+          {
+            "role": "link",
+            "text": "17:51, 12 June 2025"
+          },
+          {
+            "role": "link",
+            "text": "Citation bot"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "Use this bot"
+          },
+          {
+            "role": "link",
+            "text": "Report bugs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "heading",
+            "text": "4 May 2025"
+          },
+          {
+            "role": "link",
+            "text": "cur"
+          },
+          {
+            "role": "link",
+            "text": "prev"
+          },
+          {
+            "role": "radio",
+            "id": "mw-oldid-1288763168"
+          },
+          {
+            "role": "radio",
+            "id": "mw-diff-1288763168"
+          },
+          {
+            "role": "link",
+            "text": "17:09, 4 May 2025"
+          },
+          {
+            "role": "link",
+            "text": "Fluyt"
+          },
+          {
+            "role": "link",
+            "text": "talk"
+          },
+          {
+            "role": "link",
+            "text": "contribs"
+          },
+          {
+            "role": "link",
+            "text": "undo"
+          },
+          {
+            "role": "link",
+            "text": "Tags"
+          },
+          {
+            "role": "link",
+            "text": "Visual edit"
+          },
+          {
+            "role": "button",
+            "name": "Compare selected revisions"
+          },
+          {
+            "role": "link",
+            "text": "oldest"
+          },
+          {
+            "role": "link",
+            "text": "older 50"
+          },
+          {
+            "role": "link",
+            "text": "20"
+          },
+          {
+            "role": "link",
+            "text": "100"
+          },
+          {
+            "role": "link",
+            "text": "250"
+          },
+          {
+            "role": "link",
+            "text": "500"
+          },
+          {
+            "role": "link",
+            "text": "https://en.wikipedia.org/wiki/Baozi"
+          },
+          {
+            "role": "heading",
+            "text": "Navigation menu"
+          },
+          {
+            "role": "heading",
+            "id": "p-personal-label",
+            "text": "Personal tools"
+          },
+          {
+            "role": "link",
+            "text": "Create account"
+          },
+          {
+            "role": "link",
+            "text": "Log in"
+          },
+          {
+            "role": "heading",
+            "id": "p-associated-pages-label",
+            "text": "associated-pages"
+          },
+          {
+            "role": "link",
+            "text": "Article"
+          },
+          {
+            "role": "link",
+            "text": "Talk"
+          },
+          {
+            "role": "button",
+            "id": "p-variants-checkbox"
+          },
+          {
+            "role": "label",
+            "id": "p-variants-label",
+            "text": "English"
+          },
+          {
+            "role": "heading",
+            "id": "p-views-label",
+            "text": "Views"
+          },
+          {
+            "role": "link",
+            "text": "Read"
+          },
+          {
+            "role": "link",
+            "text": "Edit"
+          },
+          {
+            "role": "link",
+            "text": "View history"
+          },
+          {
+            "role": "button",
+            "id": "p-cactions-checkbox"
+          },
+          {
+            "role": "label",
+            "id": "p-cactions-label",
+            "text": "More"
+          },
+          {
+            "role": "search",
+            "id": "p-search",
+            "text": "Search"
+          },
+          {
+            "role": "heading",
+            "text": "Search"
+          },
+          {
+            "role": "input",
+            "name": "Search Wikipedia",
+            "id": "searchInput"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "button",
+            "name": "Go",
+            "id": "searchButton"
+          },
+          {
+            "role": "banner",
+            "id": "p-logo"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "id": "p-navigation-label",
+            "text": "Navigation"
+          },
+          {
+            "role": "link",
+            "text": "Main page"
+          },
+          {
+            "role": "link",
+            "text": "Contents"
+          },
+          {
+            "role": "link",
+            "text": "Current events"
+          },
+          {
+            "role": "link",
+            "text": "Random article"
+          },
+          {
+            "role": "link",
+            "text": "About Wikipedia"
+          },
+          {
+            "role": "link",
+            "text": "Contact us"
+          },
+          {
+            "role": "link",
+            "text": "Donate"
+          },
+          {
+            "role": "heading",
+            "id": "p-interaction-label",
+            "text": "Contribute"
+          },
+          {
+            "role": "link",
+            "text": "Help"
+          },
+          {
+            "role": "link",
+            "text": "Learn to edit"
+          },
+          {
+            "role": "link",
+            "text": "Community portal"
+          },
+          {
+            "role": "link",
+            "text": "Recent changes"
+          },
+          {
+            "role": "link",
+            "text": "Upload file"
+          },
+          {
+            "role": "link",
+            "text": "Special pages"
+          },
+          {
+            "role": "heading",
+            "id": "p-tb-label",
+            "text": "Tools"
+          },
+          {
+            "role": "link",
+            "text": "What links here"
+          },
+          {
+            "role": "link",
+            "text": "Related changes"
+          },
+          {
+            "role": "link",
+            "id": "feed-atom",
+            "text": "Atom"
+          },
+          {
+            "role": "link",
+            "text": "Upload file"
+          },
+          {
+            "role": "link",
+            "text": "Page information"
+          },
+          {
+            "role": "link",
+            "text": "Get shortened URL"
+          },
+          {
+            "role": "link",
+            "text": "Switch to legacy parser"
+          },
+          {
+            "role": "heading",
+            "id": "p-wikibase-otherprojects-label",
+            "text": "In other projects"
+          },
+          {
+            "role": "link",
+            "text": "Wikidata item"
+          },
+          {
+            "role": "button"
+          },
+          {
+            "role": "heading",
+            "id": "p-lang-label",
+            "text": "Languages"
+          },
+          {
+            "role": "link",
+            "text": "Privacy policy"
+          },
+          {
+            "role": "link",
+            "text": "About Wikipedia"
+          },
+          {
+            "role": "link",
+            "text": "Disclaimers"
+          },
+          {
+            "role": "link",
+            "text": "Contact Wikipedia"
+          },
+          {
+            "role": "link",
+            "text": "Legal & safety contacts"
+          },
+          {
+            "role": "link",
+            "text": "Code of Conduct"
+          },
+          {
+            "role": "link",
+            "text": "Developers"
+          },
+          {
+            "role": "link",
+            "text": "Statistics"
+          },
+          {
+            "role": "link",
+            "text": "Cookie statement"
+          },
+          {
+            "role": "link",
+            "text": "Mobile view"
+          },
+          {
+            "role": "link",
+            "text": "Edit preview settings"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "listbox",
+            "id": "ooui-1",
+            "text": "2017 wikitext editorABBA [1.0]Addition of protection template to non-protected p"
+          },
+          {
+            "role": "option",
+            "text": "2017 wikitext editor"
+          },
+          {
+            "role": "option",
+            "text": "ABBA [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Addition of protection template to non-protected page"
+          },
+          {
+            "role": "option",
+            "text": "Advanced mobile edit"
+          },
+          {
+            "role": "option",
+            "text": "AFCH"
+          },
+          {
+            "role": "option",
+            "text": "Android app edit"
+          },
+          {
+            "role": "option",
+            "text": "Android app edit (web)"
+          },
+          {
+            "role": "option",
+            "text": "AntiVandal"
+          },
+          {
+            "role": "option",
+            "text": "App AI assist"
+          },
+          {
+            "role": "option",
+            "text": "App description add"
+          },
+          {
+            "role": "option",
+            "text": "App description change"
+          },
+          {
+            "role": "option",
+            "text": "App description translate"
+          },
+          {
+            "role": "option",
+            "text": "app edit (web)"
+          },
+          {
+            "role": "option",
+            "text": "App full source"
+          },
+          {
+            "role": "option",
+            "text": "App image add infobox"
+          },
+          {
+            "role": "option",
+            "text": "App image add top"
+          },
+          {
+            "role": "option",
+            "text": "App rollback"
+          },
+          {
+            "role": "option",
+            "text": "App section source"
+          },
+          {
+            "role": "option",
+            "text": "App select source"
+          },
+          {
+            "role": "option",
+            "text": "App suggested edit"
+          },
+          {
+            "role": "option",
+            "text": "App talk reply"
+          },
+          {
+            "role": "option",
+            "text": "App talk source"
+          },
+          {
+            "role": "option",
+            "text": "App talk topic"
+          },
+          {
+            "role": "option",
+            "text": "App undo"
+          },
+          {
+            "role": "option",
+            "text": "Automatic insertion of extraneous formatting"
+          },
+          {
+            "role": "option",
+            "text": "AWB"
+          },
+          {
+            "role": "option",
+            "text": "Barnsworth [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Blanking"
+          },
+          {
+            "role": "option",
+            "text": "blanking"
+          },
+          {
+            "role": "option",
+            "text": "Bot in trial"
+          },
+          {
+            "role": "option",
+            "text": "bup 2 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "campaign-external-machine-translation"
+          },
+          {
+            "role": "option",
+            "text": "canned edit summary"
+          },
+          {
+            "role": "option",
+            "text": "categories removed"
+          },
+          {
+            "role": "option",
+            "text": "CD"
+          },
+          {
+            "role": "option",
+            "text": "Change of the mentor list"
+          },
+          {
+            "role": "option",
+            "text": "changing time or duration"
+          },
+          {
+            "role": "option",
+            "text": "Citation bot [1.1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Citation Bot [1.2.0]"
+          },
+          {
+            "role": "option",
+            "text": "CiteFix [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "citing a blog or free web host"
+          },
+          {
+            "role": "option",
+            "text": "COI template removed"
+          },
+          {
+            "role": "option",
+            "text": "Community Configuration"
+          },
+          {
+            "role": "option",
+            "text": "condition limit reached"
+          },
+          {
+            "role": "option",
+            "text": "content model change"
+          },
+          {
+            "role": "option",
+            "text": "content sourced to vanity press"
+          },
+          {
+            "role": "option",
+            "text": "ContentTranslation"
+          },
+          {
+            "role": "option",
+            "text": "contenttranslation-needcheck"
+          },
+          {
+            "role": "option",
+            "text": "ContentTranslation2"
+          },
+          {
+            "role": "option",
+            "text": "ContentTranslation: High unmodified machine translation usage"
+          },
+          {
+            "role": "option",
+            "text": "Contest or editathon"
+          },
+          {
+            "role": "option",
+            "text": "copyright violation template removed"
+          },
+          {
+            "role": "option",
+            "text": "Correct typos in one click [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Correct typos in one click [1.1]"
+          },
+          {
+            "role": "option",
+            "text": "CropTool [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "CropTool [1.4]"
+          },
+          {
+            "role": "option",
+            "text": "CropTool [1.5]"
+          },
+          {
+            "role": "option",
+            "text": "CropTool testing [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Croptool2 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "CS1 fixer [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "CVPI"
+          },
+          {
+            "role": "option",
+            "text": "CW-English-Converter"
+          },
+          {
+            "role": "option",
+            "text": "DAB Mechanic [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard-testing.wikiedu.org [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard-testing.wikiedu.org [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org [2.2]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org [2.3]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org account-creation dev [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4.11]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4.2]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4.3]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4.4]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4.5]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4.7]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4.8]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [0.4]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "dashboard.wikiedu.org dev [2.1]"
+          },
+          {
+            "role": "option",
+            "text": "demo-oauthratelimiter-3 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Deputy"
+          },
+          {
+            "role": "option",
+            "text": "DiBabel [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "Disambiguation links added"
+          },
+          {
+            "role": "option",
+            "text": "disambiguation template removed"
+          },
+          {
+            "role": "option",
+            "text": "discussiontools (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "discussiontools-added-comment (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "discussiontools-source (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "discussiontools-source-enhanced (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "discussiontools-visual (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "Dispenser [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Dispenser [2.4]"
+          },
+          {
+            "role": "option",
+            "text": "Downstream Pull [0.1]"
+          },
+          {
+            "role": "option",
+            "text": "draft or userpage link"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (LLM paste) shown"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (paste) shown"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (references) activated"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (references) declined (irrelevant)"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (references) declined (other)"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (references) declined (uncertain)"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (references) shown"
+          },
+          {
+            "role": "option",
+            "text": "Edit Check (tone) shown"
+          },
+          {
+            "role": "option",
+            "text": "Edit Requests Dashboard [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "Edit Suggestion seen"
+          },
+          {
+            "role": "option",
+            "text": "Edit Suggestion used"
+          },
+          {
+            "role": "option",
+            "text": "editcheck-llm-paste (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "editcheck-newcontent (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "editcheck-newreference (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "editcheck-references (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "editcheck-tone (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "Edited other user's CSS"
+          },
+          {
+            "role": "option",
+            "text": "Edited other user's JS"
+          },
+          {
+            "role": "option",
+            "text": "editProtectedHelper"
+          },
+          {
+            "role": "option",
+            "text": "Education Dashboard development - awight [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Elad12390 MediaWiki MCP [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "English Wikipedia Account Creation Assistance Tool [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "excessive whitespace"
+          },
+          {
+            "role": "option",
+            "text": "External link added to disambiguation page"
+          },
+          {
+            "role": "option",
+            "text": "extraneous markup"
+          },
+          {
+            "role": "option",
+            "text": "featured article or good article template added or removed"
+          },
+          {
+            "role": "option",
+            "text": "Find link [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Fixed lint errors"
+          },
+          {
+            "role": "option",
+            "text": "Fortress-Dev [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Fountain [0.1.3]"
+          },
+          {
+            "role": "option",
+            "text": "Fountain Test [1.1]"
+          },
+          {
+            "role": "option",
+            "text": "gabinaluz+app@gmail.com [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "gadget-deploy [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Geodig [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "Global Mass Rollback [1.1]"
+          },
+          {
+            "role": "option",
+            "text": "harv or sfn error"
+          },
+          {
+            "role": "option",
+            "text": "HotCat"
+          },
+          {
+            "role": "option",
+            "text": "Huggle"
+          },
+          {
+            "role": "option",
+            "text": "IABot [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "IABotManagementConsole (Personal Debug Consumer) [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "IABotManagementConsole [1.1]"
+          },
+          {
+            "role": "option",
+            "text": "IABotManagementConsole [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "IABotManagementConsole [1.3]"
+          },
+          {
+            "role": "option",
+            "text": "image template modification"
+          },
+          {
+            "role": "option",
+            "text": "Incorrectly formatted external link or image"
+          },
+          {
+            "role": "option",
+            "text": "Invalid TimedText edit"
+          },
+          {
+            "role": "option",
+            "text": "iOS app edit"
+          },
+          {
+            "role": "option",
+            "text": "iOS app edit (web)"
+          },
+          {
+            "role": "option",
+            "text": "IP block appeal"
+          },
+          {
+            "role": "option",
+            "text": "Jonathan_at_WINTR_7 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "JWB"
+          },
+          {
+            "role": "option",
+            "text": "KenBurnsEffect tool [1.1]"
+          },
+          {
+            "role": "option",
+            "text": "Lanternmoss Wikipedia Maintenance Assistant [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "large non-free file"
+          },
+          {
+            "role": "option",
+            "text": "large plot addition"
+          },
+          {
+            "role": "option",
+            "text": "large unwikified new article"
+          },
+          {
+            "role": "option",
+            "text": "LCA Tools [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "LCA Tools [1.5]"
+          },
+          {
+            "role": "option",
+            "text": "Lionmerter Typo Reviewer [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Localhost [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Manual revert"
+          },
+          {
+            "role": "option",
+            "text": "Mass pronoun change"
+          },
+          {
+            "role": "option",
+            "text": "MassMessage delivery"
+          },
+          {
+            "role": "option",
+            "text": "massmove"
+          },
+          {
+            "role": "option",
+            "text": "md2wiki [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "Medha_Bansal_intern_at_WikiEduDashboard [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Mentorship module question"
+          },
+          {
+            "role": "option",
+            "text": "Mentorship panel question"
+          },
+          {
+            "role": "option",
+            "text": "missing file added"
+          },
+          {
+            "role": "option",
+            "text": "missingredirectsproject [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Mobile app edit"
+          },
+          {
+            "role": "option",
+            "text": "Mobile edit"
+          },
+          {
+            "role": "option",
+            "text": "Mobile web edit"
+          },
+          {
+            "role": "option",
+            "text": "Modified by FileImporter"
+          },
+          {
+            "role": "option",
+            "text": "moveToDraft"
+          },
+          {
+            "role": "option",
+            "text": "MTC-Web for local dev/testing [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "MTCWeb-Dev [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "New redirect"
+          },
+          {
+            "role": "option",
+            "text": "New topic"
+          },
+          {
+            "role": "option",
+            "text": "New user adding protection template"
+          },
+          {
+            "role": "option",
+            "text": "new user modifying archives"
+          },
+          {
+            "role": "option",
+            "text": "new user move into mainspace"
+          },
+          {
+            "role": "option",
+            "text": "new user moving page out of userspace"
+          },
+          {
+            "role": "option",
+            "text": "Newcomer task"
+          },
+          {
+            "role": "option",
+            "text": "Newcomer task: copyedit"
+          },
+          {
+            "role": "option",
+            "text": "Newcomer task: expand"
+          },
+          {
+            "role": "option",
+            "text": "Newcomer task: links"
+          },
+          {
+            "role": "option",
+            "text": "Newcomer task: references"
+          },
+          {
+            "role": "option",
+            "text": "Newcomer task: update"
+          },
+          {
+            "role": "option",
+            "text": "Non-autoconfirmed user rapidly reverting edits"
+          },
+          {
+            "role": "option",
+            "text": "non-English content"
+          },
+          {
+            "role": "option",
+            "text": "nowiki added"
+          },
+          {
+            "role": "option",
+            "text": "Nuke"
+          },
+          {
+            "role": "option",
+            "text": "OAbot [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "OAbot [2.1]"
+          },
+          {
+            "role": "option",
+            "text": "OAuth Uploader [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "OneClickArchiver"
+          },
+          {
+            "role": "option",
+            "text": "OOZE"
+          },
+          {
+            "role": "option",
+            "text": "outreachdashboard.wmflabs.org [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "outreachdashboard.wmflabs.org [2.1]"
+          },
+          {
+            "role": "option",
+            "text": "pageswap GUI"
+          },
+          {
+            "role": "option",
+            "text": "PageTriage"
+          },
+          {
+            "role": "option",
+            "text": "Parliament edits"
+          },
+          {
+            "role": "option",
+            "text": "PAWS [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "PAWS [2.1]"
+          },
+          {
+            "role": "option",
+            "text": "paws [2.2]"
+          },
+          {
+            "role": "option",
+            "text": "pillbug [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "possible AI-generated citations"
+          },
+          {
+            "role": "option",
+            "text": "possible autobiography or conflict of interest"
+          },
+          {
+            "role": "option",
+            "text": "possible birth or death date change"
+          },
+          {
+            "role": "option",
+            "text": "possible BLP issue or vandalism"
+          },
+          {
+            "role": "option",
+            "text": "possible conflict of interest"
+          },
+          {
+            "role": "option",
+            "text": "possible cut and paste move or recreation"
+          },
+          {
+            "role": "option",
+            "text": "possible formatting issues"
+          },
+          {
+            "role": "option",
+            "text": "possible geographic name change"
+          },
+          {
+            "role": "option",
+            "text": "possible height and/or weight change"
+          },
+          {
+            "role": "option",
+            "text": "possible MOS:ETHNICITY violation"
+          },
+          {
+            "role": "option",
+            "text": "possible prose issues"
+          },
+          {
+            "role": "option",
+            "text": "Possible self promotion in user or draftspace"
+          },
+          {
+            "role": "option",
+            "text": "Possible self promotion in userspace"
+          },
+          {
+            "role": "option",
+            "text": "possible unexplained content removal"
+          },
+          {
+            "role": "option",
+            "text": "possible unreferenced addition to BLP"
+          },
+          {
+            "role": "option",
+            "text": "possible userspace spam"
+          },
+          {
+            "role": "option",
+            "text": "possible vandalism"
+          },
+          {
+            "role": "option",
+            "text": "possible WP:BLPCRIME issue"
+          },
+          {
+            "role": "option",
+            "text": "possibly inaccurate edit summary"
+          },
+          {
+            "role": "option",
+            "text": "ProveIt edit"
+          },
+          {
+            "role": "option",
+            "text": "QuickCategories [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "QuickCategories [1.1]"
+          },
+          {
+            "role": "option",
+            "text": "QuickCategories [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "QuickCategories [1.3]"
+          },
+          {
+            "role": "option",
+            "text": "rapid date format changes"
+          },
+          {
+            "role": "option",
+            "text": "Recreated"
+          },
+          {
+            "role": "option",
+            "text": "Redirect target changed"
+          },
+          {
+            "role": "option",
+            "text": "reference list removal"
+          },
+          {
+            "role": "option",
+            "text": "references removed"
+          },
+          {
+            "role": "option",
+            "text": "Refsmith [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "removal of Category:Living People"
+          },
+          {
+            "role": "option",
+            "text": "Removed redirect"
+          },
+          {
+            "role": "option",
+            "text": "removing declined unblock request"
+          },
+          {
+            "role": "option",
+            "text": "repeated addition of external links by non-autoconfirmed user"
+          },
+          {
+            "role": "option",
+            "text": "Replaced"
+          },
+          {
+            "role": "option",
+            "text": "Reply"
+          },
+          {
+            "role": "option",
+            "text": "Reverted"
+          },
+          {
+            "role": "option",
+            "text": "reverting anti-vandal bot"
+          },
+          {
+            "role": "option",
+            "text": "review edit"
+          },
+          {
+            "role": "option",
+            "text": "RfC discussion"
+          },
+          {
+            "role": "option",
+            "text": "Rollback"
+          },
+          {
+            "role": "option",
+            "text": "RW"
+          },
+          {
+            "role": "option",
+            "text": "SAWW Final [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "section blanking"
+          },
+          {
+            "role": "option",
+            "text": "SectionTranslation"
+          },
+          {
+            "role": "option",
+            "text": "self-renaming or bad user talk move"
+          },
+          {
+            "role": "option",
+            "text": "Shortdesc helper"
+          },
+          {
+            "role": "option",
+            "text": "shouting"
+          },
+          {
+            "role": "option",
+            "text": "SIGCOV Hunter [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Snuggle (English Wikipedia) [1.0.0]"
+          },
+          {
+            "role": "option",
+            "text": "spam-tree testing [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "speedy deletion template removed"
+          },
+          {
+            "role": "option",
+            "text": "Suggested: add links"
+          },
+          {
+            "role": "option",
+            "text": "Suggested: revise tone"
+          },
+          {
+            "role": "option",
+            "text": "Suggestor [0.0.1]"
+          },
+          {
+            "role": "option",
+            "text": "SWViewer [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "SWViewer [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "SWViewer [1.3]"
+          },
+          {
+            "role": "option",
+            "text": "SWViewer [1.4]"
+          },
+          {
+            "role": "option",
+            "text": "SWViewer [1.6]"
+          },
+          {
+            "role": "option",
+            "text": "Takedown Tools [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Talk banner shell conversion"
+          },
+          {
+            "role": "option",
+            "text": "talk page blanking"
+          },
+          {
+            "role": "option",
+            "text": "Text added at end of page"
+          },
+          {
+            "role": "option",
+            "text": "Teyora (Development Token) [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "TorProxy [0.1]"
+          },
+          {
+            "role": "option",
+            "text": "TorProxy [0.2]"
+          },
+          {
+            "role": "option",
+            "text": "Translation Dashboard mdwiki1 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Twinkle"
+          },
+          {
+            "role": "option",
+            "text": "U.S. Congress edit"
+          },
+          {
+            "role": "option",
+            "text": "Ultraviolet"
+          },
+          {
+            "role": "option",
+            "text": "Undo"
+          },
+          {
+            "role": "option",
+            "text": "Unexpected #REDIRECT markup"
+          },
+          {
+            "role": "option",
+            "text": "Unicode language tags"
+          },
+          {
+            "role": "option",
+            "text": "unsourced AFC submission"
+          },
+          {
+            "role": "option",
+            "text": "use of deprecated (unreliable) source"
+          },
+          {
+            "role": "option",
+            "text": "use of predatory open access journal"
+          },
+          {
+            "role": "option",
+            "text": "User Analysis Tool [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "very short new article"
+          },
+          {
+            "role": "option",
+            "text": "Visual edit"
+          },
+          {
+            "role": "option",
+            "text": "Visual edit: Check"
+          },
+          {
+            "role": "option",
+            "text": "Visual edit: Switched"
+          },
+          {
+            "role": "option",
+            "text": "wAwB"
+          },
+          {
+            "role": "option",
+            "text": "Weekipedia v3 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Weekipedia2 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "wiki-file-transfer [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Wikicontest 1.0a [NEW] [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "wikieditor (hidden tag)"
+          },
+          {
+            "role": "option",
+            "text": "WikiEditorHelper [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "wikiedu Assignment Wizard 2.0 Teting [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "wikiedu Assignment Wizard [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "wikiedu.org Assignment Design Wizard (testing) [0.99]"
+          },
+          {
+            "role": "option",
+            "text": "wikiedu.org Assignment Design Wizard [1.0.1]"
+          },
+          {
+            "role": "option",
+            "text": "wikiedu.org Assignment Design Wizard [1.0.2]"
+          },
+          {
+            "role": "option",
+            "text": "WikiEduDashboard NTDB [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "WikiEduDashboard NTDB3 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiEduDashboard NTDB4 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiEduDashboard NTDB5 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiEduWizard NTDB [1.2]"
+          },
+          {
+            "role": "option",
+            "text": "Wikifile Transfer [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Wikifile Transfer [2.0]"
+          },
+          {
+            "role": "option",
+            "text": "Wikifile Transfer [4.0]"
+          },
+          {
+            "role": "option",
+            "text": "Wikifile Transfer [5.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiLeaks"
+          },
+          {
+            "role": "option",
+            "text": "wikilinks removed"
+          },
+          {
+            "role": "option",
+            "text": "WikiLoop Battlefield"
+          },
+          {
+            "role": "option",
+            "text": "WikiLoop Battlefield Dev Local [2.0.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiLoop Battlefield on WMF Cloud VPS [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiLoop Battlefield Prod [2.2.1-beta]"
+          },
+          {
+            "role": "option",
+            "text": "WikiLoop DoubleCheck (Toolforge.org) [5.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiLoop DoubleCheck WMF Cloud VPS (2020-07-13 version) [4.1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiLove"
+          },
+          {
+            "role": "option",
+            "text": "WikiMonitor [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiMonitorBeta [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "Wikipedia mobile apps (prototype) [1.0.1]"
+          },
+          {
+            "role": "option",
+            "text": "WikiShield"
+          },
+          {
+            "role": "option",
+            "text": "WikiShield [1.0.2]"
+          },
+          {
+            "role": "option",
+            "text": "WikiShield [2.0.0]"
+          },
+          {
+            "role": "option",
+            "text": "WikiShield [2.0.1]"
+          },
+          {
+            "role": "option",
+            "text": "WikiShield [2.0.2]"
+          },
+          {
+            "role": "option",
+            "text": "WikiShield-Dev [1.0.1]"
+          },
+          {
+            "role": "option",
+            "text": "WINTR Wikiedu Dashboard Local Test 3 [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WINTR Wikiedu Wizard Local Test [1.0]"
+          },
+          {
+            "role": "option",
+            "text": "WPCleaner"
+          },
+          {
+            "role": "option",
+            "text": "yabbr [1.3]"
+          },
+          {
+            "role": "link",
+            "text": "Xiaolongbao"
+          },
+          {
+            "role": "link",
+            "text": "Xiaolong Automotive Technologies Co., Ltd"
+          },
+          {
+            "role": "link",
+            "text": "Xiaolan Bao"
+          },
+          {
+            "role": "link",
+            "text": "Xiaolongkan station"
+          },
+          {
+            "role": "link",
+            "text": "Xiaolongwan station"
+          },
+          {
+            "role": "link",
+            "text": "Xiaolong Wang"
+          }
+        ],
+        "ax": "- main:\n  - link \"Help\":\n    - /url: https://www.mediawiki.org/wiki/Special:MyLanguage/Help:History\n  - 'heading \"Baozi: Revision history\" [level=1]'\n  - link \"View logs for this page\":\n    - /url: /w/index.php?title=Special:Log&page=Baozi\n  - text: (\n  - link \"view filter log\":\n    - /url: /w/index.php?title=Special:AbuseLog&wpSearchTitle=Baozi\n  - text: )\n  - link \"Jump to navigation\":\n    - /url: \"#mw-head\"\n  - link \"Jump to search\":\n    - /url: \"#searchInput\"\n  - group \"Filter revisions show\":\n    - button \"Filter revisions show\"\n  - text: \"External tools:\"\n  - list:\n    - listitem:\n      - link \"Find addition/removal\":\n        - /url: https://wikiblame.toolforge.org/wikiblame.php?lang=en&article=Baozi\n      - superscript:\n        - text: (\n        - link \"Alternate\":\n          - /url: https://xtools.wmcloud.org/blame/en.wikipedia.org?page=Baozi\n        - text: )\n      - text: ·\n    - listitem:\n      - link \"Find edits by user\":\n        - /url: https://sigma.toolforge.org/usersearch.py?page=Baozi&server=enwiki\n      - superscript:\n        - text: (\n        - link \"Alternate\":\n          - /url: https://xtools.wmcloud.org/topedits/en.wikipedia.org?namespace=0&page=Baozi&focus=username\n        - text: )\n      - text: ·\n    - listitem:\n      - link \"Page statistics\":\n        - /url: https://xtools.wmcloud.org/articleinfo/en.wikipedia.org/Baozi\n      - text: ·\n    - listitem:\n      - link \"Pageviews\":\n        - /url: https://pageviews.wmcloud.org/?pages=Baozi&project=en.wikipedia.org\n      - text: ·\n    - listitem:\n      - link \"Fix dead links\":\n        - /url: https://iabot.wmcloud.org/index.php?page=runbotsingle&pagesearch=Baozi&wiki=enwiki\n      - text: ·\n    - listitem:\n      - link \"Copyvio detector\":\n        - /url: https://copyvios.toolforge.org/?lang=en&project=wikipedia&title=Baozi\n  - separator\n  - paragraph:\n    - text: For any version listed below, click on its date to view it. For more help, see\n    - link \"Help:Page history\":\n      - /url: /wiki/Help:Page_history\n    - text: and\n    - link \"Help:Edit summary\":\n      - /url: /wiki/Help:Edit_summary\n    - text: . (cur) = difference from current version, (prev) = difference from preceding version, m =\n    - link \"minor edit\":\n      - /url: /wiki/Help:Minor_edit\n    - text: \", → =\"\n    - link \"section edit\":\n      - /url: /wiki/Help:Section#Section_editing\n    - text: \", ← =\"\n    - link \"automatic edit summary\":\n      - /url: /wiki/Help:Automatic_edit_summaries\n  - text: (newest |\n  - link \"oldest\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&dir=prev\n  - text: ) View (newer 50 |\n  - link \"older 50\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=20250504170931%7C1288763168\n  - text: ) (\n  - link \"20\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=20\n  - text: \"| 50 |\"\n  - link \"100\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=100\n  - text: \"|\"\n  - link \"250\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=250\n  - text: \"|\"\n  - link \"500\":\n    - /url: /w/index.php?title=Baozi&action=history&useskin=vector&offset=&limit=500\n  - text: )\n  - button \"Compare selected revisions\"\n  - heading \"4 October 2026\" [level=4]\n  - list:\n    - listitem:\n      - text: (cur |\n      - link \"prev\":\n        - /url: /w/index.php?title=Baozi&diff=prev&oldid=1378497946\n      - text: )\n      - radio [checked]\n      - link \"19:53, 4 October 2026\":\n        - /url: /w/index.php?title=Baozi&oldid=1378497946\n      - link \"SpiderMum\":\n        - /url: /wiki/User:SpiderMum\n      - text: (\n      - link \"talk\":\n        - /url: /wiki/User_talk:SpiderMum\n      - text: \"|\"\n      - link \"contribs\":\n        - /url: /wiki/Special:Contributions/SpiderMum\n      - text: ) . . (22,384 bytes) (+6) . . (removed\n      - link \"Category:Dumplings\":\n        - /url: /wiki/Category:Dumplings\n      - text: ; added\n      - link \"Category:Yeast dumplings\":\n        - /url: /wiki/Category:Yeast_dumplings\n      - text: using\n      - link \"HotCat\":\n        - /url: /wiki/Wikipedia:HC\n      - text: ) (\n      - link \"undo\":\n        - /url: /w/index.php?title=Baozi&action=edit&undoafter=1376111626&undo=1378497946\n      - text: )\n  - heading \"22 September 2026\" [level=4]\n  - list:\n    - listitem:\n      - text: (\n      - link \"cur\":\n        - /url: /w/index.php?title=Baozi&diff=1378497946&oldid=1376111626\n      - text: \"|\"\n      - link \"prev\":\n        - /url: /w/index.php?title=Baozi&diff=prev&oldid=1376111626\n      - text: )\n      - radio [checked]\n      - link \"03:38, 22 September 2026\":\n        - /url: /w/index.php?title=Baozi&oldid=1376111626\n      - link \"Lelliloo\":\n        - /url: /w/index.php?title=User:Lelliloo&action=edit&redlink=1\n      - text: (\n      - link \"talk\":\n        - /url: /wiki/User_talk:Lelliloo\n      - text: \"|\"\n      - link \"contribs\":\n        - /url: /wiki/Special:Contributions/Lelliloo\n      - text: ) m . . (22,378 bytes) (+443) . . "
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role button Search",
+          "score": 0
+        },
+        {
+          "kind": "text",
+          "label": "text Search",
+          "score": 40
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 480,
+      "height": 820
+    }
+  },
+  "page": {
+    "url": "https://en.wikipedia.org/w/index.php?title=Baozi&action=history&useskin=vector",
+    "title": "Baozi: Revision history - Wikipedia",
+    "text": "Help Baozi: Revision history View logs for this page (view filter log) Jump to navigation Jump to search Filter revisions show External tools: Find addition/removal (Alternate)Find edits by user (Alternate)Page statisticsPageviewsFix dead linksCopyvio detector For any version listed below, click on its date to view it. For more help, see Help:Page history and Help:Edit summary. (cur) = difference from current version, (prev) = difference from preceding version, m = minor edit, → = section edit, ← = automatic edit summary (newest | oldest) View (newer 50 | older 50) (20 | 50 | 100 | 250 | 500) 4 October 2026 curprev 19:53, 4 October 2026 SpiderMum talk contribs 22,384 bytes +6 removed Category:Dumplings; added Category:Yeast dumplings using HotCat undo 22 September 2026 curprev 03:38, 22 September 2026 Lelliloo talk contribs m 22,378 bytes +443 →References undo Tag: Visual edit 27 August 2026 curprev 15:22, 27 August 2026 Chickenpox4dinner talk contribs m 21,935 bytes −375 Reverted 1 edit by ~2026-46164-62 (talk) to last revision by Wimwamble undo Tags: Twinkle Undo 24 August 2026 curprev 06:55, 24 August 2026 ~2026-46164-62 talk 22,310 bytes +375 No edit summary undo Tags: Reverted Mobile edit Mobile web edit 16 August 2026 curprev 16:29, 16 August 2026 Wimwamble talk contribs 21,935 bytes +10 →History and etymology: reword for clarity undo Tag: Visual edit 2 August 2026 curprev 18:56, 2 August 2026 Kognise talk contribs 21,925 bytes +155 Edit for more consistent loanword italicization undo Tag: Visual edit 23 July 2026 curprev 15:42, 23 July 2026 WikipediholicRat talk contribs m 21,770 bytes −4 Fix MOS:CURLY (via WP:JWB) undo Tag: JWB 14 July 2026 curprev 14:00, 14 July 2026 Bender the Bot talk contribs m 21,774 bytes +1 →History and etymology: HTTP to HTTPS for Wayback Machine, replaced: http://web.archive.org/ → https://web.archive.org/ undo Tag: AWB 16 June 2026 curprev 11:03, 16 June 2026 GhostInTheMachine talk contribs 21,773 bytes −47 →Types: clean table undo 31 May 2026 curprev 14:06, 31 May 2026 Schoppe23 talk contribs 21,820 bytes +4 No edit summary undo Tags: Visual edit Mobile edit Mobile web edit curprev 13:57, 31 May 2026 Schoppe23 talk contribs 21,816 bytes +27 Punctuation and sentence clarity undo Tags: Visual edit Mobile edit Mobile web edit curprev 03:19, 31 May 2026 Schoppe23 talk contribs 21,789 bytes +1 →History and etymology: Typo undo Tags: Mobile edit Mobile web edit 21 May 2026 curprev 19:43, 21 May 2026 Theses1230 talk contribs 21"
+  },
+  "downloaded": []
+}

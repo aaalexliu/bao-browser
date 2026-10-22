@@ -1,0 +1,1048 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792671927354",
+  "name": "Captured workflow",
+  "startUrl": "https://clinicaltrials.gov/search?viewType=Card",
+  "inputs": [
+    {
+      "name": "text",
+      "type": "text",
+      "required": true,
+      "label": "text"
+    },
+    {
+      "name": "text2",
+      "type": "text",
+      "required": true,
+      "label": "text2"
+    },
+    {
+      "name": "text3",
+      "type": "text",
+      "required": true,
+      "label": "text3"
+    },
+    {
+      "name": "text4",
+      "type": "text",
+      "required": true,
+      "label": "text4"
+    },
+    {
+      "name": "text5",
+      "type": "text",
+      "required": true,
+      "label": "text5"
+    },
+    {
+      "name": "text6",
+      "type": "text",
+      "required": true,
+      "label": "text6"
+    },
+    {
+      "name": "text7",
+      "type": "text",
+      "required": true,
+      "label": "text7"
+    },
+    {
+      "name": "text8",
+      "type": "text",
+      "required": true,
+      "label": "text8"
+    },
+    {
+      "name": "text9",
+      "type": "text",
+      "required": true,
+      "label": "text9"
+    },
+    {
+      "name": "text10",
+      "type": "text",
+      "required": true,
+      "label": "text10"
+    },
+    {
+      "name": "text11",
+      "type": "text",
+      "required": true,
+      "label": "text11"
+    },
+    {
+      "name": "text12",
+      "type": "text",
+      "required": true,
+      "label": "text12"
+    },
+    {
+      "name": "text13",
+      "type": "text",
+      "required": true,
+      "label": "text13"
+    },
+    {
+      "name": "text14",
+      "type": "text",
+      "required": true,
+      "label": "text14"
+    },
+    {
+      "name": "text15",
+      "type": "text",
+      "required": true,
+      "label": "text15"
+    },
+    {
+      "name": "text16",
+      "type": "text",
+      "required": true,
+      "label": "text16"
+    },
+    {
+      "name": "text17",
+      "type": "text",
+      "required": true,
+      "label": "text17"
+    },
+    {
+      "name": "text18",
+      "type": "text",
+      "required": true,
+      "label": "text18"
+    },
+    {
+      "name": "text19",
+      "type": "text",
+      "required": true,
+      "label": "text19"
+    },
+    {
+      "name": "text20",
+      "type": "text",
+      "required": true,
+      "label": "text20"
+    },
+    {
+      "name": "text21",
+      "type": "text",
+      "required": true,
+      "label": "text21"
+    },
+    {
+      "name": "text22",
+      "type": "text",
+      "required": true,
+      "label": "text22"
+    },
+    {
+      "name": "text23",
+      "type": "text",
+      "required": true,
+      "label": "text23"
+    },
+    {
+      "name": "text24",
+      "type": "text",
+      "required": true,
+      "label": "text24"
+    },
+    {
+      "name": "advcond",
+      "type": "text",
+      "required": true,
+      "label": "advcond",
+      "default": "type 1 diabetes"
+    },
+    {
+      "name": "text25",
+      "type": "text",
+      "required": true,
+      "label": "text25",
+      "default": "California"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792671927354-0",
+      "index": 0,
+      "action": "type",
+      "label": "Type {{text}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-start-from",
+        "nameAttr": "start-from",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-start-from"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-start-from\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text",
+      "value": "{{text}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{text2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text2",
+      "value": "{{text2}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-2",
+      "index": 2,
+      "action": "type",
+      "label": "Type {{text3}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-start-to",
+        "nameAttr": "start-to",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-start-to"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-start-to\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text3",
+      "value": "{{text3}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-3",
+      "index": 3,
+      "action": "type",
+      "label": "Type {{text4}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text4",
+      "value": "{{text4}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-4",
+      "index": 4,
+      "action": "type",
+      "label": "Type {{text5}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-primComp-from",
+        "nameAttr": "primComp-from",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-primComp-from"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-primComp-from\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text5",
+      "value": "{{text5}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-5",
+      "index": 5,
+      "action": "type",
+      "label": "Type {{text6}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text6",
+      "value": "{{text6}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-6",
+      "index": 6,
+      "action": "type",
+      "label": "Type {{text7}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-primComp-to",
+        "nameAttr": "primComp-to",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-primComp-to"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-primComp-to\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text7",
+      "value": "{{text7}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-7",
+      "index": 7,
+      "action": "type",
+      "label": "Type {{text8}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text8",
+      "value": "{{text8}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-8",
+      "index": 8,
+      "action": "type",
+      "label": "Type {{text9}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-firstPost-from",
+        "nameAttr": "firstPost-from",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-firstPost-from"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-firstPost-from\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text9",
+      "value": "{{text9}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-9",
+      "index": 9,
+      "action": "type",
+      "label": "Type {{text10}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text10",
+      "value": "{{text10}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-10",
+      "index": 10,
+      "action": "type",
+      "label": "Type {{text11}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-firstPost-to",
+        "nameAttr": "firstPost-to",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-firstPost-to"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-firstPost-to\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text11",
+      "value": "{{text11}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-11",
+      "index": 11,
+      "action": "type",
+      "label": "Type {{text12}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text12",
+      "value": "{{text12}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-12",
+      "index": 12,
+      "action": "type",
+      "label": "Type {{text13}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-resFirstPost-from",
+        "nameAttr": "resFirstPost-from",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-resFirstPost-from"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-resFirstPost-from\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text13",
+      "value": "{{text13}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-13",
+      "index": 13,
+      "action": "type",
+      "label": "Type {{text14}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text14",
+      "value": "{{text14}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-14",
+      "index": 14,
+      "action": "type",
+      "label": "Type {{text15}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-resFirstPost-to",
+        "nameAttr": "resFirstPost-to",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-resFirstPost-to"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-resFirstPost-to\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text15",
+      "value": "{{text15}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-15",
+      "index": 15,
+      "action": "type",
+      "label": "Type {{text16}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text16",
+      "value": "{{text16}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-16",
+      "index": 16,
+      "action": "type",
+      "label": "Type {{text17}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-lastUpdPost-from",
+        "nameAttr": "lastUpdPost-from",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-lastUpdPost-from"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-lastUpdPost-from\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text17",
+      "value": "{{text17}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-17",
+      "index": 17,
+      "action": "type",
+      "label": "Type {{text18}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text18",
+      "value": "{{text18}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-18",
+      "index": 18,
+      "action": "type",
+      "label": "Type {{text19}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-lastUpdPost-to",
+        "nameAttr": "lastUpdPost-to",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-lastUpdPost-to"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-lastUpdPost-to\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text19",
+      "value": "{{text19}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-19",
+      "index": 19,
+      "action": "type",
+      "label": "Type {{text20}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text20",
+      "value": "{{text20}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-20",
+      "index": 20,
+      "action": "type",
+      "label": "Type {{text21}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-studyComp-from",
+        "nameAttr": "studyComp-from",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-studyComp-from"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-studyComp-from\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text21",
+      "value": "{{text21}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-21",
+      "index": 21,
+      "action": "type",
+      "label": "Type {{text22}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text22",
+      "value": "{{text22}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-22",
+      "index": 22,
+      "action": "type",
+      "label": "Type {{text23}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "adv-date-studyComp-to",
+        "nameAttr": "studyComp-to",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#adv-date-studyComp-to"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"adv-date-studyComp-to\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text23",
+      "value": "{{text23}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-23",
+      "index": 23,
+      "action": "type",
+      "label": "Type {{text24}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "tag": "input",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Date Picker"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text24",
+      "value": "{{text24}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671927354-24",
+      "index": 24,
+      "action": "type",
+      "label": "Type {{advcond}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "advcond",
+        "nameAttr": "advcond",
+        "tag": "input",
+        "label": "Condition/disease",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "combobox",
+          "name": "Condition/disease"
+        },
+        {
+          "kind": "css",
+          "value": "#advcond"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"advcond\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "advcond",
+      "value": "{{advcond}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{advcond}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671927354-25",
+      "index": 25,
+      "action": "type",
+      "label": "Type {{text25}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "location-input",
+        "nameAttr": "location-input",
+        "tag": "input",
+        "label": "In country, state, or city",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "combobox",
+          "name": "In country, state, or city"
+        },
+        {
+          "kind": "css",
+          "value": "#location-input"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"location-input\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text25",
+      "value": "{{text25}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text25}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671927354-26",
+      "index": 26,
+      "action": "click",
+      "label": "Click \"More Filters\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "More Filters",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "More Filters"
+        },
+        {
+          "kind": "text",
+          "value": "More Filters"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792671853645
+}

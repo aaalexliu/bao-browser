@@ -1,0 +1,784 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792671600734",
+  "name": "Captured workflow",
+  "startUrl": "https://automationexercise.com/account_created#google_vignette",
+  "inputs": [
+    {
+      "name": "name",
+      "type": "text",
+      "required": true,
+      "label": "name",
+      "default": "Bao Record"
+    },
+    {
+      "name": "username",
+      "type": "text",
+      "required": true,
+      "label": "username",
+      "default": "bao-record@example.com"
+    },
+    {
+      "name": "title",
+      "type": "text",
+      "required": true,
+      "label": "title",
+      "default": "Mr"
+    },
+    {
+      "name": "password",
+      "type": "secret",
+      "required": true,
+      "label": "password"
+    },
+    {
+      "name": "days",
+      "type": "text",
+      "required": true,
+      "label": "days",
+      "default": "10"
+    },
+    {
+      "name": "months",
+      "type": "text",
+      "required": true,
+      "label": "months",
+      "default": "1"
+    },
+    {
+      "name": "years",
+      "type": "text",
+      "required": true,
+      "label": "years",
+      "default": "1990"
+    },
+    {
+      "name": "first_name",
+      "type": "text",
+      "required": true,
+      "label": "first_name",
+      "default": "Bao"
+    },
+    {
+      "name": "last_name",
+      "type": "text",
+      "required": true,
+      "label": "last_name",
+      "default": "Record"
+    },
+    {
+      "name": "country",
+      "type": "text",
+      "required": true,
+      "label": "country",
+      "default": "Canada"
+    },
+    {
+      "name": "address1",
+      "type": "text",
+      "required": true,
+      "label": "address1",
+      "default": "1 Proof Street"
+    },
+    {
+      "name": "state",
+      "type": "text",
+      "required": true,
+      "label": "state",
+      "default": "Ontario"
+    },
+    {
+      "name": "city",
+      "type": "text",
+      "required": true,
+      "label": "city",
+      "default": "Toronto"
+    },
+    {
+      "name": "zipcode",
+      "type": "text",
+      "required": true,
+      "label": "zipcode",
+      "default": "M5V1A1"
+    },
+    {
+      "name": "mobile_number",
+      "type": "text",
+      "required": true,
+      "label": "mobile_number",
+      "default": "5550100000"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792671600734-0",
+      "index": 0,
+      "action": "type",
+      "label": "Type {{name}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "nameAttr": "name",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "input[name=\"name\"]"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "name",
+      "value": "{{name}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{name}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{username}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "nameAttr": "email",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "input[name=\"email\"]"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"email\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username",
+      "value": "{{username}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-2",
+      "index": 2,
+      "action": "click",
+      "label": "Click \"Signup\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Signup",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Signup"
+        },
+        {
+          "kind": "text",
+          "value": "Signup"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671600734-3",
+      "index": 3,
+      "action": "type",
+      "label": "Type {{title}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "id_gender1",
+        "nameAttr": "title",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#id_gender1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"id_gender1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "title",
+      "value": "{{title}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{title}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-4",
+      "index": 4,
+      "action": "click",
+      "label": "Click",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "id_gender1",
+        "nameAttr": "title",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#id_gender1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"id_gender1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671600734-5",
+      "index": 5,
+      "action": "type",
+      "label": "Type secret",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "password",
+        "id": "password",
+        "nameAttr": "password",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#password"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"password\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "gate": "login",
+      "input": "password",
+      "value": "{{password}}",
+      "sensitive": true,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671600734-6",
+      "index": 6,
+      "action": "type",
+      "label": "Type {{days}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "select",
+        "id": "days",
+        "nameAttr": "days",
+        "tag": "select",
+        "text": "Day 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 2",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "select",
+          "name": "Day 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 2"
+        },
+        {
+          "kind": "text",
+          "value": "Day 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 2"
+        },
+        {
+          "kind": "css",
+          "value": "#days"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"days\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "days",
+      "value": "{{days}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{days}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-7",
+      "index": 7,
+      "action": "type",
+      "label": "Type {{months}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "select",
+        "id": "months",
+        "nameAttr": "months",
+        "tag": "select",
+        "text": "Month January February March April May June July August September October Novemb",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "select",
+          "name": "Month January February March April May June July August September October Novemb"
+        },
+        {
+          "kind": "text",
+          "value": "Month January February March April May June July August September October Novemb"
+        },
+        {
+          "kind": "css",
+          "value": "#months"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"months\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "months",
+      "value": "{{months}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{months}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-8",
+      "index": 8,
+      "action": "type",
+      "label": "Type {{years}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "select",
+        "id": "years",
+        "nameAttr": "years",
+        "tag": "select",
+        "text": "Year 2021 2020 2019 2018 2017 2016 2015 2014 2013 2012 2011 2010 2009 2008 2007 ",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "select",
+          "name": "Year 2021 2020 2019 2018 2017 2016 2015 2014 2013 2012 2011 2010 2009 2008 2007 "
+        },
+        {
+          "kind": "text",
+          "value": "Year 2021 2020 2019 2018 2017 2016 2015 2014 2013 2012 2011 2010 2009 2008 2007 "
+        },
+        {
+          "kind": "css",
+          "value": "#years"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"years\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "years",
+      "value": "{{years}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{years}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-9",
+      "index": 9,
+      "action": "type",
+      "label": "Type {{first_name}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "first_name",
+        "nameAttr": "first_name",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#first_name"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"first_name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "first_name",
+      "value": "{{first_name}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{first_name}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-10",
+      "index": 10,
+      "action": "type",
+      "label": "Type {{last_name}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "last_name",
+        "nameAttr": "last_name",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#last_name"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"last_name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "last_name",
+      "value": "{{last_name}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{last_name}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-11",
+      "index": 11,
+      "action": "type",
+      "label": "Type {{country}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "select",
+        "id": "country",
+        "nameAttr": "country",
+        "tag": "select",
+        "text": "India United States Canada Australia Israel New Zealand Singapore",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "select",
+          "name": "India United States Canada Australia Israel New Zealand Singapore"
+        },
+        {
+          "kind": "text",
+          "value": "India United States Canada Australia Israel New Zealand Singapore"
+        },
+        {
+          "kind": "css",
+          "value": "#country"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"country\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "country",
+      "value": "{{country}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{country}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-12",
+      "index": 12,
+      "action": "type",
+      "label": "Type {{address1}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "address1",
+        "nameAttr": "address1",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#address1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"address1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "address1",
+      "value": "{{address1}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{address1}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-13",
+      "index": 13,
+      "action": "type",
+      "label": "Type {{state}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "state",
+        "nameAttr": "state",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#state"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"state\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "state",
+      "value": "{{state}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{state}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-14",
+      "index": 14,
+      "action": "type",
+      "label": "Type {{city}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "city",
+        "nameAttr": "city",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#city"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"city\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "city",
+      "value": "{{city}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{city}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-15",
+      "index": 15,
+      "action": "type",
+      "label": "Type {{zipcode}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "zipcode",
+        "nameAttr": "zipcode",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#zipcode"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"zipcode\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "zipcode",
+      "value": "{{zipcode}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{zipcode}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-16",
+      "index": 16,
+      "action": "type",
+      "label": "Type {{mobile_number}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "id": "mobile_number",
+        "nameAttr": "mobile_number",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#mobile_number"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"mobile_number\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "mobile_number",
+      "value": "{{mobile_number}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{mobile_number}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792671600734-17",
+      "index": 17,
+      "action": "click",
+      "label": "Click \"Create Account\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Create Account",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Create Account"
+        },
+        {
+          "kind": "text",
+          "value": "Create Account"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792671600734-18",
+      "index": 18,
+      "action": "click",
+      "label": "Click \"Continue\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "a",
+        "tag": "a",
+        "text": "Continue",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "a",
+          "name": "Continue"
+        },
+        {
+          "kind": "text",
+          "value": "Continue"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "url",
+        "match": "/account_created",
+        "timeoutMs": 8000
+      },
+      "expect": {
+        "kind": "url",
+        "match": "/account_created",
+        "timeoutMs": 8000
+      }
+    }
+  ],
+  "createdAt": 1792671546160
+}

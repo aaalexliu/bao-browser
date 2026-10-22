@@ -1,0 +1,10 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792672544425",
+  "name": "Captured workflow",
+  "startUrl": "https://shop.polymer-project.org/list/mens_tshirts",
+  "inputs": [],
+  "steps": [],
+  "createdAt": 0
+}

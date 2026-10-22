@@ -1,0 +1,396 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [],
+    "trail": [],
+    "console": [],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/list/mens_tshirts",
+        "status": 200,
+        "ts": 1792672544681
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-list.js",
+        "status": 200,
+        "ts": 1792672544756
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
+        "status": 200,
+        "ts": 1792672544768
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
+        "status": 200,
+        "ts": 1792672544942
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792672545043
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
+        "status": 200,
+        "ts": 1792672545044
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/mens_tshirts.json",
+        "status": 200,
+        "ts": 1792672545049
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
+        "status": 200,
+        "ts": 1792672545052
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "status": 200,
+        "ts": 1792672545070
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
+        "status": 200,
+        "ts": 1792672545078
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13256B.jpg",
+        "status": 200,
+        "ts": 1792672545122
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13058B.jpg",
+        "status": 200,
+        "ts": 1792672545123
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13264B.jpg",
+        "status": 200,
+        "ts": 1792672545126
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://www.google-analytics.com/analytics.js",
+        "status": 200,
+        "ts": 1792672545136
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13239B.jpg",
+        "status": 200,
+        "ts": 1792672545156
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13280B.jpg",
+        "status": 200,
+        "ts": 1792672545163
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-11019B.jpg",
+        "status": 200,
+        "ts": 1792672545163
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13270B.jpg",
+        "status": 200,
+        "ts": 1792672545165
+      },
+      {
+        "stepId": "open",
+        "method": "POST",
+        "url": "https://www.google-analytics.com/j/collect",
+        "status": 200,
+        "ts": 1792672545167
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13279B.jpg",
+        "status": 200,
+        "ts": 1792672545175
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13289B.jpg",
+        "status": 200,
+        "ts": 1792672545176
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13271B.jpg",
+        "status": 200,
+        "ts": 1792672545176
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13282B.jpg",
+        "status": 200,
+        "ts": 1792672545176
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13265B.jpg",
+        "status": 200,
+        "ts": 1792672545177
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13262B.jpg",
+        "status": 200,
+        "ts": 1792672545178
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13018B.jpg",
+        "status": 200,
+        "ts": 1792672545179
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13272B.jpg",
+        "status": 200,
+        "ts": 1792672545180
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13153B.jpg",
+        "status": 200,
+        "ts": 1792672545182
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13213B.jpg",
+        "status": 200,
+        "ts": 1792672545183
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13273B.jpg",
+        "status": 200,
+        "ts": 1792672545184
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13285B.jpg",
+        "status": 200,
+        "ts": 1792672545185
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13276B.jpg",
+        "status": 200,
+        "ts": 1792672545187
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13267B.jpg",
+        "status": 200,
+        "ts": 1792672545188
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13286B.jpg",
+        "status": 200,
+        "ts": 1792672545196
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-11017B.jpg",
+        "status": 200,
+        "ts": 1792672545196
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13097B.jpg",
+        "status": 200,
+        "ts": 1792672545197
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13240B.jpg",
+        "status": 200,
+        "ts": 1792672545261
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13130B.jpg",
+        "status": 200,
+        "ts": 1792672545265
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13275B.jpg",
+        "status": 200,
+        "ts": 1792672545273
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13290B.jpg",
+        "status": 200,
+        "ts": 1792672545273
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13288B.jpg",
+        "status": 200,
+        "ts": 1792672545273
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13269B.jpg",
+        "status": 200,
+        "ts": 1792672545274
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13278B.jpg",
+        "status": 200,
+        "ts": 1792672545276
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13292B.jpg",
+        "status": 200,
+        "ts": 1792672545277
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13260B.jpg",
+        "status": 200,
+        "ts": 1792672545277
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13241B.jpg",
+        "status": 200,
+        "ts": 1792672545277
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13268B.jpg",
+        "status": 200,
+        "ts": 1792672545277
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13266B.jpg",
+        "status": 200,
+        "ts": 1792672545278
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13291B.jpg",
+        "status": 200,
+        "ts": 1792672545279
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13263B.jpg",
+        "status": 200,
+        "ts": 1792672545279
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13274B.jpg",
+        "status": 200,
+        "ts": 1792672545279
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13277B.jpg",
+        "status": 200,
+        "ts": 1792672545280
+      }
+    ],
+    "runId": "run-mvjiy4n5-mh4x",
+    "status": "passed",
+    "steps": [],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://shop.polymer-project.org/list/mens_tshirts",
+    "title": "Men's T-Shirts - SHOP",
+    "text": ""
+  },
+  "downloaded": []
+}
