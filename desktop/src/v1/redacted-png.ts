@@ -21,6 +21,15 @@ function chunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([len, body, crc]);
 }
 
+/** A crop around a control. The 96×54 stripe and a full-page picture are not one. */
+export function isElementCrop(png: Buffer): boolean {
+  if (png.length < 24 || png.toString("ascii", 12, 16) !== "IHDR") return false;
+  const width = png.readUInt32BE(16);
+  const height = png.readUInt32BE(20);
+  if (width === 96 && height === 54) return false;
+  return width >= 2 && height >= 2 && width <= 720 && height <= 480;
+}
+
 /** A small PNG that does not contain the source image. `seed` only picks a color. */
 export function redactedPng(seed: number): Buffer {
   const w = 96;

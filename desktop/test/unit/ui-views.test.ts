@@ -299,6 +299,17 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.equal(html.includes("id=\"library\""), false);
   assert.equal(html.includes("<img"), false);
   assert.match(html, /class="ph"/);
+  assert.match(html, /data-testid="share-menu"/);
+  assert.match(html, /data-testid="share-copy" data-copy="bao:\/\/workflow\/wf"/);
+  assert.match(html, /data-testid="share-publish" disabled/);
+  assert.match(html, /Pair this Mac before listing/);
+  assert.match(html, /data-testid="share-export"/);
+  assert.equal(html.includes('data-testid="share-export" disabled'), false);
+  assert.equal(html.includes('data-testid="deeplink"'), false);
+  assert.equal(html.includes('data-testid="import-link"'), false);
+  const empty = workflowDetail({ id: "empty", name: "Empty", steps: [] });
+  assert.match(empty, /data-testid="share-export" disabled/);
+  assert.match(empty, /This workflow has no steps to export/);
   const cropped = workflowDetail({
     id: "wf",
     name: "fixture apply",

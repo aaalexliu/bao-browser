@@ -332,7 +332,7 @@ Settings → Sync shows the paired devices, item counts per site category, and a
 
 ## Share a workflow
 
-On the workflow page, mark which inputs are asked on import, then copy a view link or an install link. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
+On the workflow page, mark which inputs are asked on import. Share copies the `bao://workflow/<id>` link, opens the public preview, and exports the workflow file. Publish stays disabled until a device replays the redacted copy, and a failed clean replay stays disabled with the reason beside it. Export stays disabled, with a reason, when the workflow has no steps. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
 
 Secret and file answers are not stored. A path is asked with the same file field capture records, and the path is not shown. An email typed as an answer is dropped. Other answers become defaults on the recipient's private copy only. A non-personal sample is shown as an example.
 
