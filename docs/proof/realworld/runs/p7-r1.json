@@ -7,17 +7,17 @@
     "repairs": [],
     "locatorHits": [
       {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
+        "kind": "css",
+        "detail": "css Search Wikipedia"
+      },
+      {
+        "stepId": "wf-1792701197004-2",
         "kind": "text",
         "detail": "text Search Wikipedia"
       },
       {
-        "stepId": "wf-1792681416284-2",
-        "kind": "text",
-        "detail": "text Search Wikipedia"
-      },
-      {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "kind": "role",
         "detail": "role Past revisions of this page [alt-h]"
       }
@@ -25,632 +25,632 @@
     "receipts": [],
     "trajectory": [
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "action": "navigate",
         "target": "page",
         "postcondition": "url en.wikipedia.org",
         "timing": "lt1s"
       },
       {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
         "action": "type",
         "target": "input#searchInput",
         "postcondition": "value {{search}}",
         "timing": "lt1s"
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "action": "key",
         "target": "combobox[name=search]",
         "postcondition": "settled no error and the page settled",
         "timing": "lt10s"
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "action": "click",
         "target": "link:Past revisions of this page [alt-h]",
         "postcondition": "settled no error and the page settled",
-        "timing": "lt10s"
+        "timing": "lt1s"
       }
     ],
     "trail": [
       {
         "kind": "click",
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "target": "View history"
       }
     ],
     "pageClasses": [],
     "console": [
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "type": "warning",
         "text": "This page is using the deprecated ResourceLoader module \"mediawiki.Uri\". [1.43] Please use browser native URL. See https://www.mediawiki.org/wiki/Migrating_mw.Uri_to_URL",
-        "ts": 1792681416689
+        "ts": 1792701197513
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "type": "warning",
         "text": "This page is using the deprecated ResourceLoader module \"mediawiki.Uri\". [1.43] Please use browser native URL. See https://www.mediawiki.org/wiki/Migrating_mw.Uri_to_URL",
-        "ts": 1792681416886
+        "ts": 1792701197749
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "type": "warning",
         "text": "This page is using the deprecated ResourceLoader module \"moment\". [1.44] Use mediawiki.DateFormatter or native Intl function instead. See https://phabricator.wikimedia.org/T146798",
-        "ts": 1792681420219
+        "ts": 1792701200757
       }
     ],
     "network": [
       {
-        "stepId": "wf-1792681416284-0",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/resources/assets/poweredby_mediawiki.svg",
-        "status": 200,
-        "ts": 1792681416866
-      },
-      {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681416868
+        "ts": 1792701197729
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681416868
+        "ts": 1792701197732
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681416868
+        "ts": 1792701197732
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681416870
+        "ts": 1792701197732
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681416870
+        "ts": 1792701197749
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681416885
+        "ts": 1792701197808
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-0",
         "method": "POST",
         "url": "https://en.wikipedia.org/ins-502b/v2/events",
         "status": 202,
-        "ts": 1792681416922
+        "ts": 1792701197851
       },
       {
-        "stepId": "wf-1792681416284-0",
+        "stepId": "wf-1792701197004-1",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681416934
+        "ts": 1792701198323
       },
       {
-        "stepId": "wf-1792681416284-1",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681417461
-      },
-      {
-        "stepId": "wf-1792681416284-1",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/api.php",
-        "status": 200,
-        "ts": 1792681417468
-      },
-      {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/rest.php/v1/search/title",
         "status": 200,
-        "ts": 1792681417477
+        "ts": 1792701198350
       },
       {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
         "method": "GET",
-        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3d/A_SS4_Locomotive_Pair_Passing_Bridge_of_Lingguanxia%2C_Jan_20_2024.jpg/60px-A_SS4_Locomotive_Pair_Passing_Bridge_of_Linggua",
+        "url": "https://en.wikipedia.org/w/api.php",
         "status": 200,
-        "ts": 1792681417504
+        "ts": 1792701198365
       },
       {
-        "stepId": "wf-1792681416284-1",
-        "method": "GET",
-        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Baozi_Chengdu.JPG/60px-Baozi_Chengdu.JPG",
-        "status": 200,
-        "ts": 1792681417505
-      },
-      {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b5/%E4%BF%9D%E5%AE%9A%E8%8E%B2%E6%B1%A02019.jpg/60px-%E4%BF%9D%E5%AE%9A%E8%8E%B2%E6%B1%A02019.jpg",
         "status": 200,
-        "ts": 1792681417506
+        "ts": 1792701198392
       },
       {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
         "method": "GET",
-        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c1/Baoding_Balls.jpg/60px-Baoding_Balls.jpg",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Baozi_Chengdu.JPG/60px-Baozi_Chengdu.JPG",
         "status": 200,
-        "ts": 1792681417506
+        "ts": 1792701198392
       },
       {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/BaojiSkyline.jpg/60px-BaojiSkyline.jpg",
         "status": 200,
-        "ts": 1792681417506
+        "ts": 1792701198392
       },
       {
-        "stepId": "wf-1792681416284-1",
+        "stepId": "wf-1792701197004-1",
+        "method": "GET",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c1/Baoding_Balls.jpg/60px-Baoding_Balls.jpg",
+        "status": 200,
+        "ts": 1792701198393
+      },
+      {
+        "stepId": "wf-1792701197004-1",
+        "method": "GET",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3d/A_SS4_Locomotive_Pair_Passing_Bridge_of_Lingguanxia%2C_Jan_20_2024.jpg/60px-A_SS4_Locomotive_Pair_Passing_Bridge_of_Linggua",
+        "status": 200,
+        "ts": 1792701198394
+      },
+      {
+        "stepId": "wf-1792701197004-1",
+        "method": "POST",
+        "url": "https://en.wikipedia.org/ins-502b/v2/events",
+        "status": 202,
+        "ts": 1792701198419
+      },
+      {
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/84/Claypot_Chicken_Rice%2C_Singapore.JPG/60px-Claypot_Chicken_Rice%2C_Singapore.JPG",
         "status": 200,
-        "ts": 1792681417506
+        "ts": 1792701198453
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
+        "method": "POST",
+        "url": "https://en.wikipedia.org/ins-502b/v2/events",
+        "status": 202,
+        "ts": 1792701198890
+      },
+      {
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/index.php",
         "status": 302,
-        "ts": 1792681418059
+        "ts": 1792701198997
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/wiki/Baozi",
         "status": 200,
-        "ts": 1792681418074
+        "ts": 1792701199022
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418084
+        "ts": 1792701199031
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418084
+        "ts": 1792701199031
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/icons/enwiki-25.svg",
         "status": 200,
-        "ts": 1792681418084
+        "ts": 1792701199031
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en-25.svg",
         "status": 200,
-        "ts": 1792681418084
+        "ts": 1792701199031
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-tagline-en-25.svg",
         "status": 200,
-        "ts": 1792681418086
+        "ts": 1792701199032
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/footer/wikimedia-button.svg",
         "status": 200,
-        "ts": 1792681418094
+        "ts": 1792701199042
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/resources/assets/poweredby_mediawiki.svg",
         "status": 200,
-        "ts": 1792681418094
+        "ts": 1792701199042
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418097
+        "ts": 1792701199044
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418097
+        "ts": 1792701199044
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418097
+        "ts": 1792701199661
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418375
+        "ts": 1792701199661
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418375
+        "ts": 1792701199661
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418630
+        "ts": 1792701199661
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199662
+      },
+      {
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles/images/arrow-down-progressive.svg",
         "status": 200,
-        "ts": 1792681418630
+        "ts": 1792701199662
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418630
+        "ts": 1792701199662
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/resources/src/mediawiki.skinning/images/magnify-clip-ltr.svg",
         "status": 200,
-        "ts": 1792681418630
+        "ts": 1792701199662
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles/images/link-external-small-ltr-progressive.svg",
         "status": 200,
-        "ts": 1792681418630
+        "ts": 1792701199663
       },
       {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418630
-      },
-      {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/en/thumb/9/99/Question_book-new.svg/60px-Question_book-new.svg.png",
         "status": 200,
-        "ts": 1792681418631
+        "ts": 1792701199663
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Baozi_Chengdu.JPG/250px-Baozi_Chengdu.JPG",
         "status": 200,
-        "ts": 1792681418631
+        "ts": 1792701199663
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fa/Wikibooks-logo.svg/20px-Wikibooks-logo.svg.png",
         "status": 200,
-        "ts": 1792681418631
+        "ts": 1792701199663
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/en/thumb/4/4a/Commons-logo.svg/20px-Commons-logo.svg.png",
         "status": 200,
-        "ts": 1792681418631
+        "ts": 1792701199663
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Aksar_Khmer.svg/40px-Aksar_Khmer.svg.png",
         "status": 200,
-        "ts": 1792681418632
+        "ts": 1792701199663
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/Char_siu_bao.jpg/250px-Char_siu_bao.jpg",
         "status": 200,
-        "ts": 1792681418632
+        "ts": 1792701199663
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Tianjin_lunch_of_Goubuli.jpg/250px-Tianjin_lunch_of_Goubuli.jpg",
         "status": 200,
-        "ts": 1792681418632
+        "ts": 1792701199664
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/Xiao_Long_Bao_at_Nanxiang_Mantou_Dian_1.jpg/250px-Xiao_Long_Bao_at_Nanxiang_Mantou_Dian_1.jpg",
         "status": 200,
-        "ts": 1792681418633
+        "ts": 1792701199664
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/14/%E6%89%AC%E5%B7%9E%E5%AF%8C%E6%98%A5%E8%8C%B6%E7%A4%BE%E6%B1%A4%E5%8C%85.JPG/250px-%E6%89%AC%E5%B7%9E%E5%AF%8C%E6%98%A5%E8%",
         "status": 200,
-        "ts": 1792681418633
+        "ts": 1792701199664
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/79/Naihuangbao.jpg/250px-Naihuangbao.jpg",
         "status": 200,
-        "ts": 1792681418633
+        "ts": 1792701199664
       },
       {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Chinese-Dumplings-BoaZi-4895.jpg/250px-Chinese-Dumplings-BoaZi-4895.jpg",
-        "status": 200,
-        "ts": 1792681418633
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418633
-      },
-      {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/52/Baozi_of_Circle_K_Sunkus.jpg/250px-Baozi_of_Circle_K_Sunkus.jpg",
         "status": 200,
-        "ts": 1792681418633
+        "ts": 1792701199664
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Chinese-Dumplings-BoaZi-4895.jpg/250px-Chinese-Dumplings-BoaZi-4895.jpg",
+        "status": 200,
+        "ts": 1792701199664
+      },
+      {
+        "stepId": "wf-1792701197004-2",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681418633
+        "ts": 1792701199664
       },
       {
-        "stepId": "wf-1792681416284-2",
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199664
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199664
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701199665
+      },
+      {
+        "stepId": "wf-1792701197004-2",
         "method": "POST",
         "url": "https://en.wikipedia.org/ins-502b/v2/events",
         "status": 202,
-        "ts": 1792681418633
+        "ts": 1792701199665
       },
       {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418633
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418633
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418633
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418633
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418634
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418634
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418634
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418634
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418634
-      },
-      {
-        "stepId": "wf-1792681416284-2",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681418634
-      },
-      {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/index.php",
         "status": 200,
-        "ts": 1792681419971
+        "ts": 1792701200487
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681419981
+        "ts": 1792701200497
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681419981
+        "ts": 1792701200498
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/icons/enwiki-25.svg",
         "status": 200,
-        "ts": 1792681419981
+        "ts": 1792701200498
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en-25.svg",
         "status": 200,
-        "ts": 1792681419981
+        "ts": 1792701200498
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-tagline-en-25.svg",
         "status": 200,
-        "ts": 1792681419982
+        "ts": 1792701200498
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/static/images/footer/wikimedia-button.svg",
         "status": 200,
-        "ts": 1792681419987
+        "ts": 1792701200503
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/resources/assets/poweredby_mediawiki.svg",
         "status": 200,
-        "ts": 1792681419987
+        "ts": 1792701200503
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681419989
+        "ts": 1792701200505
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681419990
+        "ts": 1792701200505
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681420219
+        "ts": 1792701200757
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681420219
+        "ts": 1792701200757
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681420219
+        "ts": 1792701200757
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792701200757
+      },
+      {
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles/images/link-external-small-ltr-progressive.svg",
         "status": 200,
-        "ts": 1792681420219
+        "ts": 1792701200757
       },
       {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "GET",
         "url": "https://en.wikipedia.org/w/load.php",
         "status": 200,
-        "ts": 1792681420219
+        "ts": 1792701200757
       },
       {
-        "stepId": "wf-1792681416284-3",
-        "method": "GET",
-        "url": "https://en.wikipedia.org/w/load.php",
-        "status": 200,
-        "ts": 1792681420219
-      },
-      {
-        "stepId": "wf-1792681416284-3",
+        "stepId": "wf-1792701197004-3",
         "method": "POST",
         "url": "https://en.wikipedia.org/ins-502b/v2/events",
         "status": 202,
-        "ts": 1792681420231
+        "ts": 1792701200777
       }
     ],
-    "runId": "run-mvjo89ur-4n6x",
+    "runId": "run-mvk008tx-wlqa",
     "status": "passed",
     "steps": [
       {
-        "id": "wf-1792681416284-0",
+        "id": "wf-1792701197004-0",
         "status": "passed",
-        "startedAt": 1792681416684,
-        "endedAt": 1792681416922,
+        "startedAt": 1792701197512,
+        "endedAt": 1792701197782,
         "snapshot": {
           "dom": [
             {
@@ -854,12 +854,12 @@
         }
       },
       {
-        "id": "wf-1792681416284-1",
+        "id": "wf-1792701197004-1",
         "status": "passed",
-        "startedAt": 1792681416979,
-        "endedAt": 1792681417459,
-        "beforeShot": "wf-1792681416284-1-before.png",
-        "afterShot": "wf-1792681416284-1-after.png",
+        "startedAt": 1792701197866,
+        "endedAt": 1792701198322,
+        "beforeShot": "wf-1792701197004-1-before.png",
+        "afterShot": "wf-1792701197004-1-after.png",
         "snapshot": {
           "dom": [
             {
@@ -1059,16 +1059,16 @@
               "text": "move to sidebar"
             }
           ],
-          "ax": "- link \"Jump to content\":\n  - /url: \"#bodyContent\"\n- banner:\n  - navigation \"Site\":\n    - button \"Main menu\"\n  - link \"Wikipedia The Free Encyclopedia\":\n    - /url: /wiki/Main_Page\n    - img \"Wikipedia\"\n    - img \"The Free Encyclopedia\"\n  - search:\n    - combobox \"Search Wikipedia\" [expanded]: Baozi\n    - listbox \"Search results\":\n      - option \"Baozi Chinese filled bun\":\n        - link \"Baozi Chinese filled bun\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baozi&wprov=acrw1_0\n      - option \"Baozidian Town in Hebei, People's Republic of China\":\n        - link \"Baozidian Town in Hebei, People's Republic of China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baozidian&wprov=acrw1_1\n      - option \"Buziwan railway station (Redirected from Baoziwan railway station) Railway station in Datong, China\":\n        - link \"Buziwan railway station (Redirected from Baoziwan railway station) Railway station in Datong, China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Buziwan+railway+station&wprov=acrw1_2\n      - option \"Buzili Subdistrict (Redirected from Baozili Subdistrict) Urban Subdistrict in Hebei, People's Republic of China\":\n        - link \"Buzili Subdistrict (Redirected from Baozili Subdistrict) Urban Subdistrict in Hebei, People's Republic of China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Buzili+Subdistrict&wprov=acrw1_3\n      - option \"Claypot rice (Redirected from Bao Zi Fan) Chinese rice dish\":\n        - link \"Claypot rice (Redirected from Bao Zi Fan) Chinese rice dish\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Claypot+rice&wprov=acrw1_4\n      - option \"Bao Xuan (Redirected from Bao Zidou) 1st century BC Western Han dynasty censor\":\n        - link \"Bao Xuan (Redirected from Bao Zidou) 1st century BC Western Han dynasty censor\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Bao+Xuan&wprov=acrw1_5\n      - option \"Baoding Prefecture-level city in Hebei, China\":\n        - link \"Baoding Prefecture-level city in Hebei, China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoding&wprov=acrw1_6\n      - option \"Baoji Prefecture-level city in Shaanxi, People's Republic of China\":\n        - link \"Baoji Prefecture-level city in Shaanxi, People's Republic of China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoji&wprov=acrw1_7\n      - option \"Baoji–Chengdu railway Railway line in China\":\n        - link \"Baoji–Chengdu railway Railway line in China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoji%E2%80%93Chengdu+railway&wprov=acrw1_8\n      - option \"Baoding balls Chinese handheld exercise balls\":\n        - link \"Baoding balls Chinese handheld exercise balls\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoding+balls&wprov=acrw1_9\n      - option \"Search for pages containing Baozi\":\n        - link \"Search for pages containing Baozi\":\n          - /url: /w/index.php?title=Special%3ASearch&fulltext=1&search=Baozi\n          - text: Search for pages containing\n          - strong: Baozi\n    - button \"Search\"\n  - navigation \"Personal tools\":\n    - list:\n      - listitem:\n        - link \"Donate\":\n          - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n      - listitem:\n        - link \"Create account\":\n          - /url: /w/index.php?title=Special:CreateAccount&returnto=Special%3ASearch\n      - listitem:\n        - link \"Log in\":\n          - /url: /w/index.php?title=Special:UserLogin&returnto=Special%3ASearch\n- main:\n  - heading \"Search\" [level=1]\n  - link \"Help\":\n    - /url: /wiki/Help:Searching\n  - navigation \"Namespaces\"\n  - navigation \"Views\"\n  - navigation \"Page tools"
+          "ax": "- link \"Jump to content\":\n  - /url: \"#bodyContent\"\n- banner:\n  - navigation \"Site\":\n    - button \"Main menu\"\n  - link \"Wikipedia The Free Encyclopedia\":\n    - /url: /wiki/Main_Page\n    - img \"Wikipedia\"\n    - img \"The Free Encyclopedia\"\n  - search:\n    - combobox \"Search Wikipedia\" [expanded]: Baozi\n    - listbox \"Search results\":\n      - option \"Baozi Chinese filled bun\":\n        - link \"Baozi Chinese filled bun\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baozi&wprov=acrw1_0\n      - option \"Baozidian Town in Hebei, People's Republic of China\":\n        - link \"Baozidian Town in Hebei, People's Republic of China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baozidian&wprov=acrw1_1\n      - option \"Buziwan railway station (Redirected from Baoziwan railway station) Railway station in Datong, China\":\n        - link \"Buziwan railway station (Redirected from Baoziwan railway station) Railway station in Datong, China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Buziwan+railway+station&wprov=acrw1_2\n      - option \"Buzili Subdistrict (Redirected from Baozili Subdistrict) Urban Subdistrict in Hebei, People's Republic of China\":\n        - link \"Buzili Subdistrict (Redirected from Baozili Subdistrict) Urban Subdistrict in Hebei, People's Republic of China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Buzili+Subdistrict&wprov=acrw1_3\n      - option \"Claypot rice (Redirected from Bao Zi Fan) Chinese rice dish\":\n        - link \"Claypot rice (Redirected from Bao Zi Fan) Chinese rice dish\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Claypot+rice&wprov=acrw1_4\n      - option \"Bao Xuan (Redirected from Bao Zidou) 1st century BC Western Han dynasty censor\":\n        - link \"Bao Xuan (Redirected from Bao Zidou) 1st century BC Western Han dynasty censor\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Bao+Xuan&wprov=acrw1_5\n      - option \"Baoding Prefecture-level city in Hebei, China\":\n        - link \"Baoding Prefecture-level city in Hebei, China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoding&wprov=acrw1_6\n      - option \"Baoji–Chengdu railway Railway line in China\":\n        - link \"Baoji–Chengdu railway Railway line in China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoji%E2%80%93Chengdu+railway&wprov=acrw1_7\n      - option \"Baoji Prefecture-level city in Shaanxi, People's Republic of China\":\n        - link \"Baoji Prefecture-level city in Shaanxi, People's Republic of China\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoji&wprov=acrw1_8\n      - option \"Baoding balls Chinese handheld exercise balls\":\n        - link \"Baoding balls Chinese handheld exercise balls\":\n          - /url: https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Baoding+balls&wprov=acrw1_9\n      - option \"Search for pages containing Baozi\":\n        - link \"Search for pages containing Baozi\":\n          - /url: /w/index.php?title=Special%3ASearch&fulltext=1&search=Baozi\n          - text: Search for pages containing\n          - strong: Baozi\n    - button \"Search\"\n  - navigation \"Personal tools\":\n    - list:\n      - listitem:\n        - link \"Donate\":\n          - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n      - listitem:\n        - link \"Create account\":\n          - /url: /w/index.php?title=Special:CreateAccount&returnto=Special%3ASearch\n      - listitem:\n        - link \"Log in\":\n          - /url: /w/index.php?title=Special:UserLogin&returnto=Special%3ASearch\n- main:\n  - heading \"Search\" [level=1]\n  - link \"Help\":\n    - /url: /wiki/Help:Searching\n  - navigation \"Namespaces\"\n  - navigation \"Views\"\n  - navigation \"Page tools"
         }
       },
       {
-        "id": "wf-1792681416284-2",
+        "id": "wf-1792701197004-2",
         "status": "passed",
-        "startedAt": 1792681417545,
-        "endedAt": 1792681418628,
-        "beforeShot": "wf-1792681416284-2-before.png",
-        "afterShot": "wf-1792681416284-2-after.png",
+        "startedAt": 1792701198438,
+        "endedAt": 1792701199659,
+        "beforeShot": "wf-1792701197004-2-before.png",
+        "afterShot": "wf-1792701197004-2-after.png",
         "snapshot": {
           "dom": [
             {
@@ -1161,7 +1161,7 @@
             },
             {
               "role": "search",
-              "text": "Search",
+              "text": "Search Search",
               "id": "p-search"
             },
             {
@@ -1251,25 +1251,25 @@
             },
             {
               "role": "link",
-              "text": "History and etymology"
+              "text": "1 History and etymology"
             },
             {
               "role": "link",
-              "text": "Types"
+              "text": "2 Types"
             },
             {
               "role": "link",
-              "text": "Outside of China"
+              "text": "3 Outside of China"
             }
           ],
           "ax": "- link \"Jump to content\":\n  - /url: \"#bodyContent\"\n- banner:\n  - navigation \"Site\":\n    - button \"Main menu\"\n  - link \"Wikipedia The Free Encyclopedia\":\n    - /url: /wiki/Main_Page\n    - img \"Wikipedia\"\n    - img \"The Free Encyclopedia\"\n  - search:\n    - searchbox \"Search Wikipedia\"\n    - button \"Search\"\n  - navigation \"Personal tools\":\n    - list:\n      - listitem:\n        - link \"Donate\":\n          - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n      - listitem:\n        - link \"Create account\":\n          - /url: /w/index.php?title=Special:CreateAccount&returnto=Baozi\n      - listitem:\n        - link \"Log in\":\n          - /url: /w/index.php?title=Special:UserLogin&returnto=Baozi\n- navigation \"Contents\":\n  - heading \"Contents\" [level=2]\n  - button \"Hide Contents\": hide\n  - list:\n    - listitem:\n      - link \"(Top)\":\n        - /url: \"#\"\n    - listitem:\n      - link \"History and etymology\":\n        - /url: \"#History_and_etymology\"\n      - list\n    - listitem:\n      - link \"Types\":\n        - /url: \"#Types\"\n      - list\n    - listitem:\n      - link \"Outside of China\":\n        - /url: \"#Outside_of_China\"\n      - list\n    - listitem:\n      - link \"See also\":\n        - /url: \"#See_also\"\n      - list\n    - listitem:\n      - link \"References\":\n        - /url: \"#References\"\n      - list\n    - listitem:\n      - link \"Further reading\":\n        - /url: \"#Further_reading\"\n      - list\n- main:\n  - heading \"Baozi\" [level=1]\n  - button \"35 languages\"\n  - navigation \"Namespaces\":\n    - list:\n      - listitem:\n        - link \"Article\":\n          - /url: /wiki/Baozi\n      - listitem:\n        - link \"Talk\":\n          - /url: /wiki/Talk:Baozi\n  - navigation \"Views\":\n    - list:\n      - listitem:\n        - link \"Read\":\n          - /url: /wiki/Baozi\n      - listitem:\n        - link \"Edit\":\n          - /url: /w/index.php?title=Baozi&action=edit\n      - listitem:\n        - link \"View history\":\n          - /url: /w/index.php?title=Baozi&action=history\n  - navigation \"Page tools\":\n    - button \"Tools\"\n  - navigation \"Appearance\":\n    - text: Appearance\n    - button \"Hide Appearance\": hide\n    - text: Text\n    - list:\n      - listitem:\n        - radio \"Small\"\n        - text: Small\n        - radio \"Standard\" [checked]\n        - text: Standard\n        - radio \"Large\"\n        - text: Large\n    - text: Width\n    - list:\n      - listitem:\n        - radio \"Standard\" [checked]\n        - text: Standard\n        - radio \"Wide\"\n        - text: Wide\n    - text: Color\n    - list:\n      - listitem:\n        - radio \"Automatic\"\n        - text: Automatic\n        - radio \"Light\" [checked]\n        - text: Light\n        - radio \"Dark\"\n        - text: Dark\n  - text: From Wikipedia, the free encyclopedia\n  - note:\n    - text: For other types of food named similarly, see\n    - link \"Bao § Cuisine\":\n      - /url: https://en.wikipedia.org/wiki/Bao_(disambiguation)#Cuisine\n    - text: .\n  - link \"icon\":\n    - /url: https://en.wikipedia.org/wiki/File:Question_book-new.svg\n    - img \"icon\"\n  - text: This article needs\n  - link \"more citations\":\n    - /url: https://en.wikipedia.org/wiki/Wikipedia:Verifiability\n  - text: . Please help\n  - link \"improve this article\":\n    - /url: https://en.wikipedia.org/wiki/Special:EditPage/Baozi\n  - text: by\n  - link \"adding citations to reliable sources\":\n    - /url: https://en.wikipedia.org/wiki/Help:Referencing_for_beginners\n  - text: . Unsourced material may be challenged and\n  - link \"removed\":\n    - /url: https://en.wikipedia.org/wiki/Wikipedia:Verifiability#Burden_of_evidence\n  - text: \". Find sources:\"\n  - link \"\\\"Baozi\\\"\":\n    - /url: https://www.google.com/search?as_eq=wikipedia&q=%22Baozi%22\n  - text: –\n  - link \"news\":\n    - /url: https://www.google.com/search?tbm=nws&q=%22Baozi%22+-wikipedia&tbs=ar:1\n  - text: ·\n  - link \"newspapers\":\n    - /url: https://www.google.com/search?&q=%22Baozi%22&tbs=bkt:s&tbm=bks\n  - text: ·\n  - link \"books\":\n    - /url: https://www.google."
         }
       },
       {
-        "id": "wf-1792681416284-3",
+        "id": "wf-1792701197004-3",
         "status": "passed",
-        "startedAt": 1792681418781,
-        "endedAt": 1792681420218,
+        "startedAt": 1792701199808,
+        "endedAt": 1792701200755,
         "snapshot": {
           "dom": [
             {
@@ -1486,5 +1486,10 @@
     "title": "Baozi: Revision history - Wikipedia",
     "text": "Jump to content Main menu Search Donate Create account Log in Baozi: Revision history Help Article Talk Read Edit View history Tools Appearance hide Text Small Standard Large This page always uses small font size Width Standard Wide Color Automatic Light Dark View logs for this page (view filter log) Filter revisions show External tools: Find addition/removal (Alternate)Find edits by user (Alternate)Page statisticsPageviewsFix dead linksCopyvio detector For any version listed below, click on its date to view it. For more help, see Help:Page history and Help:Edit summary. (cur) = difference from current version, (prev) = difference from preceding version, m = minor edit, → = section edit, ← = automatic edit summary (newest | oldest) View (newer 50 | older 50) (20 | 50 | 100 | 250 | 500) 4 October 2026 curprev 19:53, 4 October 2026 SpiderMum talk contribs 22,384 bytes +6 removed Category:Dumplings; added Category:Yeast dumplings using HotCat undo 22 September 2026 curprev 03:38, 22 September 2026 Lelliloo talk contribs m 22,378 bytes +443 →References undo Tag: Visual edit 27 August 2026 curprev 15:22, 27 August 2026 Chickenpox4dinner talk contribs m 21,935 bytes −375 Reverted 1 edit by ~2026-46164-62 (talk) to last revision by Wimwamble undo Tags: Twinkle Undo 24 August 2026 curprev 06:55, 24 August 2026 ~2026-46164-62 talk 22,310 bytes +375 No edit summary undo Tags: Reverted Mobile edit Mobile web edit 16 August 2026 curprev 16:29, 16 August 2026 Wimwamble talk contribs 21,935 bytes +10 →History and etymology: reword for clarity undo Tag: Visual edit 2 August 2026 curprev 18:56, 2 August 2026 Kognise talk contribs 21,925 bytes +155 Edit for more consistent loanword italicization undo Tag: Visual edit 23 July 2026 curprev 15:42, 23 July 2026 WikipediholicRat talk contribs m 21,770 bytes −4 Fix MOS:CURLY (via WP:JWB) undo Tag: JWB 14 July 2026 curprev 14:00, 14 July 2026 Bender the Bot talk contribs m 21,774 bytes +1 →History and etymology: HTTP to HTTPS for Wayback Machine, replaced: http://web.archive.org/ → https://web.archive.org/ undo Tag: AWB 16 June 2026 curprev 11:03, 16 June 2026 GhostInTheMachine talk contribs 21,773 bytes −47 →Types: clean table undo 31 May 2026 curprev 14:06, 31 May 2026 Schoppe23 talk contribs 21,820 bytes +4 No edit summary undo Tags: Visual edit Mobile edit Mobile web edit curprev 13:57, 31 May 2026 Schoppe23 talk contribs 21,816 bytes +27 Punctuation and sentence clarity undo Tags: Visual edit Mobile edit Mobile web edit curp"
   },
-  "downloaded": []
+  "downloaded": [],
+  "shot": {
+    "sha256": "15ed898bcf271f62282a16c38f41f0d4ccd29d170f6a02bb17ac72ab97386b03",
+    "samePixels": false,
+    "identity": ""
+  }
 }

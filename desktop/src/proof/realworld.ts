@@ -54,6 +54,7 @@ interface RunView {
   steps?: { id: string; status: string; reason?: string; phase?: string; snapshot?: { ax?: string; dom?: { text?: string; name?: string }[] } }[];
   ask?: { kind?: string; instruction?: string };
   bounds?: { width?: number; height?: number };
+  outputs?: { name?: string; type?: string; rows?: Record<string, string>[] }[];
 }
 
 interface ReplayScore {
@@ -83,6 +84,13 @@ interface TaskResult {
 
 type DriveBody = Record<string, unknown>;
 
+interface ExtractProposal {
+  mode?: string;
+  count?: number;
+  error?: string;
+  columns: { id: string; name: string; read: string; samples?: string[] }[];
+}
+
 class Session {
   constructor(private port: number) {}
 
@@ -98,6 +106,14 @@ class Session {
   async drive(body: DriveBody): Promise<void> {
     await call(this.port, "POST", "/api/sessions/drive", { timeout: 12000, ...body });
     await sleep(350);
+  }
+
+  async proposeExtract(selector: string): Promise<ExtractProposal> {
+    return call(this.port, "POST", "/api/sessions/extract/propose", { selector }) as Promise<ExtractProposal>;
+  }
+
+  async commitExtract(body: { names: Record<string, string>; drop: string[]; maxPages: number; as: string; vary: string }): Promise<void> {
+    await call(this.port, "POST", "/api/sessions/extract/commit", body);
   }
 
   async waitFor(needle: string, ms = 15000): Promise<PageView> {
@@ -194,6 +210,7 @@ interface ScoreInput {
   args: Record<string, unknown>;
   files: RunFiles;
   openUrl: string;
+  csv?: string;
 }
 
 const TASKS: Task[] = [
@@ -252,7 +269,9 @@ const TASKS: Task[] = [
     site: "books.toscrape.com",
     openUrl: "https://books.toscrape.com/",
     record: recordP5,
-    args: (workflow) => argsFor(workflow, {}),
+    args: (workflow, run) => argsFor(workflow, {
+      byName: { category: run === 1 ? "Travel" : "Historical Fiction" },
+    }),
     score: scoreP5,
   },
   {
@@ -407,8 +426,8 @@ const P6_B = peopleMap([
   ["Perlman", "Allen"],
   ["radia-table@example.com", "frances-table@example.com"],
 ]);
-const P9_A: Record<string, string> = { Bao: "Ada", Buyer: "Alpha", "1 Market": "2 Market", "94105": "10001" };
-const P9_B: Record<string, string> = { Bao: "Grace", Buyer: "Beta", "1 Market": "3 Market", "94105": "02139" };
+const P9_A: Record<string, string> = { Bao: "Ada", "1 Market": "2 Market", "San Francisco": "New York", "94105": "10001" };
+const P9_B: Record<string, string> = { Bao: "Grace", "1 Market": "3 Market", "San Francisco": "Boston", "94105": "02139" };
 
 function peopleMap(pairs: [string, string][]): Record<string, string> {
   return Object.fromEntries(pairs);
@@ -557,10 +576,24 @@ async function recordP4(session: Session): Promise<void> {
 async function recordP5(session: Session): Promise<void> {
   await session.open("https://books.toscrape.com/");
   await session.waitFor("Books to Scrape");
-  await session.drive({ click: "a[href*='travel_2']" });
-  await session.waitFor("results");
-  const view = await session.view();
-  if ((view.text || "").includes("next")) await session.drive({ click: "li.next a" });
+  await session.drive({ click: "a[href*='mystery_']" });
+  await session.waitFor("mystery");
+  const proposal = await session.proposeExtract("article.product_pod");
+  if (proposal.mode !== "list" || (proposal.count || 0) < 2) {
+    throw new Error(`extract did not see a book list (${proposal.error || proposal.mode || "empty"})`);
+  }
+  const names: Record<string, string> = {};
+  const drop: string[] = [];
+  for (const column of proposal.columns) {
+    const sample = (column.samples || []).join(" ");
+    if (column.read === "title" || column.name === "title") names[column.id] = "title";
+    else if (column.read === "rating" || column.name === "rating" || /^(One|Two|Three|Four|Five)$/.test(column.samples?.[0] || "")) names[column.id] = "rating";
+    else if (/£\d/.test(sample) || column.name.includes("price")) names[column.id] = "price";
+    else drop.push(column.id);
+  }
+  const got = Object.values(names).sort().join(",");
+  if (got !== "price,rating,title") throw new Error(`extract columns were ${got || "none"}`);
+  await session.commitExtract({ names, drop, maxPages: 3, as: "books", vary: "category" });
 }
 
 async function recordP6(session: Session): Promise<void> {
@@ -625,29 +658,27 @@ async function recordP8(session: Session): Promise<void> {
 
 async function recordP9(session: Session): Promise<void> {
   await session.open("https://shop.polymer-project.org/");
-  await sleep(2000);
-  await session.drive({ click: "shop-app >> text=Men's T-Shirts" });
-  await sleep(1500);
-  let view = await session.view();
-  if (/try again/i.test(view.text || "")) {
-    await session.drive({ click: "shop-app >> text=Try Again" });
-    await sleep(2000);
-    view = await session.view();
-  }
-  await session.drive({ click: "shop-app >> shop-list a, shop-app >> a.item, shop-app >> shop-image" }).catch(async () => {
-    await session.drive({ click: "shop-app >> a >> nth=8" });
-  });
-  await sleep(1000);
-  await session.drive({ click: "shop-app >> select" }).catch(() => undefined);
-  await session.drive({ select: { selector: "shop-app >> select", label: "M" } }).catch(() => undefined);
-  await session.drive({ fill: { selector: "shop-app >> input[type=number], shop-app >> .quantity input", value: "2" } }).catch(() => undefined);
-  await session.drive({ click: "shop-app >> text=Add to Cart" }).catch(() => undefined);
-  await session.drive({ click: "shop-app >> a[href*='cart'], shop-app >> paper-icon-button[icon=shopping-cart]" }).catch(() => undefined);
-  await sleep(800);
-  await session.drive({ click: "shop-app >> text=Checkout" }).catch(() => undefined);
-  await session.drive({ fill: { selector: "shop-app >> input[name=name], shop-app >> #name", value: "Bao Buyer" } }).catch(() => undefined);
-  await session.drive({ fill: { selector: "shop-app >> input[name=address], shop-app >> #address", value: "1 Market" } }).catch(() => undefined);
-  await session.drive({ fill: { selector: "shop-app >> input[name=zip], shop-app >> #zip", value: "94105" } }).catch(() => undefined);
+  await session.waitFor("Men's T-Shirts");
+  await session.drive({ goto: "https://shop.polymer-project.org/list/mens_tshirts" });
+  await session.waitFor("YouTube Organic Cotton");
+  await session.drive({ click: "shop-app >> a[href*='YouTube+Organic']" });
+  await session.waitFor("Add to Cart");
+  await session.drive({ select: { selector: "shop-app >> #sizeSelect", label: "M" } });
+  await session.drive({ select: { selector: "shop-app >> #quantitySelect", label: "2" } });
+  await session.drive({ click: "shop-app >> shop-detail >> button:has-text('Add to Cart')" });
+  await session.waitFor("View Cart");
+  await session.drive({ click: "shop-app >> #viewCartAnchor" });
+  await session.waitFor("Your Cart");
+  await session.drive({ click: "shop-app >> shop-cart >> text=Checkout" });
+  await session.waitFor("Account Information");
+  await session.drive({ fill: { selector: "shop-app >> #accountEmail", value: "bao-buyer@example.com" } });
+  await session.drive({ fill: { selector: "shop-app >> #accountPhone", value: "4155550199" } });
+  await session.drive({ fill: { selector: "shop-app >> #shipAddress", value: "1 Market" } });
+  await session.drive({ fill: { selector: "shop-app >> #shipCity", value: "San Francisco" } });
+  await session.drive({ fill: { selector: "shop-app >> #shipState", value: "CA" } });
+  await session.drive({ fill: { selector: "shop-app >> #shipZip", value: "94105" } });
+  await session.drive({ fill: { selector: "shop-app >> #ccName", value: "Bao" } });
+  await session.drive({ click: "shop-app >> shop-checkout >> input[value='Place Order']" });
 }
 
 async function recordP13(session: Session): Promise<void> {
@@ -808,6 +839,15 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
       // Run 2 gets its own browser. The shared window was still the right run,
       // but its end page can be pixel-identical to run 1.
       replay = sanitizeRun(await call(port, "POST", "/api/replay", { id: current.id, args, fresh: run === 2 }) as RunView);
+      if (task.id === "p9") {
+        await call(port, "POST", "/api/replay/place", {
+          id: current.id,
+          x: 30,
+          y: 30,
+          width: 1100,
+          height: 1000,
+        }).catch((err) => console.log(`place: ${err instanceof Error ? err.message : err}`));
+      }
     } catch (err) {
       replays.push({
         pass: false,
@@ -821,7 +861,12 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
       continue;
     }
     const page = await call(port, "GET", `/api/replay/page?id=${encodeURIComponent(current.id)}`).catch(() => ({})) as PageView;
-    const shot = await saveShot(port, home, current.id, task.id, run);
+    let csv = "";
+    if (task.id === "p5" && replay.runId) {
+      const got = await call(port, "GET", `/api/runs/${encodeURIComponent(replay.runId)}/outputs.csv?name=books`).catch(() => "");
+      csv = typeof got === "string" ? got : "";
+    }
+    const shot = await saveShot(port, home, current.id, task.id, run, task.id === "p9" ? { width: 1280, height: 1000 } : undefined);
     if (shot) artifacts.push(shot);
     const identitySrc = replay.runId ? path.join(home, "shots", "runs", replay.runId, "identity.png") : "";
     const identity = identitySrc && existsSync(identitySrc) ? publish(identitySrc, `${task.id}-r${run}-identity.png`) : undefined;
@@ -833,7 +878,7 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
     if (samePixels) console.log(`  replay ${run} end shot matches the other run pixel for pixel`);
     const frames = copyFrames(home, replay.runId, task.id, run);
     artifacts.push(...frames);
-    const judged = judge(task, { run, replay, page, workflow: current, args, files, openUrl: task.openUrl }, started);
+    const judged = judge(task, { run, replay, page, workflow: current, args, files, openUrl: task.openUrl, csv }, started);
     if (!judged.pass && replay.status === "passed") replay.status = "failed";
     judged.status = replay.status || judged.status;
     const endFrames = [shot, ...frames].filter((item): item is string => !!item);
@@ -1007,8 +1052,49 @@ function scoreDownload(page: PageView, started: number): { pass: boolean; cause:
   return { pass: true, cause: "", detail: `${parsed.rows.length} RECRUITING rows matched the page count` };
 }
 
-function scoreP5(): { pass: boolean; cause: string; detail: string } {
-  return { pass: false, cause: "missing step type", detail: "no extract or CSV output; category is a click, not an input, so Mystery and Historical Fiction were not replayed" };
+function scoreP5(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
+  const category = input.run === 1 ? "Travel" : "Historical Fiction";
+  const extract = input.workflow.steps.find((step) => step.action === "extract");
+  const declared = input.workflow.outputs?.some((item) => item.name === "books");
+  if (!extract || !declared) {
+    return { pass: false, cause: "missing step type", detail: "no extract or CSV output; category is a click, not an input" };
+  }
+  if (input.args.category !== category) {
+    return { pass: false, cause: "pass check", detail: `replay category was ${String(input.args.category || "empty")}, wanted ${category}` };
+  }
+  const pageText = `${input.page.title || ""} ${input.page.text || ""} ${input.page.url || ""}`;
+  if (!new RegExp(category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(pageText)) {
+    return { pass: false, cause: "pass check", detail: `${category} was not the page that was scraped` };
+  }
+  const shown = Number((input.page.text || "").match(/(\d+)\s+results/i)?.[1] || "0");
+  const table = (input.replay.outputs || []).find((item) => item.type === "table" && (item.name === "books" || item.rows));
+  const rows = table?.rows || [];
+  if (!shown || rows.length !== shown) {
+    return { pass: false, cause: "pass check", detail: `CSV rows ${rows.length} !== site count ${shown || "unread"}` };
+  }
+  const csv = input.csv || "";
+  const csvRows = csv.trim() ? csv.trim().split(/\n/).length - 1 : 0;
+  if (csvRows !== shown) {
+    return { pass: false, cause: "pass check", detail: `CSV file has ${csvRows} rows; the site showed ${shown}` };
+  }
+  const header = csv.split(/\n/)[0] || "";
+  const missingCols = ["title", "price", "rating"].filter((name) => !new RegExp(`\\b${name}\\b`).test(header));
+  if (missingCols.length || !/£/.test(csv)) {
+    return { pass: false, cause: "pass check", detail: `CSV header missed ${missingCols.join(", ") || "a price"}` };
+  }
+  const prices = [...new Set([...(input.page.text || "").matchAll(/£\d+\.\d{2}/g)].map((item) => item[0]))];
+  const missingPrices = prices.filter((price) => !csv.includes(price));
+  if (!prices.length || missingPrices.length) {
+    return { pass: false, cause: "pass check", detail: missingPrices.length ? `CSV missed page prices ${missingPrices.slice(0, 4).join(", ")}` : "the page showed no prices" };
+  }
+  const titled = rows.filter((row) => {
+    const title = row.title || "";
+    return title.length > 3 && (input.page.text || "").includes(title.slice(0, Math.min(12, title.length)));
+  });
+  if (!titled.length) {
+    return { pass: false, cause: "pass check", detail: "CSV titles were not on the category page" };
+  }
+  return { pass: true, cause: "", detail: `${shown} ${category} rows matched the site, with a books CSV` };
 }
 
 function scoreP6(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
@@ -1061,13 +1147,23 @@ function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: str
 function scoreP9(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = evidence(input);
   const pressed = input.workflow.steps.some((step) => step.action === "click" && /place order/i.test(step.label));
-  const confirm = input.workflow.steps.some((step) => step.action === "confirm");
+  const confirm = input.workflow.steps.some((step) => step.action === "confirm" && step.confirm === true && /place order/i.test(`${step.label} ${step.identity?.name || ""} ${step.identity?.text || ""}`));
   const shadow = input.workflow.steps.some((step) => /shop-app/i.test(JSON.stringify(step.identity || {})));
   if (pressed) return { pass: false, cause: "missing step type", detail: "Place Order was clicked" };
   if (!confirm) return { pass: false, cause: shadow ? "shadow DOM" : "missing step type", detail: shadow ? "clicks landed on the shadow host and there is no confirm gate" : "no confirm gate before Place Order" };
-  if (!/cart|subtotal|total/i.test(text)) return { pass: false, cause: "shadow DOM", detail: "cart badge and subtotal were not in the replay evidence" };
-  if (input.replay.status !== "paused") return { pass: false, cause: "missing step type", detail: "replay did not halt on the confirm gate" };
-  return { pass: true, cause: "", detail: "cart matched and the run halted before Place Order" };
+  if (!/YouTube Organic Cotton/i.test(text) || !/\$29\.50/.test(text)) {
+    return { pass: false, cause: "shadow DOM", detail: "the cart did not show the YouTube shirt at $29.50" };
+  }
+  if (input.replay.status !== "paused" || input.replay.pausedKind !== "confirm") {
+    return { pass: false, cause: "missing step type", detail: `replay status was ${input.replay.status || "empty"} / ${input.replay.pausedKind || "no pause"}` };
+  }
+  const ask = input.replay.ask?.instruction || "";
+  if (!/place order/i.test(ask) || !/needs you/i.test(text)) {
+    return { pass: false, cause: "missing step type", detail: "the pause did not show needs you at Place Order" };
+  }
+  const ship = input.run === 1 ? "2 Market" : "3 Market";
+  if (!text.includes(ship)) return { pass: false, cause: "pass check", detail: `the replay address was not ${ship}` };
+  return { pass: true, cause: "", detail: `cart total $29.50 and the run paused at Place Order (${ship})` };
 }
 
 function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
@@ -1171,10 +1267,10 @@ function runByte(id: string): number {
   return id.charCodeAt(1) || 1;
 }
 
-async function saveShot(port: number, home: string, id: string, task: string, run: number): Promise<string | undefined> {
+async function saveShot(port: number, home: string, id: string, task: string, run: number, size?: { width: number; height: number }): Promise<string | undefined> {
   const file = `${task}-r${run}.png`;
   try {
-    await call(port, "POST", "/api/replay/shot", { id, file });
+    await call(port, "POST", "/api/replay/shot", { id, file, ...size });
   } catch {
     return undefined;
   }
@@ -1513,6 +1609,8 @@ async function call(port: number, method: string, pathname: string, body?: unkno
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
+  const type = res.headers.get("content-type") || "";
+  if (res.ok && type.includes("text/csv")) return text;
   let json: { error?: string } = {};
   try { json = text ? JSON.parse(text) as { error?: string } : {}; } catch { json = { error: text.slice(0, 300) }; }
   if (!res.ok) throw new Error(`${method} ${pathname} ${res.status} ${json.error || text.slice(0, 300)}`);

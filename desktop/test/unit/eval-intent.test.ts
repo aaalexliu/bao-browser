@@ -43,10 +43,11 @@ test("ground-truth trails condense through noise and replay twice", async () => 
     assert.deepEqual(textDefaults(once), truthTexts(item), item.id);
     assert.equal(params.recall, 1, item.id);
     assert.deepEqual(humanKeys(once).sort(), expectedHuman(item).sort(), item.id);
+    const stopsForPurchase = once.steps.some((step) => step.confirm === true);
     for (const spec of item.replays) {
       const run = await replayCase(once, item, spec);
       assert.equal(run.modelCalls, 0, item.id);
-      assert.equal(run.status, "passed", `${item.id} ${run.reason}`);
+      assert.equal(run.status, stopsForPurchase ? "paused" : "passed", `${item.id} ${run.reason || run.status}`);
       assert.equal(run.oracle, null, `${item.id} ${run.oracle}`);
     }
   }

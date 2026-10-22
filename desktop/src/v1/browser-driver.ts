@@ -619,14 +619,14 @@ export class BrowserDriver implements Driver {
     this.prompts?.resumeCapture?.();
   }
 
-  showAsk(ask: HumanAsk): void {
+  async showAsk(ask: HumanAsk): Promise<void> {
     this.prompts?.showAsk?.(ask);
     const text = ask.kind === "confirm"
-      ? `You're in control. ${ask.instruction}`
+      ? `needs you. You're in control. ${ask.instruction}`
       : ask.kind === "wall"
         ? ask.instruction
         : "You're in control. Sign in on this page. bao isn't recording keystrokes in password fields.";
-    void this.injectStrip(ask.kind, text);
+    await this.injectStrip(ask.kind, text);
   }
 
   private async injectStrip(kind: HumanAsk["kind"], text: string): Promise<void> {

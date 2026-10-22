@@ -1,37 +1,233 @@
 {
-  "args": {},
+  "args": {
+    "sizeSelect": "M",
+    "quantitySelect": "2",
+    "username": "bao-buyer@example.com",
+    "accountPhone": "4155550199",
+    "shipAddress": "2 Market",
+    "shipCity": "New York",
+    "shipState": "CA",
+    "shipZip": "10001",
+    "ccName": "Ada"
+  },
   "replay": {
     "heals": [],
-    "repairs": [],
+    "repairs": [
+      {
+        "stepId": "wf-1792701379505-2",
+        "repair": "wait",
+        "detail": "waited for 8000ms"
+      }
+    ],
     "locatorHits": [
       {
-        "stepId": "wf-1792675898524-1",
+        "stepId": "wf-1792701379505-2",
+        "kind": "css",
+        "detail": "css link"
+      },
+      {
+        "stepId": "wf-1792701379505-3",
+        "kind": "css",
+        "detail": "css Size"
+      },
+      {
+        "stepId": "wf-1792701379505-4",
+        "kind": "css",
+        "detail": "css Quantity"
+      },
+      {
+        "stepId": "wf-1792701379505-5",
         "kind": "role",
-        "detail": "role Men's T-Shirts"
+        "detail": "role Add this item to cart"
+      },
+      {
+        "stepId": "wf-1792701379505-6",
+        "kind": "css",
+        "detail": "css VIEW CART"
+      },
+      {
+        "stepId": "wf-1792701379505-7",
+        "kind": "css",
+        "detail": "css CHECKOUT"
+      },
+      {
+        "stepId": "wf-1792701379505-8",
+        "kind": "css",
+        "detail": "css Email Account Information"
+      },
+      {
+        "stepId": "wf-1792701379505-9",
+        "kind": "css",
+        "detail": "css Phone Number Account Information"
+      },
+      {
+        "stepId": "wf-1792701379505-10",
+        "kind": "css",
+        "detail": "css Address Shipping Address"
+      },
+      {
+        "stepId": "wf-1792701379505-11",
+        "kind": "css",
+        "detail": "css City Shipping Address"
+      },
+      {
+        "stepId": "wf-1792701379505-12",
+        "kind": "css",
+        "detail": "css State/Province Shipping Address"
+      },
+      {
+        "stepId": "wf-1792701379505-13",
+        "kind": "css",
+        "detail": "css Zip/Postal Code Shipping Address"
+      },
+      {
+        "stepId": "wf-1792701379505-14",
+        "kind": "css",
+        "detail": "css ccName"
       }
     ],
     "receipts": [],
     "trajectory": [
       {
-        "stepId": "wf-1792675898524-0",
+        "stepId": "wf-1792701379505-0",
         "action": "navigate",
         "target": "page",
         "postcondition": "url shop.polymer-project.org",
         "timing": "lt1s"
       },
       {
-        "stepId": "wf-1792675898524-1",
+        "stepId": "wf-1792701379505-1",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url shop.polymer-project.org",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-2",
         "action": "click",
-        "target": "link:Men's T-Shirts",
-        "postcondition": "text Shop Now",
+        "target": "link",
+        "postcondition": "url /detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey",
+        "timing": "lt10s"
+      },
+      {
+        "stepId": "wf-1792701379505-3",
+        "action": "select",
+        "target": "listbox#sizeSelect",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-4",
+        "action": "select",
+        "target": "listbox#quantitySelect",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-5",
+        "action": "click",
+        "target": "button:Add this item to cart",
+        "postcondition": "text 2",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-6",
+        "action": "click",
+        "target": "link#viewCartAnchor",
+        "postcondition": "text Add to Cart",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-7",
+        "action": "click",
+        "target": "link:CHECKOUT",
+        "postcondition": "text Checkout",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-8",
+        "action": "type",
+        "target": "textbox#accountEmail",
+        "postcondition": "value {{username}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-9",
+        "action": "type",
+        "target": "input#accountPhone",
+        "postcondition": "value {{accountPhone}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-10",
+        "action": "type",
+        "target": "textbox#shipAddress",
+        "postcondition": "value {{shipAddress}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-11",
+        "action": "type",
+        "target": "textbox#shipCity",
+        "postcondition": "value {{shipCity}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-12",
+        "action": "type",
+        "target": "textbox#shipState",
+        "postcondition": "value {{shipState}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-13",
+        "action": "type",
+        "target": "textbox#shipZip",
+        "postcondition": "value {{shipZip}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-14",
+        "action": "type",
+        "target": "textbox#ccName",
+        "postcondition": "value {{ccName}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792701379505-15",
+        "action": "confirm",
+        "target": "button:Place Order",
+        "postcondition": "none",
         "timing": "lt1s"
       }
     ],
     "trail": [
       {
         "kind": "click",
-        "stepId": "wf-1792675898524-1",
-        "target": "Men's T-Shirts"
+        "stepId": "wf-1792701379505-2",
+        "target": "link"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792701379505-5",
+        "target": "ADD TO CART"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792701379505-6",
+        "target": "viewCartAnchor"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792701379505-7",
+        "target": "CHECKOUT"
+      },
+      {
+        "kind": "handoff",
+        "stepId": "wf-1792701379505-15",
+        "phase": "start",
+        "ts": 1792701385682,
+        "text": "Handoff started Oct 22, 8:36 PM UTC"
       }
     ],
     "pageClasses": [],
@@ -42,136 +238,556 @@
         "method": "GET",
         "url": "https://shop.polymer-project.org/",
         "status": 200,
-        "ts": 1792684373205
+        "ts": 1792701379707
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
         "status": 200,
-        "ts": 1792684373281
+        "ts": 1792701379770
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
         "status": 200,
-        "ts": 1792684373539
-      },
-      {
-        "stepId": "open",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
-        "status": 200,
-        "ts": 1792684373674
-      },
-      {
-        "stepId": "open",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
-        "status": 200,
-        "ts": 1792684373676
-      },
-      {
-        "stepId": "open",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
-        "status": 200,
-        "ts": 1792684373679
+        "ts": 1792701379937
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
         "status": 200,
-        "ts": 1792684373694
+        "ts": 1792701380028
       },
       {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
-        "status": 200,
-        "ts": 1792684373778
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/",
-        "status": 200,
-        "ts": 1792684373788
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
-        "status": 200,
-        "ts": 1792684373798
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
-        "status": 200,
-        "ts": 1792684373799
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
-        "status": 200,
-        "ts": 1792684373813
-      },
-      {
-        "stepId": "wf-1792675898524-0",
+        "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
         "status": 200,
-        "ts": 1792684373813
+        "ts": 1792701380029
       },
       {
-        "stepId": "wf-1792675898524-0",
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792701380029
+      },
+      {
+        "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
         "status": 200,
-        "ts": 1792684373813
+        "ts": 1792701380030
       },
       {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
-        "status": 200,
-        "ts": 1792684373813
-      },
-      {
-        "stepId": "wf-1792675898524-0",
+        "stepId": "wf-1792701379505-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
         "status": 200,
-        "ts": 1792684373818
+        "ts": 1792701380066
       },
       {
-        "stepId": "wf-1792675898524-1",
+        "stepId": "wf-1792701379505-0",
         "method": "GET",
         "url": "https://www.google-analytics.com/analytics.js",
         "status": 200,
-        "ts": 1792684373863
+        "ts": 1792701380107
       },
       {
-        "stepId": "wf-1792675898524-1",
+        "stepId": "wf-1792701379505-0",
         "method": "POST",
         "url": "https://www.google-analytics.com/j/collect",
         "status": 200,
-        "ts": 1792684373916
+        "ts": 1792701380133
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/",
+        "status": 200,
+        "ts": 1792701380148
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
+        "status": 200,
+        "ts": 1792701380152
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
+        "status": 200,
+        "ts": 1792701380152
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792701380169
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
+        "status": 200,
+        "ts": 1792701380169
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
+        "status": 200,
+        "ts": 1792701380169
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "status": 200,
+        "ts": 1792701380169
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
+        "status": 200,
+        "ts": 1792701380174
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "GET",
+        "url": "https://www.google-analytics.com/analytics.js",
+        "status": 200,
+        "ts": 1792701380183
+      },
+      {
+        "stepId": "wf-1792701379505-0",
+        "method": "POST",
+        "url": "https://www.google-analytics.com/j/collect",
+        "status": 200,
+        "ts": 1792701380213
+      },
+      {
+        "stepId": "wf-1792701379505-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/list/mens_tshirts",
+        "status": 200,
+        "ts": 1792701380283
+      },
+      {
+        "stepId": "wf-1792701379505-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
+        "status": 200,
+        "ts": 1792701380287
+      },
+      {
+        "stepId": "wf-1792701379505-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
+        "status": 200,
+        "ts": 1792701380287
+      },
+      {
+        "stepId": "wf-1792701379505-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792701380301
+      },
+      {
+        "stepId": "wf-1792701379505-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
+        "status": 200,
+        "ts": 1792701380302
+      },
+      {
+        "stepId": "wf-1792701379505-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
+        "status": 200,
+        "ts": 1792701380302
+      },
+      {
+        "stepId": "wf-1792701379505-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "status": 200,
+        "ts": 1792701380302
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-list.js",
+        "status": 200,
+        "ts": 1792701380349
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
+        "status": 200,
+        "ts": 1792701380355
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://www.google-analytics.com/analytics.js",
+        "status": 200,
+        "ts": 1792701380366
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "POST",
+        "url": "https://www.google-analytics.com/j/collect",
+        "status": 200,
+        "ts": 1792701380385
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/mens_tshirts.json",
+        "status": 200,
+        "ts": 1792701380416
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/mens_tshirts.json",
+        "status": 200,
+        "ts": 1792701380418
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13018B.jpg",
+        "status": 200,
+        "ts": 1792701380517
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-11017B.jpg",
+        "status": 200,
+        "ts": 1792701380518
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13273B.jpg",
+        "status": 200,
+        "ts": 1792701380518
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13276B.jpg",
+        "status": 200,
+        "ts": 1792701380518
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13289B.jpg",
+        "status": 200,
+        "ts": 1792701380520
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-11019B.jpg",
+        "status": 200,
+        "ts": 1792701380521
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13272B.jpg",
+        "status": 200,
+        "ts": 1792701380521
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13262B.jpg",
+        "status": 200,
+        "ts": 1792701380525
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13270B.jpg",
+        "status": 200,
+        "ts": 1792701380525
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13279B.jpg",
+        "status": 200,
+        "ts": 1792701380540
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13274B.jpg",
+        "status": 200,
+        "ts": 1792701380540
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13291B.jpg",
+        "status": 200,
+        "ts": 1792701380540
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13286B.jpg",
+        "status": 200,
+        "ts": 1792701380545
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13277B.jpg",
+        "status": 200,
+        "ts": 1792701380556
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13271B.jpg",
+        "status": 200,
+        "ts": 1792701380556
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13269B.jpg",
+        "status": 200,
+        "ts": 1792701380556
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13290B.jpg",
+        "status": 200,
+        "ts": 1792701380556
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13240B.jpg",
+        "status": 200,
+        "ts": 1792701380556
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13288B.jpg",
+        "status": 200,
+        "ts": 1792701380556
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13058B.jpg",
+        "status": 200,
+        "ts": 1792701380582
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13278B.jpg",
+        "status": 200,
+        "ts": 1792701380582
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13265B.jpg",
+        "status": 200,
+        "ts": 1792701380593
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13285B.jpg",
+        "status": 200,
+        "ts": 1792701380594
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13239B.jpg",
+        "status": 200,
+        "ts": 1792701380594
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13280B.jpg",
+        "status": 200,
+        "ts": 1792701380595
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13256B.jpg",
+        "status": 200,
+        "ts": 1792701380600
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13282B.jpg",
+        "status": 200,
+        "ts": 1792701380600
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13264B.jpg",
+        "status": 200,
+        "ts": 1792701380603
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13213B.jpg",
+        "status": 200,
+        "ts": 1792701380603
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13268B.jpg",
+        "status": 200,
+        "ts": 1792701380617
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13292B.jpg",
+        "status": 200,
+        "ts": 1792701380618
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13266B.jpg",
+        "status": 200,
+        "ts": 1792701380619
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13241B.jpg",
+        "status": 200,
+        "ts": 1792701380619
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13097B.jpg",
+        "status": 200,
+        "ts": 1792701380620
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13267B.jpg",
+        "status": 200,
+        "ts": 1792701380622
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13260B.jpg",
+        "status": 200,
+        "ts": 1792701380623
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13263B.jpg",
+        "status": 200,
+        "ts": 1792701380623
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13153B.jpg",
+        "status": 200,
+        "ts": 1792701380624
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13275B.jpg",
+        "status": 200,
+        "ts": 1792701380624
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13130B.jpg",
+        "status": 200,
+        "ts": 1792701381446
+      },
+      {
+        "stepId": "wf-1792701379505-2",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-detail.js",
+        "status": 200,
+        "ts": 1792701382032
+      },
+      {
+        "stepId": "wf-1792701379505-3",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13058A.jpg",
+        "status": 200,
+        "ts": 1792701382090
+      },
+      {
+        "stepId": "wf-1792701379505-6",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-cart.js",
+        "status": 200,
+        "ts": 1792701383262
+      },
+      {
+        "stepId": "wf-1792701379505-6",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13058B.jpg",
+        "status": 200,
+        "ts": 1792701383262
+      },
+      {
+        "stepId": "wf-1792701379505-7",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-checkout.js",
+        "status": 200,
+        "ts": 1792701383501
       }
     ],
-    "runId": "run-mvjpzni8-i9r4",
-    "status": "failed",
+    "runId": "run-mvk045or-lyzs",
+    "status": "paused",
     "steps": [
       {
-        "id": "wf-1792675898524-0",
+        "id": "wf-1792701379505-0",
         "status": "passed",
-        "startedAt": 1792684373708,
-        "endedAt": 1792684373840,
+        "startedAt": 1792701380064,
+        "endedAt": 1792701380196,
         "snapshot": {
           "dom": [
             {
@@ -286,10 +902,92 @@
         }
       },
       {
-        "id": "wf-1792675898524-1",
+        "id": "wf-1792701379505-1",
         "status": "passed",
-        "startedAt": 1792684373863,
-        "endedAt": 1792684373961,
+        "startedAt": 1792701380219,
+        "endedAt": 1792701380311,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP",
+              "id": "header"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link",
+              "text": "Made by Polymer"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n- main\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
+        }
+      },
+      {
+        "id": "wf-1792701379505-2",
+        "status": "passed",
+        "startedAt": 1792701380325,
+        "endedAt": 1792701382031,
         "snapshot": {
           "dom": [
             {
@@ -389,21 +1087,1931 @@
             },
             {
               "role": "heading",
-              "text": "Sorry, we couldn't find that page"
+              "text": "Men's T-Shirts"
             },
             {
-              "role": "link",
-              "text": "Go to the home page"
+              "role": "link"
             },
             {
-              "role": "link",
-              "text": "Made by Polymer"
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
             }
           ],
-          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Home, loaded"
+          "ax": "- text: SHOP\n- navigation:\n  - link \"Go back\":\n    - /url: /list/mens_tshirts\n    - button \"Go back\":\n      - img\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main:\n  - img \"YouTube Organic Cotton T-Shirt - Grey\"\n  - heading \"YouTube Organic Cotton T-Shirt - Grey\" [level=1]\n  - text: $14.75 Size\n  - combobox \"Size\":\n    - option \"XS\"\n    - option \"S\"\n    - option \"M\" [selected]\n    - option \"L\"\n    - option \"XL\"\n  - text: Quantity\n  - combobox \"Quantity\":\n    - option \"1\" [selected]\n    - option \"2\"\n    - option \"3\"\n    - option \"4\"\n    - option \"5\"\n  - heading \"Description\" [level=2]\n  - paragraph: Stay casual and cool in this 100% organic pre-shrunk cotton T-shirt. Available in charcoal grey with full-color YouTube logo screened on front.\n  - button \"Add this item to cart\": Add to Cart\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
         }
+      },
+      {
+        "id": "wf-1792701379505-3",
+        "status": "passed",
+        "startedAt": 1792701382074,
+        "endedAt": 1792701382263,
+        "beforeShot": "wf-1792701379505-3-before.png",
+        "afterShot": "wf-1792701379505-3-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP Men's Outerwear Ladies Outerwear Men's T-Shirts Ladies T-Shirts",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 0 items"
+            },
+            {
+              "role": "link",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"Go back\":\n    - /url: /list/mens_tshirts\n    - button \"Go back\":\n      - img\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main:\n  - img \"YouTube Organic Cotton T-Shirt - Grey\"\n  - heading \"YouTube Organic Cotton T-Shirt - Grey\" [level=1]\n  - text: $14.75 Size\n  - combobox \"Size\":\n    - option \"XS\"\n    - option \"S\"\n    - option \"M\" [selected]\n    - option \"L\"\n    - option \"XL\"\n  - text: Quantity\n  - combobox \"Quantity\":\n    - option \"1\" [selected]\n    - option \"2\"\n    - option \"3\"\n    - option \"4\"\n    - option \"5\"\n  - heading \"Description\" [level=2]\n  - paragraph: Stay casual and cool in this 100% organic pre-shrunk cotton T-shirt. Available in charcoal grey with full-color YouTube logo screened on front.\n  - button \"Add this item to cart\": Add to Cart\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: YouTube Organic Cotton T-Shirt - Grey, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-4",
+        "status": "passed",
+        "startedAt": 1792701382339,
+        "endedAt": 1792701382502,
+        "beforeShot": "wf-1792701379505-4-before.png",
+        "afterShot": "wf-1792701379505-4-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP Men's Outerwear Ladies Outerwear Men's T-Shirts Ladies T-Shirts",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 0 items"
+            },
+            {
+              "role": "link",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"Go back\":\n    - /url: /list/mens_tshirts\n    - button \"Go back\":\n      - img\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main:\n  - img \"YouTube Organic Cotton T-Shirt - Grey\"\n  - heading \"YouTube Organic Cotton T-Shirt - Grey\" [level=1]\n  - text: $14.75 Size\n  - combobox \"Size\":\n    - option \"XS\"\n    - option \"S\"\n    - option \"M\" [selected]\n    - option \"L\"\n    - option \"XL\"\n  - text: Quantity\n  - combobox \"Quantity\":\n    - option \"1\"\n    - option \"2\" [selected]\n    - option \"3\"\n    - option \"4\"\n    - option \"5\"\n  - heading \"Description\" [level=2]\n  - paragraph: Stay casual and cool in this 100% organic pre-shrunk cotton T-shirt. Available in charcoal grey with full-color YouTube logo screened on front.\n  - button \"Add this item to cart\": Add to Cart\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: YouTube Organic Cotton T-Shirt - Grey, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-5",
+        "status": "passed",
+        "startedAt": 1792701382574,
+        "endedAt": 1792701382763,
+        "beforeShot": "wf-1792701379505-5-before.png",
+        "afterShot": "wf-1792701379505-5-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2 Men's Outerwear Ladies Outerwear Men's T-Shirts Ladies T-Shirts",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "link",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"Go back\":\n    - /url: /list/mens_tshirts\n    - button \"Go back\":\n      - img\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main:\n  - img \"YouTube Organic Cotton T-Shirt - Grey\"\n  - heading \"YouTube Organic Cotton T-Shirt - Grey\" [level=1]\n  - text: $14.75 Size\n  - combobox \"Size\":\n    - option \"XS\"\n    - option \"S\"\n    - option \"M\" [selected]\n    - option \"L\"\n    - option \"XL\"\n  - text: Quantity\n  - combobox \"Quantity\":\n    - option \"1\"\n    - option \"2\" [selected]\n    - option \"3\"\n    - option \"4\"\n    - option \"5\"\n  - heading \"Description\" [level=2]\n  - paragraph: Stay casual and cool in this 100% organic pre-shrunk cotton T-shirt. Available in charcoal grey with full-color YouTube logo screened on front.\n  - button \"Add this item to cart\": Add to Cart\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
+        }
+      },
+      {
+        "id": "wf-1792701379505-6",
+        "status": "passed",
+        "startedAt": 1792701382841,
+        "endedAt": 1792701383261,
+        "beforeShot": "wf-1792701379505-6-before.png",
+        "afterShot": "wf-1792701379505-6-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Your Cart\" [level=1]\n  - text: (1 item)\n  - link \"YouTube Organic Cotton T-Shirt - Grey\":\n    - /url: /detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey\n    - img \"YouTube Organic Cotton T-Shirt - Grey\"\n  - link \"YouTube Organic Cotton T-Shirt - Grey\":\n    - /url: /detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey\n  - text: \"Qty:\"\n  - combobox \"Change quantity\":\n    - option \"1\"\n    - option \"2\" [selected]\n    - option \"3\"\n    - option \"4\"\n    - option \"5\"\n    - option \"6\"\n    - option \"7\"\n    - option \"8\"\n    - option \"9\"\n    - option \"10\"\n    - option \"11\"\n    - option \"12\"\n  - text: \"Size: M $14.75\"\n  - button \"Delete item YouTube Organic Cotton T-Shirt - Grey\":\n    - img\n  - text: \"Total: $29.50\"\n  - link \"Checkout\":\n    - /url: /checkout\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
+        }
+      },
+      {
+        "id": "wf-1792701379505-7",
+        "status": "passed",
+        "startedAt": 1792701383340,
+        "endedAt": 1792701383500,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\"\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
+        }
+      },
+      {
+        "id": "wf-1792701379505-8",
+        "status": "passed",
+        "startedAt": 1792701383520,
+        "endedAt": 1792701383755,
+        "beforeShot": "wf-1792701379505-8-before.png",
+        "afterShot": "wf-1792701379505-8-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n    - text: bao-buyer@example.com\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\"\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Checkout, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-9",
+        "status": "passed",
+        "startedAt": 1792701383825,
+        "endedAt": 1792701384031,
+        "beforeShot": "wf-1792701379505-9-before.png",
+        "afterShot": "wf-1792701379505-9-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n    - text: bao-buyer@example.com\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n    - text: \"4155550199\"\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\"\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Checkout, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-10",
+        "status": "passed",
+        "startedAt": 1792701384109,
+        "endedAt": 1792701384337,
+        "beforeShot": "wf-1792701379505-10-before.png",
+        "afterShot": "wf-1792701379505-10-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n    - text: bao-buyer@example.com\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n    - text: \"4155550199\"\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n    - text: 2 Market\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\"\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Checkout, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-11",
+        "status": "passed",
+        "startedAt": 1792701384409,
+        "endedAt": 1792701384630,
+        "beforeShot": "wf-1792701379505-11-before.png",
+        "afterShot": "wf-1792701379505-11-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n    - text: bao-buyer@example.com\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n    - text: \"4155550199\"\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n    - text: 2 Market\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n    - text: New York\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\"\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Checkout, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-12",
+        "status": "passed",
+        "startedAt": 1792701384710,
+        "endedAt": 1792701384941,
+        "beforeShot": "wf-1792701379505-12-before.png",
+        "afterShot": "wf-1792701379505-12-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n    - text: bao-buyer@example.com\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n    - text: \"4155550199\"\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n    - text: 2 Market\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n    - text: New York\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n    - text: CA\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\"\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Checkout, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-13",
+        "status": "passed",
+        "startedAt": 1792701385010,
+        "endedAt": 1792701385224,
+        "beforeShot": "wf-1792701379505-13-before.png",
+        "afterShot": "wf-1792701379505-13-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n    - text: bao-buyer@example.com\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n    - text: \"4155550199\"\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n    - text: 2 Market\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n    - text: New York\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n    - text: CA\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n    - text: \"10001\"\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\"\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Checkout, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-14",
+        "status": "passed",
+        "startedAt": 1792701385292,
+        "endedAt": 1792701385500,
+        "beforeShot": "wf-1792701379505-14-before.png",
+        "afterShot": "wf-1792701379505-14-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP 2",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 2 items"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 2 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 2 items\"':\n      - img\n- main:\n  - heading \"Checkout\" [level=1]\n  - text: Shop is a demo app - form data will not be sent\n  - heading \"Account Information\" [level=2]\n  - textbox \"Email Account Information\":\n    - /placeholder: Email\n    - text: bao-buyer@example.com\n  - textbox \"Phone Number Account Information\":\n    - /placeholder: Phone Number\n    - text: \"4155550199\"\n  - heading \"Shipping Address\" [level=2]\n  - textbox \"Address Shipping Address\":\n    - /placeholder: Address\n    - text: 2 Market\n  - textbox \"City Shipping Address\":\n    - /placeholder: City\n    - text: New York\n  - textbox \"State/Province Shipping Address\":\n    - /placeholder: State/Province\n    - text: CA\n  - textbox \"Zip/Postal Code Shipping Address\":\n    - /placeholder: Zip/Postal Code\n    - text: \"10001\"\n  - text: Country\n  - combobox \"Country Shipping Address\":\n    - option \"United States\" [selected]\n    - option \"Canada\"\n  - heading \"Billing Address\" [level=2]\n  - checkbox \"Use different billing address\"\n  - text: Use different billing address\n  - heading \"Payment Method\" [level=2]\n  - textbox \"Cardholder Name\": Ada\n  - textbox \"Card Number\"\n  - text: Expiry\n  - combobox \"Expiry month\":\n    - option \"Jan\" [selected]\n    - option \"Feb\"\n    - option \"Mar\"\n    - option \"Apr\"\n    - option \"May\"\n    - option \"Jun\"\n    - option \"Jul\"\n    - option \"Aug\"\n    - option \"Sep\"\n    - option \"Oct\"\n    - option \"Nov\"\n    - option \"Dec\"\n  - combobox \"Expiry year\":\n    - option \"2016\" [selected]\n    - option \"2017\"\n    - option \"2018\"\n    - option \"2019\"\n    - option \"2020\"\n    - option \"2021\"\n    - option \"2022\"\n    - option \"2023\"\n    - option \"2024\"\n    - option \"2025\"\n    - option \"2026\"\n  - textbox \"CVV\"\n  - heading \"Order Summary\" [level=2]\n  - text: YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50\n  - button \"Place Order\"\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Checkout, loaded"
+        }
+      },
+      {
+        "id": "wf-1792701379505-15",
+        "status": "paused",
+        "reason": "confirm",
+        "startedAt": 1792701385575,
+        "endedAt": 1792701385682,
+        "beforeShot": "wf-1792701379505-15-before.png"
       }
     ],
+    "pausedStepId": "wf-1792701379505-15",
+    "pausedKind": "confirm",
+    "ask": {
+      "kind": "confirm",
+      "workflowId": "wf-1792701379505",
+      "workflowName": "Captured workflow",
+      "stepId": "wf-1792701379505-15",
+      "stepIndex": 16,
+      "stepCount": 16,
+      "label": "Confirm \"Place Order\"",
+      "button": "Place Order",
+      "site": "shop.polymer-project.org",
+      "windowName": "Bao window",
+      "instruction": "Press Place Order on shop.polymer-project.org in the Bao window",
+      "startedAt": 1792701385674,
+      "deadline": 1792708585674,
+      "timeoutMs": 7200000,
+      "runId": "run-mvk045or-lyzs"
+    },
     "modelCalls": 0,
     "mode": "auto",
     "fileProof": [],
@@ -415,14 +3023,14 @@
     }
   },
   "page": {
-    "url": "https://shop.polymer-project.org/list/mens_tshirts",
-    "title": "Men's T-Shirts - SHOP",
-    "text": ""
+    "url": "https://shop.polymer-project.org/checkout",
+    "title": "Checkout - SHOP",
+    "text": "needs you. You're in control. Press Place Order on shop.polymer-project.org in the Bao window SHOP Checkout Shop is a demo app - form data will not be sent Account Information Shipping Address Country United States Canada Billing Address Use different billing address Payment Method Expiry Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec 2016 2017 2018 2019 2020 2021 2022 2023 2024 2025 2026 Order Summary YouTube Organic Cotton T-Shirt - Grey $29.50 Total $29.50 Made by Polymer Demo Only Checkout, loaded"
   },
   "downloaded": [],
   "shot": {
-    "sha256": "dad7d9fc0048bc51102f10c6dc8e503930c49213fbf0f0ada14cd872a65b68de",
-    "samePixels": true,
+    "sha256": "aaa0d428df926b2d3850fa7d24cc74e1e8188cbfe562c0e2f5dfbf7e9541e304",
+    "samePixels": false,
     "identity": ""
   }
 }

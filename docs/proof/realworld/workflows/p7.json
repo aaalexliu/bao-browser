@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 2,
-  "id": "wf-1792681416284",
+  "id": "wf-1792701197004",
   "name": "Captured workflow",
   "startUrl": "https://en.wikipedia.org/wiki/Special:Search",
   "inputs": [
@@ -15,7 +15,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792681416284-0",
+      "id": "wf-1792701197004-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://en.wikipedia.org/wiki/Special:Search",
@@ -29,7 +29,7 @@
       }
     },
     {
-      "id": "wf-1792681416284-1",
+      "id": "wf-1792701197004-1",
       "index": 1,
       "action": "type",
       "label": "Type {{search}}",
@@ -74,7 +74,7 @@
       }
     },
     {
-      "id": "wf-1792681416284-2",
+      "id": "wf-1792701197004-2",
       "index": 2,
       "action": "key",
       "label": "Press Enter",
@@ -119,7 +119,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792681416284-3",
+      "id": "wf-1792701197004-3",
       "index": 3,
       "action": "click",
       "label": "Click \"Past revisions of this page [alt-h]\"",
@@ -163,5 +163,5 @@
       "confidence": "low"
     }
   ],
-  "createdAt": 1792681413751
+  "createdAt": 1792701194275
 }

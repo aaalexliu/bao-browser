@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 2,
-  "id": "wf-1792695275250",
+  "id": "wf-1792701097515",
   "name": "Captured workflow",
   "startUrl": "https://demoqa.com/webtables",
   "inputs": [
@@ -218,7 +218,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792695275250-0",
+      "id": "wf-1792701097515-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://demoqa.com/webtables",
@@ -232,7 +232,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-1",
+      "id": "wf-1792701097515-1",
       "index": 1,
       "action": "click",
       "label": "Click \"Add\"",
@@ -278,7 +278,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-2",
+      "id": "wf-1792701097515-2",
       "index": 2,
       "action": "type",
       "label": "Type {{firstName}}",
@@ -311,7 +311,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-3",
+      "id": "wf-1792701097515-3",
       "index": 3,
       "action": "type",
       "label": "Type {{lastName}}",
@@ -344,7 +344,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-4",
+      "id": "wf-1792701097515-4",
       "index": 4,
       "action": "type",
       "label": "Type {{username}}",
@@ -377,7 +377,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-5",
+      "id": "wf-1792701097515-5",
       "index": 5,
       "action": "type",
       "label": "Type {{age}}",
@@ -410,7 +410,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-6",
+      "id": "wf-1792701097515-6",
       "index": 6,
       "action": "type",
       "label": "Type {{salary}}",
@@ -443,7 +443,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-7",
+      "id": "wf-1792701097515-7",
       "index": 7,
       "action": "type",
       "label": "Type {{department}}",
@@ -476,7 +476,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-8",
+      "id": "wf-1792701097515-8",
       "index": 8,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -522,7 +522,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-9",
+      "id": "wf-1792701097515-9",
       "index": 9,
       "action": "click",
       "label": "Click \"Add\"",
@@ -568,7 +568,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-10",
+      "id": "wf-1792701097515-10",
       "index": 10,
       "action": "type",
       "label": "Type {{firstName2}}",
@@ -601,7 +601,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-11",
+      "id": "wf-1792701097515-11",
       "index": 11,
       "action": "type",
       "label": "Type {{lastName2}}",
@@ -634,7 +634,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-12",
+      "id": "wf-1792701097515-12",
       "index": 12,
       "action": "type",
       "label": "Type {{username2}}",
@@ -667,7 +667,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-13",
+      "id": "wf-1792701097515-13",
       "index": 13,
       "action": "type",
       "label": "Type {{age2}}",
@@ -700,7 +700,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-14",
+      "id": "wf-1792701097515-14",
       "index": 14,
       "action": "type",
       "label": "Type {{salary2}}",
@@ -733,7 +733,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-15",
+      "id": "wf-1792701097515-15",
       "index": 15,
       "action": "type",
       "label": "Type {{department2}}",
@@ -766,7 +766,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-16",
+      "id": "wf-1792701097515-16",
       "index": 16,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -812,7 +812,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-17",
+      "id": "wf-1792701097515-17",
       "index": 17,
       "action": "click",
       "label": "Click \"Add\"",
@@ -858,7 +858,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-18",
+      "id": "wf-1792701097515-18",
       "index": 18,
       "action": "type",
       "label": "Type {{firstName3}}",
@@ -891,7 +891,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-19",
+      "id": "wf-1792701097515-19",
       "index": 19,
       "action": "type",
       "label": "Type {{lastName3}}",
@@ -924,7 +924,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-20",
+      "id": "wf-1792701097515-20",
       "index": 20,
       "action": "type",
       "label": "Type {{username3}}",
@@ -957,7 +957,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-21",
+      "id": "wf-1792701097515-21",
       "index": 21,
       "action": "type",
       "label": "Type {{age3}}",
@@ -990,7 +990,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-22",
+      "id": "wf-1792701097515-22",
       "index": 22,
       "action": "type",
       "label": "Type {{salary3}}",
@@ -1023,7 +1023,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-23",
+      "id": "wf-1792701097515-23",
       "index": 23,
       "action": "type",
       "label": "Type {{department3}}",
@@ -1056,7 +1056,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-24",
+      "id": "wf-1792701097515-24",
       "index": 24,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -1102,7 +1102,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-25",
+      "id": "wf-1792701097515-25",
       "index": 25,
       "action": "click",
       "label": "Click \"Add\"",
@@ -1148,7 +1148,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-26",
+      "id": "wf-1792701097515-26",
       "index": 26,
       "action": "type",
       "label": "Type {{firstName4}}",
@@ -1181,7 +1181,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-27",
+      "id": "wf-1792701097515-27",
       "index": 27,
       "action": "type",
       "label": "Type {{lastName4}}",
@@ -1214,7 +1214,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-28",
+      "id": "wf-1792701097515-28",
       "index": 28,
       "action": "type",
       "label": "Type {{username4}}",
@@ -1247,7 +1247,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-29",
+      "id": "wf-1792701097515-29",
       "index": 29,
       "action": "type",
       "label": "Type {{age4}}",
@@ -1280,7 +1280,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-30",
+      "id": "wf-1792701097515-30",
       "index": 30,
       "action": "type",
       "label": "Type {{salary4}}",
@@ -1313,7 +1313,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-31",
+      "id": "wf-1792701097515-31",
       "index": 31,
       "action": "type",
       "label": "Type {{department4}}",
@@ -1346,7 +1346,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-32",
+      "id": "wf-1792701097515-32",
       "index": 32,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -1392,7 +1392,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-33",
+      "id": "wf-1792701097515-33",
       "index": 33,
       "action": "click",
       "label": "Click \"Add\"",
@@ -1438,7 +1438,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-34",
+      "id": "wf-1792701097515-34",
       "index": 34,
       "action": "type",
       "label": "Type {{firstName5}}",
@@ -1471,7 +1471,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-35",
+      "id": "wf-1792701097515-35",
       "index": 35,
       "action": "type",
       "label": "Type {{lastName5}}",
@@ -1504,7 +1504,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-36",
+      "id": "wf-1792701097515-36",
       "index": 36,
       "action": "type",
       "label": "Type {{username5}}",
@@ -1537,7 +1537,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-37",
+      "id": "wf-1792701097515-37",
       "index": 37,
       "action": "type",
       "label": "Type {{age5}}",
@@ -1570,7 +1570,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-38",
+      "id": "wf-1792701097515-38",
       "index": 38,
       "action": "type",
       "label": "Type {{salary5}}",
@@ -1603,7 +1603,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-39",
+      "id": "wf-1792701097515-39",
       "index": 39,
       "action": "type",
       "label": "Type {{department5}}",
@@ -1636,7 +1636,7 @@
       }
     },
     {
-      "id": "wf-1792695275250-40",
+      "id": "wf-1792701097515-40",
       "index": 40,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -1682,5 +1682,5 @@
       }
     }
   ],
-  "createdAt": 1792695250880
+  "createdAt": 1792701073086
 }

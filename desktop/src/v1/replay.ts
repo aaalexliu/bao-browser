@@ -1549,7 +1549,11 @@ function rolesCompatible(recorded: string, live: string): boolean {
   const right = normRole(live);
   if (left === right) return true;
   const links = new Set(["a", "link"]);
-  return links.has(left) && links.has(right);
+  if (links.has(left) && links.has(right)) return true;
+  // Wikipedia's search box is a textbox until suggestions open, then a combobox.
+  // A button that only shares the words is still not the field.
+  const fields = new Set(["textbox", "input", "combobox", "searchbox"]);
+  return fields.has(left) && fields.has(right);
 }
 
 function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | undefined {

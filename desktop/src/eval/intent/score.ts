@@ -202,10 +202,11 @@ export async function replayCase(workflow: WorkflowV2, item: IntentCase, spec: I
   });
   // available() is false, so propose must not run. Count a call if it does.
   const guarded = modelCalls;
+  const held = result.status === "passed" || (result.status === "paused" && result.pausedKind === "confirm");
   return {
     status: result.status,
     modelCalls: guarded,
-    oracle: result.status === "passed" ? item.oracle(world, spec) : result.failure?.reason || result.status,
+    oracle: held ? item.oracle(world, spec) : result.failure?.reason || result.status,
     reason: result.failure?.reason,
   };
 }

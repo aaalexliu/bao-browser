@@ -199,6 +199,52 @@ test("an id locator wins over a glossary button that shares the field name", asy
   assert.deepEqual(early, []);
 });
 
+test("a search textbox whose id is gone still presses Enter on the combobox, not a button", async () => {
+  const combo = ident({ role: "combobox", name: "Search Wikipedia", text: "Search Wikipedia" });
+  const button = ident({ role: "button", name: "Search Wikipedia", text: "Search Wikipedia" });
+  const workflow = doc([
+    step({
+      id: "go",
+      action: "key",
+      key: "Enter",
+      label: "Press Enter",
+      identity: ident({ role: "textbox", name: "Search Wikipedia", id: "searchInput" }),
+      locators: [
+        { kind: "role", role: "textbox", name: "Search Wikipedia" },
+        { kind: "text", value: "Search Wikipedia" },
+        { kind: "css", value: "#searchInput" },
+      ],
+    }),
+  ]);
+  const keys: string[] = [];
+  const driver: Driver = {
+    tree: async () => tree([combo], { boxes: [{ x: 10, y: 10, w: 200, h: 32 }] }),
+    snapshot: async () => ({ dom: "" }),
+    click: async () => {},
+    fill: async () => {},
+    key: async (name) => { keys.push(name); },
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+  };
+  const found = await replay(workflow, {}, driver, { heal: unavailableHeal() });
+  assert.equal(found.status, "passed");
+  assert.deepEqual(keys, ["Enter"]);
+  const refused: string[] = [];
+  const onlyButton: Driver = {
+    ...driver,
+    tree: async () => tree([button], { boxes: [{ x: 10, y: 10, w: 80, h: 24 }] }),
+    key: async (name) => { refused.push(name); },
+  };
+  const missed = await replay(workflow, {}, onlyButton, { heal: unavailableHeal() });
+  assert.equal(missed.status, "failed");
+  assert.equal(missed.failure?.phase, "find");
+  assert.deepEqual(refused, []);
+});
+
 test("a suggestion click prefers the option when the listbox shows the same text", async () => {
   const listbox = ident({ role: "listbox", id: "react-select-2-listbox", text: "Physics" });
   const option = ident({ role: "option", id: "react-select-2-option-0", text: "Physics", cssPath: "#react-select-2-option-0" });

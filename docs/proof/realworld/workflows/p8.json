@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 2,
-  "id": "wf-1792682913207",
+  "id": "wf-1792701274010",
   "name": "Captured workflow",
   "startUrl": "https://the-internet.herokuapp.com/challenging_dom",
   "inputs": [
@@ -15,7 +15,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792682913207-0",
+      "id": "wf-1792701274010-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://the-internet.herokuapp.com/challenging_dom",
@@ -29,7 +29,7 @@
       }
     },
     {
-      "id": "wf-1792682913207-1",
+      "id": "wf-1792701274010-1",
       "index": 1,
       "action": "click",
       "label": "Click \"edit\"",
@@ -71,7 +71,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682913207-2",
+      "id": "wf-1792701274010-2",
       "index": 2,
       "action": "navigate",
       "label": "Open https://the-internet.herokuapp.com/shifting_content/menu?mode=random",
@@ -85,7 +85,7 @@
       }
     },
     {
-      "id": "wf-1792682913207-3",
+      "id": "wf-1792701274010-3",
       "index": 3,
       "action": "click",
       "label": "Click \"Gallery\"",
@@ -127,7 +127,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682913207-4",
+      "id": "wf-1792701274010-4",
       "index": 4,
       "action": "navigate",
       "label": "Open https://the-internet.herokuapp.com/windows",
@@ -141,7 +141,7 @@
       }
     },
     {
-      "id": "wf-1792682913207-5",
+      "id": "wf-1792701274010-5",
       "index": 5,
       "action": "click",
       "label": "Click \"Click Here\"",
@@ -183,7 +183,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682913207-6",
+      "id": "wf-1792701274010-6",
       "index": 6,
       "action": "navigate",
       "label": "Open https://the-internet.herokuapp.com/javascript_alerts",
@@ -197,7 +197,7 @@
       }
     },
     {
-      "id": "wf-1792682913207-7",
+      "id": "wf-1792701274010-7",
       "index": 7,
       "action": "click",
       "label": "Click \"Click for JS Alert\"",
@@ -238,7 +238,7 @@
       }
     },
     {
-      "id": "wf-1792682913207-8",
+      "id": "wf-1792701274010-8",
       "index": 8,
       "action": "click",
       "label": "Click \"Click for JS Confirm\"",
@@ -280,7 +280,7 @@
       }
     },
     {
-      "id": "wf-1792682913207-9",
+      "id": "wf-1792701274010-9",
       "index": 9,
       "action": "click",
       "label": "Click \"Click for JS Prompt\"",
@@ -323,5 +323,5 @@
       }
     }
   ],
-  "createdAt": 1792682907970
+  "createdAt": 1792701268520
 }
