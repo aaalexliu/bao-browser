@@ -13,7 +13,7 @@ import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launc
 import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
-import { BrowserDriver, clearOsNotify, elementShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
@@ -70,7 +70,7 @@ import {
   type TeachDecision,
 } from "../v1/teach";
 import { guideCrops, guideHtml } from "../v1/guide";
-import { shotFile, workflowShotName } from "../v1/shots";
+import { guideShotName, shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
@@ -134,6 +134,8 @@ function copyMergedShots(
       if (width === 96 && height === 54) continue;
     }
     copyFileSync(from, path.join(destDir, workflowShotName(source.stepId)));
+    const guideFrom = path.join(root, "shots", "workflows", source.workflowId, guideShotName(source.sourceStepId));
+    if (existsSync(guideFrom)) copyFileSync(guideFrom, path.join(destDir, guideShotName(source.stepId)));
   }
 }
 
@@ -166,6 +168,7 @@ export async function startApp(opts: {
   let profile: string | undefined;
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
+  const captureGuideShots = new Map<string, string>();
   const pendingShots = new Set<Promise<unknown>>();
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
@@ -1167,6 +1170,7 @@ export async function startApp(opts: {
     capture.start();
     recordingSince = Date.now();
     captureShots.clear();
+    captureGuideShots.clear();
     try {
       profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
       context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
@@ -1228,6 +1232,12 @@ export async function startApp(opts: {
           const png = await elementShot(page, target, { blur: false });
           if (!png) return;
           writeFileSync(dest, png);
+          const guide = await guideFieldShot(page, target).catch(() => undefined);
+          if (guide) {
+            const guideDest = path.join(dir, `${stored.id}.guide.png`);
+            writeFileSync(guideDest, guide);
+            captureGuideShots.set(stored.id, guideDest);
+          }
         } finally {
           await page.evaluate(unblurSensitiveFields).catch(() => undefined);
         }
@@ -1236,6 +1246,12 @@ export async function startApp(opts: {
         const png = await elementShot(page, target);
         if (!png) return;
         writeFileSync(dest, png);
+        const guide = await guideFieldShot(page, target).catch(() => undefined);
+        if (guide) {
+          const guideDest = path.join(dir, `${stored.id}.guide.png`);
+          writeFileSync(guideDest, guide);
+          captureGuideShots.set(stored.id, guideDest);
+        }
       }
       captureShots.set(stored.id, dest);
     } catch { /* headed Chromium can refuse captureScreenshot */ }
@@ -1286,6 +1302,8 @@ export async function startApp(opts: {
       const step = workflow.steps[i];
       const src = event ? captureShots.get(event.id) : undefined;
       if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+      const guideSrc = event ? captureGuideShots.get(event.id) : undefined;
+      if (guideSrc && step && existsSync(guideSrc)) copyFileSync(guideSrc, path.join(shotDest, guideShotName(step.id)));
     }
     library.save(workflow);
     library.saveTrail(id, ensureTrailTimes(clean).events);
@@ -1484,6 +1502,8 @@ export async function startApp(opts: {
       stepIndex += 1;
       const src = captureShots.get(card.id);
       if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+      const guideSrc = captureGuideShots.get(card.id);
+      if (guideSrc && step && existsSync(guideSrc)) copyFileSync(guideSrc, path.join(shotDest, guideShotName(step.id)));
     }
     library.save(workflow);
     const trail = [...publicTrail(capture.events), ...decisions.map((decision, index) => decisionEvent(decision, index))];

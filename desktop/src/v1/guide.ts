@@ -6,7 +6,7 @@ import path from "node:path";
 import { prepareGuideCrop, type GuideCropKind } from "./guide-crop";
 import { isElementCrop } from "./redacted-png";
 import { looksLikePath, type WorkflowStep, type WorkflowV2 } from "./schema";
-import { shotFile, workflowShotName } from "./shots";
+import { guideShotName, shotFile, workflowShotName } from "./shots";
 
 const PATH_PREFIX = /\/(?:Users|home|tmp|var|opt|private|workspace|etc|usr)\/[^\s"'<>]*/g;
 const FILE_URL = /file:\/\/\S+/gi;
@@ -21,6 +21,7 @@ export function guideCrops(root: string, doc: WorkflowV2): Map<string, Buffer> {
   const runs = runIds(root, id);
   for (const step of doc.steps) {
     const names = [
+      path.join(root, "shots", "workflows", id, guideShotName(step.id)),
       path.join(root, "shots", "workflows", id, workflowShotName(step.id)),
       ...runs.map((runId) => path.join(root, "shots", "runs", runId, shotFile(step.id, "after"))),
     ];
