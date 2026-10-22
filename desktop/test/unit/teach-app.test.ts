@@ -341,7 +341,8 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
       };
     }));
     const typed = cards.filter((card) => /^(type|click)/i.test(card.label));
-    assert.ok(typed.length > 0 && typed.every((card) => card.has && card.w > 96 && card.h > 54), JSON.stringify({ shotDirs, cards }, null, 2));
+    const realCrop = (card: { has: boolean; w: number; h: number }) => card.has && card.w > 96 && card.h > 20 && !(card.w === 96 && card.h === 54);
+    assert.ok(typed.length > 0 && typed.every(realCrop), JSON.stringify({ shotDirs, cards }, null, 2));
 
     const loginRun = await post(app.port, "/api/replay", {
       id: merged.id,

@@ -246,6 +246,65 @@ test("a step shot frames the control, not the result text, and outlines it", asy
   }
 });
 
+test("a fixture crop frames that step's control and leaves the neighbor out", async () => {
+  const html = readFileSync(path.join(process.cwd(), "desktop/src/app/public/fixture.html"), "utf8");
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const overlaps = (
+    a: { x: number; y: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number },
+  ) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  try {
+    await page.setContent(html);
+    await page.fill("#username", "demo");
+    await page.fill("#password", "SuperSecretPassword!");
+    await page.fill("#note-input", "alpha note");
+    const box = (selector: string) => page.locator(selector).boundingBox();
+    const user = await clipBox(page, { action: "type", identity: ident({ role: "input", id: "username", nameAttr: "username" }) });
+    const dropped = await box("#dropped");
+    const userEl = await box("#username");
+    const pass = await clipBox(page, { action: "type", identity: ident({ role: "input", id: "password", nameAttr: "password" }) });
+    const login = await box("#login-btn");
+    const note = await clipBox(page, { action: "type", identity: ident({ role: "input", id: "note-input", nameAttr: "note", testId: "note" }) });
+    const apply = await box("#apply-btn");
+    if (!user || !pass || !note || !dropped || !login || !apply || !userEl) throw new Error("missing box");
+    assert.equal(overlaps(user, dropped), false, JSON.stringify({ user, dropped }));
+    assert.equal(overlaps(pass, login), false, JSON.stringify({ pass, login }));
+    assert.equal(overlaps(note, apply), false, JSON.stringify({ note, apply }));
+    assert.ok(user.x <= userEl.x && user.y <= userEl.y);
+    assert.ok(user.x + user.width >= userEl.x + userEl.width && user.y + user.height >= userEl.y + userEl.height);
+    const driver = new BrowserDriver(page);
+    const secretShot = await driver.shot({ action: "type", identity: ident({ role: "input", id: "password" }) });
+    if (!secretShot) throw new Error("no secret shot");
+    assert.equal(secretShot.includes(Buffer.from("SuperSecretPassword!")), false);
+    const outlined = await driver.shot({ action: "type", identity: ident({ role: "input", id: "username", nameAttr: "username" }) });
+    if (!outlined) throw new Error("no username shot");
+    const orange = await page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = "data:image/png;base64," + b64;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return 0;
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, img.width, img.height).data;
+      let hits = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i] || 0;
+        const g = data[i + 1] || 0;
+        const b = data[i + 2] || 0;
+        if (r > 180 && r > g + 40 && b < 90) hits += 1;
+      }
+      return hits;
+    }, outlined.toString("base64"));
+    assert.ok(orange > 20, `outline pixels ${orange}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("an accessibility snapshot drops a password line and keeps the other controls", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();

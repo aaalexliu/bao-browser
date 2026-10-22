@@ -179,6 +179,43 @@ test("a conflict draft counts only the steps that differ and leaves a matching s
   assert.equal(/data-changed="true"><strong>Save</.test(html), false);
 });
 
+test("a conflict draft uses the cloud version numbers and device names", () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-cloud-"));
+  const library = new Library(home);
+  const mine = workflow("wf-cloud", "open");
+  mine.steps[0]!.label = "Open";
+  library.save(mine);
+  const first = workflow("wf-cloud", "open");
+  first.steps[0]!.label = "Open";
+  const second = workflow("wf-cloud", "open");
+  second.steps[0]!.label = "Open Ada";
+  noteConflict(library, {
+    mine,
+    theirs: second,
+    mineDevice: "Home Mac",
+    theirsDevice: "Ada's Mac",
+    remoteVersion: 2,
+    draftVersion: 3,
+    history: [
+      { version: 1, kind: "version", device_name: "Ada's Mac", document: first, created_at: AT },
+      { version: 2, kind: "version", device_name: "Ada's Mac", document: second, created_at: AT },
+      { version: 3, kind: "conflict", device_name: "Home Mac", document: mine, created_at: AT },
+    ],
+  });
+  const listed = listVersions(library, "wf-cloud");
+  assert.deepEqual(listed.map((row) => row.n), [1, 2, 3]);
+  assert.equal(listed[0]?.deviceName, "Ada's Mac");
+  assert.equal(listed[1]?.deviceName, "Ada's Mac");
+  assert.equal(listed[2]?.source, "conflict");
+  assert.equal(listed[2]?.deviceName, "Home Mac");
+  assert.equal(listed.some((row) => row.role === "live"), false);
+  const html = versionsPanel(listed);
+  assert.match(html, /data-version="1"/);
+  assert.match(html, /data-version="3"/);
+  assert.match(html, /data-testid="version-device">Ada&#39;s Mac/);
+  assert.match(html, /data-testid="version-device">Home Mac/);
+});
+
 test("the versions panel prints the local time with the zone label", () => {
   const html = zoned(
     require.resolve("../../src/app/views"),

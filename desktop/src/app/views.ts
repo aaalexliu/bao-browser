@@ -1262,6 +1262,7 @@ export interface VersionRow {
   };
   diff?: string;
   steps?: { id: string; label: string; before: string; after: string; changed: boolean }[];
+  deviceName?: string;
   history?: {
     stepId: string;
     source: string;
@@ -1365,6 +1366,7 @@ export function versionsPanel(versions: VersionRow[]): string {
         <strong>v${esc(version.n)}</strong>
         <span class="badge">${esc(role)}</span>
         <span class="quiet">${esc(source)}</span>
+        ${version.deviceName ? `<span class="quiet" data-testid="version-device">${esc(version.deviceName)}</span>` : ""}
         <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
       </div>
       ${locatorHeld(version)}

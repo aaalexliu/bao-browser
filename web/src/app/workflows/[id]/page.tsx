@@ -33,6 +33,10 @@ export default async function WorkflowPage({
   ]);
   const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string; askOnImport?: boolean }[]; steps?: { id: string; label?: string }[] };
   const steps = doc.steps ?? [];
+  const drafts = versions.filter((version) => version.kind === "conflict");
+  const headDevice = workflow.deviceName || "The other Mac";
+  const draftDevice = [...new Set(drafts.map((version) => version.device_name).filter((name): name is string => Boolean(name)))].join(" and ") || "This Mac";
+  const conflictOn = drafts.length ? `Changed on ${headDevice} and ${draftDevice}` : "";
   const publishEnabled = preview.reviewed && !preview.gateStep;
   const publishWhy = publishEnabled
     ? ""
@@ -46,7 +50,18 @@ export default async function WorkflowPage({
         <span className="chip">{workflow.category}</span>
         {workflow.verified ? <span className="badge">Verified author</span> : null}
         <span className="chip">{workflow.visibility}</span>
+        {conflictOn ? <span className="badge conflict" data-testid="conflict-badge">Conflict</span> : null}
       </div>
+      {conflictOn ? (
+        <div className="notice" data-testid="conflict-state">
+          <p data-testid="conflict-devices">{conflictOn}</p>
+          <form className="row" action={`/api/workflows/${id}/conflict`} method="post">
+            <button type="submit" name="action" value="keep-theirs" data-testid="keep-theirs">Keep {headDevice}</button>
+            <button type="submit" name="action" value="keep-mine" data-testid="keep-mine">Keep {draftDevice}</button>
+            <button type="submit" name="action" value="keep-both" data-testid="keep-both">Keep both as a copy</button>
+          </form>
+        </div>
+      ) : null}
       <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
       <p>{rate(workflow.passRate)}</p>
       <div className="chips" data-testid="domains">
@@ -69,15 +84,19 @@ export default async function WorkflowPage({
         <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission}). Personal values were cleared from the shared copy.</p>
       ) : null}
       <h2>Steps</h2>
-      <ol className="film" data-testid="step-crops">
-        {workflow.shots.map((shot) => (
-          <li key={shot.stepId}>
-            <img src={shot.url} alt="" />
-            <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
-          </li>
-        ))}
-      </ol>
-      <p className="muted">The picture is the element crop, with the control outlined.</p>
+      {workflow.shots.length ? (
+        <>
+          <ol className="film" data-testid="step-crops">
+            {workflow.shots.map((shot) => (
+              <li key={shot.stepId}>
+                <img src={shot.url} alt="" />
+                <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="muted" data-testid="crop-caption">The picture is the element crop, with the control outlined.</p>
+        </>
+      ) : null}
       <ol className="steps">
         {steps.map((step) => <li key={step.id}>{step.label}</li>)}
       </ol>
@@ -96,9 +115,15 @@ export default async function WorkflowPage({
         <button type="submit">Save import questions</button>
       </form>
       <h2>Versions</h2>
-      <ul>
-        {versions.filter((version) => version.kind !== "conflict").map((version) => (
-          <li key={version.version}>v{version.version}{version.heal ? " · heal" : ""} · {when(version.created_at)}</li>
+      <ul className="versions" data-testid="version-list">
+        {versions.map((version) => (
+          <li key={`${version.kind}-${version.version}`} data-kind={version.kind}>
+            v{version.version}
+            {version.kind === "conflict" ? <> <span className="badge conflict">Conflict</span></> : null}
+            {version.heal ? " · heal" : ""}
+            {version.device_name ? ` · ${version.device_name}` : ""}
+            {` · ${when(version.created_at)}`}
+          </li>
         ))}
       </ul>
       <h2>Runs</h2>
