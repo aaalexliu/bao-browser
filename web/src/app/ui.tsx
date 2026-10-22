@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { listingStat } from "@/lib/listing";
 import { formatRelative } from "@/lib/time";
-
-function runLabel(count: number): string {
-  return count === 1 ? "1 run" : `${count} runs`;
-}
 
 export function ThemeToggle() {
   const [theme, setTheme] = useState("light");
@@ -39,16 +36,6 @@ export function LocalTime({ iso }: { iso?: string | null }) {
   return <time dateTime={iso || undefined}>{text}</time>;
 }
 
-export function InstallButton({ link }: { link: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div>
-      <button type="button" className="primary" data-testid="install" onClick={() => setOpen(true)}>Install</button>
-      {open ? <p className="mono" data-testid="install-link">{link}</p> : null}
-    </div>
-  );
-}
-
 function LetterTile({ letter, host }: { letter: string; host: string }) {
   const hue = host.split("").reduce((sum, ch) => (sum * 33 + ch.charCodeAt(0)) % 360, 0);
   const favicon = host && host !== "127.0.0.1" && host !== "localhost"
@@ -72,6 +59,7 @@ export function GalleryCard({
   lastGreen,
   domains,
   verified,
+  verifiedReplay = false,
 }: {
   href: string;
   id: string;
@@ -82,6 +70,7 @@ export function GalleryCard({
   lastGreen: string;
   domains: string[];
   verified?: boolean;
+  verifiedReplay?: boolean;
 }) {
   const letter = (title || "?").slice(0, 1).toUpperCase();
   const host = (domains[0] || "").replace(/^https?:\/\//, "").split("/")[0];
@@ -95,7 +84,7 @@ export function GalleryCard({
       <div>
         <h2>{title}</h2>
         <p className="muted">{summary}</p>
-        <p className="meta">{runLabel(runs)} · last green {lastGreen}</p>
+        <p className="meta" data-testid="listing-stat">{listingStat(runs, lastGreen, verifiedReplay)}</p>
         <div className="chips">
           {domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
           {verified ? <span className="badge">Verified</span> : null}
