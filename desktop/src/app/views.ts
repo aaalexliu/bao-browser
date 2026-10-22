@@ -99,7 +99,9 @@ export interface ShellState {
   recording?: boolean;
   capturePaused?: boolean;
   recordingSince?: number;
-  helper?: { label: string; accessibility?: boolean; screenCapture?: boolean };
+  helper?: { label: string; platform?: string; accessibility?: boolean; screenCapture?: boolean };
+  /** Sidebar dot after the Library card has been dismissed, or on any other screen. */
+  permDot?: boolean;
   model?: { label: string };
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
@@ -190,6 +192,7 @@ export function rail(state: ShellState): string {
   const helper = state.helper?.label || "helper off";
   const model = state.model?.label || "no model";
   const healBadge = heals > 0 ? `<span class="count" id="heal-count">${heals}</span>` : "";
+  const perm = state.permDot ? permissionDot(state.helper) : "";
   return `<div class="brand"><strong>bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
     <nav>
       <button data-screen="library">${icon("library")} Library</button>
@@ -203,7 +206,7 @@ export function rail(state: ShellState): string {
     <div class="rail-foot">
       <div id="attention-label">${waiting} waiting</div>
       <div class="channel"><span class="dot ${rec}" id="dot"></span><span id="rec-label">${state.recording ? "recording" : "idle"}</span></div>
-      <div class="channel" id="helper-status">${esc(helper)}</div>
+      <div class="channel" id="helper-status">${perm}${esc(helper)}</div>
       <div class="channel" id="model-status">${esc(model)}</div>
     </div>`;
 }
@@ -989,16 +992,34 @@ export function liveStepList(events: { id?: string; op?: string; kind?: string }
   }).join("")}</ol>`;
 }
 
-export function onboarding(helper?: { label?: string; accessibility?: boolean; screenCapture?: boolean }): string {
+/** Mac only, and only while Accessibility or Screen Recording is still missing. */
+export function macPermissionMissing(helper?: { platform?: string; accessibility?: boolean; screenCapture?: boolean }): boolean {
+  return helper?.platform === "darwin" && (!helper.accessibility || !helper.screenCapture);
+}
+
+function permRows(helper?: { accessibility?: boolean; screenCapture?: boolean }): string {
   const access = !!helper?.accessibility;
   const screen = !!helper?.screenCapture;
-  return `<section id="onboarding">
-    <h2>Two permissions on the Mac</h2>
-    <p>Accessibility lets bao see the control you used. Screen Recording lets bao keep a picture of each step. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper off")}”.</p>
-    <ul class="perms">
+  return `<ul class="perms">
       <li class="perm" data-perm="accessibility" data-ok="${access ? "true" : "false"}"><span class="mark"></span><span><strong>Accessibility</strong> ${access ? "allowed" : "not granted yet"}</span></li>
       <li class="perm" data-perm="screen" data-ok="${screen ? "true" : "false"}"><span class="mark"></span><span><strong>Screen Recording</strong> ${screen ? "allowed" : "not granted yet"}</span></li>
-    </ul>
-    <button type="button" id="onboard-done">Continue</button>
+    </ul>`;
+}
+
+export function onboarding(helper?: { label?: string; platform?: string; accessibility?: boolean; screenCapture?: boolean }): string {
+  if (!macPermissionMissing(helper)) return "";
+  return `<section id="onboarding">
+    <details>
+      <summary>Two permissions on the Mac</summary>
+      <p>Accessibility lets bao see the control you used. Screen Recording lets bao keep a picture of each step. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper needs permission")}”.</p>
+      ${permRows(helper)}
+      <button type="button" id="onboard-done">Continue</button>
+    </details>
   </section>`;
+}
+
+/** Collapsed sidebar mark. The Library card is the other place this list appears. */
+export function permissionDot(helper?: { platform?: string; accessibility?: boolean; screenCapture?: boolean }): string {
+  if (!macPermissionMissing(helper)) return "";
+  return `<details id="perm-dot"><summary title="Mac permissions still missing"><span class="dot need" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
 }

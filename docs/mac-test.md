@@ -2,7 +2,7 @@
 
 Follow this on a fresh macOS user account, from an empty login to a saved workflow. The account needs its own Node, its own signing certificate, and its own privacy grants. A grant on another account does not carry over.
 
-The pictures in this file are the Bao window on the built-in fixture (`http://127.0.0.1/fixture`). They were taken where the Mac helper is absent, so the sidebar footer reads **helper off** and both permission rows read **not granted yet**. On your Mac, after the two grants below, that footer reads **helper ok** and both rows read **allowed**. The rest of the window is the same.
+The pictures in this file are the Bao window on the built-in fixture (`http://127.0.0.1/fixture`). They were taken where the Mac helper is absent, so the sidebar footer reads **helper off**. On your Mac, before the two grants below, Library has a collapsible permission card and the other screens have a sidebar dot. After both grants, that footer reads **helper ok** and the card and the dot are gone. The rest of the window is the same. Linux does not show the card.
 
 Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
 
@@ -169,7 +169,7 @@ desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 
 The entry point sets `BAO_HEADED=1` when it is unset, points `BAO_BROWSER` at `Contents/Resources/Chromium.app`, and points `BAO_OS_HELPER` at the nested `BaoOSHelper.app`. Leave this Terminal process running. Do not `open` the app again while it is running. LaunchServices would start a second instance on the default home.
 
-**What you should see:** a window opens on `http://127.0.0.1:4787`. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail; the build includes both. The first screen is the permission card. On a Mac that has not granted the helper yet, the footer reads **helper needs permission**. The picture below is the same card with the footer **helper off**, which is what this page shows when no Mac helper is bundled.
+**What you should see:** a window opens on `http://127.0.0.1:4787`. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail, and before the permission card was limited to macOS. The build includes both screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
 
 ![Two permissions on the Mac. Accessibility and Screen Recording both say not granted yet. The footer says helper off.](mac-test/01-onboarding.png)
 
@@ -193,7 +193,7 @@ The product window does not need Accessibility. The nested helper does. On the f
 
 Quit Bao (Ctrl-C in the launch Terminal) and launch it again with the same `BAO_HOME`, `BAO_PORT`, and `BAO_NODE`.
 
-**What you should see:** no new privacy sheet. The sidebar footer reads **helper ok**. The permission card, if you have not pressed Continue yet, shows Accessibility **allowed** and Screen Recording **allowed**. Press **Continue**. The card goes away and Library is the main page. The picture of Library below was taken after Continue, with the footer still **helper off**.
+**What you should see:** no new privacy sheet. The sidebar footer reads **helper ok**. The permission card and the sidebar dot are gone, because both grants are present. Library is the main page. The picture of Library below was taken with the footer still **helper off**.
 
 ![Library with two workflow cards, sign in and fixture login, and a search field.](mac-test/02-library.png)
 

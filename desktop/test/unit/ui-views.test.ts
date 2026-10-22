@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
@@ -386,14 +386,31 @@ test("the record bar and the permission card follow live state", () => {
   assert.match(bar, /id="rec-stop"/);
   assert.match(bar, /Mark step/);
   assert.match(bar, />Resume</);
-  const off = onboarding({ label: "helper off", accessibility: false, screenCapture: false });
-  assert.match(off, /data-perm="accessibility" data-ok="false"/);
-  assert.match(off, /data-perm="screen" data-ok="false"/);
-  assert.match(off, /not granted yet/);
-  assert.equal(off.includes("data-ok=\"true\""), false);
-  const on = onboarding({ label: "helper ok", accessibility: true, screenCapture: true });
-  assert.match(on, /data-ok="true"/);
-  assert.match(on, /allowed/);
+  const linux = onboarding({ label: "helper off", platform: "linux", accessibility: false, screenCapture: false });
+  assert.equal(linux, "");
+  assert.equal(permissionDot({ platform: "linux", accessibility: false, screenCapture: false }), "");
+  const granted = onboarding({ label: "helper ok", platform: "darwin", accessibility: true, screenCapture: true });
+  assert.equal(granted, "");
+  const missing = onboarding({ label: "helper needs permission", platform: "darwin", accessibility: false, screenCapture: true });
+  assert.match(missing, /<details>/);
+  assert.match(missing, /<summary>Two permissions on the Mac<\/summary>/);
+  assert.match(missing, /data-perm="accessibility" data-ok="false"/);
+  assert.match(missing, /data-perm="screen" data-ok="true"/);
+  assert.match(missing, /not granted yet/);
+  assert.match(missing, /allowed/);
+  const dot = permissionDot({ platform: "darwin", accessibility: false, screenCapture: false });
+  assert.match(dot, /id="perm-dot"/);
+  assert.match(dot, /id="perm-mark"/);
+  const side = rail({
+    helper: { label: "helper needs permission", platform: "darwin", accessibility: false, screenCapture: false },
+    permDot: true,
+  });
+  assert.match(side, /id="perm-dot"/);
+  assert.equal(side.includes('id="onboarding"'), false);
+  const quiet = rail({ helper: { label: "helper off", platform: "linux", accessibility: false, screenCapture: false } });
+  assert.match(quiet, /helper off/);
+  assert.equal(quiet.includes("not granted yet"), false);
+  assert.equal(quiet.includes("perm-dot"), false);
   assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
 });
 

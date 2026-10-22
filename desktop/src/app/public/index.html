@@ -135,6 +135,15 @@
     }
     .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #c7c7cc; display: inline-block; }
     .dot.on { background: #ff3b30; }
+    .dot.need { background: var(--need); }
+    #helper-status { position: relative; display: flex; align-items: center; gap: 0.35rem; }
+    #perm-dot summary { cursor: pointer; list-style: none; display: flex; }
+    #perm-dot summary::-webkit-details-marker { display: none; }
+    #perm-dot .perms {
+      position: absolute; left: 0; bottom: 1.4rem; z-index: 6; min-width: 14rem;
+      background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.45rem 0.6rem;
+    }
+    #onboarding summary { cursor: pointer; font-weight: 650; }
     #content { min-width: 0; }
     #act { padding: var(--space-4) var(--space-5) 0; }
     #onboard { padding: 0 var(--space-5); }

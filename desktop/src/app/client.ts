@@ -18,6 +18,7 @@ import {
   libraryTable,
   networkPane,
   liveStepList,
+  macPermissionMissing,
   notices,
   onboarding,
   paletteView,
@@ -121,11 +122,13 @@ function noteAsk(): void {
 function render(): void {
   applyTheme();
   if (screen === "logins") readLoginForm();
-  railEl().innerHTML = rail(state);
+  const missing = macPermissionMissing(state.helper);
+  const showCard = missing && !onboarded && screen === "library";
+  railEl().innerHTML = rail({ ...state, permDot: missing && !showCard });
   const importAsk = screen === "logins" ? loginAct(login) : "";
   actEl().innerHTML = (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
-  if (onboard) onboard.innerHTML = onboarded ? "" : onboarding(state.helper);
+  if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
   if (float) float.innerHTML = recordBar(state);
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
@@ -249,8 +252,7 @@ function settings(): string {
     <h3>Model</h3>
     <p id="settings-model">${esc(state.model?.label || "no model")}</p>
     <h3>Mac</h3>
-    <p>${esc(state.helper?.label || "helper off")}</p>
-    ${onboarding(state.helper).replace('id="onboarding"', 'id="settings-perms"').replace('id="onboard-done"', 'id="onboard-done-hidden" hidden')}
+    <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
   </section>`;
 }
 

@@ -1443,15 +1443,17 @@ function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, st
   return out;
 }
 
-function helperStatus(report: unknown): { label: string; accessibility: boolean; screenCapture: boolean } {
+function helperStatus(report: unknown): { label: string; platform: string; accessibility: boolean; screenCapture: boolean } {
+  const platform = process.platform;
   const row = report as { accessibility?: boolean; screenCapture?: boolean } | undefined;
-  if (process.platform !== "darwin" || !bundledHelperApp()) {
-    return { label: "helper off", accessibility: false, screenCapture: false };
+  if (platform !== "darwin" || !bundledHelperApp()) {
+    return { label: "helper off", platform, accessibility: false, screenCapture: false };
   }
   const accessibility = !!row?.accessibility;
   const screenCapture = !!row?.screenCapture;
   return {
     label: accessibility && screenCapture ? "helper ok" : "helper needs permission",
+    platform,
     accessibility,
     screenCapture,
   };
