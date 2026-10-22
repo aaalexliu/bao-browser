@@ -1,5 +1,11 @@
 # Dependencies
 node_modules/
+web/node_modules/
+
+# Next build and local registry data
+web/.next/
+web/.data/
+.data/
 
 # Build / generated output
 out/
@@ -16,6 +22,7 @@ npm-debug.log*
 
 # TypeScript build output (esbuild)
 dist/
+*.tsbuildinfo
 
 # Rust helper build
 desktop/os-helper/target/

@@ -6,7 +6,16 @@ The pictures in this file are the Bao window on the built-in fixture (`http://12
 
 Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
 
-Stay on the checkout that contains this file. After the integration pull request is merged, that checkout is `v1/desktop`.
+Stay on the checkout that contains this file. That checkout is the integration branch for pull request 58, and it is the only tree you need: the desktop window, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, and the marketplace web app are already in it. Build both package scripts from this checkout. After pull request 58 merges, the same tree is `v1/desktop`.
+
+The signed app is still two scripts, in this order, from the repo root:
+
+```sh
+desktop/os-helper-macos/package-app.sh
+desktop/packaging/macos/package-app.sh
+```
+
+**What you should see:** the first script prints a signed `BaoOSHelper.app` (`dev.bao.oshelper`). The second prints a signed `Bao.app` (`dev.bao.desktop`) and a dmg. `Bao.app` contains the helper and Playwright's Chromium. No notarization step. Open `Bao.app`, and the window is the one in the pictures below: Library, Capture, Runs, Heals, Replay, Logins, and Settings.
 
 ## Prerequisites
 
@@ -105,13 +114,14 @@ There is no notarization step.
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
-git checkout v1/desktop
+git fetch origin cursor/integrate-desktop-v1-27d8
+git checkout cursor/integrate-desktop-v1-27d8
 git branch --show-current
 ```
 
-Until the integration pull request is merged, `v1/desktop` does not yet contain this tutorial. In that case stay on the branch you already have open: the one whose sidebar is Library, Capture, Runs, Heals, and Settings.
+Pull request 58 is that branch. After it merges, `git checkout v1/desktop` is the same tree and the commands below do not change.
 
-**What you should see:** `git branch --show-current` prints `v1/desktop` once that branch has the sidebar. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh` exits 0.
+**What you should see:** `git branch --show-current` prints `cursor/integrate-desktop-v1-27d8` (or `v1/desktop` after the merge). `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
 
 ## Build
 
@@ -159,7 +169,7 @@ desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 
 The entry point sets `BAO_HEADED=1` when it is unset, points `BAO_BROWSER` at `Contents/Resources/Chromium.app`, and points `BAO_OS_HELPER` at the nested `BaoOSHelper.app`. Leave this Terminal process running. Do not `open` the app again while it is running. LaunchServices would start a second instance on the default home.
 
-**What you should see:** a window opens on `http://127.0.0.1:4787`. The sidebar lists Library, Capture, Runs, Heals, and Settings. The first screen is the permission card. On a Mac that has not granted the helper yet, the footer reads **helper needs permission**. The picture below is the same card with the footer **helper off**, which is what this page shows when no Mac helper is bundled.
+**What you should see:** a window opens on `http://127.0.0.1:4787`. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail; the build includes both. The first screen is the permission card. On a Mac that has not granted the helper yet, the footer reads **helper needs permission**. The picture below is the same card with the footer **helper off**, which is what this page shows when no Mac helper is bundled.
 
 ![Two permissions on the Mac. Accessibility and Screen Recording both say not granted yet. The footer says helper off.](mac-test/01-onboarding.png)
 

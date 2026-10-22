@@ -55,7 +55,8 @@ export function keepSessionCookies(userDataDir: string): void {
 /** macOS Accessibility only sees the page when the renderer publishes it. */
 function ownedLaunchArgs(extra: string[] | undefined): string[] {
   const mac = process.platform === "darwin" ? ["--force-renderer-accessibility"] : [];
-  return [...LAUNCH_ARGS, ...mac, ...(extra ?? [])];
+  const sandbox = process.env.BAO_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
+  return [...LAUNCH_ARGS, ...mac, ...sandbox, ...(extra ?? [])];
 }
 
 const DAILY_DIR = [

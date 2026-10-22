@@ -1,4 +1,4 @@
-// Everything the app keeps is files under one directory. No account, no network.
+// The library is files under one directory. Sync state lives beside it, not in here.
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -15,6 +15,7 @@ export interface Settings extends HealSettings {
   actTimeoutMs: number;
   circuitLimit: number;
   circuitWindowMs: number;
+  syncServer?: string;
 }
 
 export interface StoredRun {
@@ -184,6 +185,41 @@ export class Library {
     return settings;
   }
 
+  setSyncServer(syncServer: string): Settings {
+    return this.updateSettings({ syncServer });
+  }
+
+  savePublicInputs(id: string, inputs: Record<string, string | number>): void {
+    mkdirSync(path.join(this.root, "inputs"), { recursive: true });
+    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(inputs, null, 2));
+  }
+
+  readPublicInputs(id: string): Record<string, string | number> {
+    try {
+      return JSON.parse(readFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), "utf8")) as Record<string, string | number>;
+    } catch {
+      return {};
+    }
+  }
+
+  /** Kept heal for the next sync push. Separate from the promotion tracker. */
+  noteHealPromotion(id: string, heal: unknown): void {
+    mkdirSync(path.join(this.root, "promotions"), { recursive: true });
+    writeFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), JSON.stringify(withoutShots(heal), null, 2));
+  }
+
+  readKeptHeal(id: string): unknown {
+    try {
+      return JSON.parse(readFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), "utf8")) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  clearKeptHeal(id: string): void {
+    rmSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), { force: true });
+  }
+
   readBounds(id: string): { x: number; y: number; width: number; height: number } | null {
     try {
       const raw = JSON.parse(readFileSync(this.boundsFile(id), "utf8")) as { x?: number; y?: number; width?: number; height?: number };
@@ -208,6 +244,22 @@ export class Library {
     if (id.includes("/") || id.includes("..")) throw new Error("bad workflow id");
     return path.join(this.root, "bounds", `${id}.json`);
   }
+
+  private safe(id: string): string {
+    if (id.includes("/") || id.includes("..") || id.includes("\\")) throw new Error("bad workflow id");
+    return id;
+  }
+}
+
+function withoutShots(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutShots);
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "screenshot") continue;
+    out[key] = withoutShots(child);
+  }
+  return out;
 }
 
 export function emptyDir(root: string): void {

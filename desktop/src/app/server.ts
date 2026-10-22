@@ -61,6 +61,7 @@ import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
+import { pairDevice, syncAll, syncStatus } from "../v1/sync";
 import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
 import type { Settings } from "../v1/store";
 
@@ -218,6 +219,7 @@ export async function startApp(opts: {
           liveTrail: events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
+          sync: syncStatus(library),
         });
       }
       if (req.method === "GET" && url.pathname === "/api/import-login") {
@@ -342,6 +344,10 @@ export async function startApp(opts: {
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPng(res, file);
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/inputs")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        return json(res, library.readPublicInputs(id));
+      }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
       }
@@ -382,7 +388,7 @@ export async function startApp(opts: {
         return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string };
         const patch: Partial<Settings> = {};
         if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
@@ -394,8 +400,19 @@ export async function startApp(opts: {
         if (typeof body.circuitLimit === "number" && body.circuitLimit >= 1 && body.circuitLimit <= 50) {
           patch.circuitLimit = Math.round(body.circuitLimit);
         }
+        if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
         if (!Object.keys(patch).length) return json(res, { error: "settings" }, 400);
         return json(res, library.updateSettings(patch));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/pair") {
+        const body = await readBody(req) as { code?: string; server?: string; name?: string };
+        if (!body.code || !body.server) return json(res, { error: "code and server" }, 400);
+        return json(res, await pairDevice(library, { code: body.code, server: body.server, name: body.name }));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync") {
+        const body = await readBody(req) as { mode?: "sync" | "push" | "pull" };
+        const mode = body.mode === "push" || body.mode === "pull" ? body.mode : "sync";
+        return json(res, await syncAll(library, mode));
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
         return json(res, library.importJson(String(await readBody(req, true))));
@@ -501,6 +518,7 @@ export async function startApp(opts: {
             signIn = undefined;
           },
         });
+        library.savePublicInputs(workflow.id, keptInputs(workflow, args));
         return json(res, run);
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
@@ -591,7 +609,9 @@ export async function startApp(opts: {
         const next = keepPatch(library.read(body.id), body.stepId, body.patch);
         library.save(next);
         if (body.runId && body.healId) {
-          library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
+          const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
+          const heal = (recorded.heals as HealRecord[]).find((item) => item.id === body.healId);
+          if (heal) library.noteHealPromotion(body.id, heal);
         }
         return json(res, next);
       }
@@ -1314,6 +1334,16 @@ function withChange(startUrl: string, query: string): string {
   const url = new URL(startUrl);
   if (query) new URLSearchParams(query).forEach((value, key) => url.searchParams.set(key, value));
   return url.toString();
+}
+
+function keptInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const input of workflow.inputs) {
+    if (input.type === "secret" || input.type === "file") continue;
+    const value = args[input.name];
+    if (typeof value === "string" || typeof value === "number") out[input.name] = value;
+  }
+  return out;
 }
 
 function summary(doc: WorkflowV2) {

@@ -1,0 +1,81 @@
+import { notFound } from "next/navigation";
+import { HttpError, publicWorkflow } from "@/lib/registry";
+import { principal, rate, when } from "@/lib/viewer";
+import { SetupForm } from "../../setup-form";
+
+export const dynamic = "force-dynamic";
+
+export default async function PublicWorkflowPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ reported?: string }>;
+}) {
+  const { id } = await params;
+  const query = await searchParams;
+  const user = await principal();
+  let workflow;
+  try {
+    workflow = await publicWorkflow(id);
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 404) notFound();
+    throw err;
+  }
+  const steps = (workflow.document as { steps?: { id?: string; label?: string }[] }).steps ?? [];
+  return (
+    <article data-testid="workflow">
+      <h1>{workflow.name}</h1>
+      <p className="muted">{workflow.summary}</p>
+      <div className="chips">
+        <span className="chip">{workflow.category}</span>
+        {workflow.verified ? <span className="badge" data-testid="verified">Verified author</span> : <span className="chip">{workflow.author}</span>}
+        <span className="chip">{rate(workflow.passRate)}</span>
+      </div>
+      <p>By {workflow.author}</p>
+      <p data-testid="last-green">Last replayed green: {when(workflow.lastGreenAt)}</p>
+      <h2>Domains</h2>
+      <div className="chips" data-testid="domains">
+        {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
+        {workflow.domains.length ? null : <span className="chip">No network calls</span>}
+      </div>
+      <p className="mono">{workflow.link}</p>
+      <h2>Steps</h2>
+      <ol className="film">
+        {workflow.shots.map((shot) => (
+          <li key={shot.stepId}>
+            <img src={shot.url} alt="" />
+            <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="muted">Redacted on the device. These swatches are not the original pixels.</p>
+      <ol className="steps">
+        {steps.map((step) => <li key={step.id}>{step.label}</li>)}
+      </ol>
+      <h2>Inputs</h2>
+      {user ? (
+        <SetupForm action={`/api/marketplace/${workflow.id}/fork`} questions={workflow.questions} submit="Fork to my library" />
+      ) : (
+        <p><a href="/login">Sign in</a> to fork this and answer the setup questions.</p>
+      )}
+      <h2>Versions</h2>
+      <ul>
+        {workflow.versions.map((version) => (
+          <li key={version.version}>v{version.version} · {String(version.created_at)}</li>
+        ))}
+      </ul>
+      <h2>Report</h2>
+      {query.reported ? <p className="notice">Report received.</p> : null}
+      <p className="muted">{workflow.reports} report{workflow.reports === 1 ? "" : "s"}</p>
+      {user ? (
+        <form action={`/api/marketplace/${workflow.id}/report`} method="post">
+          <label>What is wrong?
+            <input name="reason" required />
+          </label>
+          <button type="submit">Report</button>
+        </form>
+      ) : null}
+    </article>
+  );
+}

@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bao.workflow/v2",
+  "title": "Bao workflow v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "id", "name", "startUrl", "inputs", "steps", "createdAt"],
+  "properties": {
+    "schema": { "const": "bao.workflow/v2" },
+    "version": { "const": 2 },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "startUrl": { "type": "string" },
+    "createdAt": { "type": "number" },
+    "updatedAt": { "type": "number" },
+    "heal": { "enum": ["auto", "approve"] },
+    "inputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/input" }
+    },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "type": { "enum": ["text", "secret", "number", "choice", "file"] },
+        "label": { "type": "string" },
+        "required": { "type": "boolean" },
+        "default": { "type": "string" },
+        "choices": { "type": "array", "items": { "type": "string" } },
+        "multiple": { "type": "boolean" },
+        "accept": { "type": "string" }
+      }
+    },
+    "pathSeg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role"],
+      "properties": {
+        "role": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface", "role", "path"],
+      "properties": {
+        "surface": { "enum": ["dom", "ax", "atspi"] },
+        "role": { "type": "string" },
+        "subrole": { "type": "string" },
+        "identifier": { "type": "string" },
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "value": { "type": "string" },
+        "testId": { "type": "string" },
+        "id": { "type": "string" },
+        "nameAttr": { "type": "string" },
+        "tag": { "type": "string" },
+        "label": { "type": "string" },
+        "text": { "type": "string" },
+        "cssPath": { "type": "string" },
+        "windowTitle": { "type": "string" },
+        "bundleId": { "type": "string" },
+        "app": { "type": "string" },
+        "path": { "type": "array", "items": { "$ref": "#/$defs/pathSeg" } },
+        "siblingIndex": { "type": "number" }
+      }
+    },
+    "postcondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "timeoutMs"],
+      "properties": {
+        "kind": { "enum": ["url", "text", "value", "element", "absent"] },
+        "match": { "type": "string" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "action", "label", "surface", "timeoutMs"],
+      "properties": {
+        "id": { "type": "string" },
+        "index": { "type": "number" },
+        "action": { "enum": ["click", "type", "key", "upload", "drop", "digits", "check"] },
+        "label": { "type": "string" },
+        "surface": { "enum": ["dom", "os"] },
+        "identity": { "$ref": "#/$defs/identity" },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["by", "input"],
+          "properties": {
+            "by": { "enum": ["name", "title", "text", "value"] },
+            "input": { "type": "string" }
+          }
+        },
+        "value": { "type": "string" },
+        "input": { "type": "string" },
+        "key": { "type": "string" },
+        "checked": { "type": "boolean" },
+        "sensitive": { "type": "boolean" },
+        "postcondition": { "$ref": "#/$defs/postcondition" },
+        "timeoutMs": { "type": "number" },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "space"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "space": { "enum": ["viewport", "image", "screen"] }
+          }
+        },
+        "unresolved": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": { "reason": { "type": "string" } }
+        }
+      }
+    }
+  }
+}
