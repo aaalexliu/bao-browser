@@ -10,8 +10,16 @@ import { WORKFLOW_SCHEMA_ID } from "./schema";
 export interface TrailEvent {
   id: string;
   ts: number;
-  kind: "read" | "act";
+  kind: "read" | "act" | "decision";
   op: string;
+  /** Append-only teach correction. Interpret does not turn these into steps. */
+  decision?: string;
+  detail?: string;
+  cardId?: string;
+  intent?: string;
+  name?: string;
+  note?: string;
+  outcome?: string;
   /** live-model marks a person or model driving MCP. Scripted drivers use another label. */
   source?: { agent: string; vendor: string; adapter: string };
   unresolved?: { reason: string };
@@ -61,15 +69,30 @@ export function retainedEvents(events: readonly TrailEvent[]): TrailEvent[] {
   return mergeTyping(withoutChooserClicks(events.filter(keep)));
 }
 
+export interface InterpretPiece {
+  events: TrailEvent[];
+  step: WorkflowStep;
+}
+
+/** The same grouping interpret saves, so a teach card can point at the events behind a step. */
+export function explain(events: readonly TrailEvent[], meta: InterpretMeta): { workflow: WorkflowV2; groups: TrailEvent[][] } {
+  const built = buildWorkflow(events, meta);
+  return { workflow: built.doc, groups: built.groups };
+}
+
 export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
+  return buildWorkflow(events, meta).doc;
+}
+
+function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { doc: WorkflowV2; groups: TrailEvent[][] } {
   const secrets = secretStrings(events, meta.secrets ?? []);
   const seen: InterpretMeta = { ...meta, secrets };
-  const kept = withoutChooserClicks(events.filter(keep));
-  const merged = mergeTyping(kept);
+  const kept = mergeTyping(withoutChooserClicks(events.filter(keep)));
   const inputs: WorkflowInput[] = [];
-  let steps = merged.map((event, index) => toStep(event, index, seen, inputs));
-  steps = parameterizeDigits(steps, inputs);
-  steps = steps.map((step, index) => ({ ...step, index, id: `${meta.id}-${index}` }));
+  const drafted = kept.map((event) => ({ events: [event], step: toStep(event, 0, seen, inputs) }));
+  const pieces = collapseDigits(drafted, inputs);
+  attachExpr(pieces.map((piece) => piece.step));
+  const steps = pieces.map((piece, index) => ({ ...piece.step, index, id: `${meta.id}-${index}` }));
   const doc: WorkflowV2 = {
     schema: WORKFLOW_SCHEMA_ID,
     version: 2,
@@ -81,7 +104,7 @@ export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): W
     createdAt: events[0]?.ts ?? 0,
   };
   assertClean(doc, secrets);
-  return doc;
+  return { doc, groups: pieces.map((piece) => piece.events) };
 }
 
 /** A password field's typed text is a secret even when the caller did not list it. */
@@ -97,7 +120,7 @@ function secretStrings(events: readonly TrailEvent[], listed: string[]): string[
 }
 
 function keep(event: TrailEvent): boolean {
-  if (event.kind === "read") return false;
+  if (event.kind === "read" || event.kind === "decision" || event.op === "decision") return false;
   if (NOISE.has(event.op)) return false;
   if (event.unresolved) return false;
   return true;
@@ -419,33 +442,40 @@ function stripSecretValue(identity: Identity | undefined, secrets: string[]): Id
 }
 
 /** 7, 7, +, 5, =  becomes digits {{a}}, click +, digits {{b}}, click = with a numeric postcondition. */
-function parameterizeDigits(steps: WorkflowStep[], inputs: WorkflowInput[]): WorkflowStep[] {
-  const out: WorkflowStep[] = [];
+function collapseDigits(
+  pieces: { events: TrailEvent[]; step: WorkflowStep }[],
+  inputs: WorkflowInput[],
+): { events: TrailEvent[]; step: WorkflowStep }[] {
+  const out: { events: TrailEvent[]; step: WorkflowStep }[] = [];
+  const steps = pieces.map((piece) => piece.step);
   let i = 0;
-  while (i < steps.length) {
+  while (i < pieces.length) {
     const run = digitRun(steps, i);
     if (run.length === 0) {
-      out.push(steps[i]!);
+      out.push(pieces[i]!);
       i += 1;
       continue;
     }
-    const sample = steps[i]!;
+    const sample = pieces[i]!.step;
     const input = addInput(inputs, "number", inputs.some((item) => item.name === "a") ? "b" : "a");
     input.default = run.map((step) => step.identity?.name).join("");
     input.label = input.name;
     out.push({
-      ...sample,
-      action: "digits",
-      input: input.name,
-      value: `{{${input.name}}}`,
-      label: `Enter {{${input.name}}}`,
-      identity: sample.identity ? { ...sample.identity, name: undefined, text: undefined, title: undefined } : undefined,
-      locators: undefined,
-      postcondition: { kind: "element", timeoutMs: 4000 },
+      events: pieces.slice(i, i + run.length).flatMap((piece) => piece.events),
+      step: {
+        ...sample,
+        action: "digits",
+        input: input.name,
+        value: `{{${input.name}}}`,
+        label: `Enter {{${input.name}}}`,
+        identity: sample.identity ? { ...sample.identity, name: undefined, text: undefined, title: undefined } : undefined,
+        locators: undefined,
+        postcondition: { kind: "element", timeoutMs: 4000 },
+      },
     });
     i += run.length;
   }
-  return attachExpr(out);
+  return out;
 }
 
 function digitRun(steps: WorkflowStep[], start: number): WorkflowStep[] {

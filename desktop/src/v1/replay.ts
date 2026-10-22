@@ -215,6 +215,10 @@ export async function replay(
       steps[i] = { id: step.id, status: "skipped", reason: "not re-run" };
       continue;
     }
+    if (step.when && String(args[step.when.input] ?? "") !== step.when.value) {
+      steps[i] = { id: step.id, status: "passed", reason: "other branch" };
+      continue;
+    }
     const mode = stepPolicy(step, workflow, settings);
     driver.markStep?.(step.id);
     let pictured = step;

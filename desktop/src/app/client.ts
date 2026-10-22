@@ -31,6 +31,9 @@ import {
   runViewer,
   secretInput,
   statusLabel,
+  teachHome,
+  teachPanel,
+  teachReview,
   trailPane,
   workflowDetail,
   type CommandItem,
@@ -41,7 +44,7 @@ import {
   type WorkflowSummary,
 } from "./views";
 
-type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import";
+type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import" | "teach";
 
 interface OpenedState {
   kind: "workflow" | "import";
@@ -99,6 +102,7 @@ let pinnedInputs: Record<string, string> | null = null;
 let debugStepId = "";
 let pendingSeek: number | undefined;
 let seenOpen = "";
+const noteTimers = new Map<string, number>();
 try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
@@ -140,6 +144,7 @@ async function refresh(): Promise<void> {
     since: state.recordingSince,
     promotions: state.promotions,
     // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
+    teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     screen,
     healFilter,
     openHeal,
@@ -150,6 +155,7 @@ async function refresh(): Promise<void> {
   });
   paintDockBadge();
   paintLive();
+  paintTeach();
   if (key === renderKey) return;
   renderKey = key;
   render();
@@ -166,7 +172,7 @@ function render(): void {
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
-  if (float) float.innerHTML = recordBar(state);
+  if (float && state.teach?.phase !== "live") float.innerHTML = recordBar(state);
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
@@ -174,6 +180,7 @@ function render(): void {
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
   if (!keepReplay && !keepWorkflow && !keepImport) {
     const body = screen === "capture" ? capture()
+      : screen === "teach" ? teachScreen()
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
@@ -222,7 +229,7 @@ function capture(): string {
     <div class="card">
       <h3>Browser</h3>
       <label>Start URL <input id="start-url" value="${location.origin}/fixture"></label>
-      <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="stop" type="button">Stop and save</button></div>
+      <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="open-teach" type="button">Teach</button><button id="stop" type="button">Stop and save</button></div>
     </div>
     <div class="card">
       <h3>Mac app</h3>
@@ -244,6 +251,16 @@ function capture(): string {
       <pre id="trail-view">Password values are not stored.</pre>
     </div>
   </section>`;
+}
+
+function teachScreen(): string {
+  const teach = state.teach;
+  if (teach?.phase === "review") return teachReview(teach);
+  if (teach?.phase === "live") {
+    const fixing = teach.fix ? `<p class="lede">Teaching a fix for <code>${esc(teach.fix.stepId)}</code>. Demonstrate that step, then stop.</p>` : `<p class="lede">The teach panel is following along. Correct a card while it is still on screen.</p>`;
+    return `<section><h2>Teach</h2>${fixing}</section>`;
+  }
+  return teachHome(state.workflows || []);
 }
 
 function replayForm(): string {
@@ -384,6 +401,66 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+  const openTeach = document.getElementById("open-teach");
+  if (openTeach) openTeach.onclick = () => {
+    screen = "teach";
+    renderKey = "";
+    render();
+  };
+  const teachStart = document.getElementById("teach-start");
+  if (teachStart) teachStart.onclick = async () => {
+    const url = (document.getElementById("teach-url") as HTMLInputElement | null)?.value;
+    await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url, teach: true }),
+    });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  const teachMerge = document.getElementById("teach-merge");
+  if (teachMerge) teachMerge.onclick = async () => {
+    const ids = [...document.querySelectorAll<HTMLInputElement>("input[name=merge]:checked")].map((box) => box.value);
+    const res = await fetch("/api/teach/merge", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const doc = await res.json() as { id?: string; error?: string };
+    if (doc.id) {
+      openWorkflow = doc.id;
+      screen = "workflow";
+    }
+    renderKey = "";
+    await refresh();
+  };
+  const teachSave = document.getElementById("teach-save");
+  if (teachSave) teachSave.onclick = async () => {
+    const res = await fetch("/api/teach/save", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const doc = await res.json() as { id?: string };
+    if (doc.id) {
+      openWorkflow = doc.id;
+      screen = "workflow";
+    }
+    renderKey = "";
+    await refresh();
+  };
+  const fix = document.getElementById("teach-fix");
+  if (fix) fix.onclick = async () => {
+    const workflow = fix.dataset.workflow || "";
+    const step = fix.dataset.step || "";
+    const saved = await (await fetch("/api/workflows/" + encodeURIComponent(workflow))).json() as { startUrl?: string };
+    await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: saved.startUrl, teach: true, fix: { workflowId: workflow, stepId: step } }),
+    });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  bindTeach(document);
   const start = document.getElementById("start");
   if (start) start.onclick = async () => {
     await fetch("/api/sessions", {
@@ -1232,6 +1309,119 @@ function applySearch(): void {
   document.querySelectorAll<HTMLElement>(".wf-card").forEach((card) => {
     const name = (card.querySelector("h3")?.textContent || "").toLowerCase();
     card.hidden = !!q && !name.includes(q);
+  });
+}
+
+function teachFieldKey(el: HTMLInputElement): string {
+  const card = CSS.escape(el.closest("[data-card]")?.getAttribute("data-card") || "");
+  if (el.hasAttribute("data-note")) return `[data-card="${card}"] [data-note]`;
+  if (el.hasAttribute("data-intent")) return `[data-card="${card}"] [data-intent]`;
+  if (el.hasAttribute("data-param")) {
+    const role = CSS.escape(el.closest(".teach-value")?.getAttribute("data-role") || "");
+    return `[data-card="${card}"] .teach-value[data-role="${role}"] [data-param]`;
+  }
+  return "";
+}
+
+function teachMarkup(root: HTMLElement): string {
+  const clone = root.cloneNode(true) as HTMLElement;
+  const timer = clone.querySelector("#rec-timer");
+  if (timer) timer.textContent = "0:00";
+  return clone.innerHTML;
+}
+
+function paintTeach(): void {
+  const float = document.getElementById("float");
+  if (!float || state.teach?.phase !== "live") return;
+  const html = teachPanel(state.teach);
+  if (float.querySelector("#teach-panel") && teachMarkup(float) === html) return;
+  const active = document.activeElement;
+  const editing = active instanceof HTMLInputElement && float.contains(active) ? teachFieldKey(active) : "";
+  const value = editing && active instanceof HTMLInputElement ? active.value : "";
+  const start = editing && active instanceof HTMLInputElement ? active.selectionStart : null;
+  const end = editing && active instanceof HTMLInputElement ? active.selectionEnd : null;
+  if (active instanceof HTMLInputElement && float.contains(active)) active.onchange = null;
+  float.innerHTML = html;
+  bindTeach(float);
+  if (!editing) return;
+  const next = float.querySelector(editing) as HTMLInputElement | null;
+  if (!next) return;
+  if (next.value !== value) next.value = value;
+  next.focus();
+  if (start != null && end != null) next.setSelectionRange(start, end);
+}
+
+async function correct(card: string, kind: string, extra: Record<string, string> = {}): Promise<void> {
+  await fetch("/api/teach/correct", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cardId: card, kind, ...extra }),
+  });
+  renderKey = "";
+  await refresh();
+}
+
+function bindTeach(root: ParentNode): void {
+  const pause = root.querySelector("#teach-pause");
+  if (pause) (pause as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/sessions/pause", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
+  const check = root.querySelector("#teach-check");
+  if (check) (check as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/teach/check", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
+  const discard = root.querySelector("#teach-discard");
+  if (discard) (discard as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/teach/discard", { method: "POST" });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  const stop = root.querySelector("#teach-stop");
+  if (stop) (stop as HTMLButtonElement).onclick = async () => {
+    await fetch("/api/teach/stop", { method: "POST" });
+    screen = "teach";
+    renderKey = "";
+    await refresh();
+  };
+  root.querySelectorAll<HTMLElement>("[data-card]").forEach((card) => {
+    const id = card.dataset.card || "";
+    card.querySelectorAll<HTMLButtonElement>("[data-correct]").forEach((btn) => {
+      btn.onclick = () => {
+        const kind = btn.dataset.correct || "";
+        const row = btn.closest(".teach-value");
+        const name = (row?.querySelector("input[data-param]") as HTMLInputElement | null)?.value
+          || card.querySelector<HTMLInputElement>("[data-param]")?.value
+          || "";
+        const outcome = card.querySelector("p.meta")?.textContent?.replace(/^Expected:\s*/, "") || "";
+        void correct(id, kind, { name, outcome });
+      };
+    });
+    const intent = card.querySelector<HTMLInputElement>("[data-intent]");
+    if (intent) intent.onchange = () => { void correct(id, "rename", { intent: intent.value }); };
+    const note = card.querySelector<HTMLInputElement>("[data-note]");
+    if (note) {
+      const commit = () => {
+        const pending = noteTimers.get(id);
+        if (pending) window.clearTimeout(pending);
+        noteTimers.delete(id);
+        if (note.value.trim()) void correct(id, "note", { note: note.value });
+      };
+      note.oninput = () => {
+        const pending = noteTimers.get(id);
+        if (pending) window.clearTimeout(pending);
+        const text = note.value;
+        noteTimers.set(id, window.setTimeout(() => {
+          noteTimers.delete(id);
+          if (text.trim()) void correct(id, "note", { note: text });
+        }, 450));
+      };
+      note.onchange = commit;
+    }
   });
 }
 

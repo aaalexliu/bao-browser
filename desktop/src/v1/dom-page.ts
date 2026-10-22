@@ -200,3 +200,62 @@ export function maskPasswordFields(): void {
 export function unmaskPasswordFields(): void {
   document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
 }
+
+/**
+ * Scribe-style blur. Password fields and anything marked secret are blurred
+ * before a teach screenshot, then put back so the page the person is driving
+ * is not left covered.
+ * Returns how many fields were blurred. Passed to page.evaluate, so it stays closed over nothing.
+ */
+export function blurSensitiveFields(): number {
+  document.querySelectorAll("[data-bao-blur]").forEach((el) => el.remove());
+  const targets = [
+    ...document.querySelectorAll("input[type=password], input[autocomplete='current-password'], [data-bao-secret]"),
+  ];
+  let count = 0;
+  for (const el of targets) {
+    if (!(el instanceof HTMLElement)) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) continue;
+    el.dataset.baoBlurred = "1";
+    el.dataset.baoBlurPrev = el.style.filter;
+    el.style.filter = "blur(10px)";
+    const cover = document.createElement("div");
+    cover.setAttribute("data-bao-blur", "1");
+    cover.setAttribute("aria-hidden", "true");
+    cover.style.position = "fixed";
+    cover.style.left = `${rect.x}px`;
+    cover.style.top = `${rect.y}px`;
+    cover.style.width = `${rect.width}px`;
+    cover.style.height = `${rect.height}px`;
+    cover.style.backdropFilter = "blur(12px)";
+    cover.style.background = "rgba(245, 245, 247, 0.28)";
+    cover.style.borderRadius = "6px";
+    cover.style.zIndex = "2147483646";
+    cover.style.pointerEvents = "none";
+    document.body.appendChild(cover);
+    count += 1;
+  }
+  return count;
+}
+
+export function unblurSensitiveFields(): void {
+  document.querySelectorAll("[data-bao-blur]").forEach((el) => el.remove());
+  document.querySelectorAll("[data-bao-blurred]").forEach((el) => {
+    if (!(el instanceof HTMLElement)) return;
+    el.style.filter = el.dataset.baoBlurPrev || "";
+    delete el.dataset.baoBlurPrev;
+    delete el.dataset.baoBlurred;
+  });
+}
+
+/** Status lines a teach check can name. Runs in the page. Skips typed values and file echoes. */
+export function visibleStatusLines(): string[] {
+  const norm = (value: string) => (value || "").replace(/\s+/g, " ").trim();
+  const typed = new Set([...document.querySelectorAll("input, textarea")]
+    .map((el) => norm((el as HTMLInputElement).value))
+    .filter(Boolean));
+  return [...document.querySelectorAll("[data-testid]")]
+    .map((el) => norm(el.textContent || ""))
+    .filter((line) => line && !typed.has(line) && !/^waiting/i.test(line) && !/^Dropped file:/i.test(line) && !/^Received file:/i.test(line));
+}
