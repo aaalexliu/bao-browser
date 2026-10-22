@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { describeWorkflow, runWorkflow, searchWorkflows } from "../../src/mcp/catalog";
+import { compareSearchHits, describeWorkflow, originLabel, runWorkflow, searchWorkflows, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
@@ -17,7 +17,45 @@ test("search returns at most five hits and each hit has an input schema", async 
     assert.ok(Array.isArray(hit.inputs));
     assert.equal(hit.inputs[0]?.name, "query");
     assert.equal(hit.link.startsWith("bao://workflow/"), true);
+    assert.equal(hit.source, "this Mac");
+    assert.equal(hit.lastGreen, "Not replayed yet");
   }
+});
+
+test("source names this Mac, the other device, or the marketplace", () => {
+  assert.equal(originLabel({ local: true, bucket: "mine" }), "this Mac");
+  assert.equal(originLabel({ local: false, bucket: "mine", deviceName: "Mac A", thisDevice: "Mac B" }), "Mac A");
+  assert.equal(originLabel({ local: true, bucket: "mine", forkedFrom: "listing-1", deviceName: "Mac A" }), "marketplace");
+  assert.equal(originLabel({ local: false, bucket: "public" }), "marketplace");
+});
+
+test("equal scores rank this Mac, then another device, then marketplace", () => {
+  const hits = [
+    hit("m", "marketplace", 10, "Span marketplace"),
+    hit("a", "Mac A", 10, "Span from Mac A"),
+    hit("here", "this Mac", 10, "Span on this Mac"),
+    hit("better", "marketplace", 30, "Better marketplace"),
+  ].sort(compareSearchHits);
+  assert.deepEqual(hits.map((item) => item.id), ["better", "here", "a", "m"]);
+});
+
+test("a passed run stamps last green for search and describe", async () => {
+  const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
+  library.save(workflow("wf-green", "Search workflow green"));
+  const before = await describeWorkflow(library, "wf-green");
+  assert.equal(before.lastGreen, "Not replayed yet");
+  library.saveRun({
+    id: "run-green",
+    workflowId: "wf-green",
+    status: "passed",
+    at: Date.now(),
+    heals: [],
+    steps: [],
+  });
+  const described = await describeWorkflow(library, "wf-green");
+  assert.notEqual(described.lastGreen, "Not replayed yet");
+  const hits = await searchWorkflows(library, "green");
+  assert.equal(hits[0]?.lastGreen, described.lastGreen);
 });
 
 test("describe omits secret defaults and a missing secret does not launch a browser", async () => {
@@ -30,12 +68,29 @@ test("describe omits secret defaults and a missing secret does not launch a brow
   assert.equal(secret?.default, undefined);
   assert.equal(described.inputs.find((input) => input.name === "password")?.type, "secret");
   assert.equal(described.link, "bao://workflow/sign-in");
+  assert.equal(described.source, "this Mac");
+  assert.equal(described.lastGreen, "Not replayed yet");
   const outcome = await runWorkflow(library, { id: "sign-in", inputs: { query: "ada" } });
   assert.equal(outcome.outcome, "needs_human");
   assert.match(outcome.reason || "", /Password/);
   assert.match(outcome.resume || "", /^r_[a-f0-9]+$/);
   assert.equal(JSON.stringify(outcome).includes("SuperSecret"), false);
 });
+
+function hit(id: string, source: string, score: number, title: string): SearchHit {
+  return {
+    id,
+    title,
+    summary: "",
+    site: "",
+    category: "",
+    source,
+    lastGreen: "Not replayed yet",
+    score,
+    inputs: [],
+    link: `bao://workflow/${id}`,
+  };
+}
 
 function workflow(id: string, name: string): WorkflowV2 {
   return {
