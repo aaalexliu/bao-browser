@@ -73,6 +73,15 @@ export interface WorkflowOutcome {
   resume_token?: string;
   /** Declared workflow outputs filled by this run. */
   outputs?: import("../v1/data-steps").OutputValue[];
+  /** The page class that stopped this run, with the evidence that named it. */
+  pageClass?: {
+    class: string;
+    reason: string;
+    vendor?: string;
+    stepId: string;
+    evidence: { source: string; detail: string }[];
+    line?: string;
+  };
 }
 
 export interface RemoteAuth {
@@ -188,7 +197,7 @@ export async function runWorkflow(
     if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT);
     return continueLive(library, live, request.inputs ?? {});
   }
-  if (peeked && (peeked.kind === "signin" || peeked.kind === "confirm")) {
+  if (peeked && (peeked.kind === "signin" || peeked.kind === "confirm" || peeked.kind === "wall")) {
     dropResume(library, request.resume || "");
     return emptyOutcome(peeked.workflowId, "failed", "the run's browser is gone");
   }
@@ -323,7 +332,7 @@ interface LiveRun {
   trail: RunTrailEvent[];
   steps: RunResult["steps"];
   stepId: string;
-  kind: "signin" | "confirm";
+  kind: "signin" | "confirm" | "wall";
   deadline: number | null;
   ask: string;
 }
@@ -536,6 +545,10 @@ function rememberRun(
     outcome = "needs_human";
     status = "needs_human";
     reason = run.ask?.instruction || "Press the button";
+  } else if (run.pausedKind === "wall") {
+    outcome = "needs_human";
+    status = "needs_human";
+    reason = run.ask?.instruction || "You need to act";
   } else if (run.status === "paused") {
     outcome = "needs_human";
     status = "needs_human";
@@ -555,6 +568,17 @@ function rememberRun(
   result.step = stepId;
   result.ask = run.ask?.instruction || (outcome === "ok" ? undefined : reason);
   result.deadline = run.ask ? (run.ask.deadline ? formatClock(run.ask.deadline) : "No timeout") : undefined;
+  const lastClass = run.pageClasses[run.pageClasses.length - 1];
+  if (lastClass && (lastClass.class === "bot_wall" || lastClass.class === "login_wall")) {
+    result.pageClass = {
+      class: lastClass.class,
+      reason: lastClass.reason,
+      vendor: lastClass.vendor,
+      stepId: lastClass.stepId,
+      evidence: lastClass.evidence,
+      line: lastClass.line,
+    };
+  }
   if (outcome !== "ok") {
     result.resume = resumeToken || writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
       kind: run.pausedKind,
@@ -576,15 +600,17 @@ function saveWorkflowRun(
   clip?: { video: string; videoStartedAt: number },
 ): void {
   const paused = outcome.status === "needs_signin" || outcome.status === "needs_human";
+  const wall = run.pausedKind === "wall";
   library.saveRun({
     id: run.runId,
     workflowId: workflow.id,
-    status: paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
+    status: wall ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
     at: Date.now(),
     heals: run.heals,
     failure: run.failure,
     steps: run.steps,
     modelCalls: run.modelCalls,
+    pageClasses: run.pageClasses,
     trail: run.trail,
     inputs: Object.fromEntries(Object.entries(publicInputs(workflow, inputs)).map(([key, value]) => [key, String(value)])),
     ...(run.outputs ? { outputs: run.outputs } : {}),
@@ -739,7 +765,7 @@ interface ResumeFile {
   workflowId: string;
   stepId: string;
   publicInputs: Record<string, string | number>;
-  kind?: "signin" | "confirm" | "input";
+  kind?: "signin" | "confirm" | "input" | "wall";
   deadline?: number | null;
   ask?: string;
   runId?: string;

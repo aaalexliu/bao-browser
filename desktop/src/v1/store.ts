@@ -49,6 +49,16 @@ export interface StoredRun {
   trajectory?: unknown[];
   /** Declared workflow outputs for this run. */
   outputs?: OutputValue[];
+  /** Classifier decisions for this run, including the evidence. */
+  pageClasses?: {
+    stepId: string;
+    at?: number;
+    class: string;
+    reason: string;
+    vendor?: string;
+    evidence?: { source: string; detail: string }[];
+    line?: string;
+  }[];
   /** Human step returned by run_workflow. Secrets are not in here. */
   envelope?: {
     status: string;

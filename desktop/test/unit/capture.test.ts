@@ -77,8 +77,8 @@ test("a note replays without touching the page and a check becomes a verify step
   const result = await replay(doc, {}, driver, { heal: { available: () => false, propose: async () => null } });
   assert.equal(result.status, "passed");
   assert.equal(result.steps.every((step) => step.status === "passed"), true);
-  // The check reads the tree for the auth gate and again for the text. The note does not.
-  assert.equal(looked, 2);
+  // The classifier reads the tree once. The check reads it for the auth gate and again for the text. The note does not.
+  assert.equal(looked, 3);
 });
 
 test("blur runs before the screenshot and clears after", async () => {

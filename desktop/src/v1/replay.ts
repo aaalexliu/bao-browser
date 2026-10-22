@@ -10,7 +10,7 @@ import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard"
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
 import { lookup, normRole } from "./identity";
-import { actWaitMs, confirmButton, makeAsk, siteHost, type HumanAsk } from "./human-ask";
+import { actWaitMs, confirmButton, makeAsk, siteHost, wallInstruction, type HumanAsk } from "./human-ask";
 import { formatClock } from "./time";
 import { identityView } from "./run-trace";
 import {
@@ -30,6 +30,13 @@ import {
 import { isCollapsedBox, matchLabeledControl, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
 import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
+import {
+  classifyPage,
+  recordingExpectsLogin,
+  type PageClassDecision,
+  type PageClassRecord,
+  type PageSignals,
+} from "./page-class";
 import { consequential, type SiteTrustMode } from "./site-trust";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
@@ -154,6 +161,10 @@ export interface Driver {
     console: { stepId?: string; type?: string; text: string; ts?: number }[];
     network: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
   };
+  /** DOM, iframes, headers, and cookies for the pre-heal classifier. */
+  pageSignals?(): Promise<PageSignals>;
+  /** Click a known close control. Does not click a captcha. */
+  dismissClutter?(): Promise<boolean>;
 }
 
 export interface ShotTarget {
@@ -192,7 +203,9 @@ export interface RunResult {
   proposal?: HealProposal;
   pausedStepId?: string;
   /** Set when replay stopped for a person instead of a heal approval. */
-  pausedKind?: "signin" | "confirm";
+  pausedKind?: "signin" | "confirm" | "wall";
+  /** Classifier decisions for this run, including the evidence. */
+  pageClasses: PageClassRecord[];
   /** The ask that is waiting. Absent when the run is not waiting on a person. */
   ask?: HumanAsk;
   /** Heal proposals that named a model. Zero is a run that did not call one. */
@@ -233,6 +246,10 @@ export interface ReplayOptions {
   humanReady?: boolean;
   /** Trail lines already recorded for this run. Resume appends the handoff end. */
   trail?: RunTrailEvent[];
+  /** Desktop waits on Continue. MCP and unit tests return as soon as the wall is raised. */
+  holdForPerson?: boolean;
+  /** Called when a wall pauses the run, before the wait, so the run page can show it. */
+  onPause?: (result: RunResult) => void;
   /** IANA zone for date inputs. Absent uses the host zone. */
   zone?: string;
   /** Per-run download root. Each run gets a folder under it. */
@@ -275,21 +292,21 @@ export async function replay(
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
   const tables = new Map<string, Record<string, string>[]>();
-
+  const pageClasses: PageClassRecord[] = [];
   const filesClock = opts.clock ?? new Date(opts.nowMs ? opts.nowMs() : Date.now());
-  const files = prepareFilesDatesRun(workflow, args, {
+  const prepared = prepareFilesDatesRun(workflow, args, {
     now: filesClock,
     zone: opts.zone,
     runId,
     downloadDir: opts.downloadDir || path.join(tmpdir(), "bao-runs"),
     openExec: opts.openExec,
   });
-  args = files.args;
-  beginFilesRun(files);
+  args = prepared.args;
+  beginFilesRun(prepared);
 
-  const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls"> & Partial<RunResult>): RunResult => {
+  const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls" | "pageClasses"> & Partial<RunResult>): RunResult => {
     const trace = driver.trace?.();
-    const files = endFilesRun(runId);
+    const downloaded = endFilesRun(runId);
     const outputs = materializeOutputs(workflow, tables);
     return {
       heals,
@@ -299,11 +316,12 @@ export async function replay(
       trajectory,
       trail,
       precondition,
+      pageClasses,
       console: trace?.console || [],
       network: trace?.network || [],
       ...partial,
       ...(outputs ? { outputs } : {}),
-      ...(Object.keys(files).length ? { files } : {}),
+      ...(Object.keys(downloaded).length ? { files: downloaded } : {}),
       modelCalls: heals.filter((item) => item.model).length,
     };
   };
@@ -351,7 +369,102 @@ export async function replay(
       noteTrajectory(trajectory, step, undefined, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
-    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+    const noteClass = (decision: PageClassDecision, keepChanged = false) => {
+      if (!keepChanged && decision.class === "changed") return;
+      const line = decision.class === "bot_wall" || decision.class === "login_wall"
+        ? wallInstruction(siteHost(workflow.startUrl), decision.class === "login_wall" ? "login" : "bot")
+        : undefined;
+      const last = pageClasses[pageClasses.length - 1];
+      if (last && last.stepId === step.id && last.class === decision.class) return;
+      pageClasses.push({
+        stepId: step.id,
+        at: now(),
+        class: decision.class,
+        reason: decision.reason,
+        vendor: decision.vendor,
+        evidence: decision.evidence,
+        line,
+        dismiss: decision.dismiss,
+      });
+    };
+    const holdWall = async (decision: PageClassDecision): Promise<{ result?: RunResult; next?: boolean; outcome?: StepOutcome }> => {
+      noteClass(decision);
+      const ask = makeAsk({
+        kind: "wall",
+        wall: decision.class === "login_wall" ? "login" : "bot",
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        stepId: step.id,
+        stepIndex: step.index + 1,
+        stepCount: workflow.steps.length,
+        label: step.label,
+        site: siteHost(workflow.startUrl),
+        timeoutMs: actWaitMs(undefined, settings.actTimeoutMs),
+        runId,
+      });
+      await driver.showAsk?.(ask);
+      beginHandoff(driver, gate, step.id);
+      stamp({ id: step.id, status: "paused", reason: decision.class === "login_wall" ? "sign in" : "bot check" });
+      const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: "wall", ask });
+      opts.onPause?.(paused);
+      if (!opts.holdForPerson) return { result: paused };
+      const timeout = actWaitMs(undefined, settings.actTimeoutMs);
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        if (driver.shouldStop?.()) {
+          endHandoff(driver, gate, step.id);
+          await driver.clearLoginWait?.();
+          stamp({ id: step.id, status: "failed", reason: "cancelled" });
+          return { result: finish({ runId, status: "failed", steps, failure: await fail(driver, step, "find", "cancelled", undefined, secrets) }) };
+        }
+        if (driver.loginContinued?.()) {
+          await driver.clearLoginWait?.();
+          endHandoff(driver, gate, step.id);
+          const retried = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+          repairs.push(...retried.repairs);
+          if (retried.ok) {
+            stamp({ id: step.id, status: "passed", ...(retried.recovered ? { reason: `recovered: ${retried.recovered}` } : {}) });
+            noteTrajectory(trajectory, step, retried.acted, true, clock() - started);
+            return { next: true };
+          }
+          if ("paused" in retried) return { outcome: retried };
+          const again = await classifyLive(driver, workflow);
+          if (again.class === "bot_wall" || again.class === "login_wall") {
+            noteClass(again);
+            await driver.showAsk?.(ask);
+            beginHandoff(driver, gate, step.id);
+            continue;
+          }
+          return { outcome: retried };
+        }
+        await (driver.sleep ? driver.sleep(200) : sleep(200));
+      }
+      endHandoff(driver, gate, step.id);
+      await driver.clearLoginWait?.();
+      stamp({ id: step.id, status: "failed", reason: "stopped, timed out" });
+      return { result: finish({ runId, status: "failed", steps, failure: await fail(driver, step, "find", "stopped, timed out", undefined, secrets) }) };
+    };
+    const before = step.action === "note" ? undefined : await classifyLive(driver, workflow);
+    let outcome: StepOutcome | undefined;
+    if (before && (before.class === "bot_wall" || before.class === "login_wall")) {
+      const held = await holdWall(before);
+      if (held.result) return held.result;
+      if (held.next) continue;
+      outcome = held.outcome;
+    }
+    let clutterPrimed = false;
+    if (!outcome && before && before.class === "clutter") {
+      noteClass(before);
+      const nodes = (await driver.tree().catch(() => undefined))?.nodes || [];
+      if (!findRecovery(nodes) && recovery.used < RECOVERY_LIMIT) {
+        if (await dismissNamed(driver, before)) {
+          recovery.used += 1;
+          repairs.push({ stepId: step.id, repair: "overlay", detail: before.reason });
+          clutterPrimed = true;
+        }
+      }
+    }
+    if (!outcome) outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
       const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
@@ -368,7 +481,9 @@ export async function replay(
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
         stamp({ id: step.id, status: "passed", phase: "auth", reason: "auth: redirected to login" });
       } else {
-        const passed = outcome.note || outcome.detail || (outcome.recovered ? `recovered: ${outcome.recovered}` : "");
+        const passed = clutterPrimed
+          ? "recovered: clutter"
+          : (outcome.note || outcome.detail || (outcome.recovered ? `recovered: ${outcome.recovered}` : ""));
         stamp({ id: step.id, status: "passed", ...(passed ? { reason: passed } : {}) });
       }
       noteTrajectory(trajectory, step, outcome.acted, true, clock() - started);
@@ -381,7 +496,62 @@ export async function replay(
       const pausedKind = outcome.paused === "signin" || outcome.paused === "confirm" ? outcome.paused : undefined;
       return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind, ask: outcome.ask });
     }
-    const failure = outcome.failure;
+    let failure = outcome.failure;
+    const missed = await classifyLive(driver, workflow);
+    noteClass(missed, true);
+    if (missed.class === "bot_wall" || missed.class === "login_wall") {
+      const held = await holdWall(missed);
+      if (held.result) return held.result;
+      if (held.next) continue;
+      if (held.outcome && "failure" in held.outcome) {
+        outcome = held.outcome;
+        failure = held.outcome.failure;
+      }
+    } else if (missed.class === "clutter") {
+      const nodesNow = (await driver.tree().catch(() => undefined))?.nodes || [];
+      const coveredNow = findRecovery(nodesNow);
+      const budgetLeft = recovery.used < RECOVERY_LIMIT;
+      if (!clutterPrimed && budgetLeft && !coveredNow) {
+        if (await dismissNamed(driver, missed)) {
+          recovery.used += 1;
+          repairs.push({ stepId: step.id, repair: "overlay", detail: missed.reason });
+          const retried = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+          repairs.push(...retried.repairs);
+          if (retried.ok) {
+            stamp({ id: step.id, status: "passed", reason: "recovered: clutter" });
+            noteTrajectory(trajectory, step, retried.acted, true, clock() - started);
+            continue;
+          }
+          if ("paused" in retried) {
+            const reason = retried.paused === "trust" ? "always ask" : retried.paused === "signin" ? "sign in" : "confirm";
+            stamp({ id: step.id, status: "paused", reason });
+            return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: retried.paused === "signin" || retried.paused === "confirm" ? retried.paused : undefined, ask: retried.ask });
+          }
+          const again = await classifyLive(driver, workflow);
+          noteClass(again, true);
+          if (again.class === "bot_wall" || again.class === "login_wall") {
+            const held = await holdWall(again);
+            if (held.result) return held.result;
+            if (held.next) continue;
+          }
+          if (again.class !== "changed") {
+            stamp({ id: step.id, status: "failed", reason: again.reason, phase: retried.failure.phase });
+            noteTrajectory(trajectory, step, retried.acted, false, clock() - started);
+            return finish({ runId, status: "failed", steps, failure: { ...retried.failure, reason: again.reason } });
+          }
+          outcome = retried;
+          failure = retried.failure;
+        } else {
+          stamp({ id: step.id, status: "failed", reason: missed.reason, phase: failure.phase });
+          noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+          return finish({ runId, status: "failed", steps, failure: { ...failure, reason: missed.reason } });
+        }
+      } else if (!coveredNow) {
+        stamp({ id: step.id, status: "failed", reason: missed.reason, phase: failure.phase });
+        noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+        return finish({ runId, status: "failed", steps, failure: { ...failure, reason: missed.reason } });
+      }
+    }
     const liveNodes = (await driver.tree().catch(() => undefined))?.nodes || [];
     const stop = hardFailure({
       phase: failure.phase,
@@ -1545,6 +1715,55 @@ function noteAuth(trail: RunTrailEvent[], stepId: string, recovered: boolean): v
     phase: "auth",
     reason: recovered ? "redirected to login" : "redirected to login",
   });
+}
+
+async function classifyLive(driver: Driver, workflow: WorkflowV2): Promise<PageClassDecision> {
+  const recorded = recordingExpectsLogin(workflow.steps);
+  const startedUrl = workflow.startUrl;
+  if (driver.pageSignals) {
+    const signals = await driver.pageSignals().catch(() => undefined);
+    if (signals) {
+      return classifyPage({
+        ...signals,
+        startedUrl,
+        recordedPassword: recorded.password,
+        recordedLogin: recorded.login,
+      });
+    }
+  }
+  const tree = await driver.tree().catch(() => undefined);
+  const texts = [...(tree?.texts || [])];
+  const nodes = tree?.nodes || [];
+  for (const node of nodes) {
+    for (const bit of [node.text, node.name, node.label]) if (bit) texts.push(bit);
+  }
+  return classifyPage({
+    url: tree?.url,
+    startedUrl,
+    texts,
+    nodes,
+    hasPassword: nodes.some((node) => node.role === "password" || node.nameAttr === "password" || node.id === "password"),
+    recordedPassword: recorded.password,
+    recordedLogin: recorded.login,
+  });
+}
+
+async function dismissNamed(driver: Driver, decision: PageClassDecision): Promise<boolean> {
+  const label = `${decision.dismiss?.text || ""} ${decision.dismiss?.name || ""} ${decision.dismiss?.testId || ""}`;
+  if (/captcha|recaptcha|hcaptcha|turnstile|not a robot|verify you are human/i.test(label)) return false;
+  const tree = await driver.tree().catch(() => undefined);
+  const want = decision.dismiss;
+  const node = tree?.nodes.find((item) => {
+    if (want?.testId && item.testId === want.testId) return true;
+    const text = (item.text || item.name || item.label || "").replace(/\s+/g, " ").trim();
+    return !!want?.text && text.toLowerCase() === want.text.toLowerCase();
+  });
+  if (node) {
+    await driver.click(node);
+    return true;
+  }
+  if (driver.dismissClutter) return driver.dismissClutter();
+  return false;
 }
 
 function sleep(ms: number): Promise<void> {

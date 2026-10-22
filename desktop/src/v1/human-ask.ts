@@ -1,8 +1,9 @@
 // Copy for a step that waits on the person. Replay does not click or type these.
 
+import { siteName } from "./page-class";
 import { formatClock } from "./time";
 
-export type AskKind = "login" | "confirm";
+export type AskKind = "login" | "confirm" | "wall";
 
 /** A person has two hours unless Settings names another wait. */
 export const DEFAULT_ACT_TIMEOUT_MS = 120 * 60 * 1000;
@@ -55,8 +56,16 @@ export function siteHost(url: string | undefined): string {
   }
 }
 
-export function actAskLine(ask: { kind: AskKind; site?: string; button?: string }): string {
+/** Bot check or a session that expired. The person finishes it in the Bao window. */
+export function wallInstruction(site: string, kind: "bot" | "login"): string {
+  const name = siteName(site);
+  if (kind === "bot") return `${name} is showing a bot check. Finish it in the Bao window, then press Continue.`;
+  return "Sign in in the Bao window, then press Continue.";
+}
+
+export function actAskLine(ask: { kind: AskKind; site?: string; button?: string; instruction?: string }): string {
   const site = (ask.site || "the site").trim() || "the site";
+  if (ask.kind === "wall") return ask.instruction || wallInstruction(site, "bot");
   if (ask.kind === "confirm") return `Press ${ask.button || "the button"} on ${site} in the Bao window`;
   return `Sign in to ${site} in the Bao window`;
 }
@@ -94,6 +103,8 @@ export function makeAsk(input: {
   label: string;
   button?: string;
   site?: string;
+  /** Wall only: bot check or an expired session. */
+  wall?: "bot" | "login";
   timeoutMs: number;
   now?: number;
   windowName?: string;
@@ -104,6 +115,11 @@ export function makeAsk(input: {
   const site = (input.site || "the site").trim() || "the site";
   const timeoutMs = input.timeoutMs > 0 ? input.timeoutMs : 0;
   const button = input.kind === "confirm" ? (input.button || confirmButton({ label: input.label })) : undefined;
+  const instruction = input.kind === "wall"
+    ? wallInstruction(site, input.wall === "login" ? "login" : "bot")
+    : input.kind === "confirm"
+      ? confirmInstruction(button || "the button", site)
+      : loginInstruction(site);
   return {
     kind: input.kind,
     workflowId: input.workflowId,
@@ -115,7 +131,7 @@ export function makeAsk(input: {
     button,
     site,
     windowName,
-    instruction: input.kind === "confirm" ? confirmInstruction(button || "the button", site) : loginInstruction(site),
+    instruction,
     startedAt: now,
     deadline: timeoutMs > 0 ? now + timeoutMs : null,
     timeoutMs,

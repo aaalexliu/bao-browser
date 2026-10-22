@@ -86,7 +86,7 @@ import { isNeedsSignIn, runIfSignedIn } from "../login-import/session-gate";
 import { SiteStore, siteOrigin } from "../login-import/sites";
 import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
-import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
+import { replay, type HealNotice, type ReplayOptions, type RunResult } from "../v1/replay";
 import {
   clearPendingPrompt,
   markPromptTimedOut,
@@ -256,7 +256,7 @@ export async function startApp(opts: {
     clearLoginWait() {
       loginWait = null;
       loginContinued = false;
-      if (activeAsk?.kind === "login") {
+      if (activeAsk?.kind === "login" || activeAsk?.kind === "wall") {
         activeAsk = null;
         clearPendingPrompt(library.root);
       }
@@ -2012,6 +2012,52 @@ async function gateSavedLogin(
   return outcome;
 }
 
+function persistedRun(
+  result: RunResult,
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  extra: {
+    promotion: unknown;
+    recorded: { wrote: boolean };
+    videoStartedAt: number;
+    secretList: string[];
+  },
+): Parameters<Library["saveRun"]>[0] {
+  const wall = result.pausedKind === "wall";
+  return JSON.parse(maskText(JSON.stringify({
+    id: result.runId,
+    workflowId: workflow.id,
+    status: wall ? "needs_human" : result.status,
+    at: Date.now(),
+    heals: result.heals,
+    failure: result.failure,
+    steps: result.steps,
+    repairs: result.repairs,
+    receipts: result.receipts,
+    trail: result.trail,
+    precondition: result.precondition,
+    trajectory: result.trajectory,
+    console: result.console,
+    network: result.network,
+    promotion: extra.promotion,
+    modelCalls: result.modelCalls,
+    pageClasses: result.pageClasses,
+    inputs: maskedInputs(workflow, args),
+    ...(result.outputs ? { outputs: result.outputs } : {}),
+    ...(wall ? {
+      envelope: {
+        status: "needs_human",
+        run_id: result.runId,
+        step: result.pausedStepId,
+        reason: result.ask?.instruction,
+        ask: result.ask?.instruction,
+        deadline: result.ask?.deadline ? formatClock(result.ask.deadline) : "No timeout",
+      },
+    } : {}),
+    ...(extra.recorded.wrote ? { video: `${result.runId}.webm`, videoStartedAt: extra.videoStartedAt } : {}),
+  }), extra.secretList)) as Parameters<Library["saveRun"]>[0];
+}
+
 async function runRecorded(
   library: Library,
   workflow: WorkflowV2,
@@ -2059,6 +2105,15 @@ async function runRecorded(
       reviewSteps,
       circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
       siteTrust: trustMode(settings, originOf(workflow.startUrl)),
+      holdForPerson: true,
+      onPause: (partial) => {
+        library.saveRun(persistedRun(partial, workflow, args, {
+          promotion: undefined,
+          recorded: { wrote: false },
+          videoStartedAt,
+          secretList,
+        }));
+      },
     } satisfies ReplayOptions);
   } finally {
     recorded = await video.stop();
@@ -2071,27 +2126,7 @@ async function runRecorded(
     library.appendTrail(workflow.id, receipt);
   }
   const promotion = recordProvisional(library, workflow, result.heals);
-  const saved = JSON.parse(maskText(JSON.stringify({
-    id: result.runId,
-    workflowId: workflow.id,
-    status: result.status,
-    at: Date.now(),
-    heals: result.heals,
-    failure: result.failure,
-    steps: result.steps,
-    repairs: result.repairs,
-    receipts: result.receipts,
-    trail: result.trail,
-    precondition: result.precondition,
-    trajectory: result.trajectory,
-    console: result.console,
-    network: result.network,
-    promotion,
-    modelCalls: result.modelCalls,
-    inputs: maskedInputs(workflow, args),
-    ...(result.outputs ? { outputs: result.outputs } : {}),
-    ...(recorded.wrote ? { video: `${runId}.webm`, videoStartedAt } : {}),
-  }), secretList)) as Parameters<Library["saveRun"]>[0];
+  const saved = persistedRun(result, workflow, args, { promotion, recorded, videoStartedAt, secretList });
   library.saveRun(saved);
   if (result.status !== "paused") clearPendingPrompt(library.root);
   const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);

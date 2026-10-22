@@ -489,7 +489,7 @@ test("closing the page during a confirm wait leaves the prompt in place", async 
   let reads = 0;
   d.tree = async () => {
     reads += 1;
-    if (reads > 1) throw new Error("page closed");
+    if (reads > 2) throw new Error("page closed");
     return tree([apply], { texts: ["Waiting to apply"] });
   };
   const doc = workflow(apply);

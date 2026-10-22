@@ -32,7 +32,7 @@ export function writePendingPrompt(home: string, prompt: PendingPrompt): void {
 export function readPendingPrompt(home: string): PendingPrompt | null {
   try {
     const parsed = JSON.parse(readFileSync(pendingPromptPath(home), "utf8")) as PendingPrompt;
-    if (!parsed?.ask || (parsed.ask.kind !== "login" && parsed.ask.kind !== "confirm")) return null;
+    if (!parsed?.ask || (parsed.ask.kind !== "login" && parsed.ask.kind !== "confirm" && parsed.ask.kind !== "wall")) return null;
     if (!parsed.ask.workflowId || !parsed.runId) return null;
     return parsed;
   } catch {

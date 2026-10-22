@@ -543,6 +543,7 @@ test("the signed-in probe waits out DOMContentLoaded for network idle and 5 seco
   assert.deepEqual(chatty, ["goto", "idle-timeout", "wait", "url:settled"]);
   assert.equal(late.finalUrl, "https://member.example/login");
   assert.equal(judgeSignedIn(late, {}).signedIn, false);
+  assert.equal(judgeSignedIn(late, {}).how, "login-wall");
 });
 
 test("localStorage leveldb and sqlite keep the clicked origins, including latin1 and utf-16", async () => {

@@ -1,5 +1,6 @@
 // A banner, modal, or spinner can hide a step for this run only.
-// CAPTCHA, a 5xx response, and a signed-out page stay failures.
+// A 5xx response stays a failure. A captcha or signed-out page that the
+// page classifier did not already stop also stays a failure.
 
 import type { Identity } from "./schema";
 
