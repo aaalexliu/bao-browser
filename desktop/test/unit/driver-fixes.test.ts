@@ -43,8 +43,16 @@ function memoryDriver(nodes: Identity[]): Driver & { files: string[]; texts: str
       if (node.id) state.values.set(node.id, text);
     },
     async key() {},
-    async upload(_node, files) { state.files.push(files[0]?.name || ""); },
-    async drop(_node, files) { state.files.push(files[0]?.name || ""); },
+    async upload(_node, files) {
+      const name = files[0]?.name || "";
+      state.files.push(name);
+      if (name) state.texts.push(name);
+    },
+    async drop(_node, files) {
+      const name = files[0]?.name || "";
+      state.files.push(name);
+      if (name) state.texts.push(`Dropped file: ${name}`);
+    },
     async digits() { throw new Error("digits"); },
     async check() {},
     async notify() {},

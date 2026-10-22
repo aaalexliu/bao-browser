@@ -125,6 +125,7 @@ export function applyWorld(world: World, kind: string, node: Identity | undefine
   if (kind === "type" || kind === "check") world.values[id] = text;
   if (kind === "upload" || kind === "drop") {
     world.values[id] = text;
+    world.texts.push(kind === "drop" ? `Dropped file: ${text}` : text);
     world.texts.push("Uploaded");
   }
   if (kind === "key") world.texts.push("Found");

@@ -189,6 +189,7 @@ export function taskHtml(id: string): string | null {
       <input id="name" name="name" data-testid="name">
       <label for="file">File</label>
       <input id="file" name="file" type="file" data-testid="file">
+      <p id="received-drop" data-testid="received-drop">Waiting for a drop</p>
       <button id="noop" type="button" data-testid="noop">Noop</button>
       <button id="save" type="button" data-testid="save">Save</button>`,
     tabs: `
@@ -282,7 +283,10 @@ export function taskHtml(id: string): string | null {
     document.getElementById("file")?.addEventListener("dragover", (event) => event.preventDefault());
     document.getElementById("file")?.addEventListener("drop", (event) => {
       event.preventDefault();
-      showFile(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]);
+      const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+      showFile(file);
+      const echo = document.getElementById("received-drop");
+      if (echo) echo.textContent = file && file.name ? "Dropped file: " + file.name : "";
     });
     document.getElementById("login-btn")?.addEventListener("click", () => {
       const user = document.getElementById("username");
