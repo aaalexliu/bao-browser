@@ -1,6 +1,7 @@
 // Desktop window. Talks only to this machine's bao server.
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
+import { sitesForTrust } from "../v1/site-trust";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
@@ -29,8 +30,10 @@ import {
   runKind,
   reviewItems,
   runViewer,
-  secretInput,
   statusLabel,
+  runField,
+  siteTrustPanel,
+  tryResult,
   teachHome,
   teachPanel,
   teachReview,
@@ -59,7 +62,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; siteTrust?: Record<string, "ask" | "allow"> };
   sync?: {
     server?: string;
     deviceName?: string;
@@ -101,6 +104,8 @@ let gateUrl = "";
 let pinnedRunId = "";
 let pinnedInputs: Record<string, string> | null = null;
 let debugStepId = "";
+let runFromN = 0;
+let fromNote: "" | "run" | "debug" = "";
 let pendingSeek: number | undefined;
 let seenOpen = "";
 const noteTimers = new Map<string, number>();
@@ -276,7 +281,7 @@ function replayForm(): string {
     `<option value="${esc(workflow.id)}" ${workflow.id === selected ? "selected" : ""}>${esc(workflow.name)}</option>`).join("");
   return `<section id="run-form"><h2>Run ${esc(current?.name || "")}</h2>
     <p class="lede">Inputs are asked once, before the run. Secrets stay masked.</p>
-    ${debugStepId ? `<p id="debug-note">Debug from this step (${esc(debugStepId)}). Earlier steps are not re-run. A secret is asked again.</p>` : ""}
+    ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
     <label>Healing for this workflow <select id="wf-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
@@ -294,6 +299,14 @@ function replayForm(): string {
   </section>`;
 }
 
+function fromLine(): string {
+  if (fromNote === "run" && debugStepId) {
+    return `<p id="run-from-note">Run from step ${esc(String(runFromN || debugStepId))}. Earlier steps are not re-run.</p>`;
+  }
+  if (debugStepId) return `<p id="debug-note">Debug from this step (${esc(debugStepId)}). Earlier steps are not re-run. A secret is asked again.</p>`;
+  return "";
+}
+
 function settings(): string {
   const heal = state.settings?.heal || "auto";
   const promoteAfter = state.settings?.promoteAfter ?? 3;
@@ -308,6 +321,7 @@ function settings(): string {
     <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
+    ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
@@ -367,6 +381,9 @@ function bind(): void {
   document.querySelectorAll("[data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || lastWf;
+      debugStepId = "";
+      runFromN = 0;
+      fromNote = "";
       screen = "replay";
       renderKey = "";
       render();
@@ -489,6 +506,8 @@ function bind(): void {
     pinnedRunId = "";
     pinnedInputs = null;
     debugStepId = "";
+    runFromN = 0;
+    fromNote = "";
     renderKey = "";
     render();
   };
@@ -572,6 +591,7 @@ function bind(): void {
         actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
         syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
+        siteTrust: readSiteTrust(),
       }),
     });
     renderKey = "";
@@ -807,6 +827,8 @@ function openPastRun(workflowId: string, runId: string, stepId: string, inputs?:
   pinnedRunId = runId;
   pinnedInputs = inputs || null;
   debugStepId = stepId;
+  runFromN = 0;
+  fromNote = stepId ? "debug" : "";
   lastWf = workflowId;
   screen = "replay";
   renderKey = "";
@@ -965,11 +987,32 @@ async function openEditor(id: string): Promise<void> {
   host.querySelectorAll("[data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || id;
+      debugStepId = "";
+      runFromN = 0;
+      fromNote = "";
       screen = "replay";
       renderKey = "";
       render();
     };
   });
+  host.querySelectorAll("[data-try-step]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => void tryWorkflowStep(id, (btn as HTMLButtonElement).dataset.tryStep || "");
+  });
+  host.querySelectorAll("[data-run-from]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const el = btn as HTMLButtonElement;
+      debugStepId = el.dataset.runFrom || "";
+      runFromN = Number(el.dataset.stepN || 0);
+      fromNote = "run";
+      pinnedRunId = "";
+      pinnedInputs = null;
+      lastWf = id;
+      screen = "replay";
+      renderKey = "";
+      render();
+    };
+  });
+  bindTokens(host, id);
   host.querySelectorAll("[data-screen=library]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       screen = "library";
@@ -1041,20 +1084,86 @@ async function fillArgs(id: string): Promise<void> {
   });
 }
 
-function field(input: { name: string; type: string; label?: string; default?: string; choices?: string[]; multiple?: boolean }, previous?: string): string {
-  const label = esc(input.label || input.name);
-  if (input.type === "secret") return secretInput(input.name, input.label || input.name, Boolean(previous));
-  if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || input.default || "")}"></label>`;
-  if (input.type === "choice") {
-    const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
-    return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
-  }
-  if (input.type === "file") {
-    const hint = previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
-    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""}> <span>${esc(hint)}</span></label>`;
-  }
-  const text = previous && previous !== "••••" ? previous : input.default || "";
-  return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(text)}</textarea></label>`;
+function field(input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }, previous?: string): string {
+  return runField(input, previous);
+}
+
+function readSiteTrust(): Record<string, "ask" | "allow"> {
+  const siteTrust: Record<string, "ask" | "allow"> = {};
+  document.querySelectorAll<HTMLSelectElement>("[data-site-trust]").forEach((sel) => {
+    const origin = sel.dataset.siteTrust || "";
+    if (!origin) return;
+    siteTrust[origin] = sel.value === "ask" ? "ask" : "allow";
+  });
+  return siteTrust;
+}
+
+async function tryWorkflowStep(id: string, stepId: string): Promise<void> {
+  const slot = document.querySelector(`[data-try-slot="${CSS.escape(stepId)}"]`);
+  if (slot) slot.innerHTML = `<p class="quiet">Looking up…</p>`;
+  const res = await fetch("/api/workflows/" + encodeURIComponent(id) + "/try", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ stepId }),
+  });
+  const body = await res.json() as { error?: string; matched?: boolean };
+  if (slot) slot.innerHTML = tryResult(res.ok ? body : { error: body.error || "Try failed" });
+}
+
+function bindTokens(host: HTMLElement, id: string): void {
+  host.querySelectorAll("[data-edit-input]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => openTokenEditor(btn as HTMLButtonElement, id);
+  });
+}
+
+function openTokenEditor(token: HTMLButtonElement, id: string): void {
+  const name = token.dataset.editInput || "";
+  const secret = token.dataset.type === "secret";
+  const editor = document.createElement("form");
+  editor.id = "input-editor";
+  editor.className = "token-editor";
+  editor.innerHTML = `<p class="quiet">Edit ${esc(token.dataset.label || name)}</p>
+    <label>Label <input name="label" value="${esc(token.dataset.label || name)}"></label>
+    <label>Type <select name="type">
+      ${["text", "secret", "number", "choice", "file"].map((type) => `<option value="${type}" ${token.dataset.type === type ? "selected" : ""}>${type}</option>`).join("")}
+    </select></label>
+    <label data-default-row ${secret ? "hidden" : ""}>Default <input name="default" value="${esc(secret ? "" : token.dataset.default || "")}" ${secret ? "disabled" : ""}></label>
+    <label>Required <input name="required" type="checkbox" ${token.dataset.required === "1" ? "checked" : ""}></label>
+    <p class="quiet" data-secret-note ${secret ? "" : "hidden"}>A secret stays masked. The value is not stored.</p>
+    <button type="button" data-save-input>Save</button>`;
+  document.getElementById("input-editor")?.remove();
+  token.closest(".step-copy")?.appendChild(editor);
+  const typeSel = editor.querySelector("[name=type]") as HTMLSelectElement;
+  const defaultRow = editor.querySelector("[data-default-row]") as HTMLElement;
+  const secretNote = editor.querySelector("[data-secret-note]") as HTMLElement;
+  const defaultInput = editor.querySelector("[name=default]") as HTMLInputElement;
+  typeSel.onchange = () => {
+    const hide = typeSel.value === "secret";
+    defaultRow.hidden = hide;
+    secretNote.hidden = !hide;
+    defaultInput.disabled = hide;
+    if (hide) defaultInput.value = "";
+  };
+  editor.querySelector("[data-save-input]")!.addEventListener("click", async () => {
+    const type = typeSel.value;
+    const res = await fetch("/api/workflows/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        inputEdit: {
+          name,
+          label: (editor.querySelector("[name=label]") as HTMLInputElement).value,
+          type,
+          default: type === "secret" ? "" : defaultInput.value,
+          required: (editor.querySelector("[name=required]") as HTMLInputElement).checked,
+        },
+      }),
+    });
+    if (!res.ok) return;
+    renderKey = "";
+    await refresh();
+    await openEditor(id);
+  });
 }
 
 async function runReplay(): Promise<void> {
@@ -1102,6 +1211,8 @@ async function runReplay(): Promise<void> {
   pinnedRunId = "";
   pinnedInputs = null;
   debugStepId = "";
+  runFromN = 0;
+  fromNote = "";
   screen = "run";
   renderKey = "";
   await refresh();

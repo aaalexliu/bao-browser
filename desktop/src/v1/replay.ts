@@ -27,6 +27,7 @@ import {
 import { isCollapsedBox, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
 import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
+import { consequential, type SiteTrustMode } from "./site-trust";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
 import {
@@ -98,6 +99,8 @@ export interface Driver {
   markStep?(id: string): void;
   /** DOM and accessibility tree at the end of the step. Browser drivers only. */
   captureStep?(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }>;
+  /** Draw the match. Not an action: Try uses this and does not click or type. */
+  outline?(node: Identity): Promise<void>;
   trace?(): {
     console: { stepId?: string; type?: string; text: string; ts?: number }[];
     network: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
@@ -162,6 +165,11 @@ export interface ReplayOptions {
   reviewSteps?: ReadonlySet<string>;
   /** Replay starts here. Earlier steps are not run again. */
   fromStepId?: string;
+  /**
+   * Per-site trust for ordinary actions. Absent leaves those actions as they are.
+   * A confirm or login step does not read this.
+   */
+  siteTrust?: SiteTrustMode;
 }
 
 let seq = 0;
@@ -235,14 +243,14 @@ export async function replay(
       noteTrajectory(trajectory, step, undefined, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
-    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra);
+    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
       const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
-        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra);
+        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
         repairs.push(...outcome.repairs);
       }
     }
@@ -258,7 +266,7 @@ export async function replay(
       continue;
     }
     if ("paused" in outcome) {
-      stamp({ id: step.id, status: "paused", reason: "confirm" });
+      stamp({ id: step.id, status: "paused", reason: outcome.paused === "trust" ? "always ask" : "confirm" });
       noteTrajectory(trajectory, step, undefined, true, clock() - started);
       return finish({ runId, status: "paused", steps, pausedStepId: step.id });
     }
@@ -354,13 +362,13 @@ export async function replay(
     }
     const patched = applyPatch(step, proposal.patch);
     pictured = patched;
-    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra);
+    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok && "paused" in retried) {
-      stamp({ id: step.id, status: "paused", reason: "confirm" });
+      stamp({ id: step.id, status: "paused", reason: retried.paused === "trust" ? "always ask" : "confirm" });
       noteTrajectory(trajectory, patched, undefined, true, clock() - started);
       return finish({ runId, status: "paused", steps, pausedStepId: step.id });
     }
@@ -387,7 +395,7 @@ export async function replay(
 type StepOutcome =
   | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
-  | { ok: false; paused: "confirm"; repairs: RepairLog[] };
+  | { ok: false; paused: "confirm" | "trust"; repairs: RepairLog[] };
 
 interface RecoveryBudget {
   used: number;
@@ -406,6 +414,7 @@ async function runStep(
   gate: ApplyGate,
   recovery: RecoveryBudget,
   extra?: ReadBack,
+  trust?: SiteTrustMode,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
   if (step.action === "note") return { ok: true, repairs };
@@ -415,7 +424,7 @@ async function runStep(
       return { ok: false, repairs, failure: await fail(driver, step, "wait_for", checkReason(step.waitFor), undefined, secrets) };
     }
   }
-  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery);
+  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery, trust);
   if (!outcome.ok) return outcome;
   if (step.gone) {
     const left = await holdCheck(step.gone, args, driver, false);
@@ -446,12 +455,16 @@ async function runStepAction(
   locatorMode: LocatorMode,
   gate: ApplyGate,
   recovery: RecoveryBudget,
+  trust?: SiteTrustMode,
 ): Promise<StepOutcome> {
   if (step.action === "login") return runLogin(gate.workflow, step, args, driver, secrets, gate);
   const seen = await driver.tree();
   const miss = authPreconditionMiss(gate.workflow.precondition, seen.url);
   if (miss) return { ok: false, repairs, failure: await fail(driver, step, "auth", miss, undefined, secrets) };
   if (step.action === "confirm") return runConfirm(step, args, driver, secrets, gate);
+  if (trust === "ask" && !consequential(step) && step.action !== "verify" && step.action !== "note") {
+    return { ok: false, paused: "trust", repairs };
+  }
   if (step.action === "verify") {
     const held = await readExpect(step, args, driver, repairs, gate, recovery);
     if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };

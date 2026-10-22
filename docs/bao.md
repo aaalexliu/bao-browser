@@ -167,6 +167,10 @@ Locator versions live on the workflow versions, in the one Versions panel. A ver
 
 A filmstrip frame shows the step's cropped, redacted screenshot, with the outline drawn on the target when the picture was taken. A step with no picture keeps the icon. Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
 
+### 2026-10-22 — Try a step, input tokens, and per-site trust
+
+Try, on a workflow step, looks that step up on the live window and outlines the match. It does not click, type, or call a model. Run from step N opens the same run form and starts replay at that step. An input in the step text is a token: label, type, default, and required. Clicking it edits that input, and a secret token stays masked. The run form fills the same default. Settings lists each site as Always ask or Allow for ordinary actions. That map is separate from the confirm policy. A confirm step still waits for the person when the site is Allow.
+
 ### 2026-10-22 — Re-run, skipped idle, and a per-step heal limit
 
 A past run can be started again from the run viewer. Re-run with this run's inputs fills the form from that run and asks for a secret again. Debug from this step starts at the selected step. Idle longer than 3 seconds is collapsed on the filmstrip and in the replay video, with a marker such as `skipped 12s`. When the same step heals itself on 3 consecutive runs, auto-heal stops for that step, the step is marked needs review, and the act bar says so.

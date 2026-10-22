@@ -18,6 +18,11 @@ export interface Settings extends HealSettings {
   syncServer?: string;
   /** Scheduled library export. Absent means off. */
   backupSchedule?: "off" | "daily" | "weekly";
+  /**
+   * Ordinary clicks and typing, per site origin.
+   * Absent allows them. Confirm and login do not read this.
+   */
+  siteTrust?: Record<string, "ask" | "allow">;
 }
 
 export interface StoredRun {
