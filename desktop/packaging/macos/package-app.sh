@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
-DIST="$ROOT/desktop/packaging/macos/dist"
+DIST="${BAO_DIST:-$ROOT/desktop/packaging/macos/dist}"
 APP="$DIST/Bao.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bao"
@@ -18,14 +18,24 @@ cp -a desktop/src/app/public "$APP/Contents/Resources/bao/public"
 # interpret.js requires ../../../src/mask, which lands at Contents/Resources/src.
 mkdir -p "$APP/Contents/Resources/src"
 cp -a desktop/dist/src/. "$APP/Contents/Resources/src/"
-# The server requires playwright. A copy of the app outside this repo cannot see node_modules.
+# sync.js and catalog.js require ../../../web/src/lib, which lands at Contents/Resources/web.
+mkdir -p "$APP/Contents/Resources/web"
+cp -a desktop/dist/web/src "$APP/Contents/Resources/web/src"
+# The window script is bundled from the TypeScript client. cwd is Resources/bao.
+mkdir -p "$APP/Contents/Resources/bao/desktop"
+cp -a desktop/src "$APP/Contents/Resources/bao/desktop/src"
+# The server requires playwright and esbuild. A copy of the app outside this repo cannot see node_modules.
 mkdir -p "$APP/Contents/Resources/bao/node_modules"
-cp -a node_modules/playwright node_modules/playwright-core "$APP/Contents/Resources/bao/node_modules/"
+cp -a node_modules/playwright node_modules/playwright-core node_modules/esbuild "$APP/Contents/Resources/bao/node_modules/"
+if [[ -d node_modules/@esbuild ]]; then
+  mkdir -p "$APP/Contents/Resources/bao/node_modules/@esbuild"
+  cp -a node_modules/@esbuild/. "$APP/Contents/Resources/bao/node_modules/@esbuild/"
+fi
 if [[ -d desktop/os-helper-macos/BaoOSHelper.app ]]; then
   cp -a desktop/os-helper-macos/BaoOSHelper.app "$APP/Contents/Resources/BaoOSHelper.app"
 fi
 bash desktop/packaging/macos/build-capture-bar.sh
-cp -a "$DIST/BaoCaptureBar.app" "$APP/Contents/Resources/BaoCaptureBar.app"
+cp -a "$ROOT/desktop/packaging/macos/dist/BaoCaptureBar.app" "$APP/Contents/Resources/BaoCaptureBar.app"
 
 BROWSER="$(node -e "const {chromium}=require('playwright'); process.stdout.write(chromium.executablePath())")"
 if [[ ! -x "$BROWSER" ]]; then
@@ -53,7 +63,8 @@ fi
 echo "BUNDLED_BROWSER $FOUND"
 
 /usr/bin/clang -O2 -o "$APP/Contents/MacOS/bao" desktop/packaging/macos/bao-main.c
-codesign --force --deep --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
+# Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
+codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"
 echo "WROTE $APP"
 echo "WROTE $DIST/Bao.dmg"
