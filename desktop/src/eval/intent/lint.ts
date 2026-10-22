@@ -74,3 +74,139 @@ function contentWords(text: string): string[] {
 function escapeReg(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+// Hosts the public eval trails already use. A host outside this list is an
+// unknown domain. Subdomains of a listed suffix are the same site.
+const KNOWN_DOMAIN_SUFFIXES = [
+  "wikipedia.org",
+  "wikimedia.org",
+  "httpbin.org",
+  "httpbingo.org",
+  "herokuapp.com",
+  "mozilla.org",
+  "github.io",
+  "todomvc.com",
+  "sqlite.org",
+  "eslint.org",
+  "jquery.com",
+  "getbootstrap.com",
+  "rfc-editor.org",
+  "ycombinator.com",
+  "algolia.com",
+  "gutenberg.org",
+  "musicbrainz.org",
+  "git-scm.com",
+  "rust-lang.org",
+  "nodejs.org",
+  "markdownguide.org",
+  "pptr.dev",
+  "httpwg.org",
+  "nginx.org",
+  "picocss.com",
+  "lua.org",
+  "w3.org",
+  "toscrape.com",
+  "playwright.dev",
+  "selenium.dev",
+  "scrapethissite.com",
+  "caniuse.com",
+  "saucedemo.com",
+  "globalsqa.com",
+  "bulma.io",
+  "parasoft.com",
+  "webscraper.io",
+  "htmx.org",
+  "example.test",
+  "fixture.test",
+  "localhost",
+];
+
+const DOMAIN_TLDS = new Set(["com", "org", "net", "io", "dev", "app", "edu", "gov", "uk", "example", "test"]);
+
+export interface PrejudgeInput {
+  text: string;
+  target?: LintTarget;
+  secrets?: readonly string[];
+  /** Page the step starts on. Checked with any host written in the text. */
+  startUrl?: string;
+  /** False when the trail recorded no url, value, checked, subtree, or dialog change. */
+  effect?: boolean;
+}
+
+/**
+ * Deterministic checks in front of the LLM judge.
+ * Order: missing input, secret literal, step with no effect, unknown domain.
+ * A reason means the text is bad. Null means the judge still has to score it.
+ */
+export function prejudgeLint(input: PrejudgeInput): string | null {
+  const text = input.text.trim();
+  if (missingInput(text, input.target)) return "missing-input";
+  if (secretLiteral(text, input.secrets || [], input.target)) return "secret-literal";
+  if (input.effect === false || /\bhelp\b/i.test(text)) return "no-effect";
+  if (unknownDomain(text, input.startUrl)) return "unknown-domain";
+  return null;
+}
+
+function missingInput(text: string, target?: LintTarget): boolean {
+  if (!text) return true;
+  if (!target) return false;
+  if (/\{\{[^}]+\}\}/.test(text)) return false;
+  const names = [target.name, target.label, target.text].filter((item): item is string => !!item && item.trim().length >= 2);
+  const lower = text.toLowerCase();
+  if (names.some((name) => lower.includes(name.toLowerCase()))) return false;
+  if (target.input && new RegExp(`\\b${escapeReg(target.input)}\\b`, "i").test(text)) return false;
+  return names.length > 0 || !!target.input;
+}
+
+function secretLiteral(text: string, secrets: readonly string[], target?: LintTarget): boolean {
+  const sentence = text.replace(/\{\{[^}]+\}\}/g, " ");
+  for (const secret of secrets) {
+    if (secret && secret.length >= 3 && sentence.includes(secret)) return true;
+  }
+  if (target?.literal && looksSecret(target.literal) && sentence.includes(target.literal)) return true;
+  if (/\bpin-\d{3,}\b/i.test(sentence)) return true;
+  const tokens = sentence.split(/[^A-Za-z0-9!@#$%^&*]+/);
+  return tokens.some((token) => token.length >= 8 && /[A-Za-z]/.test(token) && /[!@#$%^&*]/.test(token));
+}
+
+function looksSecret(value: string): boolean {
+  return /\bpin-\d{3,}\b/i.test(value) || (value.length >= 8 && /[A-Za-z]/.test(value) && /[!@#$%^&*]/.test(value));
+}
+
+function unknownDomain(text: string, startUrl?: string): boolean {
+  const hosts = hostsIn(text);
+  if (startUrl) {
+    const host = hostOf(startUrl);
+    if (host) hosts.push(host);
+  }
+  return hosts.some((host) => !knownDomain(host));
+}
+
+function hostsIn(text: string): string[] {
+  const found: string[] = [];
+  const urls = /https?:\/\/([^/\s?#]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = urls.exec(text))) found.push(stripPort(match[1]));
+  const bare = /\b((?:[a-z0-9-]+\.)+([a-z]{2,}))\b/gi;
+  while ((match = bare.exec(text))) {
+    if (DOMAIN_TLDS.has(match[2].toLowerCase())) found.push(match[1].toLowerCase());
+  }
+  return found;
+}
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function stripPort(host: string): string {
+  return host.toLowerCase().replace(/:\d+$/, "");
+}
+
+function knownDomain(host: string): boolean {
+  const name = host.toLowerCase().replace(/\.$/, "");
+  return KNOWN_DOMAIN_SUFFIXES.some((suffix) => name === suffix || name.endsWith(`.${suffix}`));
+}

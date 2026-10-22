@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds, condense } from "../../src/v1/condense";
-import { lintIntent } from "../../src/eval/intent/lint";
+import { lintIntent, prejudgeLint } from "../../src/eval/intent/lint";
 import { GOOD_INTENTS } from "../../src/eval/intent/good-intents";
+import { HELD_TASKS } from "../../src/eval/heldout/tasks";
+import { HELD_TASKS_2 } from "../../src/eval/heldout/tasks2";
+import { HELD_TASKS_3 } from "../../src/eval/heldout/tasks3";
+import { HELD_TASKS_4 } from "../../src/eval/heldout/tasks4";
+import { HELD_TASKS_5 } from "../../src/eval/heldout/tasks5";
+import { HELD_TASKS_6 } from "../../src/eval/heldout/tasks6";
 import { BAD_INTENT_TEXTS } from "../../src/eval/heldout/bad-judge";
 import { buildLocators, matchLabeledControl } from "../../src/v1/locators";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
@@ -142,6 +148,63 @@ test("a click with no recorded urls is kept", () => {
     { id: "c", ts: 1, kind: "act", op: "click", identity: heading },
   ], { id: "bare", name: "bare", startUrl: url });
   assert.equal(workflow.steps.length, 1);
+});
+
+test("prejudge lint catches missing inputs, secret literals, and steps with no effect", () => {
+  assert.equal(BAD_INTENT_TEXTS.length, 10);
+  const reasons = BAD_INTENT_TEXTS.map((item) => prejudgeLint({
+    text: item.text,
+    target: item.target,
+    secrets: item.secrets || [],
+  }));
+  assert.deepEqual(reasons, [
+    "missing-input",
+    "missing-input",
+    "missing-input",
+    "secret-literal",
+    "secret-literal",
+    "secret-literal",
+    null,
+    null,
+    null,
+    "no-effect",
+  ]);
+  const alone = reasons.filter((reason) => reason != null).length;
+  assert.equal(alone, 7);
+  const goods = GOOD_INTENTS.flatMap((item) => {
+    const reason = prejudgeLint({ text: item.text, target: item.target, secrets: item.secrets || [] });
+    return reason ? [`${item.id} ${reason}`] : [];
+  });
+  assert.deepEqual(goods, []);
+});
+
+test("prejudge lint rejects an unknown domain and a step the trail marked effectless", () => {
+  const save = { action: "click", name: "Save", label: "Save" };
+  assert.equal(prejudgeLint({
+    text: "Click Save to store the form.",
+    target: save,
+    startUrl: "https://evil.example/login",
+  }), "unknown-domain");
+  assert.equal(prejudgeLint({
+    text: "Open https://evil.example/login and click Save.",
+    target: save,
+  }), "unknown-domain");
+  assert.equal(prejudgeLint({
+    text: "Click Save to store the form.",
+    target: save,
+    effect: false,
+  }), "no-effect");
+  assert.equal(prejudgeLint({
+    text: "Click Save on https://en.wikipedia.org/wiki/Ada_Lovelace.",
+    target: save,
+    startUrl: "https://www.wikipedia.org/",
+  }), null);
+  const pages = [...HELD_TASKS, ...HELD_TASKS_2, ...HELD_TASKS_3, ...HELD_TASKS_4, ...HELD_TASKS_5, ...HELD_TASKS_6];
+  const blocked = pages.flatMap((task) => {
+    const reason = prejudgeLint({ text: "Click Save to store the form.", target: save, startUrl: task.url });
+    return reason ? [`${task.id} ${reason}`] : [];
+  });
+  assert.deepEqual(blocked, []);
 });
 
 test("intent lint catches the bad texts and keeps the good ones", () => {

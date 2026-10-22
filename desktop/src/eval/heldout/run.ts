@@ -14,7 +14,7 @@ import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
 import { validateWorkflow } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
 import { GOOD_INTENTS } from "../intent/good-intents";
-import { lintIntent, type LintTarget } from "../intent/lint";
+import { lintIntent, prejudgeLint, type LintTarget } from "../intent/lint";
 import { caseJudgePrompt } from "../intent/labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "../intent/model";
 import { HYBRID_GATE_RULE, modelCondensePrompt, reviseDecision, reviseStepGates } from "../intent/revise";
@@ -472,15 +472,15 @@ export async function evalHeldout(args: string[] = []): Promise<{ markdown: stri
     const info = configuredModel();
     const judged = await scoreBadTexts();
     const goods = goodRejects();
-    const low = judged.rows.filter((row) => row.low).length;
+    const counts = lintCounts(judged.rows);
     const markdown = [
       "# Intent lint and bad texts",
       "",
       `Model access: ${info.available ? `${info.provider} / ${info.model}` : info.reason}. ${judged.note}`,
       "",
-      "The lint runs first. It rejects a generic verb-only sentence, a destructive verb the step does not do, a Help goal, and a literal that matches a secret or a param slot. The rubric is unchanged. The model scores only the texts the lint passes. The earlier 5/10 table stays in `bad-judge.md`.",
+      "The prejudge lint runs first. It rejects a missing input, a secret literal, a step with no effect, and an unknown domain. The rubric is unchanged. The model scores only the texts the lint passes.",
       "",
-      `${low}/${judged.rows.length} bad texts caught. ${goods.length}/${GOOD_INTENTS.length} good intents falsely rejected.`,
+      `Prejudge lint caught ${counts.alone}/${judged.rows.length} known-bad intents on its own. Combined with the judge, ${counts.combined}/${judged.rows.length} are caught. ${goods.length}/${GOOD_INTENTS.length} good intents were falsely rejected.`,
       "",
       "| id | lint | judge | caught | text |",
       "| --- | --- | --- | --- | --- |",
@@ -651,7 +651,13 @@ async function hybridRow(
 }
 
 function lintBad(label: (typeof BAD_INTENT_TEXTS)[number]): string | null {
-  return lintIntent(label.text, label.target, label.secrets || []);
+  return prejudgeLint({ text: label.text, target: label.target, secrets: label.secrets || [] });
+}
+
+function lintCounts(bad: readonly BadJudgeRow[]): { alone: number; combined: number } {
+  const alone = bad.filter((row) => row.lint).length;
+  const combined = bad.filter((row) => row.lint || row.judge === false).length;
+  return { alone, combined };
 }
 
 async function scoreBadTexts(): Promise<{ rows: BadJudgeRow[]; note: string }> {
@@ -681,7 +687,7 @@ async function scoreBadTexts(): Promise<{ rows: BadJudgeRow[]; note: string }> {
 
 function goodRejects(): { id: string; reason: string }[] {
   return GOOD_INTENTS.flatMap((item) => {
-    const reason = lintIntent(item.text, item.target, item.secrets || []);
+    const reason = prejudgeLint({ text: item.text, target: item.target, secrets: item.secrets || [] });
     return reason ? [{ id: item.id, reason }] : [];
   });
 }
@@ -710,11 +716,19 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
       input: step.input,
       literal: input?.default,
     };
-    if (lintIntent(step.intent || "", target, secrets)) failed.add(step.id);
+    const reason = prejudgeLint({
+      text: step.intent || "",
+      target,
+      secrets,
+      startUrl: workflow.startUrl,
+      effect: step.confidence === "low" ? false : undefined,
+    }) || lintIntent(step.intent || "", target, secrets);
+    if (reason) failed.add(step.id);
     else passing.push({ id: step.id, intent: step.intent || "" });
   }
   const summary = workflow.summary || "";
-  const summaryFail = lintIntent(summary, undefined, secrets);
+  const summaryFail = prejudgeLint({ text: summary, secrets, startUrl: workflow.startUrl })
+    || lintIntent(summary, undefined, secrets);
   const ids = workflow.steps.map((step) => step.id);
   if (summaryFail && passing.length === 0) return { score: 0, tokens: 0 };
   const reply = await complete(caseJudgePrompt(summaryFail ? "" : summary, passing));
@@ -763,7 +777,7 @@ function render(
   modelNote: string,
   drops: { caseId: string; eventId: string }[] = [],
 ): string {
-  const low = bad.filter((row) => row.low).length;
+  const counts = lintCounts(bad);
   const goods = goodRejects();
   const dropText = drops.length
     ? drops.map((item) => `${item.caseId} ${item.eventId}`).join(", ")
@@ -785,7 +799,7 @@ function render(
         ].join("\n\n")
       : `Replay pass rate: condense ${replayPasses(rows, (row) => row.condenser === "condense")}, model ${replayPasses(rows, (row) => row.condenser !== "condense" && !row.condenser.startsWith("hybrid/"))}, hybrid ${replayPasses(rows, (row) => row.condenser.startsWith("hybrid/"))}.`,
     "",
-    `Intent lint caught ${low}/${bad.length} bad texts and falsely rejected ${goods.length}/${GOOD_INTENTS.length} good intents.`,
+    `Prejudge lint caught ${counts.alone}/${bad.length} known-bad intents on its own (missing input, secret literal, no effect, unknown domain) and falsely rejected ${goods.length}/${GOOD_INTENTS.length} good intents. Combined with the judge, ${counts.combined}/${bad.length} are caught.`,
     "",
     `Model access: ${modelNote}.`,
     "",
@@ -817,7 +831,7 @@ function render(
     "",
     "## Bad intent texts",
     "",
-    `Lint runs before the judge. ${low}/${bad.length} bad texts were caught. ${goods.length}/${GOOD_INTENTS.length} good intents were falsely rejected. The rubric was not edited.`,
+    `The prejudge lint runs before the judge. It caught ${counts.alone}/${bad.length} known-bad intents on its own. Combined with the judge, ${counts.combined}/${bad.length} are caught. ${goods.length}/${GOOD_INTENTS.length} good intents were falsely rejected. The rubric was not edited.`,
     "",
     "| id | lint | judge | caught | text |",
     "| --- | --- | --- | --- | --- |",
