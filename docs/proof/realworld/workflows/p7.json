@@ -1,0 +1,143 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792675703188",
+  "name": "Captured workflow",
+  "startUrl": "https://en.wikipedia.org/wiki/Special:Search",
+  "inputs": [
+    {
+      "name": "search",
+      "type": "text",
+      "required": true,
+      "label": "search",
+      "default": "Baozi"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792675703188-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://en.wikipedia.org/wiki/Special:Search",
+      "surface": "dom",
+      "value": "https://en.wikipedia.org/wiki/Special:Search",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "en.wikipedia.org",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792675703188-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{search}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "searchInput",
+        "nameAttr": "search",
+        "tag": "input",
+        "name": "Search Wikipedia",
+        "label": "Search Wikipedia",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Search Wikipedia"
+        },
+        {
+          "kind": "text",
+          "value": "Search Wikipedia"
+        },
+        {
+          "kind": "css",
+          "value": "#searchInput"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"searchInput\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "search",
+      "value": "{{search}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{search}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792675703188-2",
+      "index": 2,
+      "action": "click",
+      "label": "Click \"Search\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Search",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Search"
+        },
+        {
+          "kind": "text",
+          "value": "Search"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792675703188-3",
+      "index": 3,
+      "action": "click",
+      "label": "Click \"Past revisions of this page [alt-h]\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "tag": "a",
+        "name": "Past revisions of this page [alt-h]",
+        "label": "Past revisions of this page [alt-h]",
+        "text": "View history",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "Past revisions of this page [alt-h]"
+        },
+        {
+          "kind": "text",
+          "value": "View history"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792675700492
+}

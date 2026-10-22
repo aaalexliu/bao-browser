@@ -12,7 +12,7 @@ export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 export type InputType = "text" | "secret" | "number" | "choice" | "file" | "date" | "table";
 export type HealMode = "auto" | "approve";
 export type Surface = "dom" | "ax" | "atspi";
-export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify" | "note" | "download" | "open" | "extract" | "for_each";
+export type StepAction = "navigate" | "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "select" | "confirm" | "login" | "verify" | "note" | "download" | "open" | "extract" | "for_each";
 
 export interface WorkflowInput {
   name: string;

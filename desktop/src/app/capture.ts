@@ -136,7 +136,10 @@ function stepLabel(event: TrailEvent): string {
   if (event.op === "note") return `Note: ${event.afterText || ""}`;
   if (event.op === "expect") return `Check: ${event.afterText || ""}`;
   const name = event.identity?.name || event.identity?.text || event.identity?.label;
+  if (event.op === "navigate") return event.afterUrl ? `Open ${event.afterUrl}` : "Open";
   if (event.op === "click") return name ? `Click ${name}` : "Click";
+  if (event.op === "check") return event.checked === false ? "Uncheck" : "Check";
+  if (event.op === "select") return event.value ? `Select ${event.value}` : "Select";
   if (event.op === "type" || event.op === "input") return event.sensitive ? "Type secret" : "Type";
   if (event.op === "upload") return "Upload file";
   if (event.op === "drop") return "Drop file";

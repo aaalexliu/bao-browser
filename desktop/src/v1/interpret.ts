@@ -89,7 +89,7 @@ export interface InterpretMeta {
 }
 
 const NOISE = new Set([
-  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "navigate", "mark",
+  "screenshot", "move", "wait", "zoom", "cursor", "mousedown", "mouseup", "dom", "ax", "mark",
 ]);
 
 const DIGIT = /^[0-9]$/;
@@ -337,6 +337,32 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     timeoutMs: 8000,
     provenance: event.provenance,
   };
+  if (event.op === "navigate") {
+    const url = event.afterUrl || event.beforeUrl || meta.startUrl;
+    const match = openMatch(url);
+    return {
+      id: `${meta.id}-${index}`,
+      index,
+      action: "navigate",
+      label: url ? `Open ${url}` : "Open",
+      surface: "dom",
+      value: url || undefined,
+      timeoutMs: 8000,
+      ...(match ? { expect: { kind: "url" as const, match, timeoutMs: 8000 } } : {}),
+    };
+  }
+  if (event.op === "select") {
+    const input = addInput(inputs, "text", nameHint(event, false));
+    if (event.value) input.default = event.value;
+    return {
+      ...step,
+      action: "select",
+      input: input.name,
+      value: `{{${input.name}}}`,
+      label: `Select {{${input.name}}}`,
+      ...observed(event, input.name, false, known, meta.secrets ?? []),
+    };
+  }
   if (event.op === "login" || event.op === "confirm") {
     return {
       id: `${meta.id}-${index}`,
@@ -452,12 +478,14 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       ...observed(event, secret ? undefined : input.name, secret, known, meta.secrets ?? []),
     };
   }
-  if (typeof event.checked === "boolean") {
+  if (typeof event.checked === "boolean" || event.op === "check") {
+    const checked = event.checked !== false;
+    const name = event.identity?.name || event.identity?.label || event.identity?.text;
     return {
       ...step,
       action: "check",
-      checked: event.checked,
-      label: event.checked ? "Check" : "Uncheck",
+      checked,
+      label: `${checked ? "Check" : "Uncheck"}${name ? ` "${name}"` : ""}`,
       ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
@@ -550,6 +578,15 @@ function isSecret(event: TrailEvent, secrets: string[]): boolean {
     ariaLabel: id?.label || id?.name,
     value: event.value,
   });
+}
+
+/** Host only. The step loads the full URL; a same-site redirect must not fail the open. */
+function openMatch(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 function numberLike(value: string | undefined): boolean {

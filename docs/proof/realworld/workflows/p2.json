@@ -1,0 +1,500 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792674983482",
+  "name": "Captured workflow",
+  "startUrl": "https://demoqa.com/automation-practice-form",
+  "inputs": [
+    {
+      "name": "firstName",
+      "type": "text",
+      "required": true,
+      "label": "firstName",
+      "default": "Ada"
+    },
+    {
+      "name": "lastName",
+      "type": "text",
+      "required": true,
+      "label": "lastName",
+      "default": "Lovelace"
+    },
+    {
+      "name": "username",
+      "type": "text",
+      "required": true,
+      "label": "username",
+      "default": "ada-form@example.com"
+    },
+    {
+      "name": "username2",
+      "type": "text",
+      "required": true,
+      "label": "username2",
+      "default": "9990001111"
+    },
+    {
+      "name": "text",
+      "type": "text",
+      "required": true,
+      "label": "text",
+      "default": "January"
+    },
+    {
+      "name": "text2",
+      "type": "text",
+      "required": true,
+      "label": "text2",
+      "default": "1990"
+    },
+    {
+      "name": "subjectsInput",
+      "type": "text",
+      "required": true,
+      "label": "subjectsInput",
+      "default": "Maths"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792674983482-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://demoqa.com/automation-practice-form",
+      "surface": "dom",
+      "value": "https://demoqa.com/automation-practice-form",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "demoqa.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792674983482-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{firstName}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "firstName",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": ""
+        },
+        {
+          "kind": "css",
+          "value": "#firstName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"firstName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "firstName",
+      "value": "{{firstName}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{firstName}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674983482-2",
+      "index": 2,
+      "action": "type",
+      "label": "Type {{lastName}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "lastName",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": ""
+        },
+        {
+          "kind": "css",
+          "value": "#lastName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"lastName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "lastName",
+      "value": "{{lastName}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{lastName}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674983482-3",
+      "index": 3,
+      "action": "type",
+      "label": "Type {{username}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "userEmail",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": ""
+        },
+        {
+          "kind": "css",
+          "value": "#userEmail"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"userEmail\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username",
+      "value": "{{username}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674983482-4",
+      "index": 4,
+      "action": "check",
+      "label": "Check \"Male\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "gender-radio-1",
+        "nameAttr": "gender",
+        "tag": "input",
+        "name": "Male",
+        "label": "Male",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "radio",
+          "name": "Male"
+        },
+        {
+          "kind": "text",
+          "value": "Male"
+        },
+        {
+          "kind": "css",
+          "value": "#gender-radio-1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"gender-radio-1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "checked": true,
+      "expect": {
+        "kind": "state",
+        "state": "checked",
+        "identity": {
+          "surface": "dom",
+          "role": "radio",
+          "id": "gender-radio-1",
+          "nameAttr": "gender",
+          "tag": "input",
+          "name": "Male",
+          "label": "Male",
+          "path": []
+        },
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674983482-5",
+      "index": 5,
+      "action": "click",
+      "label": "Click \"Male\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "gender-radio-1",
+        "nameAttr": "gender",
+        "tag": "input",
+        "name": "Male",
+        "label": "Male",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "radio",
+          "name": "Male"
+        },
+        {
+          "kind": "text",
+          "value": "Male"
+        },
+        {
+          "kind": "css",
+          "value": "#gender-radio-1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"gender-radio-1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792674983482-6",
+      "index": 6,
+      "action": "type",
+      "label": "Type {{username2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "userNumber",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": ""
+        },
+        {
+          "kind": "css",
+          "value": "#userNumber"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"userNumber\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username2",
+      "value": "{{username2}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username2}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674983482-7",
+      "index": 7,
+      "action": "click",
+      "label": "Click",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "dateOfBirthInput",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": ""
+        },
+        {
+          "kind": "css",
+          "value": "#dateOfBirthInput"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"dateOfBirthInput\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792674983482-8",
+      "index": 8,
+      "action": "select",
+      "label": "Select {{text}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "tag": "select",
+        "text": "January February March April May June July August September October November Dec",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "January February March April May June July August September October November Dec"
+        },
+        {
+          "kind": "text",
+          "value": "January February March April May June July August September October November Dec"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text",
+      "value": "{{text}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792674983482-9",
+      "index": 9,
+      "action": "select",
+      "label": "Select {{text2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "tag": "select",
+        "text": "1900 1901 1902 1903 1904 1905 1906 1907 1908 1909 1910 1911 1912 1913 1914 1915 ",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "1900 1901 1902 1903 1904 1905 1906 1907 1908 1909 1910 1911 1912 1913 1914 1915 "
+        },
+        {
+          "kind": "text",
+          "value": "1900 1901 1902 1903 1904 1905 1906 1907 1908 1909 1910 1911 1912 1913 1914 1915 "
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text2",
+      "value": "{{text2}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792674983482-10",
+      "index": 10,
+      "action": "type",
+      "label": "Type {{subjectsInput}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "subjectsInput",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#subjectsInput"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"subjectsInput\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "subjectsInput",
+      "value": "{{subjectsInput}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{subjectsInput}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674983482-11",
+      "index": 11,
+      "action": "click",
+      "label": "Click \"Submit\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "submit",
+        "tag": "button",
+        "text": "Submit",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        {
+          "kind": "text",
+          "value": "Submit"
+        },
+        {
+          "kind": "css",
+          "value": "#submit"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"submit\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Male",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Male",
+        "timeoutMs": 4000
+      }
+    }
+  ],
+  "createdAt": 1792674965973
+}

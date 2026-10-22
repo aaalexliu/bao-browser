@@ -1,0 +1,61 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792675898524",
+  "name": "Captured workflow",
+  "startUrl": "https://shop.polymer-project.org/",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-1792675898524-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://shop.polymer-project.org/",
+      "surface": "dom",
+      "value": "https://shop.polymer-project.org/",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "shop.polymer-project.org",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792675898524-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"Men's T-Shirts\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "tag": "a",
+        "text": "Men's T-Shirts",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "Men's T-Shirts"
+        },
+        {
+          "kind": "text",
+          "value": "Men's T-Shirts"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Shop Now",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Shop Now",
+        "timeoutMs": 4000
+      }
+    }
+  ],
+  "createdAt": 1792675869975
+}

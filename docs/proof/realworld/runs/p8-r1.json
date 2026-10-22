@@ -1,0 +1,641 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792675790341-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url the-internet.herokuapp.com",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792675790341-1",
+        "action": "click",
+        "target": "link:edit",
+        "postcondition": "missed url /challenging_dom",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792675790656
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792675790740
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792675790740
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/challenging_dom",
+        "status": 200,
+        "ts": 1792675790511
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792675790533
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792675790564
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792675790598
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792675790599
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792675790608
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792675790609
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792675790612
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792675790633
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792675790633
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792675790684
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792675790685
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/challenging_dom",
+        "status": 200,
+        "ts": 1792675790723
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792675790726
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792675790727
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792675790740
+      },
+      {
+        "stepId": "wf-1792675790341-0",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792675790740
+      }
+    ],
+    "runId": "run-mvjkvot9-krow",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792675790341-0",
+        "status": "passed",
+        "startedAt": 1792675790698,
+        "endedAt": 1792675790759,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Challenging DOM"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "f06a68b5-b09a-4d01-90ae-9be3c5b376c3"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "2cf9e211-3b45-409a-ab83-270e6159983b"
+            },
+            {
+              "role": "link",
+              "text": "qux",
+              "id": "0e27af82-e321-444f-83d4-a2b00a4aa1fb"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"Challenging DOM\" [level=3]\n- paragraph: The hardest part in automated web testing is finding the best locators (e.g., ones that well named, unique, and unlikely to change). It's more often than not that the application you're testing was not built with this concept in mind. This example demonstrates that with unique IDs, a table with no helpful locators, and a canvas element.\n- separator\n- link \"foo\":\n  - /url: \"\"\n- link \"foo\":\n  - /url: \"\"\n- link \"qux\":\n  - /url: \"\"\n- table:\n  - rowgroup:\n    - row \"Lorem Ipsum Dolor Sit Amet Diceret Action\":\n      - columnheader \"Lorem\"\n      - columnheader \"Ipsum\"\n      - columnheader \"Dolor\"\n      - columnheader \"Sit\"\n      - columnheader \"Amet\"\n      - columnheader \"Diceret\"\n      - columnheader \"Action\"\n  - rowgroup:\n    - row \"Iuvaret0 Apeirian0 Adipisci0 Definiebas0 Consequuntur0 Phaedrum0 edit delete\":\n      - cell \"Iuvaret0\"\n      - cell \"Apeirian0\"\n      - cell \"Adipisci0\"\n      - cell \"Definiebas0\"\n      - cell \"Consequuntur0\"\n      - cell \"Phaedrum0\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret1 Apeirian1 Adipisci1 Definiebas1 Consequuntur1 Phaedrum1 edit delete\":\n      - cell \"Iuvaret1\"\n      - cell \"Apeirian1\"\n      - cell \"Adipisci1\"\n      - cell \"Definiebas1\"\n      - cell \"Consequuntur1\"\n      - cell \"Phaedrum1\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret2 Apeirian2 Adipisci2 Definiebas2 Consequuntur2 Phaedrum2 edit delete\":\n      - cell \"Iuvaret2\"\n      - cell \"Apeirian2\"\n      - cell \"Adipisci2\"\n      - cell \"Definiebas2\"\n      - cell \"Consequuntur2\"\n      - cell \"Phaedrum2\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret3 Apeirian3 Adipisci3 Definiebas3 Consequuntur3 Phaedrum3 edit delete\":\n      - cell \"Iuvaret3\"\n      - cell \"Apeirian3\"\n      - cell \"Adipisci3\"\n      - cell \"Definiebas3\"\n      - cell \"Consequuntur3\"\n      - cell \"Phaedrum3\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret4 Apeirian4 Adipisci4 Definiebas4 Consequuntur4 Phaedrum4 edit delete\":\n      - cell \"Iuvaret4\"\n      - cell \"Apeirian4\"\n      - cell \"Adipisci4\"\n      - cell \"Definiebas4\"\n      - cell \"Consequuntur4\"\n      - cell \"Phaedrum4\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret5 Apeirian5 Adipisci5 Definiebas5 Consequuntur5 Phaedrum5 edit delete\":\n      - cell \"Iuvaret5\"\n      - cell \"Apeirian5\"\n      - cell \"Adipisci5\"\n      - cell \"Definiebas5\"\n      - cell \"Consequuntur5\"\n      - cell \"Phaedrum5\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret6 Apeirian6 Adipisci6 Definiebas6 Consequuntur6 Phaedrum6 edit delete\":\n      - cell \"Iuvaret6\"\n      - cell \"Apeirian6\"\n      - cell \"Adipisci6\"\n      - cell \"Definiebas6\"\n      - cell \"Consequuntur6\"\n      - cell \"Phaedrum6\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret7 Apeirian7 Adipisci7 Definiebas7 Consequuntur7 Phaedrum7 edit delete\":\n      - cell \"Iuvaret7\"\n      - cell \"Apeirian7\"\n      - cell \"Adipisci7\"\n      - cell \"Definiebas7\"\n      - cell \"Consequuntur7\"\n      - cell \"Phaedrum7\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret8 Apeirian8 Adipisci8 Definiebas8 Consequuntur8 Phaedrum8 edit delete\":\n  "
+        }
+      },
+      {
+        "id": "wf-1792675790341-1",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792675790815,
+        "endedAt": 1792675799319,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Challenging DOM"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "f06a68b5-b09a-4d01-90ae-9be3c5b376c3"
+            },
+            {
+              "role": "link",
+              "text": "foo",
+              "id": "2cf9e211-3b45-409a-ab83-270e6159983b"
+            },
+            {
+              "role": "link",
+              "text": "qux",
+              "id": "0e27af82-e321-444f-83d4-a2b00a4aa1fb"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "edit"
+            },
+            {
+              "role": "link",
+              "text": "delete"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"Challenging DOM\" [level=3]\n- paragraph: The hardest part in automated web testing is finding the best locators (e.g., ones that well named, unique, and unlikely to change). It's more often than not that the application you're testing was not built with this concept in mind. This example demonstrates that with unique IDs, a table with no helpful locators, and a canvas element.\n- separator\n- link \"foo\":\n  - /url: \"\"\n- link \"foo\":\n  - /url: \"\"\n- link \"qux\":\n  - /url: \"\"\n- table:\n  - rowgroup:\n    - row \"Lorem Ipsum Dolor Sit Amet Diceret Action\":\n      - columnheader \"Lorem\"\n      - columnheader \"Ipsum\"\n      - columnheader \"Dolor\"\n      - columnheader \"Sit\"\n      - columnheader \"Amet\"\n      - columnheader \"Diceret\"\n      - columnheader \"Action\"\n  - rowgroup:\n    - row \"Iuvaret0 Apeirian0 Adipisci0 Definiebas0 Consequuntur0 Phaedrum0 edit delete\":\n      - cell \"Iuvaret0\"\n      - cell \"Apeirian0\"\n      - cell \"Adipisci0\"\n      - cell \"Definiebas0\"\n      - cell \"Consequuntur0\"\n      - cell \"Phaedrum0\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret1 Apeirian1 Adipisci1 Definiebas1 Consequuntur1 Phaedrum1 edit delete\":\n      - cell \"Iuvaret1\"\n      - cell \"Apeirian1\"\n      - cell \"Adipisci1\"\n      - cell \"Definiebas1\"\n      - cell \"Consequuntur1\"\n      - cell \"Phaedrum1\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret2 Apeirian2 Adipisci2 Definiebas2 Consequuntur2 Phaedrum2 edit delete\":\n      - cell \"Iuvaret2\"\n      - cell \"Apeirian2\"\n      - cell \"Adipisci2\"\n      - cell \"Definiebas2\"\n      - cell \"Consequuntur2\"\n      - cell \"Phaedrum2\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret3 Apeirian3 Adipisci3 Definiebas3 Consequuntur3 Phaedrum3 edit delete\":\n      - cell \"Iuvaret3\"\n      - cell \"Apeirian3\"\n      - cell \"Adipisci3\"\n      - cell \"Definiebas3\"\n      - cell \"Consequuntur3\"\n      - cell \"Phaedrum3\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret4 Apeirian4 Adipisci4 Definiebas4 Consequuntur4 Phaedrum4 edit delete\":\n      - cell \"Iuvaret4\"\n      - cell \"Apeirian4\"\n      - cell \"Adipisci4\"\n      - cell \"Definiebas4\"\n      - cell \"Consequuntur4\"\n      - cell \"Phaedrum4\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret5 Apeirian5 Adipisci5 Definiebas5 Consequuntur5 Phaedrum5 edit delete\":\n      - cell \"Iuvaret5\"\n      - cell \"Apeirian5\"\n      - cell \"Adipisci5\"\n      - cell \"Definiebas5\"\n      - cell \"Consequuntur5\"\n      - cell \"Phaedrum5\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret6 Apeirian6 Adipisci6 Definiebas6 Consequuntur6 Phaedrum6 edit delete\":\n      - cell \"Iuvaret6\"\n      - cell \"Apeirian6\"\n      - cell \"Adipisci6\"\n      - cell \"Definiebas6\"\n      - cell \"Consequuntur6\"\n      - cell \"Phaedrum6\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret7 Apeirian7 Adipisci7 Definiebas7 Consequuntur7 Phaedrum7 edit delete\":\n      - cell \"Iuvaret7\"\n      - cell \"Apeirian7\"\n      - cell \"Adipisci7\"\n      - cell \"Definiebas7\"\n      - cell \"Consequuntur7\"\n      - cell \"Phaedrum7\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret8 Apeirian8 Adipisci8 Definiebas8 Consequuntur8 Phaedrum8 edit delete\":\n  "
+        }
+      },
+      {
+        "id": "wf-1792675790341-2",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792675790341-3",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792675790341-4",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792675790341-5",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792675790341-6",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792675790341-1",
+      "index": 1,
+      "intent": "Click \"edit\"",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "Challenging DOM"
+          },
+          {
+            "role": "link",
+            "id": "f06a68b5-b09a-4d01-90ae-9be3c5b376c3",
+            "text": "foo"
+          },
+          {
+            "role": "link",
+            "id": "2cf9e211-3b45-409a-ab83-270e6159983b",
+            "text": "foo"
+          },
+          {
+            "role": "link",
+            "id": "0e27af82-e321-444f-83d4-a2b00a4aa1fb",
+            "text": "qux"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "edit"
+          },
+          {
+            "role": "link",
+            "text": "delete"
+          },
+          {
+            "role": "link",
+            "text": "Elemental Selenium"
+          },
+          {
+            "role": "link",
+            "text": "Sauce Labs"
+          }
+        ],
+        "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"Challenging DOM\" [level=3]\n- paragraph: The hardest part in automated web testing is finding the best locators (e.g., ones that well named, unique, and unlikely to change). It's more often than not that the application you're testing was not built with this concept in mind. This example demonstrates that with unique IDs, a table with no helpful locators, and a canvas element.\n- separator\n- link \"foo\":\n  - /url: \"\"\n- link \"foo\":\n  - /url: \"\"\n- link \"qux\":\n  - /url: \"\"\n- table:\n  - rowgroup:\n    - row \"Lorem Ipsum Dolor Sit Amet Diceret Action\":\n      - columnheader \"Lorem\"\n      - columnheader \"Ipsum\"\n      - columnheader \"Dolor\"\n      - columnheader \"Sit\"\n      - columnheader \"Amet\"\n      - columnheader \"Diceret\"\n      - columnheader \"Action\"\n  - rowgroup:\n    - row \"Iuvaret0 Apeirian0 Adipisci0 Definiebas0 Consequuntur0 Phaedrum0 edit delete\":\n      - cell \"Iuvaret0\"\n      - cell \"Apeirian0\"\n      - cell \"Adipisci0\"\n      - cell \"Definiebas0\"\n      - cell \"Consequuntur0\"\n      - cell \"Phaedrum0\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret1 Apeirian1 Adipisci1 Definiebas1 Consequuntur1 Phaedrum1 edit delete\":\n      - cell \"Iuvaret1\"\n      - cell \"Apeirian1\"\n      - cell \"Adipisci1\"\n      - cell \"Definiebas1\"\n      - cell \"Consequuntur1\"\n      - cell \"Phaedrum1\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret2 Apeirian2 Adipisci2 Definiebas2 Consequuntur2 Phaedrum2 edit delete\":\n      - cell \"Iuvaret2\"\n      - cell \"Apeirian2\"\n      - cell \"Adipisci2\"\n      - cell \"Definiebas2\"\n      - cell \"Consequuntur2\"\n      - cell \"Phaedrum2\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret3 Apeirian3 Adipisci3 Definiebas3 Consequuntur3 Phaedrum3 edit delete\":\n      - cell \"Iuvaret3\"\n      - cell \"Apeirian3\"\n      - cell \"Adipisci3\"\n      - cell \"Definiebas3\"\n      - cell \"Consequuntur3\"\n      - cell \"Phaedrum3\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret4 Apeirian4 Adipisci4 Definiebas4 Consequuntur4 Phaedrum4 edit delete\":\n      - cell \"Iuvaret4\"\n      - cell \"Apeirian4\"\n      - cell \"Adipisci4\"\n      - cell \"Definiebas4\"\n      - cell \"Consequuntur4\"\n      - cell \"Phaedrum4\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret5 Apeirian5 Adipisci5 Definiebas5 Consequuntur5 Phaedrum5 edit delete\":\n      - cell \"Iuvaret5\"\n      - cell \"Apeirian5\"\n      - cell \"Adipisci5\"\n      - cell \"Definiebas5\"\n      - cell \"Consequuntur5\"\n      - cell \"Phaedrum5\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret6 Apeirian6 Adipisci6 Definiebas6 Consequuntur6 Phaedrum6 edit delete\":\n      - cell \"Iuvaret6\"\n      - cell \"Apeirian6\"\n      - cell \"Adipisci6\"\n      - cell \"Definiebas6\"\n      - cell \"Consequuntur6\"\n      - cell \"Phaedrum6\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret7 Apeirian7 Adipisci7 Definiebas7 Consequuntur7 Phaedrum7 edit delete\":\n      - cell \"Iuvaret7\"\n      - cell \"Apeirian7\"\n      - cell \"Adipisci7\"\n      - cell \"Definiebas7\"\n      - cell \"Consequuntur7\"\n      - cell \"Phaedrum7\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret8 Apeirian8 Adipisci8 Definiebas8 Consequuntur8 Phaedrum8 edit delete\":\n      - cell \"Iuvaret8\"\n      - cell \"Apeirian8\"\n      - cell \"Adipisci8\"\n      - cell \"Definiebas8\"\n      - cell \"Consequuntur8\"\n      - cell \"Phaedrum8\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n    - row \"Iuvaret9 Apeirian9 Adipisci9 Definiebas9 Consequuntur9 Phaedrum9 edit delete\":\n      - cell \"Iuvaret9\"\n      - cell \"Apeirian9\"\n      - cell \"Adipisci9\"\n      - cell \"Definiebas9\"\n      - cell \"Consequuntur9\"\n      - cell \"Phaedrum9\"\n      - cell \"edit delete\":\n        - link \"edit\":\n          - /url: \"#edit\"\n        - link \"delete\":\n          - /url: \"#delete\"\n- separator\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role link edit",
+          "score": 40
+        },
+        {
+          "kind": "text",
+          "label": "text edit",
+          "score": 40
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://the-internet.herokuapp.com/challenging_dom",
+    "title": "The Internet",
+    "text": "Challenging DOM The hardest part in automated web testing is finding the best locators (e.g., ones that well named, unique, and unlikely to change). It's more often than not that the application you're testing was not built with this concept in mind. This example demonstrates that with unique IDs, a table with no helpful locators, and a canvas element. foo foo qux Lorem Ipsum Dolor Sit Amet Diceret Action Iuvaret0 Apeirian0 Adipisci0 Definiebas0 Consequuntur0 Phaedrum0 edit delete Iuvaret1 Apeirian1 Adipisci1 Definiebas1 Consequuntur1 Phaedrum1 edit delete Iuvaret2 Apeirian2 Adipisci2 Definiebas2 Consequuntur2 Phaedrum2 edit delete Iuvaret3 Apeirian3 Adipisci3 Definiebas3 Consequuntur3 Phaedrum3 edit delete Iuvaret4 Apeirian4 Adipisci4 Definiebas4 Consequuntur4 Phaedrum4 edit delete Iuvaret5 Apeirian5 Adipisci5 Definiebas5 Consequuntur5 Phaedrum5 edit delete Iuvaret6 Apeirian6 Adipisci6 Definiebas6 Consequuntur6 Phaedrum6 edit delete Iuvaret7 Apeirian7 Adipisci7 Definiebas7 Consequuntur7 Phaedrum7 edit delete Iuvaret8 Apeirian8 Adipisci8 Definiebas8 Consequuntur8 Phaedrum8 edit delete Iuvaret9 Apeirian9 Adipisci9 Definiebas9 Consequuntur9 Phaedrum9 edit delete Powered by Elemental Selenium and Sauce Labs"
+  },
+  "downloaded": []
+}

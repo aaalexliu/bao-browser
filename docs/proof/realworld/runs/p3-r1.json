@@ -1,0 +1,912 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792675070495-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url automationintesting.online",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "action": "click",
+        "target": "link:Book now",
+        "postcondition": "missed settled no error and the page settled",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/",
+        "status": 200,
+        "ts": 1792675070770
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css",
+        "status": 200,
+        "ts": 1792675070794
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css",
+        "status": 200,
+        "ts": 1792675070796
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/03~pnuvh.8.yt.css",
+        "status": 200,
+        "ts": 1792675070800
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
+        "status": 200,
+        "ts": 1792675070800
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/10y2dlg~w2h~y.css",
+        "status": 200,
+        "ts": 1792675070805
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/07uz2g0_38qia.js",
+        "status": 200,
+        "ts": 1792675070806
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js",
+        "status": 200,
+        "ts": 1792675070808
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js",
+        "status": 200,
+        "ts": 1792675070808
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/bootstrap-icons.min.css",
+        "status": 200,
+        "ts": 1792675070812
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/turbopack-0-x4z~8ovy8~k.js",
+        "status": 200,
+        "ts": 1792675070812
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0yekx964af3a..js",
+        "status": 200,
+        "ts": 1792675070817
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/04eklj-7j4aqp.js",
+        "status": 200,
+        "ts": 1792675070818
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0jr4699_v.07i.js",
+        "status": 200,
+        "ts": 1792675070818
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/174b7k13ybrt2.js",
+        "status": 200,
+        "ts": 1792675070818
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0sh.6aqimy6c9.js",
+        "status": 200,
+        "ts": 1792675070818
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0_9ma~tvpdxsn.js",
+        "status": 200,
+        "ts": 1792675070821
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0a3uhjsj0q7...js",
+        "status": 200,
+        "ts": 1792675070821
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0d8fo_rc4mi2b.js",
+        "status": 200,
+        "ts": 1792675070821
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0j8ysjv4dq7gu.js",
+        "status": 200,
+        "ts": 1792675070846
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "POST",
+        "url": "https://automationintesting.online/cdn-cgi/rum",
+        "status": 204,
+        "ts": 1792675070877
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/api/branding",
+        "status": 200,
+        "ts": 1792675071087
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/",
+        "status": 200,
+        "ts": 1792675071099
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/10y2dlg~w2h~y.css",
+        "status": 200,
+        "ts": 1792675071133
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/03~pnuvh.8.yt.css",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0jr4699_v.07i.js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/07uz2g0_38qia.js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/174b7k13ybrt2.js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0yekx964af3a..js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/turbopack-0-x4z~8ovy8~k.js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/04eklj-7j4aqp.js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0sh.6aqimy6c9.js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0j8ysjv4dq7gu.js",
+        "status": 200,
+        "ts": 1792675071135
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0a3uhjsj0q7...js",
+        "status": 200,
+        "ts": 1792675071136
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0_9ma~tvpdxsn.js",
+        "status": 200,
+        "ts": 1792675071136
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://automationintesting.online/_next/static/chunks/0d8fo_rc4mi2b.js",
+        "status": 200,
+        "ts": 1792675071137
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/bootstrap-icons.min.css",
+        "status": 200,
+        "ts": 1792675071137
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css",
+        "status": 200,
+        "ts": 1792675071137
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css",
+        "status": 200,
+        "ts": 1792675071137
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js",
+        "status": 200,
+        "ts": 1792675071137
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js",
+        "status": 200,
+        "ts": 1792675071137
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "GET",
+        "url": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
+        "status": 200,
+        "ts": 1792675071137
+      },
+      {
+        "stepId": "wf-1792675070495-0",
+        "method": "POST",
+        "url": "https://automationintesting.online/cdn-cgi/rum",
+        "status": 204,
+        "ts": 1792675071178
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://automationintesting.online/api/branding",
+        "status": 200,
+        "ts": 1792675071385
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/65999/42916.png",
+        "status": 200,
+        "ts": 1792675071412
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/65998/42915.png",
+        "status": 200,
+        "ts": 1792675071413
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/65998/42917.png",
+        "status": 200,
+        "ts": 1792675071414
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/65998/42916.png",
+        "status": 200,
+        "ts": 1792675071414
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/65999/42915.png",
+        "status": 200,
+        "ts": 1792675071414
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.5/font/fonts/bootstrap-icons.woff2",
+        "status": 200,
+        "ts": 1792675071414
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/65999/42917.png",
+        "status": 200,
+        "ts": 1792675071415
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/66000/42915.png",
+        "status": 200,
+        "ts": 1792675071440
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/66000/42916.png",
+        "status": 200,
+        "ts": 1792675071441
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/17/66000/42917.png",
+        "status": 200,
+        "ts": 1792675071441
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://automationintesting.online/images/rbp-logo.jpg",
+        "status": 200,
+        "ts": 1792675071518
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://automationintesting.online/api/room",
+        "status": 200,
+        "ts": 1792675071628
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://automationintesting.online/images/room2.jpg",
+        "status": 200,
+        "ts": 1792675071763
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://automationintesting.online/images/room3.jpg",
+        "status": 200,
+        "ts": 1792675071774
+      },
+      {
+        "stepId": "wf-1792675070495-1",
+        "method": "GET",
+        "url": "https://automationintesting.online/images/room1.jpg",
+        "status": 200,
+        "ts": 1792675071852
+      }
+    ],
+    "runId": "run-mvjkg9ea-07vp",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792675070495-0",
+        "status": "passed",
+        "startedAt": 1792675070875,
+        "endedAt": 1792675071163,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "status"
+            },
+            {
+              "role": "alert",
+              "id": "__next-route-announcer__"
+            }
+          ],
+          "ax": "- status\n- alert"
+        }
+      },
+      {
+        "id": "wf-1792675070495-1",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792675071185,
+        "endedAt": 1792675080661,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link",
+              "text": "Shady Meadows B&B"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Rooms"
+            },
+            {
+              "role": "link",
+              "text": "Booking"
+            },
+            {
+              "role": "link",
+              "text": "Amenities"
+            },
+            {
+              "role": "link",
+              "text": "Location"
+            },
+            {
+              "role": "link",
+              "text": "Contact"
+            },
+            {
+              "role": "link",
+              "text": "Admin"
+            },
+            {
+              "role": "heading",
+              "text": "Welcome to Shady Meadows B&B"
+            },
+            {
+              "role": "link",
+              "text": "Book Now"
+            },
+            {
+              "role": "heading",
+              "text": "Check Availability & Book Your Stay"
+            },
+            {
+              "role": "label",
+              "name": "Check In",
+              "text": "Check In"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "label",
+              "name": "Check Out",
+              "text": "Check Out"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "button",
+              "text": "Check Availability"
+            },
+            {
+              "role": "heading",
+              "text": "Our Rooms"
+            },
+            {
+              "role": "link",
+              "text": "Book now"
+            },
+            {
+              "role": "link",
+              "text": "Book now"
+            },
+            {
+              "role": "link",
+              "text": "Book now"
+            },
+            {
+              "role": "heading",
+              "text": "Our Location"
+            },
+            {
+              "role": "link",
+              "text": "Pigeon"
+            },
+            {
+              "role": "link",
+              "text": "OpenStreetMap"
+            },
+            {
+              "role": "heading",
+              "text": "Contact Information"
+            },
+            {
+              "role": "heading",
+              "text": "Getting Here"
+            },
+            {
+              "role": "heading",
+              "text": "Send Us a Message"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name"
+            },
+            {
+              "role": "textbox",
+              "name": "Name",
+              "testId": "ContactName",
+              "id": "name"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email"
+            },
+            {
+              "role": "textbox",
+              "name": "Email",
+              "testId": "ContactEmail",
+              "id": "email"
+            },
+            {
+              "role": "label",
+              "name": "Phone",
+              "text": "Phone"
+            },
+            {
+              "role": "input",
+              "name": "Phone",
+              "testId": "ContactPhone",
+              "id": "phone"
+            },
+            {
+              "role": "label",
+              "name": "Subject",
+              "text": "Subject"
+            },
+            {
+              "role": "textbox",
+              "name": "Subject",
+              "testId": "ContactSubject",
+              "id": "subject"
+            },
+            {
+              "role": "label",
+              "name": "Message",
+              "text": "Message"
+            },
+            {
+              "role": "textbox",
+              "testId": "ContactDescription",
+              "id": "description"
+            },
+            {
+              "role": "button",
+              "text": "Submit"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "link"
+            }
+          ],
+          "ax": "- navigation:\n  - link \"Shady Meadows B&B\":\n    - /url: /\n  - list:\n    - listitem:\n      - link \"Rooms\":\n        - /url: /#rooms\n    - listitem:\n      - link \"Booking\":\n        - /url: /#booking\n    - listitem:\n      - link \"Amenities\":\n        - /url: /#amenities\n    - listitem:\n      - link \"Location\":\n        - /url: /#location\n    - listitem:\n      - link \"Contact\":\n        - /url: /#contact\n    - listitem:\n      - link \"Admin\":\n        - /url: /admin\n- heading \"Welcome to Shady Meadows B&B\" [level=1]\n- paragraph: Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place.\n- link \"Book Now\":\n  - /url: \"#booking\"\n- heading \"Check Availability & Book Your Stay\" [level=3]\n- text: Check In\n- textbox: 22/10/2026\n- text: Check Out\n- textbox: 23/10/2026\n- button \"Check Availability\"\n- heading \"Our Rooms\" [level=2]\n- paragraph: Comfortable beds and delightful breakfast from locally sourced ingredients\n- img \"Single Room\"\n- heading \"Single\" [level=5]\n- paragraph: Aenean porttitor mauris sit amet lacinia molestie. In posuere accumsan aliquet. Maecenas sit amet nisl massa. Interdum et malesuada fames ac ante.\n- text:  TV  WiFi  Safe £100 per night\n- link \"Book now\":\n  - /url: /reservation/1?checkin=2026-10-22&checkout=2026-10-23\n- img \"Single Room\"\n- heading \"Double\" [level=5]\n- paragraph: Vestibulum sollicitudin, lectus ac mollis consequat, lorem orci ultrices tellus, eleifend euismod tortor dui egestas erat. Phasellus et ipsum nisl.\n- text:  TV  Radio  Safe £150 per night\n- link \"Book now\":\n  - /url: /reservation/2?checkin=2026-10-22&checkout=2026-10-23\n- img \"Single Room\"\n- heading \"Suite\" [level=5]\n- paragraph: Etiam metus metus, fringilla ac sagittis id, consequat vel neque. Nunc commodo quis nisl nec posuere. Etiam at accumsan ex.\n- text:  Radio  WiFi  Safe £225 per night\n- link \"Book now\":\n  - /url: /reservation/3?checkin=2026-10-22&checkout=2026-10-23\n- heading \"Our Location\" [level=2]\n- paragraph: Find us in the beautiful Newingtonfordburyshire countryside\n- img\n- link \"Pigeon\":\n  - /url: https://pigeon-maps.js.org/\n- text: \"| ©\"\n- link \"OpenStreetMap\":\n  - /url: https://www.openstreetmap.org/copyright\n- text: contributors\n- heading \"Contact Information\" [level=3]\n- text: \n- heading \"Address\" [level=5]\n- paragraph: Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA\n- text: \n- heading \"Phone\" [level=5]\n- paragraph: \"012345678901\"\n- text: \n- heading \"Email\" [level=5]\n- paragraph: fake@fakeemail.com\n- separator\n- heading \"Getting Here\" [level=4]\n- paragraph: Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place.\n- heading \"Send Us a Message\" [level=3]\n- text: Name\n- textbox \"Name\"\n- text: Email\n- textbox \"Email\"\n- text: Phone\n- textbox \"Phone\"\n- text: Subject\n- textbox \"Subject\"\n- text: Message\n- textbox\n- button \"Submit\"\n- contentinfo:\n  - heading \"Shady Meadows B&B\" [level=5]\n  - paragraph: Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place.\n  - link \"\":\n    - /url: \"#\"\n  - link \"\":\n    - /url: \"#\"\n  - link \"\":\n    - /url: \"#\"\n  - heading \"Contact Us\" [level=5]\n  - list:\n    - listitem:  Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA\n    - listitem:  012345678901\n    - listitem:  fake@fakeemail.com\n  - heading \"Quick Links\" [level=5]\n  - list:\n    - listitem:\n      - link \"Home\":\n        - /url: \"#\""
+        }
+      },
+      {
+        "id": "wf-1792675070495-2",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792675070495-3",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792675070495-4",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792675070495-1",
+      "index": 1,
+      "intent": "Click \"Book now\"",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link",
+            "text": "Shady Meadows B&B"
+          },
+          {
+            "role": "button"
+          },
+          {
+            "role": "link",
+            "text": "Rooms"
+          },
+          {
+            "role": "link",
+            "text": "Booking"
+          },
+          {
+            "role": "link",
+            "text": "Amenities"
+          },
+          {
+            "role": "link",
+            "text": "Location"
+          },
+          {
+            "role": "link",
+            "text": "Contact"
+          },
+          {
+            "role": "link",
+            "text": "Admin"
+          },
+          {
+            "role": "heading",
+            "text": "Welcome to Shady Meadows B&B"
+          },
+          {
+            "role": "link",
+            "text": "Book Now"
+          },
+          {
+            "role": "heading",
+            "text": "Check Availability & Book Your Stay"
+          },
+          {
+            "role": "label",
+            "name": "Check In",
+            "text": "Check In"
+          },
+          {
+            "role": "textbox"
+          },
+          {
+            "role": "label",
+            "name": "Check Out",
+            "text": "Check Out"
+          },
+          {
+            "role": "textbox"
+          },
+          {
+            "role": "button",
+            "text": "Check Availability"
+          },
+          {
+            "role": "heading",
+            "text": "Our Rooms"
+          },
+          {
+            "role": "link",
+            "text": "Book now"
+          },
+          {
+            "role": "link",
+            "text": "Book now"
+          },
+          {
+            "role": "link",
+            "text": "Book now"
+          },
+          {
+            "role": "heading",
+            "text": "Our Location"
+          },
+          {
+            "role": "link",
+            "text": "Pigeon"
+          },
+          {
+            "role": "link",
+            "text": "OpenStreetMap"
+          },
+          {
+            "role": "heading",
+            "text": "Contact Information"
+          },
+          {
+            "role": "heading",
+            "text": "Getting Here"
+          },
+          {
+            "role": "heading",
+            "text": "Send Us a Message"
+          },
+          {
+            "role": "label",
+            "name": "Name",
+            "text": "Name"
+          },
+          {
+            "role": "textbox",
+            "name": "Name",
+            "testId": "ContactName",
+            "id": "name"
+          },
+          {
+            "role": "label",
+            "name": "Email",
+            "text": "Email"
+          },
+          {
+            "role": "textbox",
+            "name": "Email",
+            "testId": "ContactEmail",
+            "id": "email"
+          },
+          {
+            "role": "label",
+            "name": "Phone",
+            "text": "Phone"
+          },
+          {
+            "role": "input",
+            "name": "Phone",
+            "testId": "ContactPhone",
+            "id": "phone"
+          },
+          {
+            "role": "label",
+            "name": "Subject",
+            "text": "Subject"
+          },
+          {
+            "role": "textbox",
+            "name": "Subject",
+            "testId": "ContactSubject",
+            "id": "subject"
+          },
+          {
+            "role": "label",
+            "name": "Message",
+            "text": "Message"
+          },
+          {
+            "role": "textbox",
+            "testId": "ContactDescription",
+            "id": "description"
+          },
+          {
+            "role": "button",
+            "text": "Submit"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "link",
+            "text": "Rooms"
+          },
+          {
+            "role": "link",
+            "text": "Booking"
+          },
+          {
+            "role": "link",
+            "text": "Contact"
+          },
+          {
+            "role": "link",
+            "text": "Mark Winteringham"
+          },
+          {
+            "role": "link",
+            "text": "Cookie-Policy"
+          },
+          {
+            "role": "link",
+            "text": "Privacy-Policy"
+          },
+          {
+            "role": "link",
+            "text": "Admin panel"
+          },
+          {
+            "role": "alert",
+            "id": "__next-route-announcer__"
+          }
+        ],
+        "ax": "- navigation:\n  - link \"Shady Meadows B&B\":\n    - /url: /\n  - list:\n    - listitem:\n      - link \"Rooms\":\n        - /url: /#rooms\n    - listitem:\n      - link \"Booking\":\n        - /url: /#booking\n    - listitem:\n      - link \"Amenities\":\n        - /url: /#amenities\n    - listitem:\n      - link \"Location\":\n        - /url: /#location\n    - listitem:\n      - link \"Contact\":\n        - /url: /#contact\n    - listitem:\n      - link \"Admin\":\n        - /url: /admin\n- heading \"Welcome to Shady Meadows B&B\" [level=1]\n- paragraph: Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place.\n- link \"Book Now\":\n  - /url: \"#booking\"\n- heading \"Check Availability & Book Your Stay\" [level=3]\n- text: Check In\n- textbox: 22/10/2026\n- text: Check Out\n- textbox: 23/10/2026\n- button \"Check Availability\"\n- heading \"Our Rooms\" [level=2]\n- paragraph: Comfortable beds and delightful breakfast from locally sourced ingredients\n- img \"Single Room\"\n- heading \"Single\" [level=5]\n- paragraph: Aenean porttitor mauris sit amet lacinia molestie. In posuere accumsan aliquet. Maecenas sit amet nisl massa. Interdum et malesuada fames ac ante.\n- text:  TV  WiFi  Safe £100 per night\n- link \"Book now\":\n  - /url: /reservation/1?checkin=2026-10-22&checkout=2026-10-23\n- img \"Single Room\"\n- heading \"Double\" [level=5]\n- paragraph: Vestibulum sollicitudin, lectus ac mollis consequat, lorem orci ultrices tellus, eleifend euismod tortor dui egestas erat. Phasellus et ipsum nisl.\n- text:  TV  Radio  Safe £150 per night\n- link \"Book now\":\n  - /url: /reservation/2?checkin=2026-10-22&checkout=2026-10-23\n- img \"Single Room\"\n- heading \"Suite\" [level=5]\n- paragraph: Etiam metus metus, fringilla ac sagittis id, consequat vel neque. Nunc commodo quis nisl nec posuere. Etiam at accumsan ex.\n- text:  Radio  WiFi  Safe £225 per night\n- link \"Book now\":\n  - /url: /reservation/3?checkin=2026-10-22&checkout=2026-10-23\n- heading \"Our Location\" [level=2]\n- paragraph: Find us in the beautiful Newingtonfordburyshire countryside\n- img\n- link \"Pigeon\":\n  - /url: https://pigeon-maps.js.org/\n- text: \"| ©\"\n- link \"OpenStreetMap\":\n  - /url: https://www.openstreetmap.org/copyright\n- text: contributors\n- heading \"Contact Information\" [level=3]\n- text: \n- heading \"Address\" [level=5]\n- paragraph: Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA\n- text: \n- heading \"Phone\" [level=5]\n- paragraph: \"012345678901\"\n- text: \n- heading \"Email\" [level=5]\n- paragraph: fake@fakeemail.com\n- separator\n- heading \"Getting Here\" [level=4]\n- paragraph: Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place.\n- heading \"Send Us a Message\" [level=3]\n- text: Name\n- textbox \"Name\"\n- text: Email\n- textbox \"Email\"\n- text: Phone\n- textbox \"Phone\"\n- text: Subject\n- textbox \"Subject\"\n- text: Message\n- textbox\n- button \"Submit\"\n- contentinfo:\n  - heading \"Shady Meadows B&B\" [level=5]\n  - paragraph: Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place.\n  - link \"\":\n    - /url: \"#\"\n  - link \"\":\n    - /url: \"#\"\n  - link \"\":\n    - /url: \"#\"\n  - heading \"Contact Us\" [level=5]\n  - list:\n    - listitem:  Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA\n    - listitem:  012345678901\n    - listitem:  fake@fakeemail.com\n  - heading \"Quick Links\" [level=5]\n  - list:\n    - listitem:\n      - link \"Home\":\n        - /url: \"#\"\n    - listitem:\n      - link \"Rooms\":\n        - /url: \"#\"\n    - listitem:\n      - link \"Booking\":\n        - /url: \"#\"\n    - listitem:\n      - link \"Contact\":\n        - /url: \"#\"\n  - separator\n  - text: restful-booker-platform v2.2 Created by\n  - link \"Mark Winteringham\":\n    - /url: http://www.mwtestconsultancy.co.uk\n  - text: \"- © 2019-26\"\n  - link \"Cookie-Policy\":\n    - /url: /cookie\n  - text: \"-\"\n  - link \"Privacy-Policy\":\n    - /url: /privacy\n  - text: \"-\"\n  - link \"Admin panel\":\n    - /url: /admin\n- alert"
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role link Book now",
+          "score": 40
+        },
+        {
+          "kind": "text",
+          "label": "text Book now",
+          "score": 40
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://automationintesting.online/",
+    "title": "Restful-booker-platform demo",
+    "text": "Shady Meadows B&B Rooms Booking Amenities Location Contact Admin Welcome to Shady Meadows B&B Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place. Book Now Check Availability & Book Your Stay Check In Check Out Check Availability Our Rooms Comfortable beds and delightful breakfast from locally sourced ingredients Single Aenean porttitor mauris sit amet lacinia molestie. In posuere accumsan aliquet. Maecenas sit amet nisl massa. Interdum et malesuada fames ac ante. TV WiFi Safe £100 per night Book now Double Vestibulum sollicitudin, lectus ac mollis consequat, lorem orci ultrices tellus, eleifend euismod tortor dui egestas erat. Phasellus et ipsum nisl. TV Radio Safe £150 per night Book now Suite Etiam metus metus, fringilla ac sagittis id, consequat vel neque. Nunc commodo quis nisl nec posuere. Etiam at accumsan ex. Radio WiFi Safe £225 per night Book now Our Location Find us in the beautiful Newingtonfordburyshire countryside Pigeon | © OpenStreetMap contributors Contact Information Address Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA Phone 012345678901 Email fake@fakeemail.com Getting Here Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place. Send Us a Message Name Email Phone Subject Message Submit Shady Meadows B&B Welcome to Shady Meadows, a delightful Bed & Breakfast nestled in the hills on Newingtonfordburyshire. A place so beautiful you will never want to leave. All our rooms have comfortable beds and we provide breakfast from the locally sourced supermarket. It is a delightful place. Contact Us Shady Meadows B&B, Shadows valley, Newingtonfordburyshire, Dilbery, N1 1AA 012345678901 fake@fakeemail.com Quick Links Home Rooms Booking Contact restful-booker-platform v2.2 Created by Mark Winteringham - © 2019-26 Cookie-Policy - Privacy-Policy - Admin panel"
+  },
+  "downloaded": []
+}

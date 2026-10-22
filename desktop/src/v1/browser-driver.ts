@@ -466,6 +466,14 @@ export class BrowserDriver implements Driver {
     await this.page.locator(this.sel(node)).setChecked(checked);
   }
 
+  async select(node: Identity, value: string): Promise<void> {
+    this.automated += 1;
+    const loc = this.page.locator(this.sel(node));
+    const byLabel = await loc.selectOption({ label: value }).catch(() => [] as string[]);
+    if (byLabel.length) return;
+    await loc.selectOption(value);
+  }
+
   showConfirm(label: string): void {
     this.prompts?.showConfirm?.(label);
   }

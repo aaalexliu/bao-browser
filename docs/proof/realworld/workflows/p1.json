@@ -1,0 +1,146 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792674880957",
+  "name": "Captured workflow",
+  "startUrl": "https://automationexercise.com/login",
+  "inputs": [
+    {
+      "name": "name",
+      "type": "text",
+      "required": true,
+      "label": "name",
+      "default": "Bao Record"
+    },
+    {
+      "name": "username",
+      "type": "text",
+      "required": true,
+      "label": "username",
+      "default": "bao-record@example.com"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792674880957-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://automationexercise.com/login",
+      "surface": "dom",
+      "value": "https://automationexercise.com/login",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "automationexercise.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792674880957-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{name}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "nameAttr": "name",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": ""
+        },
+        {
+          "kind": "css",
+          "value": "input[name=\"name\"]"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "name",
+      "value": "{{name}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{name}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674880957-2",
+      "index": 2,
+      "action": "type",
+      "label": "Type {{username}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "nameAttr": "email",
+        "tag": "input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": ""
+        },
+        {
+          "kind": "css",
+          "value": "input[name=\"email\"]"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"email\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username",
+      "value": "{{username}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792674880957-3",
+      "index": 3,
+      "action": "click",
+      "label": "Click \"Signup\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Signup",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Signup"
+        },
+        {
+          "kind": "text",
+          "value": "Signup"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792674863423
+}

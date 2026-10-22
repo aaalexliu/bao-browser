@@ -1,0 +1,492 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [
+      {
+        "stepId": "wf-1792675898524-1",
+        "kind": "role",
+        "detail": "role Men's T-Shirts"
+      }
+    ],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792675898524-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url shop.polymer-project.org",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "action": "click",
+        "target": "link:Men's T-Shirts",
+        "postcondition": "text Shop Now",
+        "timing": "lt1s"
+      }
+    ],
+    "trail": [
+      {
+        "kind": "click",
+        "stepId": "wf-1792675898524-1",
+        "target": "Men's T-Shirts"
+      }
+    ],
+    "console": [],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/",
+        "status": 200,
+        "ts": 1792675930571
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
+        "status": 200,
+        "ts": 1792675930577
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
+        "status": 200,
+        "ts": 1792675930584
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792675930611
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
+        "status": 200,
+        "ts": 1792675930611
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
+        "status": 200,
+        "ts": 1792675930611
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "status": 200,
+        "ts": 1792675930611
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
+        "status": 200,
+        "ts": 1792675930632
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://www.google-analytics.com/analytics.js",
+        "status": 200,
+        "ts": 1792675930633
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/",
+        "status": 200,
+        "ts": 1792675930653
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
+        "status": 200,
+        "ts": 1792675930661
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
+        "status": 200,
+        "ts": 1792675930661
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792675930683
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
+        "status": 200,
+        "ts": 1792675930683
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
+        "status": 200,
+        "ts": 1792675930684
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "status": 200,
+        "ts": 1792675930684
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
+        "status": 200,
+        "ts": 1792675930688
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://www.google-analytics.com/analytics.js",
+        "status": 200,
+        "ts": 1792675930698
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "POST",
+        "url": "https://www.google-analytics.com/j/collect",
+        "status": 200,
+        "ts": 1792675930733
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-list.js",
+        "status": 200,
+        "ts": 1792675930817
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/mens_tshirts.json",
+        "status": 200,
+        "ts": 1792675930820
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13058B.jpg",
+        "status": 200,
+        "ts": 1792675930824
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13256B.jpg",
+        "status": 200,
+        "ts": 1792675930825
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13239B.jpg",
+        "status": 200,
+        "ts": 1792675930826
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13264B.jpg",
+        "status": 200,
+        "ts": 1792675930826
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13265B.jpg",
+        "status": 200,
+        "ts": 1792675930843
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13280B.jpg",
+        "status": 200,
+        "ts": 1792675930843
+      },
+      {
+        "stepId": "wf-1792675898524-1",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13213B.jpg",
+        "status": 200,
+        "ts": 1792675930844
+      }
+    ],
+    "runId": "run-mvjkyos6-tgew",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792675898524-0",
+        "status": "passed",
+        "startedAt": 1792675930631,
+        "endedAt": 1792675930710,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP Men's Outerwear Ladies Outerwear Men's T-Shirts Ladies T-Shirts",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 0 items"
+            },
+            {
+              "role": "link",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "SHOP NOW"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "SHOP NOW"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "SHOP NOW"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "SHOP NOW"
+            },
+            {
+              "role": "heading",
+              "text": "Sorry, we couldn't find that page"
+            },
+            {
+              "role": "link",
+              "text": "Go to the home page"
+            },
+            {
+              "role": "link",
+              "text": "Made by Polymer"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main:\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n    - img \"Men's Outerwear\"\n  - heading \"Men's Outerwear\" [level=2]\n  - link \"Men's Outerwear Shop Now\":\n    - /url: /list/mens_outerwear\n    - text: Shop Now\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n    - img \"Ladies Outerwear\"\n  - heading \"Ladies Outerwear\" [level=2]\n  - link \"Ladies Outerwear Shop Now\":\n    - /url: /list/ladies_outerwear\n    - text: Shop Now\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n    - img \"Men's T-Shirts\"\n  - heading \"Men's T-Shirts\" [level=2]\n  - link \"Men's T-Shirts Shop Now\":\n    - /url: /list/mens_tshirts\n    - text: Shop Now\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n    - img \"Ladies T-Shirts\"\n  - heading \"Ladies T-Shirts\" [level=2]\n  - link \"Ladies T-Shirts Shop Now\":\n    - /url: /list/ladies_tshirts\n    - text: Shop Now\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
+        }
+      },
+      {
+        "id": "wf-1792675898524-1",
+        "status": "passed",
+        "startedAt": 1792675930732,
+        "endedAt": 1792675930816,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "navigation",
+              "text": "SHOP Men's Outerwear Ladies Outerwear Men's T-Shirts Ladies T-Shirts",
+              "id": "header"
+            },
+            {
+              "role": "button",
+              "name": "Categories"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Go back"
+            },
+            {
+              "role": "link",
+              "name": "SHOP Home",
+              "text": "SHOP"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "button",
+              "name": "Shopping cart: 0 items"
+            },
+            {
+              "role": "link",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "main"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Men's Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies Outerwear"
+            },
+            {
+              "role": "link",
+              "name": "Ladies Outerwear Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Men's T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Men's T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "Ladies T-Shirts"
+            },
+            {
+              "role": "link",
+              "name": "Ladies T-Shirts Shop Now",
+              "text": "Shop Now"
+            },
+            {
+              "role": "heading",
+              "text": "Sorry, we couldn't find that page"
+            },
+            {
+              "role": "link",
+              "text": "Go to the home page"
+            },
+            {
+              "role": "link",
+              "text": "Made by Polymer"
+            }
+          ],
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main:\n  - img \"Men's T-Shirts\"\n  - heading \"Men's T-Shirts\" [level=1]\n  - text: (40 items)\n  - list:\n    - listitem:\n      - link \"YouTube Organic Cotton T-Shirt - Grey YouTube Organic Cotton T-Shirt - Grey $14.75\":\n        - /url: /detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey\n        - img \"YouTube Organic Cotton T-Shirt - Grey\"\n        - text: YouTube Organic Cotton T-Shirt - Grey $14.75\n    - listitem:\n      - link \"Inbox - Subtle Actions T-Shirt Inbox - Subtle Actions T-Shirt $17.05\":\n        - /url: /detail/mens_tshirts/Inbox+-+Subtle+Actions+T-Shirt\n        - img \"Inbox - Subtle Actions T-Shirt\"\n        - text: Inbox - Subtle Actions T-Shirt $17.05\n    - listitem:\n      - link \"Adult Android Superhero T-Shirt Adult Android Superhero T-Shirt $14.95\":\n        - /url: /detail/mens_tshirts/Adult+Android+Superhero+T-Shirt\n        - img \"Adult Android Superhero T-Shirt\"\n        - text: Adult Android Superhero T-Shirt $14.95\n    - listitem:\n      - link \"Men's Vintage Heather T-Shirt Men's Vintage Heather T-Shirt $15.80\":\n        - /url: /detail/mens_tshirts/Men+s+Vintage+Heather+T-Shirt\n        - img \"Men's Vintage Heather T-Shirt\"\n        - text: Men's Vintage Heather T-Shirt $15.80\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
+        }
+      }
+    ],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://shop.polymer-project.org/list/mens_tshirts",
+    "title": "Men's T-Shirts - SHOP",
+    "text": ""
+  },
+  "downloaded": []
+}

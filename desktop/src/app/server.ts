@@ -185,6 +185,8 @@ export async function startApp(opts: {
   let loginContinued = false;
   let replaying = false;
   let recordingSince = 0;
+  /** URL passed to beginSession. page.url() at stop is a later navigation. */
+  let captureOpenUrl = "";
   let sessionMode: "capture" | "teach" = "capture";
   let teachPhase: "idle" | "live" | "review" = "idle";
   let teachDecisions: TeachDecision[] = [];
@@ -729,6 +731,10 @@ export async function startApp(opts: {
         await enqueue(() => discardSession());
         return json(res, { recording: false });
       }
+      if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/sessions/page") {
+        if (!page || page.isClosed()) return json(res, { open: false }, 404);
+        return json(res, { open: true, ...(await drivePageView(page)) });
+      }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/sessions/drive") {
         if (!page) return json(res, { error: "no session" }, 409);
         const body = await readBody(req) as {
@@ -739,7 +745,12 @@ export async function startApp(opts: {
           chooser?: { selector: string; path: string };
           box?: string;
           scroll?: string;
+          select?: { selector: string; value?: string; label?: string };
+          press?: string;
+          goto?: string;
+          timeout?: number;
         };
+        const timeout = typeof body.timeout === "number" && body.timeout > 0 ? body.timeout : undefined;
         if (typeof body.scroll === "string" && /^#[A-Za-z][\w-]*$/.test(body.scroll)) {
           await page.evaluate((selector) => {
             const el = document.querySelector(selector);
@@ -773,8 +784,14 @@ export async function startApp(opts: {
           }, body.box);
           return json(res, { box, events: capture.events.length });
         }
-        if (body.fill) await page.fill(body.fill.selector, body.fill.value);
-        if (body.click) await page.click(body.click);
+        if (body.goto) await page.goto(body.goto, { waitUntil: "domcontentloaded", timeout: timeout ?? 30000 });
+        if (body.fill) await page.fill(body.fill.selector, body.fill.value, timeout ? { timeout } : undefined);
+        if (body.click) await page.click(body.click, timeout ? { timeout } : undefined);
+        if (body.press) await page.keyboard.press(body.press);
+        if (body.select?.selector) {
+          const choice = body.select.label ? { label: body.select.label } : body.select.value ?? "";
+          await page.selectOption(body.select.selector, choice, timeout ? { timeout } : undefined);
+        }
         if (body.chooser?.selector && body.chooser.path) {
           const landed = queueChooserFile(body.chooser.path);
           await page.click(body.chooser.selector);
@@ -885,13 +902,13 @@ export async function startApp(opts: {
         const current = new URL(session.page.url());
         const hasPassword = await session.page.locator("input[type=password]:visible").count().then((count) => count > 0).catch(() => false);
         const status = await session.page.locator("#status").innerText().catch(() => "");
-        const text = await session.page.locator("body").innerText().then((value) => value.slice(0, 8000)).catch(() => "");
-        return json(res, { open: true, pathname: current.pathname, hasPassword, status, text });
+        const view = await drivePageView(session.page);
+        return json(res, { open: true, pathname: current.pathname, hasPassword, status, ...view });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/sessions/page") {
         if (!page || page.isClosed()) return json(res, { open: false }, 404);
-        const text = await page.locator("body").innerText().then((value) => value.slice(0, 8000)).catch(() => "");
-        return json(res, { open: true, url: page.url(), text });
+        const view = await drivePageView(page);
+        return json(res, { open: true, ...view });
       }
       if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
         loginContinued = true;
@@ -1321,7 +1338,11 @@ export async function startApp(opts: {
           fileName: info.suggestedFilename,
         }));
       });
+      captureOpenUrl = startUrl;
       await page.goto(startUrl);
+      // The init script does not observe this goto, and a later page.url() is not
+      // the URL the capture began on. Record that opening navigation explicitly.
+      if (sessionMode === "capture") capture.push({ kind: "act", op: "navigate", beforeUrl: startUrl, afterUrl: startUrl });
       await (fileChooser as { send(method: string, params?: object): Promise<unknown> }).send(
         "Page.setInterceptFileChooserDialog",
         { enabled: true },
@@ -1329,6 +1350,7 @@ export async function startApp(opts: {
     } catch (err) {
       capture.discard();
       recordingSince = 0;
+      captureOpenUrl = "";
       await stopBrowser();
       publishCapture();
       throw err;
@@ -1420,6 +1442,8 @@ export async function startApp(opts: {
     const raw = capture.stop();
     recordingSince = 0;
     const id = `wf-${Date.now()}`;
+    const opened = captureOpenUrl || (page && !page.isClosed() ? page.url() : "");
+    captureOpenUrl = "";
     const clean = raw.map((event) => {
       const file = storedFileEvent(event);
       if (!file.sensitive && file.identity?.role !== "password") return file;
@@ -1427,7 +1451,7 @@ export async function startApp(opts: {
       delete copy.value;
       return copy;
     });
-    const startUrl = captureStartUrl(clean, page && !page.isClosed() ? page.url() : "");
+    const startUrl = captureStartUrl(clean, opened);
     extractProposal = undefined;
     const built = explain(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
     const workflow = built.workflow;
@@ -1453,6 +1477,7 @@ export async function startApp(opts: {
     capture.discard();
     recordingSince = 0;
     extractProposal = undefined;
+    captureOpenUrl = "";
     await stopBrowser();
     publishCapture();
   }
@@ -2247,6 +2272,14 @@ function publicPending(pending: PendingImport) {
     error: pending.error,
     audit: pending.audit,
   };
+}
+
+/** Read-only view for the proof harness. Recording and replay are unchanged. */
+async function drivePageView(page: Page): Promise<{ url: string; title: string; text: string }> {
+  const url = page.url();
+  const title = await page.title().catch(() => "");
+  const text = await page.locator("body").innerText().then((value) => value.replace(/\s+/g, " ").trim().slice(0, 20000)).catch(() => "");
+  return { url, title, text };
 }
 
 async function siteSignals(page: Page): Promise<{ url: string; hasPassword: boolean }> {

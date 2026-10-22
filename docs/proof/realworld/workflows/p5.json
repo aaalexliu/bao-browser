@@ -1,0 +1,57 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792675534903",
+  "name": "Captured workflow",
+  "startUrl": "https://books.toscrape.com/",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-1792675534903-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://books.toscrape.com/",
+      "surface": "dom",
+      "value": "https://books.toscrape.com/",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "books.toscrape.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792675534903-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"Travel\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "tag": "a",
+        "text": "Travel",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "Travel"
+        },
+        {
+          "kind": "text",
+          "value": "Travel"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792675533808
+}

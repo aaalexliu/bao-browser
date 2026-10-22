@@ -118,6 +118,10 @@ export interface Driver {
   drop(node: Identity, files: FileArg[]): Promise<void>;
   digits(app: string | undefined, role: string, text: string): Promise<void>;
   check(node: Identity, checked: boolean): Promise<void>;
+  /** Open a recorded URL. Absent when the host already loaded startUrl. */
+  goto?(url: string): Promise<void>;
+  /** Choose an option by its visible label, or by its value when the label misses. */
+  select?(node: Identity, value: string): Promise<void>;
   /** Move focus onto the key step's target before the key is pressed. */
   focus?(node: Identity): Promise<void>;
   notify(notice: HealNotice): Promise<void>;
@@ -148,8 +152,6 @@ export interface Driver {
   highlightTarget?(node: Identity): Promise<void>;
   /** The next person action, if the driver is watching the page. */
   performed?(): Promise<GuideAct | null>;
-  /** Open a URL in this browser. */
-  goto?(url: string): Promise<void>;
   /** Arm CDP download capture, trigger the download, and return the saved path. */
   download?(spec: { dir: string; filename: string; timeoutMs: number; url?: string; node?: Identity }): Promise<{ suggestedFilename: string; path: string }>;
   /** Click or drag the cell for a resolved date. Recorded day clicks are not replayed. */
@@ -674,7 +676,40 @@ export async function replay(
       if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot, ...(snapshot ? { snapshot } : {}) };
     }
   }
+  const executed = steps.filter((step) => step.status === "passed" && step.reason !== "other branch" && step.reason !== "not re-run");
+  const lastId = executed[executed.length - 1]?.id;
+  const last = workflow.steps.find((step) => step.id === lastId && step.action !== "note");
+  let finalCheckFailed = false;
+  if (last && (last.expect || last.postcondition)) {
+    finalCheckFailed = !(await expectationsHold(last, await driver.tree(), args));
+  }
+  if (!runPassed(steps, finalCheckFailed)) {
+    const reason = executed.length === 0 ? "no steps executed" : "final check failed";
+    const snapshot = maskSnapshot(await driver.snapshot().catch(() => ({})), secrets);
+    return finish({
+      runId,
+      status: "failed",
+      steps,
+      failure: {
+        stepId: last?.id || workflow.id,
+        index: last?.index ?? 0,
+        intent: last?.intent || last?.label || workflow.name,
+        phase: "expect",
+        reason,
+        snapshot,
+      },
+    });
+  }
   return finish({ runId, status: "passed", steps });
+}
+
+/** A run with nothing executed, or a failed final check, is not a pass. */
+export function runPassed(
+  steps: { status: string; reason?: string }[],
+  finalCheckFailed = false,
+): boolean {
+  if (finalCheckFailed) return false;
+  return steps.some((step) => step.status === "passed" && step.reason !== "other branch" && step.reason !== "not re-run");
 }
 
 type StepOutcome =
@@ -719,6 +754,20 @@ async function runStep(
       return { ok: false, repairs, failure: await fail(driver, step, "action", data.reason, undefined, secrets) };
     }
     return { ok: true, repairs, detail: data.detail };
+  }
+  if (step.action === "navigate") {
+    const url = step.value || workflow.startUrl;
+    try {
+      if (url && driver.goto) await driver.goto(url);
+    } catch (err) {
+      const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+      return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
+    }
+    const held = await readExpect(step, args, driver, repairs, gate, recovery);
+    if (!held.ok) {
+      return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
+    }
+    return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.waitFor) {
     const ready = await holdCheck(step.waitFor, args, driver, true);
@@ -1324,6 +1373,19 @@ function locate(
         tried,
       };
     }
+    if (step.identity) {
+      const hit = lookup(step.identity, nodes);
+      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden)) {
+        const node = nodes[hit.index];
+        const detail = node?.name || node?.label || node?.text || node?.nameAttr || node?.id || "identity";
+        return {
+          nodes,
+          hit,
+          via: { stepId: step.id, kind: "identity", detail: `identity ${detail}` },
+          tried,
+        };
+      }
+    }
     return {
       nodes,
       hit: { ok: false, reason: "below-threshold", brokenAttr: list[0]?.kind || "locator", ranked: [] },
@@ -1373,6 +1435,18 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
   }
   if (step.action === "check") {
     await driver.check(node, !!step.checked);
+    return;
+  }
+  if (step.action === "select") {
+    const text = step.input ? String(args[step.input] ?? "") : String(step.value ?? "");
+    if (!driver.select) throw new Error("select is not supported");
+    await driver.select(node, text);
+    return;
+  }
+  if (step.action === "navigate") {
+    const url = step.value || "";
+    if (!url || !driver.goto) return;
+    await driver.goto(url);
     return;
   }
   if (step.action === "key") {

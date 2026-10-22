@@ -1,0 +1,1166 @@
+{
+  "args": {
+    "name": "Bao Alpha",
+    "username": "bao-alpha@example.com"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [
+      {
+        "stepId": "wf-1792674880957-1",
+        "kind": "css",
+        "detail": "css textbox"
+      }
+    ],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792674880957-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url automationexercise.com",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792674880957-1",
+        "action": "type",
+        "target": "textbox[name=name]",
+        "postcondition": "value {{name}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "action": "type",
+        "target": "textbox[name=email]",
+        "postcondition": "missed value {{username}}",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked; the ",
+        "ts": 1792674881485
+      },
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the content",
+        "ts": 1792674881486
+      },
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over HTTP",
+        "ts": 1792674881486
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked; the ",
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the content",
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "type": "error",
+        "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over HTTP",
+        "ts": 1792674882052
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/html/r20261019/r20190131/zrt_lookup.html",
+        "status": 200,
+        "ts": 1792674881731
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/ads",
+        "status": 200,
+        "ts": 1792674881867
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "POST",
+        "url": "https://automationexercise.com/cdn-cgi/rum",
+        "status": 204,
+        "ts": 1792674881910
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/getconfig/sodar",
+        "status": 200,
+        "ts": 1792674881954
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/i/ca-pub-1677597403311019",
+        "status": 200,
+        "ts": 1792674882010
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/login",
+        "status": 200,
+        "ts": 1792674882022
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/bootstrap.min.css",
+        "status": 200,
+        "ts": 1792674882048
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/font-awesome.min.css",
+        "status": 200,
+        "ts": 1792674882048
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/prettyPhoto.css",
+        "status": 200,
+        "ts": 1792674882048
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/animate.css",
+        "status": 200,
+        "ts": 1792674882049
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/main.css",
+        "status": 200,
+        "ts": 1792674882049
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/responsive.css",
+        "status": 200,
+        "ts": 1792674882050
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/icon",
+        "status": 200,
+        "ts": 1792674882051
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",
+        "status": 200,
+        "ts": 1792674882051
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/images/home/logo.png",
+        "status": 200,
+        "ts": 1792674882051
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/jquery.js",
+        "status": 200,
+        "ts": 1792674882051
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/jquery.scrollUp.min.js",
+        "status": 200,
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/bootstrap.min.js",
+        "status": 200,
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/jquery.prettyPhoto.js",
+        "status": 200,
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/main.js",
+        "status": 200,
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/js/subscription.js",
+        "status": 200,
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
+        "status": 200,
+        "ts": 1792674882052
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/fonts/fontawesome-webfont.woff",
+        "status": 200,
+        "ts": 1792674882058
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/materialicons/v145/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2",
+        "status": 200,
+        "ts": 1792674882059
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/managed/js/adsense/m202610210101/show_ads_impl.js",
+        "status": 200,
+        "ts": 1792674882071
+      },
+      {
+        "stepId": "wf-1792674880957-0",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/html/r20261019/r20190131/zrt_lookup.html",
+        "status": 200,
+        "ts": 1792674882079
+      },
+      {
+        "stepId": "wf-1792674880957-1",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/ads",
+        "status": 200,
+        "ts": 1792674882234
+      },
+      {
+        "stepId": "wf-1792674880957-1",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/managed/js/adsense/m202610210101/reactive_library.js",
+        "status": 200,
+        "ts": 1792674882280
+      },
+      {
+        "stepId": "wf-1792674880957-1",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/i/ca-pub-1677597403311019",
+        "status": 200,
+        "ts": 1792674882333
+      },
+      {
+        "stepId": "wf-1792674880957-1",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/html/r20261019/r20190131/zrt_lookup.html",
+        "status": 200,
+        "ts": 1792674882361
+      },
+      {
+        "stepId": "wf-1792674880957-1",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxVgl0mRmi0-vnGYMreBxgscdZamEAm2_zFqzhlN7tFCGGWJ7trWl4dAEAG0e7xFrb2liIAwxifquV-YAJ61fmsQv8i_QBXAcmj7QhpzMO0aMuKSaEWLJIk07KTK_srIUV5y",
+        "status": 200,
+        "ts": 1792674882408
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://s0.2mdn.net/ads/richmedia/studio/mu/templates/survey/promptui/ads_styles.css",
+        "status": 200,
+        "ts": 1792674882420
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://tpc.googlesyndication.com/pagead/js/r20261021/r20110914/client/qs_click_protection.js",
+        "status": 200,
+        "ts": 1792674882420
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXKyIjMZWdbPiyQjshZGlbi71fFlPEanXdSpOi6r8lAou5lq2yJhRdMd19xh9oZKY5_ADJiVdBsGCd-RaGth7huDijyo7yVy8FeZZSKYhFuze58dkyj-wKBD0XbS2s22MX",
+        "status": 204,
+        "ts": 1792674882423
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXKyIjMZWdbPiyQjshZGlbi71fFlPEanXdSpOi6r8lAou5lq2yJhRdMd19xh9oZKY5_ADJiVdBsGCd-RaGth7huDijyo7yVy8FeZZSKYhFuze58dkyj-wKBD0XbS2s22MX",
+        "status": 204,
+        "ts": 1792674882426
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://tpc.googlesyndication.com/pagead/js/r20261021/r20110914/elements/html/fullscreen_api_adapter.js",
+        "status": 200,
+        "ts": 1792674882426
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://tpc.googlesyndication.com/pagead/js/r20261021/r20110914/elements/html/interstitial_ad_frame.js",
+        "status": 200,
+        "ts": 1792674882429
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "status": 204,
+        "ts": 1792674882447
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "status": 204,
+        "ts": 1792674882447
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "status": 204,
+        "ts": 1792674882448
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "status": 204,
+        "ts": 1792674882448
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "status": 204,
+        "ts": 1792674882449
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "status": 204,
+        "ts": 1792674882449
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://s0.2mdn.net/ads/richmedia/studio/mu/templates/survey/promptui/ads_bundle__en_us.js",
+        "status": 200,
+        "ts": 1792674882450
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/gen_204",
+        "status": 204,
+        "ts": 1792674882454
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792674882456
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792674882458
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css2",
+        "status": 200,
+        "ts": 1792674882458
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792674882458
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://googleads.g.doubleclick.net/pagead/ads",
+        "status": 200,
+        "ts": 1792674882475
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxUCRI65bZ7Jka03Y108POthRY5U-rYGqjLC2Q7x1pM_4v6WMQo6Z2X5HY-X69YgaJS7ZV4aZEkcIyr_emz9XsB9xi2kUBHTU5kEZDQl4AG9PGzJdIzZCYdqPMQOSY0JTKGp",
+        "status": 200,
+        "ts": 1792674882517
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUI1FWUKG-d3B61JE0uYRuOI4noMfdEt7iTRiHxU9KcDoZEx8sfnSUnvaEl009tXImS7l7bWknlGKpShxnD4u_zqyijAWwJolsZtUIHPODK8gRqhLGMqDc-710zo5WxATx",
+        "status": 204,
+        "ts": 1792674882517
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/googlesanstext/v29/5aUp9-KzpRiLCAt4Unrc-xIKmCU5oLlVnmhjtg.woff2",
+        "status": 200,
+        "ts": 1792674882540
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/googlesanstext/v29/5aUu9-KzpRiLCAt4Unrc-xIKmCU5qEp2iw.woff2",
+        "status": 200,
+        "ts": 1792674882559
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792674882561
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792674882563
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "status": 204,
+        "ts": 1792674882567
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/googlesymbols/v467/HhzZU5Ak9u-oMExPeInvcuEmPosC9zS3FYkFU68cPrjdKM1XMoDZlWmzc3IiWvF1SbxVhQidBnv_C_ar1J9g0sLBUv3G8taXmA.woff2",
+        "status": 200,
+        "ts": 1792674882598
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/googlesans/v71/4Ua_rENHsxJlGDuGo1OIlJfC6l_24rlCK1Yo_Iqcsih3SAyH6cAwhX9RFD48TE63OOYKtrzjJ5llpyk.woff2",
+        "status": 200,
+        "ts": 1792674882598
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/googlesans/v71/4Ua_rENHsxJlGDuGo1OIlJfC6l_24rlCK1Yo_Iqcsih3SAyH6cAwhX9RFD48TE63OOYKtrwEIJllpyk.woff2",
+        "status": 200,
+        "ts": 1792674882598
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://automationexercise.com/cdn-cgi/rum",
+        "status": 204,
+        "ts": 1792674882610
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/getconfig/sodar",
+        "status": 200,
+        "ts": 1792674882629
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2.js",
+        "status": 200,
+        "ts": 1792674882633
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2/255/runner.html",
+        "status": 200,
+        "ts": 1792674882647
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/bg/MiW-RjjwwGIEZupSCmB4TKPvjRoEF1DrhmgaGwIzrGY.js",
+        "status": 200,
+        "ts": 1792674882665
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://www.google.com/recaptcha/api2/aframe",
+        "status": 200,
+        "ts": 1792674882668
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/sodar",
+        "status": 204,
+        "ts": 1792674882723
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/generate_204",
+        "status": 204,
+        "ts": 1792674882735
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "status": 204,
+        "ts": 1792674882811
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/osd.js",
+        "status": 200,
+        "ts": 1792674883154
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXKyIjMZWdbPiyQjshZGlbi71fFlPEanXdSpOi6r8lAou5lq2yJhRdMd19xh9oZKY5_ADJiVdBsGCd-RaGth7huDijyo7yVy8FeZZSKYhFuze58dkyj-wKBD0XbS2s22MX",
+        "status": 204,
+        "ts": 1792674883175
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxVMHyiqtY_CUmrzQkO0i4uwXIlwlEWleWAqr5Gl0UjDS_pKsCrZqLI1Afc6xdeP05iuPFXixmqzytbRVTvCzziJcwOYmiJR1xZ92SwSsMFY08YlWu6YMrWSAe6tA602_1SN",
+        "status": 200,
+        "ts": 1792674883190
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXKyIjMZWdbPiyQjshZGlbi71fFlPEanXdSpOi6r8lAou5lq2yJhRdMd19xh9oZKY5_ADJiVdBsGCd-RaGth7huDijyo7yVy8FeZZSKYhFuze58dkyj-wKBD0XbS2s22MX",
+        "status": 204,
+        "ts": 1792674883221
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXKyIjMZWdbPiyQjshZGlbi71fFlPEanXdSpOi6r8lAou5lq2yJhRdMd19xh9oZKY5_ADJiVdBsGCd-RaGth7huDijyo7yVy8FeZZSKYhFuze58dkyj-wKBD0XbS2s22MX",
+        "status": 204,
+        "ts": 1792674883231
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXKyIjMZWdbPiyQjshZGlbi71fFlPEanXdSpOi6r8lAou5lq2yJhRdMd19xh9oZKY5_ADJiVdBsGCd-RaGth7huDijyo7yVy8FeZZSKYhFuze58dkyj-wKBD0XbS2s22MX",
+        "status": 204,
+        "ts": 1792674883270
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxVdOIsbtcU4O5_AhASv9UgsZjKXkPLCLsaoJqgf2jPyBNpQAz1EOqbQtW9A4fesRDdbyvz80YpAHL6clbXCKWDx3-9vp6mijV1Quy2J7FrpaL7EPLDsIhJGx0p4SxslY-4P",
+        "status": 200,
+        "ts": 1792674883271
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/pagead/sodar",
+        "status": 204,
+        "ts": 1792674883309
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXilomPV1Tuzu_E2DXvI8sVipMno4yxF1Mu7MUcl3JpYvJL_UIoPfFi0i5CZaQbUoKcqPT1qf9BAy41T0Rfxxgoy4jP2dWPGdbtq20UKOIkHwJTlWFyR9K-AWJ0VB3_mKt",
+        "status": 204,
+        "ts": 1792674883329
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXKyIjMZWdbPiyQjshZGlbi71fFlPEanXdSpOi6r8lAou5lq2yJhRdMd19xh9oZKY5_ADJiVdBsGCd-RaGth7huDijyo7yVy8FeZZSKYhFuze58dkyj-wKBD0XbS2s22MX",
+        "status": 204,
+        "ts": 1792674883352
+      },
+      {
+        "stepId": "wf-1792674880957-2",
+        "method": "POST",
+        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "status": 204,
+        "ts": 1792674890567
+      }
+    ],
+    "runId": "run-mvjkc7kl-b53i",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792674880957-0",
+        "status": "passed",
+        "startedAt": 1792674881884,
+        "endedAt": 1792674882114,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": " Products"
+            },
+            {
+              "role": "link",
+              "text": "Cart"
+            },
+            {
+              "role": "link",
+              "text": "Signup / Login"
+            },
+            {
+              "role": "link",
+              "text": "Test Cases"
+            },
+            {
+              "role": "link",
+              "text": "API Testing"
+            },
+            {
+              "role": "link",
+              "text": "Video Tutorials"
+            },
+            {
+              "role": "link",
+              "text": "Contact us"
+            },
+            {
+              "role": "heading",
+              "text": "Login to your account"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "button",
+              "text": "Login"
+            },
+            {
+              "role": "heading",
+              "text": "OR"
+            },
+            {
+              "role": "heading",
+              "text": "New User Signup!"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "text": "Signup"
+            },
+            {
+              "role": "heading",
+              "text": "SUBSCRIPTION"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox",
+              "id": "susbscribe_email"
+            },
+            {
+              "role": "button",
+              "id": "subscribe"
+            },
+            {
+              "role": "link",
+              "id": "scrollUp"
+            }
+          ],
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Login to your account\" [level=2]\n- textbox \"Email Address\"\n- button \"Login\"\n- heading \"OR\" [level=2]\n- heading \"New User Signup!\" [level=2]\n- textbox \"Name\"\n- textbox \"Email Address\"\n- button \"Signup\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
+        }
+      },
+      {
+        "id": "wf-1792674880957-1",
+        "status": "passed",
+        "startedAt": 1792674882141,
+        "endedAt": 1792674882305,
+        "beforeShot": "wf-1792674880957-1-before.png",
+        "afterShot": "wf-1792674880957-1-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": " Products"
+            },
+            {
+              "role": "link",
+              "text": "Cart"
+            },
+            {
+              "role": "link",
+              "text": "Signup / Login"
+            },
+            {
+              "role": "link",
+              "text": "Test Cases"
+            },
+            {
+              "role": "link",
+              "text": "API Testing"
+            },
+            {
+              "role": "link",
+              "text": "Video Tutorials"
+            },
+            {
+              "role": "link",
+              "text": "Contact us"
+            },
+            {
+              "role": "heading",
+              "text": "Login to your account"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "button",
+              "text": "Login"
+            },
+            {
+              "role": "heading",
+              "text": "OR"
+            },
+            {
+              "role": "heading",
+              "text": "New User Signup!"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "text": "Signup"
+            },
+            {
+              "role": "heading",
+              "text": "SUBSCRIPTION"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox",
+              "id": "susbscribe_email"
+            },
+            {
+              "role": "button",
+              "id": "subscribe"
+            },
+            {
+              "role": "link",
+              "name": "Browse Reference",
+              "text": "Browse Reference"
+            },
+            {
+              "role": "link",
+              "id": "scrollUp"
+            }
+          ],
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Login to your account\" [level=2]\n- textbox \"Email Address\"\n- button \"Login\"\n- heading \"OR\" [level=2]\n- heading \"New User Signup!\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email Address\"\n- button \"Signup\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph:\n    - text: Get the most recent updates from our site and be updated your self...\n    - link \"Browse Reference\":\n      - img\n      - text: Browse Reference\n  - paragraph: Copyright © 2021 All rights reserved\n  - insertion:\n    - iframe"
+        }
+      },
+      {
+        "id": "wf-1792674880957-2",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792674882418,
+        "endedAt": 1792674891957,
+        "beforeShot": "wf-1792674880957-2-before.png",
+        "afterShot": "wf-1792674880957-2-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": " Products"
+            },
+            {
+              "role": "link",
+              "text": "Cart"
+            },
+            {
+              "role": "link",
+              "text": "Signup / Login"
+            },
+            {
+              "role": "link",
+              "text": "Test Cases"
+            },
+            {
+              "role": "link",
+              "text": "API Testing"
+            },
+            {
+              "role": "link",
+              "text": "Video Tutorials"
+            },
+            {
+              "role": "link",
+              "text": "Contact us"
+            },
+            {
+              "role": "heading",
+              "text": "Login to your account"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "button",
+              "text": "Login"
+            },
+            {
+              "role": "heading",
+              "text": "OR"
+            },
+            {
+              "role": "heading",
+              "text": "New User Signup!"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "textbox"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "text": "Signup"
+            },
+            {
+              "role": "heading",
+              "text": "SUBSCRIPTION"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox",
+              "id": "susbscribe_email"
+            },
+            {
+              "role": "button",
+              "id": "subscribe"
+            },
+            {
+              "role": "link",
+              "name": "Browse Reference",
+              "text": "Browse Reference"
+            },
+            {
+              "role": "heading",
+              "name": "These are topics related to the article that might interest you",
+              "text": "Discover more"
+            },
+            {
+              "role": "link",
+              "name": "Automation practice website",
+              "text": "Automation practice website"
+            },
+            {
+              "role": "link",
+              "name": "Test automation tools",
+              "text": "Test automation tools"
+            },
+            {
+              "role": "link",
+              "name": "Automation testing courses",
+              "text": "Automation testing courses"
+            },
+            {
+              "role": "link",
+              "id": "scrollUp"
+            }
+          ],
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Login to your account\" [level=2]\n- textbox \"Email Address\"\n- button \"Login\"\n- heading \"OR\" [level=2]\n- heading \"New User Signup!\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email Address\"\n- button \"Signup\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph:\n    - text: Get the most recent updates from our site and be updated your self...\n    - link \"Browse Reference\":\n      - img\n      - text: Browse Reference\n  - paragraph: Copyright © 2021 All rights reserved\n  - insertion:\n    - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n    - link \"Automation practice website\"\n    - link \"Test automation tools\"\n    - link \"Automation testing courses\""
+        }
+      },
+      {
+        "id": "wf-1792674880957-3",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792674880957-2",
+      "index": 2,
+      "intent": "Type {{username}}",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "link",
+            "text": " Products"
+          },
+          {
+            "role": "link",
+            "text": "Cart"
+          },
+          {
+            "role": "link",
+            "text": "Signup / Login"
+          },
+          {
+            "role": "link",
+            "text": "Test Cases"
+          },
+          {
+            "role": "link",
+            "text": "API Testing"
+          },
+          {
+            "role": "link",
+            "text": "Video Tutorials"
+          },
+          {
+            "role": "link",
+            "text": "Contact us"
+          },
+          {
+            "role": "heading",
+            "text": "Login to your account"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "textbox"
+          },
+          {
+            "role": "textbox"
+          },
+          {
+            "role": "button",
+            "text": "Login"
+          },
+          {
+            "role": "heading",
+            "text": "OR"
+          },
+          {
+            "role": "heading",
+            "text": "New User Signup!"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "textbox"
+          },
+          {
+            "role": "textbox"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "button",
+            "text": "Signup"
+          },
+          {
+            "role": "heading",
+            "text": "SUBSCRIPTION"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "textbox",
+            "id": "susbscribe_email"
+          },
+          {
+            "role": "button",
+            "id": "subscribe"
+          },
+          {
+            "role": "link",
+            "name": "Browse Reference",
+            "text": "Browse Reference"
+          },
+          {
+            "role": "heading",
+            "name": "These are topics related to the article that might interest you",
+            "text": "Discover more"
+          },
+          {
+            "role": "link",
+            "name": "Automation practice website",
+            "text": "Automation practice website"
+          },
+          {
+            "role": "link",
+            "name": "Test automation tools",
+            "text": "Test automation tools"
+          },
+          {
+            "role": "link",
+            "name": "Automation testing courses",
+            "text": "Automation testing courses"
+          },
+          {
+            "role": "link",
+            "id": "scrollUp"
+          }
+        ]
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role textbox",
+          "score": 40
+        },
+        {
+          "kind": "css",
+          "label": "css input[name=\"email\"]",
+          "score": 40
+        },
+        {
+          "kind": "xpath",
+          "label": "xpath //input[@name=\"email\"]",
+          "score": 40
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://automationexercise.com/login",
+    "title": "Automation Exercise - Signup / Login",
+    "text": "Home  Products Cart Signup / Login Test Cases API Testing Video Tutorials Contact us Login to your account Login OR New User Signup! Signup SUBSCRIPTION Get the most recent updates from our site and be updated your self...Browse Reference Copyright © 2021 All rights reserved Discover more Automation practice website Test automation tools Automation testing courses"
+  },
+  "downloaded": []
+}

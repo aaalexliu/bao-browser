@@ -9,7 +9,7 @@ function recorded(query: Identity, attr: string): string {
   if (attr === "id") return query.id || "";
   if (attr === "testId") return query.testId || "";
   if (attr === "text") return query.text || "";
-  if (attr === "name") return query.name || "";
+  if (attr === "name" || attr === "accName") return query.name || "";
   if (attr === "label") return query.label || "";
   if (attr === "nameAttr") return query.nameAttr || "";
   if (attr === "role") return query.role || "";
@@ -22,8 +22,8 @@ function live(node: Identity | undefined, attr: string): string {
   if (attr === "id") return node.id || "";
   if (attr === "testId") return node.testId || "";
   if (attr === "text") return node.text || "";
-  if (attr === "name") return node.name || node.text || "";
-  if (attr === "label") return node.label || "";
+  if (attr === "name" || attr === "accName") return node.name || node.label || node.text || "";
+  if (attr === "label") return node.label || node.name || "";
   if (attr === "nameAttr") return node.nameAttr || "";
   if (attr === "role") return node.role || "";
   return "";
@@ -38,7 +38,7 @@ function changedLine(query: Identity, node: Identity | undefined, brokenAttr: st
   if (!node || !brokenAttr) return undefined;
   const recordedName = query.name || query.text || "";
   const liveName = node.name || node.text || "";
-  if (brokenAttr === "roleName" || brokenAttr === "name" || brokenAttr === "text") {
+  if (brokenAttr === "roleName" || brokenAttr === "name" || brokenAttr === "text" || brokenAttr === "accName" || brokenAttr === "label") {
     if (!recordedName || recordedName === liveName) return undefined;
     return `name "${recordedName}" → "${liveName}"`;
   }

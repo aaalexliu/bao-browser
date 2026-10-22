@@ -71,10 +71,49 @@ export function matchLocator(
 ): { index: number; detail: string } | undefined {
   if (locator.kind === "anchor") return matchAnchor(locator, nodes, boxes);
   const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
-  if (hits.length !== 1) return undefined;
-  const index = hits[0]!;
+  const index = hits.length === 1 ? hits[0] : preferExactControl(locator, hits, nodes);
+  if (index == null) return undefined;
   const node = nodes[index];
   return { index, detail: `${locator.kind} ${shown(node)}` };
+}
+
+/**
+ * Several nodes can show the same words. A heading and a landmark are not the
+ * control. One interactive node whose visible text or accessible name equals
+ * the query is that control. Two controls with the same name stay a miss.
+ */
+function preferExactControl(locator: StepLocator, hits: number[], nodes: Identity[]): number | undefined {
+  if (hits.length < 2 || (locator.kind !== "text" && locator.kind !== "role")) return undefined;
+  const want = normText(locator.kind === "text" ? locator.value || "" : locator.name || "");
+  if (!want) return undefined;
+  const exact = hits.filter((index) => exactVisible(nodes[index], want));
+  const controls = exact.filter((index) => isControl(nodes[index]));
+  const other = exact.filter((index) => !isControl(nodes[index]));
+  if (controls.length === 1 && other.length > 0 && controls.length + other.length === exact.length) return controls[0];
+  const named = hits.filter((index) => accessibleEquals(nodes[index], want) && isControl(nodes[index]));
+  if (named.length === 1) {
+    const rest = hits.filter((index) => index !== named[0]);
+    if (rest.every((index) => !isControl(nodes[index]) || !accessibleEquals(nodes[index], want))) return named[0];
+  }
+  return undefined;
+}
+
+function exactVisible(node: Identity | undefined, want: string): boolean {
+  if (!node) return false;
+  return [node.text, node.name, node.label, node.title].some((value) => !!value && normText(value) === want);
+}
+
+function accessibleEquals(node: Identity | undefined, want: string): boolean {
+  if (!node) return false;
+  return [node.name, node.label, node.title].some((value) => !!value && normText(value) === want);
+}
+
+function isControl(node: Identity | undefined): boolean {
+  if (!node) return false;
+  const role = normRole(node.role);
+  return role === "button" || role === "link" || role === "textbox" || role === "checkbox" || role === "radio"
+    || role === "combobox" || role === "listbox" || role === "menuitem" || role === "tab" || role === "option"
+    || role === "switch" || role === "searchbox";
 }
 
 /**

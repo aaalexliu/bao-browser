@@ -11,6 +11,11 @@ export function recordedField(field: { type?: string; value?: string }): { value
 export function leafTexts(): Record<string, string> {
   const norm = (value: string) => value.replace(/\s+/g, " ").trim().slice(0, 240);
   const skip = /^(SCRIPT|STYLE|NOSCRIPT|SVG)$/;
+  const parentOf = (node: Element): Element | null => {
+    if (node.parentElement) return node.parentElement;
+    const root = node.getRootNode();
+    return root instanceof ShadowRoot ? root.host : null;
+  };
   const keyOf = (el: Element) => {
     const parts: string[] = [];
     let node: Element | null = el;
@@ -19,20 +24,23 @@ export function leafTexts(): Record<string, string> {
       let sib: Element | null = node;
       while ((sib = sib.previousElementSibling)) if (sib.tagName === node.tagName) nth += 1;
       parts.unshift(`${node.tagName}:${nth}`);
-      node = node.parentElement;
+      node = parentOf(node);
     }
     return parts.join("/");
   };
   const out: Record<string, string> = {};
-  document.querySelectorAll("body *").forEach((el) => {
-    if (!(el instanceof HTMLElement) || el.childElementCount || skip.test(el.tagName)) return;
+  const visit = (el: Element) => {
+    if (!(el instanceof HTMLElement) || skip.test(el.tagName)) return;
+    if (el.shadowRoot) el.shadowRoot.querySelectorAll("*").forEach((child) => visit(child));
+    if (el.childElementCount) return;
     if (el.hidden || el.closest("[hidden]")) return;
     // Password covers exist only for the screenshot. They are not a page effect.
     if (el.closest("[data-bao-mask], [data-bao-blur]")) return;
     const text = norm(el.innerText || el.textContent || "");
     if (!text) return;
     out[keyOf(el)] = text;
-  });
+  };
+  document.querySelectorAll("body *").forEach((el) => visit(el));
   return out;
 }
 
@@ -91,17 +99,75 @@ export function recorderSource(): string {
       identity.role = "password";
       send({ kind: "act", op: "type", identity, sensitive: true });
     };
-    const ident = (el) => ({
-      surface: "dom",
-      role: el.getAttribute("role") || el.tagName.toLowerCase(),
-      testId: el.getAttribute("data-testid") || undefined,
-      id: el.id || undefined,
-      nameAttr: el.getAttribute("name") || undefined,
-      tag: el.tagName.toLowerCase(),
-      label: el.getAttribute("aria-label") || undefined,
-      text: norm(el.innerText || el.textContent || "").slice(0, 80) || undefined,
-      path: [],
-    });
+    const parentOf = (node) => {
+      if (!node) return null;
+      if (node.parentElement) return node.parentElement;
+      const root = node.getRootNode && node.getRootNode();
+      return root && root.host ? root.host : null;
+    };
+    const accName = (el) => {
+      const aria = norm(el.getAttribute("aria-label") || "");
+      if (aria) return aria;
+      const labelled = el.getAttribute("aria-labelledby");
+      if (labelled) {
+        const text = labelled.split(/\\s+/).map((id) => {
+          const node = el.getRootNode ? el.getRootNode().getElementById?.(id) : null;
+          return norm((node || document.getElementById(id) || {}).textContent || "");
+        }).filter(Boolean).join(" ");
+        if (text) return text.slice(0, 80);
+      }
+      if (el.id) {
+        const label = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]');
+        const via = norm(label && label.textContent || "");
+        if (via) return via.slice(0, 80);
+      }
+      let wrap = el;
+      while (wrap && wrap.tagName !== "LABEL") wrap = parentOf(wrap);
+      if (wrap && wrap.tagName === "LABEL") {
+        const via = norm(wrap.textContent || "");
+        if (via) return via.slice(0, 80);
+      }
+      const title = norm(el.getAttribute("title") || "");
+      if (title) return title.slice(0, 80);
+      return "";
+    };
+    const roleOf = (el) => {
+      const aria = el.getAttribute("role");
+      if (aria) return aria;
+      const tag = el.tagName.toLowerCase();
+      if (tag === "a") return "link";
+      if (tag === "button") return "button";
+      if (tag === "select") return "listbox";
+      if (tag === "textarea") return "textbox";
+      if (el.type === "checkbox") return "checkbox";
+      if (el.type === "radio") return "radio";
+      if (el.type === "submit" || el.type === "button") return "button";
+      if (tag === "input") return "textbox";
+      return tag;
+    };
+    const ident = (el) => {
+      const name = accName(el);
+      const text = norm(el.innerText || el.textContent || "").slice(0, 80);
+      return {
+        surface: "dom",
+        role: roleOf(el),
+        testId: el.getAttribute("data-testid") || undefined,
+        id: el.id || undefined,
+        nameAttr: el.getAttribute("name") || undefined,
+        tag: el.tagName.toLowerCase(),
+        name: name || undefined,
+        label: name || undefined,
+        text: text || undefined,
+        path: [],
+      };
+    };
+    const eventEl = (event) => {
+      const path = event.composedPath && event.composedPath();
+      const first = path && path[0];
+      if (first && first.nodeType === 1) return first;
+      const raw = event.target;
+      return raw && raw.nodeType === 1 ? raw : raw && raw.parentElement;
+    };
     const monthIndex = (name) => {
       const names = ["january","february","march","april","may","june","july","august","september","october","november","december"];
       const n = names.indexOf(String(name || "").toLowerCase());
@@ -172,7 +238,7 @@ export function recorderSource(): string {
     };
     document.addEventListener("click", (event) => {
       if (window.__baoPicking) return;
-      const raw = event.target;
+      const raw = eventEl(event);
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
       const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid]") : raw;
       if (!el) return;
@@ -213,13 +279,25 @@ export function recorderSource(): string {
       }, 0);
     }, true);
     document.addEventListener("input", (event) => {
-      const el = event.target;
+      const el = eventEl(event);
       if (!el || el.type !== "password") return;
       notePassword(el);
     }, true);
     document.addEventListener("change", (event) => {
-      const el = event.target;
+      const el = eventEl(event);
       if (!el) return;
+      if (el.closest && el.closest(".react-datepicker, .rbc-calendar, [data-bao-picker]")) return;
+      if (el.tagName === "SELECT") {
+        const option = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
+        const label = norm(option && (option.label || option.text) || "");
+        send({ kind: "act", op: "select", identity: ident(el), value: label || el.value || "" });
+        return;
+      }
+      const kind = (el.type || "").toLowerCase();
+      if (kind === "radio" || kind === "checkbox") {
+        send({ kind: "act", op: "check", identity: ident(el), checked: !!el.checked, value: el.value || "" });
+        return;
+      }
       if (el.type === "file") {
         if (window.__baoSkipNextFile) {
           window.__baoSkipNextFile = false;

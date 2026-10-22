@@ -53,7 +53,8 @@
     "test:sensitive": "node build.mjs && node test/sensitive.mjs",
     "test:workflows": "node build.mjs && node test/workflows.mjs",
     "test:sidepanel": "node build.mjs && node test/sidepanel.mjs",
-    "test:dashboard": "node build.mjs && node test/dashboard.mjs"
+    "test:dashboard": "node build.mjs && node test/dashboard.mjs",
+    "proof:realworld": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/proof/realworld.js"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.2",

@@ -1,0 +1,2701 @@
+{
+  "args": {
+    "search": "Xiaolongbao"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [
+      {
+        "stepId": "wf-1792675703188-1",
+        "kind": "text",
+        "detail": "text Search Wikipedia"
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "kind": "role",
+        "detail": "role Search"
+      }
+    ],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792675703188-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url en.wikipedia.org",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792675703188-1",
+        "action": "type",
+        "target": "input#searchInput",
+        "postcondition": "value {{search}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "action": "click",
+        "target": "button:Search",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792675703188-3",
+        "action": "click",
+        "target": "link:Past revisions of this page [alt-h]",
+        "postcondition": "missed settled no error and the page settled",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [
+      {
+        "kind": "click",
+        "stepId": "wf-1792675703188-2",
+        "target": "Search"
+      }
+    ],
+    "console": [
+      {
+        "stepId": "wf-1792675703188-0",
+        "type": "warning",
+        "text": "This page is using the deprecated ResourceLoader module \"mediawiki.Uri\". [1.43] Please use browser native URL. See https://www.mediawiki.org/wiki/Migrating_mw.Uri_to_URL",
+        "ts": 1792675744274
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "type": "warning",
+        "text": "This page is using the deprecated ResourceLoader module \"mediawiki.Uri\". [1.43] Please use browser native URL. See https://www.mediawiki.org/wiki/Migrating_mw.Uri_to_URL",
+        "ts": 1792675744500
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "type": "warning",
+        "text": "This page is using the deprecated ResourceLoader module \"mediawiki.Uri\". [1.43] Please use browser native URL. See https://www.mediawiki.org/wiki/Migrating_mw.Uri_to_URL",
+        "ts": 1792675745519
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/wiki/Special:Search",
+        "status": 200,
+        "ts": 1792675743989
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/footer/wikimedia-button.svg",
+        "status": 200,
+        "ts": 1792675743999
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/resources/assets/poweredby_mediawiki.svg",
+        "status": 200,
+        "ts": 1792675743999
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744012
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744015
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744040
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744041
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744090
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en-25.svg",
+        "status": 200,
+        "ts": 1792675744104
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/project-logos/enwiki-25.png",
+        "status": 200,
+        "ts": 1792675744110
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles.legacy/images/search.svg",
+        "status": 200,
+        "ts": 1792675744120
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744257
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744299
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/extensions/UniversalLanguageSelector/resources/images/cog-sprite.svg",
+        "status": 200,
+        "ts": 1792675744326
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "POST",
+        "url": "https://en.wikipedia.org/ins-502b/v2/events",
+        "status": 202,
+        "ts": 1792675744327
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744331
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles.legacy/images/bullet-icon.svg",
+        "status": 200,
+        "ts": 1792675744340
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/wiki/Special:Search",
+        "status": 200,
+        "ts": 1792675744468
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744472
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744473
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744473
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/footer/wikimedia-button.svg",
+        "status": 200,
+        "ts": 1792675744475
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/resources/assets/poweredby_mediawiki.svg",
+        "status": 200,
+        "ts": 1792675744475
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744480
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744481
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744481
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en-25.svg",
+        "status": 200,
+        "ts": 1792675744484
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles.legacy/images/search.svg",
+        "status": 200,
+        "ts": 1792675744484
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/project-logos/enwiki-25.png",
+        "status": 200,
+        "ts": 1792675744484
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744500
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/extensions/UniversalLanguageSelector/resources/images/cog-sprite.svg",
+        "status": 200,
+        "ts": 1792675744507
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "POST",
+        "url": "https://en.wikipedia.org/ins-502b/v2/events",
+        "status": 202,
+        "ts": 1792675744528
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744542
+      },
+      {
+        "stepId": "wf-1792675703188-0",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/skins/Vector/resources/skins.vector.styles.legacy/images/bullet-icon.svg",
+        "status": 200,
+        "ts": 1792675744542
+      },
+      {
+        "stepId": "wf-1792675703188-1",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675744983
+      },
+      {
+        "stepId": "wf-1792675703188-1",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/api.php",
+        "status": 200,
+        "ts": 1792675745034
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/index.php",
+        "status": 200,
+        "ts": 1792675745452
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675745459
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675745459
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675745459
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en-25.svg",
+        "status": 200,
+        "ts": 1792675745460
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/icons/enwiki-25.svg",
+        "status": 200,
+        "ts": 1792675745461
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/mobile/copyright/wikipedia-tagline-en-25.svg",
+        "status": 200,
+        "ts": 1792675745462
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/static/images/footer/wikimedia-button.svg",
+        "status": 200,
+        "ts": 1792675745465
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/resources/assets/poweredby_mediawiki.svg",
+        "status": 200,
+        "ts": 1792675745465
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675745471
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675745472
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/load.php",
+        "status": 200,
+        "ts": 1792675745511
+      },
+      {
+        "stepId": "wf-1792675703188-2",
+        "method": "POST",
+        "url": "https://en.wikipedia.org/ins-502b/v2/events",
+        "status": 202,
+        "ts": 1792675745550
+      }
+    ],
+    "runId": "run-mvjkuozn-j34t",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792675703188-0",
+        "status": "passed",
+        "startedAt": 1792675744272,
+        "endedAt": 1792675744527,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "main",
+              "text": "Help Search Jump to navigation Jump to search Search",
+              "id": "content"
+            },
+            {
+              "role": "link",
+              "id": "top"
+            },
+            {
+              "role": "link",
+              "text": "Help"
+            },
+            {
+              "role": "heading",
+              "text": "Search",
+              "id": "firstHeading"
+            },
+            {
+              "role": "link",
+              "text": "Jump to navigation"
+            },
+            {
+              "role": "link",
+              "text": "Jump to search"
+            },
+            {
+              "role": "label"
+            },
+            {
+              "role": "input",
+              "id": "ooui-php-1"
+            },
+            {
+              "role": "button",
+              "text": "Search"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "link",
+              "name": "Search in (Article)",
+              "text": "Content pages"
+            },
+            {
+              "role": "link",
+              "name": "Search for files",
+              "text": "Multimedia"
+            },
+            {
+              "role": "link",
+              "name": "Search all of content (including talk pages)",
+              "text": "Everything"
+            },
+            {
+              "role": "link",
+              "name": "Search in custom namespaces",
+              "text": "Advanced"
+            },
+            {
+              "role": "link",
+              "text": "https://en.wikipedia.org/wiki/Special:Search"
+            },
+            {
+              "role": "heading",
+              "text": "Navigation menu"
+            },
+            {
+              "role": "heading",
+              "text": "Personal tools",
+              "id": "p-personal-label"
+            },
+            {
+              "role": "link",
+              "name": "You are encouraged to create an account and log in; however, it is not mandatory",
+              "text": "Create account"
+            },
+            {
+              "role": "link",
+              "name": "You're encouraged to log in; however, it's not mandatory. [o]",
+              "text": "Log in"
+            },
+            {
+              "role": "heading",
+              "text": "associated-pages",
+              "id": "p-associated-pages-label"
+            },
+            {
+              "role": "link",
+              "name": "This is a special page which you cannot edit",
+              "text": "Special page"
+            },
+            {
+              "role": "button",
+              "name": "English",
+              "id": "p-variants-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "English",
+              "text": "English",
+              "id": "p-variants-label"
+            },
+            {
+              "role": "heading",
+              "text": "Views",
+              "id": "p-views-label"
+            },
+            {
+              "role": "button",
+              "name": "More",
+              "id": "p-cactions-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "More",
+              "text": "More",
+              "id": "p-cactions-label"
+            },
+            {
+              "role": "search",
+              "text": "Search",
+              "id": "p-search"
+            },
+            {
+              "role": "heading",
+              "text": "Search"
+            },
+            {
+              "role": "input",
+              "name": "Search Wikipedia",
+              "id": "searchInput"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "name": "Search Wikipedia for this text",
+              "id": "mw-searchButton"
+            },
+            {
+              "role": "button",
+              "name": "Go to a page with this exact name if it exists",
+              "id": "searchButton"
+            },
+            {
+              "role": "banner",
+              "id": "p-logo"
+            },
+            {
+              "role": "link",
+              "name": "Visit the main page"
+            },
+            {
+              "role": "heading",
+              "text": "Navigation",
+              "id": "p-navigation-label"
+            },
+            {
+              "role": "link",
+              "name": "Visit the main page [z]",
+              "text": "Main page"
+            },
+            {
+              "role": "link",
+              "name": "Guides to browsing Wikipedia",
+              "text": "Contents"
+            },
+            {
+              "role": "link",
+              "name": "Articles related to current events",
+              "text": "Current events"
+            }
+          ],
+          "ax": "- main:\n  - link \"Help\":\n    - /url: /wiki/Help:Searching\n  - heading \"Search\" [level=1]\n  - link \"Jump to navigation\":\n    - /url: \"#mw-head\"\n  - link \"Jump to search\":\n    - /url: \"#searchInput\"\n  - combobox\n  - button \"Search\"\n  - button \"Advanced search:\":\n    - text: \"Advanced search:\"\n    - list \"Currently used search terms\"\n  - button \"Search in:\":\n    - text: \"Search in:\"\n    - list \"Currently active namespace filters\":\n      - listitem \"(Article)\":\n        - text: (Article)\n        - button \"Remove\"\n- heading \"Navigation menu\" [level=2]\n- navigation \"Personal tools\":\n  - list:\n    - listitem:\n      - link \"Create account\":\n        - /url: /w/index.php?title=Special:CreateAccount&returnto=Special%3ASearch&returntoquery=useskin%3Dvector\n    - listitem:\n      - link \"Log in\":\n        - /url: /w/index.php?title=Special:UserLogin&returnto=Special%3ASearch&returntoquery=useskin%3Dvector\n- navigation \"associated-pages\":\n  - list:\n    - listitem:\n      - link \"Special page\":\n        - /url: /wiki/Special:Search?useskin=vector\n- search:\n  - heading \"Search\" [level=3]\n  - searchbox \"Search Wikipedia\"\n  - button \"Search\"\n  - button \"Go\"\n- banner:\n  - link \"Visit the main page\":\n    - /url: /wiki/Main_Page\n- navigation \"Navigation\":\n  - list:\n    - listitem:\n      - link \"Main page\":\n        - /url: /wiki/Main_Page\n    - listitem:\n      - link \"Contents\":\n        - /url: /wiki/Wikipedia:Contents\n    - listitem:\n      - link \"Current events\":\n        - /url: /wiki/Portal:Current_events\n    - listitem:\n      - link \"Random article\":\n        - /url: /wiki/Special:Random\n    - listitem:\n      - link \"About Wikipedia\":\n        - /url: /wiki/Wikipedia:About\n    - listitem:\n      - link \"Contact us\":\n        - /url: //en.wikipedia.org/wiki/Wikipedia:Contact_us\n    - listitem:\n      - link \"Donate\":\n        - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n- navigation \"Contribute\":\n  - heading \"Contribute\" [level=3]\n  - list:\n    - listitem:\n      - link \"Help\":\n        - /url: /wiki/Help:Contents\n    - listitem:\n      - link \"Learn to edit\":\n        - /url: /wiki/Help:Introduction\n    - listitem:\n      - link \"Community portal\":\n        - /url: /wiki/Wikipedia:Community_portal\n    - listitem:\n      - link \"Recent changes\":\n        - /url: /wiki/Special:RecentChanges\n    - listitem:\n      - link \"Upload file\":\n        - /url: /wiki/Wikipedia:File_upload_wizard\n    - listitem:\n      - link \"Special pages\":\n        - /url: /wiki/Special:SpecialPages\n- navigation \"Tools\":\n  - heading \"Tools\" [level=3]\n  - list:\n    - listitem:\n      - link \"Printable version\":\n        - /url: javascript:print();\n    - listitem:\n      - link \"Get shortened URL\":\n        - /url: /w/index.php?title=Special:UrlShortener&url=https%3A%2F%2Fen.wikipedia.org%2Fw%2Findex.php%3Ftitle%3DSpecial%3ASearch%26useskin%3Dvector\n- navigation \"Languages\":\n  - button \"Language settings\"\n  - heading \"Languages\" [level=3]\n  - list\n- contentinfo:\n  - list:\n    - listitem:\n      - link \"Privacy policy\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy\n    - listitem:\n      - link \"About Wikipedia\":\n        - /url: /wiki/Wikipedia:About\n    - listitem:\n      - link \"Disclaimers\":\n        - /url: /wiki/Wikipedia:General_disclaimer\n    - listitem:\n      - link \"Contact Wikipedia\":\n        - /url: //en.wikipedia.org/wiki/Wikipedia:Contact_us\n    - listitem:\n      - link \"Legal & safety contacts\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Legal:Wikimedia_Foundation_Legal_and_Safety_Contact_Information\n    - listitem:\n      - link \"Code of Conduct\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Universal_Code_of_Conduct\n    - listitem:\n      - link \"Developers\":\n        - /url: https://developer.wikimedia.org\n    - listitem:\n      - link \"Statistics\":\n        - /url: https://stats.wikimedia.org/#/en.wikipedia.or"
+        }
+      },
+      {
+        "id": "wf-1792675703188-1",
+        "status": "passed",
+        "startedAt": 1792675744578,
+        "endedAt": 1792675744983,
+        "beforeShot": "wf-1792675703188-1-before.png",
+        "afterShot": "wf-1792675703188-1-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "main",
+              "text": "Help Search Jump to navigation Jump to search Search Advanced search: Search in:",
+              "id": "content"
+            },
+            {
+              "role": "link",
+              "id": "top"
+            },
+            {
+              "role": "link",
+              "text": "Help"
+            },
+            {
+              "role": "heading",
+              "text": "Search",
+              "id": "firstHeading"
+            },
+            {
+              "role": "link",
+              "text": "Jump to navigation"
+            },
+            {
+              "role": "link",
+              "text": "Jump to search"
+            },
+            {
+              "role": "label"
+            },
+            {
+              "role": "combobox",
+              "id": "ooui-php-1"
+            },
+            {
+              "role": "button",
+              "text": "Search"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "link",
+              "name": "Search in (Article)",
+              "text": "Content pages"
+            },
+            {
+              "role": "link",
+              "name": "Search for files",
+              "text": "Multimedia"
+            },
+            {
+              "role": "link",
+              "name": "Search all of content (including talk pages)",
+              "text": "Everything"
+            },
+            {
+              "role": "link",
+              "name": "Search in custom namespaces",
+              "text": "Advanced"
+            },
+            {
+              "role": "button",
+              "name": "Advanced search:",
+              "text": "Advanced search:"
+            },
+            {
+              "role": "label",
+              "name": "Advanced search:",
+              "text": "Advanced search:",
+              "id": "ooui-1"
+            },
+            {
+              "role": "label",
+              "name": "These words",
+              "text": "These words"
+            },
+            {
+              "role": "button",
+              "name": "Help",
+              "text": "Help"
+            },
+            {
+              "role": "textbox",
+              "name": "These words",
+              "id": "ooui-35"
+            },
+            {
+              "role": "label",
+              "name": "Exactly this text",
+              "text": "Exactly this text"
+            },
+            {
+              "role": "button",
+              "name": "Help",
+              "text": "Help"
+            },
+            {
+              "role": "textbox",
+              "name": "Exactly this text",
+              "id": "ooui-39"
+            },
+            {
+              "role": "label",
+              "name": "Not these words",
+              "text": "Not these words"
+            },
+            {
+              "role": "button",
+              "name": "Help",
+              "text": "Help"
+            },
+            {
+              "role": "textbox",
+              "name": "Not these words",
+              "id": "ooui-43"
+            },
+            {
+              "role": "label",
+              "name": "One of these words",
+              "text": "One of these words"
+            },
+            {
+              "role": "button",
+              "name": "Help",
+              "text": "Help"
+            },
+            {
+              "role": "textbox",
+              "name": "One of these words",
+              "id": "ooui-47"
+            },
+            {
+              "role": "label",
+              "name": "Page title contains",
+              "text": "Page title contains"
+            },
+            {
+              "role": "button",
+              "name": "Help",
+              "text": "Help"
+            },
+            {
+              "role": "textbox",
+              "name": "Page title contains",
+              "id": "ooui-51"
+            },
+            {
+              "role": "label",
+              "name": "Subpages of this page",
+              "text": "Subpages of this page"
+            },
+            {
+              "role": "button",
+              "name": "Help",
+              "text": "Help"
+            },
+            {
+              "role": "textbox",
+              "name": "Subpages of this page",
+              "id": "ooui-55"
+            },
+            {
+              "role": "label",
+              "name": "Pages in these categories",
+              "text": "Pages in these categories"
+            },
+            {
+              "role": "button",
+              "name": "Help",
+              "text": "Help"
+            },
+            {
+              "role": "combobox",
+              "name": "Pages in these categories",
+              "id": "ooui-60"
+            },
+            {
+              "role": "listbox",
+              "id": "ooui-56"
+            }
+          ],
+          "ax": "- main:\n  - link \"Help\":\n    - /url: /wiki/Help:Searching\n  - heading \"Search\" [level=1]\n  - link \"Jump to navigation\":\n    - /url: \"#mw-head\"\n  - link \"Jump to search\":\n    - /url: \"#searchInput\"\n  - combobox\n  - button \"Search\"\n  - button \"Advanced search:\":\n    - text: \"Advanced search:\"\n    - list \"Currently used search terms\"\n  - button \"Search in:\":\n    - text: \"Search in:\"\n    - list \"Currently active namespace filters\":\n      - listitem \"(Article)\":\n        - text: (Article)\n        - button \"Remove\"\n- heading \"Navigation menu\" [level=2]\n- navigation \"Personal tools\":\n  - list:\n    - listitem:\n      - link \"Create account\":\n        - /url: /w/index.php?title=Special:CreateAccount&returnto=Special%3ASearch&returntoquery=useskin%3Dvector\n    - listitem:\n      - link \"Log in\":\n        - /url: /w/index.php?title=Special:UserLogin&returnto=Special%3ASearch&returntoquery=useskin%3Dvector\n- navigation \"associated-pages\":\n  - list:\n    - listitem:\n      - link \"Special page\":\n        - /url: /wiki/Special:Search?useskin=vector\n- search:\n  - heading \"Search\" [level=3]\n  - searchbox \"Search Wikipedia\": Xiaolongbao\n  - button \"Go\"\n- banner:\n  - link \"Visit the main page\":\n    - /url: /wiki/Main_Page\n- navigation \"Navigation\":\n  - list:\n    - listitem:\n      - link \"Main page\":\n        - /url: /wiki/Main_Page\n    - listitem:\n      - link \"Contents\":\n        - /url: /wiki/Wikipedia:Contents\n    - listitem:\n      - link \"Current events\":\n        - /url: /wiki/Portal:Current_events\n    - listitem:\n      - link \"Random article\":\n        - /url: /wiki/Special:Random\n    - listitem:\n      - link \"About Wikipedia\":\n        - /url: /wiki/Wikipedia:About\n    - listitem:\n      - link \"Contact us\":\n        - /url: //en.wikipedia.org/wiki/Wikipedia:Contact_us\n    - listitem:\n      - link \"Donate\":\n        - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n- navigation \"Contribute\":\n  - heading \"Contribute\" [level=3]\n  - list:\n    - listitem:\n      - link \"Help\":\n        - /url: /wiki/Help:Contents\n    - listitem:\n      - link \"Learn to edit\":\n        - /url: /wiki/Help:Introduction\n    - listitem:\n      - link \"Community portal\":\n        - /url: /wiki/Wikipedia:Community_portal\n    - listitem:\n      - link \"Recent changes\":\n        - /url: /wiki/Special:RecentChanges\n    - listitem:\n      - link \"Upload file\":\n        - /url: /wiki/Wikipedia:File_upload_wizard\n    - listitem:\n      - link \"Special pages\":\n        - /url: /wiki/Special:SpecialPages\n- navigation \"Tools\":\n  - heading \"Tools\" [level=3]\n  - list:\n    - listitem:\n      - link \"Printable version\":\n        - /url: javascript:print();\n    - listitem:\n      - link \"Get shortened URL\":\n        - /url: /w/index.php?title=Special:UrlShortener&url=https%3A%2F%2Fen.wikipedia.org%2Fw%2Findex.php%3Ftitle%3DSpecial%3ASearch%26useskin%3Dvector\n- navigation \"Languages\":\n  - button \"Language settings\"\n  - heading \"Languages\" [level=3]\n  - list\n- contentinfo:\n  - list:\n    - listitem:\n      - link \"Privacy policy\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy\n    - listitem:\n      - link \"About Wikipedia\":\n        - /url: /wiki/Wikipedia:About\n    - listitem:\n      - link \"Disclaimers\":\n        - /url: /wiki/Wikipedia:General_disclaimer\n    - listitem:\n      - link \"Contact Wikipedia\":\n        - /url: //en.wikipedia.org/wiki/Wikipedia:Contact_us\n    - listitem:\n      - link \"Legal & safety contacts\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Legal:Wikimedia_Foundation_Legal_and_Safety_Contact_Information\n    - listitem:\n      - link \"Code of Conduct\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Universal_Code_of_Conduct\n    - listitem:\n      - link \"Developers\":\n        - /url: https://developer.wikimedia.org\n    - listitem:\n      - link \"Statistics\":\n        - /url: https://stats.wikimedia.org/#/en.wikipedia.org\n    -"
+        }
+      },
+      {
+        "id": "wf-1792675703188-2",
+        "status": "passed",
+        "startedAt": 1792675745065,
+        "endedAt": 1792675745511,
+        "beforeShot": "wf-1792675703188-2-before.png",
+        "afterShot": "wf-1792675703188-2-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link",
+              "text": "Jump to content"
+            },
+            {
+              "role": "button",
+              "name": "Main menu",
+              "id": "vector-main-menu-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Main menu",
+              "text": "Main menu",
+              "id": "vector-main-menu-dropdown-label"
+            },
+            {
+              "role": "button",
+              "name": "Move Main menu to sidebar",
+              "text": "move to sidebar"
+            },
+            {
+              "role": "button",
+              "name": "Hide Main menu",
+              "text": "hide"
+            },
+            {
+              "role": "link",
+              "name": "Visit the main page [z]",
+              "text": "Main page"
+            },
+            {
+              "role": "link",
+              "name": "Guides to browsing Wikipedia",
+              "text": "Contents"
+            },
+            {
+              "role": "link",
+              "name": "Articles related to current events",
+              "text": "Current events"
+            },
+            {
+              "role": "link",
+              "name": "Visit a randomly selected article [x]",
+              "text": "Random article"
+            },
+            {
+              "role": "link",
+              "name": "Learn about Wikipedia and how it works",
+              "text": "About Wikipedia"
+            },
+            {
+              "role": "link",
+              "name": "How to contact Wikipedia",
+              "text": "Contact us"
+            },
+            {
+              "role": "link",
+              "name": "Guidance on how to use and edit Wikipedia",
+              "text": "Help"
+            },
+            {
+              "role": "link",
+              "name": "Learn how to edit Wikipedia",
+              "text": "Learn to edit"
+            },
+            {
+              "role": "link",
+              "name": "The hub for editors",
+              "text": "Community portal"
+            },
+            {
+              "role": "link",
+              "name": "A list of recent changes to Wikipedia [r]",
+              "text": "Recent changes"
+            },
+            {
+              "role": "link",
+              "name": "Add images or other media for use on Wikipedia",
+              "text": "Upload file"
+            },
+            {
+              "role": "link",
+              "name": "A list of all special pages [q]",
+              "text": "Special pages"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "search",
+              "text": "Search",
+              "id": "p-search"
+            },
+            {
+              "role": "link",
+              "name": "Search Wikipedia [f]",
+              "text": "Search"
+            },
+            {
+              "role": "input",
+              "name": "Search Wikipedia",
+              "id": "searchInput"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "text": "Search"
+            },
+            {
+              "role": "button",
+              "name": "Appearance",
+              "id": "vector-appearance-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Appearance",
+              "text": "Appearance",
+              "id": "vector-appearance-dropdown-label"
+            },
+            {
+              "role": "link",
+              "text": "Donate"
+            },
+            {
+              "role": "link",
+              "name": "You are encouraged to create an account and log in; however, it is not mandatory",
+              "text": "Create account"
+            },
+            {
+              "role": "link",
+              "name": "You're encouraged to log in; however, it's not mandatory. [o]",
+              "text": "Log in"
+            },
+            {
+              "role": "button",
+              "name": "Personal tools",
+              "id": "vector-user-links-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Personal tools",
+              "text": "Personal tools",
+              "id": "vector-user-links-dropdown-label"
+            },
+            {
+              "role": "link",
+              "text": "Donate"
+            },
+            {
+              "role": "link",
+              "name": "You are encouraged to create an account and log in; however, it is not mandatory",
+              "text": "Create account"
+            },
+            {
+              "role": "link",
+              "name": "You're encouraged to log in; however, it's not mandatory. [o]",
+              "text": "Log in"
+            },
+            {
+              "role": "heading",
+              "text": "Search",
+              "id": "firstHeading"
+            },
+            {
+              "role": "link",
+              "text": "Help"
+            },
+            {
+              "role": "button",
+              "name": "Change language variant",
+              "id": "vector-variants-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "English",
+              "text": "English",
+              "id": "vector-variants-dropdown-label"
+            },
+            {
+              "role": "button",
+              "name": "Tools",
+              "id": "vector-page-tools-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Tools",
+              "text": "Tools",
+              "id": "vector-page-tools-dropdown-label"
+            },
+            {
+              "role": "button",
+              "name": "Move Tools to sidebar",
+              "text": "move to sidebar"
+            }
+          ],
+          "ax": "- link \"Jump to content\":\n  - /url: \"#bodyContent\"\n- banner:\n  - navigation \"Site\":\n    - button \"Main menu\"\n  - link \"Wikipedia The Free Encyclopedia\":\n    - /url: /wiki/Main_Page\n    - img \"Wikipedia\"\n    - img \"The Free Encyclopedia\"\n  - search:\n    - searchbox \"Search Wikipedia\"\n    - button \"Search\"\n  - navigation \"Personal tools\":\n    - list:\n      - listitem:\n        - link \"Donate\":\n          - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n      - listitem:\n        - link \"Create account\":\n          - /url: /w/index.php?title=Special:CreateAccount&returnto=Special%3ASearch&returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3D\n      - listitem:\n        - link \"Log in\":\n          - /url: /w/index.php?title=Special:UserLogin&returnto=Special%3ASearch&returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3D\n- main:\n  - heading \"Search\" [level=1]\n  - link \"Help\":\n    - /url: /wiki/Help:Searching\n  - navigation \"Namespaces\"\n  - navigation \"Views\"\n  - navigation \"Page tools\":\n    - button \"Tools\"\n  - navigation \"Appearance\":\n    - text: Appearance\n    - button \"Hide Appearance\": hide\n    - text: Text\n    - list:\n      - listitem:\n        - radio \"Small\" [disabled]\n        - text: Small\n        - radio \"Standard\" [disabled]\n        - text: Standard\n        - radio \"Large\" [disabled]\n        - text: Large\n        - paragraph: This page always uses small font size\n    - text: Width\n    - list:\n      - listitem:\n        - radio \"Standard\" [checked]\n        - text: Standard\n        - radio \"Wide\"\n        - text: Wide\n    - text: Color\n    - list:\n      - listitem:\n        - radio \"Automatic\"\n        - text: Automatic\n        - radio \"Light\" [checked]\n        - text: Light\n        - radio \"Dark\"\n        - text: Dark\n  - combobox\n  - button \"Search\"\n  - button \"Advanced search:\":\n    - text: \"Advanced search:\"\n    - list \"Currently used search terms\"\n  - button \"Search in:\":\n    - text: \"Search in:\"\n    - list \"Currently active namespace filters\":\n      - listitem \"(Article)\":\n        - text: (Article)\n        - button \"Remove\"\n- contentinfo:\n  - list:\n    - listitem:\n      - link \"Privacy policy\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy\n    - listitem:\n      - link \"About Wikipedia\":\n        - /url: /wiki/Wikipedia:About\n    - listitem:\n      - link \"Disclaimers\":\n        - /url: /wiki/Wikipedia:General_disclaimer\n    - listitem:\n      - link \"Contact Wikipedia\":\n        - /url: //en.wikipedia.org/wiki/Wikipedia:Contact_us\n    - listitem:\n      - link \"Legal & safety contacts\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Legal:Wikimedia_Foundation_Legal_and_Safety_Contact_Information\n    - listitem:\n      - link \"Code of Conduct\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Universal_Code_of_Conduct\n    - listitem:\n      - link \"Developers\":\n        - /url: https://developer.wikimedia.org\n    - listitem:\n      - link \"Statistics\":\n        - /url: https://stats.wikimedia.org/#/en.wikipedia.org\n    - listitem:\n      - link \"Cookie statement\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Cookie_statement\n    - listitem:\n      - link \"Mobile view\":\n        - /url: //en.wikipedia.org/w/index.php?title=Special:Search&fulltext=1&ns0=1&profile=advanced&search=&mobileaction=toggle_view_mobile\n  - list:\n    - listitem:\n      - link \"Wikimedia Foundation\":\n        - /url: https://www.wikimedia.org/\n        - img \"Wikimedia Foundation\"\n    - listitem:\n      - link \"Powered by MediaWiki\":\n        - /url: https://www.mediawiki.org/\n        - img \"Powered by MediaWiki\"\n- list"
+        }
+      },
+      {
+        "id": "wf-1792675703188-3",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792675745667,
+        "endedAt": 1792675754273,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link",
+              "text": "Jump to content"
+            },
+            {
+              "role": "button",
+              "name": "Main menu",
+              "id": "vector-main-menu-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Main menu",
+              "text": "Main menu",
+              "id": "vector-main-menu-dropdown-label"
+            },
+            {
+              "role": "button",
+              "name": "Move Main menu to sidebar",
+              "text": "move to sidebar"
+            },
+            {
+              "role": "button",
+              "name": "Hide Main menu",
+              "text": "hide"
+            },
+            {
+              "role": "link",
+              "name": "Visit the main page [alt-z]",
+              "text": "Main page"
+            },
+            {
+              "role": "link",
+              "name": "Guides to browsing Wikipedia",
+              "text": "Contents"
+            },
+            {
+              "role": "link",
+              "name": "Articles related to current events",
+              "text": "Current events"
+            },
+            {
+              "role": "link",
+              "name": "Visit a randomly selected article [alt-x]",
+              "text": "Random article"
+            },
+            {
+              "role": "link",
+              "name": "Learn about Wikipedia and how it works",
+              "text": "About Wikipedia"
+            },
+            {
+              "role": "link",
+              "name": "How to contact Wikipedia",
+              "text": "Contact us"
+            },
+            {
+              "role": "link",
+              "name": "Guidance on how to use and edit Wikipedia",
+              "text": "Help"
+            },
+            {
+              "role": "link",
+              "name": "Learn how to edit Wikipedia",
+              "text": "Learn to edit"
+            },
+            {
+              "role": "link",
+              "name": "The hub for editors",
+              "text": "Community portal"
+            },
+            {
+              "role": "link",
+              "name": "A list of recent changes to Wikipedia [alt-r]",
+              "text": "Recent changes"
+            },
+            {
+              "role": "link",
+              "name": "Add images or other media for use on Wikipedia",
+              "text": "Upload file"
+            },
+            {
+              "role": "link",
+              "name": "A list of all special pages [alt-q]",
+              "text": "Special pages"
+            },
+            {
+              "role": "link"
+            },
+            {
+              "role": "search",
+              "text": "Search",
+              "id": "p-search"
+            },
+            {
+              "role": "link",
+              "name": "Search Wikipedia [alt-f]",
+              "text": "Search"
+            },
+            {
+              "role": "input",
+              "name": "Search Wikipedia",
+              "id": "searchInput"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "button",
+              "text": "Search"
+            },
+            {
+              "role": "button",
+              "name": "Appearance",
+              "id": "vector-appearance-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Appearance",
+              "text": "Appearance",
+              "id": "vector-appearance-dropdown-label"
+            },
+            {
+              "role": "link",
+              "text": "Donate"
+            },
+            {
+              "role": "link",
+              "name": "You are encouraged to create an account and log in; however, it is not mandatory",
+              "text": "Create account"
+            },
+            {
+              "role": "link",
+              "name": "You're encouraged to log in; however, it's not mandatory. [alt-o]",
+              "text": "Log in"
+            },
+            {
+              "role": "button",
+              "name": "Personal tools",
+              "id": "vector-user-links-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Personal tools",
+              "text": "Personal tools",
+              "id": "vector-user-links-dropdown-label"
+            },
+            {
+              "role": "link",
+              "text": "Donate"
+            },
+            {
+              "role": "link",
+              "name": "You are encouraged to create an account and log in; however, it is not mandatory",
+              "text": "Create account"
+            },
+            {
+              "role": "link",
+              "name": "You're encouraged to log in; however, it's not mandatory. [alt-o]",
+              "text": "Log in"
+            },
+            {
+              "role": "heading",
+              "text": "Search",
+              "id": "firstHeading"
+            },
+            {
+              "role": "link",
+              "text": "Help"
+            },
+            {
+              "role": "button",
+              "name": "Change language variant",
+              "id": "vector-variants-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "English",
+              "text": "English",
+              "id": "vector-variants-dropdown-label"
+            },
+            {
+              "role": "button",
+              "name": "Tools",
+              "id": "vector-page-tools-dropdown-checkbox"
+            },
+            {
+              "role": "label",
+              "name": "Tools",
+              "text": "Tools",
+              "id": "vector-page-tools-dropdown-label"
+            },
+            {
+              "role": "button",
+              "name": "Move Tools to sidebar",
+              "text": "move to sidebar"
+            }
+          ],
+          "ax": "- link \"Jump to content\":\n  - /url: \"#bodyContent\"\n- banner:\n  - navigation \"Site\":\n    - button \"Main menu\"\n  - link \"Wikipedia The Free Encyclopedia\":\n    - /url: /wiki/Main_Page\n    - img \"Wikipedia\"\n    - img \"The Free Encyclopedia\"\n  - search:\n    - searchbox \"Search Wikipedia\"\n    - button \"Search\"\n  - navigation \"Personal tools\":\n    - list:\n      - listitem:\n        - link \"Donate\":\n          - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n      - listitem:\n        - link \"Create account\":\n          - /url: /w/index.php?title=Special:CreateAccount&returnto=Special%3ASearch&returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3D\n      - listitem:\n        - link \"Log in\":\n          - /url: /w/index.php?title=Special:UserLogin&returnto=Special%3ASearch&returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3D\n- main:\n  - heading \"Search\" [level=1]\n  - link \"Help\":\n    - /url: /wiki/Help:Searching\n  - navigation \"Namespaces\"\n  - navigation \"Views\"\n  - navigation \"Page tools\":\n    - button \"Tools\"\n  - navigation \"Appearance\":\n    - text: Appearance\n    - button \"Hide Appearance\": hide\n    - text: Text\n    - list:\n      - listitem:\n        - radio \"Small\" [disabled]\n        - text: Small\n        - radio \"Standard\" [disabled]\n        - text: Standard\n        - radio \"Large\" [disabled]\n        - text: Large\n        - paragraph: This page always uses small font size\n    - text: Width\n    - list:\n      - listitem:\n        - radio \"Standard\" [checked]\n        - text: Standard\n        - radio \"Wide\"\n        - text: Wide\n    - text: Color\n    - list:\n      - listitem:\n        - radio \"Automatic\"\n        - text: Automatic\n        - radio \"Light\" [checked]\n        - text: Light\n        - radio \"Dark\"\n        - text: Dark\n  - combobox\n  - button \"Search\"\n  - button \"Advanced search:\":\n    - text: \"Advanced search:\"\n    - list \"Currently used search terms\"\n  - button \"Search in:\":\n    - text: \"Search in:\"\n    - list \"Currently active namespace filters\":\n      - listitem \"(Article)\":\n        - text: (Article)\n        - button \"Remove\"\n- contentinfo:\n  - list:\n    - listitem:\n      - link \"Privacy policy\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy\n    - listitem:\n      - link \"About Wikipedia\":\n        - /url: /wiki/Wikipedia:About\n    - listitem:\n      - link \"Disclaimers\":\n        - /url: /wiki/Wikipedia:General_disclaimer\n    - listitem:\n      - link \"Contact Wikipedia\":\n        - /url: //en.wikipedia.org/wiki/Wikipedia:Contact_us\n    - listitem:\n      - link \"Legal & safety contacts\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Legal:Wikimedia_Foundation_Legal_and_Safety_Contact_Information\n    - listitem:\n      - link \"Code of Conduct\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Universal_Code_of_Conduct\n    - listitem:\n      - link \"Developers\":\n        - /url: https://developer.wikimedia.org\n    - listitem:\n      - link \"Statistics\":\n        - /url: https://stats.wikimedia.org/#/en.wikipedia.org\n    - listitem:\n      - link \"Cookie statement\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Cookie_statement\n    - listitem:\n      - link \"Mobile view\":\n        - /url: //en.wikipedia.org/w/index.php?title=Special:Search&fulltext=1&ns0=1&profile=advanced&search=&mobileaction=toggle_view_mobile\n  - list:\n    - listitem:\n      - link \"Wikimedia Foundation\":\n        - /url: https://www.wikimedia.org/\n        - img \"Wikimedia Foundation\"\n    - listitem:\n      - link \"Powered by MediaWiki\":\n        - /url: https://www.mediawiki.org/\n        - img \"Powered by MediaWiki\"\n- list"
+        }
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792675703188-3",
+      "index": 3,
+      "intent": "Click \"Past revisions of this page [alt-h]\"",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link",
+            "text": "Jump to content"
+          },
+          {
+            "role": "button",
+            "name": "Main menu",
+            "id": "vector-main-menu-dropdown-checkbox"
+          },
+          {
+            "role": "label",
+            "name": "Main menu",
+            "id": "vector-main-menu-dropdown-label",
+            "text": "Main menu"
+          },
+          {
+            "role": "button",
+            "name": "Move Main menu to sidebar",
+            "text": "move to sidebar"
+          },
+          {
+            "role": "button",
+            "name": "Hide Main menu",
+            "text": "hide"
+          },
+          {
+            "role": "link",
+            "name": "Visit the main page [alt-z]",
+            "text": "Main page"
+          },
+          {
+            "role": "link",
+            "name": "Guides to browsing Wikipedia",
+            "text": "Contents"
+          },
+          {
+            "role": "link",
+            "name": "Articles related to current events",
+            "text": "Current events"
+          },
+          {
+            "role": "link",
+            "name": "Visit a randomly selected article [alt-x]",
+            "text": "Random article"
+          },
+          {
+            "role": "link",
+            "name": "Learn about Wikipedia and how it works",
+            "text": "About Wikipedia"
+          },
+          {
+            "role": "link",
+            "name": "How to contact Wikipedia",
+            "text": "Contact us"
+          },
+          {
+            "role": "link",
+            "name": "Guidance on how to use and edit Wikipedia",
+            "text": "Help"
+          },
+          {
+            "role": "link",
+            "name": "Learn how to edit Wikipedia",
+            "text": "Learn to edit"
+          },
+          {
+            "role": "link",
+            "name": "The hub for editors",
+            "text": "Community portal"
+          },
+          {
+            "role": "link",
+            "name": "A list of recent changes to Wikipedia [alt-r]",
+            "text": "Recent changes"
+          },
+          {
+            "role": "link",
+            "name": "Add images or other media for use on Wikipedia",
+            "text": "Upload file"
+          },
+          {
+            "role": "link",
+            "name": "A list of all special pages [alt-q]",
+            "text": "Special pages"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "search",
+            "id": "p-search",
+            "text": "Search"
+          },
+          {
+            "role": "link",
+            "name": "Search Wikipedia [alt-f]",
+            "text": "Search"
+          },
+          {
+            "role": "input",
+            "name": "Search Wikipedia",
+            "id": "searchInput"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "button",
+            "text": "Search"
+          },
+          {
+            "role": "button",
+            "name": "Appearance",
+            "id": "vector-appearance-dropdown-checkbox"
+          },
+          {
+            "role": "label",
+            "name": "Appearance",
+            "id": "vector-appearance-dropdown-label",
+            "text": "Appearance"
+          },
+          {
+            "role": "link",
+            "text": "Donate"
+          },
+          {
+            "role": "link",
+            "name": "You are encouraged to create an account and log in; however, it is not mandatory",
+            "text": "Create account"
+          },
+          {
+            "role": "link",
+            "name": "You're encouraged to log in; however, it's not mandatory. [alt-o]",
+            "text": "Log in"
+          },
+          {
+            "role": "button",
+            "name": "Personal tools",
+            "id": "vector-user-links-dropdown-checkbox"
+          },
+          {
+            "role": "label",
+            "name": "Personal tools",
+            "id": "vector-user-links-dropdown-label",
+            "text": "Personal tools"
+          },
+          {
+            "role": "link",
+            "text": "Donate"
+          },
+          {
+            "role": "link",
+            "name": "You are encouraged to create an account and log in; however, it is not mandatory",
+            "text": "Create account"
+          },
+          {
+            "role": "link",
+            "name": "You're encouraged to log in; however, it's not mandatory. [alt-o]",
+            "text": "Log in"
+          },
+          {
+            "role": "heading",
+            "id": "firstHeading",
+            "text": "Search"
+          },
+          {
+            "role": "link",
+            "text": "Help"
+          },
+          {
+            "role": "button",
+            "name": "Change language variant",
+            "id": "vector-variants-dropdown-checkbox"
+          },
+          {
+            "role": "label",
+            "name": "English",
+            "id": "vector-variants-dropdown-label",
+            "text": "English"
+          },
+          {
+            "role": "button",
+            "name": "Tools",
+            "id": "vector-page-tools-dropdown-checkbox"
+          },
+          {
+            "role": "label",
+            "name": "Tools",
+            "id": "vector-page-tools-dropdown-label",
+            "text": "Tools"
+          },
+          {
+            "role": "button",
+            "name": "Move Tools to sidebar",
+            "text": "move to sidebar"
+          },
+          {
+            "role": "button",
+            "name": "Hide Tools",
+            "text": "hide"
+          },
+          {
+            "role": "link",
+            "name": "Upload files [alt-u]",
+            "text": "Upload file"
+          },
+          {
+            "role": "link",
+            "name": "Printable version of this page [alt-p]",
+            "text": "Printable version"
+          },
+          {
+            "role": "link",
+            "text": "Get shortened URL"
+          },
+          {
+            "role": "button",
+            "name": "Move Appearance to sidebar",
+            "text": "move to sidebar"
+          },
+          {
+            "role": "button",
+            "name": "Hide Appearance",
+            "text": "hide"
+          },
+          {
+            "role": "radio",
+            "name": "Small",
+            "id": "skin-client-pref-vector-feature-custom-font-size-value-0"
+          },
+          {
+            "role": "label",
+            "name": "Small",
+            "text": "Small"
+          },
+          {
+            "role": "radio",
+            "name": "Standard",
+            "id": "skin-client-pref-vector-feature-custom-font-size-value-1"
+          },
+          {
+            "role": "label",
+            "name": "Standard",
+            "text": "Standard"
+          },
+          {
+            "role": "radio",
+            "name": "Large",
+            "id": "skin-client-pref-vector-feature-custom-font-size-value-2"
+          },
+          {
+            "role": "label",
+            "name": "Large",
+            "text": "Large"
+          },
+          {
+            "role": "radio",
+            "name": "Standard",
+            "id": "skin-client-pref-vector-feature-limited-width-value-1"
+          },
+          {
+            "role": "label",
+            "name": "Standard",
+            "text": "Standard"
+          },
+          {
+            "role": "radio",
+            "name": "Wide",
+            "id": "skin-client-pref-vector-feature-limited-width-value-0"
+          },
+          {
+            "role": "label",
+            "name": "Wide",
+            "text": "Wide"
+          },
+          {
+            "role": "radio",
+            "name": "Automatic",
+            "id": "skin-client-pref-skin-theme-value-os"
+          },
+          {
+            "role": "label",
+            "name": "Automatic",
+            "text": "Automatic"
+          },
+          {
+            "role": "radio",
+            "name": "Light",
+            "id": "skin-client-pref-skin-theme-value-day"
+          },
+          {
+            "role": "label",
+            "name": "Light",
+            "text": "Light"
+          },
+          {
+            "role": "radio",
+            "name": "Dark",
+            "id": "skin-client-pref-skin-theme-value-night"
+          },
+          {
+            "role": "label",
+            "name": "Dark",
+            "text": "Dark"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "combobox",
+            "id": "ooui-php-1"
+          },
+          {
+            "role": "button",
+            "text": "Search"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "link",
+            "name": "Search in (Article)",
+            "text": "Content pages"
+          },
+          {
+            "role": "link",
+            "name": "Search for files",
+            "text": "Multimedia"
+          },
+          {
+            "role": "link",
+            "name": "Search all of content (including talk pages)",
+            "text": "Everything"
+          },
+          {
+            "role": "link",
+            "name": "Search in custom namespaces",
+            "text": "Advanced"
+          },
+          {
+            "role": "button",
+            "name": "Advanced search:",
+            "text": "Advanced search:"
+          },
+          {
+            "role": "label",
+            "name": "Advanced search:",
+            "id": "ooui-1",
+            "text": "Advanced search:"
+          },
+          {
+            "role": "label",
+            "name": "These words",
+            "text": "These words"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "textbox",
+            "name": "These words",
+            "id": "ooui-35"
+          },
+          {
+            "role": "label",
+            "name": "Exactly this text",
+            "text": "Exactly this text"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "textbox",
+            "name": "Exactly this text",
+            "id": "ooui-39"
+          },
+          {
+            "role": "label",
+            "name": "Not these words",
+            "text": "Not these words"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "textbox",
+            "name": "Not these words",
+            "id": "ooui-43"
+          },
+          {
+            "role": "label",
+            "name": "One of these words",
+            "text": "One of these words"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "textbox",
+            "name": "One of these words",
+            "id": "ooui-47"
+          },
+          {
+            "role": "label",
+            "name": "Page title contains",
+            "text": "Page title contains"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "textbox",
+            "name": "Page title contains",
+            "id": "ooui-51"
+          },
+          {
+            "role": "label",
+            "name": "Subpages of this page",
+            "text": "Subpages of this page"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "textbox",
+            "name": "Subpages of this page",
+            "id": "ooui-55"
+          },
+          {
+            "role": "label",
+            "name": "Pages in these categories",
+            "text": "Pages in these categories"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "combobox",
+            "name": "Pages in these categories",
+            "id": "ooui-60"
+          },
+          {
+            "role": "listbox",
+            "id": "ooui-56"
+          },
+          {
+            "role": "label",
+            "name": "Pages with these templates",
+            "text": "Pages with these templates"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "combobox",
+            "name": "Pages with these templates",
+            "id": "ooui-65"
+          },
+          {
+            "role": "listbox",
+            "id": "ooui-61"
+          },
+          {
+            "role": "label",
+            "name": "File type",
+            "id": "ooui-70",
+            "text": "File type"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "listbox",
+            "text": "Select file type"
+          },
+          {
+            "role": "combobox",
+            "name": "File type Select file type",
+            "text": "Select file type"
+          },
+          {
+            "role": "textbox",
+            "id": "ooui-66",
+            "text": "Select file type"
+          },
+          {
+            "role": "label",
+            "name": "File width in pixels",
+            "id": "ooui-75",
+            "text": "File width in pixels"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "listbox",
+            "text": "greater than"
+          },
+          {
+            "role": "combobox",
+            "name": "File width in pixels",
+            "text": "greater than"
+          },
+          {
+            "role": "textbox",
+            "id": "ooui-71",
+            "text": "greater than"
+          },
+          {
+            "role": "listbox",
+            "text": "equal togreater thanlower than"
+          },
+          {
+            "role": "option",
+            "text": "equal to"
+          },
+          {
+            "role": "option",
+            "text": "greater than"
+          },
+          {
+            "role": "option",
+            "text": "lower than"
+          },
+          {
+            "role": "textbox",
+            "name": "File width in pixels"
+          },
+          {
+            "role": "label",
+            "name": "File height in pixels",
+            "id": "ooui-80",
+            "text": "File height in pixels"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "listbox",
+            "text": "greater than"
+          },
+          {
+            "role": "combobox",
+            "name": "File height in pixels",
+            "text": "greater than"
+          },
+          {
+            "role": "textbox",
+            "id": "ooui-76",
+            "text": "greater than"
+          },
+          {
+            "role": "listbox",
+            "text": "equal togreater thanlower than"
+          },
+          {
+            "role": "option",
+            "text": "equal to"
+          },
+          {
+            "role": "option",
+            "text": "greater than"
+          },
+          {
+            "role": "option",
+            "text": "lower than"
+          },
+          {
+            "role": "textbox",
+            "name": "File height in pixels"
+          },
+          {
+            "role": "label",
+            "name": "Sorting order",
+            "id": "ooui-85",
+            "text": "Sorting order"
+          },
+          {
+            "role": "button",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "listbox",
+            "text": "Relevance"
+          },
+          {
+            "role": "combobox",
+            "name": "Sorting order Relevance",
+            "text": "Relevance"
+          },
+          {
+            "role": "textbox",
+            "id": "ooui-81",
+            "text": "Relevance"
+          },
+          {
+            "role": "listbox",
+            "text": "RelevanceEdit date – current on topCreation date – current on topAlphabetical"
+          },
+          {
+            "role": "option",
+            "text": "Relevance"
+          },
+          {
+            "role": "option",
+            "text": "Edit date – current on top"
+          },
+          {
+            "role": "option",
+            "text": "Creation date – current on top"
+          },
+          {
+            "role": "option",
+            "text": "Alphabetical"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "button",
+            "name": "Search in:",
+            "text": "Search in: (Article)"
+          },
+          {
+            "role": "label",
+            "name": "Search in:",
+            "id": "ooui-30",
+            "text": "Search in:"
+          },
+          {
+            "role": "button",
+            "name": "Remove"
+          },
+          {
+            "role": "label",
+            "name": "Default",
+            "text": "Default"
+          },
+          {
+            "role": "checkbox",
+            "name": "Default"
+          },
+          {
+            "role": "label",
+            "name": "Discussion",
+            "text": "Discussion"
+          },
+          {
+            "role": "checkbox",
+            "name": "Discussion"
+          },
+          {
+            "role": "label",
+            "name": "General Help",
+            "text": "General Help"
+          },
+          {
+            "role": "checkbox",
+            "name": "General Help"
+          },
+          {
+            "role": "label",
+            "name": "All",
+            "text": "All"
+          },
+          {
+            "role": "checkbox",
+            "name": "All"
+          },
+          {
+            "role": "button",
+            "name": "Remove"
+          },
+          {
+            "role": "textbox"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "link",
+            "text": "https://en.wikipedia.org/wiki/Special:Search"
+          },
+          {
+            "role": "link",
+            "text": "Privacy policy"
+          },
+          {
+            "role": "link",
+            "text": "About Wikipedia"
+          },
+          {
+            "role": "link",
+            "text": "Disclaimers"
+          },
+          {
+            "role": "link",
+            "text": "Contact Wikipedia"
+          },
+          {
+            "role": "link",
+            "text": "Legal & safety contacts"
+          },
+          {
+            "role": "link",
+            "text": "Code of Conduct"
+          },
+          {
+            "role": "link",
+            "text": "Developers"
+          },
+          {
+            "role": "link",
+            "text": "Statistics"
+          },
+          {
+            "role": "link",
+            "text": "Cookie statement"
+          },
+          {
+            "role": "link",
+            "text": "Mobile view"
+          },
+          {
+            "role": "link",
+            "text": "Edit preview settings"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "button",
+            "text": "Search"
+          },
+          {
+            "role": "search",
+            "text": "Search"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "button",
+            "text": "Search"
+          },
+          {
+            "role": "link",
+            "id": "ca-talk-sticky-header"
+          },
+          {
+            "role": "link",
+            "id": "ca-subject-sticky-header"
+          },
+          {
+            "role": "link",
+            "id": "ca-history-sticky-header"
+          },
+          {
+            "role": "link",
+            "id": "ca-watchstar-sticky-header"
+          },
+          {
+            "role": "link",
+            "id": "ca-edit-sticky-header"
+          },
+          {
+            "role": "link",
+            "id": "ca-ve-edit-sticky-header"
+          },
+          {
+            "role": "link",
+            "id": "ca-viewsource-sticky-header"
+          },
+          {
+            "role": "link",
+            "id": "ca-addsection-sticky-header",
+            "text": "Add topic"
+          },
+          {
+            "role": "listbox",
+            "text": "(Article)TalkUserUser talkWikipediaWikipedia talkFileFile talkMediaWikiMediaWiki"
+          },
+          {
+            "role": "option",
+            "text": "(Article)"
+          },
+          {
+            "role": "checkbox",
+            "name": "(Article)",
+            "id": "ooui-2"
+          },
+          {
+            "role": "label",
+            "name": "(Article)",
+            "text": "(Article)"
+          },
+          {
+            "role": "option",
+            "text": "Talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Talk",
+            "id": "ooui-3"
+          },
+          {
+            "role": "label",
+            "name": "Talk",
+            "text": "Talk"
+          },
+          {
+            "role": "option",
+            "text": "User"
+          },
+          {
+            "role": "checkbox",
+            "name": "User",
+            "id": "ooui-4"
+          },
+          {
+            "role": "label",
+            "name": "User",
+            "text": "User"
+          },
+          {
+            "role": "option",
+            "text": "User talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "User talk",
+            "id": "ooui-5"
+          },
+          {
+            "role": "label",
+            "name": "User talk",
+            "text": "User talk"
+          },
+          {
+            "role": "option",
+            "text": "Wikipedia"
+          },
+          {
+            "role": "checkbox",
+            "name": "Wikipedia",
+            "id": "ooui-6"
+          },
+          {
+            "role": "label",
+            "name": "Wikipedia",
+            "text": "Wikipedia"
+          },
+          {
+            "role": "option",
+            "text": "Wikipedia talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Wikipedia talk",
+            "id": "ooui-7"
+          },
+          {
+            "role": "label",
+            "name": "Wikipedia talk",
+            "text": "Wikipedia talk"
+          },
+          {
+            "role": "option",
+            "text": "File"
+          },
+          {
+            "role": "checkbox",
+            "name": "File",
+            "id": "ooui-8"
+          },
+          {
+            "role": "label",
+            "name": "File",
+            "text": "File"
+          },
+          {
+            "role": "option",
+            "text": "File talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "File talk",
+            "id": "ooui-9"
+          },
+          {
+            "role": "label",
+            "name": "File talk",
+            "text": "File talk"
+          },
+          {
+            "role": "option",
+            "text": "MediaWiki"
+          },
+          {
+            "role": "checkbox",
+            "name": "MediaWiki",
+            "id": "ooui-10"
+          },
+          {
+            "role": "label",
+            "name": "MediaWiki",
+            "text": "MediaWiki"
+          },
+          {
+            "role": "option",
+            "text": "MediaWiki talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "MediaWiki talk",
+            "id": "ooui-11"
+          },
+          {
+            "role": "label",
+            "name": "MediaWiki talk",
+            "text": "MediaWiki talk"
+          },
+          {
+            "role": "option",
+            "text": "Template"
+          },
+          {
+            "role": "checkbox",
+            "name": "Template",
+            "id": "ooui-12"
+          },
+          {
+            "role": "label",
+            "name": "Template",
+            "text": "Template"
+          },
+          {
+            "role": "option",
+            "text": "Template talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Template talk",
+            "id": "ooui-13"
+          },
+          {
+            "role": "label",
+            "name": "Template talk",
+            "text": "Template talk"
+          },
+          {
+            "role": "option",
+            "text": "Help"
+          },
+          {
+            "role": "checkbox",
+            "name": "Help",
+            "id": "ooui-14"
+          },
+          {
+            "role": "label",
+            "name": "Help",
+            "text": "Help"
+          },
+          {
+            "role": "option",
+            "text": "Help talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Help talk",
+            "id": "ooui-15"
+          },
+          {
+            "role": "label",
+            "name": "Help talk",
+            "text": "Help talk"
+          },
+          {
+            "role": "option",
+            "text": "Category"
+          },
+          {
+            "role": "checkbox",
+            "name": "Category",
+            "id": "ooui-16"
+          },
+          {
+            "role": "label",
+            "name": "Category",
+            "text": "Category"
+          },
+          {
+            "role": "option",
+            "text": "Category talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Category talk",
+            "id": "ooui-17"
+          },
+          {
+            "role": "label",
+            "name": "Category talk",
+            "text": "Category talk"
+          },
+          {
+            "role": "option",
+            "text": "Portal"
+          },
+          {
+            "role": "checkbox",
+            "name": "Portal",
+            "id": "ooui-18"
+          },
+          {
+            "role": "label",
+            "name": "Portal",
+            "text": "Portal"
+          },
+          {
+            "role": "option",
+            "text": "Portal talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Portal talk",
+            "id": "ooui-19"
+          },
+          {
+            "role": "label",
+            "name": "Portal talk",
+            "text": "Portal talk"
+          },
+          {
+            "role": "option",
+            "text": "Draft"
+          },
+          {
+            "role": "checkbox",
+            "name": "Draft",
+            "id": "ooui-20"
+          },
+          {
+            "role": "label",
+            "name": "Draft",
+            "text": "Draft"
+          },
+          {
+            "role": "option",
+            "text": "Draft talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Draft talk",
+            "id": "ooui-21"
+          },
+          {
+            "role": "label",
+            "name": "Draft talk",
+            "text": "Draft talk"
+          },
+          {
+            "role": "option",
+            "text": "MOS"
+          },
+          {
+            "role": "checkbox",
+            "name": "MOS",
+            "id": "ooui-22"
+          },
+          {
+            "role": "label",
+            "name": "MOS",
+            "text": "MOS"
+          },
+          {
+            "role": "option",
+            "text": "MOS talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "MOS talk",
+            "id": "ooui-23"
+          },
+          {
+            "role": "label",
+            "name": "MOS talk",
+            "text": "MOS talk"
+          },
+          {
+            "role": "option",
+            "text": "TimedText"
+          },
+          {
+            "role": "checkbox",
+            "name": "TimedText",
+            "id": "ooui-24"
+          },
+          {
+            "role": "label",
+            "name": "TimedText",
+            "text": "TimedText"
+          },
+          {
+            "role": "option",
+            "text": "TimedText talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "TimedText talk",
+            "id": "ooui-25"
+          },
+          {
+            "role": "label",
+            "name": "TimedText talk",
+            "text": "TimedText talk"
+          },
+          {
+            "role": "option",
+            "text": "Module"
+          },
+          {
+            "role": "checkbox",
+            "name": "Module",
+            "id": "ooui-26"
+          },
+          {
+            "role": "label",
+            "name": "Module",
+            "text": "Module"
+          },
+          {
+            "role": "option",
+            "text": "Module talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Module talk",
+            "id": "ooui-27"
+          },
+          {
+            "role": "label",
+            "name": "Module talk",
+            "text": "Module talk"
+          },
+          {
+            "role": "option",
+            "text": "Event"
+          },
+          {
+            "role": "checkbox",
+            "name": "Event",
+            "id": "ooui-28"
+          },
+          {
+            "role": "label",
+            "name": "Event",
+            "text": "Event"
+          },
+          {
+            "role": "option",
+            "text": "Event talk"
+          },
+          {
+            "role": "checkbox",
+            "name": "Event talk",
+            "id": "ooui-29"
+          },
+          {
+            "role": "label",
+            "name": "Event talk",
+            "text": "Event talk"
+          },
+          {
+            "role": "listbox",
+            "id": "ooui-31"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-32",
+            "text": "These wordsDescription Searches for these words in the title or text. Be aware o"
+          },
+          {
+            "role": "link",
+            "text": "Full text search"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-36",
+            "text": "Exactly this textDescription Searches for a specific sequence of characters. Pun"
+          },
+          {
+            "role": "link",
+            "text": "Words, phrases, and modifiers"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-40",
+            "text": "Not these wordsDescription Excludes pages containing these words from the search"
+          },
+          {
+            "role": "link",
+            "text": "Words, phrases, and modifiers"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-44",
+            "text": "One of these wordsDescription At least one of the search terms has to be include"
+          },
+          {
+            "role": "link",
+            "text": "Words, phrases, and modifiers"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-48",
+            "text": "Page title containsDescription Searches for pages with titles that contain this "
+          },
+          {
+            "role": "link",
+            "text": "Intitle and incategory"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-52",
+            "text": "Subpages of this pageDescription Searches for pages that are subpages of this pa"
+          },
+          {
+            "role": "link",
+            "text": "Subpageof"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-57",
+            "text": "Pages in these categoriesDescription Searches for pages that are in these catego"
+          },
+          {
+            "role": "link",
+            "text": "Deepcategory"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-62",
+            "text": "Pages with these templatesDescription Searches for pages that contain exactly th"
+          },
+          {
+            "role": "link",
+            "text": "Hastemplate"
+          },
+          {
+            "role": "listbox",
+            "text": "Select file typeGeneral file typesImageDrawingAudioVideoOfficeImage formatstiffp"
+          },
+          {
+            "role": "option",
+            "text": "Select file type"
+          },
+          {
+            "role": "option",
+            "text": "Image"
+          },
+          {
+            "role": "option",
+            "text": "Drawing"
+          },
+          {
+            "role": "option",
+            "text": "Audio"
+          },
+          {
+            "role": "option",
+            "text": "Video"
+          },
+          {
+            "role": "option",
+            "text": "Office"
+          },
+          {
+            "role": "option",
+            "text": "tiff"
+          },
+          {
+            "role": "option",
+            "text": "png"
+          },
+          {
+            "role": "option",
+            "text": "gif"
+          },
+          {
+            "role": "option",
+            "text": "jpg"
+          },
+          {
+            "role": "option",
+            "text": "webp"
+          },
+          {
+            "role": "option",
+            "text": "xcf"
+          },
+          {
+            "role": "option",
+            "text": "svg"
+          },
+          {
+            "role": "option",
+            "text": "djvu"
+          },
+          {
+            "role": "option",
+            "text": "mid"
+          },
+          {
+            "role": "option",
+            "text": "flac"
+          },
+          {
+            "role": "option",
+            "text": "wav"
+          },
+          {
+            "role": "option",
+            "text": "mp3"
+          },
+          {
+            "role": "option",
+            "text": "webm"
+          },
+          {
+            "role": "option",
+            "text": "mpg"
+          },
+          {
+            "role": "option",
+            "text": "pdf"
+          },
+          {
+            "role": "option",
+            "text": "ogg"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-67",
+            "text": "File typeDescription Searches only for files of the selected type. Be aware of t"
+          },
+          {
+            "role": "link",
+            "text": "Filetype"
+          },
+          {
+            "role": "link",
+            "text": "filemime"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-72",
+            "text": "File width in pixelsDescription These fields allow you to specify the width of t"
+          },
+          {
+            "role": "link",
+            "text": "Filemeasures"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-77",
+            "text": "File height in pixelsDescription These fields allow you to specify the height of"
+          },
+          {
+            "role": "link",
+            "text": "Filemeasures"
+          },
+          {
+            "role": "dialog",
+            "id": "ooui-82",
+            "text": "Sorting orderDescription Change the sorting order of results. The standard is th"
+          },
+          {
+            "role": "link",
+            "text": "Explicit sort orders"
+          }
+        ],
+        "ax": "- link \"Jump to content\":\n  - /url: \"#bodyContent\"\n- banner:\n  - navigation \"Site\":\n    - button \"Main menu\"\n  - link \"Wikipedia The Free Encyclopedia\":\n    - /url: /wiki/Main_Page\n    - img \"Wikipedia\"\n    - img \"The Free Encyclopedia\"\n  - search:\n    - searchbox \"Search Wikipedia\"\n    - button \"Search\"\n  - navigation \"Personal tools\":\n    - list:\n      - listitem:\n        - link \"Donate\":\n          - /url: https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n      - listitem:\n        - link \"Create account\":\n          - /url: /w/index.php?title=Special:CreateAccount&returnto=Special%3ASearch&returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3D\n      - listitem:\n        - link \"Log in\":\n          - /url: /w/index.php?title=Special:UserLogin&returnto=Special%3ASearch&returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3D\n- main:\n  - heading \"Search\" [level=1]\n  - link \"Help\":\n    - /url: /wiki/Help:Searching\n  - navigation \"Namespaces\"\n  - navigation \"Views\"\n  - navigation \"Page tools\":\n    - button \"Tools\"\n  - navigation \"Appearance\":\n    - text: Appearance\n    - button \"Hide Appearance\": hide\n    - text: Text\n    - list:\n      - listitem:\n        - radio \"Small\" [disabled]\n        - text: Small\n        - radio \"Standard\" [disabled]\n        - text: Standard\n        - radio \"Large\" [disabled]\n        - text: Large\n        - paragraph: This page always uses small font size\n    - text: Width\n    - list:\n      - listitem:\n        - radio \"Standard\" [checked]\n        - text: Standard\n        - radio \"Wide\"\n        - text: Wide\n    - text: Color\n    - list:\n      - listitem:\n        - radio \"Automatic\"\n        - text: Automatic\n        - radio \"Light\" [checked]\n        - text: Light\n        - radio \"Dark\"\n        - text: Dark\n  - combobox\n  - button \"Search\"\n  - button \"Advanced search:\":\n    - text: \"Advanced search:\"\n    - list \"Currently used search terms\"\n  - button \"Search in:\":\n    - text: \"Search in:\"\n    - list \"Currently active namespace filters\":\n      - listitem \"(Article)\":\n        - text: (Article)\n        - button \"Remove\"\n- contentinfo:\n  - list:\n    - listitem:\n      - link \"Privacy policy\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy\n    - listitem:\n      - link \"About Wikipedia\":\n        - /url: /wiki/Wikipedia:About\n    - listitem:\n      - link \"Disclaimers\":\n        - /url: /wiki/Wikipedia:General_disclaimer\n    - listitem:\n      - link \"Contact Wikipedia\":\n        - /url: //en.wikipedia.org/wiki/Wikipedia:Contact_us\n    - listitem:\n      - link \"Legal & safety contacts\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Legal:Wikimedia_Foundation_Legal_and_Safety_Contact_Information\n    - listitem:\n      - link \"Code of Conduct\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Universal_Code_of_Conduct\n    - listitem:\n      - link \"Developers\":\n        - /url: https://developer.wikimedia.org\n    - listitem:\n      - link \"Statistics\":\n        - /url: https://stats.wikimedia.org/#/en.wikipedia.org\n    - listitem:\n      - link \"Cookie statement\":\n        - /url: https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Cookie_statement\n    - listitem:\n      - link \"Mobile view\":\n        - /url: //en.wikipedia.org/w/index.php?title=Special:Search&fulltext=1&ns0=1&profile=advanced&search=&mobileaction=toggle_view_mobile\n  - list:\n    - listitem:\n      - link \"Wikimedia Foundation\":\n        - /url: https://www.wikimedia.org/\n        - img \"Wikimedia Foundation\"\n    - listitem:\n      - link \"Powered by MediaWiki\":\n        - /url: https://www.mediawiki.org/\n        - img \"Powered by MediaWiki\"\n- list"
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role link Past revisions of this page [alt-h]",
+          "score": 0
+        },
+        {
+          "kind": "text",
+          "label": "text View history",
+          "score": 0
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 480,
+      "height": 820
+    }
+  },
+  "page": {
+    "url": "https://en.wikipedia.org/w/index.php?search=&title=Special%3ASearch&profile=advanced&fulltext=1&ns0=1",
+    "title": "Search - Wikipedia",
+    "text": "Jump to content Main menu Search Donate Create account Log in Search Help Tools Appearance hide Text Small Standard Large This page always uses small font size Width Standard Wide Color Automatic Light Dark Search Advanced search: Search in: (Article) Privacy policy About Wikipedia Disclaimers Contact Wikipedia Legal & safety contacts Code of Conduct Developers Statistics Cookie statement Mobile view"
+  },
+  "downloaded": []
+}

@@ -47,6 +47,9 @@ export function normRole(role: string): string {
   if (r === "textfield" || r === "textbox" || r === "entry" || r === "text") return "textbox";
   if (r === "statictext" || r === "label") return "statictext";
   if (r === "popbutton") return "button";
+  // The recorder stores the tag. The live dump stores the accessible role.
+  if (r === "a" || r === "anchor") return "link";
+  if (r === "select") return "listbox";
   return r;
 }
 
@@ -116,10 +119,13 @@ export function scoreIdentity(query: Identity, candidate: Identity): Omit<Score,
     if (query.testId) add("testId", 100, eq(query.testId, candidate.testId));
     if (query.id) add("id", unstableId(query.id) ? 15 : 80, eq(query.id, candidate.id));
     if (query.role && query.role !== "unknown" && (query.name || query.text)) {
-      add("roleName", 70, normRole(query.role) === normRole(candidate.role) && (eq(query.name, candidate.name) || eq(query.text, candidate.text) || eq(query.name, candidate.text)));
+      add("roleName", 70, normRole(query.role) === normRole(candidate.role) && (eq(query.name, candidate.name) || eq(query.text, candidate.text) || eq(query.name, candidate.text) || eq(query.text, candidate.name)));
     }
-    if (query.label) add("label", 55, eq(query.label, candidate.label) || eq(query.label, candidate.name));
-    if (query.nameAttr) add("nameAttr", 50, eq(query.nameAttr, candidate.nameAttr));
+    // An exact accessible name clears ACCEPT on its own. Visible text stays at 40
+    // so a heading that repeats a control's label cannot pass by text alone.
+    if (query.name) add("accName", 70, eq(query.name, candidate.name) || eq(query.name, candidate.label));
+    if (query.label) add("label", 70, eq(query.label, candidate.label) || eq(query.label, candidate.name));
+    if (query.nameAttr) add("nameAttr", unstableId(query.nameAttr) ? 15 : 70, eq(query.nameAttr, candidate.nameAttr));
     if (query.text) add("text", 40, eq(query.text, candidate.text) || eq(query.text, candidate.name));
     if (query.path.length > 0) add("path", 20, pathEq(query.path, candidate.path));
     if (query.cssPath) add("cssPath", 12, eq(query.cssPath, candidate.cssPath));

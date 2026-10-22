@@ -1,0 +1,215 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { ACCEPT, lookup, type Identity } from "../../src/v1/identity";
+import { interpret, type TrailEvent } from "../../src/v1/interpret";
+import { matchLocator, scoreLocator } from "../../src/v1/locators";
+import { replay, runPassed, type Driver, type LiveTree } from "../../src/v1/replay";
+import { unavailableHeal } from "../../src/v1/heal";
+import type { WorkflowV2 } from "../../src/v1/schema";
+
+function dom(partial: Partial<Identity> & { role: string }): Identity {
+  return { surface: "dom", path: [], ...partial };
+}
+
+function tree(nodes: Identity[], extra: Partial<LiveTree> = {}): LiveTree {
+  return { nodes, texts: [], values: [], ...extra };
+}
+
+test("exact Travel text on a link clears the threshold when a heading repeats it", () => {
+  // books.toscrape: the recorder stored tag `a`, the dump stored role `link`,
+  // and a heading also read "Travel", so the text locator scored 40.
+  const link = dom({ role: "link", text: "Travel" });
+  const heading = dom({ role: "heading", text: "Travel" });
+  const nodes = [dom({ role: "link", text: "Books to Scrape" }), link, heading];
+  const role = scoreLocator({ kind: "role", role: "a", name: "Travel" }, nodes);
+  const text = scoreLocator({ kind: "text", value: "Travel" }, nodes);
+  assert.equal(role.score, 100);
+  assert.equal(text.score, 100);
+  assert.ok(role.score >= ACCEPT);
+  assert.equal(matchLocator({ kind: "role", role: "a", name: "Travel" }, nodes)?.index, 1);
+  assert.equal(matchLocator({ kind: "text", value: "Travel" }, nodes)?.index, 1);
+  const hit = lookup(dom({ role: "a", text: "Travel", name: "Travel" }), nodes);
+  assert.equal(hit.ok, true);
+  assert.equal(hit.index, 1);
+  assert.ok((hit.score || 0) >= ACCEPT);
+});
+
+test("Wikipedia Search prefers the control over the heading and the search landmark", () => {
+  // Vector skin: role button "Search" scored 0 and text "Search" scored 40
+  // against the landmark and the heading. The control's accessible name is Search.
+  const button = dom({ role: "button", name: "Search", text: "Search" });
+  const nodes = [
+    dom({ role: "link", text: "Jump to search" }),
+    dom({ role: "search", id: "p-search", text: "Search" }),
+    dom({ role: "heading", text: "Search" }),
+    dom({ role: "textbox", name: "Search Wikipedia", id: "searchInput" }),
+    button,
+  ];
+  const text = scoreLocator({ kind: "text", value: "Search" }, nodes);
+  assert.equal(text.score, 100);
+  assert.equal(matchLocator({ kind: "text", value: "Search" }, nodes)?.index, nodes.indexOf(button));
+  const hit = lookup(dom({ role: "button", name: "Search", text: "Search" }), nodes);
+  assert.equal(hit.ok, true);
+  assert.equal(hit.index, nodes.indexOf(button));
+  const dupes = [
+    dom({ role: "button", text: "Search", testId: "a" }),
+    dom({ role: "button", text: "Search", testId: "b" }),
+  ];
+  assert.equal(scoreLocator({ kind: "text", value: "Search" }, dupes).score, 40);
+  assert.equal(matchLocator({ kind: "text", value: "Search" }, dupes), undefined);
+});
+
+test("Book now matches the link by accessible name, not a nearby heading", () => {
+  const link = dom({ role: "link", name: "Book now", text: "Book now" });
+  const nodes = [
+    dom({ role: "heading", text: "Book This Room" }),
+    dom({ role: "heading", text: "Book now" }),
+    link,
+    dom({ role: "button", id: "doReservation", text: "Reserve Now" }),
+  ];
+  const scored = scoreLocator({ kind: "role", role: "a", name: "Book now" }, nodes);
+  assert.equal(scored.score, 100);
+  assert.equal(matchLocator({ kind: "role", role: "a", name: "Book now" }, nodes)?.index, 2);
+  assert.equal(matchLocator({ kind: "text", value: "Book now" }, nodes)?.index, 2);
+});
+
+test("type name and lastName clear on an exact accessible name and a stable id", () => {
+  const name = dom({ role: "textbox", nameAttr: "name", label: "Name", name: "Name" });
+  const nameHeading = dom({ role: "heading", text: "Name" });
+  const nameHit = lookup(dom({ role: "input", nameAttr: "name", label: "Name" }), [nameHeading, name]);
+  assert.equal(nameHit.ok, true);
+  assert.equal(nameHit.index, 1);
+  assert.ok((nameHit.score || 0) >= ACCEPT);
+  const css = scoreLocator({ kind: "css", value: 'input[name="name"]' }, [nameHeading, name]);
+  assert.equal(css.score, 100);
+
+  const lastName = dom({ role: "textbox", id: "lastName", label: "Last Name", name: "Last Name" });
+  const lastHeading = dom({ role: "heading", text: "Last Name" });
+  const lastLabel = dom({ role: "label", text: "Last Name" });
+  const lastHit = lookup(dom({ role: "input", id: "lastName", label: "Last Name" }), [lastHeading, lastLabel, lastName]);
+  assert.equal(lastHit.ok, true);
+  assert.equal(lastHit.index, 2);
+  assert.ok((lastHit.score || 0) >= ACCEPT);
+  assert.equal(scoreLocator({ kind: "css", value: "#lastName" }, [lastHeading, lastLabel, lastName]).score, 100);
+});
+
+test("a recording opens on the URL the capture began on", () => {
+  const events: TrailEvent[] = [
+    { id: "open", ts: 1, kind: "act", op: "navigate", beforeUrl: "https://books.toscrape.com/", afterUrl: "https://books.toscrape.com/" },
+    { id: "go", ts: 2, kind: "act", op: "click", identity: dom({ role: "link", text: "Travel", name: "Travel" }), beforeUrl: "https://books.toscrape.com/", afterUrl: "https://books.toscrape.com/catalogue/category/books/travel_2/index.html" },
+  ];
+  const doc = interpret(events, { id: "wf-open", name: "Open", startUrl: "https://books.toscrape.com/" });
+  assert.equal(doc.startUrl, "https://books.toscrape.com/");
+  assert.equal(doc.steps[0]?.action, "navigate");
+  assert.equal(doc.steps[0]?.value, "https://books.toscrape.com/");
+  assert.equal(doc.steps[1]?.action, "click");
+});
+
+test("radios, checkboxes, and selects are check and select steps", () => {
+  const events: TrailEvent[] = [
+    { id: "r", ts: 1, kind: "act", op: "check", checked: true, value: "Male", identity: dom({ role: "radio", id: "gender-radio-1", nameAttr: "gender", name: "Male", label: "Male" }) },
+    { id: "c", ts: 2, kind: "act", op: "check", checked: true, identity: dom({ role: "checkbox", id: "hobbies-checkbox-1", name: "Sports", label: "Sports" }) },
+    { id: "s", ts: 3, kind: "act", op: "select", value: "January", identity: dom({ role: "listbox", id: "months", name: "Month", label: "Month" }) },
+  ];
+  const doc = interpret(events, { id: "wf-form", name: "Form", startUrl: "https://demoqa.com/automation-practice-form" });
+  assert.deepEqual(doc.steps.map((step) => step.action), ["check", "check", "select"]);
+  assert.equal(doc.steps[0]?.checked, true);
+  assert.equal(doc.steps[2]?.value, "{{months}}");
+  assert.equal(doc.inputs.find((input) => input.name === "months")?.default, "January");
+  assert.equal(doc.steps.some((step) => step.action === "type"), false);
+});
+
+test("zero executed steps and a failed final check are not passes", () => {
+  assert.equal(runPassed([]), false);
+  assert.equal(runPassed([{ status: "pending" }]), false);
+  assert.equal(runPassed([{ status: "passed", reason: "other branch" }]), false);
+  assert.equal(runPassed([{ status: "passed" }], true), false);
+  assert.equal(runPassed([{ status: "passed" }]), true);
+});
+
+test("a click inside an open shadow root is recorded on the inner control", async () => {
+  const { chromium } = await import("playwright");
+  const { recorderSource } = await import("../../src/v1/recorder.js");
+  const { dumpPage } = await import("../../src/v1/dom-page.js");
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  const events: Array<{ op?: string; text?: string; value?: string; checked?: boolean; target?: { role?: string } }> = [];
+  try {
+    const context = await browser.newContext();
+    await context.exposeBinding("__baoRecord", async (_source: unknown, payload: { op?: string; identity?: { role?: string; text?: string }; value?: string; checked?: boolean }) => {
+      events.push({
+        op: payload.op,
+        text: payload.identity?.text,
+        value: payload.value,
+        checked: payload.checked,
+        target: { role: payload.identity?.role },
+      });
+    });
+    await context.addInitScript(recorderSource());
+    const page = await context.newPage();
+    const html = `<!doctype html><shop-app></shop-app>
+      <label>Gender<input id="gender-radio-1" type="radio" name="gender" value="Male"></label>
+      <select id="months"><option>January</option><option>February</option></select>
+      <script>
+        class Shop extends HTMLElement {
+          constructor() {
+            super();
+            const root = this.attachShadow({ mode: "open" });
+            root.innerHTML = '<a id="ladies" href="#ladies">Ladies Outerwear</a>';
+          }
+        }
+        customElements.define("shop-app", Shop);
+      </script>`;
+    await page.goto(`data:text/html,${encodeURIComponent(html)}`);
+    const dumped = await page.evaluate(dumpPage);
+    const ladies = dumped.nodes.find((node) => node.text === "Ladies Outerwear");
+    assert.equal(ladies?.role, "link");
+    await page.locator("shop-app").locator("a").click();
+    await page.locator("#gender-radio-1").check();
+    await page.locator("#months").selectOption({ label: "February" });
+    await page.waitForTimeout(80);
+    const click = events.find((event) => event.op === "click" && event.text === "Ladies Outerwear");
+    assert.equal(click?.target?.role, "link");
+    const radio = events.find((event) => event.op === "check");
+    assert.equal(radio?.checked, true);
+    assert.equal(events.some((event) => event.op === "type"), false);
+    const selected = events.find((event) => event.op === "select");
+    assert.equal(selected?.value, "February");
+    assert.equal(selected?.target?.role, "listbox");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("replay of an empty workflow is not passed", async () => {
+  const workflow: WorkflowV2 = {
+    schema: "bao.workflow/v2",
+    version: 2,
+    id: "wf-empty",
+    name: "Empty",
+    startUrl: "https://example.test/",
+    createdAt: 1,
+    inputs: [],
+    steps: [],
+  };
+  let trees = 0;
+  const driver: Driver = {
+    tree: async () => {
+      trees += 1;
+      return tree([], { url: "https://example.test/", texts: [] });
+    },
+    snapshot: async () => ({ dom: [] }),
+    click: async () => {},
+    fill: async () => {},
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+  };
+  const result = await replay(workflow, {}, driver, { heal: unavailableHeal() });
+  assert.equal(result.status, "failed");
+  assert.match(result.failure?.reason || "", /no steps executed/);
+  assert.equal(trees >= 0, true);
+});

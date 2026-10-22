@@ -29,12 +29,13 @@ export function toPuppeteerReplay(workflow: WorkflowV2, args: ReplayArgs = {}): 
   }
   for (const step of workflow.steps) {
     const selectors = selectorChains(step.locators);
+    if (step.action === "navigate") continue;
     if (step.action === "click" || step.action === "check") {
       // @puppeteer/replay 4.0.2 always forwards offsetX/offsetY. Puppeteer 25
       // treats an undefined offset as a point it never reaches, so the click
       // waits until timeout. One pixel in from the top left still hits the node.
       if (selectors.length) steps.push({ type: "click", selectors, offsetX: 1, offsetY: 1 });
-    } else if (step.action === "type") {
+    } else if (step.action === "type" || step.action === "select") {
       const value = subst(step.value || "", args);
       if (selectors.length) steps.push({ type: "change", selectors, value });
     } else if (step.action === "key" && step.key) {
