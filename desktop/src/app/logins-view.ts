@@ -1,7 +1,7 @@
 // Logins screen. Profiles and saved sites. Cookie values never appear here.
 
 import type { BotCookiePolicy, PublicImportResult, PublicPreview, PublicProfile, SiteLoginConfig } from "../login-import/types";
-import { formatClock, formatWhen } from "../v1/time";
+import { formatClock, formatFriendly, formatWhen } from "../v1/time";
 import { esc } from "./views";
 
 export interface SavedSite extends SiteLoginConfig {
@@ -288,7 +288,7 @@ function backupAt(row: { lastBackupAt?: string; scheduledBackupPath?: string; ba
 
 function backupLabel(row: { lastBackupAt?: string; scheduledBackupPath?: string; backupPath?: string }): string {
   const at = backupAt(row);
-  return at ? `Backup from ${formatClock(at)}` : "Taken automatically before the first sync.";
+  return at ? formatFriendly(at) : "Taken automatically before the first sync.";
 }
 
 function backupTip(row: { scheduledBackupPath?: string; backupPath?: string }): string {

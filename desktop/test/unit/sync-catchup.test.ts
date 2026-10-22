@@ -61,7 +61,9 @@ test("the sync panel shows a toggle and the catch-up count for each category", (
   assert.match(html, /0 on this device of 2 in the cloud/);
   assert.match(html, /0 on this device of 1 in the cloud/);
   assert.match(html, /Back up weekly/);
-  assert.match(html, /Backup from Oct 22, 12:50 AM EDT/);
+  assert.match(html, /12:50 AM EDT/);
+  assert.equal(html.includes("4:50 AM"), false);
+  assert.equal(html.includes("UTC"), false);
   assert.match(html, /Reveal in Finder/);
   assert.match(html, /data-testid="reveal-backup"/);
   assert.match(html, /title="\/tmp\/bao\/backups\/scheduled-1"/);

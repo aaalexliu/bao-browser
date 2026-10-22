@@ -41,6 +41,8 @@ export interface VersionSummary {
   source: VersionSource;
   createdAt: number;
   locator?: HeldLocator;
+  /** Every locator row on this snapshot, oldest first. Times are formatted in the viewer's zone. */
+  history: HeldLocator[];
   /** One line, such as `Click signed in: testId signed-in → role button "Signed in"`. */
   diff: string;
   steps: VersionStepChange[];
@@ -86,12 +88,14 @@ function seed(library: Library, id: string): WorkflowVersion[] {
 
 export function summarize(row: WorkflowVersion, previous?: WorkflowV2): VersionSummary {
   const change = versionChange(previous, row.document);
+  const history = stepHistory(row.document);
   return {
     n: row.n,
     role: row.role,
     source: row.source,
     createdAt: row.createdAt,
-    locator: locatorHeld(row.document),
+    locator: history[history.length - 1],
+    history,
     diff: change.line,
     steps: change.steps,
   };
@@ -176,6 +180,30 @@ export function versionChange(previous: WorkflowV2 | undefined, next: WorkflowV2
     line = `${first.label}: ${arrow}${extra}`;
   }
   return { line, steps };
+}
+
+/** Every locator row on the step that holds the newest one. */
+function stepHistory(document: WorkflowV2): HeldLocator[] {
+  let rows: HeldLocator[] | undefined;
+  let tip = -1;
+  for (const step of document.steps) {
+    const history = step.history;
+    if (!history?.length) continue;
+    const last = history[history.length - 1];
+    if (!last || last.at < tip) continue;
+    tip = last.at;
+    rows = history.map((row) => ({
+      stepId: step.id,
+      source: row.source,
+      at: row.at,
+      runId: row.runId,
+      score: row.score,
+      changed: row.changed || [],
+    }));
+  }
+  if (rows?.length) return rows;
+  const one = locatorHeld(document);
+  return one ? [one] : [];
 }
 
 /** The locator version stored on this workflow snapshot. One row, not a second history. */

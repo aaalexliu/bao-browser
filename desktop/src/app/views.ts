@@ -1046,6 +1046,14 @@ export interface VersionRow {
   };
   diff?: string;
   steps?: { id: string; label: string; before: string; after: string; changed: boolean }[];
+  history?: {
+    stepId: string;
+    source: string;
+    at: number;
+    runId?: string;
+    score?: number;
+    changed: string[];
+  }[];
 }
 
 function versionChange(version: VersionRow): string {
@@ -1065,16 +1073,22 @@ function versionChange(version: VersionRow): string {
 }
 
 function locatorHeld(version: VersionRow): string {
-  const locator = version.locator;
-  if (!locator) return "";
-  const changed = locator.changed.length ? locator.changed.join(", ") : "none";
-  return `<p class="locator-version" data-locator-source="${esc(locator.source)}" data-score="${locator.score ?? ""}" data-step="${esc(locator.stepId)}">
-    <time>${esc(formatClock(locator.at))}</time>
-    <span>${esc(locator.source)}</span>
-    <span>${esc(locator.runId || "—")}</span>
-    <span>${locator.score ?? ""}</span>
-    <span>${esc(changed)}</span>
-  </p>`;
+  const rows = version.history?.length ? version.history : version.locator ? [version.locator] : [];
+  if (!rows.length) return "";
+  const body = rows.map((locator) => {
+    const changed = locator.changed.length ? locator.changed.join(", ") : "none";
+    return `<tr data-locator-source="${esc(locator.source)}" data-score="${locator.score ?? ""}" data-step="${esc(locator.stepId)}">
+      <td><time>${esc(formatClock(locator.at))}</time></td>
+      <td>${esc(locator.source)}</td>
+      <td>${esc(locator.runId || "—")}</td>
+      <td>${locator.score ?? ""}</td>
+      <td>${esc(changed)}</td>
+    </tr>`;
+  }).join("");
+  return `<table class="locator-history" data-testid="locator-history">
+    <thead><tr><th>When</th><th>Source</th><th>Run</th><th>Score</th><th>Changed</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
 }
 
 export function versionsPanel(versions: VersionRow[]): string {
