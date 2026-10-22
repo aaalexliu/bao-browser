@@ -28,7 +28,7 @@
     <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
     <button id="login-btn" type="submit" data-testid="login">Log in</button>
   </form>
-  <p id="flash"></p>
+  <p id="flash" data-testid="flash"></p>
   <section>
     <label>Upload <input id="file" name="file" type="file" data-testid="file"></label>
     <p id="files"></p>
@@ -39,7 +39,7 @@
     <li data-testid="row" data-name="Ada">Ada</li>
     <li data-testid="row" data-name="Grace">Grace</li>
   </ul>
-  <p id="picked"></p>
+  <p id="picked" data-testid="picked"></p>
   <script>
     const params = new URLSearchParams(location.search);
     if (params.get("theme") === "dark") document.body.classList.add("dark");

@@ -1,5 +1,11 @@
 # Dependencies
 node_modules/
+web/node_modules/
+
+# Next build and local registry data
+web/.next/
+web/.data/
+.data/
 
 # Build / generated output
 out/

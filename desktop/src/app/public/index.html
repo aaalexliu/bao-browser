@@ -43,10 +43,11 @@
   <main id="main"></main>
   <script>
     const main = document.getElementById("main");
-    let state = { recording: false, notices: [], settings: { heal: "auto" }, workflows: [], trails: [], runs: [] };
+    let state = { recording: false, notices: [], settings: { heal: "auto" }, workflows: [], trails: [], runs: [], sync: {} };
     let screen = "sessions";
     let lastRun = null;
     let lastWf = "";
+    let lastArgs = {};
     let banner = null;
 
     async function refresh() {
@@ -78,7 +79,7 @@
         </div>
         <div class="card">
           <h3>Proxy and MCP</h3>
-          <p>The OpenAI and Claude computer-use executors live in the desktop proxy code from the spikes. This server does not mount those HTTP routes. MCP is a stdio process, <code>bao mcp</code>, and it records screenshot, click, type, key, and scroll into the local trail. No call leaves the machine unless you set a model key for healing.</p>
+          <p>The OpenAI and Claude computer-use executors live in the desktop proxy code from the spikes. This server does not mount those HTTP routes. MCP is <code>bao mcp</code> with four tools: search_workflows, describe_workflow, run_workflow, and get_run. No call leaves the machine unless you set a model key for healing or pair a sync server.</p>
         </div>
       </section>`;
     }
@@ -97,6 +98,7 @@
         const healed = state.runs.some((run) => run.workflowId === wf.id && run.heals && run.heals.length);
         return `<div class="card"><div class="row"><strong>${esc(wf.name)}</strong> ${healed ? '<span class="badge" data-workflow-heal="' + esc(wf.id) + '">healed</span>' : ""}</div>
           <div>${wf.steps} steps</div>
+          <div><code>bao://workflow/${esc(wf.id)}</code></div>
           <div class="row">
             <button data-open="${wf.id}">Edit</button>
             <button data-export="${wf.id}">Export</button>
@@ -123,7 +125,7 @@
           <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
         </select></label>
         <form id="args"></form>
-        <button class="primary" id="run">Run</button>
+        <div class="row"><button class="primary" id="run">Run</button><button id="rerun">Re-run with past inputs</button></div>
         <div id="live">${lastRun ? renderRun(lastRun) : ""}</div>
       </section>`;
     }
@@ -136,7 +138,38 @@
           <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
         </select></label>
         <p>Auto is the default. Healing runs only when a model key is set, or when this build is started with the fixture healer for a demo. Otherwise replay stops on the failed step.</p>
-        <button id="save-settings">Save</button></section>`;
+        <button id="save-settings">Save</button>
+        ${syncPanel()}
+      </section>`;
+    }
+
+    function syncPanel() {
+      const sync = state.sync || {};
+      const devices = (sync.devices || []).map((device) => `<li>${esc(device.name)}</li>`).join("") || "<li>Pair this Mac to see your devices.</li>";
+      const account = (sync.categories || []).map((row) => `<li>${esc(row.category)} <strong>${esc(row.count)}</strong></li>`).join("") || "<li>None yet.</li>";
+      const local = (sync.localCategories || []).map((row) => `<li>${esc(row.category)} <strong>${esc(row.count)}</strong></li>`).join("") || "<li>None yet.</li>";
+      const conflicts = (sync.conflicts || []).map((item) => `<li>${esc(item.id)} kept remote v${esc(item.remoteVersion)}. Your copy is ${esc(item.file)}</li>`).join("");
+      return `<h2>Sync</h2>
+        <p>Secrets, cookies, and unredacted screenshots stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
+        <label>Server <input id="sync-server" value="${esc(sync.server || "")}" placeholder="http://127.0.0.1:3000"></label>
+        <label>Pairing code <input id="pair-code" autocomplete="off"></label>
+        <label>Device name <input id="device-name" value="${esc(sync.deviceName || "")}"></label>
+        <div class="row">
+          <button id="pair">Pair</button>
+          <button class="primary" id="sync-now">Sync</button>
+          <button id="sync-push">Push</button>
+          <button id="sync-pull">Pull</button>
+        </div>
+        <p>Last result: ${esc(sync.lastResult || "Not synced yet.")}</p>
+        <p>Backup: ${esc(sync.backupPath || "Taken automatically before the first sync.")}</p>
+        <h3>Devices</h3>
+        <ul>${devices}</ul>
+        <h3>Items by category</h3>
+        <p class="muted">On your account</p>
+        <ul>${account}</ul>
+        <p class="muted">On this Mac</p>
+        <ul>${local}</ul>
+        ${conflicts ? `<div class="notice"><strong>Conflicts</strong><ul>${conflicts}</ul><p>The newer remote version was kept.</p></div>` : ""}`;
     }
 
     function notices() {
@@ -206,9 +239,40 @@
       document.querySelectorAll("[data-revert]").forEach((btn) => btn.onclick = () => decideHeal(btn.dataset.revert, "revert"));
       const save = document.getElementById("save-settings");
       if (save) save.onclick = async () => {
-        await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ heal: document.getElementById("heal").value }) });
+        await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ heal: document.getElementById("heal").value, syncServer: document.getElementById("sync-server").value }) });
         refresh();
       };
+      const pair = document.getElementById("pair");
+      if (pair) pair.onclick = () => postSync("/api/sync/pair", {
+        code: document.getElementById("pair-code").value,
+        server: document.getElementById("sync-server").value,
+        name: document.getElementById("device-name").value,
+      });
+      const syncNow = document.getElementById("sync-now");
+      if (syncNow) syncNow.onclick = () => postSync("/api/sync", { mode: "sync" });
+      const syncPush = document.getElementById("sync-push");
+      if (syncPush) syncPush.onclick = () => postSync("/api/sync", { mode: "push" });
+      const syncPull = document.getElementById("sync-pull");
+      if (syncPull) syncPull.onclick = () => postSync("/api/sync", { mode: "pull" });
+      const rerun = document.getElementById("rerun");
+      if (rerun) rerun.onclick = async () => {
+        const form = document.getElementById("args");
+        for (const el of form.querySelectorAll("[name]")) {
+          if (el.type === "password" || el.type === "file") {
+            el.value = "";
+            continue;
+          }
+          if (lastArgs[el.name] != null) el.value = lastArgs[el.name];
+        }
+        await runReplay();
+      };
+    }
+
+    async function postSync(url, body) {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) banner = { title: "Sync", body: data.error || "Sync failed" };
+      refresh();
     }
 
     async function openEditor(id) {
@@ -225,6 +289,11 @@
       const doc = await (await fetch("/api/workflows/" + id)).json();
       const form = document.getElementById("args");
       form.innerHTML = doc.inputs.map((input) => field(input)).join("") || "<p>This workflow has no inputs.</p>";
+      const saved = await (await fetch("/api/workflows/" + encodeURIComponent(id) + "/inputs")).json();
+      for (const el of form.querySelectorAll("[name]")) {
+        if (el.type === "password" || el.type === "file") continue;
+        if (saved && saved[el.name] != null && !el.value) el.value = saved[el.name];
+      }
       form.querySelectorAll(".drop").forEach((zone) => {
         zone.ondragover = (event) => { event.preventDefault(); zone.classList.add("over"); };
         zone.ondragleave = () => zone.classList.remove("over");
@@ -328,6 +397,11 @@
           args[el.name] = { name: file.name, base64: btoa(bin) };
         } else if (el.type === "number") args[el.name] = Number(el.value);
         else args[el.name] = el.value;
+      }
+      lastArgs = {};
+      for (const el of form.querySelectorAll("[name]")) {
+        if (el.type === "password" || el.type === "file") continue;
+        lastArgs[el.name] = el.value;
       }
       document.getElementById("live").textContent = "Running…";
       const res = await fetch("/api/replay", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, args }) });

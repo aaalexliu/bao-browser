@@ -5,7 +5,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { chromium, type BrowserContext } from "playwright";
 import { assertNotDailyChrome } from "./profile";
 
-const LAUNCH_ARGS = ["--no-first-run", "--no-default-browser-check", "--disable-sync"];
+const LAUNCH_ARGS = [
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-sync",
+  ...(process.env.BAO_CHROME_NO_SANDBOX === "1" ? ["--no-sandbox", "--disable-dev-shm-usage"] : []),
+];
 
 export async function launchOwnedChrome(opts: {
   userDataDir: string;

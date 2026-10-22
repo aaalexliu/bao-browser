@@ -13,6 +13,7 @@ import { effectiveMode, keepPatch, llmHealFromEnv, revertPatch, scriptedHeal, ty
 import { interpret, type TrailEvent } from "../v1/interpret";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
+import { pairDevice, syncAll, syncStatus } from "../v1/sync";
 import type { HealMode, ReplayArgs, WorkflowV2 } from "../v1/schema";
 
 export interface Notice extends HealNotice {
@@ -57,7 +58,12 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           workflows: library.list().map(summary),
           trails: library.listTrails(),
           runs: library.listRuns(),
+          sync: syncStatus(library),
         });
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/inputs")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        return json(res, library.readPublicInputs(id));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
@@ -66,9 +72,21 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         return json(res, library.readTrail(decodeURIComponent(url.pathname.split("/")[3] || "")));
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode };
-        if (body.heal !== "auto" && body.heal !== "approve") return json(res, { error: "heal" }, 400);
-        return json(res, library.setHeal(body.heal));
+        const body = await readBody(req) as { heal?: HealMode; syncServer?: string };
+        if (body.heal !== undefined && body.heal !== "auto" && body.heal !== "approve") return json(res, { error: "heal" }, 400);
+        if (body.heal === "auto" || body.heal === "approve") library.setHeal(body.heal);
+        if (typeof body.syncServer === "string") library.setSyncServer(body.syncServer);
+        return json(res, library.settings());
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/pair") {
+        const body = await readBody(req) as { code?: string; server?: string; name?: string };
+        if (!body.code || !body.server) return json(res, { error: "code and server" }, 400);
+        return json(res, await pairDevice(library, { code: body.code, server: body.server, name: body.name }));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync") {
+        const body = await readBody(req) as { mode?: "sync" | "push" | "pull" };
+        const mode = body.mode === "push" || body.mode === "pull" ? body.mode : "sync";
+        return json(res, await syncAll(library, mode));
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
         return json(res, library.importJson(String(await readBody(req, true))));
@@ -134,6 +152,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
         const run = await runWorkflow(library, workflow, args, notices);
+        library.savePublicInputs(workflow.id, keptInputs(workflow, args));
         return json(res, run);
       }
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
@@ -141,7 +160,9 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         const next = keepPatch(library.read(body.id), body.stepId, body.patch);
         library.save(next);
         if (body.runId && body.healId) {
-          library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
+          const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
+          const heal = (recorded.heals as HealRecord[]).find((item) => item.id === body.healId);
+          if (heal) library.noteHealPromotion(body.id, heal);
         }
         return json(res, next);
       }
@@ -255,6 +276,16 @@ function healProvider(): HealProvider {
     });
   }
   return llmHealFromEnv();
+}
+
+function keptInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const input of workflow.inputs) {
+    if (input.type === "secret" || input.type === "file") continue;
+    const value = args[input.name];
+    if (typeof value === "string" || typeof value === "number") out[input.name] = value;
+  }
+  return out;
 }
 
 function summary(doc: WorkflowV2) {
