@@ -1,0 +1,1099 @@
+{
+  "generated": "2026-10-22T10:08:43.532Z",
+  "cases": [
+    {
+      "caseId": "drift/browser-form/shift",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "0:Type {{username}}",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "1:Type secret",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "2:Click \"Log in\"",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "3:Click \"Grace\"",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drift/browser-form/theme",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "0:Type {{username}}",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "1:Type secret",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "2:Click \"Log in\"",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "3:Click \"Grace\"",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drift/browser-form/font",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "0:Type {{username}}",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "1:Type secret",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "2:Click \"Log in\"",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "3:Click \"Grace\"",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drift/browser-form/order",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "0:Type {{username}}",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "1:Type secret",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "2:Click \"Log in\"",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "3:Click \"Grace\"",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drift/browser-form/slow",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "0:Type {{username}}",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "1:Type secret",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "2:Click \"Log in\"",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "3:Click \"Grace\"",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drift/browser-form/scale-2x",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "0:Type {{username}}",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "1:Type secret",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "2:Click \"Log in\"",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "3:Click \"Grace\"",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/httpbin-order",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "httpbin-order-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "httpbin-order-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "httpbin-order-2",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/status-200",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "status-200-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/redirect",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "redirect-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/quotes-author",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "quotes-author-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/quotes-tag",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "quotes-tag-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/quotes-login",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "quotes-login-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "quotes-login-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "quotes-login-2",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/books-travel",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "books-travel-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/w3c-shipping",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "w3c-shipping-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "w3c-shipping-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/w3c-check",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "w3c-check-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "w3c-check-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/mdn-button",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "mdn-button-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/alerts",
+      "passed": false,
+      "detail": "body missing successfully clicked an alert; body missing successfully clicked an alert",
+      "steps": [
+        {
+          "stepId": "oracle",
+          "passed": false,
+          "detail": "body missing successfully clicked an alert; body missing successfully clicked an alert"
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch2/playwright-todo",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "playwright-todo-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "playwright-todo-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/mdn-name-form",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "mdn-name-form-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "mdn-name-form-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/mdn-styled-mail",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "mdn-styled-mail-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "mdn-styled-mail-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/mdn-get-say",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "mdn-get-say-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "mdn-get-say-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/mdn-postcard",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "mdn-postcard-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/httpbingo-topping",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "httpbingo-topping-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "httpbingo-topping-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "httpbingo-topping-2",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "httpbingo-topping-3",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/jquery-todo",
+      "passed": false,
+      "detail": "body missing write tests; body missing ship replay",
+      "steps": [
+        {
+          "stepId": "jquery-todo-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "jquery-todo-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "oracle",
+          "passed": false,
+          "detail": "body missing write tests; body missing ship replay"
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/backbone-todo",
+      "passed": false,
+      "detail": "body missing write tests; body missing ship replay",
+      "steps": [
+        {
+          "stepId": "backbone-todo-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "backbone-todo-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "oracle",
+          "passed": false,
+          "detail": "body missing write tests; body missing ship replay"
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/sqlite-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "sqlite-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "sqlite-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/eslint-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "eslint-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "eslint-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/jquery-api-search",
+      "passed": false,
+      "detail": "url missing get; url missing on",
+      "steps": [
+        {
+          "stepId": "jquery-api-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "jquery-api-search-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "oracle",
+          "passed": false,
+          "detail": "url missing get; url missing on"
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/bootstrap-email",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "bootstrap-email-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "bootstrap-email-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "bootstrap-email-2",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch3/rfc-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "rfc-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "rfc-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/selenium-greeting",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "selenium-greeting-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "selenium-greeting-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/selenium-confirm",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "selenium-confirm-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/selenium-agree",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "selenium-agree-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/hockey-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "hockey-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "hockey-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/caniuse-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "caniuse-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "caniuse-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/sauce-username",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "sauce-username-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "sauce-username-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/globalsqa-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "globalsqa-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "globalsqa-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/bulma-text",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "bulma-text-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/parabank-username",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "parabank-username-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "parabank-username-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/webscraper-laptop",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "webscraper-laptop-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/htmx-edit",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "htmx-edit-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch4/playwright-locators",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "playwright-locators-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/hn-search",
+      "passed": false,
+      "detail": "url missing Grace Hopper; url missing Alan Turing",
+      "steps": [
+        {
+          "stepId": "hn-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "hn-search-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "oracle",
+          "passed": false,
+          "detail": "url missing Grace Hopper; url missing Alan Turing"
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/gutenberg-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "gutenberg-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "gutenberg-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/musicbrainz-search",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "musicbrainz-search-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "musicbrainz-search-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/git-add",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "git-add-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/rust-vec",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "rust-vec-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/node-synopsis",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "node-synopsis-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/markdown-cheat",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "markdown-cheat-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/pptr-api",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "pptr-api-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/httpwg-semantics",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "httpwg-semantics-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/nginx-core",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "nginx-core-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/pico-email",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "pico-email-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "pico-email-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "heldout/batch5/lua-manual",
+      "passed": true,
+      "detail": "pass",
+      "steps": [
+        {
+          "stepId": "lua-manual-0",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/form-file",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-form-file-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-form-file-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-form-file-2",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-form-file-3",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/tabs",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-tabs-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-tabs-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-tabs-2",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-tabs-3",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/login",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-login-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-login-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-login-2",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/confirm",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-confirm-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-confirm-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-confirm-2",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/drift",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-drift-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-drift-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/dialog",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-dialog-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-dialog-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-dialog-2",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-dialog-3",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/scroll",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-scroll-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-scroll-1",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "caseId": "drivers/scripted/choice",
+      "passed": true,
+      "detail": "2/2",
+      "steps": [
+        {
+          "stepId": "drv-choice-0",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-choice-1",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "stepId": "drv-choice-2",
+          "passed": true,
+          "detail": ""
+        }
+      ]
+    }
+  ]
+}

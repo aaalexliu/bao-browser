@@ -8,7 +8,8 @@ import { interpret, type TrailEvent } from "../../v1/interpret";
 import { condense, droppedNoEffectIds } from "../../v1/condense";
 import { BrowserDriver } from "../../v1/browser-driver";
 import { launchOwnedChrome } from "../../launch";
-import { replay } from "../../v1/replay";
+import { replay, type RunResult } from "../../v1/replay";
+import type { TrajectoryStep } from "../../v1/trajectory";
 import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
 import { validateWorkflow } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
@@ -16,6 +17,7 @@ import { GOOD_INTENTS } from "../intent/good-intents";
 import { lintIntent, type LintTarget } from "../intent/lint";
 import { caseJudgePrompt } from "../intent/labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "../intent/model";
+import { HYBRID_GATE_RULE, modelCondensePrompt, reviseDecision, reviseStepGates } from "../intent/revise";
 import {
   expectedHuman,
   humanKeys,
@@ -27,6 +29,7 @@ import {
   truthTexts,
 } from "../intent/score";
 import { BAD_INTENT_TEXTS, badJudgePrompt } from "./bad-judge";
+import { urlHasPhrase } from "./url-oracle";
 import type { HeldTruth } from "./capture";
 import type { Oracle } from "./tasks";
 
@@ -63,27 +66,8 @@ function fmt(n: number | null): string {
   return n.toFixed(2);
 }
 
-function eventTarget(event: TrailEvent): string {
-  const id = event.identity;
-  return id?.testId || id?.id || id?.name || id?.nameAttr || "";
-}
-
 function promptFor(events: TrailEvent[]): string {
-  const lines = events.map((event) => {
-    const bits = [event.id, event.kind, event.op, eventTarget(event) || "-", event.value || "-", event.key || "-"];
-    return bits.join(" ");
-  });
-  return [
-    "Condense this UI trail into the intended workflow.",
-    "Drop reads, scrolls, a value that was wiped with Backspace, a repeated click, a Help click, and a Coupon path that ends at Cancel.",
-    "Keep the actions that finish the task, in order.",
-    "Password and pin typing, and a Log in or Sign in click, are human gate login.",
-    "A Confirm click is human gate confirm.",
-    "Password and pin events are secrets.",
-    "Reply with JSON only: {\"keep\":[\"id\"],\"human\":[{\"id\":\"id\",\"gate\":\"login\"}],\"secrets\":[\"id\"]}",
-    "Events, one per line: id kind op target value key",
-    ...lines,
-  ].join("\n");
+  return modelCondensePrompt(events);
 }
 
 function hybridPrompt(workflow: WorkflowV2): string {
@@ -101,6 +85,7 @@ function hybridPrompt(workflow: WorkflowV2): string {
     "Drop a step only when its target is help. Keep every other id.",
     "Intent text is one concrete sentence. Refer to a typed value as {{its input name}}. Do not write a password, a pin, or the captured text.",
     "Flag human as login for a password or pin step and for a Log in or Sign in click. Flag human as confirm for a Confirm click.",
+    HYBRID_GATE_RULE,
     "Reply with JSON only: {\"drop\":[\"id\"],\"summary\":\"one sentence\",\"steps\":[{\"id\":\"id\",\"intent\":\"sentence\"}],\"human\":[{\"id\":\"id\",\"gate\":\"login\"}]}",
     "Every kept step appears in steps. drop contains only ids from this list.",
     "id action target input gate label",
@@ -128,7 +113,7 @@ function loadBundle(dir: string): { truth: HeldTruth; events: TrailEvent[] }[] {
   const truths = JSON.parse(readFileSync(path.join(dir, "truth.json"), "utf8")) as HeldTruth[];
   return truths.map((truth) => ({
     truth,
-    events: JSON.parse(readFileSync(path.join(dir, `${truth.id}.json`), "utf8")) as TrailEvent[],
+    events: JSON.parse(readFileSync(path.join(dir, `${truth.trail || truth.id}.json`), "utf8")) as TrailEvent[],
   }));
 }
 
@@ -237,12 +222,32 @@ function argsFor(workflow: WorkflowV2, spec: HeldTruth["replays"][number]): Repl
   return args;
 }
 
+interface ReplayTrace {
+  line: string;
+  modelCalls: number;
+  steps: { stepId: string; passed: boolean; detail: string }[];
+  trajectory: TrajectoryStep[];
+}
+
+function replayTrace(line: string, modelCalls: number, result?: RunResult): ReplayTrace {
+  return {
+    line,
+    modelCalls,
+    steps: (result?.steps || []).map((step) => ({
+      stepId: step.id,
+      passed: step.status === "passed",
+      detail: step.reason || "",
+    })),
+    trajectory: result?.trajectory || [],
+  };
+}
+
 async function replayHeld(
   context: Awaited<ReturnType<typeof launchOwnedChrome>>,
   truth: HeldTruth,
   workflow: WorkflowV2,
   spec: HeldTruth["replays"][number],
-): Promise<{ line: string; modelCalls: number }> {
+): Promise<ReplayTrace> {
   const page = await context.newPage();
   let modelCalls = 0;
   const pending = (async () => {
@@ -264,24 +269,89 @@ async function replayHeld(
     (result) => ({ kind: "done" as const, result }),
     (err) => ({ kind: "error" as const, reason: err instanceof Error ? err.message : String(err) }),
   );
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   const winner = await Promise.race([
     guarded,
-    new Promise<{ kind: "timeout" }>((resolve) => setTimeout(() => resolve({ kind: "timeout" }), 45000)),
+    new Promise<{ kind: "timeout" }>((resolve) => {
+      timeout = setTimeout(() => resolve({ kind: "timeout" }), 45000);
+    }),
   ]);
+  clearTimeout(timeout);
   try {
-    if (winner.kind === "timeout") return { line: "timeout", modelCalls };
-    if (winner.kind === "error") return { line: winner.reason.slice(0, 180), modelCalls };
+    if (winner.kind === "timeout") return replayTrace("timeout", modelCalls);
+    if (winner.kind === "error") return replayTrace(winner.reason.slice(0, 180), modelCalls);
     if (winner.result.status !== "passed") {
-      return { line: (winner.result.failure?.reason || winner.result.status).slice(0, 180), modelCalls };
+      return replayTrace((winner.result.failure?.reason || winner.result.status).slice(0, 180), modelCalls, winner.result);
     }
     const miss = await pageOracle(context, page, truth.oracle, spec);
-    return { line: miss || "pass", modelCalls };
+    return replayTrace(miss || "pass", modelCalls, winner.result);
   } finally {
     const home = context.pages()[0];
     for (const item of context.pages()) {
       if (item !== home) await item.close().catch(() => undefined);
     }
   }
+}
+
+export interface FrozenCase {
+  caseId: string;
+  passed: boolean;
+  detail: string;
+  steps: { stepId: string; passed: boolean; detail: string }[];
+  trajectory: TrajectoryStep[];
+}
+
+/** Deterministic condense and replay of frozen trails. No model call. */
+export async function frozenHeldout(batches: { name: string; dir: string }[]): Promise<FrozenCase[]> {
+  const { mkdtemp } = await import("node:fs/promises");
+  const profile = await mkdtemp(path.join("/tmp", "bao-frozen-"));
+  const context = await launchOwnedChrome({
+    userDataDir: profile,
+    headless: true,
+    args: ["--disable-dev-shm-usage", "--no-sandbox"],
+  });
+  const cases: FrozenCase[] = [];
+  try {
+    for (const batch of batches) {
+      for (const item of loadBundle(batch.dir)) {
+        const caseId = `heldout/${batch.name}/${item.truth.id}`;
+        try {
+          const workflow = condense(item.events, metaOf(item.truth));
+          const runs: string[] = [];
+          let steps: FrozenCase["steps"] = [];
+          let trajectory: TrajectoryStep[] = [];
+          for (let i = 0; i < item.truth.replays.length; i++) {
+            const outcome = await replayHeld(context, item.truth, workflow, item.truth.replays[i]!);
+            runs.push(outcome.line);
+            if (i === 0) {
+              steps = outcome.steps;
+              trajectory = outcome.trajectory;
+            }
+          }
+          const detail = runs.every((line) => line === "pass") ? "pass" : runs.join("; ");
+          const passed = detail === "pass";
+          if (!passed && steps.every((step) => step.passed)) {
+            steps = [...steps, { stepId: "oracle", passed: false, detail }];
+          }
+          cases.push({ caseId, passed, detail, steps, trajectory });
+          console.log(`${caseId} ${detail}`);
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          cases.push({
+            caseId,
+            passed: false,
+            detail,
+            steps: [{ stepId: "replay", passed: false, detail }],
+            trajectory: [],
+          });
+          console.log(`${caseId} ${detail}`);
+        }
+      }
+    }
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+  return cases;
 }
 
 function fill(template: string, spec: HeldTruth["replays"][number]): string {
@@ -316,7 +386,7 @@ async function oracleOnce(
 ): Promise<string> {
   if (oracle.kind === "url") {
     const want = fill(oracle.includes, spec);
-    return page.url().includes(want) ? "" : `url missing ${want}`;
+    return urlHasPhrase(page.url(), want) ? "" : `url missing ${want}`;
   }
   if (oracle.kind === "value") {
     const want = fill(oracle.equals, spec);
@@ -505,7 +575,7 @@ async function modelOnlyRow(
   const condenser = `${info.provider}/${info.model}`;
   try {
     const reply = await complete(promptFor(events));
-    const decision = parseDecision(reply.text);
+    const decision = reviseDecision(events, parseDecision(reply.text));
     const kept = keepEvents(events, decision.keep, decision.human, decision.secrets);
     const workflow = interpret(kept, metaOf(truth));
     const scored = await scoreWorkflow(truth, events, workflow, true, context);
@@ -542,7 +612,8 @@ async function hybridRow(
     const applied = applyHybrid(base, asked.raw, truth.secrets);
     const scored = await scoreWorkflow(truth, events, applied.workflow, true, context);
     const item = asCase(truth, events);
-    const predicted = applied.human.flatMap((mark) => {
+    const humanMarks = reviseStepGates(base.steps, applied.human);
+    const predicted = humanMarks.flatMap((mark) => {
       const step = base.steps.find((itemStep) => itemStep.id === mark.id);
       return step ? [`${mark.gate}|${targetOf(step)}`] : [];
     });

@@ -1,0 +1,19 @@
+{
+  "caseId": "drivers/scripted/scroll",
+  "steps": [
+    {
+      "stepId": "drv-scroll-0",
+      "action": "type",
+      "target": "textbox#filter",
+      "postcondition": "value {{filter}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-scroll-1",
+      "action": "click",
+      "target": "button#row-30",
+      "postcondition": "text Picked",
+      "timing": "lt1s"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch4/caniuse-search",
+  "steps": [
+    {
+      "stepId": "caniuse-search-0",
+      "action": "type",
+      "target": "textbox#feat_search",
+      "postcondition": "value {{search}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "caniuse-search-1",
+      "action": "key",
+      "target": "textbox#feat_search",
+      "postcondition": "url search={{search}}",
+      "timing": "lt1s"
+    }
+  ]
+}

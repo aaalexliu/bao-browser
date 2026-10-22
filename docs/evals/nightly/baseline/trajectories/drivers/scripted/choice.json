@@ -1,0 +1,26 @@
+{
+  "caseId": "drivers/scripted/choice",
+  "steps": [
+    {
+      "stepId": "drv-choice-0",
+      "action": "click",
+      "target": "radio#blue",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-choice-1",
+      "action": "type",
+      "target": "textbox#label",
+      "postcondition": "value {{label}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-choice-2",
+      "action": "click",
+      "target": "button#apply",
+      "postcondition": "text Applied",
+      "timing": "lt1s"
+    }
+  ]
+}

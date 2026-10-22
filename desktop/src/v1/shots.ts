@@ -10,6 +10,11 @@ export function workflowShotName(stepId: string): string {
   return shotFile(stepId, "after").replace(/-after\.png$/, ".png");
 }
 
+/** Empty-field crop for the guide. The workflow card keeps the original shot. */
+export function guideShotName(stepId: string): string {
+  return workflowShotName(stepId).replace(/\.png$/, ".guide.png");
+}
+
 export interface ShotBox {
   x: number;
   y: number;

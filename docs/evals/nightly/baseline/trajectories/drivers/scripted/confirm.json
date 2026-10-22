@@ -1,0 +1,26 @@
+{
+  "caseId": "drivers/scripted/confirm",
+  "steps": [
+    {
+      "stepId": "drv-confirm-0",
+      "action": "type",
+      "target": "textbox#note",
+      "postcondition": "value {{note}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-confirm-1",
+      "action": "click",
+      "target": "button#delete",
+      "postcondition": "text Armed",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-confirm-2",
+      "action": "click",
+      "target": "button#confirm",
+      "postcondition": "element",
+      "timing": "lt1s"
+    }
+  ]
+}

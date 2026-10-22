@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch4/playwright-locators",
+  "steps": [
+    {
+      "stepId": "playwright-locators-0",
+      "action": "click",
+      "target": "link:Locators",
+      "postcondition": "text Node.js",
+      "timing": "lt1s"
+    }
+  ]
+}

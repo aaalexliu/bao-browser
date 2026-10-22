@@ -1,0 +1,33 @@
+{
+  "caseId": "drift/browser-form/slow",
+  "steps": [
+    {
+      "stepId": "wf-1792663490005-0",
+      "action": "type",
+      "target": "textbox#username",
+      "postcondition": "value {{username}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "wf-1792663490005-1",
+      "action": "type",
+      "target": "textbox#password",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "wf-1792663490005-2",
+      "action": "click",
+      "target": "button#login-btn",
+      "postcondition": "text Welcome {{username}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "wf-1792663490005-3",
+      "action": "click",
+      "target": "li[testid=row]",
+      "postcondition": "text Picked Grace",
+      "timing": "lt1s"
+    }
+  ]
+}

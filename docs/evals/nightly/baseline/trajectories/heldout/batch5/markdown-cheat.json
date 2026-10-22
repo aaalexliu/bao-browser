@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/markdown-cheat",
+  "steps": [
+    {
+      "stepId": "markdown-cheat-0",
+      "action": "click",
+      "target": "link:Cheat Sheet",
+      "postcondition": "url /cheat-sheet/",
+      "timing": "lt1s"
+    }
+  ]
+}
