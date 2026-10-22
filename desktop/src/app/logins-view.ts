@@ -219,15 +219,16 @@ export function syncPanel(sync: {
     <p class="quiet" data-testid="sync-result">${esc(syncStatusLine(row))}</p>
     ${row.lastSyncedAt ? `<p class="quiet" data-testid="last-synced">This Mac last synced ${esc(clockTime(row.lastSyncedAt))}</p>` : ""}
     <div class="backup-row" data-testid="backup-row">
-      <p class="quiet">Backup: ${esc(row.backupPath || "Taken automatically before the first sync.")}</p>
+      <div class="backup-copy">
+        <p class="quiet" data-testid="backup-label"${backupTip(row)}>${esc(backupLabel(row))}</p>
+        ${revealBackup(row)}
+      </div>
       <label>Back up <select id="backup-schedule" data-testid="backup-schedule">
         <option value="off" ${row.backupSchedule === "daily" || row.backupSchedule === "weekly" ? "" : "selected"}>Off</option>
         <option value="daily" ${row.backupSchedule === "daily" ? "selected" : ""}>Back up daily</option>
         <option value="weekly" ${row.backupSchedule === "weekly" ? "selected" : ""}>Back up weekly</option>
       </select></label>
     </div>
-    <p class="quiet" data-testid="last-backup">Last backup: ${esc(row.lastBackupAt ? clockTime(row.lastBackupAt) : "Not yet.")}</p>
-    <p class="quiet" data-testid="restore-path">Restore from ${esc(row.scheduledBackupPath || "No scheduled backup yet.")}</p>
     <button id="restore-backup" type="button">Restore</button>
     <h3>Categories</h3>
     <ul class="sync-cats" data-testid="sync-categories">${categoryRows(row)}</ul>
@@ -268,6 +269,37 @@ function syncStatusLine(row: { lastResult?: string; paired?: boolean; conflicts?
   const open = row.conflicts?.length ?? 0;
   const text = row.lastResult || (row.paired ? "Paired" : "Not paired");
   return text.replace(/conflicts \d+/, `conflicts ${open}`);
+}
+
+function backupFolder(row: { scheduledBackupPath?: string; backupPath?: string }): string {
+  return row.scheduledBackupPath || row.backupPath || "";
+}
+
+function backupAt(row: { lastBackupAt?: string; scheduledBackupPath?: string; backupPath?: string }): number | undefined {
+  if (row.lastBackupAt) {
+    const date = new Date(row.lastBackupAt);
+    if (!Number.isNaN(date.getTime())) return date.getTime();
+  }
+  const match = /(?:scheduled|before-sync)-(\d{10,})/.exec(backupFolder(row));
+  if (!match) return undefined;
+  const at = Number(match[1]);
+  return Number.isFinite(at) ? at : undefined;
+}
+
+function backupLabel(row: { lastBackupAt?: string; scheduledBackupPath?: string; backupPath?: string }): string {
+  const at = backupAt(row);
+  return at ? `Backup from ${formatClock(at)}` : "Taken automatically before the first sync.";
+}
+
+function backupTip(row: { scheduledBackupPath?: string; backupPath?: string }): string {
+  const folder = backupFolder(row);
+  return folder ? ` title="${esc(folder)}"` : "";
+}
+
+function revealBackup(row: { scheduledBackupPath?: string; backupPath?: string }): string {
+  const folder = backupFolder(row);
+  if (!folder) return "";
+  return `<button type="button" class="link" id="reveal-backup" data-testid="reveal-backup" title="${esc(folder)}">Reveal in Finder</button>`;
 }
 
 function clockTime(iso?: string | null): string {

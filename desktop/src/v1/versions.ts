@@ -3,7 +3,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { validateWorkflow, type WorkflowV2 } from "./schema";
+import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
 
 export type VersionRole = "live" | "draft" | "past";
@@ -27,12 +27,23 @@ export interface HeldLocator {
   changed: string[];
 }
 
+export interface VersionStepChange {
+  id: string;
+  label: string;
+  before: string;
+  after: string;
+  changed: boolean;
+}
+
 export interface VersionSummary {
   n: number;
   role: VersionRole;
   source: VersionSource;
   createdAt: number;
   locator?: HeldLocator;
+  /** One line, such as `Click signed in: testId signed-in → role button "Signed in"`. */
+  diff: string;
+  steps: VersionStepChange[];
 }
 
 function bookPath(library: Library, id: string): string {
@@ -73,14 +84,98 @@ function seed(library: Library, id: string): WorkflowVersion[] {
   return [row];
 }
 
-export function summarize(row: WorkflowVersion): VersionSummary {
+export function summarize(row: WorkflowVersion, previous?: WorkflowV2): VersionSummary {
+  const change = versionChange(previous, row.document);
   return {
     n: row.n,
     role: row.role,
     source: row.source,
     createdAt: row.createdAt,
     locator: locatorHeld(row.document),
+    diff: change.line,
+    steps: change.steps,
   };
+}
+
+/** How a step is found, in one phrase. A test id wins, then an id, then the role and its name. */
+export function identityPhrase(identity: Identity | undefined): string {
+  if (!identity) return "no target";
+  if (identity.testId) return `testId ${identity.testId}`;
+  if (identity.id) return `id ${identity.id}`;
+  const quoted = identity.name || identity.text || identity.label;
+  if (identity.role) return quoted ? `role ${identity.role} "${quoted}"` : `role ${identity.role}`;
+  if (quoted) return `"${quoted}"`;
+  return "no target";
+}
+
+function phrasePair(before: Identity | undefined, after: Identity | undefined): { before: string; after: string } {
+  const left = identityPhrase(before);
+  const right = identityPhrase(after);
+  if (left !== right) return { before: left, after: right };
+  const quoted = (identity: Identity | undefined) => identity?.name || identity?.text || identity?.label || "";
+  const leftQuote = quoted(before);
+  const rightQuote = quoted(after);
+  if (leftQuote === rightQuote) return { before: left, after: right };
+  return {
+    before: leftQuote ? `${left} "${leftQuote}"` : left,
+    after: rightQuote ? `${right} "${rightQuote}"` : right,
+  };
+}
+
+function stepLabel(step: WorkflowStep | undefined, fallback: string): string {
+  return step?.label || step?.action || fallback;
+}
+
+/** The first changed step is the line. Every step is in `steps` for the before/after list. */
+export function versionChange(previous: WorkflowV2 | undefined, next: WorkflowV2): { line: string; steps: VersionStepChange[] } {
+  const prior = previous?.steps ?? [];
+  const used = new Set<string>();
+  const steps: VersionStepChange[] = [];
+  for (const step of next.steps) {
+    const before = prior.find((item) => item.id === step.id);
+    if (before) used.add(before.id);
+    const pair = phrasePair(before?.identity, step.identity);
+    const label = stepLabel(step, step.id);
+    const changed = Boolean(previous) && (
+      !before
+      || pair.before !== pair.after
+      || (before.label || "") !== (step.label || "")
+      || before.action !== step.action
+    );
+    steps.push({
+      id: step.id,
+      label,
+      before: before ? pair.before : previous ? "—" : "",
+      after: pair.after,
+      changed,
+    });
+  }
+  for (const step of prior) {
+    if (used.has(step.id)) continue;
+    steps.push({
+      id: step.id,
+      label: stepLabel(step, step.id),
+      before: identityPhrase(step.identity),
+      after: "removed",
+      changed: true,
+    });
+  }
+  const changed = steps.filter((step) => step.changed);
+  let line: string;
+  if (!previous) {
+    const first = steps[0];
+    line = first ? `${first.label}: ${first.after}` : "Recorded";
+  } else if (!changed.length && previous.name !== next.name) {
+    line = `Name: ${previous.name} → ${next.name}`;
+  } else if (!changed.length) {
+    line = "No step changes";
+  } else {
+    const first = changed[0]!;
+    const arrow = first.before && first.before !== "—" ? `${first.before} → ${first.after}` : first.after;
+    const extra = changed.length > 1 ? ` · ${changed.length - 1} more` : "";
+    line = `${first.label}: ${arrow}${extra}`;
+  }
+  return { line, steps };
 }
 
 /** The locator version stored on this workflow snapshot. One row, not a second history. */
@@ -113,7 +208,8 @@ function locatorHeld(document: WorkflowV2): HeldLocator | undefined {
 }
 
 export function listVersions(library: Library, id: string): VersionSummary[] {
-  return seed(library, id).map(summarize);
+  const rows = seed(library, id).slice().sort((a, b) => a.n - b.n);
+  return rows.map((row, index) => summarize(row, index > 0 ? rows[index - 1]!.document : undefined));
 }
 
 export function versionDocument(library: Library, id: string, n: number): WorkflowV2 {

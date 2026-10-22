@@ -32,6 +32,7 @@ import {
   secretInput,
   statusLabel,
   trailPane,
+  imageRef,
   versionsPanel,
   workflowDetail,
   type CommandItem,
@@ -480,6 +481,8 @@ function bind(): void {
   });
   const restore = document.getElementById("restore-backup");
   if (restore) restore.onclick = () => void postSync("/api/sync/backup", { action: "restore" });
+  const reveal = document.getElementById("reveal-backup");
+  if (reveal) reveal.onclick = () => void postSync("/api/sync/reveal", {});
   bindAsk();
   bindHeal();
   const save = document.getElementById("save-settings");
@@ -821,7 +824,9 @@ async function openEditor(id: string): Promise<void> {
   if (!host || !host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}${typeof last.at === "number" ? ` · ${formatWhen(last.at)}` : ""}` : "Not run yet";
-  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel }) + versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
+  const shots = last?.id ? await stepCrops(last.id) : {};
+  if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
+  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel, shots }) + versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
       <button type="button" data-export="${esc(id)}">Export</button>
@@ -1364,6 +1369,22 @@ function paintToasts(): void {
   });
 }
 
+async function stepCrops(runId: string): Promise<Record<string, string>> {
+  const shots: Record<string, string> = {};
+  try {
+    const res = await fetch("/api/runs/" + encodeURIComponent(runId));
+    if (!res.ok) return shots;
+    const run = await res.json() as { id?: string; steps?: { id?: string; afterShot?: string; beforeShot?: string }[] };
+    const id = run.id || runId;
+    for (const step of run.steps || []) {
+      if (!step.id) continue;
+      const src = imageRef(id, step.afterShot) || imageRef(id, step.beforeShot);
+      if (src) shots[step.id] = src;
+    }
+  } catch { /* the card still tries the capture crop */ }
+  return shots;
+}
+
 function mountShots(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>("[data-shot]").forEach((node) => {
     if (node.dataset.shotMounted === "1") return;
@@ -1387,6 +1408,23 @@ function mountShots(root: ParentNode = document): void {
       };
       img.src = src;
     };
+    const existing = node.querySelector("img");
+    if (existing) {
+      const show = () => {
+        if (node.isConnected) node.classList.add("has-shot");
+      };
+      if (existing.complete && existing.naturalWidth > 0) {
+        show();
+        return;
+      }
+      existing.addEventListener("load", show);
+      existing.addEventListener("error", () => {
+        existing.remove();
+        node.classList.remove("has-shot");
+        if (fallback) load(fallback);
+      });
+      return;
+    }
     load(primary, fallback);
   });
 }

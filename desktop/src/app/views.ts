@@ -983,15 +983,18 @@ function expectBadge(step: StepCard): string {
 
 export function workflowDetail(
   doc: { id: string; name: string; steps: StepCard[]; inputs?: { name: string; type?: string }[] },
-  meta: { lastRunId?: string; lastLabel?: string } = {},
+  meta: { lastRunId?: string; lastLabel?: string; shots?: Record<string, string> } = {},
 ): string {
   const cards = doc.steps.map((step) => {
     const human = step.human || step.action === "login" || step.action === "confirm";
+    const known = meta.shots?.[step.id] || "";
     const runShot = meta.lastRunId ? `/api/runs/${encodeURIComponent(meta.lastRunId)}/shots/${encodeURIComponent(shotFile(step.id, "after"))}` : "";
     const captured = `/api/workflows/${encodeURIComponent(doc.id)}/shots/${encodeURIComponent(workflowShotName(step.id))}`;
-    const shot = runShot || captured;
+    const shot = known || runShot || captured;
+    const fallback = shot === captured ? "" : captured;
+    const face = known ? `<img src="${esc(known)}" alt="">` : "";
     return `<article class="step-card ${human ? "human" : ""}" data-step-card="${esc(step.id)}">
-      <div class="thumb" data-shot="${esc(shot)}" ${runShot ? `data-shot-fallback="${esc(captured)}"` : ""}>${placeholder(step.action, step.label || step.action || step.id)}</div>
+      <div class="thumb${known ? " has-shot" : ""}" data-shot="${esc(shot)}" ${fallback ? `data-shot-fallback="${esc(fallback)}"` : ""}>${face}${placeholder(step.action, step.label || step.action || step.id)}</div>
       <div class="step-copy">
         <div class="row"><strong>${esc(step.label || step.action || step.id)}</strong> ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
         <p class="meta">${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
@@ -1041,6 +1044,24 @@ export interface VersionRow {
     score?: number;
     changed: string[];
   };
+  diff?: string;
+  steps?: { id: string; label: string; before: string; after: string; changed: boolean }[];
+}
+
+function versionChange(version: VersionRow): string {
+  const line = version.diff
+    ? `<p class="version-diff" data-testid="version-diff">${esc(version.diff)}</p>`
+    : "";
+  const steps = (version.steps || []).map((step) => {
+    const arrow = step.before
+      ? `<span>${esc(step.before)}</span><span aria-hidden="true">→</span>`
+      : "";
+    return `<li data-testid="version-step" data-changed="${step.changed ? "true" : "false"}"><span>${esc(step.label)}</span>${arrow}<span>${esc(step.after)}</span></li>`;
+  }).join("");
+  const details = steps
+    ? `<details class="version-steps" data-testid="version-steps"><summary>Before and after</summary><ol>${steps}</ol></details>`
+    : "";
+  return line + details;
 }
 
 function locatorHeld(version: VersionRow): string {
@@ -1071,6 +1092,7 @@ export function versionsPanel(versions: VersionRow[]): string {
         <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
       </div>
       ${locatorHeld(version)}
+      ${versionChange(version)}
       <div class="row">
         <button type="button" data-restore-version="${esc(version.n)}">Restore as draft</button>
         ${promote}
