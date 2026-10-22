@@ -171,6 +171,75 @@ export async function categoryCounts(userId: string) {
   );
 }
 
+const SETTINGS_KEYS = ["heal", "promoteAfter", "actTimeoutMs", "circuitLimit", "circuitWindowMs", "backupSchedule"] as const;
+
+export async function syncSnapshot(principal: Principal) {
+  const workflows = await ownedRows(principal.userId);
+  const runs = await query<{ id: string; workflow_id: string; status: string; at: string; steps: unknown }>(
+    `SELECT r.id, r.workflow_id, r.status, r.at, r.steps
+     FROM runs r JOIN workflows w ON w.id = r.workflow_id
+     WHERE w.owner_id = $1 ORDER BY r.at`,
+    [principal.userId],
+  );
+  const heals = await query<{ workflow_id: string; version: number; heal: unknown }>(
+    `SELECT v.workflow_id, v.version, v.heal
+     FROM workflow_versions v JOIN workflows w ON w.id = v.workflow_id
+     WHERE w.owner_id = $1 AND v.heal IS NOT NULL
+     ORDER BY v.workflow_id, v.version`,
+    [principal.userId],
+  );
+  const stored = await query<{ document: unknown; updated_at: string }>(
+    `SELECT document, updated_at FROM account_settings WHERE user_id = $1`,
+    [principal.userId],
+  );
+  const settings = stored[0] ? pickAccountSettings(json(stored[0].document)) : null;
+  return {
+    counts: {
+      workflows: workflows.length,
+      "run history": runs.length,
+      "heal records": heals.length,
+      settings: settings ? 1 : 0,
+    },
+    runs: runs.map((run) => ({
+      id: run.id,
+      workflowId: run.workflow_id,
+      status: run.status,
+      at: run.at,
+      steps: json(run.steps),
+    })),
+    heals: heals.map((heal) => ({
+      id: `heal-${heal.workflow_id}-v${heal.version}`,
+      workflowId: heal.workflow_id,
+      heal: json(heal.heal),
+    })),
+    settings,
+    settingsUpdatedAt: stored[0]?.updated_at ?? null,
+  };
+}
+
+export async function saveAccountSettings(principal: Principal, document: unknown) {
+  const clean = pickAccountSettings(document);
+  await query(
+    `INSERT INTO account_settings (user_id, document, updated_at) VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (user_id) DO UPDATE SET document = EXCLUDED.document, updated_at = now()`,
+    [principal.userId, JSON.stringify(clean)],
+  );
+  return { ok: true };
+}
+
+function pickAccountSettings(document: unknown): Record<string, unknown> {
+  const source = document && typeof document === "object" ? document as Record<string, unknown> : {};
+  const picked: Record<string, unknown> = {};
+  for (const key of SETTINGS_KEYS) {
+    if (source[key] !== undefined) picked[key] = source[key];
+  }
+  if (picked.backupSchedule !== "off" && picked.backupSchedule !== "daily" && picked.backupSchedule !== "weekly") {
+    delete picked.backupSchedule;
+  }
+  if (picked.heal !== "auto" && picked.heal !== "approve") delete picked.heal;
+  return picked;
+}
+
 export async function pushVersion(
   principal: Principal,
   id: string,

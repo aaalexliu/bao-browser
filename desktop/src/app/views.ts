@@ -753,7 +753,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
       <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Keep</button>
       <button type="button" data-revert="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Revert</button>
     </div>
-    <p class="quiet">Keep writes the patch into the saved workflow. Revert puts the failed step back. Both are appended. ${esc(decisionLine)}</p>
+    <p class="quiet">Keep saves a draft version. Replay keeps using the live version until you promote it. Revert puts the failed step back on the live workflow. Both are appended. ${esc(decisionLine)}</p>
   </article>`;
 }
 
@@ -1019,6 +1019,40 @@ export function workflowDetail(
     </header>
     <h3 class="section">Steps</h3>
     <div id="workflow-steps">${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}</div>
+  </section>`;
+}
+
+export interface VersionRow {
+  n: number;
+  role: string;
+  source: string;
+  createdAt: number;
+}
+
+export function versionsPanel(versions: VersionRow[]): string {
+  const rows = versions.map((version) => {
+    const role = version.role === "live" ? "Live" : version.role === "draft" ? "Draft" : "Past";
+    const source = version.source === "heal" ? "Heal" : version.source === "edit" ? "Edit" : version.source === "restore" ? "Restore" : "Saved";
+    const promote = version.role === "draft"
+      ? `<button type="button" class="primary" data-promote-version="${esc(version.n)}">Promote</button>`
+      : "";
+    return `<li data-testid="version" data-version="${esc(version.n)}" data-role="${esc(version.role)}">
+      <div class="row">
+        <strong>v${esc(version.n)}</strong>
+        <span class="badge">${esc(role)}</span>
+        <span class="quiet">${esc(source)}</span>
+        <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
+      </div>
+      <div class="row">
+        <button type="button" data-restore-version="${esc(version.n)}">Restore as draft</button>
+        ${promote}
+      </div>
+    </li>`;
+  }).join("");
+  return `<section class="card" id="versions" data-testid="versions">
+    <h3>Versions</h3>
+    <p class="quiet">Replay uses the live version. A heal or an edit is a draft until you promote it.</p>
+    <ol class="versions">${rows || `<li class="quiet">No versions yet.</li>`}</ol>
   </section>`;
 }
 

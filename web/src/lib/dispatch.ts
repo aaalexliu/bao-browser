@@ -29,7 +29,9 @@ import {
   rememberGrant,
   reportWorkflow,
   requestMagicLink,
+  saveAccountSettings,
   setImportMarks,
+  syncSnapshot,
   userFromSession,
   verifyMagicLink,
 } from "./registry";
@@ -81,6 +83,14 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
         categoryCounts(principal.userId),
       ]);
       return NextResponse.json({ devices, categories });
+    }
+    if (parts[0] === "sync" && parts[1] === "snapshot" && method === "GET") {
+      const principal = await requireUser(req);
+      return NextResponse.json(await syncSnapshot(principal));
+    }
+    if (parts[0] === "sync" && parts[1] === "settings" && method === "POST") {
+      const principal = await requireUser(req);
+      return NextResponse.json(await saveAccountSettings(principal, await readBody(req)));
     }
     if (parts[0] === "catalog" && method === "GET") {
       const principal = await actor(req);
