@@ -17,6 +17,7 @@
     "replayed": { "type": "boolean" },
     "readBack": { "$ref": "#/$defs/readBack" },
     "precondition": { "$ref": "#/$defs/precondition" },
+    "summary": { "type": "string" },
     "inputs": {
       "type": "array",
       "items": { "$ref": "#/$defs/input" }

@@ -440,3 +440,5 @@ npm run bao -- eval intent
 ```
 
 `eval drivers` writes `docs/eval/drivers.md`. `eval intent` writes `docs/eval/intent.md`. A missing CLI or a missing key is a `not run` cell. The command does not invent a pass.
+
+`eval intent` runs three condensers. `condense` is deterministic. The model condenser edits the raw trail. `hybrid` starts from that deterministic workflow: the model may drop a Help step, write intent text, and flag login or confirm. It cannot add a step, change an input, or clear a secret tag. A judge model scores the intent text and is calibrated on ten hand labels.

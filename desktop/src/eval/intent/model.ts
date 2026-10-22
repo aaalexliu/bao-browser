@@ -57,30 +57,40 @@ export async function complete(prompt: string, env: NodeJS.ProcessEnv = process.
 }
 
 async function chat(url: string, key: string, model: string, prompt: string): Promise<ModelReply> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${key}`,
-      "content-type": "application/json",
-      "user-agent": "Mozilla/5.0",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  const raw = await res.text();
-  if (!res.ok) throw new Error(`${url} ${res.status} ${raw.slice(0, 300)}`);
-  const data = JSON.parse(raw) as {
-    usage?: { total_tokens?: number };
-    choices?: { message?: { content?: string } }[];
-  };
-  return {
-    text: data.choices?.[0]?.message?.content || "",
-    tokens: data.usage?.total_tokens ?? null,
-  };
+  let last = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+        "user-agent": "Mozilla/5.0",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    const raw = await res.text();
+    if (res.status === 429 || res.status >= 500) {
+      last = raw.slice(0, 200);
+      await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+      continue;
+    }
+    if (!res.ok) throw new Error(`${url} ${res.status} ${raw.slice(0, 300)}`);
+    const data = JSON.parse(raw) as {
+      usage?: { total_tokens?: number };
+      choices?: { message?: { content?: string; reasoning?: string } }[];
+    };
+    const message = data.choices?.[0]?.message;
+    return {
+      text: message?.content?.trim() || message?.reasoning || "",
+      tokens: data.usage?.total_tokens ?? null,
+    };
+  }
+  throw new Error(`${url} retries exhausted ${last}`);
 }
 
 async function anthropic(key: string, model: string, prompt: string): Promise<ModelReply> {
@@ -129,4 +139,34 @@ export function parseDecision(text: string): { keep: string[]; human: { id: stri
     : [];
   const secrets = Array.isArray(parsed.secrets) ? parsed.secrets.filter((id): id is string => typeof id === "string") : [];
   return { keep, human, secrets };
+}
+
+export function parseFlagMap(text: string): Record<string, boolean> {
+  const parsed = extractObject(text);
+  const nested = parsed.scores;
+  const source = nested && typeof nested === "object" ? nested as Record<string, unknown> : parsed;
+  const out: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === "boolean") out[key] = value;
+    else if (value === "true" || value === "false") out[key] = value === "true";
+  }
+  return out;
+}
+
+export function parseCaseJudge(text: string): { summary: boolean; steps: Record<string, boolean> } {
+  const parsed = extractObject(text);
+  const summary = parsed.summary === true || parsed.summary === "true";
+  const steps = parsed.steps && typeof parsed.steps === "object"
+    ? parseFlagMap(JSON.stringify(parsed.steps))
+    : {};
+  return { summary, steps };
+}
+
+function extractObject(text: string): Record<string, unknown> {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("model did not return JSON");
+  const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("model JSON is not an object");
+  return parsed as Record<string, unknown>;
 }

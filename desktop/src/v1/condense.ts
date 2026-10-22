@@ -22,13 +22,15 @@ function label(event: TrailEvent): string {
   return event.identity?.name || event.identity?.text || event.identity?.label || "";
 }
 
+const ABORT_OPENER = new Set(["Coupon", "Shipping"]);
+
 function dropAborted(events: TrailEvent[]): TrailEvent[] {
   const out = events.slice();
   for (let i = 0; i < out.length; i++) {
     if (out[i]!.op !== "click" || label(out[i]!) !== "Cancel") continue;
     let start = i;
-    while (start > 0 && label(out[start]!) !== "Coupon") start--;
-    if (label(out[start]!) !== "Coupon") continue;
+    while (start > 0 && !ABORT_OPENER.has(label(out[start]!))) start--;
+    if (!ABORT_OPENER.has(label(out[start]!))) continue;
     out.splice(start, i - start + 1);
     i = start - 1;
   }

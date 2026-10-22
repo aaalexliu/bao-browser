@@ -1,6 +1,6 @@
 // Score a condensed workflow against a ground-truth case, then replay it.
 
-import { interpret } from "../../v1/interpret";
+import { interpret, isConstantType } from "../../v1/interpret";
 import { replay, type Driver } from "../../v1/replay";
 import type { Identity, ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
 import { condense } from "../../v1/condense";
@@ -50,7 +50,15 @@ export function textDefaults(workflow: WorkflowV2): string[] {
 }
 
 export function truthTexts(item: IntentCase): string[] {
-  return item.events.filter((event) => event.op === "type" && !event.sensitive).map((event) => event.value || "");
+  return item.events.filter((event) => event.op === "type" && !event.sensitive && !isConstantType(event)).map((event) => event.value || "");
+}
+
+export function truthLiterals(item: IntentCase): string[] {
+  return item.events.filter((event) => isConstantType(event)).map((event) => event.value || "");
+}
+
+export function stepLiterals(workflow: WorkflowV2): string[] {
+  return workflow.steps.filter((step) => step.action === "type" && !step.input).map((step) => step.value || "");
 }
 
 export interface ParamScore {
@@ -70,10 +78,16 @@ export function scoreParams(workflow: WorkflowV2, item: IntentCase): ParamScore 
   const fileWant = item.events.filter((event) => event.op === "upload" || event.op === "drop").length;
   const secretRecall = item.secrets.length ? Math.min(secretInputs, item.secrets.length) / item.secrets.length : secretInputs === 0 ? 1 : 0;
   const fileRecall = fileWant ? Math.min(fileInputs, fileWant) / fileWant : fileInputs === 0 ? 1 : 0;
+  const literalWant = truthLiterals(item);
   const parts: number[] = [];
   if (want.length) parts.push(text.recall);
   if (item.secrets.length) parts.push(secretRecall);
   if (fileWant) parts.push(fileRecall);
+  if (literalWant.length) {
+    parts.push(multisetScore(literalWant, stepLiterals(workflow)).recall);
+    const lifted = literalWant.filter((value) => got.includes(value)).length;
+    parts.push(1 - lifted / literalWant.length);
+  }
   const recall = parts.length ? parts.reduce((sum, n) => sum + n, 0) / parts.length : 1;
   const secret = item.secrets.length === 0 ? (leaked.length ? 0 : 1) : (leaked.length ? 0 : secretRecall);
   return { recall, secret, leaked };
@@ -103,6 +117,7 @@ const CLICK_TEXT: Record<string, string> = {
   pay: "Paying",
   browse: "Dialog",
   "row-30": "Picked",
+  buy: "Bought",
 };
 
 export function applyWorld(world: World, kind: string, node: Identity | undefined, text: string): void {
@@ -204,7 +219,7 @@ export function truthWorkflow(item: IntentCase): WorkflowV2 {
 }
 
 export function deterministicWorkflow(item: IntentCase): WorkflowV2 {
-  return condense(noisyTrail(item.events), { id: item.id, name: item.name, startUrl: item.startUrl, secrets: item.secrets });
+  return condense(noisyTrail(item.events, item.noise), { id: item.id, name: item.name, startUrl: item.startUrl, secrets: item.secrets });
 }
 
 export function keepEvents(events: readonly TrailEvent[], keep: readonly string[], human: { id: string; gate: "login" | "confirm" }[], secrets: readonly string[]): TrailEvent[] {

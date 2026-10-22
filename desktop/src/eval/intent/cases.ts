@@ -21,6 +21,8 @@ export interface IntentCase {
   nodes: Identity[];
   /** New values for the two replays, in text-input order. */
   replays: { texts: string[]; secret: string; file: string }[];
+  /** long replaces the short coupon detour with an abort longer than the task. */
+  noise?: "long";
   oracle(world: World, spec: { texts: string[]; secret: string; file: string }): string | null;
 }
 
@@ -431,6 +433,64 @@ export const INTENT_CASES: IntentCase[] = [
       && world.url.includes("/secure")
       && has(world, "Welcome " + spec.texts[0]) ? null : "signup",
   }),
+  make({
+    id: "long-abort",
+    name: "Save a title after a long abort",
+    startUrl: "https://fixture.test/long-abort",
+    secrets: [],
+    secretIds: [],
+    human: [],
+    noise: "long",
+    events: [
+      type("title", "Quilt"),
+      click("save", "Save", "button", { afterText: "Saved" }),
+    ],
+    replays: [
+      { texts: ["Wool"], secret: "", file: "a.txt" },
+      { texts: ["Silk"], secret: "", file: "b.txt" },
+    ],
+    oracle: (world, spec) => world.values.title === spec.texts[0] && has(world, "Saved") ? null : "long-abort",
+  }),
+  make({
+    id: "tabs-mix",
+    name: "Interleaved tabs",
+    startUrl: "https://fixture.test/tabs-mix",
+    secrets: [],
+    secretIds: [],
+    human: [],
+    events: [
+      click("tab-ship", "Ship", "tab", { id: "ship-1" }),
+      type("city", "Oslo"),
+      click("tab-pay", "Pay", "tab", { id: "pay-1" }),
+      type("note", "gift"),
+      click("tab-ship", "Ship", "tab", { id: "ship-2" }),
+      click("tab-pay", "Pay", "tab", { id: "pay-2" }),
+      click("finish", "Finish", "button", { id: "finish-go", afterText: "Done" }),
+    ],
+    replays: [
+      { texts: ["Rome", "wrap"], secret: "", file: "a.txt" },
+      { texts: ["Lisbon", "card"], secret: "", file: "b.txt" },
+    ],
+    oracle: (world, spec) => world.values.city === spec.texts[0] && world.values.note === spec.texts[1] && has(world, "Done") ? null : "tabs-mix",
+  }),
+  make({
+    id: "fare",
+    name: "Fare with a fixed currency",
+    startUrl: "https://fixture.test/fare",
+    secrets: [],
+    secretIds: [],
+    human: [],
+    events: [
+      type("currency", "USD"),
+      type("amount", "18"),
+      click("buy", "Buy", "button", { afterText: "Bought" }),
+    ],
+    replays: [
+      { texts: ["40"], secret: "", file: "a.txt" },
+      { texts: ["6"], secret: "", file: "b.txt" },
+    ],
+    oracle: (world, spec) => world.values.currency === "USD" && world.values.amount === spec.texts[0] && has(world, "Bought") ? null : "fare",
+  }),
 ];
 
 let noiseSeq = 0;
@@ -440,8 +500,8 @@ function noiseId(): string {
   return `n${noiseSeq}`;
 }
 
-/** Detours, a retry, scrolls, a typo, irrelevant reads, and an aborted coupon path. */
-export function noisyTrail(events: readonly TrailEvent[]): TrailEvent[] {
+/** Detours, a retry, scrolls, a typo, irrelevant reads, and an aborted path. */
+export function noisyTrail(events: readonly TrailEvent[], noise?: "long"): TrailEvent[] {
   const out: TrailEvent[] = [];
   const pushRead = (op: string) => {
     clock += 1;
@@ -487,6 +547,12 @@ export function noisyTrail(events: readonly TrailEvent[]): TrailEvent[] {
     op: "click",
     identity: dom("help", "button", "Help"),
   });
+  if (noise === "long") pushLongAbort(out);
+  else pushCoupon(out);
+  return out;
+}
+
+function pushCoupon(out: TrailEvent[]): void {
   clock += 1;
   out.push({
     id: noiseId(),
@@ -512,5 +578,21 @@ export function noisyTrail(events: readonly TrailEvent[]): TrailEvent[] {
     op: "click",
     identity: dom("cancel", "button", "Cancel"),
   });
-  return out;
+}
+
+function pushAct(out: TrailEvent[], event: Omit<TrailEvent, "id" | "ts" | "kind">): void {
+  clock += 1;
+  out.push({ id: noiseId(), ts: clock, kind: "act", ...event });
+}
+
+/** Eight events, opened at Shipping and closed at Cancel. */
+function pushLongAbort(out: TrailEvent[]): void {
+  pushAct(out, { op: "click", identity: dom("shipping", "button", "Shipping") });
+  pushAct(out, { op: "type", value: "1 Main", identity: dom("street", "textbox", "street") });
+  pushAct(out, { op: "type", value: "Bergen", identity: dom("town", "textbox", "town") });
+  pushAct(out, { op: "type", value: "West", identity: dom("region", "textbox", "region") });
+  pushAct(out, { op: "type", value: "5003", identity: dom("code", "textbox", "code") });
+  pushAct(out, { op: "click", identity: dom("gift", "button", "Gift") });
+  pushAct(out, { op: "type", value: "hello there", identity: dom("card", "textbox", "card") });
+  pushAct(out, { op: "click", identity: dom("cancel", "button", "Cancel") });
 }

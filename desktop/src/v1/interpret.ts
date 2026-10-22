@@ -133,6 +133,13 @@ function isType(event: TrailEvent): boolean {
   return event.op === "type" || event.op === "input" || event.op === "osType" || event.op === "osSetValue";
 }
 
+/** A currency or unit choice stays a literal. The other typed values become inputs. */
+export function isConstantType(event: TrailEvent): boolean {
+  if (!isType(event) || event.sensitive || event.gate) return false;
+  const id = [event.identity?.id, event.identity?.nameAttr].filter(Boolean).join(" ");
+  return /\b(currency|unit)\b/i.test(id);
+}
+
 function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
   const left = a.identity;
   const right = b.identity;
@@ -237,6 +244,15 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   }
   if (isType(event)) {
     const secret = isSecret(event, meta.secrets ?? []);
+    if (!secret && isConstantType(event)) {
+      return {
+        ...step,
+        action: "type",
+        value: event.value,
+        label: `Type ${event.value}`,
+        postcondition: post(event, undefined, meta.secrets ?? []),
+      };
+    }
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
     const input = addInput(inputs, kind, nameHint(event, secret));
     if (!secret && event.value && !event.rawPath) input.default = event.value;

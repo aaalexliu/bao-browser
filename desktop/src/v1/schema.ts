@@ -144,7 +144,7 @@ export interface WorkflowStep {
   sensitive?: boolean;
   /** A confirm or login step is done by the person. Replay does not click or type it. */
   human?: boolean;
-  /** Recorded purpose of the step. Repairs compare this to the live label. */
+  /** Recorded purpose of the step. The hybrid condenser writes it. Repairs compare it to the live label. It is not replayed. */
   intent?: string;
   /** A person has to do this step. Replay still runs it from the saved inputs. */
   gate?: "login" | "confirm";
@@ -186,6 +186,8 @@ export interface WorkflowV2 {
   readBack?: ReadBack;
   /** Checked against the live URL before locate. A login redirect is phase `auth`. */
   precondition?: Precondition;
+  /** One sentence written by the hybrid condenser. It is not replayed. */
+  summary?: string;
 }
 
 export interface ReplayArgs {
