@@ -173,6 +173,13 @@ const SCHEMA = [
     permission text NOT NULL,
     PRIMARY KEY (workflow_id, user_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS listing_allows (
+    user_id text NOT NULL REFERENCES users(id),
+    workflow_id text NOT NULL REFERENCES workflows(id),
+    trust text NOT NULL,
+    at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, workflow_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS reports (
     id text PRIMARY KEY,
     workflow_id text NOT NULL REFERENCES workflows(id),

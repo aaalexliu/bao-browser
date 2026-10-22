@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { CopyMenu } from "@/app/share-menu";
 import { listingStat } from "@/lib/listing";
-import { HttpError, publicWorkflow } from "@/lib/registry";
+import { consequentialCopy, driverLabel, permissionPreview } from "@/lib/permissions";
+import { HttpError, publicWorkflow, userAllowsListing } from "@/lib/registry";
 import { principal, when } from "@/lib/viewer";
 import type { SetupQuestion } from "../../setup-form";
 
@@ -28,6 +29,8 @@ export default async function PublicWorkflowPage({
   const steps = doc.steps ?? [];
   const shots = new Map(workflow.shots.map((shot) => [shot.stepId, shot.url]));
   const stat = listingStat(workflow.passRate.total, when(workflow.lastGreenAt), workflow.ciVerified);
+  const preview = permissionPreview(workflow.document);
+  const allowed = user ? await userAllowsListing(user.userId, id) : false;
   return (
     <article data-testid="workflow" className="listing">
       <header className="listing-hero">
@@ -44,8 +47,19 @@ export default async function PublicWorkflowPage({
           </div>
         </div>
         <div className="listing-install">
-          <a className="button primary" data-testid="install" href={workflow.importLink}>Install</a>
-          <p className="muted">Opens the import sheet on this Mac.</p>
+          {allowed ? (
+            <>
+              <a className="button primary" data-testid="install" href={workflow.importLink}>Install</a>
+              <p className="muted" data-testid="allowed">{preview.trust === "ask" ? "Allowed. Confirm and submit stay on Always ask." : "Allowed. Opens the import sheet on this Mac."}</p>
+            </>
+          ) : user ? (
+            <form action={`/api/marketplace/${id}/allow`} method="post">
+              <button className="button primary" type="submit" data-testid="allow">Allow</button>
+              <p className="muted">Allow it before it can be installed or run.</p>
+            </form>
+          ) : (
+            <a className="button primary" href="/login">Sign in to allow</a>
+          )}
         </div>
       </header>
       <div className="listing-layout">
@@ -86,6 +100,25 @@ export default async function PublicWorkflowPage({
           </ol>
         </div>
         <aside className="card listing-side">
+          <section className="permissions" data-testid="permissions">
+            <h2>Before it runs</h2>
+            <dl>
+              <dt>Sites</dt>
+              <dd data-testid="perm-sites">{preview.sites.length ? preview.sites.join(", ") : "No sites"}</dd>
+              <dt>Inputs</dt>
+              <dd data-testid="perm-inputs">
+                {preview.inputs.length ? preview.inputs.map((input) => (
+                  <span className="chip" data-secret={input.secret ? "true" : "false"} key={input.name}>
+                    {input.label}{input.secret ? " · secret" : ""}
+                  </span>
+                )) : "Asks for nothing"}
+              </dd>
+              <dt>Runs in</dt>
+              <dd data-testid="perm-driver">{driverLabel(preview.driver)}</dd>
+              <dt>Confirm or submit</dt>
+              <dd data-testid="perm-trust">{consequentialCopy(preview)}</dd>
+            </dl>
+          </section>
           <h2>Sites</h2>
           <div className="chips" data-testid="domains">
             {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}

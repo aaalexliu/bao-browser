@@ -21,6 +21,8 @@ import {
   listRuns,
   listVersions,
   logout,
+  allowListing,
+  listingAllow,
   marketplace,
   previewPublication,
   publicWorkflow,
@@ -122,6 +124,14 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
         url.searchParams.get("category") || "",
       );
       return NextResponse.json({ hits });
+    }
+    if (parts[0] === "marketplace" && parts[2] === "allow" && (method === "GET" || method === "POST")) {
+      const principal = await requireUser(req);
+      if (method === "POST") {
+        const granted = await allowListing(principal, parts[1] || "");
+        return finish(req, granted, `/marketplace/${parts[1]}`);
+      }
+      return NextResponse.json(await listingAllow(principal, parts[1] || ""));
     }
     if (parts[0] === "marketplace" && parts[2] === "fork" && method === "POST") {
       const principal = await requireUser(req);

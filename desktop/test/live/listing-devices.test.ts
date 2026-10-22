@@ -138,6 +138,8 @@ test("listing page and devices against local vercel dev", { timeout: 600_000 }, 
     const versions = await page.getByTestId("versions").innerText();
     assert.match(versions, /v1/);
     assert.match(versions, /EDT|EST/);
+    await page.getByTestId("allow").click();
+    await page.getByTestId("install").waitFor();
     assert.equal(await page.getByTestId("install").getAttribute("href"), `bao://import/${doc.id}`);
     await page.getByTestId("share-open").click();
     assert.equal(await page.getByTestId("import-link").getAttribute("data-copy"), `bao://import/${doc.id}`);

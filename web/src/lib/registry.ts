@@ -5,6 +5,7 @@ import { isElementCrop } from "./png";
 import { query } from "./db";
 import { assertSyncSafe, type SyncShot } from "./guard";
 import { applyImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
+import { permissionPreview, type PermissionPreview } from "./permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
 import { runPublishGate } from "./review-gate";
 import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
@@ -684,6 +685,34 @@ export async function publicWorkflow(id: string) {
     importLink: `bao://import/${id}`,
     ciVerified: Boolean((await gateRow(id)).ci_verified),
   };
+}
+
+export async function listingAllow(principal: Principal | null, id: string): Promise<{ allowed: boolean; preview: PermissionPreview; trust: "ask" | "allow" }> {
+  const pub = await publicWorkflow(id);
+  const preview = permissionPreview(pub.document);
+  if (!principal) return { allowed: false, preview, trust: preview.trust };
+  const rows = await query<{ trust: string }>(
+    `SELECT trust FROM listing_allows WHERE user_id = $1 AND workflow_id = $2`,
+    [principal.userId, id],
+  );
+  const stored = rows[0]?.trust === "ask" || rows[0]?.trust === "allow" ? rows[0].trust : preview.trust;
+  return { allowed: rows.length > 0, preview, trust: stored };
+}
+
+export async function allowListing(principal: Principal, id: string): Promise<{ ok: true; preview: PermissionPreview; trust: "ask" | "allow" }> {
+  const pub = await publicWorkflow(id);
+  const preview = permissionPreview(pub.document);
+  await query(
+    `INSERT INTO listing_allows (user_id, workflow_id, trust) VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, workflow_id) DO UPDATE SET trust = EXCLUDED.trust, at = now()`,
+    [principal.userId, id, preview.trust],
+  );
+  return { ok: true, preview, trust: preview.trust };
+}
+
+export async function userAllowsListing(userId: string, id: string): Promise<boolean> {
+  const rows = await query(`SELECT workflow_id FROM listing_allows WHERE user_id = $1 AND workflow_id = $2`, [userId, id]);
+  return rows.length > 0;
 }
 
 export async function forkPublic(principal: Principal, id: string, answers: Record<string, unknown>) {

@@ -155,9 +155,27 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
     const describeAgain = toolJson(describedAgain) as { source: string; lastGreen: string };
     assert.equal(describeAgain.lastGreen, runBody.lastGreen);
 
-    const installed = await client.call({
+    const blocked = await client.call({
       jsonrpc: "2.0",
       id: 8,
+      method: "tools/call",
+      params: { name: "run_workflow", arguments: { id: LISTING_ID, inputs: {} } },
+    });
+    const blockedBody = toolJson(blocked) as { outcome: string; reason?: string; permissions?: { driver?: string; trust?: string } };
+    assert.equal(blockedBody.outcome, "needs_approval", blockedBody.reason || JSON.stringify(blockedBody));
+    assert.equal(blockedBody.permissions?.driver, "browser");
+    assert.equal(blockedBody.permissions?.trust, "allow");
+    assert.throws(() => libB.read(LISTING_ID));
+    const allowed = await fetch(`${origin}/api/marketplace/${LISTING_ID}/allow`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(allowed.status, 200, await allowed.text());
+
+    const installed = await client.call({
+      jsonrpc: "2.0",
+      id: 9,
       method: "tools/call",
       params: { name: "run_workflow", arguments: { id: LISTING_ID, inputs: {} } },
     });
@@ -192,6 +210,7 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
         run: { id: WORKFLOW_ID, outcome: runBody.outcome, source: runBody.source, lastGreen: runBody.lastGreen },
         searchAfterRun: { id: again.id, source: again.source, lastGreen: again.lastGreen },
         describeAfterRun: { id: WORKFLOW_ID, lastGreen: describeAgain.lastGreen },
+        marketplaceBlocked: { id: LISTING_ID, outcome: blockedBody.outcome },
         marketplaceRun: { id: LISTING_ID, outcome: installBody.outcome, source: installBody.source, lastGreen: installBody.lastGreen, installed: true },
         macAAfterSync: { id: WORKFLOW_ID, source: macAHit.source, lastGreen: macAHit.lastGreen },
       };
