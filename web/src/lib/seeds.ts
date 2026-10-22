@@ -66,7 +66,7 @@ export const SEED_WORKFLOWS: Seed[] = [
       label: "Submit the search",
       surface: "dom",
       timeoutMs: 8000,
-      postcondition: { kind: "url", match: "search", timeoutMs: 8000 },
+      postcondition: { kind: "url", match: "{{query}}", timeoutMs: 12000 },
     },
   ]),
   seed("public-form", "Submit a public form", "Forms", "https://httpbin.org/forms/post", [

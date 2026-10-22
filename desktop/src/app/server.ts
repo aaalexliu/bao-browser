@@ -61,7 +61,7 @@ import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
-import { pairDevice, syncAll, syncStatus } from "../v1/sync";
+import { keepMine, openConflict, pairDevice, syncAll, syncStatus } from "../v1/sync";
 import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
 import type { Settings } from "../v1/store";
 
@@ -413,6 +413,13 @@ export async function startApp(opts: {
         const body = await readBody(req) as { mode?: "sync" | "push" | "pull" };
         const mode = body.mode === "push" || body.mode === "pull" ? body.mode : "sync";
         return json(res, await syncAll(library, mode));
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync/conflict") {
+        const body = await readBody(req) as { id?: string; action?: string };
+        if (!body.id) return json(res, { error: "id" }, 400);
+        if (body.action === "open") return json(res, openConflict(library, body.id));
+        if (body.action === "keep") return json(res, await keepMine(library, body.id));
+        return json(res, { error: "action" }, 400);
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
         return json(res, library.importJson(String(await readBody(req, true))));

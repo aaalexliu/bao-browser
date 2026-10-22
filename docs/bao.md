@@ -165,7 +165,7 @@ The integration branch (pull request 58) is the tree a Mac build should use. It 
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
 
-`docs/mac-test.md` is the path from a fresh macOS account to the signed `Bao.app`. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 stays open until its rebase onto that line is finished. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` to Bao's owned Chrome only.
+`docs/mac-test.md` is the path from a fresh macOS account to the signed `Bao.app`. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` to Bao's owned Chrome only.
 
 # Importing one site's login
 
@@ -308,7 +308,7 @@ npm run bao -- sync --home ~/.local/share/bao
 
 `bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. A newer remote version wins. The copy you had is written to `conflicts/<id>.json` and shown under Settings → Sync. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
 
-Settings → Sync shows the paired devices and item counts per category. Secrets are inputs of type `secret` with no default. Typed secret values, cookie headers, and screenshot bytes are dropped before a push. A payload that still contains them is rejected.
+Settings → Sync shows the paired devices and item counts per category. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). The Mac permission card stays on Library, and only while a grant is missing. It is not repeated here. Secrets are inputs of type `secret` with no default. Typed secret values, cookie headers, and screenshot bytes are dropped before a push. A payload that still contains them is rejected.
 
 ## Share a workflow
 

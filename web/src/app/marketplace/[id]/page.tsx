@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { HttpError, publicWorkflow } from "@/lib/registry";
 import { principal, rate, when } from "@/lib/viewer";
 import { SetupForm } from "../../setup-form";
+import { InstallButton } from "../../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,11 @@ export default async function PublicWorkflowPage({
         {workflow.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
         {workflow.domains.length ? null : <span className="chip">No network calls</span>}
       </div>
-      <p className="mono">{workflow.link}</p>
+      <div className="card">
+        <h2>Install</h2>
+        <p className="muted">Shortcuts-style setup stays on your machine. The button shows the link this Mac opens.</p>
+        <InstallButton link={workflow.link} />
+      </div>
       <h2>Steps</h2>
       <ol className="film">
         {workflow.shots.map((shot) => (
@@ -49,9 +54,13 @@ export default async function PublicWorkflowPage({
           </li>
         ))}
       </ol>
-      <p className="muted">Redacted on the device. These swatches are not the original pixels.</p>
+      <p className="muted">The first picture is the redacted crop of the first step that is not a secret. Password fields are covered before it leaves the device.</p>
       <ol className="steps">
         {steps.map((step) => <li key={step.id}>{step.label}</li>)}
+      </ol>
+      <h2>Setup questions</h2>
+      <ol className="steps" data-testid="setup-questions">
+        {workflow.questions.map((question) => <li key={question.name}>{question.prompt}</li>)}
       </ol>
       <h2>Inputs</h2>
       {user ? (

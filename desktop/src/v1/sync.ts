@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
-import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
+import { assertSyncSafe, buildPushBody, buildRunBody, SyncRejected } from "../../../web/src/lib/guard";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
@@ -14,6 +14,7 @@ export interface DeviceRow {
   id: string;
   name: string;
   created_at: string;
+  last_seen_at?: string | null;
 }
 
 export interface CategoryCount {
@@ -36,6 +37,7 @@ export interface SyncState {
   backedUp: boolean;
   backupPath?: string;
   lastResult?: string;
+  lastSyncedAt?: string;
   workflows: Record<string, { version: number; hash: string }>;
   pushedRuns: string[];
   remoteDevices: DeviceRow[];
@@ -51,6 +53,7 @@ export interface SyncView {
   backedUp: boolean;
   backupPath?: string;
   lastResult?: string;
+  lastSyncedAt?: string;
   devices: DeviceRow[];
   categories: CategoryCount[];
   localCategories: CategoryCount[];
@@ -87,6 +90,7 @@ export function loadState(root: string): SyncState {
     backedUp: Boolean(parsed.backedUp),
     backupPath: parsed.backupPath,
     lastResult: parsed.lastResult,
+    lastSyncedAt: parsed.lastSyncedAt,
     workflows: parsed.workflows ?? {},
     pushedRuns: parsed.pushedRuns ?? [],
     remoteDevices: parsed.remoteDevices ?? [],
@@ -111,6 +115,7 @@ export function syncStatus(library: Library): SyncView {
     backedUp: state.backedUp,
     backupPath: state.backupPath,
     lastResult: state.lastResult,
+    lastSyncedAt: state.lastSyncedAt,
     devices: state.remoteDevices,
     categories: state.remoteCategories,
     localCategories: localCategoryCounts(library),
@@ -152,14 +157,49 @@ export async function syncAll(library: Library, mode: "sync" | "push" | "pull" =
     pulled = incoming.pulled;
     conflicts += incoming.conflicts;
   }
+  let refused = "";
   if (mode !== "pull") {
     const outgoing = await pushLocal(library, state);
     pushed = outgoing.pushed;
     conflicts += outgoing.conflicts;
-    await pushRuns(library, state);
+    refused = outgoing.refused;
+    if (!refused) await pushRuns(library, state);
   }
   await refreshAccount(state);
-  state.lastResult = `pushed ${pushed}, pulled ${pulled}, conflicts ${conflicts}`;
+  state.lastSyncedAt = new Date().toISOString();
+  state.lastResult = refused
+    ? `Push refused: ${refused}`
+    : `pushed ${pushed}, pulled ${pulled}, conflicts ${conflicts}`;
+  saveState(library.root, state);
+  return syncStatus(library);
+}
+
+export function openConflict(library: Library, id: string): { id: string; name: string; steps: string[] } {
+  const state = loadState(library.root);
+  const note = state.conflicts.find((item) => item.id === id);
+  if (!note || !existsSync(note.file)) throw new Error("no conflict");
+  const doc = migrate(JSON.parse(readFileSync(note.file, "utf8")));
+  return { id: doc.id, name: doc.name, steps: doc.steps.map((step) => step.label) };
+}
+
+export async function keepMine(library: Library, id: string): Promise<SyncView> {
+  const state = loadState(library.root);
+  if (!state.server || !state.deviceToken) throw new Error("pair this Mac first");
+  const note = state.conflicts.find((item) => item.id === id);
+  if (!note || !existsSync(note.file)) throw new Error("no conflict");
+  const local = migrate(JSON.parse(readFileSync(note.file, "utf8")));
+  const errors = validateWorkflow(local);
+  if (errors.length) throw new Error(errors.join(", "));
+  library.save(local);
+  const result = await pushDocument(library, state, local);
+  if (result.kind === "refused") state.lastResult = `Push refused: ${result.message || "secret param"}`;
+  else if (result.kind === "conflict") state.lastResult = `Still in conflict on ${id}`;
+  else {
+    state.conflicts = state.conflicts.filter((item) => item.id !== id);
+    state.lastResult = `Kept ${local.name}`;
+  }
+  state.lastSyncedAt = new Date().toISOString();
+  await refreshAccount(state).catch(() => undefined);
   saveState(library.root, state);
   return syncStatus(library);
 }
@@ -193,32 +233,54 @@ async function pullRemote(library: Library, state: SyncState): Promise<{ pulled:
   return { pulled, conflicts };
 }
 
-async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: number; conflicts: number }> {
+async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: number; conflicts: number; refused: string }> {
   let pushed = 0;
   let conflicts = 0;
+  let refused = "";
   for (const doc of library.list()) {
-    const hash = docHash(doc);
-    const known = state.workflows[doc.id];
-    if (known && known.hash === hash) continue;
-    const heal = library.readKeptHeal(doc.id);
-    const body = buildPushBody(doc, {
+    const result = await pushDocument(library, state, doc);
+    if (result.kind === "pushed") pushed += 1;
+    if (result.kind === "conflict") conflicts += 1;
+    if (result.kind === "refused") refused = result.message || "secret param";
+  }
+  return { pushed, conflicts, refused };
+}
+
+async function pushDocument(
+  library: Library,
+  state: SyncState,
+  doc: WorkflowV2,
+): Promise<{ kind: "pushed" | "conflict" | "skip" | "refused"; message?: string }> {
+  const hash = docHash(doc);
+  const known = state.workflows[doc.id];
+  if (known && known.hash === hash) return { kind: "skip" };
+  const heal = library.readKeptHeal(doc.id);
+  let body: ReturnType<typeof buildPushBody>;
+  try {
+    assertSyncSafe({ document: doc, heal });
+    body = buildPushBody(doc, {
       baseVersion: known?.version ?? 0,
       heal,
       category: categoryFor(doc),
     });
-    try {
-      const result = await request<{ version: number }>(state, "POST", `/api/workflows/${encodeURIComponent(doc.id)}/versions`, body);
-      state.workflows[doc.id] = { version: result.version, hash };
-      library.clearKeptHeal(doc.id);
-      pushed += 1;
-    } catch (err) {
-      const conflict = err as Error & { status?: number; current?: PullBody };
-      if (conflict.status !== 409 || !conflict.current?.document) throw err;
-      stash(library, state, doc, conflict.current);
-      conflicts += 1;
-    }
+  } catch (err) {
+    if (err instanceof SyncRejected) return { kind: "refused", message: err.message };
+    throw err;
   }
-  return { pushed, conflicts };
+  try {
+    const result = await request<{ version: number }>(state, "POST", `/api/workflows/${encodeURIComponent(doc.id)}/versions`, body);
+    state.workflows[doc.id] = { version: result.version, hash };
+    library.clearKeptHeal(doc.id);
+    return { kind: "pushed" };
+  } catch (err) {
+    const conflict = err as Error & { status?: number; current?: PullBody };
+    if (conflict.status === 409 && conflict.current?.document) {
+      stash(library, state, doc, conflict.current);
+      return { kind: "conflict" };
+    }
+    if (conflict.status === 400 || err instanceof SyncRejected) return { kind: "refused", message: conflict.message };
+    throw err;
+  }
 }
 
 async function pushRuns(library: Library, state: SyncState): Promise<void> {

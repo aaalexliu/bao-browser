@@ -1,5 +1,6 @@
 import { marketplace } from "@/lib/registry";
-import { rate, when } from "@/lib/viewer";
+import { when } from "@/lib/viewer";
+import { GalleryCard } from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -35,16 +36,18 @@ export default async function MarketplacePage({
       </div>
       <div className="grid" data-testid="marketplace">
         {hits.map((hit) => (
-          <a className="card" key={hit.id} href={`/marketplace/${hit.id}`}>
-            <h2>{hit.title}</h2>
-            <p className="muted">{hit.summary}</p>
-            <div className="chips">
-              <span className="chip">{hit.category}</span>
-              {hit.site ? <span className="chip">{hit.site}</span> : null}
-              {hit.verified ? <span className="badge">Verified author</span> : null}
-            </div>
-            <p className="muted">{hit.author} · {rate(hit.passRate)} · last green {when(hit.lastGreenAt)}</p>
-          </a>
+          <GalleryCard
+            key={hit.id}
+            href={`/marketplace/${hit.id}`}
+            id={hit.id}
+            title={hit.title}
+            summary={hit.summary}
+            thumbnail={hit.thumbnail}
+            runs={hit.passRate.total}
+            lastGreen={when(hit.lastGreenAt)}
+            domains={hit.domains}
+            verified={hit.verified}
+          />
         ))}
       </div>
       {hits.length ? null : <p>Nothing public yet. Replay a workflow, then confirm the preview.</p>}

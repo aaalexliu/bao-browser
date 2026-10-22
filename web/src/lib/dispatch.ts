@@ -148,7 +148,8 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
     if (parts[0] === "workflows" && parts[2] === "review" && method === "POST") {
       const principal = await requireUser(req);
       const body = await readBody(req);
-      return NextResponse.json(await recordReview(principal, parts[1] || "", String(body.documentHash || "")));
+      const shots = Array.isArray(body.shots) ? body.shots as { stepId?: string; png?: string; redacted?: boolean }[] : [];
+      return NextResponse.json(await recordReview(principal, parts[1] || "", String(body.documentHash || ""), shots));
     }
     if (parts[0] === "workflows" && parts[2] === "publish" && method === "POST") {
       const principal = await requireUser(req);

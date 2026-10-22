@@ -95,8 +95,10 @@ const SCHEMA = [
     user_id text NOT NULL REFERENCES users(id),
     name text NOT NULL,
     token_hash text UNIQUE NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    last_seen_at timestamptz
   )`,
+  `ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_seen_at timestamptz`,
   `CREATE TABLE IF NOT EXISTS pair_codes (
     code text PRIMARY KEY,
     user_id text NOT NULL REFERENCES users(id),

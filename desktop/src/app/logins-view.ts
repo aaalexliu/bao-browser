@@ -1,7 +1,7 @@
 // Logins screen. Profiles and saved sites. Cookie values never appear here.
 
 import type { BotCookiePolicy, PublicImportResult, PublicPreview, PublicProfile, SiteLoginConfig } from "../login-import/types";
-import { formatWhen } from "../v1/time";
+import { formatClock, formatWhen } from "../v1/time";
 import { esc } from "./views";
 
 export interface SavedSite extends SiteLoginConfig {
@@ -166,18 +166,38 @@ export function syncPanel(sync: {
   deviceName?: string;
   paired?: boolean;
   lastResult?: string;
+  lastSyncedAt?: string;
   backupPath?: string;
-  devices?: { name: string }[];
+  devices?: { name: string; last_seen_at?: string | null }[];
   categories?: { category: string; count: number }[];
   localCategories?: { category: string; count: number }[];
   conflicts?: { id: string; remoteVersion: number; file: string }[];
-} | undefined): string {
+} | undefined, opened?: { id: string; name: string; steps: string[] } | null): string {
   const row = sync || {};
-  const devices = (row.devices || []).map((device) => `<li>${esc(device.name)}</li>`).join("") || "<li>Pair this Mac to see your devices.</li>";
+  const devices = (row.devices || []).map((device) => {
+    const iso = device.last_seen_at || row.lastSyncedAt;
+    return `<div class="device" data-testid="device-row"><strong>${esc(device.name)}</strong><span>${esc(rowTime(iso))}</span></div>`;
+  }).join("");
   const account = (row.categories || []).map((item) => `<li>${esc(item.category)} <strong>${esc(item.count)}</strong></li>`).join("") || "<li>None yet.</li>";
   const local = (row.localCategories || []).map((item) => `<li>${esc(item.category)} <strong>${esc(item.count)}</strong></li>`).join("") || "<li>None yet.</li>";
-  const conflicts = (row.conflicts || []).map((item) => `<li>${esc(item.id)} kept remote v${esc(item.remoteVersion)}. Your copy is ${esc(item.file)}</li>`).join("");
-  return `<div class="card" id="sync-panel">
+  const conflicts = (row.conflicts || []).map((item) => {
+    const open = opened && opened.id === item.id
+      ? `<div data-testid="my-copy"><strong>${esc(opened.name)}</strong><ol>${opened.steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol></div>`
+      : "";
+    return `<article class="card" data-testid="conflict">
+      <h3>${esc(item.id)}</h3>
+      <p class="quiet">Remote version ${esc(item.remoteVersion)} replaced the copy on this Mac.</p>
+      ${open}
+      <div class="row">
+        <button type="button" data-open-conflict="${esc(item.id)}">Open my copy</button>
+        <button type="button" data-keep-mine="${esc(item.id)}">Keep mine instead</button>
+      </div>
+    </article>`;
+  }).join("");
+  const refused = row.lastResult && /refused|secret|cookie/i.test(row.lastResult)
+    ? `<article class="card" data-testid="sync-error"><h3>Push refused</h3><p>${esc(row.lastResult)}</p></article>`
+    : "";
+  return `<div class="card" id="sync-panel" data-testid="sync">
     <h3>Sync</h3>
     <p>Secrets, cookies, and unredacted screenshots stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
     <label>Server <input id="sync-server" value="${esc(row.server || "")}" placeholder="http://127.0.0.1:3000"></label>
@@ -189,14 +209,30 @@ export function syncPanel(sync: {
       <button id="sync-push" type="button">Push</button>
       <button id="sync-pull" type="button">Pull</button>
     </div>
-    <p>Last result: ${esc(row.lastResult || "Not synced yet.")}</p>
-    <p>Backup: ${esc(row.backupPath || "Taken automatically before the first sync.")}</p>
-    <p>Paired: ${row.paired ? "yes" : "no"}</p>
-    <h3>Devices</h3><ul>${devices}</ul>
+    <p class="quiet" data-testid="sync-result">${esc(row.lastResult || (row.paired ? "Paired" : "Not paired"))}</p>
+    ${row.lastSyncedAt ? `<p class="quiet" data-testid="last-synced">This Mac last synced ${esc(clockTime(row.lastSyncedAt))}</p>` : ""}
+    <p class="quiet">Backup: ${esc(row.backupPath || "Taken automatically before the first sync.")}</p>
+    <h3>Devices</h3>
+    <div data-testid="devices">${devices || `<p class="quiet">Pair this Mac to see your devices.</p>`}</div>
     <h3>On this Mac</h3><ul>${local}</ul>
     <h3>On the account</h3><ul>${account}</ul>
-    ${conflicts ? `<h3>Conflicts</h3><ul>${conflicts}</ul>` : ""}
+    ${refused}
+    ${conflicts ? `<h3>Conflicts</h3>${conflicts}` : ""}
   </div>`;
+}
+
+function clockTime(iso?: string | null): string {
+  if (!iso) return "Not synced yet";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Not synced yet";
+  return formatClock(date.getTime());
+}
+
+function rowTime(iso?: string | null): string {
+  if (!iso) return "Not synced yet";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Not synced yet";
+  return formatWhen(date.getTime());
 }
 
 function initials(name: string): string {

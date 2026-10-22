@@ -2,19 +2,21 @@
 // Run after `tsc -p tsconfig.desktop.json`. Chrome needs BAO_CHROME_NO_SANDBOX=1.
 
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { chromium } from "playwright";
+import { chromium, type Page } from "playwright";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import { startApp } from "../../src/app/server";
 import { migrate, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 import { SEED_WORKFLOWS } from "../../../web/src/lib/seeds";
+
+process.env.TZ = "America/New_York";
 
 const planted = "SuperSecretValue99";
 const fixturePassword = "fixture-pass-value";
@@ -25,9 +27,15 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   const logs: string[] = [];
-  const web = spawn("npm", ["run", "dev", "--", "--port", String(port), "-H", "127.0.0.1"], {
+  const webDir = path.join(process.cwd(), "web");
+  execFileSync("npm", ["run", "build"], {
+    cwd: webDir,
+    env: { ...process.env, BAO_AUTH_STUB: "1" },
+    stdio: "pipe",
+  });
+  const web = spawn("npm", ["run", "start", "--", "--port", String(port), "-H", "127.0.0.1"], {
     detached: true,
-    cwd: path.join(process.cwd(), "web"),
+    cwd: webDir,
     env: {
       ...process.env,
       BAO_PG_DIR: path.join(root, "pglite"),
@@ -78,6 +86,29 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     assert.ok(conflicted.conflicts.some((item) => item.id === "cross-mac"));
     const again = await syncAll(libA);
     assert.equal(again.backupPath, first.backupPath);
+
+    const wiki = localCopy("wikipedia-search", "wiki-roundtrip", "https://en.wikipedia.org/wiki/Main_Page");
+    wiki.name = "Wikipedia search";
+    libA.save(wiki);
+    const wikiPush = await syncAll(libA, "push");
+    assert.equal((wikiPush.lastResult || "").includes("refused"), false, wikiPush.lastResult);
+    await syncAll(libB, "pull");
+    assert.equal(libB.read("wiki-roundtrip").startUrl, "https://en.wikipedia.org/wiki/Main_Page");
+    process.env.BAO_RUN_VIDEO = "1";
+    const wikiRun = await runWorkflow(libB, { id: "wiki-roundtrip", inputs: { query: "Ada Lovelace" } });
+    delete process.env.BAO_RUN_VIDEO;
+    assert.equal(wikiRun.outcome, "ok", JSON.stringify(wikiRun));
+    const webm = readdirSync(path.join(homeB, "videos")).find((name) => name.endsWith(".webm"));
+    assert.ok(webm, "replay video was not saved");
+    const frame = "/opt/cursor/artifacts/screenshots/wikipedia-replay-frame.png";
+    mkdirSync(path.dirname(frame), { recursive: true });
+    const videoFile = path.join(homeB, "videos", webm);
+    try {
+      execFileSync("ffmpeg", ["-y", "-ss", "1", "-i", videoFile, "-frames:v", "1", frame], { stdio: "pipe" });
+    } catch {
+      execFileSync("ffmpeg", ["-y", "-i", videoFile, "-frames:v", "1", frame], { stdio: "pipe" });
+    }
+    assert.ok(statSync(frame).size > 1000);
 
     const bad = await fetch(`${origin}/api/workflows/bad-secret/versions`, {
       method: "POST",
@@ -155,8 +186,8 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         logs.push(`review ${seed.id} ${result.outcome} ${result.reason || ""}\n`);
       }
     }
-    for (const id of ["fixture-sign-in", "fixture-row", "fixture-username", "fixture-upload"]) {
-      assert.ok(published.includes(id), `${id} was not listed\n${logs.slice(-30).join("")}`);
+    for (const id of ["fixture-sign-in", "fixture-row", "fixture-username", "fixture-upload", "wikipedia-search", "public-form"]) {
+      assert.ok(published.includes(id), `${id} was not listed\n${logs.slice(-40).join("")}`);
     }
     const publicSignIn = await (await fetch(`${origin}/api/marketplace/fixture-sign-in`)).text();
     assert.equal(publicSignIn.includes(fixturePassword), false);
@@ -172,16 +203,21 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     mkdirSync(shots, { recursive: true });
     const browser = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
     try {
-      const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, timezoneId: "America/New_York" });
       await context.addCookies([{ name: "bao_session", value: examples.split("=")[1] || "", url: origin }]);
       const page = await context.newPage();
-      await page.goto(`${origin}/workflows/noted-hello/publish`, { waitUntil: "networkidle" });
+      page.on("pageerror", (err) => logs.push(`pageerror ${err.message}\n`));
+      page.on("requestfailed", (req) => logs.push(`fail ${req.url()} ${req.failure()?.errorText || ""}\n`));
+      await openPage(page, `${origin}/workflows/noted-hello/publish`, logs);
       await page.getByRole("heading", { name: "What goes public" }).waitFor();
       await page.getByTestId("verified").waitFor();
       await page.getByTestId("domains").waitFor();
-      assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green: \d{4}-\d{2}-\d{2}/);
+      assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green:.*[A-Z][a-z]{2} \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
       assert.match(await page.locator("table.diff").innerText(), /ada@acme.com/);
-      await page.screenshot({ path: path.join(shots, "publish-preview.png"), fullPage: true });
+      await page.screenshot({ path: path.join(shots, "publish-preview-light.png"), fullPage: true });
+      await clickTheme(page);
+      await page.screenshot({ path: path.join(shots, "publish-preview-dark.png"), fullPage: true });
+      await clickTheme(page);
 
       const listed = await fetch(`${origin}/api/workflows/noted-hello/publish`, {
         method: "POST",
@@ -191,23 +227,49 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       const publicNote = await (await fetch(`${origin}/api/marketplace/noted-hello`)).text();
       assert.equal(publicNote.includes("ada@acme.com"), false);
 
-      await page.goto(`${origin}/marketplace`, { waitUntil: "networkidle" });
+      await openPage(page, `${origin}/`, logs);
+      await page.getByTestId("library").waitFor();
+      await page.screenshot({ path: path.join(shots, "library-light.png"), fullPage: true });
+      await clickTheme(page);
+      await page.screenshot({ path: path.join(shots, "library-dark.png"), fullPage: true });
+      await clickTheme(page);
+
+      await openPage(page, `${origin}/marketplace`, logs);
       await page.getByTestId("marketplace").waitFor();
-      await page.locator("input[name=q]").fill("fixture");
-      await page.getByRole("button", { name: "Search" }).click();
-      await page.waitForURL(/q=fixture/);
-      assert.ok(await page.locator("[data-testid=marketplace] a").count() >= 1);
+      for (const id of ["fixture-sign-in", "fixture-row", "fixture-username", "fixture-upload", "wikipedia-search", "public-form"]) {
+        await page.locator(`[data-testid=listing][data-id="${id}"]`).waitFor();
+      }
+      assert.equal(await page.locator("input[name=q]").inputValue(), "");
+      const cardText = await page.getByTestId("marketplace").innerText();
+      assert.equal(cardText.includes("1 runs"), false);
+      assert.match(cardText, /1 run/);
+      const marks = await page.locator("[data-testid=listing]").evaluateAll((nodes) => nodes.map((node) => {
+        const shot = node.querySelector("img.shot");
+        if (shot) return `shot:${shot.getAttribute("src")}`;
+        const tile = node.querySelector(".tile");
+        return `tile:${tile?.getAttribute("data-letter")}:${tile?.getAttribute("data-domain")}`;
+      }));
+      assert.equal(new Set(marks).size, marks.length, marks.join("\n"));
+      await page.screenshot({ path: path.join(shots, "marketplace-light.png"), fullPage: true });
       await page.screenshot({ path: path.join(shots, "marketplace.png"), fullPage: true });
-      await page.locator("[data-testid=marketplace] a").first().click();
+      await clickTheme(page);
+      await page.screenshot({ path: path.join(shots, "marketplace-dark.png"), fullPage: true });
+      await clickTheme(page);
+      await page.locator(`[data-testid=listing][data-id="wikipedia-search"]`).click();
       await page.getByTestId("workflow").waitFor();
       await page.getByTestId("verified").waitFor();
       await page.getByTestId("domains").waitFor();
+      await page.getByTestId("setup-questions").waitFor();
       assert.match(await page.getByTestId("last-green").innerText(), /Last replayed green/);
-      assert.match(await page.locator("body").innerText(), /bao:\/\/workflow\//);
+      await page.getByTestId("install").click();
+      assert.match(await page.getByTestId("install-link").innerText(), /bao:\/\/workflow\/wikipedia-search/);
+      await page.screenshot({ path: path.join(shots, "workflow-light.png"), fullPage: true });
       await page.screenshot({ path: path.join(shots, "workflow.png"), fullPage: true });
+      await clickTheme(page);
+      await page.screenshot({ path: path.join(shots, "workflow-dark.png"), fullPage: true });
 
       const fresh = await context.newPage();
-      await fresh.goto(`${origin}/login`, { waitUntil: "networkidle" });
+      await openPage(fresh, `${origin}/login`, logs);
       await fresh.locator("input[name=email]").fill("guest@bao.local");
       await fresh.getByRole("button", { name: "Email me a link" }).click();
       await fresh.getByRole("link", { name: "Open the sign-in link" }).click();
@@ -233,18 +295,54 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       assert.equal(state.includes(tokenB), false);
       const desktop = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
       try {
-        const page = await desktop.newPage({ viewport: { width: 1100, height: 900 } });
+        const desk = await desktop.newContext({ viewport: { width: 1100, height: 900 }, timezoneId: "America/New_York" });
+        const page = await desk.newPage();
         await page.goto(`http://127.0.0.1:${app.port}/`);
         await page.getByRole("button", { name: "Library" }).click();
+        await page.getByText("From the first Mac again").waitFor();
+        await page.locator("article.wf-card", { hasText: "From the first Mac again" }).getByRole("button", { name: "Run" }).click();
         await page.getByText("bao://workflow/cross-mac").waitFor();
-        await page.getByRole("button", { name: "Replay" }).click();
         await page.getByRole("button", { name: "Re-run with past inputs" }).waitFor();
         await page.getByRole("button", { name: "Settings" }).click();
         await page.getByRole("heading", { name: "Devices" }).waitFor();
-        await page.getByText("Mac A").waitFor();
+        await page.getByTestId("devices").getByText("Mac A", { exact: true }).waitFor();
         await page.getByText("Conflicts", { exact: true }).waitFor();
+        await page.getByRole("button", { name: "Open my copy" }).waitFor();
+        await page.getByRole("button", { name: "Keep mine instead" }).waitFor();
         await page.getByText("before-sync-").waitFor();
+        await page.getByRole("button", { name: "Open my copy" }).click();
+        await page.getByTestId("my-copy").waitFor();
+        assert.match(await page.getByTestId("my-copy").innerText(), /Edited on the second Mac/);
+        assert.equal(await page.getByText("Two permissions on the Mac").count(), 0);
+        const deviceTime = await page.getByTestId("device-row").first().innerText();
+        assert.match(deviceTime, /just now|min ago|hour ago|day ago/);
+        assert.equal(deviceTime.includes("T") && deviceTime.includes("Z"), false);
+        assert.match(await page.getByTestId("last-synced").innerText(), /Oct \d+, \d+:\d{2} (AM|PM) (EDT|EST)/);
+        await page.screenshot({ path: path.join(shots, "desktop-sync-light.png"), fullPage: true });
         await page.screenshot({ path: path.join(shots, "desktop-sync.png"), fullPage: true });
+        await page.locator("#theme").selectOption("dark");
+        await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+        await page.screenshot({ path: path.join(shots, "desktop-sync-dark.png"), fullPage: true });
+        await page.locator("#theme").selectOption("light");
+        await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+        const secretDoc = localCopy("fixture-username", "secret-push", fixture);
+        secretDoc.inputs = [
+          ...secretDoc.inputs,
+          { name: "password", type: "secret", label: "Password", required: true },
+        ];
+        libB.save(secretDoc);
+        libB.noteHealPromotion("secret-push", { args: { password: planted } });
+        await page.getByRole("button", { name: "Push" }).click();
+        await page.getByTestId("sync-error").waitFor({ timeout: 30_000 });
+        const errorText = await page.getByTestId("sync-error").innerText();
+        assert.match(errorText, /secret param/);
+        assert.equal(errorText.includes(planted), false);
+        const hidden = await fetch(`${origin}/api/workflows/secret-push`, { headers: { authorization: `Bearer ${tokenB}` } });
+        assert.equal(hidden.status, 404);
+        await page.screenshot({ path: path.join(shots, "secret-push-light.png"), fullPage: true });
+        await page.locator("#theme").selectOption("dark");
+        await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+        await page.screenshot({ path: path.join(shots, "secret-push-dark.png"), fullPage: true });
       } finally {
         await desktop.close();
       }
@@ -396,6 +494,42 @@ async function waitHealth(origin: string, logs: string[]): Promise<void> {
 function frame(msg: unknown): Buffer {
   const json = JSON.stringify(msg);
   return Buffer.from(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+}
+
+async function clickTheme(page: Page): Promise<void> {
+  let before = "light";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      before = await page.evaluate(() => document.documentElement.getAttribute("data-theme") || "light");
+      break;
+    } catch {
+      await page.waitForTimeout(500);
+    }
+  }
+  const next = before === "dark" ? "light" : "dark";
+  await page.evaluate((theme) => localStorage.setItem("bao-theme", theme), next);
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.waitForFunction((theme) => document.documentElement.getAttribute("data-theme") === theme, next, { timeout: 15_000 });
+}
+
+async function openPage(
+  page: { goto: (url: string, opts: { waitUntil: "domcontentloaded"; timeout: number }) => Promise<{ status: () => number } | null> },
+  url: string,
+  logs: string[],
+): Promise<void> {
+  let last = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      const status = res?.status() ?? 0;
+      if (status > 0 && status < 500) return;
+      last = `status ${status}`;
+    } catch (err) {
+      last = err instanceof Error ? err.message : String(err);
+    }
+    logs.push(`open ${url} attempt ${attempt} ${last}\n`);
+  }
+  throw new Error(`could not open ${url}: ${last}\n${logs.slice(-40).join("")}`);
 }
 
 function freePort(): Promise<number> {

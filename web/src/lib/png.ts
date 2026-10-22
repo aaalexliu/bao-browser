@@ -21,6 +21,11 @@ function chunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([len, body, crc]);
 }
 
+export function isPlaceholderSwatch(png: Buffer): boolean {
+  if (png.length < 24 || png.toString("ascii", 12, 16) !== "IHDR") return false;
+  return png.readUInt32BE(16) === 96 && png.readUInt32BE(20) === 54;
+}
+
 /** A small PNG that does not contain the source image. `seed` only picks a color. */
 export function redactedPng(seed: number): Buffer {
   const w = 96;

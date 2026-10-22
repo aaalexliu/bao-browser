@@ -379,6 +379,7 @@ async function locateTarget(page: Page, target?: ShotTarget): Promise<{ box: Sho
   const tries: Array<() => ReturnType<Page["locator"]>> = [];
   if (identity?.testId) tries.push(() => page.getByTestId(identity.testId!));
   if (identity?.id && /^[\w-]+$/.test(identity.id)) tries.push(() => page.locator(`#${identity.id}`));
+  if (identity?.nameAttr && /^[\w.-]+$/.test(identity.nameAttr)) tries.push(() => page.locator(`[name="${identity.nameAttr}"]`));
   if (name) tries.push(() => page.getByRole(role, { name, exact: true }));
   if (hint.action === "login") tries.push(() => page.locator("#login"));
   if (hint.action === "confirm") tries.push(() => page.locator("#apply-btn, [data-testid='apply']"));
