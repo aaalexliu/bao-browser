@@ -1215,17 +1215,28 @@ function versionChange(version: VersionRow): string {
   return line + details;
 }
 
+/** A conflict draft counts steps that differ. A locator row lists the attributes that moved. */
+function changedPhrase(version: VersionRow, locator: { changed: string[] }): string {
+  if (version.conflict) {
+    const n = version.conflict.sides.filter((side) => side.changed).length;
+    if (n === 1) return "1 step";
+    if (n > 1) return `${n} steps`;
+    return "none";
+  }
+  return locator.changed.length ? locator.changed.join(", ") : "none";
+}
+
 function locatorHeld(version: VersionRow): string {
   const rows = version.history?.length ? version.history : version.locator ? [version.locator] : [];
   if (!rows.length) return "";
   const body = rows.map((locator) => {
-    const changed = locator.changed.length ? locator.changed.join(", ") : "none";
+    const changed = changedPhrase(version, locator);
     return `<tr data-locator-source="${esc(locator.source)}" data-score="${locator.score ?? ""}" data-step="${esc(locator.stepId)}">
       <td><time>${esc(formatClock(locator.at))}</time></td>
       <td>${esc(locator.source)}</td>
       <td>${esc(locator.runId || "—")}</td>
       <td>${locator.score ?? ""}</td>
-      <td>${esc(changed)}</td>
+      <td data-testid="version-changed">${esc(changed)}</td>
     </tr>`;
   }).join("");
   return `<table class="locator-history" data-testid="locator-history">

@@ -115,9 +115,9 @@
     .conflict-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.45rem 0; }
     .conflict-diff h4 { margin: 0 0 0.35rem; font-size: var(--text-md); }
     .conflict-diff ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.35rem; }
-    .conflict-diff li { display: grid; gap: 0.1rem; padding: 0.4rem 0.5rem; border-radius: 8px; background: var(--select); border-top: 0; }
+    .conflict-diff li { display: grid; gap: 0.1rem; padding: 0.4rem 0.5rem; border-radius: 8px; background: transparent; border-top: 0; }
     .conflict-diff li span { color: var(--quiet); font-size: var(--text-sm); }
-    .conflict-diff li[data-changed="true"] { outline: 1px solid var(--accent); }
+    .conflict-diff li[data-changed="true"] { outline: 1px solid var(--accent); background: var(--select); }
     .version-steps { margin: 0.35rem 0 0; }
     .version-steps summary { cursor: pointer; color: var(--quiet); }
     .version-steps ol { list-style: none; padding: 0; margin: 0.35rem 0 0; display: grid; gap: 0.35rem; }

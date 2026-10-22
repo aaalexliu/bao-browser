@@ -144,7 +144,39 @@ test("a conflict draft names both Macs and leaves the live file alone", () => {
   assert.match(html, /Keep both as a copy/);
   assert.match(html, /Click mine/);
   assert.match(html, /Click theirs/);
+  assert.match(html, /data-testid="version-changed">1 step</);
+  assert.match(html, /data-changed="true"><strong>Click mine</);
   assert.equal(html.includes("bao://"), false);
+});
+
+test("a conflict draft counts only the steps that differ and leaves a matching step plain", () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-count-"));
+  const library = new Library(home);
+  const mine = workflow("wf-conflict-count", "open");
+  mine.steps = [
+    { ...mine.steps[0]!, id: "one", label: "Open" },
+    { ...mine.steps[0]!, id: "two", index: 1, label: "Save", identity: ident({ testId: "save" }) },
+  ];
+  library.save(mine);
+  const theirs = workflow("wf-conflict-count", "open");
+  theirs.steps = [
+    { ...theirs.steps[0]!, id: "one", label: "Open Ada" },
+    { ...theirs.steps[0]!, id: "two", index: 1, label: "Save", identity: ident({ testId: "save" }) },
+  ];
+  noteConflict(library, {
+    mine,
+    theirs,
+    mineDevice: "Home Mac",
+    theirsDevice: "Ada's Mac",
+    remoteVersion: 2,
+  });
+  const html = versionsPanel(listVersions(library, "wf-conflict-count"));
+  assert.match(html, /data-testid="version-changed">1 step</);
+  assert.equal(html.includes(">2 steps<"), false);
+  assert.match(html, /data-changed="true"><strong>Open Ada</);
+  assert.match(html, /data-changed="true"><strong>Open</);
+  assert.match(html, /data-changed="false"><strong>Save</);
+  assert.equal(/data-changed="true"><strong>Save</.test(html), false);
 });
 
 test("the versions panel prints the local time with the zone label", () => {

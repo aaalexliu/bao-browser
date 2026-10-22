@@ -148,6 +148,10 @@ async function openConflict(page: Page): Promise<void> {
   assert.match(await page.getByTestId("conflict-banner").innerText(), /Changed on Ada's Mac and Home Mac/);
   assert.match(await page.getByTestId("conflict-diff").innerText(), /Open Ada/);
   assert.match(await page.getByTestId("conflict-diff").innerText(), /Save at home/);
+  assert.match(await page.locator("#versions").innerText(), /2 steps/);
+  const sides = page.locator('[data-testid="conflict-diff"] li');
+  assert.equal(await sides.count(), 4);
+  for (const side of await sides.all()) assert.equal(await side.getAttribute("data-changed"), "true");
   await page.getByTestId("keep-mine").waitFor();
   await page.getByTestId("keep-theirs").waitFor();
   await page.getByTestId("keep-both").waitFor();
