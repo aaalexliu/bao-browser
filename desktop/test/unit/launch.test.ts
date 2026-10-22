@@ -89,4 +89,6 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   assert.equal(main.includes("/Applications/Google Chrome.app"), false);
   assert.match(main, /Google Chrome for Testing/);
   assert.match(main, /Chromium\.app/);
+  assert.match(main, /--app=/);
+  assert.match(main, /--disable-infobars/);
 });

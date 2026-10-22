@@ -117,6 +117,8 @@ int main(void) {
       "--no-default-browser-check",
       "--disable-sync",
       "--force-renderer-accessibility",
+      /* App mode hides the toolbar. This switch hides the Chrome for Testing infobar. */
+      "--disable-infobars",
       (char *)NULL
     );
     _exit(127);

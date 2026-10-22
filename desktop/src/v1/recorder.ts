@@ -31,7 +31,9 @@ export function recorderSource(): string {
       path: [],
     });
     document.addEventListener("click", (event) => {
-      const el = event.target && event.target.closest ? event.target.closest("button,a,input,textarea,select,li,[data-testid]") : event.target;
+      const raw = event.target;
+      if (raw && raw.closest && raw.closest("input[type=file]")) return;
+      const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid]") : raw;
       if (!el) return;
       const before = location.href;
       setTimeout(() => send({ kind: "act", op: "click", identity: ident(el), beforeUrl: before, afterUrl: location.href }), 0);
@@ -45,8 +47,13 @@ export function recorderSource(): string {
       const el = event.target;
       if (!el) return;
       if (el.type === "file") {
+        if (window.__baoSkipNextFile) {
+          window.__baoSkipNextFile = false;
+          return;
+        }
         const file = el.files && el.files[0];
-        send({ kind: "act", op: "upload", identity: ident(el), fileName: file && file.name });
+        if (!file || !file.name || file.name.indexOf("/") !== -1 || file.name.indexOf("\\\\") !== -1) return;
+        send({ kind: "act", op: "upload", identity: ident(el), fileName: file.name });
         return;
       }
       if (el.type === "password") {
@@ -58,7 +65,8 @@ export function recorderSource(): string {
     document.addEventListener("drop", (event) => {
       const el = event.target;
       const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-      send({ kind: "act", op: "drop", identity: ident(el), fileName: file && file.name });
+      if (!file || !file.name || file.name.indexOf("/") !== -1 || file.name.indexOf("\\\\") !== -1) return;
+      send({ kind: "act", op: "drop", identity: ident(el), fileName: file.name });
     }, true);
   })();`;
 }

@@ -47,13 +47,13 @@ const OP = new Set(["+", "-", "*", "/", "×", "÷", "="]);
 
 /** Events that become steps, in step order. A merged type keeps the first event id. */
 export function retainedEvents(events: readonly TrailEvent[]): TrailEvent[] {
-  return mergeTyping(events.filter(keep));
+  return mergeTyping(withoutChooserClicks(events.filter(keep)));
 }
 
 export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
   const secrets = secretStrings(events, meta.secrets ?? []);
   const seen: InterpretMeta = { ...meta, secrets };
-  const kept = events.filter(keep);
+  const kept = withoutChooserClicks(events.filter(keep));
   const merged = mergeTyping(kept);
   const inputs: WorkflowInput[] = [];
   let steps = merged.map((event, index) => toStep(event, index, seen, inputs));
@@ -90,6 +90,16 @@ function keep(event: TrailEvent): boolean {
   if (NOISE.has(event.op)) return false;
   if (event.unresolved) return false;
   return true;
+}
+
+/** A click that only opens the chooser is not a step once the file event lands. */
+function withoutChooserClicks(events: TrailEvent[]): TrailEvent[] {
+  return events.filter((event, index) => {
+    if (event.op !== "click") return true;
+    const next = events[index + 1];
+    if (!next || (next.op !== "upload" && next.op !== "drop")) return true;
+    return !sameTarget(event, next);
+  });
 }
 
 function mergeTyping(events: TrailEvent[]): TrailEvent[] {
