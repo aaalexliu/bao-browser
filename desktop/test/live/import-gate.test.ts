@@ -81,12 +81,26 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
     await page.goto(`${origin}/share/${share.token}`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("import-sheet").waitFor();
     await page.getByRole("heading", { name: "Import" }).waitFor();
-    assert.match(await page.getByTestId("import-sheet").innerText(), /Nothing is saved until you answer these|What email should/);
+    const sheet = await page.getByTestId("import-sheet").innerText();
+    assert.match(await page.locator("article").innerText(), /Nothing is saved until you answer these/);
+    assert.match(sheet, /Email to use/);
+    assert.match(sheet, /The sharer's email was removed/);
+    assert.match(sheet, /Which file/);
+    assert.match(sheet, /The sharer's file was removed/);
+    assert.match(sheet, /For example, front/);
+    assert.equal(sheet.includes("What email should"), false);
+    assert.equal(sheet.includes("Cleared email"), false);
+    assert.equal(sheet.includes("What should Desk"), false);
+    const steps = await page.getByTestId("step-preview").innerText();
+    assert.match(steps, /Click Log in/);
     const html = await page.content();
     assert.equal(html.includes("ada@acme.com"), false);
     assert.equal(html.includes("/home/ada"), false);
     assert.equal(html.includes("Ada Lovelace"), false);
     await page.screenshot({ path: path.join(shots, "import-sheet.png"), fullPage: true });
+    await setTheme(page, "dark");
+    await page.screenshot({ path: path.join(shots, "import-sheet-dark.png"), fullPage: true });
+    await setTheme(page, "light");
 
     const installed = await fetch(`${origin}/api/share/${share.token}/install`, {
       method: "POST",
@@ -124,7 +138,17 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
     await page.getByTestId("blocked-publish").waitFor();
     assert.match(await page.getByTestId("gate-step").innerText(), /Click the missing control/);
     assert.match(await page.getByTestId("last-green").innerText(), /Not replayed yet/);
+    assert.equal(await page.getByTestId("list-it").isDisabled(), true);
+    assert.match(await page.getByTestId("gate-reason").innerText(), /bao couldn't find this control/);
+    assert.equal(await page.getByTestId("replay-again").isEnabled(), true);
+    assert.match(await page.getByTestId("byline").innerText(), /^By \S+$/);
+    const blockedHtml = await page.content();
+    assert.equal(blockedHtml.includes("below-threshold"), false);
+    assert.equal(blockedHtml.includes("Author author"), false);
     await page.screenshot({ path: path.join(shots, "blocked-publish.png"), fullPage: true });
+    await setTheme(page, "dark");
+    await page.screenshot({ path: path.join(shots, "blocked-publish-dark.png"), fullPage: true });
+    await setTheme(page, "light");
 
     const passing = await push(origin, author, passingWorkflow(fixture));
     assert.equal(passing.status, 201, await passing.text());
@@ -247,6 +271,12 @@ async function waitHealth(origin: string, logs: string[]): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
   throw new Error(`web did not start: ${last}\n${logs.join("").slice(-4000)}`);
+}
+
+async function setTheme(page: { evaluate: (fn: (theme: string) => void, theme: string) => Promise<void>; reload: (opts: { waitUntil: "domcontentloaded" }) => Promise<unknown>; waitForFunction: (fn: (theme: string) => boolean, theme: string) => Promise<unknown> }, theme: "light" | "dark"): Promise<void> {
+  await page.evaluate((next) => localStorage.setItem("bao-theme", next), theme);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction((next) => document.documentElement.getAttribute("data-theme") === next, theme);
 }
 
 function freePort(): Promise<number> {

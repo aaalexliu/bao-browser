@@ -50,7 +50,7 @@ interface OpenedState {
   link: string;
   importLink: string;
   saved: boolean;
-  questions: { name: string; type: string; label: string; required: boolean; choices?: string[]; prompt: string; cleared?: string }[];
+  questions: { name: string; type: string; label: string; required: boolean; choices?: string[]; prompt: string; hint?: string; example?: string; cleared?: string }[];
 }
 
 let state: ShellState & {
@@ -308,15 +308,19 @@ function importSheet(): string {
   const opened = state.opened;
   if (!opened) return `<section id="import-sheet" data-testid="import-sheet"><h2>Import</h2><p>Nothing is waiting.</p></section>`;
   const fields = opened.questions.map((question) => {
-    const cleared = question.cleared ? `<span class="meta">Cleared ${esc(question.cleared)}.</span>` : "";
-    if (question.type === "secret" || question.type === "file") {
-      return `<label>${esc(question.prompt)} ${cleared}<input disabled placeholder="Entered on your device, never sent"></label>`;
+    const hint = question.hint ? `<span class="meta">${esc(question.hint)}</span>` : "";
+    if (question.type === "file") {
+      return `<label>${esc(question.prompt)} ${hint}<input type="file" disabled></label>`;
+    }
+    if (question.type === "secret") {
+      return `<label>${esc(question.prompt)} ${hint}<input disabled placeholder="Entered on your device, never sent"></label>`;
     }
     if (question.type === "choice") {
       const options = (question.choices || []).map((choice) => `<option>${esc(choice)}</option>`).join("");
-      return `<label>${esc(question.prompt)} ${cleared}<select name="a_${esc(question.name)}">${options}</select></label>`;
+      return `<label>${esc(question.prompt)} ${hint}<select name="a_${esc(question.name)}">${options}</select></label>`;
     }
-    return `<label>${esc(question.prompt)} ${cleared}<input name="a_${esc(question.name)}" ${question.required ? "required" : ""}></label>`;
+    const example = question.example ? ` placeholder="for example ${esc(question.example)}"` : "";
+    return `<label>${esc(question.prompt)} ${hint}<input name="a_${esc(question.name)}" ${question.required ? "required" : ""}${example}></label>`;
   }).join("");
   return `<section id="import-sheet" data-testid="import-sheet" data-id="${esc(opened.id)}">
     <h2>Import</h2>

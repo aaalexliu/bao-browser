@@ -322,7 +322,7 @@ Settings → Sync shows the paired devices and item counts per category. Those t
 
 On the workflow page, mark which inputs are asked on import, then copy a view link or an install link. Emails, names, phone numbers, file paths, street addresses, and secret defaults are cleared from the shared copy. Those inputs show up as questions on an import sheet. Nothing is saved until the questions are answered.
 
-Secret and file answers are not stored. An email or a path typed as an answer is dropped. Other answers become defaults on the recipient's private copy only.
+Secret and file answers are not stored. A path is asked with the same file field capture records, and the path is not shown. An email typed as an answer is dropped. Other answers become defaults on the recipient's private copy only. A non-personal sample is shown as an example.
 
 Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered.
 
@@ -343,7 +343,7 @@ Listing stays disabled until a device replays that redacted copy:
 npm run bao -- sync review <id> --inputs inputs.json
 ```
 
-`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing and names the step. The marketplace page is the public catalog. Fork uses the same import sheet. Report sends a reason. There is no payment step.
+`bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. Only that run stamps last green and Verified. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace page is the public catalog. Fork uses the same import sheet. Report sends a reason. There is no payment step.
 
 Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted: the password is not stored, so the clean replay cannot sign in.
 

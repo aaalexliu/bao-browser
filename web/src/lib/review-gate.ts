@@ -5,6 +5,19 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
+const PLAIN_REASONS: Record<string, string> = {
+  "below-threshold": "bao couldn't find this control confidently enough.",
+  "no-candidates": "bao couldn't find this control.",
+  "lookup miss": "bao couldn't find this control.",
+  tie: "bao found more than one control and couldn't choose.",
+  "app-mismatch": "bao was looking in the wrong app.",
+};
+
+export function plainReplayReason(reason: string): string {
+  const text = reason.trim();
+  return PLAIN_REASONS[text] || text;
+}
+
 export interface GateResult {
   ok: boolean;
   stepId?: string;

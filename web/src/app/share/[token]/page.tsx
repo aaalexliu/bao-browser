@@ -35,9 +35,14 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
         {share.permission === "view" ? <p>This link is view only. You can see the questions. You cannot save a copy.</p> : null}
         {share.questions.length ? null : <p>This workflow has no import questions.</p>}
       </section>
-      <ol className="steps">
-        {(doc.steps ?? []).map((step, index) => <li key={index}>{step.label}</li>)}
-      </ol>
+      <section className="card" data-testid="step-preview">
+        <h2>Steps</h2>
+        <ol className="preview-steps">
+          {(doc.steps ?? []).map((step, index) => (
+            <li key={index}><span className="n">{index + 1}</span><span>{step.label}</span></li>
+          ))}
+        </ol>
+      </section>
     </article>
   );
 }

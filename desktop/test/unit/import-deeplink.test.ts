@@ -12,6 +12,7 @@ import { runThrowawayGate } from "../../src/v1/publish-gate";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { applyImportAnswers, importQuestions, missingAnswers, prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { plainReplayReason } from "../../../web/src/lib/review-gate";
 
 function workflow(id: string, name: string): WorkflowV2 {
   return {
@@ -49,8 +50,20 @@ test("personal defaults become import questions and leave the shared copy", () =
   assert.equal(text.includes("Ada Lovelace"), false);
   const names = released.questions.map((question) => question.name);
   assert.deepEqual(names, ["email", "who", "note", "desk", "password"]);
-  assert.equal(released.questions.find((question) => question.name === "email")?.cleared, "email");
+  const email = released.questions.find((question) => question.name === "email");
+  assert.equal(email?.cleared, "email");
+  assert.equal(email?.prompt, "Email to use");
+  assert.equal(email?.hint, "The sharer's email was removed.");
+  const note = released.questions.find((question) => question.name === "note");
+  assert.equal(note?.type, "file");
+  assert.equal(note?.prompt, "Which file");
+  assert.equal(note?.hint, "The sharer's file was removed.");
+  const desk = released.questions.find((question) => question.name === "desk");
+  assert.equal(desk?.prompt, "Desk");
+  assert.equal(desk?.example, "front");
+  assert.equal(desk?.hint, "For example, front.");
   assert.equal(released.questions.find((question) => question.name === "password")?.required, false);
+  assert.equal(plainReplayReason("below-threshold"), "bao couldn't find this control confidently enough.");
   const stored = released.document as { inputs: { name: string; cleared?: string; default?: string; askOnImport?: boolean }[] };
   assert.equal(stored.inputs.find((input) => input.name === "email")?.cleared, "email");
   assert.equal(stored.inputs.find((input) => input.name === "email")?.default, undefined);

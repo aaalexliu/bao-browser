@@ -10,6 +10,8 @@ export interface ImportQuestion {
   required: boolean;
   choices?: string[];
   prompt: string;
+  hint: string;
+  example?: string;
   cleared: string;
 }
 
@@ -22,6 +24,7 @@ interface InputRow {
   choices?: string[];
   askOnImport?: boolean;
   cleared?: string;
+  example?: string;
 }
 
 const NAME_FIELD = /^(name|fullName|firstName|lastName|author|customer|username)$/i;
@@ -45,14 +48,17 @@ export function importQuestions(document: unknown): ImportQuestion[] {
     const cleared = input.cleared || personalKind(input.default || "", input.name);
     const ask = input.askOnImport === true || input.type === "secret" || input.type === "file" || !!cleared;
     if (!ask) continue;
+    const copy = questionCopy(input, cleared);
     out.push({
       name: input.name,
-      type: input.type,
+      type: copy.type,
       label: input.label || input.name,
-      required: input.required !== false && input.type !== "secret" && input.type !== "file",
+      required: input.required !== false && copy.type !== "secret" && copy.type !== "file",
       choices: input.choices,
       cleared,
-      prompt: promptFor(input, cleared),
+      prompt: copy.prompt,
+      hint: copy.hint,
+      example: copy.example,
     });
   }
   return out;
@@ -93,6 +99,7 @@ export function prepareImport(document: unknown): { document: unknown; changes: 
       });
     }
     if (question.cleared) input.cleared = question.cleared;
+    if (question.example) input.example = question.example;
     input.askOnImport = true;
     delete input.default;
   }
@@ -106,6 +113,7 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
   const doc = structuredClone(document) as { inputs?: InputRow[] };
   for (const input of doc.inputs ?? []) {
     delete input.cleared;
+    delete input.example;
     if (input.type === "secret" || input.type === "file") {
       delete input.default;
       continue;
@@ -119,12 +127,28 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
   return doc;
 }
 
-function promptFor(input: InputRow, cleared: string): string {
+function questionCopy(input: InputRow, cleared: string): { type: string; prompt: string; hint: string; example?: string } {
   const label = input.label || input.name;
-  if (input.type === "secret") return "You enter this on your device. It is not saved here.";
-  if (input.type === "file") return "Choose the file on your Mac. The path stays on this machine.";
-  if (cleared === "email") return `What email should ${label} use? The previous email was cleared.`;
-  if (cleared === "name") return `What name should ${label} use? The previous name was cleared.`;
-  if (cleared === "path") return `Which file should ${label} use? The path was cleared.`;
-  return `What should ${label} be?`;
+  if (input.type === "secret") {
+    return { type: "secret", prompt: label, hint: "You enter this on your device. It is not saved here." };
+  }
+  if (input.type === "file" || cleared === "path") {
+    return {
+      type: "file",
+      prompt: "Which file",
+      hint: cleared === "path" ? "The sharer's file was removed." : "You choose this file on your Mac. It is not saved here.",
+    };
+  }
+  if (cleared === "email") return { type: input.type, prompt: "Email to use", hint: "The sharer's email was removed." };
+  if (cleared === "name") return { type: input.type, prompt: "Name to use", hint: "The sharer's name was removed." };
+  if (cleared === "phone") return { type: input.type, prompt: "Phone to use", hint: "The sharer's phone number was removed." };
+  if (cleared === "ssn") return { type: input.type, prompt: "Number to use", hint: "The sharer's number was removed." };
+  const sample = input.example || input.default || "";
+  const example = sample && !personalKind(sample, input.name) ? sample : "";
+  return {
+    type: input.type,
+    prompt: label,
+    hint: example ? `For example, ${example}.` : "The sharer asked for this.",
+    example: example || undefined,
+  };
 }
