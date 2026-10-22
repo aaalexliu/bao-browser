@@ -166,6 +166,7 @@ async function refresh(): Promise<void> {
     // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     guide: state.guide ? { status: state.guide.status, stepId: state.guide.stepId, actions: state.guide.actions } : null,
+    extract: state.extractPicker || "",
     screen,
     healFilter,
     openHeal,
@@ -195,7 +196,7 @@ function render(): void {
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
-  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state);
+  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state) + (state.extractPicker || "");
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
@@ -687,6 +688,29 @@ function bind(): void {
   const mark = document.getElementById("rec-mark");
   if (mark) mark.onclick = async () => {
     await fetch("/api/sessions/mark", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
+  const recExtract = document.getElementById("rec-extract");
+  if (recExtract) recExtract.onclick = async () => {
+    await fetch("/api/sessions/extract/arm", { method: "POST" });
+  };
+  const extractCommit = document.getElementById("extract-commit");
+  if (extractCommit) extractCommit.onclick = async () => {
+    const names: Record<string, string> = {};
+    const drop: string[] = [];
+    document.querySelectorAll<HTMLInputElement>("[data-col-keep]").forEach((box) => {
+      const id = box.dataset.colKeep || "";
+      const field = document.querySelector<HTMLInputElement>(`[data-col-name="${id}"]`);
+      if (!box.checked) drop.push(id);
+      else if (field) names[id] = field.value;
+    });
+    const pages = document.getElementById("extract-pages") as HTMLInputElement | null;
+    await fetch("/api/sessions/extract/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ names, drop, maxPages: pages ? Number(pages.value) : 1, as: "items" }),
+    });
     renderKey = "";
     await refresh();
   };

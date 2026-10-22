@@ -103,6 +103,7 @@ export function recorderSource(): string {
       path: [],
     });
     document.addEventListener("click", (event) => {
+      if (window.__baoPicking) return;
       const raw = event.target;
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
       const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid]") : raw;

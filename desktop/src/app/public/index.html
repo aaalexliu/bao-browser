@@ -281,6 +281,18 @@
     .toast strong { display: block; font-size: var(--text-sm); }
     .toast button { height: 28px; padding: 0 10px; }
     pre { white-space: pre-wrap; font: var(--text-sm)/1.45 var(--mono); }
+    #run-outputs { margin: 0.75rem 0 1rem; }
+    #run-outputs .output-head { display: flex; gap: 0.75rem; align-items: baseline; flex-wrap: wrap; }
+    #run-outputs .output-head h3 { margin: 0; }
+    #run-outputs .output-actions a { color: var(--accent); }
+    #run-outputs .output-scroll { overflow: auto; max-height: 420px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+    #run-outputs table { width: 100%; border-collapse: collapse; }
+    #run-outputs th, #run-outputs td { text-align: left; padding: 0.4rem 0.45rem; border-bottom: 1px solid var(--line); color: var(--ink); }
+    #run-outputs th { color: var(--quiet); font-weight: 600; }
+    #extract-picker { margin-top: 0.5rem; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 0.75rem; max-width: 520px; }
+    #extract-picker table { width: 100%; border-collapse: collapse; }
+    #extract-picker th, #extract-picker td { text-align: left; padding: 0.3rem 0.35rem; border-bottom: 1px solid var(--line); }
+    #extract-picker input[type="text"], #extract-picker input:not([type]) { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
     table.grid, table.identity, #pass-grid { width: 100%; border-collapse: collapse; }
     table.grid th, table.grid td, table.identity th, table.identity td, #pass-grid th, #pass-grid td {
       text-align: left;

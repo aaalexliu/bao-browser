@@ -6,6 +6,7 @@ import type { HealSettings } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
+import type { OutputValue } from "./data-steps";
 import type { HealMode, WorkflowV2 } from "./schema";
 import { migrate, toJson, validateWorkflow } from "./schema";
 
@@ -47,6 +48,8 @@ export interface StoredRun {
   precondition?: unknown;
   trail?: unknown[];
   trajectory?: unknown[];
+  /** Declared workflow outputs for this run. */
+  outputs?: OutputValue[];
   /** Human step returned by run_workflow. Secrets are not in here. */
   envelope?: {
     status: string;

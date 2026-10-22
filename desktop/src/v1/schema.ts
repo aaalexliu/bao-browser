@@ -3,14 +3,15 @@
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { canonical } from "./canonical";
+import { migrateDataSteps, validateDataSteps, workflowVersionError, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import type { ElementVersion } from "./element-history";
 
 export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 
-export type InputType = "text" | "secret" | "number" | "choice" | "file";
+export type InputType = "text" | "secret" | "number" | "choice" | "file" | "table";
 export type HealMode = "auto" | "approve";
 export type Surface = "dom" | "ax" | "atspi";
-export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify" | "note";
+export type StepAction = "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "confirm" | "login" | "verify" | "note" | "extract" | "for_each";
 
 export interface WorkflowInput {
   name: string;
@@ -193,11 +194,16 @@ export interface WorkflowStep {
   history?: ElementVersion[];
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
   unresolved?: { reason: string };
+  /** Pull one element or a repeated list. Replay reads the locators. No model. */
+  extract?: ExtractSpec;
+  /** Repeat `steps` for each row of an extract or a table input. */
+  forEach?: ForEachSpec;
 }
 
 export interface WorkflowV2 {
   schema: typeof WORKFLOW_SCHEMA_ID;
-  version: 2;
+  /** 2 is every workflow that does not scrape. 3 is extract, for_each, or outputs. */
+  version: 2 | 3;
   id: string;
   name: string;
   startUrl: string;
@@ -205,6 +211,8 @@ export interface WorkflowV2 {
   steps: WorkflowStep[];
   createdAt: number;
   updatedAt?: number;
+  /** Declared results. Replay fills them. run_workflow and get_run return the values. */
+  outputs?: WorkflowOutput[];
   /** Absent means the global setting, whose default is auto. */
   heal?: HealMode;
   /** False means the workflow has not been replayed. */
@@ -242,7 +250,8 @@ export function subst(template: string, args: ReplayArgs): string {
 export function validateWorkflow(doc: WorkflowV2): string[] {
   const errors: string[] = [];
   if (doc.schema !== WORKFLOW_SCHEMA_ID) errors.push("schema");
-  if (doc.version !== 2) errors.push("version");
+  const versionError = workflowVersionError(doc.version);
+  if (versionError) errors.push(versionError);
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
   const names = new Set<string>();
@@ -295,6 +304,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.gone) errors.push(...checkErrors(step.gone, step.id, "gone"));
     if (step.readBack) errors.push(...readBackErrors(step.readBack, step.id, names));
   });
+  errors.push(...validateDataSteps(doc));
   return errors;
 }
 
@@ -378,8 +388,8 @@ interface LooseWorkflow {
 /** Extension version 1, and the spike version-2 steps, both become this contract. */
 export function migrate(raw: unknown): WorkflowV2 {
   const doc = (raw && typeof raw === "object" ? raw : {}) as LooseWorkflow;
-  if (doc.schema === WORKFLOW_SCHEMA_ID && doc.version === 2 && Array.isArray(doc.inputs)) {
-    return doc as WorkflowV2;
+  if (doc.schema === WORKFLOW_SCHEMA_ID && (doc.version === 2 || doc.version === 3) && Array.isArray(doc.inputs)) {
+    return migrateDataSteps(doc as WorkflowV2);
   }
   const id = doc.id || "wf-migrated";
   const inputs: WorkflowInput[] = [];

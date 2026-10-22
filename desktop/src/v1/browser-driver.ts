@@ -4,12 +4,14 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
 import { shotWithBlur } from "./blur";
+import { installDataPage } from "./data-page";
+import type { ExtractSpec } from "./data-steps";
 import { dumpPage, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, type DomDump } from "./dom-page";
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
 import type { Driver, GuideAct, HealNotice, LiveTree, ShotTarget } from "./replay";
-import type { FileArg, Identity } from "./schema";
+import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
 
 export interface FileProof {
@@ -138,6 +140,33 @@ export class BrowserDriver implements Driver {
 
   async waitIdle(timeoutMs: number): Promise<void> {
     await this.page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => undefined);
+  }
+
+  async readList(spec: ExtractSpec): Promise<{ rows: Record<string, string>[]; nextVisible: boolean }> {
+    await this.page.evaluate(installDataPage);
+    return this.page.evaluate((payload) => {
+      const host = window as unknown as {
+        __baoReadList?: (spec: unknown) => { rows: Record<string, string>[]; nextVisible: boolean };
+      };
+      if (!host.__baoReadList) throw new Error("extract is not installed");
+      return host.__baoReadList(payload);
+    }, spec);
+  }
+
+  async activate(locators: StepLocator[]): Promise<boolean> {
+    await this.page.evaluate(installDataPage);
+    const marked = await this.page.evaluate((list) => {
+      const host = window as unknown as { __baoMark?: (locators: unknown) => boolean };
+      return host.__baoMark ? host.__baoMark(list) : false;
+    }, locators);
+    if (!marked) return false;
+    try {
+      await this.page.locator("[data-bao-pick]").click();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/navigation|detached|Execution context|Target closed/i.test(message)) throw err;
+    }
+    return true;
   }
 
   private async evaluateDump() {
