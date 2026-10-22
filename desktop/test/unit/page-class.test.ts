@@ -221,6 +221,16 @@ test("cookie, newsletter, ad, and chat clutter name a close control", () => {
   assert.equal(modal.class, "clutter");
   assert.equal(modal.reason, "modal");
   assert.equal(modal.dismiss?.text, "Close");
+  const form = classifyPage({
+    texts: ["Registration Form"],
+    nodes: [
+      { role: "dialog", text: "Registration Form" },
+      { role: "button", text: "Close" },
+      { role: "textbox", id: "firstName", name: "First Name" },
+    ],
+    targetPresent: true,
+  });
+  assert.equal(form.class, "changed");
 });
 
 test("a bot wall and a login wall stop before the step, and clutter retries once", async () => {

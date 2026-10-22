@@ -130,6 +130,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     }
     return { events: [event], step };
   });
+  bindTypedOptions(mapped);
   const pieces = foldNotes(collapseDigits(mapped, inputs), seen.secrets ?? []);
   attachExpr(pieces.map((piece) => piece.step));
   const captured = applyCapturedData(pieces, inputs);
@@ -202,7 +203,7 @@ export function trailDrops(events: readonly TrailEvent[]): TrailDrop[] {
     const prev = merged[merged.length - 1];
     if (prev && isType(prev) && isType(event) && sameTarget(prev, event)) {
       dropped.push({ id: event.id, reason: "merged into the previous type" });
-      prev.value = event.sensitive ? undefined : (prev.value || "") + (event.value || "");
+      prev.value = event.sensitive ? undefined : mergeTypedValue(prev.value || "", event.value || "");
       prev.sensitive = prev.sensitive || event.sensitive;
       prev.ts = event.ts;
       continue;
@@ -284,7 +285,7 @@ function mergeTyping(events: TrailEvent[]): TrailEvent[] {
   for (const event of events) {
     const prev = out[out.length - 1];
     if (prev && isType(prev) && isType(event) && sameTarget(prev, event) && !event.sensitive && !prev.sensitive) {
-      prev.value = (prev.value || "") + (event.value || "");
+      prev.value = mergeTypedValue(prev.value || "", event.value || "");
       prev.afterUrl = event.afterUrl || prev.afterUrl;
       prev.afterText = event.afterText || prev.afterText;
       prev.ts = event.ts;
@@ -306,6 +307,35 @@ function isType(event: TrailEvent): boolean {
   return event.op === "type" || event.op === "input" || event.op === "osType" || event.op === "osSetValue";
 }
 
+/**
+ * input and change both report the whole field, so "N" then "NC" then "NCR"
+ * is one value. A repeated letter is still two keystrokes: "o" then "o" is "oo".
+ * Chunks that do not extend the previous text stay concatenated ("t" + "omsmith").
+ */
+function mergeTypedValue(before: string, added: string): string {
+  if (!added) return before;
+  if (!before) return added;
+  if (added === before && added.length > 1) return added;
+  if (added.startsWith(before) && added.length > before.length) return added;
+  return before + added;
+}
+
+/** A suggestion click chooses the text just typed. Replay substitutes that input. */
+function bindTypedOptions(pieces: InterpretPiece[]): void {
+  for (let i = 1; i < pieces.length; i++) {
+    const piece = pieces[i]!;
+    const prev = pieces[i - 1]!;
+    if (piece.step.action !== "click" || prev.step.action !== "type" || !prev.step.input) continue;
+    const identity = piece.events[0]?.identity;
+    if (identity?.role !== "option") continue;
+    const sample = (identity.text || identity.name || "").replace(/\s+/g, " ").trim();
+    const typed = (prev.events[0]?.value || "").replace(/\s+/g, " ").trim();
+    if (!sample || sample !== typed) continue;
+    piece.step.selection = { by: "text", input: prev.step.input };
+    piece.step.label = `Click {{${prev.step.input}}}`;
+  }
+}
+
 /** A currency or unit choice stays a literal. The other typed values become inputs. */
 export function isConstantType(event: TrailEvent): boolean {
   if (!isType(event) || event.sensitive || event.gate) return false;
@@ -317,11 +347,14 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
   const left = a.identity;
   const right = b.identity;
   if (!left || !right) return false;
+  // Two date fields can share the accessible name "Date Picker". The path tells them apart.
+  if (left.cssPath && right.cssPath && left.cssPath !== right.cssPath) return false;
   return (left.id != null && left.id === right.id)
     || (left.testId != null && left.testId === right.testId)
     || (left.nameAttr != null && left.nameAttr === right.nameAttr)
     || (left.identifier != null && left.identifier === right.identifier)
-    || (left.name != null && left.name === right.name && left.role === right.role && left.app === right.app);
+    || (left.name != null && left.name === right.name && left.role === right.role && left.app === right.app)
+    || (left.cssPath != null && left.cssPath === right.cssPath);
 }
 
 function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: KnownTyped[]): WorkflowStep {

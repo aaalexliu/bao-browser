@@ -22,6 +22,8 @@ export interface DomDump {
   overlay?: boolean;
   /** visibility, display, or aria-hidden. A 0×0 box is reported on bbox, not here. */
   hidden?: boolean;
+  /** Inside a dialog. A form modal is not an overlay sitting on top of its own fields. */
+  inDialog?: boolean;
 }
 
 export interface PageDump {
@@ -207,6 +209,7 @@ export function dumpPage(): PageDump {
         const style = getComputedStyle(el);
         return style.display === "none" || style.visibility === "hidden" || el.getAttribute("aria-hidden") === "true";
       })(),
+      inDialog: !!el.closest("[role='dialog'], [role='alertdialog']"),
     });
   };
   document.querySelectorAll("body *").forEach((el) => consider(el));

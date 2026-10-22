@@ -377,6 +377,38 @@ function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {
   return group[group.length - 1];
 }
 
+/**
+ * A study search builds an unlabeled <a href="/api/.../download"> and clicks it.
+ * That node is gone on the next run, and its query string is the recorded search.
+ * The button the person pressed is the trigger replay can press again.
+ */
+function isGeneratedDownloadLink(identity: WorkflowStep["identity"]): boolean {
+  if (!identity || identity.id || identity.testId) return false;
+  const tag = (identity.tag || "").toLowerCase();
+  if (tag !== "a" && identity.role !== "link") return false;
+  if ((identity.text || identity.name || identity.label || "").trim()) return false;
+  return /\/download\b|[?&]format=csv/i.test(identity.href || "");
+}
+
+function takeDownloadTrigger(
+  outSteps: WorkflowStep[],
+  outGroups: ShapeEvent[][],
+  identity: WorkflowStep["identity"],
+): WorkflowStep["identity"] {
+  const prev = outSteps[outSteps.length - 1];
+  if (!prev || prev.action !== "click" || prev.datePicker) return identity;
+  outSteps.pop();
+  outGroups.pop();
+  if (!isGeneratedDownloadLink(prev.identity)) return prev.identity || identity;
+  const button = outSteps[outSteps.length - 1];
+  if (!button || button.action !== "click" || button.datePicker || isGeneratedDownloadLink(button.identity)) {
+    return prev.identity || identity;
+  }
+  outSteps.pop();
+  outGroups.pop();
+  return button.identity || identity;
+}
+
 function dateInput(inputs: WorkflowInput[], hint: string, event: ShapeEvent, zone: string): WorkflowInput {
   const parsed = parseRecordedDate(event.value || "");
   if (!parsed) throw new Error("date value");
@@ -512,13 +544,7 @@ export function shapeFilesDates(
       const suggested = event.suggestedFilename || event.fileName || "download";
       const output = outputName(suggested, usedOutputs);
       const step = steps[i]!;
-      let identity = step.identity;
-      const prev = outSteps[outSteps.length - 1];
-      if (prev && prev.action === "click" && !prev.datePicker) {
-        identity = prev.identity || identity;
-        outSteps.pop();
-        outGroups.pop();
-      }
+      const identity = takeDownloadTrigger(outSteps, outGroups, step.identity);
       outSteps.push({
         ...step,
         action: "download",
@@ -669,9 +695,25 @@ export function captureDownloads(client: CdpClient, onFile: (info: DownloadBegin
   });
 }
 
-export function watchDownload(client: CdpClient, timeoutMs: number): Promise<DownloadBegin> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("download timed out")), timeoutMs);
+export interface DownloadWatch {
+  done: Promise<DownloadBegin>;
+  /** Drop the timer. A trigger that throws must not reject after the caller has moved on. */
+  cancel(): void;
+}
+
+export function watchDownload(client: CdpClient, timeoutMs: number): DownloadWatch {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let rejectPromise: ((err: Error) => void) | undefined;
+  let settled = false;
+  const settle = (fn: () => void) => {
+    if (settled) return;
+    settled = true;
+    if (timer) clearTimeout(timer);
+    fn();
+  };
+  const done = new Promise<DownloadBegin>((resolve, reject) => {
+    rejectPromise = reject;
+    timer = setTimeout(() => settle(() => reject(new Error("download timed out"))), timeoutMs);
     let began: DownloadBegin | undefined;
     client.on("Browser.downloadWillBegin", (params) => {
       began = {
@@ -683,15 +725,19 @@ export function watchDownload(client: CdpClient, timeoutMs: number): Promise<Dow
     client.on("Browser.downloadProgress", (params) => {
       if (!began || String(params.guid || "") !== began.guid) return;
       const state = String(params.state || "");
-      if (state === "completed") {
-        clearTimeout(timer);
-        resolve(began);
-      } else if (state === "canceled") {
-        clearTimeout(timer);
-        reject(new Error("download canceled"));
-      }
+      if (state === "completed") settle(() => resolve(began!));
+      else if (state === "canceled") settle(() => reject(new Error("download canceled")));
     });
   });
+  // Node ends the process on an unhandled rejection. The caller awaits `done`
+  // when the trigger works, and cancels it when the trigger throws first.
+  done.catch(() => undefined);
+  return {
+    done,
+    cancel() {
+      settle(() => rejectPromise?.(new Error("download abandoned")));
+    },
+  };
 }
 
 function newestFinished(dir: string): string | undefined {
@@ -739,12 +785,15 @@ export interface DatePoint {
 }
 
 export interface DatePickInspect {
-  status: "nav" | "click" | "drag" | "error";
+  status: "nav" | "click" | "drag" | "select" | "error";
   kind?: string;
   x?: number;
   y?: number;
   from?: DatePoint;
   to?: DatePoint;
+  /** 1-12. react-datepicker's month <select> stores this minus one. */
+  month?: number;
+  year?: number;
   error?: string;
 }
 
@@ -788,10 +837,17 @@ export function inspectDatePicker(spec: { startIso: string; endIso: string | nul
     : kind === "rbc"
       ? root.querySelector(".rbc-toolbar-label")
       : root.querySelector("[data-month-label]");
-  const visible = parseLabel(labelEl?.textContent || "");
+  let visible = parseLabel(labelEl?.textContent || "");
+  const monthSel = kind === "datepicker" ? root.querySelector(".react-datepicker__month-select") as HTMLSelectElement | null : null;
+  const yearSel = kind === "datepicker" ? root.querySelector(".react-datepicker__year-select") as HTMLSelectElement | null : null;
+  if (monthSel && yearSel && monthSel.value !== "" && yearSel.value !== "") {
+    const fromSelect = { y: Number(yearSel.value), m: Number(monthSel.value) + 1 };
+    if (fromSelect.m >= 1 && fromSelect.m <= 12 && fromSelect.y > 0) visible = fromSelect;
+  }
   if (!visible) return { status: "error", kind, error: "picker month" };
   const target = end && cmp(end, start) !== 0 && cmp(end, visible) === 0 ? end : start;
   if (cmp(visible, target) !== 0) {
+    if (monthSel && yearSel) return { status: "select", kind, month: target.m, year: target.y };
     const forward = cmp(visible, target) < 0;
     const nav = kind === "datepicker"
       ? root.querySelector(forward ? ".react-datepicker__navigation--next" : ".react-datepicker__navigation--previous")
@@ -826,7 +882,8 @@ export function inspectDatePicker(spec: { startIso: string; endIso: string | nul
 
   if (kind === "datepicker") {
     const month = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][start.m - 1];
-    const want = new RegExp(`\\b${start.d} ${month} ${start.y}\\b`);
+    const ordinal = `${start.d}(?:st|nd|rd|th)?`;
+    const want = new RegExp(`(?:\\b${start.d}\\s+${month}\\s+${start.y}\\b|\\b${month}\\s+${ordinal},?\\s+${start.y}\\b)`, "i");
     const days = [...root.querySelectorAll(".react-datepicker__day")];
     const day = days.find((el) => want.test(el.getAttribute("aria-label") || "") && !el.classList.contains("react-datepicker__day--outside-month"))
       || days.find((el) => want.test(el.getAttribute("aria-label") || ""));

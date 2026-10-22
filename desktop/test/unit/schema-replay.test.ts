@@ -11,6 +11,7 @@ import { Library } from "../../src/v1/store";
 import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
 import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
+import { parseRecordedDate } from "../../src/v1/dates";
 import { migrate, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
@@ -517,4 +518,30 @@ test("value postcondition reads the live text", () => {
     { a: 7, b: 5 },
   );
   assert.equal(ok, true);
+});
+
+test("a repeated field snapshot stays one value and a suggestion click uses that input", () => {
+  const field = id({ role: "textbox", id: "react-select-3-input", cssPath: "#react-select-3-input" });
+  const option = id({ role: "option", text: "NCR", cssPath: "#react-select-3-option-0" });
+  const start = id({ role: "textbox", name: "Date Picker", cssPath: "#start" });
+  const end = id({ role: "textbox", name: "Date Picker", cssPath: "#end" });
+  const doc = interpret([
+    { id: "n", ts: 1, kind: "act", op: "type", value: "N", identity: field },
+    { id: "nc", ts: 2, kind: "act", op: "type", value: "NC", identity: field },
+    { id: "ncr", ts: 3, kind: "act", op: "type", value: "NCR", identity: field },
+    { id: "again", ts: 4, kind: "act", op: "type", value: "NCR", identity: field },
+    { id: "opt", ts: 5, kind: "act", op: "click", identity: option },
+    { id: "s1", ts: 6, kind: "act", op: "type", value: "01/15/2020", identity: start },
+    { id: "s2", ts: 7, kind: "act", op: "type", value: "01/15/2020", identity: start },
+    { id: "e1", ts: 8, kind: "act", op: "type", value: "12/31/2024", identity: end },
+  ], { id: "wf-snap", name: "Snap", startUrl: "https://example.test/" });
+  assert.equal(doc.inputs.find((item) => item.default === "NCR")?.default, "NCR");
+  assert.equal(doc.inputs.some((item) => item.default === "NCRNCR"), false);
+  const click = doc.steps.find((step) => step.action === "click");
+  assert.equal(click?.selection?.by, "text");
+  assert.equal(click?.selection?.input, doc.inputs.find((item) => item.default === "NCR")?.name);
+  assert.equal(doc.inputs.filter((item) => item.type === "date").length, 2);
+  assert.equal(doc.inputs.find((item) => item.format === "MM/DD/YYYY")?.format, "MM/DD/YYYY");
+  assert.equal(parseRecordedDate("01/15/2020")?.format, "MM/DD/YYYY");
+  assert.equal(parseRecordedDate("1/5/2020")?.format, "D/M/YYYY");
 });

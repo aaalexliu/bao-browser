@@ -223,8 +223,8 @@ const TASKS: Task[] = [
       file: { name: path.basename(files.replayImage[run - 1]!), path: files.replayImage[run - 1]! },
       byDefault: run === 1 ? P2_A : P2_B,
       byName: run === 1
-        ? { months: "March", years: "1991", days: "18" }
-        : { months: "November", years: "1984", days: "4" },
+        ? { dateOfBirthInput: "1991-03-18", dateOfBirth: "1991-03-18" }
+        : { dateOfBirthInput: "1984-11-04", dateOfBirth: "1984-11-04" },
     }),
     score: scoreP2,
   },
@@ -386,19 +386,25 @@ const P3_B: Record<string, string> = { "Bao Guest": "Grace Guest", "bao-guest@ex
 const P4_A: Record<string, string> = { "type 1 diabetes": "type 1 diabetes", California: "California" };
 const P4_B: Record<string, string> = { "type 1 diabetes": "migraine", California: "Texas" };
 const P6_A = peopleMap([
-  ["Ada Lovelace", "Alan Turing"],
+  ["Ada", "Alan"],
+  ["Lovelace", "Turing"],
   ["ada-table@example.com", "alan-table@example.com"],
-  ["Grace Hopper", "Edsger Dijkstra"],
+  ["Grace", "Edsger"],
+  ["Hopper", "Dijkstra"],
   ["grace-table@example.com", "edsger-table@example.com"],
-  ["Radia Perlman", "Barbara Liskov"],
+  ["Radia", "Barbara"],
+  ["Perlman", "Liskov"],
   ["radia-table@example.com", "barbara-table@example.com"],
 ]);
 const P6_B = peopleMap([
-  ["Ada Lovelace", "Ken Thompson"],
+  ["Ada", "Ken"],
+  ["Lovelace", "Thompson"],
   ["ada-table@example.com", "ken-table@example.com"],
-  ["Grace Hopper", "Dennis Ritchie"],
+  ["Grace", "Dennis"],
+  ["Hopper", "Ritchie"],
   ["grace-table@example.com", "dennis-table@example.com"],
-  ["Radia Perlman", "Frances Allen"],
+  ["Radia", "Frances"],
+  ["Perlman", "Allen"],
   ["radia-table@example.com", "frances-table@example.com"],
 ]);
 const P9_A: Record<string, string> = { Bao: "Ada", Buyer: "Alpha", "1 Market": "2 Market", "94105": "10001" };
@@ -465,16 +471,25 @@ async function recordP2(session: Session, files: RunFiles): Promise<void> {
   await session.drive({ click: "#dateOfBirthInput" });
   await session.drive({ select: { selector: ".react-datepicker__month-select", label: "January" } });
   await session.drive({ select: { selector: ".react-datepicker__year-select", value: "1990" } });
-  await session.attempt({ click: ".react-datepicker__day--015:not(.react-datepicker__day--outside-month)" }, "dob day");
-  await session.attempt({ fill: { selector: "#subjectsInput", value: "Maths" }, press: "Enter" }, "subjects");
+  await sleep(200);
+  await session.drive({ click: ".react-datepicker__day--015:not(.react-datepicker__day--outside-month)" });
+  // Enter submits the form when the suggestion list is closed. Click the option.
+  await session.drive({ fill: { selector: "#subjectsInput", value: "Maths", keys: true } });
+  await sleep(400);
+  await session.drive({ click: "#react-select-2-option-0" });
   await session.drive({ click: "label[for=hobbies-checkbox-1]" });
   await session.drive({ upload: { selector: "#uploadPicture", path: files.recordImage } });
   await session.drive({ fill: { selector: "#currentAddress", value: "1 Market Street" } });
-  await session.drive({ scroll: "#submit" });
-  await session.attempt({ click: "#react-select-3-input" }, "state");
-  await session.attempt({ fill: { selector: "#react-select-3-input", value: "NCR" }, press: "Enter" }, "state type");
-  await session.attempt({ click: "#react-select-4-input" }, "city");
-  await session.attempt({ fill: { selector: "#react-select-4-input", value: "Delhi" }, press: "Enter" }, "city type");
+  await session.drive({ scroll: "#state" });
+  // Enter submits the form. Typing opens the menu; the option click chooses it.
+  await session.drive({ fill: { selector: "#react-select-3-input", value: "NCR", keys: true } });
+  await sleep(400);
+  await session.drive({ click: "#react-select-3-option-0" });
+  await sleep(300);
+  await session.drive({ scroll: "#city" });
+  await session.drive({ fill: { selector: "#react-select-4-input", value: "Delhi", keys: true } });
+  await sleep(400);
+  await session.drive({ click: "#react-select-4-option-0" });
   await session.drive({ click: "#submit" });
   await session.waitFor("Thanks for submitting the form");
 }
@@ -507,19 +522,34 @@ async function recordP3(session: Session): Promise<void> {
 async function recordP4(session: Session): Promise<void> {
   await session.open("https://clinicaltrials.gov/search");
   await session.waitFor("clinicaltrials.gov");
-  await session.drive({ fill: { selector: "#advcond", value: "type 1 diabetes" } });
-  await session.drive({ fill: { selector: "#location-input", value: "California" }, press: "Enter" });
-  await session.drive({ click: "button:text-is('More Filters')" }).catch(() => undefined);
-  await session.drive({ click: "#adv-check0-status1" });
-  await session.drive({ click: "#apply-filters" }).catch(() => undefined);
-  await sleep(1500);
+  await session.drive({ fill: { selector: "#advcond", value: "type 1 diabetes" }, press: "Enter" });
+  await sleep(800);
+  await session.drive({ fill: { selector: "#location-input", value: "California", keys: true } });
+  await sleep(900);
+  // The first suggestion is Current Location. Choose the typed place.
+  await session.drive({ click: ".usa-combo-box__list-option >> text=\"California\"" });
+  await sleep(400);
+  // More Filters starts expanded. Clicking it closes the panel.
+  // Keystrokes are what the date picker and Apply button listen for.
+  await session.drive({
+    fill: { selector: ".usa-date-picker:has(#adv-date-start-from) .usa-date-picker__external-input", value: "01/15/2020", keys: true },
+    press: "Tab",
+  });
+  await session.drive({
+    fill: { selector: ".usa-date-picker:has(#adv-date-start-to) .usa-date-picker__external-input", value: "12/31/2024", keys: true },
+    press: "Tab",
+  });
+  await session.drive({ scroll: "#adv-check0-status1" });
+  await session.drive({ click: "label[for='adv-check0-status1']" });
+  await session.drive({ click: "#apply-filters" });
+  await sleep(3000);
   const view = await session.view();
   const count = lastCount(view.text || "");
   if (count == null || count > 2000) {
     throw new Error(`refusing the download; result count was ${count ?? "unread"} (limit 2000)`);
   }
   await session.drive({ click: "#action-bar-download-btn" });
-  await session.drive({ click: "#download-format-csv" });
+  await session.drive({ click: "label[for='download-format-csv']" });
   await session.drive({ click: "button.primary-button:text-is('Download')" });
   await sleep(2500);
 }
@@ -540,6 +570,8 @@ async function recordP6(session: Session): Promise<void> {
     ["Ada", "Lovelace", "ada-table@example.com", "36", "10001", "Math"],
     ["Grace", "Hopper", "grace-table@example.com", "41", "10002", "Compilers"],
     ["Radia", "Perlman", "radia-table@example.com", "44", "10003", "Networks"],
+    ["Donald", "Knuth", "donald-table@example.com", "84", "10004", "Algorithms"],
+    ["Margaret", "Hamilton", "margaret-table@example.com", "89", "10005", "Apollo"],
   ];
   for (const [first, last, email, age, salary, dept] of people) {
     await session.drive({ click: "#addNewRecordButton" });
@@ -701,6 +733,14 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
     };
   }
   const recorded = summarizeWorkflow(workflow, task.openUrl, recordError);
+  workflow = dropVolatileExpects(workflow);
+  // stop() already stored the workflow. Replay reads that copy, so the
+  // stripped expects have to be imported before the runs start.
+  try {
+    await call(port, "POST", "/api/workflows/import", workflow);
+  } catch (err) {
+    console.log(`import: ${err instanceof Error ? err.message : err}`);
+  }
   writeFileSync(path.join(ROOT, "workflows", `${task.id}.json`), `${JSON.stringify(redact(workflow), null, 2)}\n`);
   if (/429|too many requests/i.test(recordError) || /429|too many requests/i.test(workflow.startUrl)) {
     return {
@@ -921,7 +961,7 @@ function scoreP2(input: ScoreInput): { pass: boolean; cause: string; detail: str
     return { pass: false, cause: "pass check", detail: "the thanks modal was not in the replay evidence" };
   }
   const values = Object.values(input.args).filter((item): item is string => typeof item === "string" && item.length > 1);
-  const missing = values.filter((item) => !text.includes(item));
+  const missing = values.filter((item) => !dateForms(item).some((form) => text.includes(form)));
   const dob = dobIn(text);
   if (!dob) missing.push("DOB dd Month,yyyy");
   if (missing.length) return { pass: false, cause: missing.some((item) => /DOB|January|March|November/.test(item)) ? "date picker" : "pass check", detail: `modal missed ${missing.join("; ")}` };
@@ -955,12 +995,13 @@ function scoreP4(input: ScoreInput): { pass: boolean; cause: string; detail: str
 function scoreDownload(page: PageView, started: number): { pass: boolean; cause: string; detail: string } {
   const files = newCsvs(started);
   const count = lastCount(page.text || "");
-  if (!files.length) return { pass: false, cause: "download", detail: "no CSV landed in Downloads or the replay profile" };
-  const parsed = parseCsv(readFileSync(files[0]!, "utf8"));
+  const file = newestCsv(files);
+  if (!file) return { pass: false, cause: "download", detail: "no CSV landed in Downloads or the replay profile" };
+  const parsed = parseCsv(readFileSync(file, "utf8"));
   const statusCol = parsed.headers.findIndex((header) => /study status|^status$/i.test(header));
   const statuses = statusCol >= 0 ? parsed.rows.map((row) => (row[statusCol] || "").trim()) : [];
   const allRecruiting = statuses.length > 0 && statuses.every((item) => item.toUpperCase() === "RECRUITING");
-  if (count == null) return { pass: false, cause: "download", detail: `CSV ${parsed.rows.length} rows at ${files[0]}; the page count was unread` };
+  if (count == null) return { pass: false, cause: "download", detail: `CSV ${parsed.rows.length} rows at ${file}; the page count was unread` };
   if (parsed.rows.length !== count) return { pass: false, cause: "download", detail: `CSV rows ${parsed.rows.length} !== page count ${count}` };
   if (!allRecruiting) return { pass: false, cause: "download", detail: `CSV statuses were not all RECRUITING (${statuses.slice(0, 4).join(", ")})` };
   return { pass: true, cause: "", detail: `${parsed.rows.length} RECRUITING rows matched the page count` };
@@ -974,7 +1015,8 @@ function scoreP6(input: ScoreInput): { pass: boolean; cause: string; detail: str
   const wanted = input.run === 1
     ? ["Alan Turing", "Edsger Dijkstra", "Barbara Liskov"]
     : ["Ken Thompson", "Dennis Ritchie", "Frances Allen", "Donald Knuth", "Margaret Hamilton"];
-  const text = evidence(input);
+  // Earlier snapshots repeat rows that are still on the page. The final table is the check.
+  const text = input.page.text || "";
   const missing = wanted.filter((name) => !text.includes(name));
   const dupes = wanted.filter((name) => occurrences(text, name) > 1);
   if (input.run === 2 && input.workflow.steps.filter((step) => /add/i.test(step.label)).length < 5 && missing.length) {
@@ -1178,6 +1220,16 @@ function writeReel(task: string, run: number, frames: string[]): string | undefi
   return `docs/proof/realworld/artifacts/${path.basename(dest)}`;
 }
 
+function newestCsv(files: string[]): string | undefined {
+  let best: { file: string; mtime: number } | undefined;
+  for (const file of files) {
+    let mtime = 0;
+    try { mtime = statSync(file).mtimeMs; } catch { continue; }
+    if (!best || mtime >= best.mtime) best = { file, mtime };
+  }
+  return best?.file;
+}
+
 function newCsvs(since: number): string[] {
   const roots = [
     path.join(process.env.HOME || "/home/ubuntu", "Downloads"),
@@ -1199,7 +1251,7 @@ function walkCsv(dir: string, since: number, found: string[], depth: number): vo
     let st;
     try { st = statSync(full); } catch { continue; }
     if (st.isDirectory()) {
-      if (depth === 0 && dir === "/tmp" && !/^bao-(replay|profile|proof)/.test(name)) continue;
+      if (depth === 0 && dir === "/tmp" && !/^bao-(replay|profile|proof|runs)/.test(name)) continue;
       walkCsv(full, since, found, depth + 1);
     } else if (name.toLowerCase().endsWith(".csv") && st.mtimeMs >= since - 2000) {
       found.push(full);
@@ -1234,6 +1286,42 @@ function lastCount(text: string): number | null {
   const last = matches[matches.length - 1];
   if (!last) return null;
   return Number(last[1]!.replace(/,/g, ""));
+}
+
+/** A live result count is not a stable postcondition. "Clear Filters (4)" changes as studies change. */
+function dropVolatileExpects(workflow: WorkflowV2): WorkflowV2 {
+  const volatile = /^(Clear|Remove) Filters \(\d+\)$|^Loading results/i;
+  return {
+    ...workflow,
+    steps: workflow.steps.map((step) => {
+      const next = { ...step };
+      if (next.expect?.match && volatile.test(next.expect.match)) delete next.expect;
+      if (next.postcondition?.match && volatile.test(next.postcondition.match)) delete next.postcondition;
+      return next;
+    }),
+  };
+}
+
+function dateForms(value: string): string[] {
+  const forms = [value];
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!iso) return forms;
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[Number(iso[2]) - 1];
+  const abbr = short[Number(iso[2]) - 1];
+  if (!month || !abbr) return forms;
+  const day = String(Number(iso[3]));
+  const year = iso[1]!;
+  forms.push(
+    `${day} ${month},${year}`,
+    `${day} ${month}, ${year}`,
+    `${day} ${month} ${year}`,
+    `${day} ${abbr},${year}`,
+    `${day} ${abbr}, ${year}`,
+    `${day} ${abbr} ${year}`,
+  );
+  return forms;
 }
 
 function dobIn(text: string): string {

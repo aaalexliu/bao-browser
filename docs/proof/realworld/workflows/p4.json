@@ -1,154 +1,10 @@
 {
   "schema": "bao.workflow/v2",
-  "version": 2,
-  "id": "wf-1792676908524",
+  "version": 3,
+  "id": "wf-1792695163010",
   "name": "Captured workflow",
   "startUrl": "https://clinicaltrials.gov/search",
   "inputs": [
-    {
-      "name": "text",
-      "type": "text",
-      "required": true,
-      "label": "text"
-    },
-    {
-      "name": "text2",
-      "type": "text",
-      "required": true,
-      "label": "text2"
-    },
-    {
-      "name": "text3",
-      "type": "text",
-      "required": true,
-      "label": "text3"
-    },
-    {
-      "name": "text4",
-      "type": "text",
-      "required": true,
-      "label": "text4"
-    },
-    {
-      "name": "text5",
-      "type": "text",
-      "required": true,
-      "label": "text5"
-    },
-    {
-      "name": "text6",
-      "type": "text",
-      "required": true,
-      "label": "text6"
-    },
-    {
-      "name": "text7",
-      "type": "text",
-      "required": true,
-      "label": "text7"
-    },
-    {
-      "name": "text8",
-      "type": "text",
-      "required": true,
-      "label": "text8"
-    },
-    {
-      "name": "text9",
-      "type": "text",
-      "required": true,
-      "label": "text9"
-    },
-    {
-      "name": "text10",
-      "type": "text",
-      "required": true,
-      "label": "text10"
-    },
-    {
-      "name": "text11",
-      "type": "text",
-      "required": true,
-      "label": "text11"
-    },
-    {
-      "name": "text12",
-      "type": "text",
-      "required": true,
-      "label": "text12"
-    },
-    {
-      "name": "text13",
-      "type": "text",
-      "required": true,
-      "label": "text13"
-    },
-    {
-      "name": "text14",
-      "type": "text",
-      "required": true,
-      "label": "text14"
-    },
-    {
-      "name": "text15",
-      "type": "text",
-      "required": true,
-      "label": "text15"
-    },
-    {
-      "name": "text16",
-      "type": "text",
-      "required": true,
-      "label": "text16"
-    },
-    {
-      "name": "text17",
-      "type": "text",
-      "required": true,
-      "label": "text17"
-    },
-    {
-      "name": "text18",
-      "type": "text",
-      "required": true,
-      "label": "text18"
-    },
-    {
-      "name": "text19",
-      "type": "text",
-      "required": true,
-      "label": "text19"
-    },
-    {
-      "name": "text20",
-      "type": "text",
-      "required": true,
-      "label": "text20"
-    },
-    {
-      "name": "text21",
-      "type": "text",
-      "required": true,
-      "label": "text21"
-    },
-    {
-      "name": "text22",
-      "type": "text",
-      "required": true,
-      "label": "text22"
-    },
-    {
-      "name": "text23",
-      "type": "text",
-      "required": true,
-      "label": "text23"
-    },
-    {
-      "name": "text24",
-      "type": "text",
-      "required": true,
-      "label": "text24"
-    },
     {
       "name": "advcond",
       "type": "text",
@@ -157,16 +13,36 @@
       "default": "type 1 diabetes"
     },
     {
-      "name": "text25",
+      "name": "text",
       "type": "text",
       "required": true,
-      "label": "text25",
+      "label": "text",
       "default": "California"
+    },
+    {
+      "name": "text2",
+      "type": "date",
+      "required": true,
+      "label": "text2",
+      "default": "-2472d",
+      "format": "MM/DD/YYYY",
+      "relative": "-2472d",
+      "zone": "UTC"
+    },
+    {
+      "name": "text3",
+      "type": "date",
+      "required": true,
+      "label": "text3",
+      "default": "-660d",
+      "format": "MM/DD/YYYY",
+      "relative": "-660d",
+      "zone": "UTC"
     }
   ],
   "steps": [
     {
-      "id": "wf-1792676908524-0",
+      "id": "wf-1792695163010-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://clinicaltrials.gov/search",
@@ -180,968 +56,8 @@
       }
     },
     {
-      "id": "wf-1792676908524-1",
+      "id": "wf-1792695163010-1",
       "index": 1,
-      "action": "type",
-      "label": "Type {{text}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-start-from",
-        "nameAttr": "start-from",
-        "tag": "input",
-        "name": "From",
-        "label": "From",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "From"
-        },
-        {
-          "kind": "text",
-          "value": "From"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-start-from"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-start-from\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text",
-      "value": "{{text}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-2",
-      "index": 2,
-      "action": "type",
-      "label": "Type {{text2}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text2",
-      "value": "{{text2}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-3",
-      "index": 3,
-      "action": "type",
-      "label": "Type {{text3}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-start-to",
-        "nameAttr": "start-to",
-        "tag": "input",
-        "name": "To",
-        "label": "To",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "To"
-        },
-        {
-          "kind": "text",
-          "value": "To"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-start-to"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-start-to\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text3",
-      "value": "{{text3}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-4",
-      "index": 4,
-      "action": "type",
-      "label": "Type {{text4}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text4",
-      "value": "{{text4}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-5",
-      "index": 5,
-      "action": "type",
-      "label": "Type {{text5}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-primComp-from",
-        "nameAttr": "primComp-from",
-        "tag": "input",
-        "name": "From",
-        "label": "From",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "From"
-        },
-        {
-          "kind": "text",
-          "value": "From"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-primComp-from"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-primComp-from\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text5",
-      "value": "{{text5}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-6",
-      "index": 6,
-      "action": "type",
-      "label": "Type {{text6}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text6",
-      "value": "{{text6}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-7",
-      "index": 7,
-      "action": "type",
-      "label": "Type {{text7}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-primComp-to",
-        "nameAttr": "primComp-to",
-        "tag": "input",
-        "name": "To",
-        "label": "To",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "To"
-        },
-        {
-          "kind": "text",
-          "value": "To"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-primComp-to"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-primComp-to\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text7",
-      "value": "{{text7}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-8",
-      "index": 8,
-      "action": "type",
-      "label": "Type {{text8}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text8",
-      "value": "{{text8}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-9",
-      "index": 9,
-      "action": "type",
-      "label": "Type {{text9}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-firstPost-from",
-        "nameAttr": "firstPost-from",
-        "tag": "input",
-        "name": "From",
-        "label": "From",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "From"
-        },
-        {
-          "kind": "text",
-          "value": "From"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-firstPost-from"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-firstPost-from\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text9",
-      "value": "{{text9}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-10",
-      "index": 10,
-      "action": "type",
-      "label": "Type {{text10}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text10",
-      "value": "{{text10}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-11",
-      "index": 11,
-      "action": "type",
-      "label": "Type {{text11}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-firstPost-to",
-        "nameAttr": "firstPost-to",
-        "tag": "input",
-        "name": "To",
-        "label": "To",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "To"
-        },
-        {
-          "kind": "text",
-          "value": "To"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-firstPost-to"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-firstPost-to\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text11",
-      "value": "{{text11}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-12",
-      "index": 12,
-      "action": "type",
-      "label": "Type {{text12}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text12",
-      "value": "{{text12}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-13",
-      "index": 13,
-      "action": "type",
-      "label": "Type {{text13}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-resFirstPost-from",
-        "nameAttr": "resFirstPost-from",
-        "tag": "input",
-        "name": "From",
-        "label": "From",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "From"
-        },
-        {
-          "kind": "text",
-          "value": "From"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-resFirstPost-from"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-resFirstPost-from\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text13",
-      "value": "{{text13}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-14",
-      "index": 14,
-      "action": "type",
-      "label": "Type {{text14}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text14",
-      "value": "{{text14}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-15",
-      "index": 15,
-      "action": "type",
-      "label": "Type {{text15}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-resFirstPost-to",
-        "nameAttr": "resFirstPost-to",
-        "tag": "input",
-        "name": "To",
-        "label": "To",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "To"
-        },
-        {
-          "kind": "text",
-          "value": "To"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-resFirstPost-to"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-resFirstPost-to\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text15",
-      "value": "{{text15}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-16",
-      "index": 16,
-      "action": "type",
-      "label": "Type {{text16}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text16",
-      "value": "{{text16}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-17",
-      "index": 17,
-      "action": "type",
-      "label": "Type {{text17}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-lastUpdPost-from",
-        "nameAttr": "lastUpdPost-from",
-        "tag": "input",
-        "name": "From",
-        "label": "From",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "From"
-        },
-        {
-          "kind": "text",
-          "value": "From"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-lastUpdPost-from"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-lastUpdPost-from\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text17",
-      "value": "{{text17}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-18",
-      "index": 18,
-      "action": "type",
-      "label": "Type {{text18}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text18",
-      "value": "{{text18}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-19",
-      "index": 19,
-      "action": "type",
-      "label": "Type {{text19}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-lastUpdPost-to",
-        "nameAttr": "lastUpdPost-to",
-        "tag": "input",
-        "name": "To",
-        "label": "To",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "To"
-        },
-        {
-          "kind": "text",
-          "value": "To"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-lastUpdPost-to"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-lastUpdPost-to\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text19",
-      "value": "{{text19}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-20",
-      "index": 20,
-      "action": "type",
-      "label": "Type {{text20}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text20",
-      "value": "{{text20}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-21",
-      "index": 21,
-      "action": "type",
-      "label": "Type {{text21}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-studyComp-from",
-        "nameAttr": "studyComp-from",
-        "tag": "input",
-        "name": "From",
-        "label": "From",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "From"
-        },
-        {
-          "kind": "text",
-          "value": "From"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-studyComp-from"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-studyComp-from\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text21",
-      "value": "{{text21}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-22",
-      "index": 22,
-      "action": "type",
-      "label": "Type {{text22}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text22",
-      "value": "{{text22}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-23",
-      "index": 23,
-      "action": "type",
-      "label": "Type {{text23}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "id": "adv-date-studyComp-to",
-        "nameAttr": "studyComp-to",
-        "tag": "input",
-        "name": "To",
-        "label": "To",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "To"
-        },
-        {
-          "kind": "text",
-          "value": "To"
-        },
-        {
-          "kind": "css",
-          "value": "#adv-date-studyComp-to"
-        },
-        {
-          "kind": "xpath",
-          "value": "//*[@id=\"adv-date-studyComp-to\"]"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text23",
-      "value": "{{text23}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-24",
-      "index": 24,
-      "action": "type",
-      "label": "Type {{text24}}",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "textbox",
-        "tag": "input",
-        "name": "Date Picker",
-        "label": "Date Picker",
-        "path": []
-      },
-      "locators": [
-        {
-          "kind": "role",
-          "role": "textbox",
-          "name": "Date Picker"
-        },
-        {
-          "kind": "text",
-          "value": "Date Picker"
-        }
-      ],
-      "timeoutMs": 8000,
-      "input": "text24",
-      "value": "{{text24}}",
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "wf-1792676908524-25",
-      "index": 25,
       "action": "type",
       "label": "Type {{advcond}}",
       "surface": "dom",
@@ -1151,6 +67,7 @@
         "id": "advcond",
         "nameAttr": "advcond",
         "tag": "input",
+        "cssPath": "#advcond",
         "name": "Condition/disease",
         "label": "Condition/disease",
         "path": []
@@ -1184,10 +101,59 @@
       }
     },
     {
-      "id": "wf-1792676908524-26",
-      "index": 26,
+      "id": "wf-1792695163010-2",
+      "index": 2,
+      "action": "key",
+      "label": "Press Enter",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "advcond",
+        "nameAttr": "advcond",
+        "tag": "input",
+        "cssPath": "#advcond",
+        "name": "Condition/disease",
+        "label": "Condition/disease",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "combobox",
+          "name": "Condition/disease"
+        },
+        {
+          "kind": "text",
+          "value": "Condition/disease"
+        },
+        {
+          "kind": "css",
+          "value": "#advcond"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"advcond\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "key": "Enter",
+      "postcondition": {
+        "kind": "url",
+        "match": "cond={{advcond}}",
+        "timeoutMs": 8000
+      },
+      "expect": {
+        "kind": "url",
+        "match": "cond={{advcond}}",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792695163010-3",
+      "index": 3,
       "action": "type",
-      "label": "Type {{text25}}",
+      "label": "Type {{text}}",
       "surface": "dom",
       "identity": {
         "surface": "dom",
@@ -1195,6 +161,7 @@
         "id": "location-input",
         "nameAttr": "location-input",
         "tag": "input",
+        "cssPath": "#location-input",
         "name": "In country, state, or city",
         "label": "In country, state, or city",
         "path": []
@@ -1219,36 +186,247 @@
         }
       ],
       "timeoutMs": 8000,
-      "input": "text25",
-      "value": "{{text25}}",
+      "input": "text",
+      "value": "{{text}}",
       "postcondition": {
         "kind": "value",
-        "match": "{{text25}}",
+        "match": "{{text}}",
         "timeoutMs": 4000
       }
     },
     {
-      "id": "wf-1792676908524-27",
-      "index": 27,
+      "id": "wf-1792695163010-4",
+      "index": 4,
       "action": "click",
-      "label": "Click \"More Filters\"",
+      "label": "Click {{text}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "option",
+        "id": "mat-option-35",
+        "tag": "mat-option",
+        "cssPath": "#mat-option-35",
+        "text": "California",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "option",
+          "name": "California"
+        },
+        {
+          "kind": "text",
+          "value": "California"
+        },
+        {
+          "kind": "css",
+          "value": "#mat-option-35"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"mat-option-35\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low",
+      "selection": {
+        "by": "text",
+        "input": "text"
+      }
+    },
+    {
+      "id": "wf-1792695163010-5",
+      "index": 5,
+      "action": "click",
+      "label": "Pick {{text2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "tag": "input",
+        "cssPath": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)",
+        "name": "Date Picker",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Date Picker"
+        },
+        {
+          "kind": "text",
+          "value": "Date Picker"
+        },
+        {
+          "kind": "css",
+          "value": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text2",
+      "value": "{{text2}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text2}}",
+        "timeoutMs": 4000
+      },
+      "datePicker": {
+        "input": "text2"
+      }
+    },
+    {
+      "id": "wf-1792695163010-6",
+      "index": 6,
+      "action": "click",
+      "label": "Pick {{text3}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "tag": "input",
+        "cssPath": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)",
+        "name": "Date Picker",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Date Picker"
+        },
+        {
+          "kind": "text",
+          "value": "Date Picker"
+        },
+        {
+          "kind": "css",
+          "value": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text3",
+      "value": "{{text3}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text3}}",
+        "timeoutMs": 4000
+      },
+      "datePicker": {
+        "input": "text3"
+      }
+    },
+    {
+      "id": "wf-1792695163010-7",
+      "index": 7,
+      "action": "click",
+      "label": "Click \"Recruiting (425)\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#adv-check-status > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)",
+        "name": "Recruiting (425)",
+        "label": "Recruiting (425)",
+        "text": "Recruiting (425)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "Recruiting (425)"
+        },
+        {
+          "kind": "text",
+          "value": "Recruiting (425)"
+        },
+        {
+          "kind": "css",
+          "value": "#adv-check-status > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000
+    },
+    {
+      "id": "wf-1792695163010-8",
+      "index": 8,
+      "action": "click",
+      "label": "Click \"Apply Filters\"",
       "surface": "dom",
       "identity": {
         "surface": "dom",
         "role": "button",
+        "id": "apply-filters",
         "tag": "button",
-        "text": "More Filters",
+        "cssPath": "#apply-filters",
+        "text": "Apply Filters",
         "path": []
       },
       "locators": [
         {
           "kind": "role",
           "role": "button",
-          "name": "More Filters"
+          "name": "Apply Filters"
         },
         {
           "kind": "text",
-          "value": "More Filters"
+          "value": "Apply Filters"
+        },
+        {
+          "kind": "css",
+          "value": "#apply-filters"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"apply-filters\"]"
+        }
+      ],
+      "timeoutMs": 8000
+    },
+    {
+      "id": "wf-1792695163010-9",
+      "index": 9,
+      "action": "click",
+      "label": "Click \"download\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "action-bar-download-btn",
+        "tag": "button",
+        "cssPath": "#action-bar-download-btn",
+        "name": "download",
+        "label": "download",
+        "text": "Download",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "download"
+        },
+        {
+          "kind": "text",
+          "value": "Download"
+        },
+        {
+          "kind": "css",
+          "value": "#action-bar-download-btn"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"action-bar-download-btn\"]"
         }
       ],
       "timeoutMs": 8000,
@@ -1258,7 +436,73 @@
         "timeoutMs": 4000
       },
       "confidence": "low"
+    },
+    {
+      "id": "wf-1792695163010-10",
+      "index": 10,
+      "action": "click",
+      "label": "Click \"CSV\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#download-modal-description > section:nth-of-type(1) > div:nth-of-type(2) > label:nth-of-type(1)",
+        "name": "CSV",
+        "label": "CSV",
+        "text": "CSV",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "CSV"
+        },
+        {
+          "kind": "text",
+          "value": "CSV"
+        },
+        {
+          "kind": "css",
+          "value": "#download-modal-description > section:nth-of-type(1) > div:nth-of-type(2) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792695163010-11",
+      "index": 11,
+      "action": "download",
+      "label": "Download",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "cssPath": "#download-modal > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > ul:nth-of-type(1) > li:nth-of-type(1) > button:nth-of-type(1)",
+        "text": "Download",
+        "path": []
+      },
+      "timeoutMs": 30000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low",
+      "download": {
+        "output": "ctgstudies",
+        "name": "{{run.date}}-{{suggested}}"
+      }
     }
   ],
-  "createdAt": 1792676773861
+  "createdAt": 1792695147403,
+  "filesDates": 1
 }

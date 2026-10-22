@@ -12,6 +12,7 @@ import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
 import { clickKnownClose, dismissCoveringAds, readPageMarkers, type PageSignals } from "./page-class";
 import type { Driver, GuideAct, HealNotice, LiveTree, ShotTarget } from "./replay";
+import { clickInDrive } from "./drive-click";
 import { armBrowserDownloads, inspectDatePicker, readCalendarSelection, waitForDownloadFile, watchDownload } from "./files-dates";
 import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
@@ -194,6 +195,7 @@ export class BrowserDriver implements Driver {
       values,
       boxes: dump.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 }),
       hidden: dump.nodes.map((node) => !!node.hidden),
+      inDialog: dump.nodes.map((node) => !!node.inDialog),
       flags: dump.nodes.map((node) => ({ checked: node.checked, enabled: node.enabled })),
     };
   }
@@ -370,14 +372,20 @@ export class BrowserDriver implements Driver {
           if (!/ERR_ABORTED|Download is starting/i.test(message)) throw err;
         });
       } else if (spec.node) {
-        await this.page.locator(this.locatorFor(spec.node)).click();
+        const selector = selectorForIdentity(spec.node);
+        if (!selector) throw new Error("download has no trigger");
+        await clickInDrive(this.page, selector, spec.timeoutMs).catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!/ERR_ABORTED|Download is starting/i.test(message)) throw err;
+        });
       } else {
         throw new Error("download has no trigger");
       }
-      const began = await pending;
+      const began = await pending.done;
       const found = await waitForDownloadFile(spec.dir, began.suggestedFilename, spec.timeoutMs);
       return { suggestedFilename: began.suggestedFilename, path: found };
     } finally {
+      pending.cancel();
       await client.detach().catch(() => undefined);
     }
   }
@@ -388,11 +396,17 @@ export class BrowserDriver implements Driver {
     return !endIso || selected.isos.includes(endIso);
   }
 
-  async pickDate(spec: { iso: string; endIso?: string; node?: Identity }): Promise<void> {
+  async pickDate(spec: { iso: string; endIso?: string; formatted?: string; node?: Identity }): Promise<void> {
     this.automated += 1;
+    if (spec.node && spec.formatted && await this.fillTextDate(spec.node, spec.formatted)) return;
     if (spec.node && (spec.node.tag === "input" || spec.node.role === "textbox" || spec.node.role === "input")) {
-      await this.page.locator(this.locatorFor(spec.node)).click();
-      await this.page.waitForTimeout(150);
+      const selector = this.dateSelector(spec.node);
+      const open = await this.page.locator(".react-datepicker, .rbc-calendar, [data-bao-picker]").first().isVisible().catch(() => false);
+      // A second click on the opener toggles a react-datepicker closed.
+      if (!open && selector) {
+        await this.page.locator(selector).click();
+        await this.page.waitForTimeout(150);
+      }
     }
     for (let i = 0; i < 24; i++) {
       const plan = await this.page.evaluate(inspectDatePicker, { startIso: spec.iso, endIso: spec.endIso ?? null });
@@ -403,6 +417,12 @@ export class BrowserDriver implements Driver {
           continue;
         }
         throw new Error(plan.error || "date picker");
+      }
+      if (plan.status === "select" && plan.month != null && plan.year != null) {
+        await this.page.locator(".react-datepicker__month-select").selectOption(String(plan.month - 1));
+        await this.page.locator(".react-datepicker__year-select").selectOption(String(plan.year));
+        await this.page.waitForTimeout(150);
+        continue;
       }
       if (plan.status === "nav" && plan.x != null && plan.y != null) {
         await this.page.mouse.click(plan.x, plan.y);
@@ -436,6 +456,18 @@ export class BrowserDriver implements Driver {
     this.automated += 1;
     const loc = this.page.locator(this.sel(node));
     if (!secret) {
+      const combo = await loc.evaluate((el) => {
+        return el.getAttribute("role") === "combobox" || el.getAttribute("aria-autocomplete") === "list";
+      }).catch(() => false);
+      if (combo) {
+        // A click toggles an open react-select menu shut. Focus leaves it open.
+        const expanded = await loc.evaluate((el) => el.getAttribute("aria-expanded") === "true").catch(() => false);
+        if (!expanded) await loc.click();
+        await loc.press("Control+a").catch(() => undefined);
+        await loc.press("Backspace").catch(() => undefined);
+        await loc.pressSequentially(text, { delay: 15 });
+        return;
+      }
       await loc.fill(text);
       return;
     }
@@ -533,7 +565,16 @@ export class BrowserDriver implements Driver {
 
   async check(node: Identity, checked: boolean): Promise<void> {
     this.automated += 1;
-    await this.page.locator(this.sel(node)).setChecked(checked);
+    const loc = this.page.locator(this.sel(node));
+    if (node.id) {
+      const label = this.page.locator(`label[for="${cssEscape(node.id)}"]`);
+      if (await label.count()) {
+        const current = await loc.isChecked().catch(() => !checked);
+        if (current !== checked) await label.click();
+        if (await loc.isChecked().catch(() => !checked) === checked) return;
+      }
+    }
+    await loc.setChecked(checked);
   }
 
   async select(node: Identity, value: string): Promise<void> {
@@ -632,9 +673,40 @@ export class BrowserDriver implements Driver {
 
   /** A step identity is not the tree node, so download and date open use a stable selector. */
   private locatorFor(node: Identity): string {
+    return selectorForIdentity(node) || this.sel(node);
+  }
+
+  /** Date fields often have no id. The recorded css path still tells the two inputs apart. */
+  private dateSelector(node: Identity): string | undefined {
     if (node.id) return `#${cssEscape(node.id)}`;
     if (node.testId) return `[data-testid="${cssEscape(node.testId)}"]`;
-    return this.sel(node);
+    if (node.nameAttr && node.tag) return `${node.tag}[name="${cssEscape(node.nameAttr)}"]`;
+    if (node.cssPath) return node.cssPath;
+    return undefined;
+  }
+
+  /** A visible text date field is filled with the resolved date. Popup calendars keep the cell plan. */
+  private async fillTextDate(node: Identity, formatted: string): Promise<boolean> {
+    const selector = this.dateSelector(node);
+    if (!selector) return false;
+    const mode = await this.page.locator(selector).evaluate((el) => {
+      const input = el instanceof HTMLInputElement ? el : null;
+      const popup = document.querySelector(".react-datepicker, .rbc-calendar, [data-bao-picker]");
+      const box = popup instanceof HTMLElement ? popup.getBoundingClientRect() : null;
+      const opener = !!input && !!input.closest(".react-datepicker__input-container, .react-datepicker-wrapper");
+      return {
+        editable: !!input && !opener && !input.readOnly && !input.disabled && input.type !== "date" && input.type !== "hidden",
+        open: !!box && box.width > 2 && box.height > 2,
+      };
+    }).catch(() => ({ editable: false, open: false }));
+    if (!mode.editable || mode.open) return false;
+    const loc = this.page.locator(selector);
+    await loc.click().catch(() => undefined);
+    await loc.press("Control+a").catch(() => undefined);
+    await loc.press("Backspace").catch(() => undefined);
+    await loc.pressSequentially(formatted, { delay: 15 });
+    await loc.blur().catch(() => undefined);
+    return true;
   }
 
   /** Outline the node the scorer accepted. Does not click or type. */
@@ -1011,4 +1083,17 @@ function toIdentity(node: DomDump): Identity {
 
 function cssEscape(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]/g, (ch) => `\\${ch}`);
+}
+
+/** Download replay has no live tree handle. Prefer a durable id, then a path that contains one. */
+export function selectorForIdentity(node: Identity): string | undefined {
+  if (node.id) return `#${cssEscape(node.id)}`;
+  if (node.testId) return `[data-testid="${cssEscape(node.testId)}"]`;
+  if (node.cssPath && node.cssPath.includes("#")) return node.cssPath;
+  if ((node.tag === "a" || node.role === "link") && node.href && !node.href.startsWith("javascript:")) {
+    const href = node.href.replace(/"/g, "");
+    if (href) return `a[href="${href}"]`;
+  }
+  if (node.cssPath) return node.cssPath;
+  return undefined;
 }

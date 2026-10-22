@@ -117,6 +117,21 @@ export function recorderSource(): string {
       const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
       return !!(rect && rect.width < 1 && rect.height < 1);
     };
+    const dateLike = (el) => {
+      if (!el || !el.getAttribute) return false;
+      const hay = [el.id, el.getAttribute("name"), el.getAttribute("aria-label"), el.getAttribute("placeholder")].join(" ");
+      return /date|dob|birth|check-?in|check-?out|birthday|arrival|departure/i.test(hay);
+    };
+    const receivesPointer = (el) => {
+      if (!el || !el.getBoundingClientRect) return false;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return false;
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+      const top = document.elementFromPoint(x, y);
+      return !!top && (top === el || el.contains(top));
+    };
     const fieldValues = () => new Set([...document.querySelectorAll("input, textarea")].map((el) => norm(el.value)).filter(Boolean));
     const visible = () => [...document.querySelectorAll("[data-testid]")].map((el) => norm(el.innerText || el.value || "")).filter(Boolean);
     const secretSent = new WeakSet();
@@ -208,11 +223,20 @@ export function recorderSource(): string {
       if (!el || !el.closest) return null;
       const popup = el.closest(".react-datepicker");
       if (popup) {
-        const label = el.getAttribute && el.getAttribute("aria-label");
-        const match = label && String(label).match(/(\\d{1,2})\\s+([A-Za-z]+)\\s+(\\d{4})/);
-        const month = match ? monthIndex(match[2]) : 0;
-        if (!match || !month) return { picker: true };
-        return { picker: true, value: isoDate(Number(match[3]), month, Number(match[1])) };
+        const day = el.closest(".react-datepicker__day") || el;
+        const label = day.getAttribute && day.getAttribute("aria-label");
+        const text = String(label || "");
+        let match = text.match(/(\\d{1,2})\\s+([A-Za-z]+)\\s+(\\d{4})/);
+        if (match) {
+          const month = monthIndex(match[2]);
+          if (month) return { picker: true, value: isoDate(Number(match[3]), month, Number(match[1])) };
+        }
+        match = text.match(/([A-Za-z]+)\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})/);
+        if (match) {
+          const month = monthIndex(match[1]);
+          if (month) return { picker: true, value: isoDate(Number(match[3]), month, Number(match[2])) };
+        }
+        return { picker: true };
       }
       const cal = el.closest(".rbc-calendar");
       if (cal) {
@@ -285,8 +309,22 @@ export function recorderSource(): string {
       if (event.detail === 0 && Date.now() < suppressClickUntil) return;
       const raw = eventEl(event);
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
-      const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid],[data-qa],[data-test],[data-cy]") : raw;
+      const marked = raw && pickerMark(raw);
+      let el = marked
+        ? raw
+        : (raw && raw.closest ? raw.closest("button,a,input,textarea,select,label,li,[role='option'],[data-testid],[data-qa],[data-test],[data-cy]") : raw);
+      // react-select paints the combobox as a div. The pointer lands on an inner
+      // div, not the input, so the click would otherwise be dropped. The nearest
+      // id that owns that input is the control (#state, #city).
+      if (!el && raw && raw.closest) {
+        const host = raw.closest("[id]");
+        const combo = host && host.querySelector && host.querySelector("input[id^='react-select-']");
+        if (host && combo) el = host;
+      }
       if (!el) return;
+      const kind = String(el.type || "").toLowerCase();
+      if ((kind === "checkbox" || kind === "radio") && !receivesPointer(el)) return;
+      const openerNow = document.querySelector("input.react-datepicker-ignore-onclickoutside, input[aria-expanded='true']");
       pending = undefined;
       const leaves = leafTexts();
       const beforeUrl = location.href;
@@ -311,7 +349,9 @@ export function recorderSource(): string {
         }
         if (afterText) payload.afterText = afterText;
         const picked = pickerMark(el);
+        if (picked && picked.value && openerNow) payload.identity = ident(openerNow);
         if (picked) Object.assign(payload, picked);
+        else if (el.tagName === "INPUT" && dateLike(el)) payload.picker = true;
         send(payload);
       }, 0);
     }, true);
@@ -331,14 +371,31 @@ export function recorderSource(): string {
     }, true);
     document.addEventListener("input", (event) => {
       const el = eventEl(event);
-      if (!el || el.type !== "password") return;
-      notePassword(el);
+      if (!el) return;
+      if (el.type === "password") {
+        notePassword(el);
+        return;
+      }
+      // react-select clears the input when an option is chosen, so the change
+      // event often sees an empty value. Keep the text that was typed. A
+      // combobox like the subjects field has its own id, not a react-select id.
+      const comboId = el.id || "";
+      const combo = comboId.indexOf("react-select-") === 0
+        || el.getAttribute("role") === "combobox"
+        || el.getAttribute("aria-autocomplete") === "list";
+      if (!combo) return;
+      const value = norm(el.value == null ? "" : String(el.value));
+      if (!value) return;
+      send({ kind: "act", op: "type", identity: ident(el), value: value });
     }, true);
     document.addEventListener("change", (event) => {
       const el = eventEl(event);
       if (!el) return;
+      if (el.disabled) return;
+      if (fieldClosed(el) && String(el.type || "").toLowerCase() !== "file") return;
       if (el.closest && el.closest(".react-datepicker, .rbc-calendar, [data-bao-picker]")) return;
-      if (!norm(el.value == null ? "" : String(el.value)) && fieldClosed(el)) return;
+      if (el.classList && String(el.className || "").indexOf("react-datepicker") !== -1) return;
+      if ((el.readOnly || (el.hasAttribute && el.hasAttribute("readonly"))) && dateLike(el)) return;
       if (el.tagName === "SELECT") {
         const option = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
         const label = norm(option && (option.label || option.text) || "");
@@ -347,6 +404,7 @@ export function recorderSource(): string {
       }
       const kind = (el.type || "").toLowerCase();
       if (kind === "radio" || kind === "checkbox") {
+        if (!receivesPointer(el)) return;
         send({ kind: "act", op: "check", identity: ident(el), checked: !!el.checked, value: el.value || "" });
         return;
       }
@@ -364,8 +422,10 @@ export function recorderSource(): string {
         notePassword(el);
         return;
       }
-      const dateLike = el.type === "date" || /\\b(date|check-?in|check-?out|dob|birthday|arrival|departure)\\b/i.test([el.id, el.getAttribute("name"), el.getAttribute("aria-label"), el.getAttribute("placeholder")].join(" "));
-      if (dateLike) {
+      // The input listener already kept the combobox text. change would append it again.
+      if ((el.id || "").indexOf("react-select-") === 0 || el.getAttribute("role") === "combobox" || el.getAttribute("aria-autocomplete") === "list") return;
+      if (!norm(el.value == null ? "" : String(el.value))) return;
+      if (el.type === "date" || dateLike(el)) {
         send({ kind: "act", op: "type", identity: ident(el), value: el.value, dateField: true, inputType: el.type || "text" });
         return;
       }
