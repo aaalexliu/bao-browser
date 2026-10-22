@@ -27,6 +27,8 @@ export function leafTexts(): Record<string, string> {
   document.querySelectorAll("body *").forEach((el) => {
     if (!(el instanceof HTMLElement) || el.childElementCount || skip.test(el.tagName)) return;
     if (el.hidden || el.closest("[hidden]")) return;
+    // Password covers exist only for the screenshot. They are not a page effect.
+    if (el.closest("[data-bao-mask], [data-bao-blur]")) return;
     const text = norm(el.innerText || el.textContent || "");
     if (!text) return;
     out[keyOf(el)] = text;

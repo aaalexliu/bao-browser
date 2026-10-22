@@ -357,9 +357,34 @@ export interface ViewerContext {
   reviewStepIds?: string[];
 }
 
+function routeRan(
+  steps: { id: string; status?: string; reason?: string }[],
+  workflow: { inputs?: { name: string; type?: string; choices?: string[] }[]; steps: { id: string; when?: { input?: string; value?: string } }[] },
+): string | undefined {
+  const choice = (workflow.inputs || []).find((input) => input.type === "choice" && input.choices?.length);
+  if (!choice?.choices?.length) return undefined;
+  const ran = new Set<string>();
+  const skipped = new Set<string>();
+  for (const step of workflow.steps) {
+    if (!step.when?.value) continue;
+    const result = steps.find((item) => item.id === step.id);
+    if (!result || result.status === "pending" || result.status === "skipped") continue;
+    if (result.reason === "other branch") skipped.add(step.when.value);
+    else ran.add(step.when.value);
+  }
+  if (ran.size >= 1) return [...ran][0];
+  const rest = choice.choices.filter((name) => !skipped.has(name));
+  if (skipped.size && rest.length === 1) return rest[0];
+  return undefined;
+}
+
 export function runViewer(
   run: RunSummary,
-  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number }[] },
+  workflow: {
+    name: string;
+    inputs?: { name: string; type?: string; choices?: string[] }[];
+    steps: { id: string; label?: string; action?: string; index?: number; when?: { input?: string; value?: string; present?: string } }[];
+  },
   selectedId?: string,
   context: ViewerContext = {},
 ): string {
@@ -398,8 +423,16 @@ export function runViewer(
     const reviewMark = review ? `<em class="review">needs review</em>` : "";
     const recoveredMark = step.reason?.startsWith("recovered:") ? `<em class="recovered">${esc(step.reason)}</em>` : "";
     const askMark = step.reason === "always ask" ? `<em class="ask">always ask</em>` : "";
-    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${recoveredMark}${askMark}${reviewMark}</button>`;
+    const spec = workflow.steps.find((item) => item.id === step.id);
+    const routeMark = step.reason === "other branch"
+      ? `<em class="route">other branch</em>`
+      : spec?.when?.value
+        ? `<em class="route">${esc(spec.when.value)}</em>`
+        : "";
+    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${routeMark}${recoveredMark}${askMark}${reviewMark}</button>`;
   }).join("");
+  const ran = routeRan(steps, workflow);
+  const routeLine = ran ? `<p id="route-ran" data-route="${esc(ran)}">Route: ${esc(ran)}</p>` : "";
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
   const shot = shotPane(before, after, selected?.action, selected?.label || "");
@@ -440,13 +473,14 @@ export function runViewer(
     <header class="run-head">
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
+      ${routeLine}
     </header>
     <div class="row" id="run-actions">
       <button id="rerun-run" type="button">Re-run with this run's inputs</button>
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
     </div>
     ${storedInputsLine(run.inputs)}
-    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button> <button type="button" id="teach-fix" data-workflow="${esc(run.workflowId)}" data-step="${esc(failed.id)}">Teach the fix</button>` : ""}</div>
+    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">${stopped <= 1 ? "No steps ran." : `Nothing after step ${stopped - 1} ran.`}</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button> <button type="button" id="teach-fix" data-workflow="${esc(run.workflowId)}" data-step="${esc(failed.id)}">Teach this step</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
     ${idleNote}
     <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>
@@ -975,6 +1009,7 @@ export interface StepCard {
   readBack?: { source?: string };
   identity?: { role?: string; name?: string; text?: string; testId?: string; id?: string };
   heal?: string;
+  when?: { input?: string; value?: string; present?: string };
 }
 
 export function identityChip(identity: StepCard["identity"]): string {
@@ -1105,10 +1140,15 @@ export function workflowDetail(
     const face = known ? `<img src="${esc(known)}" alt="">` : "";
     const headline = stepHeadline(step, inputs);
     const n = index + 1;
+    const branch = step.when?.present
+      ? `<span class="badge route" data-present="${esc(step.when.present)}">when ${esc(step.when.present)}</span>`
+      : step.when?.value
+        ? `<span class="badge route" data-route="${esc(step.when.value)}">route: ${esc(step.when.value)}</span>`
+        : "";
     return `<article class="step-card ${human ? "human" : ""}" data-step-card="${esc(step.id)}">
       <div class="thumb${known ? " has-shot" : ""}" data-shot="${esc(shot)}" ${fallback ? `data-shot-fallback="${esc(fallback)}"` : ""}>${face}${placeholder(step.action, step.label || step.action || step.id)}</div>
       <div class="step-copy">
-        <div class="row"><strong>${headline.html}</strong> ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
+        <div class="row"><strong>${headline.html}</strong> ${branch} ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
         <p class="meta">${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
         <div class="chips">${identityChip(step.identity)}${inputChips(step, headline.token)}</div>
         <label class="meta">If this step misses <select data-step-heal="${esc(step.id)}">
@@ -1125,11 +1165,16 @@ export function workflowDetail(
       </div>
     </article>`;
   }).join("");
-  const headerChips = (doc.inputs || []).map((input) => {
-    if (input.type === "secret") return `<span class="chip secret">secret</span>`;
-    if (input.type === "file") return `<span class="chip">file</span>`;
-    return `<span class="chip">{{${esc(input.name)}}}</span>`;
+  const headerChips = (doc.inputs || []).flatMap((input) => {
+    if (input.type === "secret") return [`<span class="chip secret">secret</span>`];
+    if (input.type === "file") return [`<span class="chip">file</span>`];
+    if (input.type === "choice") return [];
+    return [`<span class="chip">{{${esc(input.name)}}}</span>`];
   }).join("");
+  const choice = (doc.inputs || []).find((input) => input.type === "choice" && input.choices?.length);
+  const routeHead = choice?.choices
+    ? `<p id="route-branch" data-routes="${esc(choice.choices.join("|"))}">Routes: ${esc(choice.choices.join(" / "))}</p>`
+    : "";
   return `<section id="workflow-detail" data-workflow="${esc(doc.id)}">
     <p class="crumb"><button type="button" class="link" data-screen="library">Library</button> <span aria-hidden="true">/</span> ${esc(doc.name)}</p>
     <header class="wf-head">
@@ -1137,6 +1182,7 @@ export function workflowDetail(
         <h2>${esc(doc.name)}</h2>
         <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
         <div class="chips">${headerChips}</div>
+        ${routeHead}
         ${shareMenu(doc, meta.share)}
       </div>
       <button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button>
@@ -1325,7 +1371,8 @@ export interface TeachView {
   cards?: TeachCardView[];
   decisions?: { kind: string; detail: string; cardId: string }[];
   review?: {
-    raw: { id?: string; op?: string; kind?: string; detail?: string }[];
+    summary?: { line: string; dropped: { id: string; reason: string }[] };
+    raw: { id?: string; op?: string; kind?: string; detail?: string; reason?: string }[];
     decisions?: { kind: string; detail: string; cardId: string }[];
     workflow: {
       name: string;
@@ -1436,7 +1483,16 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
 export function teachReview(teach: TeachView): string {
   const review = teach.review;
   if (!review) return `<section id="teach-review"><h2>Review</h2><p class="quiet">Stop teaching to review the workflow.</p></section>`;
-  const raw = review.raw.map((event) => `<li>${esc(event.kind === "decision" ? `decision · ${event.detail || event.op}` : `${event.op || event.kind}`)}</li>`).join("");
+  const raw = review.raw.map((event) => {
+    const label = event.kind === "decision" ? `decision · ${event.detail || event.op}` : `${event.op || event.kind}`;
+    const why = event.reason ? ` — ${event.reason}` : "";
+    return `<li data-event="${esc(event.id || "")}">${esc(label + why)}</li>`;
+  }).join("");
+  const summary = review.summary;
+  const dropped = summary?.dropped || [];
+  const summaryHtml = summary
+    ? `<p id="teach-summary">${esc(summary.line)}</p>${dropped.length ? `<ul id="teach-dropped-reasons">${dropped.map((item) => `<li data-event="${esc(item.id)}">${esc(item.id)} — ${esc(item.reason)}</li>`).join("")}</ul>` : ""}`
+    : "";
   return `<section id="teach-review">
     <header class="wf-head">
       <div>
@@ -1445,6 +1501,7 @@ export function teachReview(teach: TeachView): string {
       </div>
       <button type="button" class="primary" id="teach-save">Save</button>
     </header>
+    ${summaryHtml}
     <div class="teach-review-body">
       <div id="teach-steps">${teachList(teach, false) || `<p class="quiet">No steps.</p>`}</div>
       <details id="teach-trail">
