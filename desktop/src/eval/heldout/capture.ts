@@ -51,15 +51,22 @@ async function captureTask(task: HeldTask): Promise<{ events: TrailEvent[]; trut
   try {
     const page = context.pages()[0] || await context.newPage();
     page.setDefaultTimeout(15000);
+    let dialogNote: string | undefined;
     page.on("dialog", (dialog) => {
+      dialogNote = dialog.message().replace(/\s+/g, " ").trim().slice(0, 180) || "dialog";
       dialog.accept().catch(() => undefined);
     });
+    const takeDialog = () => {
+      const note = dialogNote;
+      dialogNote = undefined;
+      return note;
+    };
     await page.goto(task.url, { waitUntil: "domcontentloaded", timeout: 30000 });
     let cursor = 0;
     for (const step of task.steps) {
       let produced: TrailEvent[];
       try {
-        produced = await runStep(page, step, cursor, page.url());
+        produced = await runStep(page, step, cursor, page.url(), takeDialog);
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         throw new Error(`${task.id} step ${cursor} ${step.do} ${step.selector || step.op || ""}: ${detail}`);
@@ -97,7 +104,13 @@ async function captureTask(task: HeldTask): Promise<{ events: TrailEvent[]; trut
   };
 }
 
-async function runStep(page: Page, step: HeldStep, index: number, before: string): Promise<TrailEvent[]> {
+async function runStep(
+  page: Page,
+  step: HeldStep,
+  index: number,
+  before: string,
+  takeDialog: () => string | undefined,
+): Promise<TrailEvent[]> {
   const ts = Date.now();
   if (step.do === "read") {
     await page.waitForTimeout(40);
@@ -132,9 +145,29 @@ async function runStep(page: Page, step: HeldStep, index: number, before: string
     return out;
   }
   if (step.do === "key") {
+    const focused = page.locator(":focus");
+    const identity = await actIdentity(page, ":focus").catch(() => undefined);
+    const beforeFx = await readEffect(focused);
     await page.keyboard.press(step.key || "Enter");
-    await page.waitForTimeout(200);
-    return [{ id: `e${index}`, ts, kind: "act", op: "key", key: step.key || "Enter", beforeUrl: before, afterUrl: page.url() }];
+    await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => undefined);
+    await page.waitForTimeout(250);
+    const afterFx = await readEffect(focused);
+    const dialog = takeDialog();
+    return [{
+      id: `e${index}`,
+      ts,
+      kind: "act",
+      op: "key",
+      key: step.key || "Enter",
+      identity,
+      dialog,
+      subtreeBefore: beforeFx.subtree,
+      subtreeAfter: afterFx.missing ? "" : afterFx.subtree,
+      valueBefore: beforeFx.value,
+      valueAfter: afterFx.missing ? undefined : afterFx.value,
+      beforeUrl: before,
+      afterUrl: page.url(),
+    }];
   }
   if (step.do === "upload") {
     const fileName = step.file || "note.txt";
@@ -193,6 +226,7 @@ async function runStep(page: Page, step: HeldStep, index: number, before: string
     subtreeAfter,
     valueBefore: beforeFx.value,
     valueAfter: afterFx.missing ? undefined : afterFx.value,
+    dialog: takeDialog(),
     beforeUrl: before,
     afterUrl: page.url(),
   }];

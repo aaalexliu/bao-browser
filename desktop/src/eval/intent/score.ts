@@ -155,7 +155,13 @@ export async function replayCase(workflow: WorkflowV2, item: IntentCase, spec: I
         const value = world.values[node.id || ""];
         return value != null ? [{ identity: node, value }] : [];
       });
-      return { nodes: item.nodes, url: world.url, texts: world.texts.slice(), values };
+      const flags = item.nodes.map((node) => {
+        const value = world.values[node.id || ""];
+        if (value === "on") return { checked: true, enabled: true };
+        if (value === "off") return { checked: false, enabled: true };
+        return { enabled: true };
+      });
+      return { nodes: item.nodes, url: world.url, texts: world.texts.slice(), values, flags };
     },
     async snapshot() {
       return {};

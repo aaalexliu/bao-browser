@@ -57,6 +57,9 @@ export class BrowserDriver implements Driver {
     private readonly onNotify?: (notice: HealNotice) => void,
     private readonly prompts?: PersonPrompts,
   ) {
+    page.on("dialog", (dialog) => {
+      dialog.accept().catch(() => undefined);
+    });
     page.on("console", (msg) => {
       const text = maskTrace(msg.text());
       if (!text) return;
@@ -212,6 +215,10 @@ export class BrowserDriver implements Driver {
     } catch {
       throw new Error("could not fill the secret field");
     }
+  }
+
+  async focus(node: Identity): Promise<void> {
+    await this.page.locator(this.sel(node)).focus();
   }
 
   async key(key: string): Promise<void> {
