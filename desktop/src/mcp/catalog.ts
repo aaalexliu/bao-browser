@@ -17,13 +17,15 @@ import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
+import { originOf, trustMode } from "../v1/site-trust";
 import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
 
-export type OutcomeName = "ok" | "needs_human" | "needs_signin" | "failed";
+export type OutcomeName = "ok" | "needs_human" | "needs_signin" | "needs_approval" | "failed";
 
 export interface InputField {
   name: string;
@@ -59,6 +61,8 @@ export interface WorkflowOutcome {
   link: string;
   source?: string;
   lastGreen?: string;
+  /** Set when a marketplace listing has not been allowed. */
+  permissions?: PermissionPreview;
   /** Structured human step. `completed` is the same run after resume. */
   status?: OutcomeName | "completed" | "timed-out" | "stopped" | "ok";
   run_id?: string;
@@ -163,7 +167,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
     link: linkFor(id),
     importLink: `bao://import/${id}`,
     source: originLabel(found),
-    lastGreen: when(latestGreen(found.lastGreenAt, localGreenAt(library, id))),
+    lastGreen: greenLabel(originLabel(found), found.lastGreenAt, localGreenAt(library, id)),
   };
 }
 
@@ -188,13 +192,32 @@ export async function runWorkflow(
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
+  if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
+    const listingId = placed.forkedFrom || placed.document.id;
+    const access = await marketplaceAccess(library, listingId, placed.document);
+    if (!access.allowed) {
+      return {
+        outcome: "needs_approval",
+        status: "needs_approval",
+        workflowId: id,
+        source: "marketplace",
+        reason: "Allow this listing before it can run.",
+        link: linkFor(id),
+        receipts: [],
+        stops: [],
+        permissions: access.preview,
+      };
+    }
+    rememberListingTrust(library, access.preview);
+  }
   if (placed && !placed.local) materializeWorkflow(library, placed);
   const loaded = request.document ? migrate(request.document) : placed!.document;
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";
-    const lastGreen = when(latestGreen(placed?.lastGreenAt, workflowId ? localGreenAt(library, workflowId) : undefined));
-    return placed ? { ...outcome, source: originLabel(placed), lastGreen } : { ...outcome, lastGreen };
+    const source = placed ? originLabel(placed) : "";
+    const lastGreen = greenLabel(source, placed?.lastGreenAt, workflowId ? localGreenAt(library, workflowId) : undefined);
+    return placed ? { ...outcome, source, lastGreen } : { ...outcome, lastGreen };
   };
   const inputs: ReplayArgs = {
     ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
@@ -352,6 +375,7 @@ async function replayInBrowser(
       now: () => Date.now(),
       yieldHuman: true,
       trail,
+      siteTrust: trustMode(library.settings(), originOf(workflow.startUrl)),
     });
     const outcome = rememberRun(library, workflow, run, args, secrets);
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
@@ -511,7 +535,9 @@ function rememberRun(
   } else if (run.status === "paused") {
     outcome = "needs_human";
     status = "needs_human";
-    reason = "Approve the heal before the run can continue";
+    reason = run.steps.some((step) => step.reason === "always ask")
+      ? "Always ask before this step."
+      : "Approve the heal before the run can continue";
   } else if (run.status === "failed") {
     outcome = signInStep(step) ? "needs_signin" : "failed";
     status = outcome;
@@ -821,18 +847,29 @@ function mergeDraft(prev: DraftHit, hit: DraftHit): DraftHit {
 }
 
 function toSearchHit(hit: DraftHit, thisDevice: string, library: Library): SearchHit {
+  const source = originLabel({ ...hit, thisDevice });
   return {
     id: hit.id,
     title: hit.title,
     summary: hit.summary,
     site: hit.site,
     category: hit.category,
-    source: originLabel({ ...hit, thisDevice }),
-    lastGreen: when(latestGreen(hit.lastGreenAt, localGreenAt(library, hit.id))),
+    source,
+    lastGreen: greenLabel(source, hit.lastGreenAt, localGreenAt(library, hit.id)),
     score: hit.score,
     inputs: hit.inputs,
     link: hit.link || linkFor(hit.id),
   };
+}
+
+/** A marketplace clock this Mac has not replayed is the publisher's, not this user's. */
+export function greenLabel(source: string, remoteAt: unknown, localAt?: number): string {
+  const remote = epoch(remoteAt);
+  const local = localAt && localAt > 0 ? localAt : 0;
+  if (local > 0 && local >= remote) return when(local);
+  const shown = when(remote > 0 ? remote : undefined);
+  if (source === "marketplace" && remote > 0) return `publisher green · ${shown}`;
+  return shown;
 }
 
 function localGreenAt(library: Library, id: string): number | undefined {
@@ -1000,6 +1037,62 @@ function healProvider(): HealProvider {
     });
   }
   return llmHealFromEnv();
+}
+
+async function marketplaceAccess(
+  library: Library,
+  id: string,
+  document: WorkflowV2,
+): Promise<{ allowed: boolean; preview: PermissionPreview }> {
+  const state = loadState(library.root);
+  let remote: { allowed?: boolean; preview?: PermissionPreview } | null = null;
+  try {
+    remote = await remoteFetch<{ allowed?: boolean; preview?: PermissionPreview }>(
+      state,
+      "GET",
+      `/api/marketplace/${encodeURIComponent(id)}/allow`,
+    );
+  } catch {
+    remote = null;
+  }
+  const preview = remote?.preview || permissionPreview(document);
+  if (remote?.allowed) {
+    writeAllow(library, id);
+    return { allowed: true, preview };
+  }
+  if (remote && remote.allowed === false) return { allowed: false, preview };
+  if (hasAllow(library, id)) return { allowed: true, preview };
+  return { allowed: false, preview };
+}
+
+function rememberListingTrust(library: Library, preview: PermissionPreview): void {
+  if (preview.trust !== "ask") return;
+  const siteTrust = { ...(library.settings().siteTrust || {}) };
+  let changed = false;
+  for (const site of preview.sites) {
+    if (siteTrust[site] === "ask") continue;
+    siteTrust[site] = "ask";
+    changed = true;
+  }
+  if (changed) library.updateSettings({ siteTrust });
+}
+
+function allowFile(library: Library, id: string): string {
+  return path.join(library.root, "allows", `${safeToken(id)}.json`);
+}
+
+function hasAllow(library: Library, id: string): boolean {
+  try {
+    return existsSync(allowFile(library, id));
+  } catch {
+    return false;
+  }
+}
+
+function writeAllow(library: Library, id: string): void {
+  const file = allowFile(library, id);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({ id, at: Date.now() }));
 }
 
 function linkFor(id: string): string {

@@ -134,10 +134,13 @@ test("listing page and devices against local vercel dev", { timeout: 600_000 }, 
     assert.equal(await page.locator("h2", { hasText: /^Inputs$/ }).count(), 1);
     assert.equal((await page.getByTestId("workflow").innerText()).includes("Inputs on this account"), false);
     assert.equal((await page.getByTestId("workflow").innerText()).includes("bao://"), false);
-    assert.match(await page.getByTestId("domains").innerText(), /127\.0\.0\.1/);
+    assert.match(await page.getByTestId("perm-sites").innerText(), /127\.0\.0\.1/);
+    assert.equal(await page.getByTestId("domains").count(), 0);
     const versions = await page.getByTestId("versions").innerText();
     assert.match(versions, /v1/);
     assert.match(versions, /EDT|EST/);
+    await page.getByTestId("allow").click();
+    await page.getByTestId("install").waitFor();
     assert.equal(await page.getByTestId("install").getAttribute("href"), `bao://import/${doc.id}`);
     await page.getByTestId("share-open").click();
     assert.equal(await page.getByTestId("import-link").getAttribute("data-copy"), `bao://import/${doc.id}`);

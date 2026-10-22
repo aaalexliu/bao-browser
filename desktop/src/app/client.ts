@@ -31,6 +31,7 @@ import {
   reviewItems,
   runViewer,
   statusLabel,
+  rerunPrevious,
   runField,
   siteTrustPanel,
   tryResult,
@@ -63,7 +64,7 @@ interface OpenedState {
 }
 
 let state: ShellState & {
-  notices?: { id?: string; title?: string; body?: string }[];
+  notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
   settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; siteTrust?: Record<string, "ask" | "allow"> };
   sync?: {
     server?: string;
@@ -403,15 +404,7 @@ function bind(): void {
       render();
     };
   });
-  document.querySelectorAll("[data-open-run]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => {
-      openRun = (btn as HTMLButtonElement).dataset.openRun || "";
-      selectedStep = "";
-      screen = "run";
-      renderKey = "";
-      render();
-    };
-  });
+  bindDeepLinks(document);
   const saveImport = document.getElementById("import-save");
   if (saveImport) saveImport.onclick = async () => {
     const answers: Record<string, string> = {};
@@ -845,12 +838,54 @@ async function showRun(id: string): Promise<void> {
   if (rerunRun) (rerunRun as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, "", run.inputs);
   const debug = host.querySelector("#debug-step");
   if (debug) (debug as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, (debug as HTMLButtonElement).dataset.step || "", run.inputs);
+  bindDeepLinks(host);
   bindVideoSkip();
   if (typeof pendingSeek === "number") {
     const at = pendingSeek;
     pendingSeek = undefined;
     seekVideo(at);
   }
+}
+
+/** Library, the runs list, and the viewer grid all use these attributes. The grid is painted after the first bind. */
+function bindDeepLinks(root: ParentNode): void {
+  root.querySelectorAll("[data-open-run]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const el = btn as HTMLButtonElement;
+      openRunStep(el.dataset.openRun || "", el.dataset.openStep || "");
+    };
+  });
+  root.querySelectorAll("[data-open-step]").forEach((btn) => {
+    const el = btn as HTMLButtonElement;
+    if (el.dataset.openRun) return;
+    el.onclick = () => openRunStep("", el.dataset.openStep || "", el.dataset.workflow || "");
+  });
+  root.querySelectorAll("[data-rerun]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const id = (btn as HTMLButtonElement).dataset.rerun || "";
+      const run = (state.runs || []).find((item) => item.id === id);
+      if (!run) return;
+      openPastRun(run.workflowId, run.id, "", run.inputs);
+    };
+  });
+}
+
+function openRunStep(runId: string, stepId: string, workflowId = ""): void {
+  let id = runId;
+  if (!id) {
+    const runs = (state.runs || []).filter((run) => !workflowId || run.workflowId === workflowId);
+    const found = runs.slice().sort((a, b) => (b.at || 0) - (a.at || 0)).find((run) => {
+      if (stepId && run.failure?.stepId === stepId) return true;
+      return (run.steps || []).some((step) => step.id === stepId && (step.status === "failed" || step.status === "paused"));
+    });
+    id = found?.id || "";
+  }
+  if (!id) return;
+  openRun = id;
+  selectedStep = stepId;
+  screen = "run";
+  renderKey = "";
+  render();
 }
 
 function openPastRun(workflowId: string, runId: string, stepId: string, inputs?: Record<string, string>): void {
@@ -1111,7 +1146,7 @@ async function fillArgs(id: string): Promise<void> {
   const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const prev = { ...((pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {}), ...deeplinkInputs };
-  form.innerHTML = doc.inputs.map((input) => field(input, input.type === "secret" ? undefined : prev[input.name])).join("") || "<p>This workflow has no inputs.</p>";
+  form.innerHTML = doc.inputs.map((input) => field(input, rerunPrevious(input.type, prev[input.name]))).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;
   form.querySelectorAll(".drop").forEach((zone) => {
@@ -1750,9 +1785,12 @@ function paintToasts(): void {
     if (!item || !item.title) return [];
     const id = ("id" in item && item.id) ? item.id : item.title;
     if (dismissed.has(id)) return [];
-    return [{ id, title: item.title, body: item.body }];
+    return [{ id, title: item.title, body: item.body, runId: "runId" in item ? item.runId : undefined, stepId: "stepId" in item ? item.stepId : undefined }];
   });
   host.innerHTML = notices(items);
+  host.querySelectorAll<HTMLButtonElement>("[data-open-run]").forEach((btn) => {
+    btn.onclick = () => openRunStep(btn.dataset.openRun || "", btn.dataset.openStep || "");
+  });
   host.querySelectorAll<HTMLButtonElement>("[data-dismiss]").forEach((btn) => {
     btn.onclick = () => {
       const id = btn.dataset.dismiss || "";

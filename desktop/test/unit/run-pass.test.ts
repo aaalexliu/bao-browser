@@ -2,8 +2,9 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, reviewItems, runViewer, secretInput } from "../../src/app/views";
-import { idleSkips, skipLabel } from "../../src/v1/filmstrip";
+import { actBar, failedStepId, libraryTable, notices, passGrid, rerunPrevious, reviewItems, runField, runViewer, runsList, secretInput } from "../../src/app/views";
+import { idleSkips, markerDriftSeconds, playbackSkips, skipLabel } from "../../src/v1/filmstrip";
+import { makeAsk } from "../../src/v1/human-ask";
 import { attentionCount } from "../../src/v1/human-ask";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
@@ -159,6 +160,117 @@ test("debug from a later step does not run the earlier step", async () => {
   assert.equal(result.steps[0]?.reason, "not re-run");
   assert.equal(result.steps[1]?.status, "passed");
   assert.equal(clicks, 1);
+});
+
+test("step markers stay within 0.5s of the video, and login waits and handoffs are shaded", () => {
+  const steps = [
+    { id: "login", action: "login" as const, status: "passed" as const, startedAt: 1_000, endedAt: 16_000 },
+    { id: "save", action: "click" as const, status: "failed" as const, startedAt: 16_400, endedAt: 16_900 },
+    { id: "note", action: "type" as const, status: "passed" as const, startedAt: 17_000, endedAt: 25_000 },
+  ];
+  const trail = [
+    { kind: "handoff", phase: "start", stepId: "note", ts: 17_200 },
+    { kind: "handoff", phase: "end", stepId: "note", ts: 24_800 },
+  ];
+  assert.ok(markerDriftSeconds(steps, 1_000) <= 0.5);
+  const skips = playbackSkips(steps, 1_000, trail);
+  assert.ok(skips.some((item) => item.kind === "login" && item.label === "login wait"));
+  assert.ok(skips.some((item) => item.kind === "handoff" && item.label === "handoff"));
+  const html = runViewer({
+    id: "run-idle",
+    workflowId: "wf",
+    status: "failed",
+    video: "run-idle.webm",
+    videoStartedAt: 1_000,
+    trail,
+    failure: { stepId: "save" },
+    steps,
+  }, { name: "upload note", steps: [{ id: "login", label: "Sign in" }, { id: "save", label: "save" }, { id: "note", label: "note" }] });
+  assert.match(html, /class="idle-shade"[^>]*data-idle="login"/);
+  assert.match(html, /data-idle="handoff"/);
+  assert.match(html, /id="idle-video"/);
+  assert.match(html, /Shaded stretches are skipped/);
+  const origin = Number(html.match(/data-origin="(\d+)"/)?.[1]);
+  const span = Number(html.match(/data-span="(\d+)"/)?.[1]);
+  const markers = [...html.matchAll(/data-marker="([^"]+)" data-at="(\d+)" style="left:([\d.]+)%"/g)];
+  assert.equal(markers.length, 3);
+  let worst = 0;
+  for (const marker of markers) {
+    const at = Number(marker[2]);
+    const left = Number(marker[3]);
+    const placed = (left / 100) * (span / 1000);
+    const videoSec = (at - origin) / 1000;
+    worst = Math.max(worst, Math.abs(placed - videoSec));
+  }
+  assert.ok(worst <= 0.5, `marker drift ${worst}s`);
+});
+
+test("a failed step opens in one click from the library, the runs grid, and the act notice", () => {
+  const failed = {
+    id: "run-old",
+    workflowId: "wf",
+    status: "failed" as const,
+    at: 3,
+    failure: { stepId: "save" },
+    steps: [{ id: "save", status: "failed" as const, label: "save" }],
+    inputs: { note: "alpha note", password: "••••" },
+  };
+  const later = {
+    id: "run-new",
+    workflowId: "wf",
+    status: "passed" as const,
+    at: 2,
+    steps: [{ id: "save", status: "passed" as const }],
+    inputs: { note: "later", password: "••••" },
+  };
+  assert.equal(failedStepId(failed), "save");
+  assert.equal(failedStepId(later), "");
+  const library = libraryTable(
+    [{ id: "wf", name: "upload note", steps: 1 }],
+    [later, failed],
+  );
+  assert.match(library, /data-open-run="run-old" data-open-step="save"/);
+  const grid = runsList([later, failed], [{ id: "wf", name: "upload note", steps: 1 }]);
+  assert.match(grid, /data-open-run="run-old" data-open-step="save"/);
+  assert.match(grid, /data-rerun="run-old"/);
+  assert.match(grid, /data-rerun="run-new"/);
+  const cells = passGrid([failed, later], [{ id: "save", label: "save" }]);
+  assert.match(cells, /data-open-run="run-old" data-open-step="save"/);
+  const ask = makeAsk({
+    kind: "login",
+    workflowId: "wf",
+    workflowName: "upload note",
+    stepId: "login",
+    stepIndex: 1,
+    stepCount: 2,
+    label: "Sign in",
+    timeoutMs: 1000,
+    now: 0,
+    runId: "run-wait",
+  });
+  const bar = actBar({ activeAsk: ask, runs: [failed] }, 0);
+  assert.match(bar, /id="act-open-step"/);
+  assert.match(bar, /data-open-run="run-wait" data-open-step="login"/);
+  const toast = notices([{ id: "fail-1", title: "Run failed", body: "upload note stopped at save.", runId: "run-old", stepId: "save" }]);
+  assert.match(toast, /data-open-run="run-old" data-open-step="save"/);
+  assert.match(toast, /Open this step/);
+});
+
+test("re-run from any past run prefills that run and leaves the secret blank", () => {
+  const previous = rerunPrevious("secret", "BaoSecretFixture9kQ7m");
+  assert.equal(previous, "••••");
+  const html = [
+    runField({ name: "note", type: "text", label: "Note" }, rerunPrevious("text", "alpha note")),
+    runField({ name: "password", type: "secret", label: "Password" }, previous),
+  ].join("");
+  assert.match(html, /alpha note/);
+  assert.match(html, /type="password"/);
+  assert.match(html, /Last run used a secret/);
+  assert.equal(html.includes("BaoSecretFixture9kQ7m"), false);
+  assert.equal(html.includes('value="••••"'), false);
+  const older = rerunPrevious("text", "first note");
+  assert.equal(older, "first note");
+  assert.equal(rerunPrevious("secret", ""), undefined);
 });
 
 function fake(pages: LiveTree[]): Driver {

@@ -304,7 +304,7 @@
     "name": "Accept a JavaScript alert",
     "startUrl": "https://the-internet.herokuapp.com/javascript_alerts",
     "keep": [
-      "e6"
+      "e1"
     ],
     "secrets": [],
     "secretIds": [],
@@ -324,7 +324,10 @@
     "oracle": {
       "kind": "body",
       "includes": "successfully clicked an alert"
-    }
+    },
+    "version": 2,
+    "trail": "alerts.v2",
+    "reason": "v1 (history/alerts.v1.json) stored the alert click with matching urls and no dialog, subtree, or result text, so the effect filter dropped it and replay never clicked the button. v2 records the same clicks with the dialog recorder, which stores the dialog and the result text."
   },
   {
     "id": "playwright-todo",
