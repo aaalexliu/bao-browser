@@ -222,7 +222,7 @@ function settings(): string {
       <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
       <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
     </select></label>
-    <p class="quiet">Auto is the default. Healing runs only when a model key is set, or when this build is started with the fixture healer. Otherwise replay stops on the failed step.</p>
+    <p class="quiet">Auto is the default. Healing runs when the Cursor CLI is logged in, when a model key is set, or when this build is started with the fixture healer. Otherwise replay stops on the failed step.</p>
     <button id="save-settings" class="primary" type="button">Save</button>
     <h3>Appearance</h3>
     <label>Theme <select id="theme">

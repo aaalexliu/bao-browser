@@ -15,6 +15,7 @@ import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/s
 import { startApp } from "../../src/app/server";
 
 const SECRET = "BaoSecretFixture9kQ7m";
+process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };

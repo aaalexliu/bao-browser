@@ -10,6 +10,7 @@ import { startApp } from "../../src/app/server";
 import { launchOwnedChrome } from "../../src/launch";
 
 process.env.BAO_DRIVE = "1";
+process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 
 async function post(port: number, pathname: string, body?: unknown): Promise<unknown> {
   const res = await fetch(`http://127.0.0.1:${port}${pathname}`, {

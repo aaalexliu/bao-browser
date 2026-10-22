@@ -40,6 +40,7 @@ async function post(port: number, pathname: string, body?: unknown): Promise<unk
 
 test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, async () => {
   process.env.BAO_DRIVE = "1";
+  process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   delete process.env.BAO_HEAL_FIXTURE;
   const home = mkdtempSync(path.join(tmpdir(), "bao-ui-"));
   const app = await startApp({ home, port: 0 });
@@ -80,7 +81,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(rail, /Settings/);
     assert.equal(await page.locator("#rail button[data-screen=trail]").count(), 0);
     assert.match(rail, /helper off|helper ok|helper needs permission/);
-    assert.match(rail, /no model|fixture model|model ready/);
+    assert.match(rail, /no model|fixture model|model ready|cursor account/);
 
     const started = Date.now();
     const pending = post(app.port, "/api/replay", { id: confirmWf.id, args: {} });

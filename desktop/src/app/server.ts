@@ -44,7 +44,8 @@ import {
 } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
-import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
+import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
+import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
 import { clipBox } from "../v1/browser-driver";
 import { shotFile, workflowShotName } from "../v1/shots";
@@ -71,6 +72,7 @@ export interface App {
 const publicDir = process.env.BAO_PUBLIC || path.join(process.cwd(), "desktop/src/app/public");
 
 export async function startApp(opts: { home: string; port?: number }): Promise<App> {
+  await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
   const notices: Notice[] = [];
   let boundPort = opts.port ?? 0;
@@ -751,7 +753,12 @@ async function runWorkflow(
   const driver = new BrowserDriver(page, (notice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
   }, prompts);
-  const heal = healProvider();
+  const secretList = workflow.inputs.flatMap((input) => {
+    if (input.type !== "secret") return [];
+    const value = args[input.name];
+    return typeof value === "string" && value ? [value] : [];
+  });
+  const heal = await healProvider(secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
@@ -771,11 +778,6 @@ async function runWorkflow(
     library.appendTrail(workflow.id, receipt);
   }
   const promotion = recordProvisional(library, workflow, result.heals);
-  const secretList = workflow.inputs.flatMap((input) => {
-    if (input.type !== "secret") return [];
-    const value = args[input.name];
-    return typeof value === "string" && value ? [value] : [];
-  });
   const saved = JSON.parse(maskText(JSON.stringify({
     id: result.runId,
     workflowId: workflow.id,
@@ -861,10 +863,7 @@ async function placeReplayWindow(page: Page, profile: string, want: WindowBounds
   };
 }
 
-function healProvider(): HealProvider {
-  if (process.env.BAO_HEAL_CURSOR === "1") {
-    return cursorHeal(process.env.BAO_HEAL_DIR || process.env.BAO_HOME || path.join(tmpdir(), "bao-heal"));
-  }
+async function healProvider(secrets: string[] = []): Promise<HealProvider> {
   if (process.env.BAO_HEAL_FIXTURE === "1") {
     return scriptedHeal({
       patch: { identity: { surface: "dom", role: "button", testId: "login", path: [] } },
@@ -877,7 +876,7 @@ function healProvider(): HealProvider {
   if (cursorResponse && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
     return cursorSessionHeal(() => readFileSync(cursorResponse, "utf8"));
   }
-  return llmHealFromEnv();
+  return cursorAccountHeal(process.env, secrets);
 }
 
 interface PendingImport {
@@ -1210,7 +1209,10 @@ function helperStatus(report: unknown): { label: string; accessibility: boolean;
 }
 
 function modelStatus(): { label: string } {
-  if (process.env.BAO_HEAL_FIXTURE === "1" || process.env.BAO_HEAL_CURSOR === "1") return { label: "fixture model" };
+  if (process.env.BAO_HEAL_FIXTURE === "1") return { label: "fixture model" };
+  const account = cursorAccountModelLabel();
+  if (account) return { label: account };
+  if (process.env.BAO_HEAL_CURSOR === "1") return { label: "fixture model" };
   if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) return { label: "model ready" };
   return { label: "no model" };
 }

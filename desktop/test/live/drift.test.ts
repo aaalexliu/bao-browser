@@ -15,6 +15,7 @@ import { replay } from "../../src/v1/replay";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
+process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 
 async function post(port: number, pathname: string, body?: unknown): Promise<Record<string, unknown>> {
   const res = await fetch(`http://127.0.0.1:${port}${pathname}`, {

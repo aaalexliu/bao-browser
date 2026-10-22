@@ -124,3 +124,23 @@ A password field recorded in a capture session becomes a `secret` input with no 
 `desktop/test/live/browser.test.ts` ("capture login, upload, and drop, then replay with two input sets") still fails on the parent commit `346ac1b`, before these edits. The login step's stored locators include `testid` `login`. Replacing the identity with `missing-login` does not remove those locators, so replay passes with `heals` empty and the assertion wants model name `bao-heal-fixture`. This spike did not change that.
 
 The replay form used to rebuild on each state change and drop a password that had been typed but not submitted. It now puts those typed values back, including the secret field. The secret is still not written to the library.
+
+## Decisions
+
+### 2026-10-22 — Heal on the Cursor account
+
+The healer used to swap files with a Cursor session (`BAO_HEAL_CURSOR=1` writes `heal-request.json` and waits for `heal-response.json`). That still works. It is the fallback, not the first try.
+
+**Use the Cursor CLI print mode when `agent login` has already been done.** `agent status --format json` is the check. Logged out, CLI 2026.10.19-6bbf2c4 prints `{ "status": "unauthenticated", "isAuthenticated": false }` and exits 0. Logged in, the same command prints `status: "authenticated"` and `isAuthenticated: true` (CLI source `src/commands/status.ts`). A partial login (`hasAccessToken` without a refresh token) is not a session. bao treats only `isAuthenticated: true` as able to heal.
+
+The call is `agent --print --mode ask --trust --sandbox enabled --output-format stream-json --workspace <empty temp dir>`. The prompt is written to stdin. The CLI reads stdin only when the argument prompt is empty and stdin is not a terminal (`src/commands/build-prompt.ts`). bao does not put the prompt on the command line, and it never passes `--api-key` or reads `CURSOR_API_KEY`. If the user already exported that variable for the CLI, the process inherits it. The stream-json init event then says `apiKeySource: "env"`. A stored login is `login`. Passing `--api-key` would be `flag`; bao refuses that result. When both a stored login and a key are present, the CLI keeps the login (`src/commands/chat.ts` skips the key once the stored session is authenticated).
+
+The heal record's provider is `cursor`. The name is the model on the init event (or `cursor-agent` when the event has none). The version is `login` or `env`. The file fallback stays `cursor` / `live`.
+
+Billing follows the Cursor plan. Cursor's CLI docs say headless print mode is a normal agent request, and a Cursor staff reply on 2025-08-10 said IDE and CLI share the same plan pricing. This machine was not logged in, so no request was sent. `agent --print` here exited 1 with `Authentication required. Please run 'agent login' first, or set CURSOR_API_KEY`.
+
+**Do not use MCP sampling.** Cursor's MCP docs list tools, prompts, resources, roots, elicitation, and apps. Sampling is not in that list. A conformance run dated 2026-06-28 (Cursor 0.47) reports `sampling/createMessage` unimplemented. The MCP spec deprecated sampling in protocol `2026-07-28`. A bao MCP server that asked would get no answer, including when Cursor launched it.
+
+**Do not use the Cursor HTTP APIs for this.** The documented APIs are admin, analytics, Cloud Agents, and the TypeScript SDK. Cloud Agents and the SDK run an agent over a workspace. They authenticate with `CURSOR_API_KEY` or a browser login that mints a key. They are not a one-shot identity patch, and they ask for a key bao would have to store. The CLI login does not.
+
+`BAO_HEAL_CURSOR_ACCOUNT=0` skips the CLI. With no vendor key, no login, and without `BAO_HEAL_CURSOR`, healing stays off.

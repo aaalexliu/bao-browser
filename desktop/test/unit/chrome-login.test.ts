@@ -28,6 +28,8 @@ import {
   withoutBotManagerCookies,
 } from "../../src/v1/chrome-login";
 
+process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
+
 const OTHER = "SHOULD-NOT-LEAK";
 const LOOKALIKE = "ALSO-SECRET";
 const EVIL = "EVIL-TOKEN";

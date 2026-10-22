@@ -9,7 +9,8 @@ import type { Page } from "playwright";
 import { launchOwnedChrome } from "../launch";
 import { BrowserDriver } from "./browser-driver";
 import { driftMarkdown, driftReport, recoveryRows, type DriftReport, type DriftRow } from "./drift";
-import { cursorHeal, keepPatch, unavailableHeal, type HealProvider } from "./heal";
+import { cursorAccountHeal } from "./cursor-account";
+import { keepPatch, unavailableHeal, type HealProvider } from "./heal";
 import { interpret, type TrailEvent } from "./interpret";
 import { fromAtspiNode } from "./identity";
 import { buildLocators } from "./locators";
@@ -804,7 +805,7 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
     mkdirSync(dir, { recursive: true });
     const result = await replay(workflow, {}, new BrowserDriver(page), {
       locators: "all",
-      heal: cursorHeal(dir),
+      heal: await cursorAccountHeal({ ...process.env, BAO_HEAL_CURSOR: "1", BAO_HEAL_DIR: dir }),
       settings: { heal: "auto" },
     });
     const heal = result.heals[0];

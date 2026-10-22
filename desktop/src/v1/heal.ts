@@ -121,6 +121,7 @@ export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: s
 export function llmHealFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
+  secrets: string[] = [],
 ): HealProvider {
   const openai = env.OPENAI_API_KEY;
   const anthropic = env.ANTHROPIC_API_KEY;
@@ -130,7 +131,7 @@ export function llmHealFromEnv(
     },
     async propose(failure, step) {
       if (!openai && !anthropic) return null;
-      const prompt = buildPrompt(failure, step, []);
+      const prompt = buildPrompt(failure, step, secrets);
       if (openai) {
         const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {
           method: "POST",
@@ -210,10 +211,11 @@ export function cursorSessionHeal(readResponse: () => string): HealProvider {
 }
 
 /**
- * Live Cursor heal. Writes the failure and waits for a response file.
- * This process does not invent the patch.
+ * File handoff. Writes the failure and waits for a response file.
+ * This process does not invent the patch. The Cursor CLI path calls this
+ * only when print mode cannot run.
  */
-export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env): HealProvider {
+export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env, secrets: string[] = []): HealProvider {
   return {
     available: () => true,
     async propose(failure, step) {
@@ -223,15 +225,15 @@ export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env): H
       if (failure.snapshot.screenshot) {
         writeFileSync(path.join(dir, "heal-shot.png"), Buffer.from(failure.snapshot.screenshot, "base64"));
       }
-      const prompt = buildPrompt(failure, step, []);
-      writeFileSync(path.join(dir, "heal-request.json"), JSON.stringify({
+      const prompt = buildPrompt(failure, step, secrets);
+      writeFileSync(path.join(dir, "heal-request.json"), maskText(JSON.stringify({
         intent: failure.intent,
         phase: failure.phase,
         reason: failure.reason,
         step,
         dom: failure.snapshot.dom,
         prompt,
-      }, null, 2));
+      }, null, 2), secrets));
       const responsePath = path.join(dir, "heal-response.json");
       try { unlinkSync(responsePath); } catch { /* first request */ }
       const deadline = Date.now() + Number(env.BAO_HEAL_WAIT_MS || 180000);
@@ -258,7 +260,7 @@ export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env): H
   };
 }
 
-function patchFromText(raw: string): HealProposal["patch"] {
+export function patchFromText(raw: string): HealProposal["patch"] {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) return {};
