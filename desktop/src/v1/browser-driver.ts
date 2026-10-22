@@ -486,11 +486,14 @@ export type NotifyReport = {
   badge?: string;
   titles?: string[];
   bodies?: string[];
+  title?: string;
+  body?: string;
+  tooltip?: string;
   error?: string;
 };
 
 /** Darwin posts through the signed Bao.app process. osascript display notification does not. */
-async function baoNotify(cmd: "act" | "clear", title = "", body = ""): Promise<NotifyReport> {
+async function baoNotify(cmd: "act" | "clear", title = "", body = "", tooltip = ""): Promise<NotifyReport> {
   const sock = process.env.BAO_NOTIFY_SOCK;
   if (!sock) return { ok: false, error: "no bao notifier", delivered: false };
   const { createConnection } = await import("node:net");
@@ -507,7 +510,7 @@ async function baoNotify(cmd: "act" | "clear", title = "", body = ""): Promise<N
       resolve(report);
     };
     socket.on("connect", () => {
-      socket.write(`${JSON.stringify({ cmd, title, body })}\n`);
+      socket.write(`${JSON.stringify({ cmd, title, body, tooltip })}\n`);
     });
     socket.on("data", (chunk) => {
       buf += chunk.toString("utf8");
@@ -530,9 +533,9 @@ export function watchOsNotify(watch: (report: NotifyReport) => void): void {
   onOsNotify = watch;
 }
 
-export async function notifyOs(title: string, body: string): Promise<NotifyReport> {
+export async function notifyOs(title: string, body: string, tooltip = ""): Promise<NotifyReport> {
   if (process.platform === "darwin") {
-    const report = await baoNotify("act", title, body);
+    const report = await baoNotify("act", title, body, tooltip);
     console.log(`bao notify ${JSON.stringify({
       authorization: report.authorization || "",
       prompt: report.prompt === true,
@@ -540,6 +543,9 @@ export async function notifyOs(title: string, body: string): Promise<NotifyRepor
       badge: report.badge || "",
       titles: report.titles || [],
       bodies: report.bodies || [],
+      title: report.title || "",
+      body: report.body || "",
+      tooltip: report.tooltip || "",
       error: report.error || "",
     })}`);
     onOsNotify(report);

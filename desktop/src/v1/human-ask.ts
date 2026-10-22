@@ -25,6 +25,8 @@ export interface HumanAsk {
   label: string;
   /** Confirm only: the site control the person presses. */
   button?: string;
+  /** Hostname the person is acting on. */
+  site: string;
   windowName: string;
   instruction: string;
   startedAt: number;
@@ -42,12 +44,44 @@ export function confirmButton(step: { label: string; identity?: { name?: string;
   return "the button";
 }
 
-export function confirmInstruction(button: string, windowName = "Bao Chrome"): string {
-  return `Press ${button} in the ${windowName} window. bao will not press it.`;
+/** Host only. The path and any query stay off the ask. */
+export function siteHost(url: string | undefined): string {
+  if (!url) return "the site";
+  try {
+    const host = new URL(url).hostname;
+    return host || "the site";
+  } catch {
+    return "the site";
+  }
 }
 
-export function loginInstruction(windowName = "Bao Chrome"): string {
-  return `Sign in on the ${windowName} window. bao is not recording keystrokes in password fields.`;
+export function actAskLine(ask: { kind: AskKind; site?: string; button?: string }): string {
+  const site = (ask.site || "the site").trim() || "the site";
+  if (ask.kind === "confirm") return `Press ${ask.button || "the button"} on ${site} in the Bao window`;
+  return `Sign in to ${site} in the Bao window`;
+}
+
+/** Time left, then the local clock with its zone. A notification can quote this once. */
+export function actDeadlineLine(deadline: number | null, now = Date.now()): string {
+  if (!deadline) return "No timeout";
+  const remain = Math.max(0, deadline - now);
+  const total = Math.ceil(remain / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `Waiting ${minutes}:${String(seconds).padStart(2, "0")} · times out at ${formatClock(deadline)}`;
+}
+
+/** The notification and the Dock tooltip use this exact string. */
+export function actSurfaceText(ask: Pick<HumanAsk, "kind" | "site" | "button" | "deadline">, now = Date.now()): string {
+  return `${actAskLine(ask)}. ${actDeadlineLine(ask.deadline, now)}`;
+}
+
+export function confirmInstruction(button: string, site = "the site"): string {
+  return actAskLine({ kind: "confirm", site, button });
+}
+
+export function loginInstruction(site = "the site"): string {
+  return actAskLine({ kind: "login", site });
 }
 
 export function makeAsk(input: {
@@ -59,13 +93,15 @@ export function makeAsk(input: {
   stepCount: number;
   label: string;
   button?: string;
+  site?: string;
   timeoutMs: number;
   now?: number;
   windowName?: string;
   runId?: string;
 }): HumanAsk {
   const now = input.now ?? Date.now();
-  const windowName = input.windowName || "Bao Chrome";
+  const windowName = input.windowName || "Bao window";
+  const site = (input.site || "the site").trim() || "the site";
   const timeoutMs = input.timeoutMs > 0 ? input.timeoutMs : 0;
   const button = input.kind === "confirm" ? (input.button || confirmButton({ label: input.label })) : undefined;
   return {
@@ -77,8 +113,9 @@ export function makeAsk(input: {
     stepCount: input.stepCount,
     label: input.label,
     button,
+    site,
     windowName,
-    instruction: input.kind === "confirm" ? confirmInstruction(button || "the button", windowName) : loginInstruction(windowName),
+    instruction: input.kind === "confirm" ? confirmInstruction(button || "the button", site) : loginInstruction(site),
     startedAt: now,
     deadline: timeoutMs > 0 ? now + timeoutMs : null,
     timeoutMs,
