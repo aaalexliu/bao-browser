@@ -22,8 +22,11 @@ cp -a desktop/dist/src/. "$APP/Contents/Resources/src/"
 mkdir -p "$APP/Contents/Resources/web"
 cp -a desktop/dist/web/src "$APP/Contents/Resources/web/src"
 # The window script is bundled from the TypeScript client. cwd is Resources/bao.
+# desktop/src/v1/time.ts imports ../../../web, which is Resources/bao/web from that cwd.
 mkdir -p "$APP/Contents/Resources/bao/desktop"
 cp -a desktop/src "$APP/Contents/Resources/bao/desktop/src"
+mkdir -p "$APP/Contents/Resources/bao/web"
+cp -a web/src "$APP/Contents/Resources/bao/web/src"
 # The server requires playwright and esbuild. A copy of the app outside this repo cannot see node_modules.
 mkdir -p "$APP/Contents/Resources/bao/node_modules"
 cp -a node_modules/playwright node_modules/playwright-core node_modules/esbuild "$APP/Contents/Resources/bao/node_modules/"
