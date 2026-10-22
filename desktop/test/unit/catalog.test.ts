@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { compareSearchHits, describeWorkflow, originLabel, runWorkflow, searchWorkflows, type SearchHit } from "../../src/mcp/catalog";
+import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
@@ -37,6 +37,18 @@ test("equal scores rank this Mac, then another device, then marketplace", () => 
     hit("better", "marketplace", 30, "Better marketplace"),
   ].sort(compareSearchHits);
   assert.deepEqual(hits.map((item) => item.id), ["better", "here", "a", "m"]);
+});
+
+test("a marketplace clock this Mac has not replayed is the publisher's", () => {
+  const at = Date.parse("2026-10-22T10:21:00Z");
+  const publisher = greenLabel("marketplace", at);
+  assert.match(publisher, /^publisher green · /);
+  assert.equal(publisher.includes("Not replayed yet"), false);
+  assert.equal(greenLabel("Mac A", at).startsWith("publisher green"), false);
+  assert.equal(greenLabel("marketplace", undefined), "Not replayed yet");
+  const mine = Date.parse("2026-10-22T10:22:00Z");
+  assert.equal(greenLabel("marketplace", at, mine).startsWith("publisher green"), false);
+  assert.equal(greenLabel("marketplace", at, mine), greenLabel("this Mac", mine));
 });
 
 test("a passed run stamps last green for search and describe", async () => {

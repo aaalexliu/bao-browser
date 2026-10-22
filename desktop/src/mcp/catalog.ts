@@ -162,7 +162,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
     link: linkFor(id),
     importLink: `bao://import/${id}`,
     source: originLabel(found),
-    lastGreen: when(latestGreen(found.lastGreenAt, localGreenAt(library, id))),
+    lastGreen: greenLabel(originLabel(found), found.lastGreenAt, localGreenAt(library, id)),
   };
 }
 
@@ -192,8 +192,9 @@ export async function runWorkflow(
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";
-    const lastGreen = when(latestGreen(placed?.lastGreenAt, workflowId ? localGreenAt(library, workflowId) : undefined));
-    return placed ? { ...outcome, source: originLabel(placed), lastGreen } : { ...outcome, lastGreen };
+    const source = placed ? originLabel(placed) : "";
+    const lastGreen = greenLabel(source, placed?.lastGreenAt, workflowId ? localGreenAt(library, workflowId) : undefined);
+    return placed ? { ...outcome, source, lastGreen } : { ...outcome, lastGreen };
   };
   const inputs: ReplayArgs = {
     ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
@@ -796,18 +797,29 @@ function mergeDraft(prev: DraftHit, hit: DraftHit): DraftHit {
 }
 
 function toSearchHit(hit: DraftHit, thisDevice: string, library: Library): SearchHit {
+  const source = originLabel({ ...hit, thisDevice });
   return {
     id: hit.id,
     title: hit.title,
     summary: hit.summary,
     site: hit.site,
     category: hit.category,
-    source: originLabel({ ...hit, thisDevice }),
-    lastGreen: when(latestGreen(hit.lastGreenAt, localGreenAt(library, hit.id))),
+    source,
+    lastGreen: greenLabel(source, hit.lastGreenAt, localGreenAt(library, hit.id)),
     score: hit.score,
     inputs: hit.inputs,
     link: hit.link || linkFor(hit.id),
   };
+}
+
+/** A marketplace clock this Mac has not replayed is the publisher's, not this user's. */
+export function greenLabel(source: string, remoteAt: unknown, localAt?: number): string {
+  const remote = epoch(remoteAt);
+  const local = localAt && localAt > 0 ? localAt : 0;
+  if (local > 0 && local >= remote) return when(local);
+  const shown = when(remote > 0 ? remote : undefined);
+  if (source === "marketplace" && remote > 0) return `publisher green · ${shown}`;
+  return shown;
 }
 
 function localGreenAt(library: Library, id: string): number | undefined {

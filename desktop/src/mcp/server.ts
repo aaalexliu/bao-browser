@@ -15,7 +15,7 @@ interface Rpc {
 export const TOOLS = [
   {
     name: "search_workflows",
-    description: "Search this Mac, workflows synced from your other devices, and installed marketplace listings. At most 5 hits. Each hit includes its input schema, a source (this Mac, the device name, or marketplace), and the last green time. Equal relevance ranks this Mac, then another device, then marketplace.",
+    description: "Search this Mac, workflows synced from your other devices, and installed marketplace listings. At most 5 hits. Each hit includes its input schema, a source (this Mac, the device name, or marketplace), and the last green time. A marketplace time this Mac has not replayed is labeled publisher green. Equal relevance ranks this Mac, then another device, then marketplace.",
     inputSchema: {
       type: "object",
       properties: {

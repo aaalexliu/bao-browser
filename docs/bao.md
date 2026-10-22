@@ -367,7 +367,7 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 
 | Tool | What it returns |
 | --- | --- |
-| `search_workflows` | At most 5 ranked hits from this Mac, workflows synced from your other devices, and marketplace listings. Each hit includes its input schema, a source (`this Mac`, the device name, or `marketplace`), and the last green time in the local zone. When the score is tied, this Mac comes first, then another device, then marketplace. |
+| `search_workflows` | At most 5 ranked hits from this Mac, workflows synced from your other devices, and marketplace listings. Each hit includes its input schema, a source (`this Mac`, the device name, or `marketplace`), and the last green time in the local zone. A marketplace time this Mac has not replayed is labeled `publisher green`. When the score is tied, this Mac comes first, then another device, then marketplace. |
 | `describe_workflow` | The steps, the input schema, a `bao://workflow/<id>` link, the same source, and the last green time. Secret defaults are omitted. |
 | `run_workflow` | `ok`, `needs_human`, `needs_signin`, or `failed`. A workflow that is not on this Mac is installed here before replay. A passed run stamps the last green time, and the next search shows it. A human step returns immediately with `status`, `run_id`, `step`, `reason`, `ask`, `deadline`, and `resume_token`. Pass that token to continue the same run. `cancel: true` stops it and applies nothing. `rerun: true` reuses past non-secret inputs. |
 | `get_run` | A stored outcome. |
