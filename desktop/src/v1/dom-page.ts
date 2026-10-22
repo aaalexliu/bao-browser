@@ -175,7 +175,7 @@ export function dumpPage(): PageDump {
 export function maskPasswordFields(): void {
   document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
   for (const el of document.querySelectorAll("input[type=password]")) {
-    if (!(el instanceof HTMLInputElement)) continue;
+    if (!(el instanceof HTMLInputElement) || !el.value) continue;
     const rect = el.getBoundingClientRect();
     const cover = document.createElement("div");
     cover.setAttribute("data-bao-mask", "1");

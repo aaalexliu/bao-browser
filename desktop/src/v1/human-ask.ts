@@ -43,7 +43,7 @@ export function confirmInstruction(button: string, windowName = "Bao Chrome"): s
 }
 
 export function loginInstruction(windowName = "Bao Chrome"): string {
-  return `Sign in in the ${windowName} window. bao is not recording keystrokes in password fields.`;
+  return `Sign in on the ${windowName} window. bao is not recording keystrokes in password fields.`;
 }
 
 export function makeAsk(input: {

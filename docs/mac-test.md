@@ -221,7 +221,7 @@ Press **Run**. Fill a different username and a different file than the capture. 
 
 A step whose action is `login` waits for you. Replay does not type the password and does not press Log in. The bar sits above the page you were on.
 
-**What you should see:** a bar labeled `You need to act`, the workflow name, and the instruction `Sign in in the Bao Chrome window. bao is not recording keystrokes in password fields.` Buttons are **I'm signed in, continue**, **Show window**, and **Cancel run**. The sidebar shows a waiting count. Sign in on the fixture window with `ada` and a made-up password, then press **I'm signed in, continue**. The picture is that bar on the run form.
+**What you should see:** a bar labeled `You need to act`, the workflow name, and the instruction `Sign in on the Bao Chrome window. bao is not recording keystrokes in password fields.` Buttons are **I'm signed in, continue**, **Show window**, and **Cancel run**. The sidebar shows a waiting count. Sign in on the fixture window with `ada` and a made-up password, then press **I'm signed in, continue**. The picture is that bar on the run form.
 
 ![Login act bar telling you to sign in in the Bao Chrome window, with the password-field sentence visible.](mac-test/05-login-act-bar.png)
 

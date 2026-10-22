@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Ajv from "ajv/dist/2020";
 import { chromium } from "playwright";
-import { BrowserDriver } from "../../src/v1/browser-driver";
+import { BrowserDriver, clipBox } from "../../src/v1/browser-driver";
 import { consolePane, identityTable, networkPane, runViewer, snapshotPane, workflowDetail } from "../../src/app/views";
 import { filmstripSpans, idleSkippedMs } from "../../src/v1/filmstrip";
 import { stepPolicy } from "../../src/v1/heal";
@@ -178,6 +178,72 @@ test("ask pauses on a real change and a step heal value validates", async () => 
   const workflow = doc([click]);
   assert.deepEqual(validateWorkflow(workflow), []);
   assert.equal(validate(workflow), true);
+});
+
+test("a step shot frames the control, not the result text, and outlines it", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  try {
+    await page.setContent(`<!doctype html><body style="margin:0;font:16px sans-serif">
+      <p id="apply-status" style="margin:0;height:48px;line-height:48px">Applied</p>
+      <button id="apply-btn" data-testid="apply" style="position:absolute;left:900px;top:420px;width:120px;height:36px">Apply</button>
+      <label style="position:absolute;left:80px;top:200px">Note <input id="note" data-testid="note" value=""></label>
+      <label style="position:absolute;left:80px;top:280px">Password <input id="password" type="password" value=""></label>
+    </body>`);
+    const driver = new BrowserDriver(page);
+    const clip = await clipBox(page, {
+      action: "confirm",
+      identity: { surface: "dom", role: "button", name: "Apply", path: [] },
+      text: "Applied",
+    });
+    if (!clip) throw new Error("no clip");
+    assert.ok(clip.x <= 900 && clip.x + clip.width >= 1020, JSON.stringify(clip));
+    assert.ok(clip.y <= 420 && clip.y + clip.height >= 456, JSON.stringify(clip));
+    assert.ok(clip.width < 1280 && clip.height < 800);
+    const png = await driver.shot({
+      action: "confirm",
+      identity: { surface: "dom", role: "button", name: "Apply", path: [] },
+      text: "Applied",
+    });
+    if (!png) throw new Error("no shot");
+    const orange = await page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = "data:image/png;base64," + b64;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return 0;
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, img.width, img.height).data;
+      let hits = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i] || 0;
+        const g = data[i + 1] || 0;
+        const b = data[i + 2] || 0;
+        if (r > 180 && r > g + 40 && b < 90) hits += 1;
+      }
+      return hits;
+    }, png.toString("base64"));
+    assert.ok(orange > 20, `outline pixels ${orange}`);
+    await page.fill("#note", "ada note");
+    await page.fill("#password", "SuperSecretPassword!");
+    const secretShot = await driver.shot({
+      action: "type",
+      identity: { surface: "dom", role: "textbox", id: "password", path: [] },
+    });
+    if (!secretShot) throw new Error("no secret shot");
+    assert.equal(secretShot.includes(Buffer.from("SuperSecretPassword!")), false);
+    const noteShot = await driver.shot({
+      action: "type",
+      identity: { surface: "dom", role: "textbox", id: "note", path: [] },
+    });
+    if (!noteShot) throw new Error("no note shot");
+    assert.ok(noteShot.length > 500);
+  } finally {
+    await browser.close();
+  }
 });
 
 test("an accessibility snapshot drops a password line and keeps the other controls", async () => {

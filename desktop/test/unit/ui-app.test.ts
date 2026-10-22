@@ -88,7 +88,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });
     assert.ok(Date.now() - started < 1000, "login bar was late");
     const loginBar = await page.locator("#act-bar").innerText();
-    assert.match(loginBar, /Sign in in the Bao Chrome window/);
+    assert.match(loginBar, /Sign in on the Bao Chrome window/);
     assert.match(loginBar, /password fields/);
     assert.match(await page.locator("#attention").getAttribute("data-count") || "", /[1-9]/);
     assert.ok(app.notifications.some((item) => item.title === "You need to act" && item.body.includes("password fields")));

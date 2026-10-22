@@ -144,12 +144,16 @@ export class BrowserDriver implements Driver {
   async shot(target?: ShotTarget): Promise<Buffer | undefined> {
     try {
       await this.page.evaluate(maskPasswordFields).catch(() => undefined);
-      const clip = await clipBox(this.page, target);
-      if (!clip) return;
+      const found = await locateTarget(this.page, target);
+      if (!found) return;
+      await found.mark();
+      const view = this.page.viewportSize() || await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+      const clip = paddedClip(found.box, view);
       return await this.page.screenshot({ type: "png", clip });
     } catch {
       return undefined;
     } finally {
+      await clearShotMarks(this.page);
       await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
     }
   }
@@ -361,77 +365,62 @@ export class BrowserDriver implements Driver {
 
 /** Crop around the step's target. A full-page picture is not used as a thumbnail. */
 export async function clipBox(page: Page, target?: ShotTarget): Promise<ShotBox | undefined> {
-  const hint = target || {};
-  const identity = hint.identity;
-  const testId = identity?.testId;
-  const nodeId = identity?.id;
-  const name = identity?.name;
-  const text = hint.text;
-  const label = hint.label;
-  const found = await firstBox([
-    testId ? { locate: () => page.getByTestId(testId) } : undefined,
-    nodeId && /^[\w-]+$/.test(nodeId) ? { locate: () => page.locator(`#${nodeId}`) } : undefined,
-    name ? { locate: () => page.getByRole("button", { name, exact: true }) } : undefined,
-    hint.action === "login" ? { locate: () => page.locator("#login") } : undefined,
-    hint.action === "confirm" ? { locate: () => page.locator("#apply-btn, [data-testid='apply']") } : undefined,
-    text ? { locate: () => page.getByText(text, { exact: false }), phrase: text } : undefined,
-    label ? { locate: () => page.getByText(label, { exact: false }), phrase: label } : undefined,
-  ]);
+  const found = await locateTarget(page, target);
   if (!found) return;
   const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-  return paddedClip(found, view);
+  return paddedClip(found.box, view);
 }
 
-async function firstBox(tries: Array<{ locate: () => ReturnType<Page["locator"]>; phrase?: string } | undefined>): Promise<ShotBox | undefined> {
-  for (const attempt of tries) {
-    if (!attempt) continue;
-    const box = await elementBox(attempt.locate(), attempt.phrase).catch(() => null);
-    if (box) return box;
+async function locateTarget(page: Page, target?: ShotTarget): Promise<{ box: ShotBox; mark: () => Promise<void> } | undefined> {
+  const hint = target || {};
+  const identity = hint.identity;
+  const role = identity?.role === "textbox" || hint.action === "type" ? "textbox" : "button";
+  const name = identity?.name || identity?.text;
+  const tries: Array<() => ReturnType<Page["locator"]>> = [];
+  if (identity?.testId) tries.push(() => page.getByTestId(identity.testId!));
+  if (identity?.id && /^[\w-]+$/.test(identity.id)) tries.push(() => page.locator(`#${identity.id}`));
+  if (name) tries.push(() => page.getByRole(role, { name, exact: true }));
+  if (hint.action === "login") tries.push(() => page.locator("#login"));
+  if (hint.action === "confirm") tries.push(() => page.locator("#apply-btn, [data-testid='apply']"));
+  if (hint.action === "type" && name) tries.push(() => page.getByLabel(name, { exact: false }));
+  for (const locate of tries) {
+    const found = await elementBox(locate()).catch(() => null);
+    if (found) return found;
   }
   return undefined;
 }
 
-async function elementBox(loc: ReturnType<Page["locator"]>, phrase?: string): Promise<ShotBox | null> {
+async function elementBox(loc: ReturnType<Page["locator"]>): Promise<{ box: ShotBox; mark: () => Promise<void> } | null> {
   if (await loc.count().catch(() => 0) === 0) return null;
   const handle = await loc.first().elementHandle({ timeout: 250 }).catch(() => null);
   if (!handle) return null;
-  const box = await handle.evaluate((el, wanted) => {
-    let node: Element = el;
-    if (wanted) {
-      let best: Element | null = null;
-      let bestArea = Number.POSITIVE_INFINITY;
-      for (const item of [el, ...el.querySelectorAll("*")]) {
-        const text = (item.textContent || "").replace(/\s+/g, " ");
-        if (!text.includes(wanted)) continue;
-        const rect = (item as HTMLElement).getBoundingClientRect();
-        const area = rect.width * rect.height;
-        if (rect.width >= 2 && rect.height >= 2 && area > 0 && area < bestArea) {
-          best = item;
-          bestArea = area;
-        }
-      }
-      if (best) node = best;
-      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-      let textNode: Node | null;
-      while ((textNode = walker.nextNode())) {
-        const content = textNode.textContent || "";
-        const at = content.indexOf(wanted);
-        if (at < 0) continue;
-        const range = document.createRange();
-        range.setStart(textNode, at);
-        range.setEnd(textNode, at + wanted.length);
-        const rect = range.getBoundingClientRect();
-        if (rect.width >= 2 && rect.height >= 2) {
-          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-        }
-      }
-    }
-    if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) node = node.closest("label") || node;
+  const box = await handle.evaluate((el) => {
+    const node = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? (el.closest("label") || el) : el;
     const rect = (node as HTMLElement).getBoundingClientRect();
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-  }, phrase || "").catch(() => null);
+  }).catch(() => null);
   if (!box || box.width < 2 || box.height < 2) return null;
-  return box;
+  return {
+    box,
+    mark: async () => {
+      await handle.evaluate((el) => {
+        const node = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? (el.closest("label") || el) : el;
+        node.setAttribute("data-bao-shot-outline", "1");
+        (node as HTMLElement).style.outline = "2px solid #d4532b";
+        (node as HTMLElement).style.outlineOffset = "2px";
+      }).catch(() => undefined);
+    },
+  };
+}
+
+async function clearShotMarks(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.querySelectorAll("[data-bao-shot-outline]").forEach((el) => {
+      el.removeAttribute("data-bao-shot-outline");
+      (el as HTMLElement).style.outline = "";
+      (el as HTMLElement).style.outlineOffset = "";
+    });
+  }).catch(() => undefined);
 }
 
 function maskTrace(text: string): string {

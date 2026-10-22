@@ -295,7 +295,9 @@
     .marker.failed { color: var(--bad); }
     .heal-row { display: block; width: 100%; text-align: left; margin: 0.3rem 0; }
     .cell { width: 16px; height: 16px; border-radius: 4px; display: inline-block; background: var(--select); }
-    #pass-grid th { font-size: var(--text-sm); font-weight: 600; color: var(--quiet); }
+    #pass-grid th { font-size: var(--text-sm); font-weight: 600; color: var(--quiet); white-space: nowrap; }
+    #pass-grid th time { font-variant-numeric: tabular-nums; }
+    #pass-grid td { text-align: center; }
     table.identity { font-size: var(--text-sm); }
     table.identity th { color: var(--quiet); font-weight: 600; white-space: nowrap; }
     .grid-wrap { margin-top: 0.6rem; }

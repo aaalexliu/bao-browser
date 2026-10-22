@@ -1101,8 +1101,7 @@ async function writeStepShot(driver: Driver, dir: string | undefined, step: Work
     const png = await driver.shot({
       identity: step.identity,
       action: step.action,
-      label: step.label,
-      text: step.expect?.match || step.postcondition?.match,
+      label: step.sensitive ? undefined : step.label,
     });
     if (!png || png.length < 24 || png[0] !== 0x89 || png[1] !== 0x50) return;
     mkdirSync(dir, { recursive: true });

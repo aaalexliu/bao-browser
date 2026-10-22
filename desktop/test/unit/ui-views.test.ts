@@ -50,7 +50,7 @@ test("login act bar offers continue and does not press the site button", () => {
     now: 0,
   });
   const html = actBar({ activeAsk: ask }, 0);
-  assert.match(html, /Sign in in the Bao Chrome window/);
+  assert.match(html, /Sign in on the Bao Chrome window/);
   assert.match(html, /not recording keystrokes in password fields/);
   assert.match(html, /I'm signed in, continue/);
   assert.equal(html.includes(">Approve<"), false);
@@ -344,6 +344,16 @@ test("a failed run says the phase, the change, what bao tried, and shows the gri
   assert.match(html, /data-run-tab="network"/);
   assert.match(plainFailure({ phase: "auth" }), /did not heal the redirect/);
   assert.equal(passGrid([], []).includes("pass-grid"), false);
+  const grid = passGrid([
+    { id: "run-new", workflowId: "wf", status: "failed", at: Date.UTC(2026, 9, 22, 16, 2), steps: [{ id: "c", status: "failed" }] },
+    { id: "run-old", workflowId: "wf", status: "passed", at: Date.UTC(2026, 9, 22, 15, 0), steps: [{ id: "c", status: "passed" }] },
+  ], [{ id: "c", label: "click Upload" }]);
+  assert.ok(grid.indexOf("run-old") < grid.indexOf("run-new"));
+  assert.match(grid, /title="run-old · /);
+  assert.match(grid, /title="run-new · /);
+  assert.equal(grid.includes(">Step<"), false);
+  assert.equal(/<thead[\s\S]*class="swatch/.test(grid), false);
+  assert.match(grid, /scope="row">click Upload/);
 });
 
 test("a provisional heal can be shown as promoted without editing the record", () => {
@@ -396,8 +406,13 @@ test("a target clip stays inside the viewport and is larger than the control", (
   assert.ok(clip.y + clip.height <= 800);
   assert.ok(clip.x < 440 && clip.x + clip.width > 440);
   const bar = paddedClip({ x: 0, y: 40, width: 1280, height: 36 }, { width: 1280, height: 800 });
-  assert.ok(bar.width <= 560);
   assert.equal(bar.x, 0);
+  assert.ok(bar.width >= 1280);
+  assert.ok(bar.y <= 40 && bar.y + bar.height >= 76);
+  const edge = paddedClip({ x: 1210, y: 20, width: 60, height: 24 }, { width: 1280, height: 800 });
+  assert.ok(edge.x <= 1210);
+  assert.ok(edge.x + edge.width >= 1270);
+  assert.ok(edge.x >= 0 && edge.x + edge.width <= 1280);
 });
 
 test("a trail with a missing timestamp gets one", () => {

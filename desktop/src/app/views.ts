@@ -776,12 +776,32 @@ export function receiptLines(receipts: { source?: string; expected?: string; act
   }).join("")}</ul>`;
 }
 
+function runWhen(at: number | undefined): { clock: string; full: string } {
+  if (!at) return { clock: "—", full: "" };
+  const date = new Date(at);
+  const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+  const full = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+  return { clock, full };
+}
+
+function runTitle(run: RunSummary): string {
+  const when = runWhen(run.at);
+  return when.full ? `${run.id} · ${when.full}` : run.id;
+}
+
 export function passGrid(runs: RunSummary[], steps: { id: string; label?: string }[]): string {
-  const cols = runs.slice(0, 8);
+  const cols = [...runs].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   if (!cols.length || !steps.length) return "";
   const head = cols.map((run) => {
-    const kind = runKind(run);
-    return `<th><i class="swatch ${esc(kind)}" title="${esc(statusLabel(kind))}"></i></th>`;
+    const when = runWhen(run.at);
+    return `<th scope="col" title="${esc(runTitle(run))}"><time>${esc(when.clock)}</time></th>`;
   }).join("");
   const body = steps.map((step) => {
     const cells = cols.map((run) => {
@@ -789,11 +809,11 @@ export function passGrid(runs: RunSummary[], steps: { id: string; label?: string
       const healed = (run.heals || []).some((heal) => heal.failedStep?.id === step.id) && found?.status === "passed";
       const kind = !found ? "empty" : found.status === "paused" ? "paused" : found.status === "failed" ? "failed" : healed ? "healed" : found.status === "passed" ? "passed" : "empty";
       const label = kind === "paused" ? "needs you" : kind === "empty" ? "not run" : kind;
-      return `<td><span class="cell ${kind}" title="${esc(label)}"></span></td>`;
+      return `<td title="${esc(`${runTitle(run)} · ${label}`)}"><span class="cell ${kind}"></span></td>`;
     }).join("");
-    return `<tr><th>${esc(step.label || step.id)}</th>${cells}</tr>`;
+    return `<tr><th scope="row">${esc(step.label || step.id)}</th>${cells}</tr>`;
   }).join("");
-  return `<div class="grid-wrap"><h3 class="section">Recent runs</h3>${statusLegend()}<table id="pass-grid" aria-label="Recent runs"><thead><tr><th>Step</th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="grid-wrap"><h3 class="section">Recent runs</h3>${statusLegend()}<table id="pass-grid" aria-label="Recent runs"><thead><tr><th scope="col"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 export function trajectoryPane(recorded: TrajectoryStep[] | undefined, replayed: TrajectoryStep[] | undefined): string {
