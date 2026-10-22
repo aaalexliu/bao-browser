@@ -1,0 +1,88 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666979768,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666979809,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666979849,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666979890,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Web APIs",
+      "cssPath": "#content > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Web APIs",
+    "subtreeAfter": "Web APIs",
+    "beforeUrl": "https://developer.mozilla.org/en-US/docs/Web/API",
+    "afterUrl": "https://developer.mozilla.org/en-US/docs/Web/API"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666980652,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Beacon API",
+      "cssPath": "#content > div:nth-of-type(2) > section:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(2) > li:nth-of-type(7) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "Blob",
+    "beforeUrl": "https://developer.mozilla.org/en-US/docs/Web/API",
+    "afterUrl": "https://developer.mozilla.org/en-US/docs/Web/API/Beacon_API"
+  }
+]

@@ -108,7 +108,9 @@ async function main(): Promise<void> {
       await recordAlertsV2(dir);
       return;
     }
-    const list = tasks === "batch5"
+    const list = tasks === "batch6"
+      ? (await import("../eval/heldout/tasks6")).HELD_TASKS_6
+      : tasks === "batch5"
       ? (await import("../eval/heldout/tasks5")).HELD_TASKS_5
       : tasks === "batch4"
       ? (await import("../eval/heldout/tasks4")).HELD_TASKS_4

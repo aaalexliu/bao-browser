@@ -1,0 +1,278 @@
+[
+  {
+    "id": "wiki-portal",
+    "name": "Search from the Wikipedia portal",
+    "startUrl": "https://www.wikipedia.org/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Hopper"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Turing"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "httpbin-links",
+    "name": "Open an httpbin link",
+    "startUrl": "https://httpbin.org/links/10",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/links/10/1"
+    }
+  },
+  {
+    "id": "internet-keys",
+    "name": "Press a key on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/key_presses",
+    "keep": [
+      "e5",
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "You entered: A"
+    }
+  },
+  {
+    "id": "internet-notify",
+    "name": "Load a new notification",
+    "startUrl": "https://the-internet.herokuapp.com/notification_message_rendered",
+    "keep": [
+      "e4"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "Action"
+    }
+  },
+  {
+    "id": "internet-loading",
+    "name": "Start the hidden Hello World",
+    "startUrl": "https://the-internet.herokuapp.com/dynamic_loading/1",
+    "keep": [
+      "e4"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "Hello World"
+    }
+  },
+  {
+    "id": "mdn-input",
+    "name": "Open the MDN user-agent glossary from input",
+    "startUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input",
+    "keep": [
+      "e4"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/Glossary/User_agent"
+    }
+  },
+  {
+    "id": "mdn-structure",
+    "name": "Open the next MDN HTML lesson",
+    "startUrl": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Structuring_content",
+    "keep": [
+      "e4"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "Basic_HTML_syntax"
+    }
+  },
+  {
+    "id": "mdn-beacon",
+    "name": "Open the MDN Beacon API",
+    "startUrl": "https://developer.mozilla.org/en-US/docs/Web/API",
+    "keep": [
+      "e4"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "Beacon_API"
+    }
+  },
+  {
+    "id": "internet-float",
+    "name": "Open the floating News section",
+    "startUrl": "https://the-internet.herokuapp.com/floating_menu",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "#news"
+    }
+  },
+  {
+    "id": "internet-dom",
+    "name": "Open an edit link in the challenging DOM",
+    "startUrl": "https://the-internet.herokuapp.com/challenging_dom",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "#edit"
+    }
+  }
+]

@@ -1,0 +1,155 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666878545,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666878586,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666878626,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666878667,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Wikipedia The Free Encyclopedia",
+      "cssPath": "main:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Wikipedia The Free Encyclopedia",
+    "subtreeAfter": "Wikipedia The Free Encyclopedia",
+    "beforeUrl": "https://www.wikipedia.org/",
+    "afterUrl": "https://www.wikipedia.org/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666879115,
+    "kind": "act",
+    "op": "type",
+    "value": "Lovelacee",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "id": "searchInput",
+      "nameAttr": "search",
+      "tag": "input",
+      "label": "Search Wikipedia",
+      "cssPath": "#searchInput",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "search"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.wikipedia.org/",
+    "afterUrl": "https://www.wikipedia.org/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792666879389,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.wikipedia.org/",
+    "afterUrl": "https://www.wikipedia.org/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792666879389,
+    "kind": "act",
+    "op": "type",
+    "value": "Lovelace",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "id": "searchInput",
+      "nameAttr": "search",
+      "tag": "input",
+      "label": "Search Wikipedia",
+      "cssPath": "#searchInput",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "search"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.wikipedia.org/",
+    "afterUrl": "https://www.wikipedia.org/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792666879650,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Search",
+      "cssPath": "#search-form > fieldset:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "search"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "1",
+    "beforeUrl": "https://www.wikipedia.org/",
+    "afterUrl": "https://en.wikipedia.org/wiki/Lovelace"
+  }
+]
