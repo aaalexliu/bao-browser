@@ -6,7 +6,7 @@ The pictures in this file are the Bao window on the built-in fixture (`http://12
 
 Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
 
-Build commit `410c1f7` on `v1/desktop`, or a later commit that contains this procedure. That commit has the desktop window, the floating capture bar, Chrome login import (cookies, localStorage, and IndexedDB for one site), a Finder drop recorded as one `file` input, a window-only replay webm, multi-machine sync, the marketplace web app, the clean product window, and the act ask (the site host, the deadline with its zone, and Show window). The installed copy on this Mac is `/Applications/Bao.app`, built from exactly `410c1f7` and signed with `bao dev signing`. Build both package scripts from this checkout when you are producing that app.
+Build commit `c21114c` on `v1/desktop`, or a later commit that contains this procedure. That commit has the desktop window, the floating capture bar, Chrome login import (cookies, localStorage, and IndexedDB for one site), a Finder drop recorded as one `file` input, a window-only replay webm, multi-machine sync, the marketplace web app, the clean product window, the act ask (the site host, the deadline with its zone, and Show window), extract / for each / outputs, download and open steps, relative date inputs, and a bot check that pauses the run as Needs you. The installed copy on this Mac is `/Applications/Bao.app`, built from exactly `c21114c` and signed with `bao dev signing`. Build both package scripts from this checkout when you are producing that app. Do not rebuild `BaoOSHelper.app` when the grant is already on this account. The desktop script copies the helper that is already at `desktop/os-helper-macos/BaoOSHelper.app`.
 
 The signed app is still two scripts, in this order, from the repo root:
 
@@ -115,18 +115,18 @@ There is no notarization step.
 
 ### This checkout
 
-This procedure was checked at `410c1f7` on `v1/desktop`. `6c249b9` is an older pin. Check out `v1/desktop` at `410c1f7` or a descendant that contains this file.
+This procedure was checked at `c21114c` on `v1/desktop`. `410c1f7` is an older pin. Check out `v1/desktop` at `c21114c` or a descendant that contains this file.
 
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
 git fetch origin v1/desktop
 git checkout v1/desktop
-git merge-base --is-ancestor 410c1f7 HEAD
+git merge-base --is-ancestor c21114c HEAD
 git rev-parse --short HEAD
 ```
 
-**What you should see:** `git merge-base --is-ancestor 410c1f7 HEAD` exits 0. `git rev-parse --short HEAD` prints `410c1f7` or a later commit on `v1/desktop`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
+**What you should see:** `git merge-base --is-ancestor c21114c HEAD` exits 0. `git rev-parse --short HEAD` prints `c21114c` or a later commit on `v1/desktop`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f desktop/src/v1/files-dates.ts && test -f web/package.json` exits 0.
 
 ## Build
 
@@ -271,6 +271,14 @@ A login redirect (phase `auth`) is not sent to a model. The act bar above is the
 
 Skip this until `BaoOSHelper` reports both permissions true and an accessibility walk of Calculator contains the keypad buttons (`7`, `Add`, `5`, `Equals`). The walk has to include those buttons. A hit-test that sees them while the tree does not is not enough for replay. `AXSize` is still rejected (`-25200`), so a resize row can stay `n/a-harness` while the steps pass. Quit Calculator when you are done. Do not leave a real document open in TextEdit. A throwaway `note.txt` under `/tmp` is the file to use if you try a type step.
 
+## A relative date, an opened file, and a bot check
+
+A date field is stored as a relative input. A day fourteen days out saves `+14d`. The run form previews the resolved day. Replay types that day into the field. On the restful-booker room page (`https://automationintesting.online/reservation/1`), pick the stay on the calendar and stop before **Reserve Now**.
+
+A download step saves the file under the run directory. The saved name is a template, so a second run does not become `fw9 (1).pdf`. A following step whose action is `open`, with app Preview, runs `open -a Preview` on that file. The public IRS W-9 is `https://www.irs.gov/pub/irs-pdf/fw9.pdf`. Chrome's PDF viewer displays that URL in the page, so the click does not record a download. The open step runs once the download step has the PDF.
+
+A bot check pauses the run before any heal. The run status is **needs you**. The page names the check, for example an Imperva bot check, and says bao did not try to fix it. Model calls stay at 0. **Continue** is for after the check is done. **Cancel run** clears the wait.
+
 ## Done
 
-You have Node 24 or newer, Google Chrome in `/Applications`, the command line tools, cargo in `~/dev/bao-mac-toolchain`, the login-keychain certificate `bao dev signing` (even when `find-identity -p codesigning` prints nothing), Accessibility and Screen Recording for the nested `BaoOSHelper.app`, a fixture capture with a secret input, a file input after the chooser and the Finder drag, and two replays with different inputs. The login act bar is a workflow whose step action is `login`, and its instruction names the site host. A heal review appears when a step misses. The secret string and the file path are absent from the saved workflow.
+You have Node 24 or newer, Google Chrome in `/Applications`, the command line tools, cargo in `~/dev/bao-mac-toolchain`, the login-keychain certificate `bao dev signing` (even when `find-identity -p codesigning` prints nothing), Accessibility and Screen Recording for the nested `BaoOSHelper.app`, a fixture capture with a secret input, a file input after the chooser and the Finder drag, and two replays with different inputs. The login act bar is a workflow whose step action is `login`, and its instruction names the site host. A heal review appears when a step misses. The secret string and the file path are absent from the saved workflow. A date field replays as the resolved day, an open step can hand a downloaded PDF to Preview, and a bot check stays on Needs you with no model call.
