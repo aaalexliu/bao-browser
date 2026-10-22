@@ -133,8 +133,12 @@ const SCHEMA = [
     heal jsonb,
     created_at timestamptz NOT NULL DEFAULT now(),
     device_id text,
+    parent_version int,
+    kind text NOT NULL DEFAULT 'version',
     PRIMARY KEY (workflow_id, version)
   )`,
+  `ALTER TABLE workflow_versions ADD COLUMN IF NOT EXISTS parent_version int`,
+  `ALTER TABLE workflow_versions ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'version'`,
   `CREATE TABLE IF NOT EXISTS workflow_shots (
     workflow_id text NOT NULL,
     version int NOT NULL,

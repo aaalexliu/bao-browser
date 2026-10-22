@@ -7,7 +7,7 @@ import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } f
 import { Library } from "./store";
 
 export type VersionRole = "live" | "draft" | "past";
-export type VersionSource = "saved" | "heal" | "edit" | "restore";
+export type VersionSource = "saved" | "heal" | "edit" | "restore" | "conflict";
 
 export interface WorkflowVersion {
   n: number;
@@ -15,6 +15,12 @@ export interface WorkflowVersion {
   source: VersionSource;
   createdAt: number;
   document: WorkflowV2;
+  conflict?: {
+    mineDevice: string;
+    theirsDevice: string;
+    theirs: WorkflowV2;
+    remoteVersion: number;
+  };
 }
 
 /** The locator this workflow version holds. Recorded, heal, revert, or rollback. */
@@ -46,6 +52,21 @@ export interface VersionSummary {
   /** One line, such as `Click signed in: testId signed-in → role button "Signed in"`. */
   diff: string;
   steps: VersionStepChange[];
+  conflict?: {
+    mineDevice: string;
+    theirsDevice: string;
+    remoteVersion: number;
+    sides: ConflictSide[];
+  };
+}
+
+export interface ConflictSide {
+  id: string;
+  leftLabel: string;
+  leftDetail: string;
+  rightLabel: string;
+  rightDetail: string;
+  changed: boolean;
 }
 
 function bookPath(library: Library, id: string): string {
@@ -98,7 +119,41 @@ export function summarize(row: WorkflowVersion, previous?: WorkflowV2): VersionS
     history,
     diff: change.line,
     steps: change.steps,
+    conflict: row.conflict
+      ? {
+        mineDevice: row.conflict.mineDevice,
+        theirsDevice: row.conflict.theirsDevice,
+        remoteVersion: row.conflict.remoteVersion,
+        sides: conflictSides(row.conflict.theirs, row.document),
+      }
+      : undefined,
   };
+}
+
+function conflictSides(theirs: WorkflowV2, mine: WorkflowV2): ConflictSide[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const step of [...theirs.steps, ...mine.steps]) {
+    if (seen.has(step.id)) continue;
+    seen.add(step.id);
+    ids.push(step.id);
+  }
+  return ids.map((id) => {
+    const left = theirs.steps.find((step) => step.id === id);
+    const right = mine.steps.find((step) => step.id === id);
+    const leftLabel = left ? stepLabel(left, id) : "—";
+    const rightLabel = right ? stepLabel(right, id) : "—";
+    const leftDetail = left ? identityPhrase(left.identity) : "—";
+    const rightDetail = right ? identityPhrase(right.identity) : "—";
+    return {
+      id,
+      leftLabel,
+      leftDetail,
+      rightLabel,
+      rightDetail,
+      changed: leftLabel !== rightLabel || leftDetail !== rightDetail,
+    };
+  });
 }
 
 /** How a step is found, in one phrase. A test id wins, then an id, then the role and its name. */
@@ -279,6 +334,36 @@ export function promoteVersion(library: Library, id: string, n: number): Workflo
   }
   writeBook(library, id, versions);
   return { ...row, role: "live", document };
+}
+
+/** The live file stays. Theirs is the cloud head; mine is the edit that branched. */
+export function noteConflict(
+  library: Library,
+  input: { mine: WorkflowV2; theirs: WorkflowV2; mineDevice: string; theirsDevice: string; remoteVersion: number },
+): WorkflowVersion {
+  const versions = seed(library, input.mine.id).filter((item) => item.source !== "conflict");
+  const row: WorkflowVersion = {
+    n: versions.reduce((max, item) => Math.max(max, item.n), 0) + 1,
+    role: "draft",
+    source: "conflict",
+    createdAt: Date.now(),
+    document: input.mine,
+    conflict: {
+      mineDevice: input.mineDevice,
+      theirsDevice: input.theirsDevice,
+      theirs: input.theirs,
+      remoteVersion: input.remoteVersion,
+    },
+  };
+  versions.push(row);
+  writeBook(library, input.mine.id, versions);
+  return row;
+}
+
+export function clearConflict(library: Library, id: string): void {
+  const versions = readBook(library, id).filter((item) => item.source !== "conflict");
+  if (!versions.length) return;
+  writeBook(library, id, versions);
 }
 
 /** A past or live version becomes a new draft. The live file stays. */

@@ -1055,6 +1055,19 @@ async function openEditor(id: string): Promise<void> {
     };
   });
   bindShare(host, id);
+  host.querySelectorAll("[data-resolve]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = async () => {
+      const action = (btn as HTMLButtonElement).dataset.resolve || "";
+      await fetch("/api/sync/conflict", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, action }),
+      });
+      renderKey = "";
+      await refresh();
+      await openEditor(id);
+    };
+  });
   host.querySelectorAll("[data-promote-version], [data-restore-version]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = async () => {
       const el = btn as HTMLButtonElement;
