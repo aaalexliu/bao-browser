@@ -161,7 +161,7 @@ A login or confirm wait is stored in the app home as `pending-prompt.json`. Clos
 
 ### 2026-10-22 — Locator history and a banner that stays off the workflow
 
-A step stores each locator version: recorded, heal, revert, and a rollback. Roll back to this version copies that version onto the step and appends a row. It does not edit the older rows. When a click misses because a cookie banner, a modal, or a spinner is in the way, replay dismisses or waits for this run only, at most three times, and the run viewer says `recovered:` plus the reason. The workflow file is not changed. A CAPTCHA, a 5xx response, and a signed-out page stay failures and are not sent to a model.
+Locator versions live on the workflow versions, in the one Versions panel. A version holds the recorded locator, a heal, a revert, or a rollback: the local time with its zone, the source run, the score, and which attributes changed. Restore saves that version as a new draft and does not edit the older versions. When a click misses because a cookie banner, a modal, or a spinner is in the way, replay dismisses or waits for this run only, at most three times, and the run viewer says `recovered:` plus the reason. The workflow file is not changed. A CAPTCHA, a 5xx response, and a signed-out page stay failures and are not sent to a model.
 
 ### 2026-10-22 — Trace-style run viewer
 
@@ -301,7 +301,7 @@ A dismissed prompt starts with `The keychain prompt was dismissed.` A missing it
 
 # Sync, share, and run Bao workflows
 
-Bao keeps a workflow as schema v2 JSON on the Mac that recorded it. A registry lets that Mac meet your other Macs, and a web app lets you share or list a workflow. Replay still happens on a device. The server never sees a cookie, a secret, or an unredacted screenshot.
+Bao keeps a workflow as schema v2 JSON on the Mac that recorded it. A heal or an edit is a new version. The Versions panel lists each one in local time, with the machine's zone label. Restore saves that version as a draft. Replay keeps using the live file until the draft is promoted. A registry lets that Mac meet your other Macs, and a web app lets you share or list a workflow. Replay still happens on a device. The server never sees a cookie, a secret, or an unredacted screenshot.
 
 ## Run it locally
 
@@ -322,9 +322,9 @@ npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/sha
 npm run bao -- sync --home ~/.local/share/bao
 ```
 
-`bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. A newer remote version wins. The copy you had is written to `conflicts/<id>.json` and shown under Settings → Sync. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
+`bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. Back up daily or Back up weekly, beside that copy, writes `backups/scheduled-<time>/` when the interval is due. Settings → Sync shows the last backup time and the folder Restore uses. A newer remote version wins. The copy you had is written to `conflicts/<id>.json` and shown under Settings → Sync. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
 
-Settings → Sync shows the paired devices and item counts per category. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). The Mac permission card stays on Library, and only while a grant is missing. It is not repeated here. Secrets are inputs of type `secret` with no default. Typed secret values, cookie headers, and screenshot bytes are dropped before a push. A payload that still contains them is rejected.
+Settings → Sync shows the paired devices, item counts per site category, and a toggle for workflows, run history, heal records, and settings. While a category is catching up it reads “N on this device of M in the cloud.” An offline Mac finishes that catch-up the next time sync reaches the account. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). The Mac permission card stays on Library, and only while a grant is missing. It is not repeated here. Secrets are inputs of type `secret` with no default. Typed secret values, cookie headers, and screenshot bytes are dropped before a push. A payload that still contains them is rejected.
 
 ## Share a workflow
 

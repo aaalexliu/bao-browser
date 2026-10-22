@@ -183,4 +183,9 @@ const SCHEMA = [
   `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS gate_step text`,
   `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS gate_reason text`,
   `ALTER TABLE workflows ADD COLUMN IF NOT EXISTS ci_verified boolean DEFAULT false`,
+  `CREATE TABLE IF NOT EXISTS account_settings (
+    user_id text PRIMARY KEY REFERENCES users(id),
+    document jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
 ];

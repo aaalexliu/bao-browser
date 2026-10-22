@@ -1,6 +1,6 @@
 // Heal is off unless a provider says it is available.
 // The default policy is auto: apply the patch and keep going.
-// approve pauses at the proposal. The saved workflow changes only if the user keeps the patch.
+// approve pauses at the proposal. Keeping a patch stores a draft. The live workflow changes when that draft is promoted.
 
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";

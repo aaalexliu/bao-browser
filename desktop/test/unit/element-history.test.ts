@@ -5,13 +5,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import Ajv from "ajv/dist/2020";
-import { runViewer } from "../../src/app/views";
+import { runViewer, versionsPanel } from "../../src/app/views";
 import { rollbackTo } from "../../src/v1/element-history";
 import { keepPatch, revertPatch, type HealProposal } from "../../src/v1/heal";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { formatWhen } from "../../src/v1/time";
+import { formatClock } from "../../src/v1/time";
+import { draftVersion, listVersions, restoreVersion, versionDocument } from "../../src/v1/versions";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -222,41 +223,60 @@ test("the fourth obstruction is a failure and is not healed", async () => {
   assert.equal(result.steps[0]?.reason, "recovered: cookie banner");
 });
 
-test("the run viewer lists locator versions and the recovered row", () => {
+test("the versions panel holds the locator versions and the run viewer keeps the recovered row", async () => {
   const at = Date.now() - 120_000;
+  const home = mkdtempSync(path.join(tmpdir(), "bao-versions-locators-"));
+  const library = new Library(home);
   let workflow = doc([
     step({ id: "apply", action: "click", label: "Click Apply", identity: ident({ testId: "apply", text: "Apply" }) }),
-  ]);
+  ], "wf-history");
   workflow.createdAt = at;
-  workflow = keepPatch(workflow, "apply", { identity: ident({ testId: "apply-2", text: "Apply now" }) }, { at: at + 1000, runId: "run-1", score: 100 });
-  workflow = keepPatch(workflow, "apply", { identity: ident({ testId: "apply-3", text: "Continue" }) }, { at: at + 2000, runId: "run-2", score: 88 });
-  const recorded = workflow.steps[0]?.history?.[0];
-  const reverted = revertPatch(workflow, {
+  library.save(workflow);
+  const once = keepPatch(workflow, "apply", { identity: ident({ testId: "apply-2", text: "Apply now" }) }, { at: at + 1000, runId: "run-1", score: 100 });
+  draftVersion(library, once, "heal");
+  const twice = keepPatch(once, "apply", { identity: ident({ testId: "apply-3", text: "Continue" }) }, { at: at + 2000, runId: "run-2", score: 88 });
+  draftVersion(library, twice, "heal");
+  const reverted = revertPatch(twice, {
     ...workflow.steps[0]!,
-    identity: ident({ testId: "apply", text: "Apply" }),
-    history: workflow.steps[0]?.history,
+    history: twice.steps[0]?.history,
   }, { at: at + 3000, runId: "run-2" });
-  const current = rollbackTo(reverted.steps[0]!, recorded!.id, { at: at + 4000, recordedAt: at });
-  const when = formatWhen(at);
-  const html = runViewer({
-    id: "run-banner",
-    workflowId: workflow.id,
-    status: "passed",
-    at,
-    steps: [{ id: "apply", status: "passed", label: "Click Apply", reason: "recovered: cookie banner", startedAt: at, endedAt: at + 400 }],
-  }, { name: "Fixture", steps: [current] }, "apply");
-  assert.match(html, /id="element-history"/);
-  assert.match(html, /data-source="recorded"/);
-  assert.match(html, /data-source="heal"/);
-  assert.match(html, /data-source="revert"/);
-  assert.match(html, /data-source="rollback"/);
+  draftVersion(library, reverted, "restore");
+  const recorded = twice.steps[0]?.history?.[0];
+  const rolled = {
+    ...twice,
+    steps: [rollbackTo(twice.steps[0]!, recorded!.id, { at: at + 4000, recordedAt: at })],
+  };
+  draftVersion(library, rolled, "restore");
+  const html = versionsPanel(listVersions(library, "wf-history"));
+  assert.match(html, /id="versions"/);
+  assert.equal(html.includes("element-history"), false);
+  assert.match(html, /data-locator-source="recorded"/);
+  assert.match(html, /data-locator-source="heal"/);
+  assert.match(html, /data-locator-source="revert"/);
+  assert.match(html, /data-locator-source="rollback"/);
   assert.match(html, /data-score="100"/);
   assert.match(html, /data-score="88"/);
   assert.match(html, /run-1/);
   assert.match(html, /testId/);
-  assert.ok(html.includes(when));
-  assert.match(html, new RegExp(`data-rollback="${recorded?.id}"`));
-  assert.equal(html.includes(`data-rollback="${current.history?.at(-1)?.id}"`), false);
-  assert.equal(html.match(/Roll back to this version/g)?.length, (current.history?.length || 0) - 1);
-  assert.match(html, /id="recovered-row">recovered: cookie banner</);
+  assert.ok(html.includes(formatClock(at + 1000)));
+  assert.match(html, /Restore as draft/);
+  const snap = structuredClone(versionDocument(library, "wf-history", 1));
+  const restored = restoreVersion(library, "wf-history", 1);
+  assert.deepEqual(versionDocument(library, "wf-history", 1), snap);
+  assert.notEqual(restored.n, 1);
+  assert.equal(restored.document.steps[0]?.identity?.testId, "apply");
+  const result = await replay(restored.document, {}, fake([tree([ident({ testId: "apply", text: "Apply" })])]), { heal: throwingHeal });
+  assert.equal(result.status, "passed");
+  assert.equal(result.modelCalls, 0);
+  assert.equal(result.heals.length, 0);
+  assert.equal(library.read("wf-history").steps[0]?.identity?.testId, "apply");
+  const viewer = runViewer({
+    id: "run-banner",
+    workflowId: "wf-history",
+    status: "passed",
+    at,
+    steps: [{ id: "apply", status: "passed", label: "Click Apply", reason: "recovered: cookie banner", startedAt: at, endedAt: at + 400 }],
+  }, { name: "Fixture", steps: workflow.steps }, "apply");
+  assert.equal(viewer.includes("element-history"), false);
+  assert.match(viewer, /id="recovered-row">recovered: cookie banner</);
 });
