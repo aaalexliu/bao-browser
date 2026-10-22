@@ -3,19 +3,14 @@
 // functions only — no DOM, no chrome APIs — so both bundles import them without pulling
 // in each other's UI, and the library groups/labels identically on both.
 import type { Step, WorkflowSummary } from "./types";
+import { formatClock, formatWhen } from "../web/src/lib/time";
 
 export const domainOf = (u: string) => { try { return new URL(u).hostname || "other"; } catch (_) { return "other"; } };
 
-export const dateFmt = (ts: number) =>
-  new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+export const dateFmt = (ts: number) => formatClock(ts);
 
-export function relTime(ts: number): string {
-  const d = Date.now() - ts;
-  if (d < 60_000) return "just now";
-  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
-  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
-  if (d < 7 * 86_400_000) return `${Math.floor(d / 86_400_000)}d ago`;
-  return dateFmt(ts);
+export function relTime(ts: number, now = Date.now()): string {
+  return formatWhen(ts, now);
 }
 
 export const stepLabel = (s: Step) => `${s.label}${s.value ? ` = "${s.value}"` : ""}`;

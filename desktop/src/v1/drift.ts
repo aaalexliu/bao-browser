@@ -1,5 +1,7 @@
 // Drift report. The runner fills one row per step per change. This file only totals them.
 
+import { formatClock } from "./time";
+
 export interface DriftRow {
   workflow: string;
   change: string;
@@ -202,11 +204,16 @@ export function recoveryRows(input: {
   });
 }
 
+function generatedLabel(value: string): string {
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? value : formatClock(at);
+}
+
 export function driftMarkdown(report: DriftReport): string {
   const lines = [
     `# Drift report`,
     ``,
-    `Generated ${report.generatedAt}. Rates exclude n/a rows. Each failure lists the attribute that broke.`,
+    `Generated ${generatedLabel(report.generatedAt)}. Rates exclude n/a rows. Each failure lists the attribute that broke.`,
     ``,
     `| change | passed | failed | n/a | rate |`,
     `| --- | --- | --- | --- | --- |`,

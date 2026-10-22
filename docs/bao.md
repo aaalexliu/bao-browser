@@ -151,12 +151,16 @@ Billing follows the Cursor plan. Cursor's CLI docs say headless print mode is a 
 
 `BAO_HEAL_CURSOR_ACCOUNT=0` skips the CLI. With no vendor key, no login, and without `BAO_HEAL_CURSOR`, healing stays off.
 
+### 2026-10-22 — Clocks use the machine zone
+
+The desktop window and the web app share one formatter (`web/src/lib/time.ts`). A shown time is the machine's zone with the short zone name, for example `Oct 22, 12:50 AM EDT`. A time from the last day also leads with how long ago (`23 min ago · Oct 22, 12:50 AM EDT`) on rows that have the room: Heals, the runs list, saved logins, and the workflow's last run. The recent-runs header is the zoned clock, and the hover adds the relative phrase. Stored instants, HAR times, and cookie expirations stay ISO. A unit test renders those pages and fails if an ISO `Z` timestamp, a `YYYY-MM-DD` date, or a clock with no zone is left in the HTML.
+
 ## 2026-10-22 — One checkout for the signed app
 
 The integration branch (pull request 58) is the tree a Mac build should use. It already contains the desktop window, and this pass landed the rest of the open desktop work on that same branch:
 
 - Step pictures in the filmstrip and in Before / After are cropped around the target element's box, with padding, the control centered and fully in frame, and a thin outline on it. A type step shows the field before the value and after it. A secret is covered.
-- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Hover a cell for the run id and the time in the local zone. The act bar says "Sign in on the Bao Chrome window."
+- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. The act bar says "Sign in on the Bao Chrome window."
 - The Mac permission card is only on macOS, and only while Accessibility or Screen Recording is missing. Library shows it once, collapsed until opened. After Continue, a sidebar dot is the only copy. Linux does not list those grants as missing.
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.

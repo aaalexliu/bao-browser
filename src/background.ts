@@ -7,6 +7,7 @@
 //     the recorded FrameRef (origin/url) to a current frameId via webNavigation.
 
 import type { FrameRef, Msg, RecState, ReplayResponse, RunRecord, RunState, Step, StepResult, Workflow, WorkflowSummary } from "./types";
+import { formatClock } from "../web/src/lib/time";
 
 // The SW's harness-visible API: the e2e tests drive these via sw.evaluate, so they
 // must live on the worker global under exactly these names.
@@ -252,12 +253,9 @@ const summarize = (w: Workflow): WorkflowSummary => ({
 // T15 auto-save names: "{hostname} — {Mon D, h:mma}". No collision handling — ids
 // are the identity, duplicate names are harmless.
 function autoName(startUrl: string): string {
-  const d = new Date();
-  const time = `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}, ` +
-    `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")}${d.getHours() < 12 ? "am" : "pm"}`;
   let host = "";
-  try { host = new URL(startUrl).hostname; } catch (_) {}
-  return `${host || "Recording"} — ${time}`;
+  try { host = new URL(startUrl).hostname; } catch (_) { /* unnamed page */ }
+  return `${host || "Recording"} — ${formatClock(Date.now())}`;
 }
 // One-time import of the pre-T14 recording. Idempotent: runs only while no workflows
 // exist and clears the legacy key so it can't re-import.

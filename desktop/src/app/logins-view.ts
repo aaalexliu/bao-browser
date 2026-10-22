@@ -1,6 +1,7 @@
 // Logins screen. Profiles and saved sites. Cookie values never appear here.
 
 import type { BotCookiePolicy, PublicImportResult, PublicPreview, PublicProfile, SiteLoginConfig } from "../login-import/types";
+import { formatWhen } from "../v1/time";
 import { esc } from "./views";
 
 export interface SavedSite extends SiteLoginConfig {
@@ -208,18 +209,4 @@ function inkFor(hex: string): string {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#1d1d1f" : "#ffffff";
-}
-
-function formatWhen(at: number): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    }).format(new Date(at));
-  } catch {
-    return "";
-  }
 }
