@@ -10,6 +10,7 @@ import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } f
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
 import { stepsNeedingReview, type StepReview } from "../v1/triage";
 import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
+import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { tokenFields, type TokenInput } from "../v1/input-token";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
@@ -67,6 +68,7 @@ export interface RunSummary {
     deadline?: string | null;
     resume_token?: string;
   };
+  outputs?: OutputValue[];
 }
 
 export interface FailureView {
@@ -125,6 +127,8 @@ export interface ShellState {
   pendingImport?: ImportPending | null;
   teach?: TeachView;
   guide?: GuideView | null;
+  /** HTML for the capture column picker. Empty when nothing is picked. */
+  extractPicker?: string;
 }
 
 export interface CommandItem {
@@ -486,6 +490,7 @@ export function runViewer(
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
     </header>
+    ${outputsHtml(run.id, run.outputs)}
     ${video}
     ${envelopePane(run.envelope)}
     ${handoffPane(run.trail)}
@@ -1634,6 +1639,7 @@ export function recordBar(state: { recording?: boolean; capturePaused?: boolean;
     <span id="rec-timer" data-since="${state.recordingSince || 0}">0:00</span>
     <input id="rec-note" class="note-field" aria-label="Note" placeholder="Note">
     <button type="button" id="rec-note-add">Note</button>
+    <button type="button" id="rec-extract">Pick list</button>
     <button type="button" id="rec-pause">${paused}</button>
     <button type="button" id="rec-mark">Mark step</button>
     <button type="button" id="rec-stop">Stop</button>

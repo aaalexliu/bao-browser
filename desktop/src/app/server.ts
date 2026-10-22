@@ -53,6 +53,8 @@ import { openReplayVideo } from "../v1/replay-video";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
+import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
+import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop } from "../v1/redacted-png";
 import {
@@ -197,6 +199,7 @@ export async function startApp(opts: {
   let guideLive: (GuideProgress & { workflowId: string; runId: string }) | null = null;
   const notifications: { title: string; body: string; tooltip: string }[] = [];
   let opened: OpenedView | null = null;
+  let extractProposal: PageProposal | undefined;
   let pendingDoc: WorkflowV2 | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
   let watch: { context: BrowserContext; page: Page; profile: string } | undefined;
@@ -366,6 +369,7 @@ export async function startApp(opts: {
           liveTrail: capture.events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
           teach: teachState(),
           guide: guideLive,
+          extractPicker: extractProposal && !extractProposal.error ? extractPickerHtml(extractProposal) : "",
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
@@ -572,6 +576,20 @@ export async function startApp(opts: {
       if (req.method === "GET" && url.pathname.startsWith("/api/capture/shots/")) {
         const file = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
         return sendPng(res, path.join(library.root, "shots", "capture", file));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && (url.pathname.endsWith("/outputs.csv") || url.pathname.endsWith("/outputs.json"))) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const run = library.readRun(id);
+        if (url.pathname.endsWith("/outputs.csv")) {
+          const csv = outputCsv(run.outputs, url.searchParams.get("name") || undefined);
+          if (!csv) return json(res, { error: "no output" }, 404);
+          res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=\"output.csv\"" });
+          res.end(csv);
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "content-disposition": "attachment; filename=\"outputs.json\"" });
+        res.end(JSON.stringify(run.outputs ?? [], null, 2));
+        return;
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/video")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -781,6 +799,52 @@ export async function startApp(opts: {
         await settleShots();
         return json(res, { events: capture.events.length });
       }
+      if (req.method === "POST" && url.pathname === "/api/sessions/extract/arm") {
+        if (!page || page.isClosed()) return json(res, { error: "no session" }, 409);
+        await page.evaluate(installDataPage);
+        await page.evaluate(() => {
+          const host = window as unknown as { __baoArm?: () => void };
+          host.__baoArm?.();
+        });
+        return json(res, { armed: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/extract/propose") {
+        if (!page || page.isClosed()) return json(res, { error: "no session" }, 409);
+        const body = await readBody(req) as { selector?: string; x?: number; y?: number };
+        await page.evaluate(installDataPage);
+        const proposal = await page.evaluate((arg) => {
+          const host = window as unknown as { __baoPropose?: (arg: { selector?: string; x?: number; y?: number }) => PageProposal };
+          return host.__baoPropose ? host.__baoPropose(arg) : { error: "extract is not installed" };
+        }, { selector: body.selector, x: body.x, y: body.y });
+        extractProposal = proposal as PageProposal;
+        return json(res, extractProposal);
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/extract/commit") {
+        if (!capture.recording) return json(res, { error: "not recording" }, 409);
+        if (!extractProposal || extractProposal.error) return json(res, { error: "no list" }, 409);
+        const body = await readBody(req) as { names?: Record<string, string>; drop?: string[]; maxPages?: number; as?: string; vary?: string };
+        const spec = specFromProposal(extractProposal, body);
+        capture.push({ kind: "act", op: "extract", extract: spec, locators: spec.locators });
+        if (body.vary && /^[A-Za-z][A-Za-z0-9_]*$/.test(body.vary)) {
+          const click = [...capture.events].reverse().find((event) => event.op === "click");
+          if (click) click.parameter = body.vary;
+        }
+        extractProposal = undefined;
+        publishCapture();
+        return json(res, { as: spec.as, columns: spec.columns.filter((column) => !column.dropped).map((column) => column.name) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/table") {
+        if (!capture.recording) return json(res, { error: "not recording" }, 409);
+        const body = await readBody(req) as { csv?: string; as?: string };
+        const rows = parseCsv(String(body.csv || ""));
+        if (rows.length < 1) return json(res, { error: "csv" }, 400);
+        capture.push({
+          kind: "act",
+          op: "copy",
+          list: { rows, headers: Object.keys(rows[0] || {}), as: body.as || "rows" },
+        });
+        return json(res, { rows: rows.length });
+      }
       if (req.method === "POST" && url.pathname === "/api/sessions/stop") {
         if (sessionMode === "teach") return json(res, await finishTeach());
         const workflow = await enqueue(() => saveSession());
@@ -820,7 +884,13 @@ export async function startApp(opts: {
         const current = new URL(session.page.url());
         const hasPassword = await session.page.locator("input[type=password]:visible").count().then((count) => count > 0).catch(() => false);
         const status = await session.page.locator("#status").innerText().catch(() => "");
-        return json(res, { open: true, pathname: current.pathname, hasPassword, status });
+        const text = await session.page.locator("body").innerText().then((value) => value.slice(0, 8000)).catch(() => "");
+        return json(res, { open: true, pathname: current.pathname, hasPassword, status, text });
+      }
+      if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/sessions/page") {
+        if (!page || page.isClosed()) return json(res, { open: false }, 404);
+        const text = await page.locator("body").innerText().then((value) => value.slice(0, 8000)).catch(() => "");
+        return json(res, { open: true, url: page.url(), text });
       }
       if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
         loginContinued = true;
@@ -1224,6 +1294,9 @@ export async function startApp(opts: {
       await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
         await watchShot(recordCaptured(payload));
       });
+      await context.exposeBinding("__baoDeliver", async (_source, proposal: PageProposal) => {
+        extractProposal = proposal;
+      });
       await context.addInitScript(recorderSource());
       page = context.pages()[0] || await context.newPage();
       page.on("dialog", (dialog) => {
@@ -1336,7 +1409,6 @@ export async function startApp(opts: {
     const raw = capture.stop();
     recordingSince = 0;
     const id = `wf-${Date.now()}`;
-    const startUrl = page ? page.url() : "";
     const clean = raw.map((event) => {
       const file = storedFileEvent(event);
       if (!file.sensitive && file.identity?.role !== "password") return file;
@@ -1344,6 +1416,8 @@ export async function startApp(opts: {
       delete copy.value;
       return copy;
     });
+    const startUrl = captureStartUrl(clean, page && !page.isClosed() ? page.url() : "");
+    extractProposal = undefined;
     const built = explain(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
     const workflow = built.workflow;
     const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
@@ -1367,6 +1441,7 @@ export async function startApp(opts: {
   async function discardSession(): Promise<void> {
     capture.discard();
     recordingSince = 0;
+    extractProposal = undefined;
     await stopBrowser();
     publishCapture();
   }
@@ -1821,6 +1896,7 @@ export async function startApp(opts: {
       watch = undefined;
       for (const session of replays.values()) {
         await session.context.close().catch(() => undefined);
+        await keepReplayClip(library.root, session.profile);
         if (path.resolve(session.profile) !== path.resolve(baoProfile)) {
           await rm(session.profile, { recursive: true, force: true }).catch(() => undefined);
         }
@@ -1829,6 +1905,20 @@ export async function startApp(opts: {
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
   };
+}
+
+const replayClips = new Map<string, { video: { path(): Promise<string> }; runId?: string }>();
+
+async function keepReplayClip(root: string, profile: string): Promise<void> {
+  const clip = replayClips.get(profile);
+  if (!clip) return;
+  replayClips.delete(profile);
+  if (!clip.runId) return;
+  const src = await clip.video.path().catch(() => "");
+  if (!src || !existsSync(src)) return;
+  const dest = path.join(root, "videos", `${clip.runId}.webm`);
+  mkdirSync(path.dirname(dest), { recursive: true });
+  copyFileSync(src, dest);
 }
 
 function captureStepLabel(step: { label: string; note?: string }): string {
@@ -1936,6 +2026,8 @@ async function runRecorded(
   const heal = await healProvider(secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const clip = replayClips.get(session.profile);
+  if (clip) clip.runId = runId;
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const videoStartedAt = Date.now();
   const video = await openReplayVideo(pidsForDataDir(session.profile), path.join(library.root, "videos", `${runId}.webm`));
@@ -1986,6 +2078,7 @@ async function runRecorded(
     promotion,
     modelCalls: result.modelCalls,
     inputs: maskedInputs(workflow, args),
+    ...(result.outputs ? { outputs: result.outputs } : {}),
     ...(recorded.wrote ? { video: `${runId}.webm`, videoStartedAt } : {}),
   }), secretList)) as Parameters<Library["saveRun"]>[0];
   library.saveRun(saved);
@@ -2012,11 +2105,17 @@ async function openReplay(
     replays.delete(id);
   }
   const profile = fixedDir ?? await mkdtemp(path.join(tmpdir(), "bao-replay-"));
+  const record = process.env.BAO_RUN_VIDEO === "1";
+  const videoDir = record ? path.join(library.root, "videos", "incoming") : undefined;
+  if (videoDir) mkdirSync(videoDir, { recursive: true });
   const context = await launchOwnedChrome({
     userDataDir: profile,
     headless: process.env.BAO_HEADED !== "1",
+    videoDir,
   });
   const page = context.pages()[0] || await context.newPage();
+  const video = page.video();
+  if (video) replayClips.set(profile, { video });
   const saved = library.readBounds(id);
   if (saved) await moveOwnedWindow(page, saved).catch(() => undefined);
   const session = { context, page, profile };
@@ -2429,12 +2528,13 @@ function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: 
 }
 
 function slimRun(run: ReturnType<Library["readRun"]>) {
-  const steps = Array.isArray(run.steps) ? run.steps.map((step) => {
+  const { outputs: _outputs, ...withoutOutputs } = run;
+  const steps = Array.isArray(withoutOutputs.steps) ? withoutOutputs.steps.map((step) => {
     const row = step as { beforeShot?: string; afterShot?: string };
-    const { beforeShot, afterShot, ...rest } = row;
+    const { beforeShot, afterShot, ...kept } = row;
     void beforeShot;
     void afterShot;
-    return rest;
+    return kept;
   }) : [];
   const failure = run.failure && typeof run.failure === "object"
     ? { ...(run.failure as Record<string, unknown>), snapshot: undefined, beforeShot: undefined }
@@ -2443,7 +2543,7 @@ function slimRun(run: ReturnType<Library["readRun"]>) {
     const row = heal as { snapshot?: unknown; beforeShot?: string };
     return { ...row, snapshot: undefined, beforeShot: undefined };
   }) : [];
-  return { ...run, steps, failure, heals };
+  return { ...withoutOutputs, steps, failure, heals };
 }
 
 function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, string> {

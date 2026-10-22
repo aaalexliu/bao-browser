@@ -7,7 +7,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
-import { lookup } from "./identity";
+import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
+import { lookup, normRole } from "./identity";
 import { actWaitMs, confirmButton, makeAsk, siteHost, type HumanAsk } from "./human-ask";
 import { formatClock } from "./time";
 import { identityView } from "./run-trace";
@@ -100,6 +101,10 @@ export interface Driver {
   notify(notice: HealNotice): Promise<void>;
   sleep?(ms: number): Promise<void>;
   waitIdle?(timeoutMs: number): Promise<void>;
+  /** Read every row of an extract spec. Browser drivers only. */
+  readList?(spec: ExtractSpec): Promise<{ rows: Record<string, string>[]; nextVisible: boolean }>;
+  /** Click a pagination control matched by locators, not by a single identity. */
+  activate?(locators: StepLocator[]): Promise<boolean>;
   /** Shown in the Bao window. Replay does not click Apply. */
   showConfirm?(label: string): void | Promise<void>;
   clearConfirm?(): void | Promise<void>;
@@ -171,6 +176,8 @@ export interface RunResult {
   ask?: HumanAsk;
   /** Heal proposals that named a model. Zero is a run that did not call one. */
   modelCalls: number;
+  /** Filled from workflow.outputs. Absent when the workflow declares none. */
+  outputs?: OutputValue[];
 }
 
 export interface ReplayOptions {
@@ -236,9 +243,11 @@ export async function replay(
   };
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
+  const tables = new Map<string, Record<string, string>[]>();
 
   const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls"> & Partial<RunResult>): RunResult => {
     const trace = driver.trace?.();
+    const outputs = materializeOutputs(workflow, tables);
     return {
       heals,
       repairs,
@@ -250,6 +259,7 @@ export async function replay(
       console: trace?.console || [],
       network: trace?.network || [],
       ...partial,
+      ...(outputs ? { outputs } : {}),
       modelCalls: heals.filter((item) => item.model).length,
     };
   };
@@ -297,14 +307,14 @@ export async function replay(
       noteTrajectory(trajectory, step, undefined, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
-    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
+    let outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
       const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
-        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
+        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
         repairs.push(...outcome.repairs);
       }
     }
@@ -314,7 +324,8 @@ export async function replay(
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
         stamp({ id: step.id, status: "passed", phase: "auth", reason: "auth: redirected to login" });
       } else {
-        stamp({ id: step.id, status: "passed", ...(outcome.recovered ? { reason: `recovered: ${outcome.recovered}` } : {}) });
+        const passed = outcome.detail || (outcome.recovered ? `recovered: ${outcome.recovered}` : "");
+        stamp({ id: step.id, status: "passed", ...(passed ? { reason: passed } : {}) });
       }
       noteTrajectory(trajectory, step, outcome.acted, true, clock() - started);
       continue;
@@ -418,7 +429,7 @@ export async function replay(
     }
     const patched = applyPatch(step, proposal.patch);
     pictured = patched;
-    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust);
+    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
@@ -439,7 +450,8 @@ export async function replay(
       noteTrajectory(trajectory, patched, retried.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure: retried.failure });
     }
-    stamp({ id: step.id, status: "passed", ...(retried.recovered ? { reason: `recovered: ${retried.recovered}` } : {}) });
+    const passed = retried.detail || (retried.recovered ? `recovered: ${retried.recovered}` : "");
+    stamp({ id: step.id, status: "passed", ...(passed ? { reason: passed } : {}) });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
       const quiet = gate.shotsPaused;
@@ -452,7 +464,7 @@ export async function replay(
 }
 
 type StepOutcome =
-  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string }
+  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string; detail?: string }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
   | { ok: false; paused: "confirm" | "trust" | "signin"; repairs: RepairLog[]; ask?: HumanAsk };
 
@@ -474,9 +486,26 @@ async function runStep(
   recovery: RecoveryBudget,
   extra?: ReadBack,
   trust?: SiteTrustMode,
+  tables?: Map<string, Record<string, string>[]>,
+  appending = false,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
   if (step.action === "note") return { ok: true, repairs };
+  if (step.action === "extract" || step.action === "for_each") {
+    const bag = tables ?? new Map();
+    const data = await performDataStep(step, args, bag, driver, appending, async (nested, nestedArgs) => {
+      const inner = await runStep(
+        workflow, nested, nestedArgs, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, undefined, trust, bag, true,
+      );
+      if (inner.ok) return { ok: true };
+      if ("failure" in inner) return { ok: false, reason: inner.failure.reason };
+      return { ok: false, reason: "paused" };
+    });
+    if (!data.ok) {
+      return { ok: false, repairs, failure: await fail(driver, step, "action", data.reason, undefined, secrets) };
+    }
+    return { ok: true, repairs, detail: data.detail };
+  }
   if (step.waitFor) {
     const ready = await holdCheck(step.waitFor, args, driver, true);
     if (!ready) {
@@ -1031,10 +1060,25 @@ function locate(
   let nodes = tree.nodes;
   if (step.selection) {
     const want = String(args[step.selection.input] ?? "");
-    nodes = nodes.filter((node) => {
+    const picked = nodes.filter((node) => {
       const got = node[step.selection!.by];
       return typeof got === "string" && got.replace(/\s+/g, " ").trim() === want;
     });
+    if (picked.length === 1) {
+      const only = picked[0]!;
+      const wantRole = step.identity?.role;
+      if (!wantRole || rolesCompatible(wantRole, only.role)) {
+        const index = nodes.indexOf(only);
+        const label = only.name || only.text || only.role || "selection";
+        return {
+          nodes,
+          hit: { ok: true, index, ranked: [] },
+          via: { stepId: step.id, kind: "role", detail: `selection ${step.selection.input}` },
+          tried: [{ kind: "role", label, score: 100 }],
+        };
+      }
+    }
+    nodes = picked;
   }
   const list = locatorList(step, locatorMode);
   if (list) {
@@ -1080,6 +1124,14 @@ function locate(
     return { kind: "identity", label, score: score.score };
   });
   return { nodes, hit, tried };
+}
+
+function rolesCompatible(recorded: string, live: string): boolean {
+  const left = normRole(recorded);
+  const right = normRole(live);
+  if (left === right) return true;
+  const links = new Set(["a", "link"]);
+  return links.has(left) && links.has(right);
 }
 
 function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | undefined {

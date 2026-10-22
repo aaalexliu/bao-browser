@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bao.workflow/data-steps",
+  "title": "Bao extract, for_each, and outputs",
+  "description": "Additive fragment. workflow-v2.schema.json copies these names. Version 2 documents stay version 2. A document is version 3 only when it uses extract, for_each, or outputs.",
+  "version": { "enum": [2, 3] },
+  "inputTypes": ["table"],
+  "actions": ["extract", "for_each"],
+  "$defs": {
+    "extractColumn": {
+      "required": ["name", "type", "read", "locators"]
+    },
+    "extractSpec": {
+      "required": ["mode", "locators", "columns", "as"],
+      "properties": ["mode", "locators", "columns", "as", "pagination"]
+    },
+    "forEachSpec": {
+      "required": ["over", "steps"]
+    },
+    "workflowOutput": {
+      "required": ["name", "type", "from"],
+      "properties": ["name", "label", "type", "from", "columns"]
+    }
+  }
+}
