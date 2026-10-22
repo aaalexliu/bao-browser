@@ -1,6 +1,6 @@
 # Real-world proof
 
-Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes (and a keyframe webm when ffmpeg could encode one). Pass means both the doc's check and 0 model calls.
+Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes (and a keyframe webm when ffmpeg could encode one). Pass means both the doc's check and 0 model calls. A task with expect needs_human passes when the replay pauses for a person and that check holds.
 
 | Task | Pass | Model calls | Heals | First failure |
 |---|---|---|---|---|
@@ -17,12 +17,11 @@ Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-on
 | p11 W-9 download and Preview | needs Mac | — | — | needs Mac |
 | p12 CSV into Numbers | needs Mac | — | — | needs Mac |
 | p13 Excalidraw canvas | 0/2 | 0, 0 | 0 ; 0 | no embedded scene JSON; canvas steps recorded: 0; labels Alpha, Beta not verified |
-| p14 Bot wall | 0/2 | 0, 0 | 0 ; 0 | navigate "Open https://practicesoftwaretesting.com/": bot check |
+| p14 Bot wall | 2/2 | 0, 0 | 0 ; 0 | — |
 
 ## Failure causes
 
-1. bot wall — 1 task
-2. missing step type — 1 task
+1. missing step type — 1 task
 
 ## Per task
 
@@ -654,11 +653,9 @@ Recorded:
 }
 ```
 
-Replay 1: fail (paused), model calls 0, heals 0
-First failure: wf-1792701595283-0 navigate Open https://practicesoftwaretesting.com/ — navigate "Open https://practicesoftwaretesting.com/": bot check
+Replay 1: pass (paused), model calls 0, heals 0
 
-Replay 2: fail (paused), model calls 0, heals 0
-First failure: wf-1792701595283-0 navigate Open https://practicesoftwaretesting.com/ — navigate "Open https://practicesoftwaretesting.com/": bot check
+Replay 2: pass (paused), model calls 0, heals 0
 
 Artifacts:
 

@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { startApp } from "../app/server";
 import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
+import { pauseIsExpected, scoreBotWall, type TaskExpect } from "./task-expect";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_PROOF_PAGE = "1";
@@ -189,6 +190,7 @@ interface Task {
   site: string;
   mac?: boolean;
   openUrl?: string;
+  expect: TaskExpect;
   record?: (session: Session, files: RunFiles) => Promise<void>;
   args: (workflow: WorkflowV2, run: 1 | 2, files: RunFiles) => Record<string, unknown>;
   score: (input: ScoreInput) => { pass: boolean; cause: string; detail: string };
@@ -211,6 +213,7 @@ interface ScoreInput {
   files: RunFiles;
   openUrl: string;
   csv?: string;
+  expect: TaskExpect;
 }
 
 const TASKS: Task[] = [
@@ -219,6 +222,7 @@ const TASKS: Task[] = [
     title: "Sign-up, contact upload, delete account",
     site: "automationexercise.com",
     openUrl: "https://automationexercise.com/login",
+    expect: "completed",
     record: recordP1,
     args: (workflow, run, files) => argsFor(workflow, {
       secret: run === 1 ? "BaoProof-replay-a-9" : "BaoProof-replay-b-9",
@@ -235,6 +239,7 @@ const TASKS: Task[] = [
     title: "Practice form with date picker and dependent selects",
     site: "demoqa.com",
     openUrl: "https://demoqa.com/automation-practice-form",
+    expect: "completed",
     record: recordP2,
     args: (workflow, run, files) => argsFor(workflow, {
       file: { name: path.basename(files.replayImage[run - 1]!), path: files.replayImage[run - 1]! },
@@ -250,6 +255,7 @@ const TASKS: Task[] = [
     title: "Booking, stop before reserve",
     site: "automationintesting.online",
     openUrl: "https://automationintesting.online/",
+    expect: "needs_human",
     record: recordP3,
     args: (workflow, run) => argsFor(workflow, { byDefault: run === 1 ? P3_A : P3_B }),
     score: scoreP3,
@@ -259,6 +265,7 @@ const TASKS: Task[] = [
     title: "Trial search and CSV download",
     site: "clinicaltrials.gov",
     openUrl: "https://clinicaltrials.gov/search",
+    expect: "completed",
     record: recordP4,
     args: (workflow, run) => argsFor(workflow, { byDefault: run === 1 ? P4_A : P4_B }),
     score: scoreP4,
@@ -268,6 +275,7 @@ const TASKS: Task[] = [
     title: "Paginated catalog to CSV",
     site: "books.toscrape.com",
     openUrl: "https://books.toscrape.com/",
+    expect: "completed",
     record: recordP5,
     args: (workflow, run) => argsFor(workflow, {
       byName: { category: run === 1 ? "Travel" : "Historical Fiction" },
@@ -279,6 +287,7 @@ const TASKS: Task[] = [
     title: "Spreadsheet rows into a web table",
     site: "demoqa.com/webtables",
     openUrl: "https://demoqa.com/webtables",
+    expect: "completed",
     record: recordP6,
     args: (workflow, run) => argsFor(workflow, { byDefault: run === 1 ? P6_A : P6_B }),
     score: scoreP6,
@@ -288,6 +297,7 @@ const TASKS: Task[] = [
     title: "Wikipedia history across skins",
     site: "en.wikipedia.org",
     openUrl: "https://en.wikipedia.org/wiki/Special:Search",
+    expect: "completed",
     record: recordP7,
     args: (workflow, run) => argsFor(workflow, { byDefault: run === 1 ? { Baozi: "Baozi" } : { Baozi: "Xiaolongbao" } }),
     score: scoreP7,
@@ -298,6 +308,7 @@ const TASKS: Task[] = [
     title: "Unstable DOM, new tab, JS dialogs",
     site: "the-internet.herokuapp.com",
     openUrl: "https://the-internet.herokuapp.com/challenging_dom",
+    expect: "completed",
     record: recordP8,
     args: (workflow, run) => argsFor(workflow, {
       byDefault: run === 1
@@ -311,6 +322,7 @@ const TASKS: Task[] = [
     title: "Shadow-DOM shop, stop before place order",
     site: "shop.polymer-project.org",
     openUrl: "https://shop.polymer-project.org/",
+    expect: "needs_human",
     record: recordP9,
     args: (workflow, run) => argsFor(workflow, {
       byDefault: run === 1 ? P9_A : P9_B,
@@ -322,6 +334,7 @@ const TASKS: Task[] = [
     title: "TextEdit",
     site: "TextEdit",
     mac: true,
+    expect: "completed",
     args: () => ({}),
     score: () => ({ pass: false, cause: "needs Mac", detail: "needs Mac" }),
   },
@@ -330,6 +343,7 @@ const TASKS: Task[] = [
     title: "W-9 download and Preview",
     site: "irs.gov + Preview",
     mac: true,
+    expect: "completed",
     args: () => ({}),
     score: () => ({ pass: false, cause: "needs Mac", detail: "needs Mac" }),
   },
@@ -338,6 +352,7 @@ const TASKS: Task[] = [
     title: "CSV into Numbers",
     site: "Numbers",
     mac: true,
+    expect: "completed",
     args: () => ({}),
     score: () => ({ pass: false, cause: "needs Mac", detail: "needs Mac" }),
   },
@@ -346,6 +361,7 @@ const TASKS: Task[] = [
     title: "Excalidraw canvas",
     site: "excalidraw.com",
     openUrl: "https://excalidraw.com/",
+    expect: "completed",
     record: recordP13,
     args: (workflow, run) => argsFor(workflow, { byDefault: run === 1 ? { Alpha: "Alpha", Beta: "Beta" } : { Gamma: "Gamma", Delta: "Delta" } }),
     score: scoreP13,
@@ -355,6 +371,7 @@ const TASKS: Task[] = [
     title: "Bot wall",
     site: "practicesoftwaretesting.com",
     openUrl: "https://practicesoftwaretesting.com/",
+    expect: "needs_human",
     record: recordP14,
     args: (workflow) => argsFor(workflow, {}),
     score: scoreP14,
@@ -878,7 +895,7 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
     if (samePixels) console.log(`  replay ${run} end shot matches the other run pixel for pixel`);
     const frames = copyFrames(home, replay.runId, task.id, run);
     artifacts.push(...frames);
-    const judged = judge(task, { run, replay, page, workflow: current, args, files, openUrl: task.openUrl, csv }, started);
+    const judged = judge(task, { run, replay, page, workflow: current, args, files, openUrl: task.openUrl, csv, expect: task.expect }, started);
     if (!judged.pass && replay.status === "passed") replay.status = "failed";
     judged.status = replay.status || judged.status;
     const endFrames = [shot, ...frames].filter((item): item is string => !!item);
@@ -907,8 +924,12 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
 }
 
 function judge(task: Task, input: ScoreInput, started: number): ReplayScore {
-  const failure = replayStopped(input.replay, input.workflow, input.openUrl, input.page);
-  const check = task.score({ ...input, page: input.page });
+  // A needs_human pause is the outcome. replayStopped would otherwise report
+  // the bot wall, and a confirm gate, as a failed replay.
+  const failure = pauseIsExpected(input.expect, input.replay)
+    ? null
+    : replayStopped(input.replay, input.workflow, input.openUrl, input.page);
+  const check = task.score(input);
   const extra = task.id === "p4" ? scoreDownload(input.page, started) : null;
   const modelCalls = input.replay.modelCalls || 0;
   const heals = (input.replay.heals || []).map(healWhy);
@@ -1145,6 +1166,9 @@ function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: str
 }
 
 function scoreP9(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
+  if (input.expect !== "needs_human") {
+    return { pass: false, cause: "missing step type", detail: "Place Order is scored as needs_human" };
+  }
   const text = evidence(input);
   const pressed = input.workflow.steps.some((step) => step.action === "click" && /place order/i.test(step.label));
   const confirm = input.workflow.steps.some((step) => step.action === "confirm" && step.confirm === true && /place order/i.test(`${step.label} ${step.identity?.name || ""} ${step.identity?.text || ""}`));
@@ -1178,17 +1202,8 @@ function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: st
 
 function scoreP14(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = `${input.page.title || ""} ${input.page.text || ""} ${evidence(input)}`;
-  const bot = /cloudflare|turnstile|verifying you are not a bot|security verification|captcha|you are not a bot/i.test(text);
-  const clicked = input.workflow.steps.some((step) => /cloudflare|turnstile|verify you are human|i am not a robot|checkbox/i.test(`${step.label} ${step.identity?.text || ""} ${step.identity?.name || ""}`));
-  const heals = input.replay.heals?.length || 0;
-  const models = input.replay.modelCalls || 0;
-  const ended = input.replay.status === "needs_human"
-    || (input.replay.status === "paused" && /bot|captcha|human/i.test(`${input.replay.pausedKind} ${input.replay.ask?.instruction || ""}`))
-    || /captcha|bot check/i.test(input.replay.failure?.reason || "");
-  if (!bot) return { pass: false, cause: "bot wall", detail: `bot wall was not shown (status ${input.replay.status})` };
-  if (clicked || heals > 0 || models > 0) return { pass: false, cause: "bot wall", detail: `challenge interaction: clicks ${clicked}, heals ${heals}, model calls ${models}` };
-  if (!ended) return { pass: false, cause: "bot wall", detail: `status was ${input.replay.status || "empty"}, not needs_human; heals ${heals}; captcha clicks 0` };
-  return { pass: true, cause: "", detail: "needs human: bot check, 0 heals, 0 captcha clicks" };
+  const stepText = input.workflow.steps.map((step) => `${step.label} ${step.identity?.text || ""} ${step.identity?.name || ""}`).join("\n");
+  return scoreBotWall({ expect: input.expect, replay: input.replay, pageText: text, stepText });
 }
 
 function evidence(input: ScoreInput): string {
@@ -1552,6 +1567,7 @@ function writeTasks(): void {
     site: task.site,
     openUrl: task.openUrl || "",
     mac: task.mac === true,
+    expect: task.expect,
   }));
   writeFileSync(path.join(ROOT, "tasks.json"), `${JSON.stringify(body, null, 2)}\n`);
 }
@@ -1560,7 +1576,7 @@ function writeResults(results: TaskResult[]): void {
   const lines = [
     "# Real-world proof",
     "",
-    `Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes (and a keyframe webm when ffmpeg could encode one). Pass means both the doc's check and 0 model calls.`,
+    `Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes (and a keyframe webm when ffmpeg could encode one). Pass means both the doc's check and 0 model calls. A task with expect needs_human passes when the replay pauses for a person and that check holds.`,
     "",
     "| Task | Pass | Model calls | Heals | First failure |",
     "|---|---|---|---|---|",
