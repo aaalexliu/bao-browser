@@ -442,7 +442,9 @@ async function locateTarget(page: Page, target?: ShotTarget): Promise<{ box: Sho
 
 async function elementBox(loc: ReturnType<Page["locator"]>): Promise<{ box: ShotBox; mark: () => Promise<void> } | null> {
   if (await loc.count().catch(() => 0) === 0) return null;
-  const handle = await loc.first().elementHandle({ timeout: 250 }).catch(() => null);
+  const first = loc.first();
+  await first.scrollIntoViewIfNeeded().catch(() => undefined);
+  const handle = await first.elementHandle({ timeout: 250 }).catch(() => null);
   if (!handle) return null;
   const box = await handle.evaluate((el) => {
     const node = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? (el.closest("label") || el) : el;
