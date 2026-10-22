@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 3,
-  "id": "wf-1792695163010",
+  "id": "wf-1792700918495",
   "name": "Captured workflow",
   "startUrl": "https://clinicaltrials.gov/search",
   "inputs": [
@@ -42,7 +42,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792695163010-0",
+      "id": "wf-1792700918495-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://clinicaltrials.gov/search",
@@ -56,7 +56,7 @@
       }
     },
     {
-      "id": "wf-1792695163010-1",
+      "id": "wf-1792700918495-1",
       "index": 1,
       "action": "type",
       "label": "Type {{advcond}}",
@@ -101,7 +101,7 @@
       }
     },
     {
-      "id": "wf-1792695163010-2",
+      "id": "wf-1792700918495-2",
       "index": 2,
       "action": "key",
       "label": "Press Enter",
@@ -150,7 +150,7 @@
       }
     },
     {
-      "id": "wf-1792695163010-3",
+      "id": "wf-1792700918495-3",
       "index": 3,
       "action": "type",
       "label": "Type {{text}}",
@@ -195,7 +195,7 @@
       }
     },
     {
-      "id": "wf-1792695163010-4",
+      "id": "wf-1792700918495-4",
       "index": 4,
       "action": "click",
       "label": "Click {{text}}",
@@ -241,7 +241,7 @@
       }
     },
     {
-      "id": "wf-1792695163010-5",
+      "id": "wf-1792700918495-5",
       "index": 5,
       "action": "click",
       "label": "Pick {{text2}}",
@@ -283,7 +283,7 @@
       }
     },
     {
-      "id": "wf-1792695163010-6",
+      "id": "wf-1792700918495-6",
       "index": 6,
       "action": "click",
       "label": "Pick {{text3}}",
@@ -325,7 +325,7 @@
       }
     },
     {
-      "id": "wf-1792695163010-7",
+      "id": "wf-1792700918495-7",
       "index": 7,
       "action": "click",
       "label": "Click \"Recruiting (425)\"",
@@ -358,7 +358,7 @@
       "timeoutMs": 8000
     },
     {
-      "id": "wf-1792695163010-8",
+      "id": "wf-1792700918495-8",
       "index": 8,
       "action": "click",
       "label": "Click \"Apply Filters\"",
@@ -394,7 +394,7 @@
       "timeoutMs": 8000
     },
     {
-      "id": "wf-1792695163010-9",
+      "id": "wf-1792700918495-9",
       "index": 9,
       "action": "click",
       "label": "Click \"download\"",
@@ -438,7 +438,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792695163010-10",
+      "id": "wf-1792700918495-10",
       "index": 10,
       "action": "click",
       "label": "Click \"CSV\"",
@@ -477,7 +477,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792695163010-11",
+      "id": "wf-1792700918495-11",
       "index": 11,
       "action": "download",
       "label": "Download",
@@ -503,6 +503,6 @@
       }
     }
   ],
-  "createdAt": 1792695147403,
+  "createdAt": 1792700902433,
   "filesDates": 1
 }

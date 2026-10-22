@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 3,
-  "id": "wf-1792695069751",
+  "id": "wf-1792700745872",
   "name": "Captured workflow",
   "startUrl": "https://demoqa.com/automation-practice-form",
   "inputs": [
@@ -80,7 +80,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792695069751-0",
+      "id": "wf-1792700745872-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://demoqa.com/automation-practice-form",
@@ -94,7 +94,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-1",
+      "id": "wf-1792700745872-1",
       "index": 1,
       "action": "type",
       "label": "Type {{firstName}}",
@@ -127,7 +127,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-2",
+      "id": "wf-1792700745872-2",
       "index": 2,
       "action": "type",
       "label": "Type {{lastName}}",
@@ -160,7 +160,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-3",
+      "id": "wf-1792700745872-3",
       "index": 3,
       "action": "type",
       "label": "Type {{username}}",
@@ -193,7 +193,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-4",
+      "id": "wf-1792700745872-4",
       "index": 4,
       "action": "check",
       "label": "Check \"Male\"",
@@ -248,7 +248,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-5",
+      "id": "wf-1792700745872-5",
       "index": 5,
       "action": "click",
       "label": "Click \"Male\"",
@@ -287,7 +287,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792695069751-6",
+      "id": "wf-1792700745872-6",
       "index": 6,
       "action": "click",
       "label": "Click \"Male\"",
@@ -331,7 +331,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792695069751-7",
+      "id": "wf-1792700745872-7",
       "index": 7,
       "action": "type",
       "label": "Type {{username2}}",
@@ -364,7 +364,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-8",
+      "id": "wf-1792700745872-8",
       "index": 8,
       "action": "click",
       "label": "Pick {{dateOfBirthInput}}",
@@ -401,7 +401,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-9",
+      "id": "wf-1792700745872-9",
       "index": 9,
       "action": "type",
       "label": "Type {{subjectsInput}}",
@@ -434,7 +434,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-10",
+      "id": "wf-1792700745872-10",
       "index": 10,
       "action": "click",
       "label": "Click {{subjectsInput}}",
@@ -480,7 +480,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-11",
+      "id": "wf-1792700745872-11",
       "index": 11,
       "action": "check",
       "label": "Check \"Sports\"",
@@ -533,7 +533,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-12",
+      "id": "wf-1792700745872-12",
       "index": 12,
       "action": "click",
       "label": "Click \"Sports\"",
@@ -572,7 +572,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792695069751-13",
+      "id": "wf-1792700745872-13",
       "index": 13,
       "action": "click",
       "label": "Click \"Sports\"",
@@ -615,7 +615,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792695069751-14",
+      "id": "wf-1792700745872-14",
       "index": 14,
       "action": "upload",
       "label": "Upload file",
@@ -648,7 +648,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-15",
+      "id": "wf-1792700745872-15",
       "index": 15,
       "action": "type",
       "label": "Type {{currentAddress}}",
@@ -681,7 +681,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-16",
+      "id": "wf-1792700745872-16",
       "index": 16,
       "action": "type",
       "label": "Type {{text}}",
@@ -710,7 +710,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-17",
+      "id": "wf-1792700745872-17",
       "index": 17,
       "action": "click",
       "label": "Click {{text}}",
@@ -756,7 +756,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-18",
+      "id": "wf-1792700745872-18",
       "index": 18,
       "action": "type",
       "label": "Type {{text2}}",
@@ -785,7 +785,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-19",
+      "id": "wf-1792700745872-19",
       "index": 19,
       "action": "click",
       "label": "Click {{text2}}",
@@ -831,7 +831,7 @@
       }
     },
     {
-      "id": "wf-1792695069751-20",
+      "id": "wf-1792700745872-20",
       "index": 20,
       "action": "click",
       "label": "Click \"Submit\"",
@@ -877,6 +877,6 @@
       }
     }
   ],
-  "createdAt": 1792695056641,
+  "createdAt": 1792700732795,
   "filesDates": 1
 }

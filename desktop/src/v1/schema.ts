@@ -174,6 +174,11 @@ export interface WorkflowStep {
   sensitive?: boolean;
   /** A confirm or login step is done by the person. Replay does not click or type it. */
   human?: boolean;
+  /**
+   * Place Order, Buy, Pay, Submit order, and Reserve.
+   * Replay pauses with the act prompt and does not click.
+   */
+  confirm?: true;
   /** Recorded purpose of the step. The hybrid condenser writes it. Repairs compare it to the live label. It is not replayed. */
   intent?: string;
   /** A person has to do this step. Replay still runs it from the saved inputs. */
@@ -304,6 +309,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
       errors.push(`secret literal ${step.id}`);
     }
     if (step.action === "confirm" && step.human !== true) errors.push(`confirm ${step.id}`);
+    if (step.confirm === true && (step.action !== "confirm" || step.human !== true)) errors.push(`confirm ${step.id}`);
     if ((step.action === "confirm" || step.action === "login") && step.provenance) {
       errors.push(`coordinates ${step.id}`);
     }

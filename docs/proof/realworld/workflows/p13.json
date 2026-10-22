@@ -1,0 +1,25 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792701525922",
+  "name": "Captured workflow",
+  "startUrl": "https://excalidraw.com/",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-1792701525922-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://excalidraw.com/",
+      "surface": "dom",
+      "value": "https://excalidraw.com/",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "excalidraw.com",
+        "timeoutMs": 8000
+      }
+    }
+  ],
+  "createdAt": 1792701453306
+}

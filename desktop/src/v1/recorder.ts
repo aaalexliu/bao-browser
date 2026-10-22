@@ -191,6 +191,11 @@ export function recorderSource(): string {
     const ident = (el) => {
       const name = accName(el);
       const text = norm(el.innerText || el.textContent || "").slice(0, 80);
+      const kind = String(el.type || "").toLowerCase();
+      const buttonValue = el.tagName === "INPUT" && (kind === "button" || kind === "submit" || kind === "reset")
+        ? norm(String(el.value || "")).slice(0, 80)
+        : "";
+      const shown = name || buttonValue;
       return {
         surface: "dom",
         role: roleOf(el),
@@ -200,9 +205,9 @@ export function recorderSource(): string {
         tag: el.tagName.toLowerCase(),
         cssPath: cssPathOf(el),
         href: el.tagName === "A" ? (el.getAttribute("href") || undefined) : undefined,
-        name: name || undefined,
-        label: name || undefined,
-        text: text || undefined,
+        name: shown || undefined,
+        label: shown || undefined,
+        text: text || buttonValue || undefined,
         path: [],
       };
     };
@@ -310,9 +315,16 @@ export function recorderSource(): string {
       const raw = eventEl(event);
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
       const marked = raw && pickerMark(raw);
-      let el = marked
-        ? raw
-        : (raw && raw.closest ? raw.closest("button,a,input,textarea,select,label,li,[role='option'],[data-testid],[data-qa],[data-test],[data-cy]") : raw);
+      const clickableSel = "button,a,input,textarea,select,label,li,[role='option'],[role='button'],[role='link'],[data-testid],[data-qa],[data-test],[data-cy]";
+      const clickableOf = (node) => {
+        let cur = node;
+        while (cur && cur.nodeType === 1) {
+          if (cur.matches && cur.matches(clickableSel)) return cur;
+          cur = parentOf(cur);
+        }
+        return null;
+      };
+      let el = marked ? raw : clickableOf(raw);
       // react-select paints the combobox as a div. The pointer lands on an inner
       // div, not the input, so the click would otherwise be dropped. The nearest
       // id that owns that input is the control (#state, #city).
@@ -388,7 +400,7 @@ export function recorderSource(): string {
       if (!value) return;
       send({ kind: "act", op: "type", identity: ident(el), value: value });
     }, true);
-    document.addEventListener("change", (event) => {
+    const onChange = (event) => {
       const el = eventEl(event);
       if (!el) return;
       if (el.disabled) return;
@@ -430,7 +442,16 @@ export function recorderSource(): string {
         return;
       }
       send({ kind: "act", op: "type", identity: ident(el), value: el.value });
-    }, true);
+    };
+    document.addEventListener("change", onChange, true);
+    // change does not cross a shadow root, so a select or typed field inside
+    // one never reaches document. Listen on each root as it is created.
+    const origAttach = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = function (init) {
+      const root = origAttach.call(this, init);
+      root.addEventListener("change", onChange, true);
+      return root;
+    };
     const elementOf = (raw) => !raw ? null : raw.nodeType === 1 ? raw : raw.parentElement;
     const dropTarget = (raw) => {
       const el = elementOf(raw);

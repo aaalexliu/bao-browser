@@ -1,13 +1,21 @@
 {
   "schema": "bao.workflow/v2",
-  "version": 2,
-  "id": "wf-1792675534903",
+  "version": 3,
+  "id": "wf-1792701005767",
   "name": "Captured workflow",
   "startUrl": "https://books.toscrape.com/",
-  "inputs": [],
+  "inputs": [
+    {
+      "name": "category",
+      "type": "text",
+      "required": true,
+      "label": "category",
+      "default": "Mystery"
+    }
+  ],
   "steps": [
     {
-      "id": "wf-1792675534903-0",
+      "id": "wf-1792701005767-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://books.toscrape.com/",
@@ -21,37 +29,209 @@
       }
     },
     {
-      "id": "wf-1792675534903-1",
+      "id": "wf-1792701005767-1",
       "index": 1,
       "action": "click",
-      "label": "Click \"Travel\"",
+      "label": "Click {{category}}",
       "surface": "dom",
       "identity": {
         "surface": "dom",
         "role": "link",
         "tag": "a",
-        "text": "Travel",
+        "cssPath": "div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > aside:nth-of-type(1) > div:nth-of-type(2) > ul:nth-of-type(1) > li:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)",
+        "href": "catalogue/category/books/mystery_3/index.html",
+        "text": "Mystery",
         "path": []
       },
       "locators": [
         {
           "kind": "role",
           "role": "link",
-          "name": "Travel"
+          "name": "Mystery"
         },
         {
           "kind": "text",
-          "value": "Travel"
+          "value": "Mystery"
+        },
+        {
+          "kind": "css",
+          "value": "div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > aside:nth-of-type(1) > div:nth-of-type(2) > ul:nth-of-type(1) > li:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"catalogue/category/books/mystery_3/index.html\"]"
         }
       ],
       "timeoutMs": 8000,
-      "expect": {
-        "kind": "settled",
-        "match": "no error and the page settled",
-        "timeoutMs": 4000
+      "confidence": "low",
+      "selection": {
+        "by": "text",
+        "input": "category"
       },
-      "confidence": "low"
+      "heal": "never"
+    },
+    {
+      "id": "wf-1792701005767-2",
+      "index": 2,
+      "action": "extract",
+      "label": "Extract books",
+      "surface": "dom",
+      "timeoutMs": 8000,
+      "heal": "never",
+      "locators": [
+        {
+          "kind": "css",
+          "value": "ol.row > li.col-xs-6.col-sm-4"
+        },
+        {
+          "kind": "xpath",
+          "value": "//ol[contains(@class,\"row\")]/li[contains(@class,\"col-xs-6\")]"
+        }
+      ],
+      "extract": {
+        "mode": "list",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "ol.row > li.col-xs-6.col-sm-4"
+          },
+          {
+            "kind": "xpath",
+            "value": "//ol[contains(@class,\"row\")]/li[contains(@class,\"col-xs-6\")]"
+          }
+        ],
+        "columns": [
+          {
+            "name": "thumbnail",
+            "label": "thumbnail",
+            "type": "url",
+            "read": "src",
+            "locators": [
+              {
+                "kind": "css",
+                "value": "img.thumbnail"
+              }
+            ],
+            "dropped": true
+          },
+          {
+            "name": "rating",
+            "label": "rating",
+            "type": "text",
+            "read": "rating",
+            "locators": [
+              {
+                "kind": "css",
+                "value": "p.star-rating"
+              }
+            ]
+          },
+          {
+            "name": "h3",
+            "label": "h3",
+            "type": "text",
+            "read": "text",
+            "locators": [
+              {
+                "kind": "css",
+                "value": "h3"
+              }
+            ],
+            "dropped": true
+          },
+          {
+            "name": "title",
+            "label": "title",
+            "type": "text",
+            "read": "title",
+            "locators": [
+              {
+                "kind": "css",
+                "value": "h3 > a"
+              }
+            ]
+          },
+          {
+            "name": "price",
+            "label": "price",
+            "type": "text",
+            "read": "text",
+            "locators": [
+              {
+                "kind": "css",
+                "value": "p.price_color"
+              }
+            ]
+          },
+          {
+            "name": "availability",
+            "label": "availability",
+            "type": "text",
+            "read": "text",
+            "locators": [
+              {
+                "kind": "css",
+                "value": "p.instock.availability"
+              }
+            ],
+            "dropped": true
+          },
+          {
+            "name": "btn_block",
+            "label": "btn_block",
+            "type": "text",
+            "read": "text",
+            "locators": [
+              {
+                "kind": "css",
+                "value": "button.btn.btn-primary"
+              }
+            ],
+            "dropped": true
+          }
+        ],
+        "as": "books",
+        "pagination": {
+          "next": [
+            {
+              "kind": "css",
+              "value": "li.next a"
+            },
+            {
+              "kind": "role",
+              "role": "link",
+              "name": "next"
+            },
+            {
+              "kind": "text",
+              "value": "next"
+            }
+          ],
+          "maxPages": 3
+        }
+      }
     }
   ],
-  "createdAt": 1792675533808
+  "createdAt": 1792701004573,
+  "outputs": [
+    {
+      "name": "books",
+      "type": "table",
+      "from": "books",
+      "columns": [
+        {
+          "name": "rating",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "price",
+          "type": "text"
+        }
+      ]
+    }
+  ]
 }

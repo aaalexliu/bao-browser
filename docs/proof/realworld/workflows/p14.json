@@ -1,0 +1,25 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792701595283",
+  "name": "Captured workflow",
+  "startUrl": "https://practicesoftwaretesting.com/",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-1792701595283-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://practicesoftwaretesting.com/",
+      "surface": "dom",
+      "value": "https://practicesoftwaretesting.com/",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "practicesoftwaretesting.com",
+        "timeoutMs": 8000
+      }
+    }
+  ],
+  "createdAt": 1792701590669
+}

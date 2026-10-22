@@ -205,12 +205,38 @@ test("Reserve Now is a confirm step and a prompt keeps the text it returned", ()
   const doc = interpret(events, { id: "wf-gate", name: "Gate", startUrl: "https://example.test/" });
   assert.equal(doc.steps[0]?.action, "confirm");
   assert.equal(doc.steps[0]?.human, true);
+  assert.equal(doc.steps[0]?.confirm, true);
   assert.equal(doc.steps[0]?.gate, "confirm");
   assert.equal(doc.steps[1]?.action, "click");
   assert.equal(doc.steps[1]?.value, "{{prompt}}");
   assert.equal(doc.inputs.find((input) => input.name === "prompt")?.default, "proof-prompt");
   assert.equal(doc.steps[1]?.expect?.match, "You entered: {{prompt}}");
   assert.equal(doc.steps[1]?.postcondition?.match, "You entered: {{prompt}}");
+});
+
+test("Place Order, Buy, Pay, Submit order, and Reserve pause; Submit and JS Confirm stay clicks", () => {
+  const pause = ["Place Order", "Buy", "Buy now", "Pay", "Pay now", "Submit order", "Reserve", "Reserve Now"];
+  for (const name of pause) {
+    const doc = interpret([
+      { id: name, ts: 1, kind: "act", op: "click", identity: dom({ role: "button", text: name, name }) },
+    ], { id: "wf-buy", name: "Buy", startUrl: "https://example.test/" });
+    assert.equal(doc.steps[0]?.action, "confirm", name);
+    assert.equal(doc.steps[0]?.confirm, true, name);
+    assert.equal(doc.steps[0]?.human, true, name);
+    assert.equal(doc.steps[0]?.gate, "confirm", name);
+  }
+  for (const name of ["Submit", "Click for JS Confirm", "Add to Cart"]) {
+    const doc = interpret([
+      { id: name, ts: 1, kind: "act", op: "click", identity: dom({ role: "button", text: name, name }) },
+    ], { id: "wf-click", name: "Click", startUrl: "https://example.test/" });
+    assert.equal(doc.steps[0]?.action, "click", name);
+    assert.equal(doc.steps[0]?.confirm, undefined, name);
+  }
+  const tab = interpret([
+    { id: "tab-pay", ts: 1, kind: "act", op: "click", identity: dom({ role: "tab", text: "Pay", name: "Pay" }) },
+  ], { id: "wf-tab", name: "Tab", startUrl: "https://example.test/" });
+  assert.equal(tab.steps[0]?.action, "click");
+  assert.equal(tab.steps[0]?.confirm, undefined);
 });
 
 test("zero executed steps and a failed final check are not passes", () => {
@@ -226,13 +252,14 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
   const { recorderSource } = await import("../../src/v1/recorder.js");
   const { dumpPage } = await import("../../src/v1/dom-page.js");
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
-  const events: Array<{ op?: string; text?: string; value?: string; checked?: boolean; target?: { role?: string } }> = [];
+  const events: Array<{ op?: string; text?: string; name?: string; value?: string; checked?: boolean; target?: { role?: string } }> = [];
   try {
     const context = await browser.newContext();
-    await context.exposeBinding("__baoRecord", async (_source: unknown, payload: { op?: string; identity?: { role?: string; text?: string }; value?: string; checked?: boolean }) => {
+    await context.exposeBinding("__baoRecord", async (_source: unknown, payload: { op?: string; identity?: { role?: string; text?: string; name?: string }; value?: string; checked?: boolean }) => {
       events.push({
         op: payload.op,
         text: payload.identity?.text,
+        name: payload.identity?.name,
         value: payload.value,
         checked: payload.checked,
         target: { role: payload.identity?.role },
@@ -242,6 +269,7 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
     const page = await context.newPage();
     const html = `<!doctype html><shop-app></shop-app>
       <input id="closed" style="display:none" value="">
+      <input id="place-order" type="button" value="Place Order">
       <input data-qa="signup-email" name="email">
       <label>Gender<input id="gender-radio-1" type="radio" name="gender" value="Male"></label>
       <select id="months"><option>January</option><option>February</option></select>
@@ -250,9 +278,17 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
           constructor() {
             super();
             const root = this.attachShadow({ mode: "open" });
-            root.innerHTML = '<a id="ladies" href="#ladies">Ladies Outerwear</a>';
+            root.innerHTML = '<a id="ladies" href="#ladies">Ladies Outerwear</a><a id="deep" href="#deep"><inner-pic></inner-pic>Deep link</a><select id="shade"><option>S</option><option>M</option></select>';
           }
         }
+        class InnerPic extends HTMLElement {
+          constructor() {
+            super();
+            const root = this.attachShadow({ mode: "open" });
+            root.innerHTML = '<img alt="pic">';
+          }
+        }
+        customElements.define("inner-pic", InnerPic);
         customElements.define("shop-app", Shop);
       </script>`;
     await page.goto(`data:text/html,${encodeURIComponent(html)}`);
@@ -264,10 +300,13 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
     const email = dumped.nodes.find((node) => node.nameAttr === "email");
     assert.equal(email?.testId, "signup-email");
     assert.ok(email?.cssPath);
-    await page.locator("shop-app").locator("a").click();
+    await page.locator("#place-order").click();
+    await page.locator("shop-app").locator("#ladies").click();
     await page.locator("#gender-radio-1").check();
     await page.locator("#months").selectOption({ label: "February" });
     await page.waitForTimeout(80);
+    const place = events.find((event) => event.op === "click" && event.name === "Place Order");
+    assert.equal(place?.target?.role, "button");
     const click = events.find((event) => event.op === "click" && event.text === "Ladies Outerwear");
     assert.equal(click?.target?.role, "link");
     const radio = events.find((event) => event.op === "check");
@@ -276,6 +315,13 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
     const selected = events.find((event) => event.op === "select");
     assert.equal(selected?.value, "February");
     assert.equal(selected?.target?.role, "listbox");
+    await page.locator("shop-app").locator("inner-pic").locator("img").click();
+    await page.locator("shop-app").locator("#shade").selectOption({ label: "M" });
+    await page.waitForTimeout(80);
+    const deep = events.find((event) => event.op === "click" && (event.text || "").includes("Deep link"));
+    assert.equal(deep?.target?.role, "link");
+    const shaded = events.filter((event) => event.op === "select");
+    assert.equal(shaded.at(-1)?.value, "M");
   } finally {
     await browser.close();
   }

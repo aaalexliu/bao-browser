@@ -322,7 +322,10 @@ export const INTENT_CASES: IntentCase[] = [
     startUrl: "https://fixture.test/pay",
     secrets: [],
     secretIds: [],
-    human: [{ id: "confirm-pay", gate: "confirm", target: "confirm-pay" }],
+    human: [
+      { id: "pay", gate: "confirm", target: "pay" },
+      { id: "confirm-pay", gate: "confirm", target: "confirm-pay" },
+    ],
     events: [
       type("amount", "20"),
       click("pay", "Pay", "button", { afterText: "Paying" }),
@@ -332,7 +335,7 @@ export const INTENT_CASES: IntentCase[] = [
       { texts: ["45"], secret: "", file: "a.txt" },
       { texts: ["7"], secret: "", file: "b.txt" },
     ],
-    oracle: (world, spec) => world.values.amount === spec.texts[0] && has(world, "Confirmed") ? null : "pay",
+    oracle: (world, spec) => world.values.amount === spec.texts[0] && !has(world, "Paying") && !has(world, "Confirmed") ? null : "pay",
   }),
   make({
     id: "pin",
@@ -479,7 +482,7 @@ export const INTENT_CASES: IntentCase[] = [
     startUrl: "https://fixture.test/fare",
     secrets: [],
     secretIds: [],
-    human: [],
+    human: [{ id: "buy", gate: "confirm", target: "buy" }],
     events: [
       type("currency", "USD"),
       type("amount", "18"),
@@ -489,7 +492,7 @@ export const INTENT_CASES: IntentCase[] = [
       { texts: ["40"], secret: "", file: "a.txt" },
       { texts: ["6"], secret: "", file: "b.txt" },
     ],
-    oracle: (world, spec) => world.values.currency === "USD" && world.values.amount === spec.texts[0] && has(world, "Bought") ? null : "fare",
+    oracle: (world, spec) => world.values.currency === "USD" && world.values.amount === spec.texts[0] && !has(world, "Bought") ? null : "fare",
   }),
 ];
 

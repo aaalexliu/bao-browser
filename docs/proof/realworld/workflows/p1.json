@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 2,
-  "id": "wf-1792682765516",
+  "id": "wf-1792700589362",
   "name": "Captured workflow",
   "startUrl": "https://automationexercise.com/login",
   "inputs": [
@@ -17,7 +17,7 @@
       "type": "text",
       "required": true,
       "label": "username",
-      "default": "bao-record-mvjp070t@example.com"
+      "default": "bao-record-mvjzm7ln@example.com"
     },
     {
       "name": "password",
@@ -114,7 +114,7 @@
       "type": "text",
       "required": true,
       "label": "username2",
-      "default": "bao-record-mvjp070t@example.com"
+      "default": "bao-record-mvjzm7ln@example.com"
     },
     {
       "name": "subject",
@@ -139,7 +139,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792682765516-0",
+      "id": "wf-1792700589362-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://automationexercise.com/login",
@@ -153,7 +153,7 @@
       }
     },
     {
-      "id": "wf-1792682765516-1",
+      "id": "wf-1792700589362-1",
       "index": 1,
       "action": "type",
       "label": "Type {{name}}",
@@ -195,7 +195,7 @@
       }
     },
     {
-      "id": "wf-1792682765516-2",
+      "id": "wf-1792700589362-2",
       "index": 2,
       "action": "type",
       "label": "Type {{username}}",
@@ -237,7 +237,7 @@
       }
     },
     {
-      "id": "wf-1792682765516-3",
+      "id": "wf-1792700589362-3",
       "index": 3,
       "action": "click",
       "label": "Click \"Signup\"",
@@ -283,7 +283,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-4",
+      "id": "wf-1792700589362-4",
       "index": 4,
       "action": "check",
       "label": "Check \"Mr.\"",
@@ -338,8 +338,47 @@
       }
     },
     {
-      "id": "wf-1792682765516-5",
+      "id": "wf-1792700589362-5",
       "index": 5,
+      "action": "click",
+      "label": "Click \"Mr.\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > label:nth-of-type(1)",
+        "name": "Mr.",
+        "label": "Mr.",
+        "text": "Mr.",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "Mr."
+        },
+        {
+          "kind": "text",
+          "value": "Mr."
+        },
+        {
+          "kind": "css",
+          "value": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-6",
+      "index": 6,
       "action": "click",
       "label": "Click \"Mr.\"",
       "surface": "dom",
@@ -382,8 +421,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-6",
-      "index": 6,
+      "id": "wf-1792700589362-7",
+      "index": 7,
       "action": "type",
       "label": "Type secret",
       "surface": "dom",
@@ -435,8 +474,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-7",
-      "index": 7,
+      "id": "wf-1792700589362-8",
+      "index": 8,
       "action": "select",
       "label": "Select {{days}}",
       "surface": "dom",
@@ -485,8 +524,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-8",
-      "index": 8,
+      "id": "wf-1792700589362-9",
+      "index": 9,
       "action": "select",
       "label": "Select {{months}}",
       "surface": "dom",
@@ -535,8 +574,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-9",
-      "index": 9,
+      "id": "wf-1792700589362-10",
+      "index": 10,
       "action": "select",
       "label": "Select {{years}}",
       "surface": "dom",
@@ -585,8 +624,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-10",
-      "index": 10,
+      "id": "wf-1792700589362-11",
+      "index": 11,
       "action": "type",
       "label": "Type {{first_name}}",
       "surface": "dom",
@@ -635,8 +674,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-11",
-      "index": 11,
+      "id": "wf-1792700589362-12",
+      "index": 12,
       "action": "type",
       "label": "Type {{last_name}}",
       "surface": "dom",
@@ -685,8 +724,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-12",
-      "index": 12,
+      "id": "wf-1792700589362-13",
+      "index": 13,
       "action": "select",
       "label": "Select {{country}}",
       "surface": "dom",
@@ -737,8 +776,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-13",
-      "index": 13,
+      "id": "wf-1792700589362-14",
+      "index": 14,
       "action": "type",
       "label": "Type {{address1}}",
       "surface": "dom",
@@ -787,8 +826,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-14",
-      "index": 14,
+      "id": "wf-1792700589362-15",
+      "index": 15,
       "action": "type",
       "label": "Type {{state}}",
       "surface": "dom",
@@ -837,8 +876,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-15",
-      "index": 15,
+      "id": "wf-1792700589362-16",
+      "index": 16,
       "action": "type",
       "label": "Type {{city}}",
       "surface": "dom",
@@ -887,8 +926,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-16",
-      "index": 16,
+      "id": "wf-1792700589362-17",
+      "index": 17,
       "action": "type",
       "label": "Type {{zipcode}}",
       "surface": "dom",
@@ -926,8 +965,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-17",
-      "index": 17,
+      "id": "wf-1792700589362-18",
+      "index": 18,
       "action": "type",
       "label": "Type {{mobile_number}}",
       "surface": "dom",
@@ -976,8 +1015,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-18",
-      "index": 18,
+      "id": "wf-1792700589362-19",
+      "index": 19,
       "action": "click",
       "label": "Click \"Create Account\"",
       "surface": "dom",
@@ -1022,8 +1061,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-19",
-      "index": 19,
+      "id": "wf-1792700589362-20",
+      "index": 20,
       "action": "click",
       "label": "Click \"Continue\"",
       "surface": "dom",
@@ -1073,8 +1112,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-20",
-      "index": 20,
+      "id": "wf-1792700589362-21",
+      "index": 21,
       "action": "navigate",
       "label": "Open https://automationexercise.com/",
       "surface": "dom",
@@ -1087,8 +1126,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-21",
-      "index": 21,
+      "id": "wf-1792700589362-22",
+      "index": 22,
       "action": "click",
       "label": "Click \"Contact us\"",
       "surface": "dom",
@@ -1129,8 +1168,8 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792682765516-22",
-      "index": 22,
+      "id": "wf-1792700589362-23",
+      "index": 23,
       "action": "type",
       "label": "Type {{name2}}",
       "surface": "dom",
@@ -1171,8 +1210,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-23",
-      "index": 23,
+      "id": "wf-1792700589362-24",
+      "index": 24,
       "action": "type",
       "label": "Type {{username2}}",
       "surface": "dom",
@@ -1213,8 +1252,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-24",
-      "index": 24,
+      "id": "wf-1792700589362-25",
+      "index": 25,
       "action": "type",
       "label": "Type {{subject}}",
       "surface": "dom",
@@ -1255,8 +1294,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-25",
-      "index": 25,
+      "id": "wf-1792700589362-26",
+      "index": 26,
       "action": "upload",
       "label": "Upload file",
       "surface": "dom",
@@ -1292,8 +1331,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-26",
-      "index": 26,
+      "id": "wf-1792700589362-27",
+      "index": 27,
       "action": "type",
       "label": "Type {{message}}",
       "surface": "dom",
@@ -1331,10 +1370,10 @@
       }
     },
     {
-      "id": "wf-1792682765516-27",
-      "index": 27,
+      "id": "wf-1792700589362-28",
+      "index": 28,
       "action": "click",
-      "label": "Click",
+      "label": "Click \"Submit\"",
       "surface": "dom",
       "identity": {
         "surface": "dom",
@@ -1343,9 +1382,21 @@
         "nameAttr": "submit",
         "tag": "input",
         "cssPath": "#contact-us-form > div:nth-of-type(6) > input:nth-of-type(1)",
+        "name": "Submit",
+        "label": "Submit",
+        "text": "Submit",
         "path": []
       },
       "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        {
+          "kind": "text",
+          "value": "Submit"
+        },
         {
           "kind": "testid",
           "value": "submit-button"
@@ -1376,8 +1427,8 @@
       }
     },
     {
-      "id": "wf-1792682765516-28",
-      "index": 28,
+      "id": "wf-1792700589362-29",
+      "index": 29,
       "action": "click",
       "label": "Click \"Delete Account\"",
       "surface": "dom",
@@ -1418,5 +1469,5 @@
       "confidence": "low"
     }
   ],
-  "createdAt": 1792682720687
+  "createdAt": 1792700544497
 }

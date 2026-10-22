@@ -1099,11 +1099,16 @@ export async function startApp(opts: {
         return json(res, { ok: true });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/shot") {
-        const body = await readBody(req) as { id?: string; file?: string };
+        const body = await readBody(req) as { id?: string; file?: string; width?: number; height?: number };
         const session = replays.get(body.id || "");
         if (!session || session.page.isClosed()) return json(res, { error: "replay window is not open" }, 409);
         const base = path.basename(body.file || "replay.png");
         if (!/^[\w.-]+$/.test(base)) return json(res, { error: "file" }, 400);
+        const width = Math.round(Number(body.width) || 0);
+        const height = Math.round(Number(body.height) || 0);
+        if (width >= 400 && width <= 1600 && height >= 400 && height <= 1400) {
+          await session.page.setViewportSize({ width, height });
+        }
         const shots = path.join(opts.home, "shots");
         mkdirSync(shots, { recursive: true });
         await session.page.evaluate(maskPasswordFields);
@@ -2196,7 +2201,8 @@ async function runRecorded(
       reviewSteps,
       circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
       siteTrust: trustMode(settings, originOf(workflow.startUrl)),
-      holdForPerson: true,
+      // The desktop waits. The proof scores the pause and must not sit on a bot wall.
+      holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
       onPause: (partial) => {
         library.saveRun(persistedRun(partial, workflow, args, {
           promotion: undefined,
@@ -2344,7 +2350,39 @@ function publicPending(pending: PendingImport) {
 async function drivePageView(page: Page): Promise<{ url: string; title: string; text: string }> {
   const url = page.url();
   const title = await page.title().catch(() => "");
-  const text = await page.locator("body").innerText().then((value) => value.replace(/\s+/g, " ").trim().slice(0, 20000)).catch(() => "");
+  const text = await page.evaluate(() => {
+    const light = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
+    const extra: string[] = [];
+    const skip = new Set(["STYLE", "SCRIPT", "NOSCRIPT"]);
+    const hidden = (el: Element) => {
+      if (el.hasAttribute("hidden") || el.getAttribute("aria-hidden") === "true") return true;
+      const style = getComputedStyle(el);
+      return style.display === "none" || style.visibility === "hidden";
+    };
+    const collect = (node: Node): void => {
+      if (node.nodeType === 1) {
+        const el = node as Element;
+        if (skip.has(el.tagName) || hidden(el)) return;
+        if (el.shadowRoot) collect(el.shadowRoot);
+      }
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) {
+          const bit = (child.textContent || "").replace(/\s+/g, " ").trim();
+          if (bit) extra.push(bit);
+        } else {
+          collect(child);
+        }
+      }
+    };
+    const root = document.body;
+    if (root) {
+      for (const child of root.querySelectorAll("*")) {
+        if (child.shadowRoot && !hidden(child)) collect(child.shadowRoot);
+      }
+    }
+    const strip = (document.getElementById("bao-control-strip")?.innerText || "").replace(/\s+/g, " ").trim();
+    return `${strip} ${light} ${extra.join(" ")}`.replace(/\s+/g, " ").trim().slice(0, 20000);
+  }).catch(() => "");
   return { url, title, text };
 }
 

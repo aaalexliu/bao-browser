@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 3,
-  "id": "wf-1792681340536",
+  "id": "wf-1792700830528",
   "name": "Captured workflow",
   "startUrl": "https://automationintesting.online/",
   "inputs": [
@@ -28,7 +28,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792681340536-0",
+      "id": "wf-1792700830528-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://automationintesting.online/",
@@ -42,7 +42,7 @@
       }
     },
     {
-      "id": "wf-1792681340536-1",
+      "id": "wf-1792700830528-1",
       "index": 1,
       "action": "click",
       "label": "Click \"Book now\"",
@@ -84,7 +84,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792681340536-2",
+      "id": "wf-1792700830528-2",
       "index": 2,
       "action": "click",
       "label": "Pick {{checkIn}} to {{checkOut}}",
@@ -127,7 +127,7 @@
       }
     },
     {
-      "id": "wf-1792681340536-3",
+      "id": "wf-1792700830528-3",
       "index": 3,
       "action": "confirm",
       "label": "Confirm \"Reserve Now\"",
@@ -162,9 +162,10 @@
       ],
       "timeoutMs": 8000,
       "human": true,
+      "confirm": true,
       "gate": "confirm"
     }
   ],
-  "createdAt": 1792681334586,
+  "createdAt": 1792700824095,
   "filesDates": 1
 }
