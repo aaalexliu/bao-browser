@@ -43,9 +43,9 @@ export function permissionPreview(document: unknown): PermissionPreview {
     const surface = step.surface || step.identity?.surface || "dom";
     if (surface === "dom") browser = true;
     else computer = true;
-    if (step.action === "confirm" || step.gate === "confirm") confirm = true;
-    const text = `${step.label || ""} ${step.identity?.name || ""} ${step.identity?.text || ""} ${step.value || ""}`;
-    if (/\bsubmit\b/i.test(text)) submit = true;
+    const hit = consequentialStep(step);
+    if (hit.confirm) confirm = true;
+    if (hit.submit) submit = true;
   }
   if (!browser && !computer && /^https?:\/\//i.test(doc.startUrl || "")) browser = true;
   const driver = browser && computer
@@ -72,6 +72,14 @@ export function driverLabel(driver: PermissionPreview["driver"]): string {
   if (driver === "computer-use") return "Computer use";
   if (driver === "browser and computer-use") return "Browser and computer use";
   return "Browser";
+}
+
+export function consequentialStep(step: StepLike): { confirm: boolean; submit: boolean } {
+  const text = `${step.label || ""} ${step.identity?.name || ""} ${step.identity?.text || ""} ${step.value || ""}`;
+  return {
+    confirm: step.action === "confirm" || step.gate === "confirm",
+    submit: /\bsubmit\b/i.test(text),
+  };
 }
 
 export function consequentialCopy(preview: Pick<PermissionPreview, "confirm" | "submit">): string {

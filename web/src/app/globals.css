@@ -156,6 +156,7 @@ form.inline { display: inline; }
 .filters { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
 .filters a { text-decoration: none; }
 .share { position: relative; display: inline-block; margin: 0.6rem 0; }
+.share-panel[hidden] { display: none; }
 .share-panel {
   position: absolute;
   z-index: 5;
@@ -206,6 +207,8 @@ form.inline { display: inline; }
   border-top: 1px solid var(--line);
 }
 .listing-steps .n { color: var(--quiet); font-variant-numeric: tabular-nums; }
+.step-name { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.listing-copy button:disabled { opacity: 0.45; }
 .listing-steps img, .crop-empty {
   width: 9rem;
   height: 5rem;

@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -97,17 +97,36 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
     await page.goto(`${origin}/marketplace/${LISTING_ID}`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("permissions").waitFor();
     assert.match(await page.getByTestId("perm-sites").innerText(), new RegExp(fixture.origin.replace(/[.]/g, "\\.")));
+    assert.equal(await page.locator("h2", { hasText: /^Sites$/ }).count(), 0);
+    assert.equal(await page.getByTestId("domains").count(), 0);
     assert.equal(await page.locator("[data-secret=true]").innerText(), "Password · secret");
+    assert.equal(await page.getByTestId("secret-note").innerText(), "You enter this on your device.");
+    assert.equal(await page.getByTestId("inputs").locator("input").count(), 0);
+    assert.equal(await page.locator("input[type=password]").count(), 0);
     assert.equal(await page.getByTestId("perm-driver").innerText(), "Browser");
     assert.equal(await page.getByTestId("perm-trust").innerText(), "Can press submit. Always ask.");
+    assert.equal(await page.getByTestId("step-ask").innerText(), "Always ask");
     assert.equal(await page.getByTestId("allow").innerText(), "Allow");
+    assert.equal(await page.getByTestId("copy").isDisabled(), true);
     assert.equal(await page.getByTestId("install").count(), 0);
+    assert.match(await page.getByTestId("last-green").innerText(), /^Publisher replayed green:/);
+    assert.equal(await page.getByTestId("your-green").count(), 0);
+    assert.equal(await page.getByTestId("share-panel").getAttribute("hidden"), "");
+    const publisherGreen = await page.getByTestId("last-green").innerText();
     assert.equal(await bodyColor(page), "rgb(245, 245, 247)");
     await page.locator("main").screenshot({ path: path.join(shots, "permissions-preview-light.png") });
     await chooseTheme(page, "dark");
     assert.equal(await bodyColor(page), "rgb(28, 28, 30)");
+    assert.equal(await page.getByTestId("share-panel").getAttribute("hidden"), "");
     await page.locator("main").screenshot({ path: path.join(shots, "permissions-preview-dark.png") });
     await chooseTheme(page, "light");
+
+    const copied = await fetch(`${origin}/api/marketplace/${LISTING_ID}/fork`, {
+      method: "POST",
+      headers: { cookie: buyerCookie, "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(copied.status, 403, await copied.text());
 
     await pairDevice(buyer, { code: await pairCode(origin, buyerCookie), server: origin, name: "Buyer Mac" });
     mcp = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
@@ -160,6 +179,10 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
     await page.getByTestId("install").waitFor();
     assert.equal(await page.getByTestId("install").getAttribute("href"), `bao://import/${LISTING_ID}`);
     assert.match(await page.getByTestId("allowed").innerText(), /Always ask/);
+    assert.equal(await page.getByTestId("step-ask").innerText(), "Always ask");
+    assert.equal(await page.getByTestId("copy").isDisabled(), false);
+    assert.equal(await page.getByTestId("share-panel").getAttribute("hidden"), "");
+    await page.locator("main").screenshot({ path: path.join(shots, "permissions-after-allow.png") });
 
     const ran = await client.call({
       jsonrpc: "2.0",
@@ -174,6 +197,16 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
     assert.equal(buyer.settings().siteTrust?.[fixture.origin], "ask");
     await new Promise((resolve) => setTimeout(resolve, 500));
     assert.equal(fixture.submits, publishedClicks);
+    const token = JSON.parse(readFileSync(path.join(buyerHome, "sync.json"), "utf8")).deviceToken as string;
+    const stamped = await fetch(`${origin}/api/workflows/${LISTING_ID}/runs`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ id: "run-buyer-green", status: "passed", at: Date.now(), steps: [{ id: "send", status: "passed" }] }),
+    });
+    assert.equal(stamped.status, 201, await stamped.text());
+    await page.reload({ waitUntil: "domcontentloaded" });
+    assert.equal(await page.getByTestId("last-green").innerText(), publisherGreen);
+    assert.match(await page.getByTestId("your-green").innerText(), /^Your last green:/);
     await context.close();
   } finally {
     mcp?.kill();

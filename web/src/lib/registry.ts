@@ -404,7 +404,7 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
   shots?: ShotIn[];
 }) {
   assertSyncSafe(body);
-  await readable(principal, workflowId);
+  const row = await readable(principal, workflowId);
   const id = String(body.id || "");
   if (!id) throw new HttpError("run id", 400);
   const status = String(body.status || "");
@@ -416,7 +416,7 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
      ON CONFLICT (id) DO NOTHING`,
     [id, workflowId, principal.deviceId ?? null, status, at, JSON.stringify(steps)],
   );
-  if (status === "passed" || status === "ok") {
+  if ((status === "passed" || status === "ok") && row.owner_id === principal.userId) {
     await query(
       `UPDATE workflows SET last_green_at = GREATEST(last_green_at, $2::timestamptz) WHERE id = $1`,
       [workflowId, at],
@@ -715,9 +715,23 @@ export async function userAllowsListing(userId: string, id: string): Promise<boo
   return rows.length > 0;
 }
 
+export async function viewerLastGreen(userId: string, workflowId: string): Promise<string | null> {
+  const rows = await query<{ at: string | null }>(
+    `SELECT MAX(r.at) AS at
+     FROM runs r
+     JOIN devices d ON d.id = r.device_id
+     WHERE r.workflow_id = $1 AND d.user_id = $2 AND r.status IN ('passed', 'ok')`,
+    [workflowId, userId],
+  );
+  return rows[0]?.at ?? null;
+}
+
 export async function forkPublic(principal: Principal, id: string, answers: Record<string, unknown>) {
   assertSyncSafe({ answers });
   const pub = await publicWorkflow(id);
+  if (!(await userAllowsListing(principal.userId, id))) {
+    throw new HttpError("Allow this listing before it can be copied.", 403);
+  }
   rejectSecretAnswers(pub.document, answers);
   const user = await mustUser(principal.userId);
   const installed = answered(pub.document, answers);
