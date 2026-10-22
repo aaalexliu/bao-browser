@@ -121,7 +121,7 @@ A password field recorded in a capture session becomes a `secret` input with no 
 
 ### What failed
 
-`desktop/test/live/browser.test.ts` ("capture login, upload, and drop, then replay with two input sets") still fails on the parent commit `346ac1b`, before these edits. The login step's stored locators include `testid` `login`. Replacing the identity with `missing-login` does not remove those locators, so replay passes with `heals` empty and the assertion wants model name `bao-heal-fixture`. This spike did not change that.
+On parent commit `346ac1b`, `desktop/test/live/browser.test.ts` ("capture login, upload, and drop, then replay with two input sets") clicked Log in with an empty heal list. Swapping the identity to `missing-login` left the stored locators on `testid` `login`, the css selector, and the role name `Log in`. Replay tries those locators before identity, so the fixture healer never ran. The test now rewrites every stored locator on that step — testid, css, role name, text, xpath, and anchor — to a control that is not on the page. The broken replay fails in phase `find` with no heal. With `BAO_HEAL_FIXTURE=1` the same workflow passes, the heal model is `bao-heal-fixture`, and the postcondition passes.
 
 The replay form used to rebuild on each state change and drop a password that had been typed but not submitted. It now puts those typed values back, including the secret field. The secret is still not written to the library.
 

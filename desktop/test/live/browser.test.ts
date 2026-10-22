@@ -8,6 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { launchOwnedChrome } from "../../src/launch";
+import type { StepLocator } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -93,20 +94,27 @@ test("capture login, upload, and drop, then replay with two input sets", async (
     const saved = app.library.read(workflow.id);
     const login = saved.steps.find((step) => step.identity?.testId === "login" || step.identity?.id === "login-btn");
     assert.ok(login);
-    if (login.identity) {
-      login.label = "Click missing control";
-      login.intent = "missing control";
-      delete login.anchor;
-      delete login.locators;
-      login.timeoutMs = 0;
-      login.identity = { surface: "dom", role: "button", testId: "missing-login", path: [] };
+    login.label = "Click missing control";
+    login.intent = "missing control";
+    delete login.anchor;
+    login.timeoutMs = 0;
+    login.identity = { surface: "dom", role: "button", testId: "missing-login", name: "Missing login", path: [] };
+    login.locators = breakStoredLocators(login.locators);
+    const kinds = new Set((login.locators || []).map((locator) => locator.kind));
+    assert.ok(kinds.has("testid") && kinds.has("css") && kinds.has("role"));
+    for (const locator of login.locators || []) {
+      if (locator.kind === "testid") assert.equal(locator.value, "missing-login");
+      if (locator.kind === "css") assert.equal(locator.value?.includes("missing-login"), true);
+      if (locator.kind === "role") assert.equal(locator.name, "Missing login");
     }
     app.library.save(saved);
     const broken = await post(app.port, "/api/replay", {
       id: workflow.id,
       args: { [user.name]: "ada", [secret.name]: "another-secret" },
-    }) as { status: string; failure?: { reason: string; snapshot?: unknown } };
-    assert.equal(broken.status, "failed");
+    }) as { status: string; heals?: unknown[]; failure?: { phase?: string; reason: string; snapshot?: unknown } };
+    assert.equal(broken.status, "failed", JSON.stringify(broken.failure));
+    assert.equal(broken.failure?.phase, "find");
+    assert.equal(broken.heals?.length || 0, 0);
     assert.ok(broken.failure?.snapshot);
     assert.equal(JSON.stringify(broken).includes("another-secret"), false);
     process.env.BAO_HEAL_FIXTURE = "1";
@@ -125,3 +133,22 @@ test("capture login, upload, and drop, then replay with two input sets", async (
     await app.close();
   }
 });
+
+/** Every stored locator misses the live login button, so replay has to heal. */
+function breakStoredLocators(locators: StepLocator[] | undefined): StepLocator[] {
+  const next = (locators || []).map((locator) => {
+    if (locator.kind === "testid") return { ...locator, value: "missing-login" };
+    if (locator.kind === "css") return { ...locator, value: "[data-testid=\"missing-login\"]" };
+    if (locator.kind === "role") return { ...locator, role: locator.role || "button", name: "Missing login" };
+    if (locator.kind === "text") return { ...locator, value: "Missing login" };
+    if (locator.kind === "xpath") return { ...locator, value: "//*[@id=\"missing-login\"]" };
+    if (locator.kind === "anchor") {
+      return { ...locator, anchor: { surface: "dom" as const, role: "button", testId: "missing-login", path: [] } };
+    }
+    return locator;
+  });
+  if (!next.some((locator) => locator.kind === "testid")) next.push({ kind: "testid", value: "missing-login" });
+  if (!next.some((locator) => locator.kind === "css")) next.push({ kind: "css", value: "[data-testid=\"missing-login\"]" });
+  if (!next.some((locator) => locator.kind === "role")) next.push({ kind: "role", role: "button", name: "Missing login" });
+  return next;
+}

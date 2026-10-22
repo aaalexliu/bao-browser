@@ -6,7 +6,7 @@ The pictures in this file are the Bao window on the built-in fixture (`http://12
 
 Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
 
-Stay on the checkout that contains this file. That checkout is the integration branch for pull request 58, and it is the only tree you need: the desktop window, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, and the marketplace web app are already in it. Build both package scripts from this checkout. After pull request 58 merges, the same tree is `v1/desktop`.
+Stay on `v1/desktop`. That branch has the desktop window, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, and the marketplace web app. Build both package scripts from this checkout.
 
 The signed app is still two scripts, in this order, from the repo root:
 
