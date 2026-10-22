@@ -31,6 +31,7 @@ import {
   type FreezeSession,
 } from "../v1/freeze-session";
 import { recorderSource } from "../v1/recorder";
+import { armFileChooser, queueChooserFile, storedFileEvent } from "../v1/file-chooser";
 import {
   auditLine,
   chooseProfile,
@@ -113,6 +114,7 @@ export async function startApp(opts: {
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let profile: string | undefined;
+  let fileChooser: unknown;
   const captureShots = new Map<string, string>();
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
@@ -508,9 +510,15 @@ export async function startApp(opts: {
           click?: string;
           upload?: { selector: string; path: string };
           drop?: { selector: string; name: string; path: string };
+          chooser?: { selector: string; path: string };
         };
         if (body.fill) await page.fill(body.fill.selector, body.fill.value);
         if (body.click) await page.click(body.click);
+        if (body.chooser?.selector && body.chooser.path) {
+          const landed = queueChooserFile(body.chooser.path);
+          await page.click(body.chooser.selector);
+          await landed;
+        }
         if (body.upload) await page.setInputFiles(body.upload.selector, body.upload.path);
         if (body.drop) {
           const b64 = readFileSync(body.drop.path).toString("base64");
@@ -857,23 +865,23 @@ export async function startApp(opts: {
       profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
       context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
       await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
-        if (!capture.push(payload)) return;
-        const stored = capture.events[capture.events.length - 1];
-        publishCapture();
-        if (!stored || !page || page.isClosed()) return;
-        const dir = path.join(opts.home, "shots", "capture");
-        mkdirSync(dir, { recursive: true });
-        const dest = path.join(dir, `${stored.id}.png`);
-        try {
-          const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
-          if (!clip) return;
-          await shotWithBlur(page, { path: dest, type: "png", clip });
-          captureShots.set(stored.id, dest);
-        } catch { /* headed Chromium can refuse captureScreenshot */ }
+        await recordCaptured(payload);
       });
       await context.addInitScript(recorderSource());
       page = context.pages()[0] || await context.newPage();
+      fileChooser = await armFileChooser(page, async (chosen) => {
+        await recordCaptured({
+          kind: "act",
+          op: "upload",
+          fileName: chosen.fileName,
+          identity: chosen.identity,
+        });
+      });
       await page.goto(startUrl);
+      await (fileChooser as { send(method: string, params?: object): Promise<unknown> }).send(
+        "Page.setInterceptFileChooserDialog",
+        { enabled: true },
+      );
     } catch (err) {
       capture.discard();
       recordingSince = 0;
@@ -884,14 +892,31 @@ export async function startApp(opts: {
     publishCapture();
   }
 
+  async function recordCaptured(payload: Omit<TrailEvent, "id" | "ts">): Promise<void> {
+    if (!capture.push(payload)) return;
+    const stored = capture.events[capture.events.length - 1];
+    publishCapture();
+    if (!stored || !page || page.isClosed()) return;
+    const dir = path.join(opts.home, "shots", "capture");
+    mkdirSync(dir, { recursive: true });
+    const dest = path.join(dir, `${stored.id}.png`);
+    try {
+      const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
+      if (!clip) return;
+      await shotWithBlur(page, { path: dest, type: "png", clip });
+      captureShots.set(stored.id, dest);
+    } catch { /* headed Chromium can refuse captureScreenshot */ }
+  }
+
   async function saveSession(): Promise<WorkflowV2> {
     const raw = capture.stop();
     recordingSince = 0;
     const id = `wf-${Date.now()}`;
     const startUrl = page ? page.url() : "";
     const clean = raw.map((event) => {
-      if (!event.sensitive && event.identity?.role !== "password") return event;
-      const copy = { ...event, sensitive: true };
+      const file = storedFileEvent(event);
+      if (!file.sensitive && file.identity?.role !== "password") return file;
+      const copy = { ...file, sensitive: true };
       delete copy.value;
       return copy;
     });
@@ -946,6 +971,7 @@ export async function startApp(opts: {
   }
 
   async function stopBrowser(): Promise<void> {
+    fileChooser = undefined;
     await context?.close().catch(() => undefined);
     context = undefined;
     page = undefined;

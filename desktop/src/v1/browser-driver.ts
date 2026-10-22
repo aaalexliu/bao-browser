@@ -223,6 +223,7 @@ export class BrowserDriver implements Driver {
     const want = files[0]?.name || "";
     if (!want) throw new Error("upload has no file");
     const loc = this.page.locator(this.sel(node));
+    // Playwright setInputFiles sends CDP DOM.setFileInputFiles. The path lives only on this run.
     await loc.setInputFiles(files.map((file) => file.path));
     const got = await loc.evaluate((el, name) => {
       const input = el instanceof HTMLInputElement && el.type === "file"
@@ -444,7 +445,7 @@ function publicUrl(raw: string): string {
 export async function notifyOs(title: string, body: string): Promise<void> {
   const { spawn } = await import("node:child_process");
   const cmd = process.platform === "darwin"
-    ? ["osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`]]
+    ? ["/usr/bin/osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`]]
     : ["notify-send", ["-a", "Bao", "-u", "normal", "-t", "15000", title, body]];
   await new Promise<void>((resolve) => {
     const child = spawn(cmd[0] as string, cmd[1] as string[], { stdio: "ignore" });

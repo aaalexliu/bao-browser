@@ -1,12 +1,12 @@
 # macOS test
 
-Follow this on a fresh macOS user account, from an empty login to a saved workflow. The account needs its own Node, its own signing certificate, and its own privacy grants. A grant on another account does not carry over.
+Follow this with a fresh `BAO_HOME` on this Mac, from an empty data directory to a saved workflow. Use the signing certificate and the helper grants already on this account. A grant on another account does not carry over.
 
 The pictures in this file are the Bao window on the built-in fixture (`http://127.0.0.1/fixture`). They were taken where the Mac helper is absent, so the sidebar footer reads **helper off**. On your Mac, before the two grants below, Library has a collapsible permission card and the other screens have a sidebar dot. After both grants, that footer reads **helper ok** and the card and the dot are gone. The rest of the window is the same. Linux does not show the card.
 
 Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
 
-Stay on `v1/desktop`. That branch has the desktop window, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, and the marketplace web app. Build both package scripts from this checkout.
+Build branch `cursor/mac-clean-window-file-e55f`. It is based on `v1/desktop` at `18d938e`, which has the desktop window, the floating capture bar, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, and the marketplace web app. This branch adds the clean product window and the file step. Build both package scripts from this checkout.
 
 The signed app is still two scripts, in this order, from the repo root:
 
@@ -114,14 +114,12 @@ There is no notarization step.
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
-git fetch origin v1/desktop
-git checkout v1/desktop
+git fetch origin cursor/mac-clean-window-file-e55f
+git checkout cursor/mac-clean-window-file-e55f
 git branch --show-current
 ```
 
-Pull request 58 landed here as a merge commit, and pull request 57 followed it. Pull request 59 is still being rebased onto this line. Build from `v1/desktop`.
-
-**What you should see:** `git branch --show-current` prints `v1/desktop`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
+**What you should see:** `git branch --show-current` prints `cursor/mac-clean-window-file-e55f`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
 
 ## Build
 
@@ -159,9 +157,11 @@ The app is signed with a self-signed certificate, so Gatekeeper stops a normal d
 
 A Finder launch uses a short `PATH` and the default data directory `~/Library/Application Support/bao`. Launch from Terminal on a fresh account. Use a throwaway home so this test does not read or write anything already in the default directory.
 
+`4787` is the app default and may already belong to another Bao. This test uses `4807`.
+
 ```sh
 export BAO_HOME="$HOME/Library/Application Support/bao-mac-test"
-export BAO_PORT=4787
+export BAO_PORT=4807
 export BAO_NODE="$(command -v node)"
 mkdir -p "$BAO_HOME"
 desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
@@ -169,7 +169,7 @@ desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 
 The entry point sets `BAO_HEADED=1` when it is unset, points `BAO_BROWSER` at `Contents/Resources/Chromium.app`, and points `BAO_OS_HELPER` at the nested `BaoOSHelper.app`. Leave this Terminal process running. Do not `open` the app again while it is running. LaunchServices would start a second instance on the default home.
 
-**What you should see:** a window opens on `http://127.0.0.1:4787`. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail, and before the permission card was limited to macOS. The build includes both screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
+**What you should see:** a window opens on `http://127.0.0.1:4807`. It is app mode: no address bar, no tab strip, and no Chrome for Testing infobar (`--disable-infobars`). The page does not ask to show notifications. **You need to act** is a macOS notification from the helper (`osascript`) and the Bao Capture dock badge. The sidebar lists Library, Capture, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Replay and Logins were on the rail, and before the permission card was limited to macOS. The build includes both screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
 
 ![Two permissions on the Mac. Accessibility and Screen Recording both say not granted yet. The footer says helper off.](mac-test/01-onboarding.png)
 
@@ -203,15 +203,17 @@ Quit Bao (Ctrl-C in the launch Terminal) and launch it again with the same `BAO_
 
 Click **Capture** in the sidebar.
 
-**What you should see:** Start URL is already the fixture on this server (`http://127.0.0.1:4787/fixture`). The page says nothing is recorded until you start, and that the capture browser uses an app-owned profile. The Mac app card names `Bao.app/Contents/Resources/BaoOSHelper.app` and bundle `dev.bao.oshelper`.
+**What you should see:** Start URL is already the fixture on this server (`http://127.0.0.1:4807/fixture`). The page says nothing is recorded until you start, and that the capture browser uses an app-owned profile. The Mac app card names `Bao.app/Contents/Resources/BaoOSHelper.app` and bundle `dev.bao.oshelper`.
 
 ![Capture screen with Start URL, Start capture, and Stop and save.](mac-test/03-capture.png)
 
-1. Press **Start capture**. A second window opens on the fixture. That window is the bundled Chromium. The floating Bao Capture panel lists each step as it lands. Pause drops further UI events. Add note and Add check append a note or a check. Discard throws the take away. Control-option-command R starts, period stops, and P pauses. A password field is blurred before a screenshot is taken. A login or confirm wait posts a macOS notification and sets the Bao Capture dock badge to `!`.
-2. Type `ada` in Username. Type a made-up password in Password. Choose a throwaway file in the file input, for example a text file you created under `/tmp` for this test.
-3. Press **Stop and save**.
+1. Press **Start capture**. A second window opens on the fixture. That window is the bundled Chromium. The floating Bao Capture panel lists each step as it lands. Pause drops further UI events. Add note and Add check append a note or a check. Discard throws the take away. Control-option-command R starts, period stops, and P pauses. A password field is blurred before a screenshot is taken. A login or confirm wait posts a macOS notification through the helper and sets the Bao Capture dock badge to `!`.
+2. Type `ada` in Username. Type a made-up password in Password. Click **Log in**. The fixture shows `Welcome` plus the username.
+3. Choose a throwaway file in the file input, for example a text file you created under `/tmp` for this test. Capture intercepts the chooser, records a `file` input, and forwards the chosen path so the page shows the file name.
+4. Drag a throwaway file from Finder onto **Drop a file here** by hand. A drop that reaches the page, with files on `dataTransfer`, is recorded as a `file` input.
+5. Press **Stop and save**.
 
-A drag that starts in another app still does not become a Bao drop. `CGEvent` can move the pointer, and it does not start an `NSDraggingSession`. Dropping a file from Finder onto the replay form later is an ordinary web drop on that form.
+Alex drags that Finder file by hand. The harness proof uses the chooser path. A scripted pointer move does not start an `NSDraggingSession`, so it is not the proof that a file was recorded.
 
 **What you should see:** Library gains a card for the capture. Open the workflow. It has a `secret` input and a `file` input. The secret string is absent. The absolute path of the file is absent. The trail view says password values are not stored. The saved `startUrl` is the page URL at stop time. The fixture's Log in button uses `pushState` to `/secure`, and this server serves the fixture HTML there too. On any other site, stop on the page replay should open.
 
@@ -223,7 +225,7 @@ On the Library card, press **Run** (the button on the card, under the status). T
 
 ![Run form for sign in, Username filled with ada, and a Run button.](mac-test/04-run-inputs.png)
 
-Press **Run**. Fill a different username and a different file than the capture. Run again after you move and resize the replay window. The next run reuses that window, and the bounds are stored per workflow. Chrome for Testing is moved with CDP `Browser.setWindowBounds`. The helper is also tried with the replay pid. If the origin does not change, that drift row is `n/a-harness`. A step failure counts only after the requested bounds landed.
+Press **Run**. Fill a different username and a different file than the capture. Replay sets a file input with `DOM.setFileInputFiles`, and a drop zone with a synthetic `DataTransfer`. The run form asks for the file. The saved workflow has no absolute path. Run again after you move and resize the replay window. The next run reuses that window, and the bounds are stored per workflow. Chrome for Testing is moved with CDP `Browser.setWindowBounds`, and that origin and size are what the next run keeps. The helper is also tried with the replay pid. A size row can stay `n/a-harness` when `AXSize` is rejected (`-25200`). A step failure counts only after the requested bounds landed.
 
 **What you should see:** each step goes pass or fail in Runs. The fixture page shows `Welcome` plus the username you typed, and the file name you supplied. The press log has no x,y.
 

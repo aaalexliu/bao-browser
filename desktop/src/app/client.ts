@@ -74,7 +74,6 @@ let selectedStep = "";
 let banner: { id: string; title: string; body: string } | null = null;
 const dismissed = new Set<string>();
 let renderKey = "";
-let notified = "";
 let libraryQuery = "";
 let paletteOpen = false;
 let paletteQuery = "";
@@ -123,24 +122,11 @@ async function refresh(): Promise<void> {
     selectedStep,
     banner,
   });
-  noteAsk();
   paintDockBadge();
   paintLive();
   if (key === renderKey) return;
   renderKey = key;
   render();
-}
-
-function noteAsk(): void {
-  const ask = state.activeAsk;
-  const id = ask ? `${ask.kind}:${ask.stepId}:${ask.startedAt}` : state.pendingImport?.phase === "confirm" ? `import:${state.pendingImport.id}` : "";
-  if (!id || id === notified) return;
-  notified = id;
-  const title = "You need to act";
-  const body = ask?.instruction || (state.pendingImport?.domain ? `Import cookies for ${state.pendingImport.domain}` : "");
-  if (body && "Notification" in window && Notification.permission === "granted") {
-    new Notification(title, { body });
-  }
 }
 
 function render(): void {
@@ -1308,9 +1294,6 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-if ("Notification" in window && Notification.permission === "default") {
-  void Notification.requestPermission().catch(() => undefined);
-}
 void refresh();
 setInterval(() => { refresh().catch(() => undefined); }, 400);
 setInterval(tickClock, 250);
