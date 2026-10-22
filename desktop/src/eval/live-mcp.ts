@@ -3,10 +3,11 @@
 // A password type, and a click on data-bao-gate, is recorded and not performed.
 
 import { createHash } from "node:crypto";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { fileAct, isFileTarget } from "../v1/file-chooser";
 import type { Identity } from "../v1/schema";
 import { launchOwnedChrome } from "../launch";
 import { pageApi, type PageRequest } from "./page";
@@ -60,6 +61,7 @@ export async function liveMcpMain(): Promise<void> {
   const page = context.pages()[0] || await context.newPage();
   await page.goto(url, { waitUntil: "domcontentloaded" });
   let seq = 0;
+  let authRecorded = false;
 
   const ask = (request: PageRequest) => page.evaluate(pageApi, request);
 
@@ -77,6 +79,12 @@ export async function liveMcpMain(): Promise<void> {
   }
 
   function record(event: Record<string, unknown>): void {
+    const identity = event.identity as (Identity & { inputType?: string }) | undefined;
+    if (identity && "inputType" in identity) {
+      const copy = { ...identity };
+      delete copy.inputType;
+      event = { ...event, identity: copy };
+    }
     appendFileSync(trailPath, JSON.stringify({ id: `e${seq++}`, ...event }) + "\n");
   }
 
@@ -91,6 +99,7 @@ export async function liveMcpMain(): Promise<void> {
     let sensitive = false;
     let performed = true;
     let fileName: string | undefined;
+    let recordedOp = name === "key" ? "key" : name;
     let provenance: { x: number; y: number; space: "viewport" } | undefined;
     const kind = name === "screenshot" || name === "snapshot" ? "read" : "act";
     try {
@@ -121,8 +130,22 @@ export async function liveMcpMain(): Promise<void> {
         const hit = await ask({ op: "active" }) as Hit | null;
         identity = hit?.identity;
         gate = hit?.gate;
-        if (!hit?.identity?.id) throw new Error("type has no focused field");
-        if (gate === "login" || hit.identity.id === "password" || hit.identity.nameAttr === "password") {
+        const preview = fileAct({ op: "type", args: { text: typed }, value: typed, identity });
+        if (preview.file) {
+          const fileHit = isFileTarget(identity) && hit?.identity?.id
+            ? hit
+            : await ask({ op: "file" }) as Hit | null;
+          if (!fileHit?.identity?.id) throw new Error("no file input");
+          identity = fileHit.identity;
+          fileName = preview.fileName;
+          recordedOp = preview.op;
+          if (preview.localPath && existsSync(preview.localPath)) {
+            await page.locator("#" + fileHit.identity.id).setInputFiles(preview.localPath);
+            await page.waitForTimeout(20);
+          }
+        } else if (!hit?.identity?.id) {
+          throw new Error("type has no focused field");
+        } else if (gate === "login" || hit.identity.id === "password" || hit.identity.nameAttr === "password") {
           performed = false;
           sensitive = true;
           gate = "login";
@@ -152,6 +175,7 @@ export async function liveMcpMain(): Promise<void> {
         if (!hit) throw new Error(`no element ${id}`);
         identity = hit.identity;
         fileName = path.basename(filePath);
+        recordedOp = isFileTarget(identity) ? "upload" : recordedOp;
         await page.locator("#" + id).setInputFiles(filePath);
         await page.waitForTimeout(20);
       } else {
@@ -166,19 +190,25 @@ export async function liveMcpMain(): Promise<void> {
     const view = await ask({ op: "view" }).catch(() => null);
     if (view) writeFileSync(path.join(home, "last-view.json"), JSON.stringify(view));
     const image = await shot();
-    const recordedArgs: Record<string, unknown> = { ...args };
+    const act = fileAct({ op: recordedOp, args, value, fileName, identity });
+    if (act.file) {
+      recordedOp = act.op;
+      fileName = act.fileName;
+      value = undefined;
+    }
+    const recordedArgs = { ...act.args };
     if (sensitive) delete recordedArgs.text;
-    if (name === "upload") delete recordedArgs.path;
+    if (act.localPath && text.includes(act.localPath)) text = text.split(act.localPath).join(path.basename(act.localPath));
     record({
       ts: Date.now(),
       kind,
-      op: name === "key" ? "key" : name,
+      op: recordedOp,
       args: recordedArgs,
       latencyMs: Date.now() - started,
       source: { agent: "mcp", vendor: "bao", adapter: "stdio" },
       snapshot: { sha256: image.sha256, path: image.path, w: image.w, h: image.h },
       identity,
-      value: sensitive ? undefined : value,
+      value: sensitive || act.file ? undefined : act.value,
       key: name === "key" ? String(args.key || "Enter") : undefined,
       sensitive: sensitive || undefined,
       gate,
@@ -189,6 +219,29 @@ export async function liveMcpMain(): Promise<void> {
       afterUrl: after.url,
       afterText: after.status,
     });
+    if (gate === "login" && recordedOp === "click") authRecorded = true;
+    if (gate === "login" && name === "type" && !isError && !authRecorded) {
+      const auth = await ask({ op: "auth" }).catch(() => null) as Hit | null;
+      if (auth?.identity?.id) {
+        authRecorded = true;
+        const image2 = await shot();
+        const url = page.url();
+        record({
+          ts: Date.now(),
+          kind: "act",
+          op: "click",
+          args: { ref: auth.identity.id },
+          latencyMs: 0,
+          source: { agent: "mcp", vendor: "bao", adapter: "stdio" },
+          snapshot: { sha256: image2.sha256, path: image2.path, w: image2.w, h: image2.h },
+          identity: auth.identity,
+          gate: "login",
+          performed: false,
+          beforeUrl: url,
+          afterUrl: url,
+        });
+      }
+    }
     return { text, image: kind === "read" ? image.png : undefined, isError };
   }
 

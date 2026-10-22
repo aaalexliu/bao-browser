@@ -272,10 +272,17 @@ export function taskHtml(id: string): string | null {
     if (new URLSearchParams(location.search).get("shift") === "1") document.body.classList.add("shift");
     const status = document.getElementById("status");
     const setStatus = (value) => { if (status) status.textContent = value; };
-    document.getElementById("file")?.addEventListener("change", (event) => {
-      const file = event.target.files && event.target.files[0];
+    const showFile = (file) => {
       const node = document.getElementById("files");
       if (node) node.textContent = file ? file.name : "";
+    };
+    document.getElementById("file")?.addEventListener("change", (event) => {
+      showFile(event.target.files && event.target.files[0]);
+    });
+    document.getElementById("file")?.addEventListener("dragover", (event) => event.preventDefault());
+    document.getElementById("file")?.addEventListener("drop", (event) => {
+      event.preventDefault();
+      showFile(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]);
     });
     document.getElementById("login-btn")?.addEventListener("click", () => {
       const user = document.getElementById("username");

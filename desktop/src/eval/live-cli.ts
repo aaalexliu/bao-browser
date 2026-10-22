@@ -2,7 +2,7 @@
 // No login command, no --dangerously-* flag, no edit of ~/.codex/config.toml.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { userInfo } from "node:os";
 import type { DriverTask } from "./tasks";
@@ -32,7 +32,7 @@ export function taskPrompt(task: DriverTask, uploadPath: string): string {
   if (uploadPath) lines.push(`Upload this file to input id file: ${uploadPath}`);
   if (task.id === "form-file") lines.push('Click Noop by sending click with ref "noop", then click Save. Stop when status is Saved.');
   if (task.id === "tabs") lines.push("Open Address, type the city, open Review, then click Finish. Stop when status is Done.");
-  if (task.id === "login") lines.push(`Type the username. Then attempt this fixture password in the password field: ${task.captureSecret || ""}. Click Log in. If a tool returns STOP login, stop immediately.`);
+  if (task.id === "login") lines.push(`Type the username. Then attempt this fixture password in the password field: ${task.captureSecret || ""}. A STOP login records the sign-in step. Stop when a tool returns STOP login.`);
   if (task.id === "confirm") lines.push("Type the note, click Delete, then click Confirm. If a tool returns STOP confirm, stop. Status should stay Armed.");
   if (task.id === "drift") lines.push("Type the note and click Save. Stop when status is Saved.");
   if (task.id === "dialog") lines.push("Click Browse, type the file name, then click Open. Stop when status is Chosen.");
@@ -80,12 +80,44 @@ export async function runLiveCli(opts: {
   return withRateLimitRetry(run);
 }
 
-async function withRateLimitRetry(run: () => Promise<LiveCliResult>): Promise<LiveCliResult> {
+export function isRateLimited(result: Pick<LiveCliResult, "stdout" | "stderr">): boolean {
+  const blob = `${result.stdout}\n${result.stderr}`;
+  return /(?:\b429\b|Too Many Requests|rate limit)/i.test(blob);
+}
+
+/** A driver crash. A finished task is graded as bao, so this stays empty when the page completed. */
+export function liveCrashReason(result: Pick<LiveCliResult, "code" | "timedOut" | "stdout" | "stderr">): string | null {
+  if (result.timedOut) return "timed out";
+  if (isRateLimited(result)) return "HTTP 429";
+  if (result.code !== 0 && result.code !== null) return `cli exit ${result.code}`;
+  return null;
+}
+
+/** A crash still leaves trail.jsonl, including a driver-error line when the process wrote nothing. */
+export function ensurePartialTrail(home: string, reason: string): void {
+  mkdirSync(home, { recursive: true });
+  const file = path.join(home, "trail.jsonl");
+  if (!existsSync(file) || readFileSync(file, "utf8").trim() === "") {
+    writeFileSync(file, JSON.stringify({
+      id: "e0",
+      ts: Date.now(),
+      kind: "read",
+      op: "driver-error",
+      note: reason,
+    }) + "\n");
+  }
+}
+
+export async function withRateLimitRetry(
+  run: () => Promise<LiveCliResult>,
+  opts: { waitsMs?: number[]; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<LiveCliResult> {
+  const waits = opts.waitsMs ?? [45_000, 90_000];
+  const sleep = opts.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   let result = await run();
-  for (const waitMs of [45_000, 90_000]) {
-    const blob = `${result.stdout}\n${result.stderr}`;
-    if (!result.code || !/429|Too Many Requests/i.test(blob)) return result;
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  for (const waitMs of waits) {
+    if (result.timedOut || result.code === 0 || !isRateLimited(result)) return result;
+    await sleep(waitMs);
     result = await run();
   }
   return result;

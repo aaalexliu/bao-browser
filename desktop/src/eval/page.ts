@@ -2,7 +2,7 @@
 // closes over nothing from Node.
 
 export interface PageRequest {
-  op: "view" | "at" | "active" | "id" | "scroll";
+  op: "view" | "at" | "active" | "id" | "scroll" | "file" | "auth";
   x?: number;
   y?: number;
   id?: string;
@@ -153,6 +153,21 @@ export function pageApi(request: PageRequest): unknown {
     const el = document.getElementById(request.id);
     if (!el) return null;
     return pack(el, clickGate(el));
+  }
+
+  if (request.op === "file") {
+    const el = document.querySelector("input[type=file]");
+    if (!el) return null;
+    return pack(el, undefined);
+  }
+
+  if (request.op === "auth") {
+    const marked = document.querySelector("[data-bao-gate='login']");
+    if (marked) return pack(marked, "login");
+    const buttons = Array.from(document.querySelectorAll("button, [role='button'], input[type='submit']"));
+    const found = buttons.find((el) => /^(log in|sign in)$/i.test(norm(el.getAttribute("aria-label") || el.textContent || "")));
+    if (!found) return null;
+    return pack(found, "login");
   }
 
   if (request.op === "active") {

@@ -3,7 +3,8 @@
 // undone by Back, and a Coupon-to-Cancel detour do not become steps.
 // A click with no observed effect is dropped when nothing later sits inside
 // its subtree. A click that changed the url, a checked state, a value, or
-// the target subtree stays. A Help click stays so the hybrid pass can drop it.
+// the target subtree stays. A login or confirm gate stays. A Help click stays
+// so the hybrid pass can drop it.
 
 import { interpret, type InterpretMeta, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
@@ -39,6 +40,7 @@ function dropNoEffect(events: TrailEvent[]): TrailEvent[] {
   for (let i = 0; i < events.length; i++) {
     const event = events[i]!;
     if (event.op !== "click") continue;
+    if (event.gate === "login" || event.gate === "confirm") continue;
     if (isHelp(event)) continue;
     if (clickChangedState(event)) continue;
     if (!observedStill(event)) continue;

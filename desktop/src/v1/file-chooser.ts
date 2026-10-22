@@ -1,11 +1,12 @@
-// Capture records a file input from a chooser or a drop. The workflow keeps
-// the basename only. The absolute path is used once, to show the file on the page.
+// One file-param path. A chooser, a drop, an upload, or a typed path becomes a
+// file input. The workflow and the trail keep the basename only. The absolute
+// path is used once, to set the file through DOM.setFileInputFiles.
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright";
-import type { Identity } from "./schema";
+import { looksLikePath, type Identity } from "./schema";
 
 interface Cdp {
   send(method: string, params?: object): Promise<Record<string, unknown>>;
@@ -39,6 +40,114 @@ export function storedFileEvent<T extends { op: string; fileName?: string; rawPa
     }
   }
   return copy;
+}
+
+export interface FileTarget {
+  id?: string;
+  nameAttr?: string;
+  testId?: string;
+  role?: string;
+  inputType?: string;
+}
+
+export function isFileTarget(identity?: FileTarget): boolean {
+  if (!identity) return false;
+  if (identity.inputType === "file") return true;
+  const hay = [identity.id, identity.nameAttr, identity.testId].filter(Boolean).join(" ");
+  return /\bfile\b/i.test(hay);
+}
+
+export interface FileActInput {
+  op: string;
+  args?: Record<string, unknown>;
+  value?: string;
+  fileName?: string;
+  rawPath?: string;
+  identity?: FileTarget;
+}
+
+export interface FileAct {
+  op: string;
+  args: Record<string, unknown>;
+  value?: string;
+  fileName?: string;
+  /** Present only so the caller can set the file. Never write this into the trail. */
+  localPath?: string;
+  file: boolean;
+}
+
+/** Turn upload, drop, a file input, and a typed path into a basename file act. */
+export function fileAct(input: FileActInput): FileAct {
+  const args = { ...(input.args || {}) };
+  const fromPath = typeof args.path === "string" ? args.path : "";
+  const fromText = typeof args.text === "string" ? args.text : "";
+  const fromValue = input.value || "";
+  const candidate = [input.rawPath, fromPath, fromText, fromValue].map(pathIn).find((item) => !!item) || "";
+  const target = isFileTarget(input.identity);
+  const typedPath = isTypeOp(input.op) && !!candidate && (target || !input.identity);
+  const file = input.op === "upload" || input.op === "drop" || target || typedPath;
+  if (!file) {
+    return {
+      op: input.op,
+      args: stripPath(args, candidate),
+      value: without(input.value, candidate),
+      localPath: candidate || undefined,
+      file: false,
+    };
+  }
+  delete args.path;
+  delete args.text;
+  const op = input.op === "drop" ? "drop" : "upload";
+  return {
+    op,
+    args: stripPath(args, candidate),
+    value: undefined,
+    fileName: basenameOrFile(input.fileName || candidate),
+    localPath: candidate || undefined,
+    file: true,
+  };
+}
+
+export function trailHasPath(payload: unknown, filePath: string): boolean {
+  if (!filePath) return false;
+  return JSON.stringify(payload).includes(filePath);
+}
+
+function basenameOrFile(value: string): string {
+  if (!value) return "file";
+  try {
+    return fileParamName(value);
+  } catch {
+    return "file";
+  }
+}
+
+function isTypeOp(op: string): boolean {
+  return op === "type" || op === "input" || op === "osType" || op === "osSetValue";
+}
+
+function pathIn(value: string | undefined): string {
+  if (!value) return "";
+  if (looksLikePath(value)) return value;
+  const match = value.match(/(?:\/(?:tmp|var|private|home|Users|opt)\/|~\/)[^\s"'`]+|[A-Za-z]:\\[^\s"'`]+/);
+  return match ? match[0] : "";
+}
+
+function without(value: string | undefined, filePath: string): string | undefined {
+  if (!value) return value;
+  if (!filePath) return value;
+  const out = value.split(filePath).join("").trim();
+  return out || undefined;
+}
+
+function stripPath(args: Record<string, unknown>, filePath: string): Record<string, unknown> {
+  if (!filePath) return args;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === "string" && value.includes(filePath)) continue;
+    out[key] = value;
+  }
+  return out;
 }
 
 let queuedPath: string | null = null;

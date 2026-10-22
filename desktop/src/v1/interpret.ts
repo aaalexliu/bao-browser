@@ -2,6 +2,7 @@
 // Secrets become inputs. File paths are dropped. No model is required.
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
+import { fileAct } from "./file-chooser";
 import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
@@ -158,6 +159,7 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
 }
 
 function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[]): WorkflowStep {
+  event = normalizeFile(event);
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const identity = stripSecretValue(event.identity, meta.secrets ?? []);
   const step: WorkflowStep = {
@@ -281,6 +283,21 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: post(event, undefined, meta.secrets ?? []),
     };
   }
+  if (event.gate === "login" && event.performed === false) {
+    const named = inputs.find((item) => item.type === "text" && /user|email|login/i.test(item.name))
+      || inputs.find((item) => item.type === "text");
+    return {
+      ...step,
+      action: "click",
+      gate: "login",
+      label: "Sign in",
+      postcondition: {
+        kind: "text",
+        match: named ? `Welcome {{${named.name}}}` : "Welcome",
+        timeoutMs: 4000,
+      },
+    };
+  }
   const name = event.identity?.name || event.identity?.text || event.identity?.label;
   return {
     ...step,
@@ -288,6 +305,19 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     label: name ? `Click "${name}"` : "Click",
     postcondition: post(event, undefined, meta.secrets ?? []),
   };
+}
+
+/** Upload, drop, and a typed path become a file slot. The path itself is not a step value. */
+function normalizeFile(event: TrailEvent): TrailEvent {
+  const act = fileAct({
+    op: event.op,
+    value: event.value,
+    fileName: event.fileName,
+    rawPath: event.rawPath,
+    identity: event.identity,
+  });
+  if (!act.file) return { ...event, value: act.value, rawPath: undefined };
+  return { ...event, op: act.op, value: undefined, rawPath: undefined, fileName: act.fileName };
 }
 
 function post(event: TrailEvent, input: string | undefined, secrets: string[]): WorkflowStep["postcondition"] {

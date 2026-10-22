@@ -17,7 +17,7 @@ import { condense } from "../v1/condense";
 import type { TrailEvent } from "../v1/interpret";
 import { replay } from "../v1/replay";
 import { validateWorkflow, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
-import { driverBinary, driverProcessEnv, runLiveCli, taskPrompt, unavailableReason, type LiveDriver } from "./live-cli";
+import { driverBinary, driverProcessEnv, ensurePartialTrail, liveCrashReason, runLiveCli, taskPrompt, unavailableReason, type LiveDriver } from "./live-cli";
 import { McpClient } from "./mcp-client";
 import {
   CAPTURE_SECRET,
@@ -31,7 +31,7 @@ import {
 export interface DriverCell {
   driver: string;
   task: string;
-  status: "pass" | "fail" | "not run";
+  status: "pass" | "fail" | "not run" | "driver-error";
   reason: string;
   taskComplete: string;
   trailComplete: string;
@@ -196,6 +196,7 @@ async function runLive(
     tokens: live.tokens,
     extra: redact(live.stderr).slice(0, 240),
     requireRef: false,
+    driverCrash: liveCrashReason(live),
   });
   return graded;
 }
@@ -260,6 +261,7 @@ async function runScripted(task: DriverTask, port: number): Promise<{ cell: Driv
     tokens: "n/a",
     extra: redact(client.stderr.join("")).slice(0, 240),
     requireRef: true,
+    driverCrash: null,
   });
 }
 
@@ -272,10 +274,28 @@ async function grade(
   view: FixtureView | null,
   stops: string[],
   failed: string,
-  opts: { video: boolean; videoName: string; tokens: string; extra: string; requireRef: boolean },
+  opts: { video: boolean; videoName: string; tokens: string; extra: string; requireRef: boolean; driverCrash: string | null },
 ): Promise<{ cell: DriverCell; video?: string; workflow?: WorkflowV2 }> {
   const captureReason = !view ? failed || "no final snapshot" : captureOk(task, view, stops);
   const taskComplete = !captureReason;
+  if (crashStatus(opts.driverCrash, taskComplete)) {
+    ensurePartialTrail(home, opts.driverCrash || "driver-error");
+    return {
+      cell: {
+        driver,
+        task: task.id,
+        status: "driver-error",
+        reason: opts.driverCrash || "driver-error",
+        taskComplete: "no",
+        trailComplete: "partial",
+        workflow: "no",
+        replay: "skipped",
+        modelCalls: "",
+        latencyMs: "",
+        tokens: opts.tokens,
+      },
+    };
+  }
   let trailNote = "no trail";
   let trailOk = false;
   let workflowOk = false;
@@ -355,6 +375,12 @@ async function grade(
   };
 }
 
+/** A crash with an unfinished task is a driver-error. A finished task stays on the bao grade. */
+export function crashStatus(crash: string | null, taskComplete: boolean): "driver-error" | null {
+  if (!crash || taskComplete) return null;
+  return "driver-error";
+}
+
 function inView(node: FixtureView["nodes"][number]): boolean {
   if (node.vw != null && node.vh != null) return node.vw > 1 && node.vh > 1;
   return node.h > 1 && node.y > 0 && node.y < 680;
@@ -413,7 +439,7 @@ interface TrailRow {
   gate?: "login" | "confirm";
 }
 
-function loadTrail(home: string): LoadedTrail {
+export function loadTrail(home: string): LoadedTrail {
   const file = path.join(home, "trail.jsonl");
   const raw = readFileSync(file, "utf8").trim();
   const rows = raw ? raw.split("\n").map((line) => JSON.parse(line) as TrailRow & TrailEvent) : [];
@@ -460,7 +486,7 @@ function trailProblems(rows: TrailRow[], home: string, uploadPath: string): stri
   return problems;
 }
 
-async function replayTask(
+export async function replayTask(
   workflow: WorkflowV2,
   task: DriverTask,
   port: number,
