@@ -283,7 +283,11 @@
     .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; border: 0; }
     #shot-slider { position: absolute; left: 12px; right: 12px; bottom: 10px; width: auto; }
     .filmstrip { display: flex; gap: 8px; overflow: auto; padding: 4px 0 10px; }
-    .frame { width: 220px; height: 140px; flex: none; padding: 0; position: relative; overflow: hidden; background: var(--select); border-radius: 8px; }
+    .frame { width: auto; min-width: 72px; height: 140px; flex: 1 1 72px; padding: 0; position: relative; overflow: hidden; background: var(--select); border-radius: 8px; }
+    #snapshot-inspector { margin-top: 0.8rem; }
+    #snapshot-inspector h4 { margin: 0.6rem 0 0.2rem; font-size: var(--text-sm); color: var(--quiet); }
+    #dom-snapshot, #console-log, #network-log { margin: 0.2rem 0 0.6rem; padding-left: 1.2rem; max-height: 240px; overflow: auto; }
+    #ax-snapshot { max-height: 240px; overflow: auto; background: var(--bg); border-radius: 8px; padding: 0.5rem 0.6rem; }
     .frame.on { outline: 2px solid var(--accent); outline-offset: 1px; }
     #scrubber { width: 100%; accent-color: var(--accent); }
     .timeline { position: relative; height: 28px; margin: 0.4rem 0; background: var(--select); border-radius: 6px; }

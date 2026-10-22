@@ -76,10 +76,31 @@ export interface HealProvider {
 export interface HealSettings {
   /** Global default. Absent means auto. */
   heal?: HealMode;
+  /** How long a person has to act. Absent keeps the step timeout. */
+  actTimeoutMs?: number;
+  /** Passing real runs required before a provisional heal is kept. */
+  promoteAfter?: number;
+  /** Failed runs inside the window that stop auto-heal. */
+  circuitLimit?: number;
+  circuitWindowMs?: number;
 }
+
+export type StepHeal = "auto" | "ask" | "never";
 
 export function effectiveMode(workflow: WorkflowV2, settings: HealSettings): HealMode {
   return workflow.heal ?? settings.heal ?? "auto";
+}
+
+/** A step policy wins. `ask` is the approve pause. `never` does not call a model. */
+export function stepPolicy(
+  step: { heal?: string },
+  workflow: WorkflowV2,
+  settings: HealSettings,
+): HealMode | "never" {
+  if (step.heal === "never") return "never";
+  if (step.heal === "ask") return "approve";
+  if (step.heal === "auto") return "auto";
+  return effectiveMode(workflow, settings);
 }
 
 export function maskText(value: string, secrets: string[]): string {

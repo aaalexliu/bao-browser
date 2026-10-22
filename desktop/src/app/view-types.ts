@@ -5,6 +5,35 @@ export interface AttrCompare {
   recorded: string;
   live: string;
   matched: boolean;
+  points?: number;
+}
+
+export interface SnapshotNode {
+  role?: string;
+  name?: string;
+  text?: string;
+  testId?: string;
+  id?: string;
+}
+
+export interface StepSnapshot {
+  dom?: SnapshotNode[];
+  ax?: string;
+}
+
+export interface ConsoleLine {
+  stepId?: string;
+  type?: string;
+  text: string;
+  ts?: number;
+}
+
+export interface NetworkLine {
+  stepId?: string;
+  method?: string;
+  url: string;
+  status?: number;
+  ts?: number;
 }
 
 export interface CandidateView {
@@ -36,4 +65,7 @@ export interface StepView {
   identity?: IdentityView;
   beforeShot?: string;
   afterShot?: string;
+  /** Why auto-heal did not run. Absent when the step was not sorted out of healing. */
+  triage?: string;
+  snapshot?: StepSnapshot;
 }

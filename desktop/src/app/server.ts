@@ -50,10 +50,12 @@ import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
 import { clipBox } from "../v1/browser-driver";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
+import { circuitOpen } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
 import { Library } from "../v1/store";
 import type { HealMode, ReplayArgs, WorkflowStep, WorkflowV2 } from "../v1/schema";
+import type { Settings } from "../v1/store";
 
 export interface Notice extends HealNotice {
   id: string;
@@ -361,9 +363,20 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode };
-        if (body.heal !== "auto" && body.heal !== "approve") return json(res, { error: "heal" }, 400);
-        return json(res, library.setHeal(body.heal));
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number };
+        const patch: Partial<Settings> = {};
+        if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
+        if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
+          patch.promoteAfter = Math.round(body.promoteAfter);
+        }
+        if (typeof body.actTimeoutMin === "number" && body.actTimeoutMin >= 1 && body.actTimeoutMin <= 24 * 60) {
+          patch.actTimeoutMs = Math.round(body.actTimeoutMin) * 60 * 1000;
+        }
+        if (typeof body.circuitLimit === "number" && body.circuitLimit >= 1 && body.circuitLimit <= 50) {
+          patch.circuitLimit = Math.round(body.circuitLimit);
+        }
+        if (!Object.keys(patch).length) return json(res, { error: "settings" }, 400);
+        return json(res, library.updateSettings(patch));
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
         return json(res, library.importJson(String(await readBody(req, true))));
@@ -568,7 +581,24 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
       }
       if (req.method === "PATCH" && url.pathname.startsWith("/api/workflows/")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const body = await readBody(req) as { name?: string; workflow?: WorkflowV2; heal?: HealMode | null };
+        const body = await readBody(req) as {
+          name?: string;
+          workflow?: WorkflowV2;
+          heal?: HealMode | null;
+          stepHeal?: { stepId?: string; heal?: string | null };
+        };
+        if (body.stepHeal?.stepId) {
+          const doc = library.read(id);
+          const policy = stepHealChoice(body.stepHeal.heal);
+          const steps = doc.steps.map((step) => {
+            if (step.id !== body.stepHeal?.stepId) return step;
+            if (policy) return { ...step, heal: policy };
+            const { heal: _drop, ...rest } = step;
+            return rest;
+          });
+          library.save({ ...doc, steps, updatedAt: Date.now() });
+          return json(res, library.read(id));
+        }
         if (body.workflow) {
           library.save({ ...body.workflow, id, updatedAt: Date.now() });
           return json(res, library.read(id));
@@ -739,6 +769,11 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   };
 }
 
+function stepHealChoice(value: string | null | undefined): "auto" | "ask" | "never" | undefined {
+  if (value === "auto" || value === "ask" || value === "never") return value;
+  return undefined;
+}
+
 async function runWorkflow(
   library: Library,
   workflow: WorkflowV2,
@@ -749,10 +784,11 @@ async function runWorkflow(
 ) {
   const session = await openReplay(library, workflow.id, replays);
   const page = session.page;
-  if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
   const driver = new BrowserDriver(page, (notice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
   }, prompts);
+  driver.markStep("open");
+  if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
   const secretList = workflow.inputs.flatMap((input) => {
     if (input.type !== "secret") return [];
     const value = args[input.name];
@@ -762,13 +798,16 @@ async function runWorkflow(
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
+  const settings = library.settings();
+  const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
   const result = await replay(workflow, args, driver, {
     runId,
     shotDir,
-    settings: library.settings(),
+    settings,
     heal,
     now: () => Date.now(),
     receipts: receiptLog,
+    circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
   } satisfies ReplayOptions);
   spillBinaryShots(result, shotDir);
   for (const repair of result.repairs) {
@@ -791,6 +830,8 @@ async function runWorkflow(
     trail: result.trail,
     precondition: result.precondition,
     trajectory: result.trajectory,
+    console: result.console,
+    network: result.network,
     promotion,
     modelCalls: result.modelCalls,
     inputs: maskedInputs(workflow, args),
@@ -999,6 +1040,7 @@ function recordProvisional(library: Library, workflow: WorkflowV2, heals: HealRe
     stepId: heal.failedStep.id,
     patch: heal.proposedPatch,
     before,
+    need: library.settings().promoteAfter,
   });
   library.save(keepPatch(workflow, heal.failedStep.id, heal.proposedPatch));
   library.savePromotion(promotion);
@@ -1025,9 +1067,10 @@ async function checkPromotion(library: Library, id: string, notices: Notice[]): 
     library.save(revertPatch(workflow, promotion.before));
     return promotion;
   }
-  for (let i = 0; i < 2 && promotion.status === "provisional"; i++) {
+  const required = library.settings().promoteAfter;
+  for (let i = 0; i < required && promotion.status === "provisional"; i++) {
     const passed = await replayChanged(library.read(id), args, { query: "" });
-    promotion = noteReplay(promotion, passed);
+    promotion = noteReplay(promotion, passed, required);
     library.savePromotion(promotion);
     library.appendTrail(id, promotionEvent(promotion, Date.now()));
     if (promotion.status === "reverted") library.save(revertPatch(library.read(id), promotion.before));

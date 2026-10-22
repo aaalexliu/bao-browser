@@ -127,6 +127,12 @@ The replay form used to rebuild on each state change and drop a password that ha
 
 ## Decisions
 
+### 2026-10-22 — Read a failure before healing it
+
+Compared with Playwright trace viewer, mabl, Momentic, and Skyvern, the run viewer was a filmstrip of equal frames and a single failure card. It now keeps a per-step identity score table, the step's accessibility and DOM snapshot, and the console and network lines captured on that browser. Filmstrip width follows the step, and gaps longer than a second are left out. The failure card opens the step that stopped.
+
+Healing is no longer one switch for the whole workflow. A step can be auto, ask, or never, so a confirm step stays with the person. A provisional locator promotes after a drift suite and N later real runs (default 3, set in Settings). A miss is classed before any model call: a real change may be healed, a temporary blocker or an outage is not. Auto-heal also opens a circuit when three runs of that workflow fail within ten minutes. The "you need to act" wait defaults to 120 minutes and is the same bar, notification, and badge.
+
 ### 2026-10-22 — Heal on the Cursor account
 
 The healer used to swap files with a Cursor session (`BAO_HEAL_CURSOR=1` writes `heal-request.json` and waits for `heal-response.json`). That still works. It is the fallback, not the first try.

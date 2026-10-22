@@ -6,7 +6,9 @@ import type { ImportLoginError } from "../v1/import-login-error";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
-import type { IdentityView, StepView } from "./view-types";
+import { filmstripSpans, idleSkippedMs } from "../v1/filmstrip";
+import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
+import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 export interface WorkflowSummary {
   id: string;
@@ -28,6 +30,7 @@ export interface PromotionView {
   drift?: string;
   replays?: number;
   reason?: string;
+  need?: number;
 }
 
 export interface RunSummary {
@@ -48,6 +51,8 @@ export interface RunSummary {
   trajectory?: TrajectoryStep[];
   precondition?: { phase?: string; reason?: string; recovered?: boolean; stepId?: string };
   promotion?: PromotionView;
+  console?: ConsoleLine[];
+  network?: NetworkLine[];
 }
 
 export interface FailureView {
@@ -59,7 +64,7 @@ export interface FailureView {
   brokenAttr?: string;
   identity?: IdentityView;
   beforeShot?: string;
-  snapshot?: { screenshot?: string; screenshotRef?: string };
+  snapshot?: { screenshot?: string; screenshotRef?: string; dom?: SnapshotNode[]; ax?: string };
 }
 
 export interface HealView {
@@ -369,6 +374,11 @@ export function runViewer(
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
   const stepRepairs = (run.repairs || []).filter((item) => !selected || item.stepId === selected.id);
   const stepReceipts = (run.receipts || []).filter((item) => !selected || item.stepId === selected.id);
+  const snapDom = selected?.snapshot?.dom || (failure && failure.stepId === selected?.id ? failure.snapshot?.dom : undefined);
+  const snapAx = selected?.snapshot?.ax || (failure && failure.stepId === selected?.id ? failure.snapshot?.ax : undefined);
+  const triageNote = selected?.triage && selected.triage !== "change"
+    ? `<p id="triage">Sorted as ${esc(triageWord(selected.triage))}. Bao did not call a model.</p>`
+    : "";
   const showPlain = !!failed || phase === "auth";
   const words = showPlain ? plainFailure({
     phase,
@@ -377,19 +387,24 @@ export function runViewer(
     repairs: stepRepairs.length ? stepRepairs : (run.repairs || []),
     authRecovered: run.precondition?.recovered,
   }) : "";
-  const film = steps.map((step) => {
+  const spans = filmstripSpans(steps);
+  const skipped = idleSkippedMs(steps);
+  const film = spans.map((span) => {
+    const step = steps.find((item) => item.id === span.id)!;
     const src = frameUrl(run.id, step, failure, "after");
-    return `<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" ${src ? `data-shot="${esc(src)}"` : ""}>${placeholder(step.action, step.label || step.id)}</button>`;
+    return `<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" data-skipped="${span.skippedMs}" style="flex:${span.flex} 1 72px" ${src ? `data-shot="${esc(src)}"` : ""}>${placeholder(step.action, step.label || step.id)}</button>`;
   }).join("");
+  const idleNote = skipped > 0 ? `<p class="quiet" id="idle-note" data-idle-skipped="${skipped}">Idle time between steps is skipped.</p>` : "";
   const recent = context.recent && context.recent.length ? context.recent : [run];
   return `<section id="run-viewer" data-run="${esc(run.id)}" data-status="${esc(run.status)}">
     <header class="run-head">
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
     </header>
-    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p>` : ""}</div>
+    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
-    <div class="filmstrip" id="filmstrip">${film}</div>
+    ${idleNote}
+    <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>
     <input id="scrubber" type="range" min="0" max="${Math.max(0, steps.length - 1)}" value="${selectedIndex}" aria-label="Step timeline">
     <div class="split">
       <div class="step-list" id="step-list">${list}</div>
@@ -398,7 +413,9 @@ export function runViewer(
         ${shot}
         ${stepRepairs.length ? repairLines(stepRepairs) : ""}
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
-        ${identity && identity.candidates.length ? `<h3 class="section">Identity</h3>${table}` : ""}
+        <h3 class="section">Identity</h3>
+        ${table}
+        ${snapshotPane(snapDom, snapAx)}
       </div>
     </div>
     ${passGrid(recent, workflow.steps)}
@@ -407,6 +424,8 @@ export function runViewer(
     <div class="tabs" id="run-tabs">
       <button type="button" data-run-tab="trail">Trail</button>
       <button type="button" data-run-tab="inputs">Inputs</button>
+      <button type="button" data-run-tab="console">Console</button>
+      <button type="button" data-run-tab="network">Network</button>
     </div>
     <div id="run-extra"></div>
   </section>`;
@@ -454,7 +473,7 @@ export function identityTable(identity: IdentityView | undefined): string {
   for (const candidate of identity.candidates) {
     for (const attr of candidate.attrs) {
       const row = attrs.get(attr.attr) || { recorded: attr.recorded, cells: [] };
-      row.cells.push(`<td>${esc(attr.live || "—")} ${attr.matched ? "✓" : "≠"}</td>`);
+      row.cells.push(`<td>${esc(attr.live || "—")} ${attr.points ?? ""} ${attr.matched ? "✓" : "≠"}</td>`);
       attrs.set(attr.attr, row);
     }
   }
@@ -472,10 +491,15 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
   const timed = steps.filter((step) => typeof step.startedAt === "number");
   if (timed.length === 0) return `<div id="video-bar" hidden></div>`;
   const origin = run.videoStartedAt || timed[0]!.startedAt || 0;
-  const end = Math.max(...steps.map((step) => step.endedAt || step.startedAt || origin));
-  const span = Math.max(1, end - origin);
-  const markers = timed.map((step, index) => {
-    const at = ((step.startedAt! - origin) / span) * 100;
+  const spans = filmstripSpans(steps);
+  const total = spans.reduce((sum, span) => sum + span.flex, 0) || 1;
+  let cursor = 0;
+  const markers = spans.map((span) => {
+    const step = steps.find((item) => item.id === span.id);
+    const at = (cursor / total) * 100;
+    cursor += span.flex;
+    if (!step || typeof step.startedAt !== "number") return "";
+    const index = steps.indexOf(step);
     const mark = step.status === "failed" ? "✗" : String(index + 1);
     return `<button type="button" class="marker ${esc(step.status)}" data-marker="${esc(step.id)}" data-at="${step.startedAt}" style="left:${at}%">${mark}</button>`;
   }).join("");
@@ -486,6 +510,46 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
     <div class="timeline">${markers}</div>
     <div class="row"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button></div>
   </div>`;
+}
+
+function triageWord(value: string): string {
+  if (value === "change") return "a real change";
+  if (value === "blocker") return "a temporary blocker";
+  if (value === "outage") return "an outage";
+  if (value === "circuit") return "a circuit break";
+  if (value === "never") return "a step set to never heal";
+  return value;
+}
+
+export function snapshotPane(dom: SnapshotNode[] | undefined, ax: string | undefined): string {
+  const nodes = dom || [];
+  const list = nodes.length
+    ? `<ol id="dom-snapshot">${nodes.slice(0, 40).map((node) => `<li><code>${esc(node.role || "node")}</code> ${esc(node.name || node.text || "")}${node.testId ? ` <span class="quiet">testId=${esc(node.testId)}</span>` : ""}${node.id ? ` <span class="quiet">id=${esc(node.id)}</span>` : ""}</li>`).join("")}</ol>`
+    : `<p class="quiet" id="dom-snapshot">No DOM snapshot for this step.</p>`;
+  const axBlock = ax
+    ? `<pre id="ax-snapshot">${esc(ax)}</pre>`
+    : `<p class="quiet" id="ax-snapshot">No accessibility snapshot for this step.</p>`;
+  return `<div id="snapshot-inspector"><h3 class="section">Snapshot</h3><h4>DOM</h4>${list}<h4>Accessibility</h4>${axBlock}</div>`;
+}
+
+export function consolePane(lines: ConsoleLine[] | undefined, stepId?: string): string {
+  const all = lines || [];
+  const mine = stepId ? all.filter((line) => line.stepId === stepId) : all;
+  const shown = mine.length ? mine : all;
+  const note = mine.length || !all.length ? "" : `<p class="quiet">No console lines on this step. Showing the page load.</p>`;
+  if (!shown.length) return `<p class="quiet" id="console-log">No console lines were captured.</p>`;
+  const rows = shown.map((line) => `<li><span class="quiet">${esc(line.type || "log")}</span> ${esc(line.text)}</li>`).join("");
+  return `${note}<ol id="console-log">${rows}</ol>`;
+}
+
+export function networkPane(lines: NetworkLine[] | undefined, stepId?: string): string {
+  const all = lines || [];
+  const mine = stepId ? all.filter((line) => line.stepId === stepId) : all;
+  const shown = mine.length ? mine : all;
+  const note = mine.length || !all.length ? "" : `<p class="quiet">No network lines on this step. Showing the page load.</p>`;
+  if (!shown.length) return `<p class="quiet" id="network-log">No network requests were captured.</p>`;
+  const rows = shown.map((line) => `<li>${esc(line.status ?? "")} ${esc(line.method || "")} ${esc(line.url)}</li>`).join("");
+  return `${note}<ol id="network-log">${rows}</ol>`;
 }
 
 export function inputsPane(inputs: Record<string, string> | undefined): string {
@@ -749,7 +813,8 @@ export function promotionLine(promotion: PromotionView | undefined): string {
     return `<p id="promotion" data-status="reverted">Reverted. ${esc(promotion.reason || "A later check failed")} put the saved step back.</p>`;
   }
   const drift = promotion.drift === "passed" ? "Drift passed." : promotion.drift === "failed" ? "Drift failed." : "Drift is still pending.";
-  return `<p id="promotion" data-status="provisional">Provisional. ${drift} ${promotion.replays ?? 0} of 2 later replays have passed.</p>`;
+  const need = promotion.need && promotion.need > 0 ? promotion.need : DEFAULT_PROMOTE_AFTER;
+  return `<p id="promotion" data-status="provisional">Provisional. ${drift} ${promotion.replays ?? 0} of ${need} later real runs have passed.</p>`;
 }
 
 export interface StepCard {
@@ -765,6 +830,7 @@ export interface StepCard {
   expect?: { kind?: string };
   readBack?: { source?: string };
   identity?: { role?: string; name?: string; text?: string; testId?: string; id?: string };
+  heal?: string;
 }
 
 export function identityChip(identity: StepCard["identity"]): string {
@@ -810,6 +876,12 @@ export function workflowDetail(
         <div class="row"><strong>${esc(step.label || step.action || step.id)}</strong> ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
         <p class="meta">${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
         <div class="chips">${identityChip(step.identity)}${inputChips(step)}</div>
+        <label class="meta">If this step misses <select data-step-heal="${esc(step.id)}">
+          <option value="" ${step.heal ? "" : "selected"}>Use the workflow setting</option>
+          <option value="auto" ${step.heal === "auto" ? "selected" : ""}>Auto</option>
+          <option value="ask" ${step.heal === "ask" ? "selected" : ""}>Ask</option>
+          <option value="never" ${step.heal === "never" ? "selected" : ""}>Never</option>
+        </select></label>
       </div>
     </article>`;
   }).join("");

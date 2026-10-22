@@ -57,6 +57,7 @@ export function identityView(query: Identity, nodes: Identity[], hit: Lookup): I
       recorded: recorded(query, part.attr),
       live: live(node, part.attr),
       matched: part.matched,
+      points: part.points,
     }));
     return { label: labelOf(node, index + 1), score: score.score, attrs };
   });

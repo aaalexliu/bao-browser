@@ -160,6 +160,8 @@ export interface WorkflowStep {
   /** Re-read after the action. The run appends a hashed receipt. */
   readBack?: ReadBack;
   timeoutMs: number;
+  /** auto heals, ask pauses, never leaves the miss. Absent uses the workflow. */
+  heal?: "auto" | "ask" | "never";
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
   unresolved?: { reason: string };
 }
@@ -244,6 +246,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
       errors.push(`coordinates ${step.id}`);
     }
     if (step.action === "verify" && !step.expect && !step.postcondition) errors.push(`verify ${step.id}`);
+    if (step.heal && step.heal !== "auto" && step.heal !== "ask" && step.heal !== "never") errors.push(`heal ${step.id}`);
     for (const locator of step.locators ?? []) errors.push(...locatorErrors(locator, step.id));
     if (step.reveal) errors.push(...locatorErrors(step.reveal, step.id));
     if (step.waitFor) errors.push(...checkErrors(step.waitFor, step.id, "waitFor"));

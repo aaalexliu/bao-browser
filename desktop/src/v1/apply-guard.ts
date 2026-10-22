@@ -13,6 +13,8 @@ export interface RunTrailEvent {
 export interface ApplyGate {
   workflow: WorkflowV2;
   trail: RunTrailEvent[];
+  /** Person-wait from Settings. Absent uses the step timeout. */
+  actTimeoutMs?: number;
 }
 
 export function isApplyTarget(node: Identity | undefined): boolean {

@@ -196,6 +196,7 @@
           "items": { "$ref": "#/$defs/locator" }
         },
         "timeoutMs": { "type": "number" },
+        "heal": { "enum": ["auto", "ask", "never"] },
         "provenance": {
           "type": "object",
           "additionalProperties": false,

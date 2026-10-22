@@ -2,6 +2,16 @@
 
 export type AskKind = "login" | "confirm";
 
+/** A person has two hours unless Settings names another wait. */
+export const DEFAULT_ACT_TIMEOUT_MS = 120 * 60 * 1000;
+
+/** Settings win when they name a wait. Otherwise the step's own timeout, including zero. */
+export function actWaitMs(stepTimeout: number | undefined, configured?: number): number {
+  if (typeof configured === "number" && configured > 0) return configured;
+  if (typeof stepTimeout === "number") return Math.max(0, stepTimeout);
+  return DEFAULT_ACT_TIMEOUT_MS;
+}
+
 export interface HumanAsk {
   kind: AskKind;
   workflowId: string;

@@ -190,7 +190,7 @@ test("a locate miss becomes a model heal only after the repairs refuse", async (
   assert.equal(result.heals[0]?.model?.version, "live");
 });
 
-test("promotion stays provisional until drift and two replays pass, and reverts on either miss", () => {
+test("promotion stays provisional until drift and three real runs pass, and reverts on either miss", () => {
   const before = step({ id: "s", action: "click", identity: ident({ testId: "missing" }) });
   const opened = openProvisional({
     healId: "heal-1",
@@ -203,9 +203,21 @@ test("promotion stays provisional until drift and two replays pass, and reverts 
   assert.equal(noteReplay(opened, true).status, "provisional");
   const drifted = noteDrift(opened, true);
   assert.equal(noteReplay(drifted, true).status, "provisional");
-  const promoted = noteReplay(noteReplay(drifted, true), true);
+  const twice = noteReplay(noteReplay(drifted, true), true);
+  assert.equal(twice.status, "provisional");
+  assert.equal(twice.replays, 2);
+  const promoted = noteReplay(twice, true);
   assert.equal(promoted.status, "promoted");
-  assert.equal(promoted.replays, 2);
+  assert.equal(promoted.replays, 3);
+  const sooner = openProvisional({
+    healId: "heal-2",
+    workflowId: "wf",
+    stepId: "s",
+    patch: { identity: ident({ testId: "apply" }) },
+    before,
+    need: 1,
+  });
+  assert.equal(noteReplay(noteDrift(sooner, true), true).status, "promoted");
   assert.equal(noteDrift(opened, false).status, "reverted");
   assert.equal(noteDrift(opened, false).reason, "drift");
   assert.equal(noteReplay(drifted, false).reason, "replay");

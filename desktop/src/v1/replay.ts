@@ -8,12 +8,12 @@ import path from "node:path";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { lookup } from "./identity";
-import { confirmButton, makeAsk, type HumanAsk } from "./human-ask";
+import { actWaitMs, confirmButton, makeAsk, type HumanAsk } from "./human-ask";
 import { identityView } from "./run-trace";
 import {
   applyPatch,
-  effectiveMode,
   maskSnapshot,
+  stepPolicy,
   maskText,
   type FailureSnapshot,
   type HealProposal,
@@ -24,6 +24,7 @@ import {
   type StepFailure,
 } from "./heal";
 import { isCollapsedBox, matchLocator } from "./locators";
+import { classifyFailure } from "./triage";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, overlayClose, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
 import {
@@ -91,6 +92,14 @@ export interface Driver {
   loginContinued?(): boolean;
   /** Page PNG of the target, when the driver can see it. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
+  /** Tags console and network lines with the step that is running. */
+  markStep?(id: string): void;
+  /** DOM and accessibility tree at the end of the step. Browser drivers only. */
+  captureStep?(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }>;
+  trace?(): {
+    console: { stepId?: string; type?: string; text: string; ts?: number }[];
+    network: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
+  };
 }
 
 export interface ShotTarget {
@@ -112,7 +121,11 @@ export interface RunResult {
     endedAt?: number;
     beforeShot?: string;
     afterShot?: string;
+    triage?: string;
+    snapshot?: { dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string };
   }[];
+  console?: { stepId?: string; type?: string; text: string; ts?: number }[];
+  network?: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
   failure?: StepFailure;
   heals: HealRecord[];
   repairs: RepairLog[];
@@ -141,6 +154,8 @@ export interface ReplayOptions {
   nowMs?: () => number;
   /** Directory for per-step PNGs. Absent skips capture. */
   shotDir?: string;
+  /** Auto-heal stays off after too many recent failures. */
+  circuitOpen?: boolean;
 }
 
 let seq = 0;
@@ -156,7 +171,6 @@ export async function replay(
   const settings = opts.settings ?? {};
   const heal = opts.heal;
   const secrets = opts.secrets ?? secretValues(workflow, args);
-  const mode = effectiveMode(workflow, settings);
   const steps: RunResult["steps"] = workflow.steps.map((step) => ({ id: step.id, status: "pending" }));
   const heals: HealRecord[] = [];
   const repairs: RepairLog[] = [];
@@ -165,24 +179,31 @@ export async function replay(
   const receiptLog = opts.receipts ?? new ReceiptLog();
   const trajectory: TrajectoryStep[] = [];
   const trail: RunTrailEvent[] = [];
-  const gate: ApplyGate = { workflow, trail };
+  const gate: ApplyGate = { workflow, trail, actTimeoutMs: settings.actTimeoutMs };
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
 
-  const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls"> & Partial<RunResult>): RunResult => ({
-    heals,
-    repairs,
-    locatorHits,
-    receipts: receiptLog.entries,
-    trajectory,
-    trail,
-    precondition,
-    ...partial,
-    modelCalls: heals.filter((item) => item.model).length,
-  });
+  const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls"> & Partial<RunResult>): RunResult => {
+    const trace = driver.trace?.();
+    return {
+      heals,
+      repairs,
+      locatorHits,
+      receipts: receiptLog.entries,
+      trajectory,
+      trail,
+      precondition,
+      console: trace?.console || [],
+      network: trace?.network || [],
+      ...partial,
+      modelCalls: heals.filter((item) => item.model).length,
+    };
+  };
 
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
+    const mode = stepPolicy(step, workflow, settings);
+    driver.markStep?.(step.id);
     let pictured = step;
     const started = clock();
     const beforeShot = await writeStepShot(driver, opts.shotDir, step, "before");
@@ -232,6 +253,19 @@ export async function replay(
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
+    const triage = classifyFailure(failure);
+    const skip = mode === "never"
+      ? "never"
+      : triage !== "change"
+        ? triage
+        : mode === "auto" && opts.circuitOpen
+          ? "circuit"
+          : "";
+    if (skip) {
+      stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase, triage: skip });
+      noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+      return finish({ runId, status: "failed", steps, failure });
+    }
     if (!heal || !heal.available()) {
       stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
@@ -244,7 +278,7 @@ export async function replay(
       ts: now(),
       workflowId: workflow.id,
       runId,
-      mode,
+      mode: mode === "approve" ? "approve" : "auto",
       failedStep: step,
       intent: failure.intent,
       snapshot: maskSnapshot(failure.snapshot, secrets),
@@ -305,7 +339,8 @@ export async function replay(
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
       const afterShot = await writeStepShot(driver, opts.shotDir, pictured, "after");
-      if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot };
+      const snapshot = driver.captureStep ? await driver.captureStep().catch(() => undefined) : undefined;
+      if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot, ...(snapshot ? { snapshot } : {}) };
     }
   }
   return finish({ runId, status: "passed", steps });
@@ -562,14 +597,14 @@ async function runConfirm(
     stepCount: workflow.steps.length,
     label: step.label,
     button: confirmButton(step),
-    timeoutMs: step.timeoutMs ?? 0,
+    timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
   }));
   await driver.showConfirm?.(step.label);
   if (!step.postcondition) {
     return { ok: false, paused: "confirm", repairs: [] };
   }
   try {
-    const timeout = step.timeoutMs ?? 0;
+    const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
     const start = Date.now();
     let seen = await driver.tree();
     while (!holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
@@ -642,12 +677,12 @@ async function settleLogin(
       stepIndex: step.index + 1,
       stepCount: workflow.steps.length,
       label: step.label,
-      timeoutMs: step.timeoutMs ?? 0,
+      timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
     }));
     await driver.showLoginWait?.(step.label || "Sign in on the site window");
   }
   try {
-    return await waitForLogin(workflow, step, args, driver);
+    return await waitForLogin(workflow, step, args, driver, gate);
   } finally {
     await driver.clearLoginWait?.();
   }
@@ -665,8 +700,8 @@ async function recoverAuth(
   return settleLogin(workflow, step, args, driver, gate, human);
 }
 
-async function waitForLogin(workflow: WorkflowV2, step: WorkflowStep, args: ReplayArgs, driver: Driver): Promise<boolean> {
-  const timeout = step.timeoutMs ?? 0;
+async function waitForLogin(workflow: WorkflowV2, step: WorkflowStep, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<boolean> {
+  const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
   const start = Date.now();
   let seen = await driver.tree();
   if (driver.loginContinued?.()) return true;

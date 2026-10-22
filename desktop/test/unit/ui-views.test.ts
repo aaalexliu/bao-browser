@@ -337,6 +337,11 @@ test("a failed run says the phase, the change, what bao tried, and shows the gri
   assert.match(html, /does not match/);
   assert.match(html, /id="trajectory"/);
   assert.match(html, /aimed at/);
+  assert.match(html, /id="open-failed-step"/);
+  assert.match(html, /id="identity-table"/);
+  assert.match(html, /id="snapshot-inspector"/);
+  assert.match(html, /data-run-tab="console"/);
+  assert.match(html, /data-run-tab="network"/);
   assert.match(plainFailure({ phase: "auth" }), /did not heal the redirect/);
   assert.equal(passGrid([], []).includes("pass-grid"), false);
 });
@@ -344,7 +349,8 @@ test("a failed run says the phase, the change, what bao tried, and shows the gri
 test("a provisional heal can be shown as promoted without editing the record", () => {
   const open = promotionLine({ status: "provisional", drift: "pending", replays: 1 });
   assert.match(open, /data-status="provisional"/);
-  assert.match(open, /1 of 2/);
+  assert.match(open, /1 of 3/);
+  assert.match(open, /later real runs/);
   const kept = promotionLine({ status: "promoted", replays: 2 });
   assert.match(kept, /data-status="promoted"/);
   const detail = healDetail({

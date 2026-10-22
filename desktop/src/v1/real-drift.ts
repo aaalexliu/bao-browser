@@ -18,7 +18,7 @@ import { discoverReveal } from "./repair";
 import { diffTrajectory, trajectoryFromWorkflow, trajectoryMarkdown, type TrajectoryDiff, type TrajectoryStep } from "./trajectory";
 import { AtspiDriver } from "./os-driver";
 import { osNodes, osPress, type OsNode } from "../proxy/os";
-import { noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
+import { DEFAULT_PROMOTE_AFTER, noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
 import { replay, type LocatorMode } from "./replay";
 import type { WorkflowV2 } from "./schema";
 
@@ -835,7 +835,7 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
     promotion = noteDrift(promotion, driftOk);
     appendFileSync(trailPath, JSON.stringify(promotionEvent(promotion, Date.now())) + "\n");
     if (!driftOk) return "heal reverted on drift";
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < DEFAULT_PROMOTE_AFTER; i++) {
       await page.goto(ADD, { waitUntil: "domcontentloaded", timeout: 45000 });
       const again = await replay(saved, {}, new BrowserDriver(page), { locators: "all", heal: unavailableHeal() });
       promotion = noteReplay(promotion, again.status === "passed");

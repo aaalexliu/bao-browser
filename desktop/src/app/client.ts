@@ -1,6 +1,6 @@
 // Desktop window. Talks only to this machine's bao server.
 
-import { formatWait } from "../v1/human-ask";
+import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
 import {
@@ -11,8 +11,10 @@ import {
   healInbox,
   healWorkflowName,
   importCard,
+  consolePane,
   inputsPane,
   libraryTable,
+  networkPane,
   liveStepList,
   notices,
   onboarding,
@@ -37,7 +39,7 @@ type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" |
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string }[];
-  settings?: { heal?: string };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number };
   trails?: string[];
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
@@ -92,6 +94,7 @@ async function refresh(): Promise<void> {
     banner,
   });
   noteAsk();
+  paintDockBadge();
   paintLive();
   if (key === renderKey) return;
   renderKey = key;
@@ -217,12 +220,18 @@ function replayForm(): string {
 
 function settings(): string {
   const heal = state.settings?.heal || "auto";
+  const promoteAfter = state.settings?.promoteAfter ?? 3;
+  const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
+  const circuit = state.settings?.circuitLimit ?? 3;
   return `<section><h2>Settings</h2>
     <label>When a step misses <select id="heal">
       <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
       <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
     </select></label>
-    <p class="quiet">Auto is the default. Healing runs when the Cursor CLI is logged in, when a model key is set, or when this build is started with the fixture healer. Otherwise replay stops on the failed step.</p>
+    <p class="quiet">Auto is the default. A step can override it with auto, ask, or never. Healing runs when the Cursor CLI is logged in, when a model key is set, or when this build is started with the fixture healer. A real change is the only miss that is healed. A temporary blocker or an outage stops the run. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
+    <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
+    <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
+    <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
     <button id="save-settings" class="primary" type="button">Save</button>
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
@@ -302,7 +311,12 @@ function bind(): void {
     await fetch("/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ heal: (document.getElementById("heal") as HTMLSelectElement).value }),
+      body: JSON.stringify({
+        heal: (document.getElementById("heal") as HTMLSelectElement).value,
+        promoteAfter: Number((document.getElementById("promote-after") as HTMLInputElement).value),
+        actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
+        circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
+      }),
     });
     renderKey = "";
     await refresh();
@@ -493,6 +507,16 @@ async function showRun(id: string): Promise<void> {
     const extra = document.getElementById("run-extra");
     if (extra) extra.innerHTML = inputsPane(run.inputs);
   };
+  const consoleTab = host.querySelector("[data-run-tab=console]");
+  if (consoleTab) (consoleTab as HTMLButtonElement).onclick = () => {
+    const extra = document.getElementById("run-extra");
+    if (extra) extra.innerHTML = consolePane(run.console, selectedStep);
+  };
+  const networkTab = host.querySelector("[data-run-tab=network]");
+  if (networkTab) (networkTab as HTMLButtonElement).onclick = () => {
+    const extra = document.getElementById("run-extra");
+    if (extra) extra.innerHTML = networkPane(run.network, selectedStep);
+  };
 }
 
 async function showHeal(runId: string, healId: string): Promise<void> {
@@ -604,6 +628,19 @@ async function openEditor(id: string): Promise<void> {
       screen = "library";
       renderKey = "";
       render();
+    };
+  });
+  host.querySelectorAll("[data-step-heal]").forEach((sel) => {
+    (sel as HTMLSelectElement).onchange = async () => {
+      const stepId = (sel as HTMLSelectElement).dataset.stepHeal || "";
+      const heal = (sel as HTMLSelectElement).value;
+      await fetch("/api/workflows/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stepHeal: { stepId, heal: heal || null } }),
+      });
+      renderKey = "";
+      await refresh();
     };
   });
   mountShots(host);
@@ -721,6 +758,18 @@ function tickClock(): void {
   if (!since) return;
   const sec = Math.max(0, Math.floor((Date.now() - since) / 1000));
   timer.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+function paintDockBadge(): void {
+  const count = attentionCount({
+    ask: state.activeAsk,
+    importPhase: state.pendingImport?.phase,
+    pendingHeals: pendingHealCount(state.runs || []),
+  });
+  document.title = count > 0 ? `(${count}) bao` : "bao";
+  const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+  if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);
+  else void nav.clearAppBadge?.().catch(() => undefined);
 }
 
 function applyTheme(): void {

@@ -27,18 +27,85 @@ export interface PersonPrompts {
   loginContinued?(): boolean;
 }
 
+export interface TraceLine {
+  stepId?: string;
+  type?: string;
+  text: string;
+  ts?: number;
+}
+
+export interface TraceRequest {
+  stepId?: string;
+  method?: string;
+  url: string;
+  status?: number;
+  ts?: number;
+}
+
 export class BrowserDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
   readonly proofs: FileProof[] = [];
+  private currentStep = "";
+  private secretOnPage = false;
+  private domNodes: { role?: string; name?: string; text?: string; testId?: string; id?: string }[] = [];
+  private readonly consoleLines: TraceLine[] = [];
+  private readonly networkLines: TraceRequest[] = [];
 
   constructor(
     private readonly page: Page,
     private readonly onNotify?: (notice: HealNotice) => void,
     private readonly prompts?: PersonPrompts,
-  ) {}
+  ) {
+    page.on("console", (msg) => {
+      const text = maskTrace(msg.text());
+      if (!text) return;
+      this.consoleLines.push({ stepId: this.currentStep, type: msg.type(), text, ts: Date.now() });
+      if (this.consoleLines.length > 80) this.consoleLines.shift();
+    });
+    page.on("response", (res) => {
+      const url = publicUrl(res.url());
+      if (!url) return;
+      this.networkLines.push({
+        stepId: this.currentStep,
+        method: res.request().method(),
+        url,
+        status: res.status(),
+        ts: Date.now(),
+      });
+      if (this.networkLines.length > 80) this.networkLines.shift();
+    });
+  }
+
+  markStep(id: string): void {
+    this.currentStep = id;
+  }
+
+  trace(): { console: TraceLine[]; network: TraceRequest[] } {
+    return { console: this.consoleLines.slice(), network: this.networkLines.slice() };
+  }
+
+  async captureStep(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }> {
+    let ax = await this.page.locator("body").ariaSnapshot().catch(() => undefined);
+    if (ax && this.secretOnPage) {
+      ax = ax.split("\n").filter((line) => !/password/i.test(line)).join("\n").trim();
+    }
+    if (ax && ax.length > 4000) ax = ax.slice(0, 4000);
+    return { dom: this.domNodes.slice(), ax: ax || undefined };
+  }
 
   async tree(): Promise<LiveTree> {
     const dump = await this.evaluateDump();
+    this.secretOnPage = dump.nodes.some((node) => node.id === "password" || node.nameAttr === "password" || node.role === "password");
+    this.domNodes = dump.nodes
+      .filter((node) => node.id !== "password" && node.nameAttr !== "password")
+      .slice(0, 40)
+      .map((node) => ({
+        role: node.role,
+        name: node.name,
+        text: node.text ? node.text.slice(0, 80) : undefined,
+        testId: node.testId,
+        id: node.id,
+      }));
     const nodes = assignSiblingIndex(dump.nodes.map((node) => toIdentity(node)));
     nodes.forEach((node, index) => {
       const handle = dump.nodes[index]?.handle;
@@ -365,6 +432,22 @@ async function elementBox(loc: ReturnType<Page["locator"]>, phrase?: string): Pr
   }, phrase || "").catch(() => null);
   if (!box || box.width < 2 || box.height < 2) return null;
   return box;
+}
+
+function maskTrace(text: string): string {
+  const trimmed = text.replace(/\s+/g, " ").trim().slice(0, 240);
+  if (!trimmed) return "";
+  return trimmed.replace(/password[=:]\s*\S+/gi, "password=[secret]");
+}
+
+function publicUrl(raw: string): string {
+  if (raw.startsWith("data:") || raw.startsWith("blob:")) return "";
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${url.pathname}`.slice(0, 180);
+  } catch {
+    return "";
+  }
 }
 
 export async function notifyOs(title: string, body: string): Promise<void> {

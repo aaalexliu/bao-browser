@@ -1,5 +1,7 @@
-// A model heal stays provisional until the drift suite and two later replays
-// both pass. Either failure puts the saved step back.
+// A model heal stays provisional until the drift suite passes and N later
+// real runs pass. The default N is 3. Either failure puts the saved step back.
+
+export const DEFAULT_PROMOTE_AFTER = 3;
 
 import type { HealProposal } from "./heal";
 import type { WorkflowStep } from "./schema";
@@ -16,6 +18,8 @@ export interface Promotion {
   patch: HealProposal["patch"];
   before: WorkflowStep;
   reason?: string;
+  /** Real runs required before promote. Absent means the default of 3. */
+  need?: number;
 }
 
 export interface PromotionEvent {
@@ -40,11 +44,12 @@ export function noteDrift(promotion: Promotion, passed: boolean): Promotion {
   return { ...promotion, drift: "passed", reason: undefined };
 }
 
-export function noteReplay(promotion: Promotion, passed: boolean): Promotion {
+export function noteReplay(promotion: Promotion, passed: boolean, required?: number): Promotion {
   if (promotion.status !== "provisional") return promotion;
   if (!passed) return { ...promotion, status: "reverted", reason: "replay" };
   const replays = promotion.replays + 1;
-  if (promotion.drift === "passed" && replays >= 2) {
+  const need = required ?? promotion.need ?? DEFAULT_PROMOTE_AFTER;
+  if (promotion.drift === "passed" && replays >= need) {
     return { ...promotion, replays, status: "promoted", reason: undefined };
   }
   return { ...promotion, replays };

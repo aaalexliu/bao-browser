@@ -2,11 +2,19 @@
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { HealSettings } from "./heal";
+import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
+import { DEFAULT_PROMOTE_AFTER } from "./promote";
+import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { HealMode, WorkflowV2 } from "./schema";
 import { migrate, toJson, validateWorkflow } from "./schema";
 
-export interface Settings {
+export interface Settings extends HealSettings {
   heal: HealMode;
+  promoteAfter: number;
+  actTimeoutMs: number;
+  circuitLimit: number;
+  circuitWindowMs: number;
 }
 
 export interface StoredRun {
@@ -33,7 +41,13 @@ export interface StoredRun {
   trajectory?: unknown[];
 }
 
-const DEFAULT_SETTINGS: Settings = { heal: "auto" };
+const DEFAULT_SETTINGS: Settings = {
+  heal: "auto",
+  promoteAfter: DEFAULT_PROMOTE_AFTER,
+  actTimeoutMs: DEFAULT_ACT_TIMEOUT_MS,
+  circuitLimit: DEFAULT_CIRCUIT_LIMIT,
+  circuitWindowMs: DEFAULT_CIRCUIT_WINDOW_MS,
+};
 
 export class Library {
   constructor(readonly root: string) {
@@ -161,7 +175,11 @@ export class Library {
   }
 
   setHeal(heal: HealMode): Settings {
-    const settings = { ...this.settings(), heal };
+    return this.updateSettings({ heal });
+  }
+
+  updateSettings(patch: Partial<Settings>): Settings {
+    const settings: Settings = { ...DEFAULT_SETTINGS, ...this.settings(), ...patch };
     writeFileSync(path.join(this.root, "settings.json"), JSON.stringify(settings, null, 2));
     return settings;
   }
