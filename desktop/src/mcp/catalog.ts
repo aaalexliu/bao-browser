@@ -6,10 +6,14 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome } from "../launch";
+import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
+import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, replay, type RunResult } from "../v1/replay";
+import { formatClock } from "../v1/time";
 import { migrate, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library } from "../v1/store";
@@ -49,6 +53,14 @@ export interface WorkflowOutcome {
   receipts: { id: string; status: string; readBack: string }[];
   stops: { stepId: string; outcome: OutcomeName; reason: string }[];
   link: string;
+  /** Structured human step. `completed` is the same run after resume. */
+  status?: OutcomeName | "completed" | "timed-out" | "stopped" | "ok";
+  run_id?: string;
+  step?: string;
+  ask?: string;
+  /** Local-zone clock, or "No timeout". */
+  deadline?: string | null;
+  resume_token?: string;
 }
 
 export interface RemoteAuth {
@@ -113,9 +125,21 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
 
 export async function runWorkflow(
   library: Library,
-  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; startUrl?: string; document?: WorkflowV2 },
+  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; startUrl?: string; document?: WorkflowV2 },
   auth?: RemoteAuth,
 ): Promise<WorkflowOutcome> {
+  if (request.cancel) return cancelWorkflow(library, request.resume || "");
+  const peeked = request.resume ? peekResume(library, request.resume) : undefined;
+  if (request.resume && !peeked) return emptyOutcome("", "failed", "resume token");
+  const live = request.resume ? liveRuns.get(request.resume) : undefined;
+  if (live) {
+    if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT);
+    return continueLive(library, live, request.inputs ?? {});
+  }
+  if (peeked && (peeked.kind === "signin" || peeked.kind === "confirm")) {
+    dropResume(library, request.resume || "");
+    return emptyOutcome(peeked.workflowId, "failed", "the run's browser is gone");
+  }
   const resumed = request.resume ? takeResume(library, request.resume) : undefined;
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
@@ -130,22 +154,22 @@ export async function runWorkflow(
   if (missing) return remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs);
   const secrets = secretStrings(workflow, inputs);
   try {
-    const run = await replayInBrowser(library, workflow, inputs);
+    const played = await replayInBrowser(library, workflow, inputs, secrets);
+    if (played.held) return played.outcome;
     library.savePublicInputs(id, publicInputs(workflow, inputs));
-    library.saveRun({
-      id: run.runId,
-      workflowId: workflow.id,
-      status: run.status,
-      at: Date.now(),
-      heals: run.heals,
-      failure: run.failure,
-      steps: run.steps,
-    });
-    return rememberRun(library, workflow, run, inputs, secrets);
+    saveWorkflowRun(library, workflow, played.run, inputs, played.outcome);
+    return played.outcome;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     return remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs);
   }
+}
+
+/** The scripted proof signs in on the held page. Resume then continues that same run. */
+export async function withHeldPage(token: string, run: (page: Page) => Promise<void>): Promise<void> {
+  const live = liveRuns.get(token);
+  if (!live) throw new Error("resume token");
+  await run(live.page);
 }
 
 export async function reviewWorkflow(
@@ -207,7 +231,33 @@ export function getRun(library: Library, runId: string): WorkflowOutcome {
   return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
 }
 
-async function replayInBrowser(library: Library, workflow: WorkflowV2, args: ReplayArgs): Promise<RunResult> {
+interface LiveRun {
+  token: string;
+  context: BrowserContext;
+  page: Page;
+  profile: string;
+  video: { path(): Promise<string> } | null;
+  runId: string;
+  shotDir: string;
+  workflow: WorkflowV2;
+  inputs: ReplayArgs;
+  secrets: string[];
+  trail: RunTrailEvent[];
+  steps: RunResult["steps"];
+  stepId: string;
+  kind: "signin" | "confirm";
+  deadline: number | null;
+  ask: string;
+}
+
+const liveRuns = new Map<string, LiveRun>();
+
+async function replayInBrowser(
+  library: Library,
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  secrets: string[],
+): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean }> {
   const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
@@ -221,32 +271,153 @@ async function replayInBrowser(library: Library, workflow: WorkflowV2, args: Rep
   });
   const page = context.pages()[0] || await context.newPage();
   const video = record ? page.video() : null;
+  let hold = false;
   try {
     page.setDefaultNavigationTimeout(20000);
     page.setDefaultTimeout(15000);
     if (workflow.startUrl.startsWith("http")) {
       await page.goto(workflow.startUrl, { waitUntil: "domcontentloaded" });
     }
+    const trail: RunTrailEvent[] = [];
     const driver = new BrowserDriver(page);
-    return await replay(workflow, args, driver, {
+    const run = await replay(workflow, args, driver, {
       runId,
       shotDir,
       settings: library.settings(),
       heal: healProvider(),
       now: () => Date.now(),
+      yieldHuman: true,
+      trail,
     });
-  } finally {
-    await context.close().catch(() => undefined);
-    if (video) {
-      const src = await video.path().catch(() => "");
-      if (src && existsSync(src)) {
-        const dest = path.join(library.root, "videos", `${runId}.webm`);
-        mkdirSync(path.dirname(dest), { recursive: true });
-        copyFileSync(src, dest);
-      }
+    const outcome = rememberRun(library, workflow, run, args, secrets);
+    if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
+      hold = true;
+      const live: LiveRun = {
+        token: outcome.resume,
+        context,
+        page,
+        profile,
+        video,
+        runId,
+        shotDir,
+        workflow,
+        inputs: args,
+        secrets,
+        trail: run.trail,
+        steps: run.steps,
+        stepId: run.pausedStepId || run.ask.stepId,
+        kind: run.pausedKind,
+        deadline: run.ask.deadline,
+        ask: run.ask.instruction,
+      };
+      liveRuns.set(outcome.resume, live);
+      saveWorkflowRun(library, workflow, run, args, outcome);
+      return { run, outcome, held: true };
     }
-    await rm(profile, { recursive: true, force: true }).catch(() => undefined);
+    return { run, outcome, held: false };
+  } finally {
+    if (!hold) await releaseBrowser(library, { context, video, profile, runId });
   }
+}
+
+async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs): Promise<WorkflowOutcome> {
+  live.inputs = { ...live.inputs, ...extra };
+  const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page), {
+    runId: live.runId,
+    shotDir: live.shotDir,
+    settings: library.settings(),
+    heal: healProvider(),
+    now: () => Date.now(),
+    fromStepId: live.stepId,
+    yieldHuman: true,
+    humanReady: true,
+    trail: live.trail,
+  });
+  if (run.status === "paused" && run.pausedKind && run.ask) {
+    live.stepId = run.pausedStepId || run.ask.stepId;
+    live.kind = run.pausedKind;
+    live.deadline = run.ask.deadline;
+    live.ask = run.ask.instruction;
+    live.trail = run.trail;
+    live.steps = run.steps;
+    const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, live.token);
+    saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
+    return outcome;
+  }
+  liveRuns.delete(live.token);
+  dropResume(library, live.token);
+  await releaseBrowser(library, live);
+  library.savePublicInputs(live.workflow.id, publicInputs(live.workflow, live.inputs));
+  const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets);
+  if (run.status === "passed") outcome.status = "completed";
+  saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
+  return storeOutcome(library, outcome, live.secrets);
+}
+
+async function cancelWorkflow(library: Library, token: string): Promise<WorkflowOutcome> {
+  if (!token) return emptyOutcome("", "failed", "resume token");
+  const live = liveRuns.get(token);
+  if (!live) {
+    const peeked = peekResume(library, token);
+    if (!peeked) return emptyOutcome("", "failed", "resume token");
+    dropResume(library, token);
+    const result = emptyOutcome(peeked.workflowId, "failed", "nothing applied");
+    result.status = "stopped";
+    result.step = peeked.stepId;
+    result.ask = peeked.ask;
+    return result;
+  }
+  return stopLive(library, live, "stopped", "nothing applied");
+}
+
+async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "stopped", reason: string): Promise<WorkflowOutcome> {
+  liveRuns.delete(live.token);
+  dropResume(library, live.token);
+  await releaseBrowser(library, live);
+  const result = baseOutcome(live.workflow, undefined, "failed", reason, live.stepId, live.inputs);
+  result.runId = live.runId;
+  result.run_id = live.runId;
+  result.status = status;
+  result.step = live.stepId;
+  result.ask = live.ask;
+  result.reason = reason;
+  result.deadline = live.deadline ? formatClock(live.deadline) : "No timeout";
+  library.saveRun({
+    id: live.runId,
+    workflowId: live.workflow.id,
+    status: status === "timed-out" ? TIMED_OUT_STATUS : "stopped",
+    at: Date.now(),
+    heals: [],
+    failure: { reason },
+    steps: live.steps,
+    modelCalls: 0,
+    trail: live.trail,
+    envelope: {
+      status,
+      run_id: live.runId,
+      step: live.stepId,
+      reason,
+      ask: live.ask,
+      deadline: result.deadline,
+    },
+  });
+  return storeOutcome(library, result, live.secrets);
+}
+
+async function releaseBrowser(
+  library: Library,
+  open: { context: BrowserContext; video: { path(): Promise<string> } | null; profile: string; runId: string },
+): Promise<void> {
+  await open.context.close().catch(() => undefined);
+  if (open.video) {
+    const src = await open.video.path().catch(() => "");
+    if (src && existsSync(src)) {
+      const dest = path.join(library.root, "videos", `${open.runId}.webm`);
+      mkdirSync(path.dirname(dest), { recursive: true });
+      copyFileSync(src, dest);
+    }
+  }
+  await rm(open.profile, { recursive: true, force: true }).catch(() => undefined);
 }
 
 function rememberRun(
@@ -255,21 +426,73 @@ function rememberRun(
   run: RunResult,
   inputs: ReplayArgs,
   secrets: string[],
+  resumeToken?: string,
 ): WorkflowOutcome {
   const failed = run.steps.find((step) => step.status === "failed" || step.status === "paused");
-  const step = workflow.steps.find((item) => item.id === failed?.id);
+  const step = workflow.steps.find((item) => item.id === (run.pausedStepId || failed?.id));
   let outcome: OutcomeName = "ok";
   let reason = "";
-  if (run.status === "paused") {
+  let status: WorkflowOutcome["status"] = run.trail.some((event) => event.kind === "handoff") ? "completed" : "ok";
+  if (run.pausedKind === "signin") {
+    outcome = "needs_signin";
+    status = "needs_signin";
+    reason = run.ask?.instruction || "Sign in";
+  } else if (run.pausedKind === "confirm") {
     outcome = "needs_human";
+    status = "needs_human";
+    reason = run.ask?.instruction || "Press the button";
+  } else if (run.status === "paused") {
+    outcome = "needs_human";
+    status = "needs_human";
     reason = "Approve the heal before the run can continue";
   } else if (run.status === "failed") {
     outcome = signInStep(step) ? "needs_signin" : "failed";
-    reason = failed?.reason || run.failure?.reason || "failed";
+    status = outcome;
+    const raw = run.failure?.reason || "";
+    reason = raw === "nothing applied" ? raw : (failed?.reason || raw || "failed");
   }
-  const result = baseOutcome(workflow, run, outcome, reason, step?.id || "", inputs);
-  if (outcome !== "ok") result.resume = writeResume(library, workflow.id, publicInputs(workflow, inputs), step?.id || "");
+  const stepId = step?.id || run.pausedStepId || "";
+  const result = baseOutcome(workflow, run, outcome, reason, stepId, inputs);
+  result.status = status;
+  result.run_id = run.runId;
+  result.step = stepId;
+  result.ask = run.ask?.instruction || (outcome === "ok" ? undefined : reason);
+  result.deadline = run.ask ? (run.ask.deadline ? formatClock(run.ask.deadline) : "No timeout") : undefined;
+  if (outcome !== "ok") {
+    result.resume = resumeToken || writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
+      kind: run.pausedKind,
+      deadline: run.ask?.deadline ?? null,
+      ask: run.ask?.instruction,
+      runId: run.runId,
+    });
+    result.resume_token = result.resume;
+  }
   return storeOutcome(library, result, secrets);
+}
+
+function saveWorkflowRun(library: Library, workflow: WorkflowV2, run: RunResult, inputs: ReplayArgs, outcome: WorkflowOutcome): void {
+  const paused = outcome.status === "needs_signin" || outcome.status === "needs_human";
+  library.saveRun({
+    id: run.runId,
+    workflowId: workflow.id,
+    status: paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
+    at: Date.now(),
+    heals: run.heals,
+    failure: run.failure,
+    steps: run.steps,
+    modelCalls: run.modelCalls,
+    trail: run.trail,
+    inputs: Object.fromEntries(Object.entries(publicInputs(workflow, inputs)).map(([key, value]) => [key, String(value)])),
+    envelope: outcome.status && outcome.status !== "ok" ? {
+      status: outcome.status,
+      run_id: outcome.run_id || run.runId,
+      step: outcome.step,
+      reason: outcome.reason,
+      ask: outcome.ask,
+      deadline: outcome.deadline,
+      resume_token: outcome.resume_token,
+    } : undefined,
+  });
 }
 
 function remember(
@@ -282,7 +505,19 @@ function remember(
 ): WorkflowOutcome {
   const result = baseOutcome(workflow, undefined, outcome, reason, stepId, inputs);
   result.runId = result.runId || `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
-  result.resume = writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId);
+  const deadline = library.settings().actTimeoutMs > 0 ? Date.now() + library.settings().actTimeoutMs : null;
+  result.resume = writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
+    kind: "input",
+    deadline,
+    ask: reason,
+    runId: result.runId,
+  });
+  result.status = outcome;
+  result.run_id = result.runId;
+  result.step = stepId;
+  result.ask = reason;
+  result.deadline = deadline ? formatClock(deadline) : "No timeout";
+  result.resume_token = result.resume;
   return storeOutcome(library, result, secretStrings(workflow, inputs));
 }
 
@@ -393,20 +628,50 @@ function reportPath(library: Library, runId: string): string {
   return path.join(library.root, "reports", `${safeToken(runId)}.json`);
 }
 
-function writeResume(library: Library, workflowId: string, inputs: Record<string, string | number>, stepId: string): string {
+interface ResumeFile {
+  workflowId: string;
+  stepId: string;
+  publicInputs: Record<string, string | number>;
+  kind?: "signin" | "confirm" | "input";
+  deadline?: number | null;
+  ask?: string;
+  runId?: string;
+}
+
+function writeResume(
+  library: Library,
+  workflowId: string,
+  inputs: Record<string, string | number>,
+  stepId: string,
+  extra: { kind?: ResumeFile["kind"]; deadline?: number | null; ask?: string; runId?: string } = {},
+): string {
   const token = `r_${randomBytes(16).toString("hex")}`;
   const file = path.join(library.root, "resumes", `${token}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ workflowId, stepId, publicInputs: inputs }));
+  const body: ResumeFile = { workflowId, stepId, publicInputs: inputs, ...extra };
+  writeFileSync(file, JSON.stringify(body));
   return token;
 }
 
+function peekResume(library: Library, token: string): ResumeFile | undefined {
+  const file = resumePath(library, token);
+  if (!existsSync(file)) return undefined;
+  return JSON.parse(readFileSync(file, "utf8")) as ResumeFile;
+}
+
+function dropResume(library: Library, token: string): void {
+  rmSync(resumePath(library, token), { force: true });
+}
+
 function takeResume(library: Library, token: string): { workflowId: string; publicInputs: Record<string, string | number> } {
-  const file = path.join(library.root, "resumes", `${safeToken(token)}.json`);
-  if (!existsSync(file)) throw new Error("resume token");
-  const parsed = JSON.parse(readFileSync(file, "utf8")) as { workflowId: string; publicInputs: Record<string, string | number> };
-  rmSync(file);
+  const parsed = peekResume(library, token);
+  if (!parsed) throw new Error("resume token");
+  dropResume(library, token);
   return parsed;
+}
+
+function resumePath(library: Library, token: string): string {
+  return path.join(library.root, "resumes", `${safeToken(token)}.json`);
 }
 
 function emptyOutcome(id: string, outcome: OutcomeName, reason: string): WorkflowOutcome {

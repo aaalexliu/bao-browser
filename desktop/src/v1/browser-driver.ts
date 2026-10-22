@@ -26,6 +26,9 @@ export interface PersonPrompts {
   showAsk?(ask: HumanAsk): void;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
+  /** Drop UI trail events while a person has the page. */
+  pauseCapture?(): void;
+  resumeCapture?(): void;
 }
 
 export interface TraceLine {
@@ -307,6 +310,14 @@ export class BrowserDriver implements Driver {
 
   loginContinued(): boolean {
     return this.prompts?.loginContinued?.() ?? false;
+  }
+
+  pauseCapture(): void {
+    this.prompts?.pauseCapture?.();
+  }
+
+  resumeCapture(): void {
+    this.prompts?.resumeCapture?.();
   }
 
   showAsk(ask: HumanAsk): void {

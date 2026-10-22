@@ -177,7 +177,7 @@
     #act { padding: var(--space-4) var(--space-5) 0; }
     #onboard { padding: 0 var(--space-5); }
     #main { padding: var(--space-3) var(--space-5) 4rem; }
-    .card, .why, #heal-detail, #run-viewer, .wf-card, .step-card {
+    .card, .why, #heal-detail, #run-viewer, #run-envelope, .wf-card, .step-card {
       background: var(--card);
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -529,6 +529,11 @@
     #teach-trail summary { cursor: pointer; font-weight: 650; }
     #teach-steps { display: flex; flex-direction: column; gap: 6px; }
     #teach-review .step-card { margin: 0; }
+    #teach-summary { font-weight: 650; margin: 0 0 0.4rem; }
+    #teach-dropped-reasons { margin: 0 0 1rem; padding-left: 1.2rem; color: var(--quiet); }
+    #route-ran { font-weight: 650; margin: 0.2rem 0 0; }
+    .badge.route { background: var(--select); color: var(--ink); }
+    em.route { color: var(--quiet); font-style: normal; margin-left: 0.35rem; }
     #record-bar {
       position: fixed;
       left: 50%;

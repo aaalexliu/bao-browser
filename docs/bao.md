@@ -336,7 +336,7 @@ On the workflow page, mark which inputs are asked on import. Share copies the `b
 
 Secret and file answers are not stored. A path is asked with the same file field capture records, and the path is not shown. An email typed as an answer is dropped. Other answers become defaults on the recipient's private copy only. A non-personal sample is shown as an example.
 
-Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered.
+Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered. `bao://run/<id>?inputs=<json>` opens the run form with those non-secret inputs filled in. A secret key in that JSON is refused, and a secret is asked again on the device.
 
 ```bash
 npm run bao -- open bao://workflow/<id>
@@ -367,10 +367,10 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 | --- | --- |
 | `search_workflows` | At most 5 ranked hits from this Mac and the registry. Each hit includes its input schema. |
 | `describe_workflow` | The steps, the input schema, and a `bao://workflow/<id>` link. Secret defaults are omitted. |
-| `run_workflow` | `ok`, `needs_human`, `needs_signin`, or `failed` with a reason, plus a one-time resume token. `rerun: true` reuses past non-secret inputs. |
+| `run_workflow` | `ok`, `needs_human`, `needs_signin`, or `failed`. A human step returns immediately with `status`, `run_id`, `step`, `reason`, `ask`, `deadline`, and `resume_token`. Pass that token to continue the same run. `cancel: true` stops it and applies nothing. `rerun: true` reuses past non-secret inputs. |
 | `get_run` | A stored outcome. |
 
-A missing secret or file, or a heal that is waiting for approval, is `needs_human` and does not leave the device. A failed sign-in step is `needs_signin`. Pass the resume token with the missing input to run again. The token is deleted when it is used.
+A missing secret or file, or a heal that is waiting for approval, is `needs_human` and does not leave the device. A sign-in ask is `needs_signin`. A confirm ask is `needs_human`. Neither blocks the tool call, and neither is a bare string. Pass the resume token after the person acts to continue that same run. `cancel: true` with the token stops the run and leaves the page unpressed. The token is deleted when it is used. While the person has the page, step screenshots and trail capture pause. The trail records handoff start and end with the local zone.
 
 A scripted client searched for "sign in", described `agent-sign-in`, and ran it as grace. The tool list stayed these four names. Search returned four hits, under the cap of five, and each hit included its input schema. The run result was:
 
