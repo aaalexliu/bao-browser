@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/node-synopsis",
+  "steps": [
+    {
+      "stepId": "node-synopsis-0",
+      "action": "click",
+      "target": "link:Usage and example",
+      "postcondition": "url /docs/latest/api/synopsis.html",
+      "timing": "lt1s"
+    }
+  ]
+}

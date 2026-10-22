@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch3/mdn-postcard",
+  "steps": [
+    {
+      "stepId": "mdn-postcard-0",
+      "action": "type",
+      "target": "textbox#name",
+      "postcondition": "value {{username}}",
+      "timing": "lt1s"
+    }
+  ]
+}

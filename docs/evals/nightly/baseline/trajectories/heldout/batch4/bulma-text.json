@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch4/bulma-text",
+  "steps": [
+    {
+      "stepId": "bulma-text-0",
+      "action": "type",
+      "target": "textbox",
+      "postcondition": "value {{text}}",
+      "timing": "lt1s"
+    }
+  ]
+}

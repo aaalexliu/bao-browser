@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch5/pico-email",
+  "steps": [
+    {
+      "stepId": "pico-email-0",
+      "action": "type",
+      "target": "textbox#email",
+      "postcondition": "value {{username}}",
+      "timing": "lt10s"
+    },
+    {
+      "stepId": "pico-email-1",
+      "action": "type",
+      "target": "textbox[name=password]",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt10s"
+    }
+  ]
+}

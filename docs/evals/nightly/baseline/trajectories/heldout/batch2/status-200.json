@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch2/status-200",
+  "steps": [
+    {
+      "stepId": "status-200-0",
+      "action": "click",
+      "target": "link:200",
+      "postcondition": "url /status_codes/200",
+      "timing": "lt1s"
+    }
+  ]
+}

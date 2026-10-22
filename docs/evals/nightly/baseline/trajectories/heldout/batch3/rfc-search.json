@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/rfc-search",
+  "steps": [
+    {
+      "stepId": "rfc-search-0",
+      "action": "type",
+      "target": "input#search",
+      "postcondition": "value {{q}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "rfc-search-1",
+      "action": "key",
+      "target": "page",
+      "postcondition": "url q={{q}}",
+      "timing": "lt1s"
+    }
+  ]
+}

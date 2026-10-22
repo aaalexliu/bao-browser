@@ -1,0 +1,26 @@
+{
+  "caseId": "drivers/scripted/login",
+  "steps": [
+    {
+      "stepId": "drv-login-0",
+      "action": "type",
+      "target": "textbox#username",
+      "postcondition": "value {{username}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-login-1",
+      "action": "type",
+      "target": "textbox#password",
+      "postcondition": "element",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-login-2",
+      "action": "click",
+      "target": "button#login-btn",
+      "postcondition": "text Welcome {{username}}",
+      "timing": "lt1s"
+    }
+  ]
+}

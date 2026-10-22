@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/sqlite-search",
+  "steps": [
+    {
+      "stepId": "sqlite-search-0",
+      "action": "type",
+      "target": "textbox#searchbox",
+      "postcondition": "value {{q}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "sqlite-search-1",
+      "action": "click",
+      "target": "button:Go",
+      "postcondition": "url q={{q}}",
+      "timing": "lt1s"
+    }
+  ]
+}

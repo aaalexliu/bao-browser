@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch4/hockey-search",
+  "steps": [
+    {
+      "stepId": "hockey-search-0",
+      "action": "type",
+      "target": "textbox#q",
+      "postcondition": "value {{q}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "hockey-search-1",
+      "action": "click",
+      "target": "button:Search",
+      "postcondition": "url q={{q}}",
+      "timing": "lt1s"
+    }
+  ]
+}

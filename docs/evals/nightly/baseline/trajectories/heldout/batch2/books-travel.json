@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch2/books-travel",
+  "steps": [
+    {
+      "stepId": "books-travel-0",
+      "action": "click",
+      "target": "link:Travel",
+      "postcondition": "url /catalogue/category/books/travel_2/index.html",
+      "timing": "lt1s"
+    }
+  ]
+}

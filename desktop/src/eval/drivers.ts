@@ -16,6 +16,7 @@ import { canonical } from "../v1/canonical";
 import { condense } from "../v1/condense";
 import type { TrailEvent } from "../v1/interpret";
 import { replay } from "../v1/replay";
+import type { TrajectoryStep } from "../v1/trajectory";
 import { validateWorkflow, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { driverBinary, driverProcessEnv, ensurePartialTrail, liveCrashReason, runLiveCli, taskPrompt, unavailableReason, type LiveDriver } from "./live-cli";
 import { McpClient } from "./mcp-client";
@@ -27,6 +28,20 @@ import {
   type DriverTask,
   type FixtureView,
 } from "./tasks";
+
+interface TraceStep {
+  stepId: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface FixtureTrail {
+  task: string;
+  passed: boolean;
+  detail: string;
+  steps: TraceStep[];
+  trajectory: TrajectoryStep[];
+}
 
 export interface DriverCell {
   driver: string;
@@ -201,7 +216,7 @@ async function runLive(
   return graded;
 }
 
-async function runScripted(task: DriverTask, port: number): Promise<{ cell: DriverCell; video?: string }> {
+async function runScripted(task: DriverTask, port: number, opts?: { video?: boolean }): Promise<{ cell: DriverCell; video?: string; steps: TraceStep[]; trajectory: TrajectoryStep[] }> {
   const home = mkdtempSync(path.join(tmpdir(), "bao-driver-"));
   const uploadPath = task.captureFile ? writeSample(home, task.captureFile) : "";
   const client = McpClient.start({
@@ -256,7 +271,7 @@ async function runScripted(task: DriverTask, port: number): Promise<{ cell: Driv
     await client.close();
   }
   return grade("scripted", task, port, home, uploadPath, view, stops, failed, {
-    video: task.id === "drift",
+    video: opts?.video ?? task.id === "drift",
     videoName: "driver-replay.webm",
     tokens: "n/a",
     extra: redact(client.stderr.join("")).slice(0, 240),
@@ -275,13 +290,15 @@ async function grade(
   stops: string[],
   failed: string,
   opts: { video: boolean; videoName: string; tokens: string; extra: string; requireRef: boolean; driverCrash: string | null },
-): Promise<{ cell: DriverCell; video?: string; workflow?: WorkflowV2 }> {
+): Promise<{ cell: DriverCell; video?: string; workflow?: WorkflowV2; steps: TraceStep[]; trajectory: TrajectoryStep[] }> {
   const captureReason = !view ? failed || "no final snapshot" : captureOk(task, view, stops);
   const taskComplete = !captureReason;
   const crashed = crashStatus(opts.driverCrash, taskComplete);
   if (crashed) {
     ensurePartialTrail(home, opts.driverCrash || "driver-error");
     return {
+      steps: [],
+      trajectory: [],
       cell: {
         driver,
         task: task.id,
@@ -331,6 +348,8 @@ async function grade(
     workflowOk = false;
     replayNote = err instanceof Error ? err.message : String(err);
   }
+  let steps: TraceStep[] = [];
+  let trajectory: TrajectoryStep[] = [];
   if (workflow && taskComplete) {
     const runs: string[] = [];
     let calls = 0;
@@ -347,6 +366,10 @@ async function grade(
       });
       calls += outcome.modelCalls;
       if (outcome.video) video = outcome.video;
+      if (i === 0) {
+        steps = outcome.steps;
+        trajectory = outcome.trajectory;
+      }
       runs.push(outcome.ok ? "pass" : outcome.reason);
     }
     modelCalls = String(calls);
@@ -360,6 +383,8 @@ async function grade(
   return {
     video,
     workflow,
+    steps,
+    trajectory,
     cell: {
       driver,
       task: task.id,
@@ -488,12 +513,40 @@ function trailProblems(rows: TrailRow[], home: string, uploadPath: string): stri
   return problems;
 }
 
+/** Scripted MCP client only. No model driver. Replay video is left off. */
+export async function scriptedFixtureTrails(): Promise<FixtureTrail[]> {
+  const server = await startFixtures();
+  const out: FixtureTrail[] = [];
+  try {
+    for (const task of DRIVER_TASKS) {
+      const graded = await runScripted(task, server.port, { video: false });
+      const passed = graded.cell.status === "pass";
+      let steps = graded.steps;
+      if (!passed && steps.every((step) => step.passed)) {
+        steps = [...steps, { stepId: "oracle", passed: false, detail: graded.cell.replay || graded.cell.reason }];
+      }
+      const trail = {
+        task: task.id,
+        passed,
+        detail: graded.cell.reason || graded.cell.replay,
+        steps,
+        trajectory: graded.trajectory,
+      };
+      out.push(trail);
+      console.log(`drivers/scripted/${task.id} ${passed ? "pass" : trail.detail}`);
+    }
+  } finally {
+    await server.close();
+  }
+  return out;
+}
+
 export async function replayTask(
   workflow: WorkflowV2,
   task: DriverTask,
   port: number,
   spec: { texts: string[]; secret: string; filePath: string; fileName: string; video: boolean; videoName?: string },
-): Promise<{ ok: boolean; reason: string; modelCalls: number; video?: string }> {
+): Promise<{ ok: boolean; reason: string; modelCalls: number; video?: string; steps: TraceStep[]; trajectory: TrajectoryStep[] }> {
   const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
   const videoDir = spec.video ? mkdtempSync(path.join(tmpdir(), "bao-video-")) : undefined;
   let modelCalls = 0;
@@ -530,11 +583,16 @@ export async function replayTask(
       videoPath = saved;
     }
     await rm(profile, { recursive: true, force: true }).catch(() => undefined);
-    return { ok: run.status === "passed" && oracle == null, reason: oracle || "pass", modelCalls, video: videoPath };
+    const steps = run.steps.map((step) => ({
+      stepId: step.id,
+      passed: step.status === "passed",
+      detail: step.reason || "",
+    }));
+    return { ok: run.status === "passed" && oracle == null, reason: oracle || "pass", modelCalls, video: videoPath, steps, trajectory: run.trajectory };
   } catch (err) {
     await context?.close().catch(() => undefined);
     await rm(profile, { recursive: true, force: true }).catch(() => undefined);
-    return { ok: false, reason: err instanceof Error ? err.message : String(err), modelCalls };
+    return { ok: false, reason: err instanceof Error ? err.message : String(err), modelCalls, steps: [], trajectory: [] };
   }
 }
 
