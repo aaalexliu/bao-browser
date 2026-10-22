@@ -17,12 +17,13 @@
 
 static void raise_waiting_window(void);
 static int listen_fd = -1;
+static int product_browser_pid = -1;
 static char sock_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 static BOOL auth_requested = NO;
 static NSString *const kCategory = @"bao.act";
 static NSString *const kShowAction = @"show-window";
 
-@interface BaoNotify : NSObject <UNUserNotificationCenterDelegate>
+@interface BaoNotify : NSObject <UNUserNotificationCenterDelegate, NSApplicationDelegate>
 @end
 
 static BaoNotify *notify_owner;
@@ -48,7 +49,38 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     completionHandler();
 }
 
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
+    (void)sender;
+    (void)flag;
+    bao_focus_pid(product_browser_pid);
+    return NO;
+}
+
 @end
+
+void bao_show_alert(const char *title, const char *body) {
+    @autoreleasepool {
+        NSApplication *app = [NSApplication sharedApplication];
+        [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+        [app activateIgnoringOtherApps:YES];
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.alertStyle = NSAlertStyleInformational;
+        alert.messageText = title ? [NSString stringWithUTF8String:title] : @"Bao";
+        alert.informativeText = body ? [NSString stringWithUTF8String:body] : @"";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+    }
+}
+
+void bao_focus_pid(int pid) {
+    if (pid <= 0) return;
+    @autoreleasepool {
+        NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        if (!running) return;
+        [running unhide];
+        [running activateWithOptions:NSApplicationActivateIgnoringOtherApps | NSApplicationActivateAllWindows];
+    }
+}
 
 static NSString *auth_name(UNAuthorizationStatus status) {
     switch (status) {
@@ -378,8 +410,13 @@ int bao_notify_prepare(const char *path) {
 int bao_notify_run(int browser_pid, int node_pid) {
     @autoreleasepool {
         notify_owner = [BaoNotify new];
+        product_browser_pid = browser_pid;
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+        [app setDelegate:notify_owner];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            bao_focus_pid(browser_pid);
+        });
         UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
         center.delegate = notify_owner;
         install_category(center);

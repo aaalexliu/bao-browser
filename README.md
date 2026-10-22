@@ -306,7 +306,7 @@ is still the source of truth for the extension.
   file upload and drop, replayed twice; a broken test id stops with a
   snapshot; the GTK calculator replays `{{a}}+{{b}}` after a move; drift is
   24/24 (`docs/drift-linux.md`); a scripted MCP client writes a click into
-  the trail. macOS install steps are `docs/mac-test.md`.
+  the trail. macOS build steps are `docs/mac-build.md`. The pass is `docs/mac-test.md`.
 - **2026-10-21 — macOS 26 fixtures scored, owned browser check fixed.**
   `fixtures/ax/macos-26/` is the alex-jxp dump set. The scorer treats Calculator
   descriptions as the visible labels, strips a leading LRM on the display,

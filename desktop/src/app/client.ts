@@ -35,6 +35,8 @@ import {
   runField,
   siteTrustPanel,
   tryResult,
+  fixtureStartValue,
+  productWindowTitle,
   teachHome,
   teachPanel,
   teachReview,
@@ -252,7 +254,7 @@ function capture(): string {
     <p class="quiet">Nothing is recorded until you start. The capture browser uses an app-owned profile, not your daily Chrome.</p>
     <div class="card">
       <h3>Browser</h3>
-      <label>Start URL <input id="start-url" value="${location.origin}/fixture"></label>
+      <label>Start URL <input id="start-url" value="${esc(fixtureStartValue())}"></label>
       <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="open-teach" type="button">Teach</button><button id="stop" type="button">Stop and save</button></div>
     </div>
     <div class="card">
@@ -1373,7 +1375,7 @@ function paintDockBadge(): void {
     pendingHeals: pendingHealCount(state.runs || []),
     reviews: reviewItems(state.runs).length,
   });
-  document.title = count > 0 ? `(${count}) bao` : "bao";
+  document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);
   else void nav.clearAppBadge?.().catch(() => undefined);
