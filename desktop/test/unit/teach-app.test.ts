@@ -3,7 +3,7 @@
 // The capture browser is the local fixture page. No vendor network.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -324,18 +324,24 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     assert.equal(await page.locator('[data-testid="deeplink"]').count(), 0);
     assert.equal(await page.locator('[data-testid="share-menu"]').count(), 1);
     assert.equal(await page.locator('[data-route="Log in first"]').count() > 0, true);
-    await page.waitForFunction(() => {
-      const cards = [...document.querySelectorAll("#workflow-steps .step-card")];
-      if (!cards.length) return false;
-      return cards.every((card) => {
-        const action = (card.querySelector("strong")?.textContent || "").toLowerCase();
-        const typed = action.startsWith("type") || action.startsWith("click");
-        if (!typed) return true;
-        const thumb = card.querySelector(".thumb");
-        const img = thumb?.querySelector("img") as HTMLImageElement | null;
-        return !!thumb?.classList.contains("has-shot") && !!img && img.naturalWidth > 96 && img.naturalHeight > 54;
-      });
+    const shotDirs = [login.id, signed.id, merged.id].map((id) => {
+      const dir = path.join(home, "shots", "workflows", id);
+      return { id, files: existsSync(dir) ? readdirSync(dir) : [] };
     });
+    await page.waitForTimeout(1500);
+    const cards = await page.evaluate(() => [...document.querySelectorAll("#workflow-steps .step-card")].map((card) => {
+      const thumb = card.querySelector(".thumb");
+      const img = thumb?.querySelector("img") as HTMLImageElement | null;
+      return {
+        label: card.querySelector("strong")?.textContent || "",
+        shot: thumb?.getAttribute("data-shot") || "",
+        has: thumb?.classList.contains("has-shot") === true,
+        w: img?.naturalWidth || 0,
+        h: img?.naturalHeight || 0,
+      };
+    }));
+    const typed = cards.filter((card) => /^(type|click)/i.test(card.label));
+    assert.ok(typed.length > 0 && typed.every((card) => card.has && card.w > 96 && card.h > 54), JSON.stringify({ shotDirs, cards }, null, 2));
 
     const loginRun = await post(app.port, "/api/replay", {
       id: merged.id,

@@ -164,6 +164,7 @@ export async function startApp(opts: {
   let profile: string | undefined;
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
+  const pendingShots = new Set<Promise<unknown>>();
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
   let importing = false;
@@ -700,6 +701,7 @@ export async function startApp(opts: {
           }, { selector: body.drop.selector, name: body.drop.name, b64 });
         }
         await page.waitForTimeout(50);
+        await settleShots();
         return json(res, { events: capture.events.length });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/stop") {
@@ -1137,17 +1139,17 @@ export async function startApp(opts: {
       profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
       context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
       await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
-        await recordCaptured(payload);
+        await watchShot(recordCaptured(payload));
       });
       await context.addInitScript(recorderSource());
       page = context.pages()[0] || await context.newPage();
       fileChooser = await armFileChooser(page, async (chosen) => {
-        await recordCaptured({
+        await watchShot(recordCaptured({
           kind: "act",
           op: "upload",
           fileName: chosen.fileName,
           identity: chosen.identity,
-        });
+        }));
       });
       await page.goto(startUrl);
       await (fileChooser as { send(method: string, params?: object): Promise<unknown> }).send(
@@ -1162,6 +1164,16 @@ export async function startApp(opts: {
       throw err;
     }
     publishCapture();
+  }
+
+  function watchShot(work: Promise<unknown>): Promise<unknown> {
+    pendingShots.add(work);
+    void work.finally(() => pendingShots.delete(work));
+    return work;
+  }
+
+  async function settleShots(): Promise<void> {
+    while (pendingShots.size) await Promise.all([...pendingShots]);
   }
 
   async function recordCaptured(payload: Omit<TrailEvent, "id" | "ts">): Promise<void> {
@@ -1218,6 +1230,7 @@ export async function startApp(opts: {
   }
 
   async function saveSession(): Promise<WorkflowV2> {
+    await settleShots();
     const raw = capture.stop();
     recordingSince = 0;
     const id = `wf-${Date.now()}`;
@@ -1390,6 +1403,7 @@ export async function startApp(opts: {
   }
 
   async function finishTeach(): Promise<Record<string, unknown>> {
+    await settleShots();
     if (page && !page.isClosed()) teachStartUrl = page.url();
     teachPhase = "review";
     sessionMode = "teach";
