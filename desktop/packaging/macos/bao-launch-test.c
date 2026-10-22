@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#define _DARWIN_C_SOURCE
 
 #include "bao-launch.h"
 
@@ -361,7 +362,8 @@ static void test_port(void) {
   addr.sin_addr.s_addr = htonl(0x7f000001);
   addr.sin_port = 0;
   check(bind(fd, (struct sockaddr *)&addr, sizeof addr) == 0, "bind");
-  check(listen(fd, 1) == 0, "listen");
+  /* Backlog 1 fills after the first probe connect, and the next connect stalls. */
+  check(listen(fd, 16) == 0, "listen");
   socklen_t len = sizeof addr;
   check(getsockname(fd, (struct sockaddr *)&addr, &len) == 0, "getsockname");
   char port[16];
