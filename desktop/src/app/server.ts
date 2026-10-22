@@ -13,7 +13,7 @@ import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launc
 import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
-import { BrowserDriver, notifyOs, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, clearOsNotify, notifyOs, type PersonPrompts } from "../v1/browser-driver";
 import type { HumanAsk } from "../v1/human-ask";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
@@ -179,10 +179,11 @@ export async function startApp(opts: {
     const notice = actNotice(detail);
     notifications.push({ title: notice.title, body: notice.body });
     if (bar.running) bar.send({ cmd: "act", title: notice.title, body: notice.body, badge: notice.badge });
-    else void notifyOs(notice.title, notice.body);
+    void notifyOs(notice.title, notice.body);
   }
   function clearAct(): void {
     if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
+    void clearOsNotify();
   }
   const prompts: PersonPrompts = {
     showConfirm(_label) {

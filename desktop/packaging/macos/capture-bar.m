@@ -1,6 +1,6 @@
 // Floating capture bar. JSON lines on stdin, events on stdout.
 // Shortcuts: ctrl-opt-cmd R start, period stop, P pause.
-// "You need to act" posts a notification and sets the dock badge.
+// "You need to act" shows the panel title. Bao.app posts the notification and sets its Dock badge.
 
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
@@ -28,28 +28,6 @@ static void emit(NSDictionary *obj) {
     } @catch (__unused NSException *ex) {
     }
     [outLock unlock];
-}
-
-static NSString *escapeApple(NSString *text) {
-    return [[text stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"]
-        stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-}
-
-static BOOL notify(NSString *title, NSString *body) {
-    NSString *source = [NSString stringWithFormat:@"display notification \"%@\" with title \"%@\"",
-        escapeApple(body ?: @""), escapeApple(title ?: @"You need to act")];
-    NSTask *task = [[NSTask alloc] init];
-    task.launchPath = @"/usr/bin/osascript";
-    task.arguments = @[@"-e", source];
-    task.standardOutput = [NSFileHandle fileHandleWithNullDevice];
-    task.standardError = [NSFileHandle fileHandleWithNullDevice];
-    @try {
-        [task launch];
-        [task waitUntilExit];
-        return task.terminationStatus == 0;
-    } @catch (__unused NSException *ex) {
-        return NO;
-    }
 }
 
 static void setBadge(NSString *label) {
@@ -96,15 +74,10 @@ static void handle(NSDictionary *msg) {
     }
     if ([cmd isEqualToString:@"act"]) {
         NSString *title = msg[@"title"] ?: @"You need to act";
-        NSString *body = msg[@"body"] ?: @"Bao is waiting.";
         banner.stringValue = title;
         banner.hidden = NO;
-        NSString *badge = msg[@"badge"] ?: @"!";
-        setBadge(badge);
-        BOOL posted = notify(title, body);
         [panel orderFrontRegardless];
-        NSString *shown = [NSApp dockTile].badgeLabel ?: @"";
-        emit(@{@"event": @"acted", @"badge": shown, @"title": title, @"notified": @(posted)});
+        emit(@{@"event": @"acted", @"badge": @"", @"title": title, @"notified": @NO});
         return;
     }
     if ([cmd isEqualToString:@"clear-badge"]) {
