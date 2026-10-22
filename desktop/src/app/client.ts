@@ -91,6 +91,10 @@ const actEl = () => document.getElementById("act")!;
 const mainEl = () => document.getElementById("main")!;
 
 async function refresh(): Promise<void> {
+  try {
+    const stored = localStorage.getItem("bao-theme");
+    if (stored === "dark" || stored === "light") theme = stored;
+  } catch { /* private mode */ }
   state = await (await fetch("/api/state")).json();
   const key = JSON.stringify({
     recording: state.recording,
@@ -268,10 +272,14 @@ function settings(): string {
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <h3>Model</h3>
-    <p id="settings-model">${esc(state.model?.label || "no model")}</p>
-    <h3>Mac</h3>
-    <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
+    <div class="card">
+      <h3>Model</h3>
+      <p id="settings-model">${esc(state.model?.label || "no model")}</p>
+    </div>
+    <div class="card">
+      <h3>Mac</h3>
+      <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
+    </div>
   </section>`;
 }
 
@@ -427,11 +435,6 @@ function bind(): void {
   const themeSel = document.getElementById("theme") as HTMLSelectElement | null;
   if (themeSel) themeSel.onchange = () => {
     theme = themeSel.value === "dark" ? "dark" : "light";
-    applyTheme();
-  };
-  const themeToggle = document.getElementById("theme-toggle");
-  if (themeToggle) themeToggle.onclick = () => {
-    theme = theme === "dark" ? "light" : "dark";
     applyTheme();
   };
   bindLogins();
@@ -847,11 +850,6 @@ function paintDockBadge(): void {
 function applyTheme(): void {
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem("bao-theme", theme); } catch { /* ignore */ }
-  const toggle = document.getElementById("theme-toggle");
-  if (toggle) {
-    toggle.textContent = theme === "dark" ? "Light" : "Dark";
-    toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-  }
 }
 
 function readLoginForm(): void {

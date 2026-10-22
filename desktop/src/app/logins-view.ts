@@ -209,7 +209,7 @@ export function syncPanel(sync: {
       <button id="sync-push" type="button">Push</button>
       <button id="sync-pull" type="button">Pull</button>
     </div>
-    <p class="quiet" data-testid="sync-result">${esc(row.lastResult || (row.paired ? "Paired" : "Not paired"))}</p>
+    <p class="quiet" data-testid="sync-result">${esc(syncStatusLine(row))}</p>
     ${row.lastSyncedAt ? `<p class="quiet" data-testid="last-synced">This Mac last synced ${esc(clockTime(row.lastSyncedAt))}</p>` : ""}
     <p class="quiet">Backup: ${esc(row.backupPath || "Taken automatically before the first sync.")}</p>
     <h3>Devices</h3>
@@ -219,6 +219,12 @@ export function syncPanel(sync: {
     ${refused}
     ${conflicts ? `<h3>Conflicts</h3>${conflicts}` : ""}
   </div>`;
+}
+
+function syncStatusLine(row: { lastResult?: string; paired?: boolean; conflicts?: unknown[] }): string {
+  const open = row.conflicts?.length ?? 0;
+  const text = row.lastResult || (row.paired ? "Paired" : "Not paired");
+  return text.replace(/conflicts \d+/, `conflicts ${open}`);
 }
 
 function clockTime(iso?: string | null): string {

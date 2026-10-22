@@ -19,6 +19,11 @@ const DEVICE = "device-secret-9f3c";
 const OTHER = "other-secret-9f3c";
 const ARTIFACTS = "/opt/cursor/artifacts";
 
+async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
+  await page.evaluate((next) => localStorage.setItem("bao-theme", next), theme);
+  await page.waitForFunction((next) => document.documentElement.dataset.theme === next, theme);
+}
+
 test("import cookies, localStorage, and IndexedDB, then block a dead session", { timeout: 180_000 }, async () => {
   mkdirSync(ARTIFACTS, { recursive: true });
   for (const stale of ["login-picker.png", "login-signed-in.png", "login-signed-out-bot.png", "login-keychain-missed.png"]) {
@@ -90,11 +95,9 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (!act.includes("You need to act")) throw new Error("import act bar was missing");
     if (!act.includes("Grace Hopper")) throw new Error("act bar did not name the selected profile");
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-picker-light.png"), fullPage: true });
-    await ui.click("#theme-toggle");
-    await ui.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await setTheme(ui, "dark");
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-picker-dark.png"), fullPage: true });
-    await ui.click("#theme-toggle");
-    await ui.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await setTheme(ui, "light");
     await ui.click("#import-decline");
     await ui.waitForFunction(() => !document.querySelector("#act-bar"));
     await ui.click("#show-profiles");
@@ -115,11 +118,9 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (!/UTC|GMT|EDT|EST|PDT|PST/.test(savedText)) throw new Error("probe time has no zone label");
     if (process.env.TZ === "America/New_York" && !/EDT|EST/.test(savedText)) throw new Error("probe time ignored America/New_York");
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-saved-light.png"), fullPage: true });
-    await ui.click("#theme-toggle");
-    await ui.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await setTheme(ui, "dark");
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-saved-dark.png"), fullPage: true });
-    await ui.click("#theme-toggle");
-    await ui.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await setTheme(ui, "light");
     const recheck = ui.waitForResponse((res) => res.url().includes("/api/login-sites/recheck") && res.ok());
     await ui.click("[data-recheck]");
     await recheck;
@@ -178,8 +179,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     if (existsSync(path.join(keyHome, "chrome-profile"))) throw new Error("a missed keychain prompt launched Chrome");
     if (await keyUi.locator("#act-bar").count() !== 0) throw new Error("act bar stayed after the keychain result");
     await keyUi.screenshot({ path: path.join(ARTIFACTS, "login-keychain-missed-light.png"), fullPage: true });
-    await keyUi.click("#theme-toggle");
-    await keyUi.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await setTheme(keyUi, "dark");
     await keyUi.screenshot({ path: path.join(ARTIFACTS, "login-keychain-missed-dark.png"), fullPage: true });
   } finally {
     await keyBrowser.close().catch(() => undefined);
