@@ -380,8 +380,8 @@ export async function pull(principal: Principal, id: string, version?: number) {
 
 export async function listVersions(principal: Principal, id: string) {
   await readable(principal, id);
-  return query<{ version: number; created_at: string; heal: unknown; parent_version: number | null; device_id: string | null; kind: string; device_name: string | null }>(
-    `SELECT v.version, v.created_at, v.heal, v.parent_version, v.device_id, COALESCE(v.kind, 'version') AS kind, d.name AS device_name
+  return query<{ version: number; created_at: string; document: unknown; heal: unknown; parent_version: number | null; device_id: string | null; kind: string; device_name: string | null }>(
+    `SELECT v.version, v.created_at, v.document, v.heal, v.parent_version, v.device_id, COALESCE(v.kind, 'version') AS kind, d.name AS device_name
      FROM workflow_versions v
      LEFT JOIN devices d ON d.id = v.device_id
      WHERE v.workflow_id = $1
