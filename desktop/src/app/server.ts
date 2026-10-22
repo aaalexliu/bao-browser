@@ -89,7 +89,7 @@ import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
-import { keepMine, openConflict, pairDevice, publishWorkflow, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
+import { keepMine, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
@@ -592,7 +592,8 @@ export async function startApp(opts: {
         const body = await readBody(req) as { id?: string; action?: string };
         if (!body.id) return json(res, { error: "id" }, 400);
         if (body.action === "open") return json(res, openConflict(library, body.id));
-        if (body.action === "keep") return json(res, await keepMine(library, body.id));
+        if (body.action === "keep" || body.action === "keep-mine") return json(res, await keepMine(library, body.id));
+        if (body.action === "keep-theirs" || body.action === "keep-both") return json(res, await resolveConflict(library, body.id, body.action));
         return json(res, { error: "action" }, 400);
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {

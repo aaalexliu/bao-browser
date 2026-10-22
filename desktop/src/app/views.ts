@@ -1191,6 +1191,12 @@ export interface VersionRow {
     score?: number;
     changed: string[];
   }[];
+  conflict?: {
+    mineDevice: string;
+    theirsDevice: string;
+    remoteVersion: number;
+    sides: { id: string; leftLabel: string; leftDetail: string; rightLabel: string; rightDetail: string; changed: boolean }[];
+  };
 }
 
 function versionChange(version: VersionRow): string {
@@ -1228,13 +1234,42 @@ function locatorHeld(version: VersionRow): string {
   </table>`;
 }
 
+function conflictView(version: VersionRow): string {
+  const conflict = version.conflict;
+  if (!conflict) return "";
+  const column = (device: string, pick: "left" | "right") => `<div data-testid="conflict-column" data-device="${esc(device)}">
+    <h4>${esc(device)}</h4>
+    <ol>${conflict.sides.map((side) => {
+      const label = pick === "left" ? side.leftLabel : side.rightLabel;
+      const detail = pick === "left" ? side.leftDetail : side.rightDetail;
+      return `<li data-changed="${side.changed ? "true" : "false"}"><strong>${esc(label)}</strong><span>${esc(detail)}</span></li>`;
+    }).join("")}</ol>
+  </div>`;
+  return `<p class="conflict-banner" data-testid="conflict-banner">Changed on ${esc(conflict.theirsDevice)} and ${esc(conflict.mineDevice)}</p>
+    <div class="conflict-diff" data-testid="conflict-diff">
+      ${column(conflict.theirsDevice, "left")}
+      ${column(conflict.mineDevice, "right")}
+    </div>
+    <div class="row">
+      <button type="button" class="primary" data-resolve="keep-mine" data-testid="keep-mine">Keep mine</button>
+      <button type="button" data-resolve="keep-theirs" data-testid="keep-theirs">Keep theirs</button>
+      <button type="button" data-resolve="keep-both" data-testid="keep-both">Keep both as a copy</button>
+    </div>`;
+}
+
 export function versionsPanel(versions: VersionRow[]): string {
   const rows = versions.map((version) => {
     const role = version.role === "live" ? "Live" : version.role === "draft" ? "Draft" : "Past";
-    const source = version.source === "heal" ? "Heal" : version.source === "edit" ? "Edit" : version.source === "restore" ? "Restore" : "Saved";
-    const promote = version.role === "draft"
+    const source = version.source === "heal" ? "Heal" : version.source === "edit" ? "Edit" : version.source === "restore" ? "Restore" : version.source === "conflict" ? "Conflict" : "Saved";
+    const promote = version.role === "draft" && !version.conflict
       ? `<button type="button" class="primary" data-promote-version="${esc(version.n)}">Promote</button>`
       : "";
+    const actions = version.conflict
+      ? ""
+      : `<div class="row">
+        <button type="button" data-restore-version="${esc(version.n)}">Restore as draft</button>
+        ${promote}
+      </div>`;
     return `<li data-testid="version" data-version="${esc(version.n)}" data-role="${esc(version.role)}">
       <div class="row">
         <strong>v${esc(version.n)}</strong>
@@ -1243,11 +1278,8 @@ export function versionsPanel(versions: VersionRow[]): string {
         <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
       </div>
       ${locatorHeld(version)}
-      ${versionChange(version)}
-      <div class="row">
-        <button type="button" data-restore-version="${esc(version.n)}">Restore as draft</button>
-        ${promote}
-      </div>
+      ${version.conflict ? conflictView(version) : versionChange(version)}
+      ${actions}
     </li>`;
   }).join("");
   return `<section class="card" id="versions" data-testid="versions">
