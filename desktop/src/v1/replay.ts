@@ -864,7 +864,7 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
 }
 
 export function holdsExpect(expect: NonNullable<WorkflowStep["expect"]>, tree: LiveTree, args: ReplayArgs): boolean {
-  if (expect.kind === "url") return (tree.url || "").includes(expectedText(expect.match || "", args));
+  if (expect.kind === "url") return urlIncludes(tree.url || "", expectedText(expect.match || "", args));
   if (expect.kind === "text") {
     const want = expectedText(expect.match || "", args);
     return tree.texts.some((text) => text.includes(want));
@@ -892,7 +892,7 @@ export function holds(post: NonNullable<WorkflowStep["postcondition"]>, tree: Li
     return !lookup(post.identity, tree.nodes).ok;
   }
   const expected = expectedText(post.match || "", args);
-  if (post.kind === "url") return (tree.url || "").includes(expected);
+  if (post.kind === "url") return urlIncludes(tree.url || "", expected);
   if (post.kind === "text") return tree.texts.some((text) => text.includes(expected));
   if (post.kind === "value") {
     if (tree.values.some((item) => item.value === expected || item.value.includes(expected))) return true;
@@ -965,7 +965,7 @@ async function holdCheck(check: StepCheck, args: ReplayArgs, driver: Driver, pre
 
 function checkHolds(check: StepCheck, tree: LiveTree, args: ReplayArgs): boolean {
   const want = expectedText(check.match || "", args);
-  if (check.kind === "url") return (tree.url || "").includes(want);
+  if (check.kind === "url") return urlIncludes(tree.url || "", want);
   if (check.kind === "text") return !!want && tree.texts.some((text) => text.includes(want));
   if (check.kind === "value") {
     if (tree.values.some((item) => item.value === want || item.value.includes(want))) return true;
@@ -973,6 +973,16 @@ function checkHolds(check: StepCheck, tree: LiveTree, args: ReplayArgs): boolean
   }
   if (!check.identity) return false;
   return lookup(check.identity, tree.nodes).ok;
+}
+
+function urlIncludes(url: string, expected: string): boolean {
+  if (!expected) return false;
+  let decoded = url;
+  try { decoded = decodeURIComponent(url); } catch { /* keep the raw url */ }
+  if (decoded.includes(expected)) return true;
+  const parts = expected.split(/\s+/).filter(Boolean).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (!parts.length) return false;
+  return new RegExp(parts.join("(?:\\s|\\+|_|%20)"), "i").test(decoded);
 }
 
 function checkReason(check: StepCheck): string {

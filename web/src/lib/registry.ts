@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import Ajv from "ajv/dist/2020";
 import { getPng, putPng } from "./blobstore";
-import { redactedPng } from "./png";
+import { isPlaceholderSwatch } from "./png";
 import { query } from "./db";
 import { assertSyncSafe, type SyncShot } from "./guard";
 import { categoryFor, domainsOf, redactForRelease, releaseHash, summaryOf } from "./publish";
@@ -47,13 +47,7 @@ export async function ensureSeed(): Promise<void> {
     if (existing.length) continue;
     const errors = workflowErrors(seed.document);
     if (errors.length) throw new Error(`seed ${seed.id}: ${errors.join("; ")}`);
-    const steps = (seed.document.steps as { id: string }[]) || [];
-    const shots = steps.map((step, index) => ({
-      stepId: step.id,
-      png: redactedPng(index + 1).toString("base64"),
-      redacted: true as const,
-    }));
-    await insertOwned(user.id, seed.document, 0, null, shots, user.name, seed.category);
+    await insertOwned(user.id, seed.document, 0, null, [], user.name, seed.category);
   }
   seeded = true;
 }
@@ -115,6 +109,7 @@ export async function principalFrom(authorization: string | null, session: strin
     );
     const row = rows[0];
     if (!row) return null;
+    await query(`UPDATE devices SET last_seen_at = now() WHERE id = $1`, [row.id]);
     return { userId: row.user_id, deviceId: row.id };
   }
   const user = await userFromSession(session);
@@ -152,15 +147,15 @@ export async function claimPairCode(code: string, name: string): Promise<{ devic
   const deviceToken = randomBytes(32).toString("hex");
   const deviceName = name.trim() || "device";
   await query(
-    `INSERT INTO devices (id, user_id, name, token_hash) VALUES ($1, $2, $3, $4)`,
+    `INSERT INTO devices (id, user_id, name, token_hash, last_seen_at) VALUES ($1, $2, $3, $4, now())`,
     [deviceId, userId, deviceName, hash(deviceToken)],
   );
   return { deviceToken, deviceId, name: deviceName };
 }
 
 export async function listDevices(userId: string) {
-  return query<{ id: string; name: string; created_at: string }>(
-    `SELECT id, name, created_at FROM devices WHERE user_id = $1 ORDER BY created_at`,
+  return query<{ id: string; name: string; created_at: string; last_seen_at: string | null }>(
+    `SELECT id, name, created_at, last_seen_at FROM devices WHERE user_id = $1 ORDER BY created_at`,
     [userId],
   );
 }
@@ -405,9 +400,11 @@ export async function previewPublication(principal: Principal, id: string) {
   };
 }
 
-export async function recordReview(principal: Principal, id: string, documentHash: string) {
+export async function recordReview(principal: Principal, id: string, documentHash: string, shots: ShotIn[] = []) {
   const preview = await previewPublication(principal, id);
   if (preview.documentHash !== documentHash) throw new HttpError("replay the public preview, then review that hash", 409);
+  const real = shots.filter((shot) => shot.redacted === true && shot.stepId && shot.png && !isPlaceholderSwatch(Buffer.from(shot.png, "base64")));
+  if (real.length) await writeShots(id, preview.version, real);
   await query(
     `INSERT INTO reviews (workflow_id, document_hash) VALUES ($1, $2)
      ON CONFLICT (workflow_id, document_hash) DO UPDATE SET at = now()`,
@@ -455,12 +452,7 @@ export async function confirmPublish(principal: Principal, id: string) {
     ],
   );
   if (!bumped[0]) throw new HttpError("conflict", 409);
-  const steps = ((preview.document as { steps?: { id?: string }[] }).steps ?? []);
-  await writeShots(id, bumped[0].version, steps.map((step, index) => ({
-    stepId: String(step.id ?? index),
-    png: redactedPng(index + 1).toString("base64"),
-    redacted: true,
-  })));
+  await copyRealShots(id, preview.version, bumped[0].version);
   return { version: bumped[0].version, visibility: "public" };
 }
 
@@ -654,11 +646,44 @@ async function writeShots(workflowId: string, version: number, shots: ShotIn[]) 
 }
 
 async function shotUrls(workflowId: string, version: number) {
-  const shots = await query<{ step_id: string; blob_key: string }>(
-    `SELECT step_id, blob_key FROM workflow_shots WHERE workflow_id = $1 AND version = $2`,
+  const shots = await listShotRows(workflowId, version);
+  return shots.map((shot) => ({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` }));
+}
+
+async function listShotRows(workflowId: string, version: number) {
+  return query<{ step_id: string; blob_key: string }>(
+    `SELECT step_id, blob_key FROM workflow_shots WHERE workflow_id = $1 AND version = $2 ORDER BY step_id`,
     [workflowId, version],
   );
-  return shots.map((shot) => ({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` }));
+}
+
+async function copyRealShots(workflowId: string, fromVersion: number, toVersion: number) {
+  for (const row of await listShotRows(workflowId, fromVersion)) {
+    const bytes = await getPng(row.blob_key);
+    if (!bytes || isPlaceholderSwatch(bytes)) continue;
+    await writeShots(workflowId, toVersion, [{ stepId: row.step_id, png: bytes.toString("base64"), redacted: true }]);
+  }
+}
+
+async function pickThumbnail(document: unknown, workflowId: string, version: number): Promise<string> {
+  const rows = await listShotRows(workflowId, version);
+  const byId = new Map(rows.map((row) => [row.step_id, row.blob_key]));
+  const doc = document && typeof document === "object" ? document as {
+    inputs?: { name?: string; type?: string }[];
+    steps?: { id?: string; sensitive?: boolean; input?: string }[];
+  } : {};
+  const secrets = new Set((doc.inputs ?? []).filter((input) => input.type === "secret" && input.name).map((input) => String(input.name)));
+  const steps = (doc.steps && doc.steps.length ? doc.steps : [...byId.keys()].map((id) => ({ id }))) as { id?: string; sensitive?: boolean; input?: string }[];
+  for (const step of steps) {
+    if (step.sensitive) continue;
+    if (step.input && secrets.has(step.input)) continue;
+    const key = byId.get(String(step.id ?? ""));
+    if (!key) continue;
+    const bytes = await getPng(key);
+    if (!bytes || isPlaceholderSwatch(bytes)) continue;
+    return `/api/blobs/${key}`;
+  }
+  return "";
 }
 
 interface WorkflowRow extends RankInput {
@@ -690,6 +715,7 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
   lastGreenAt: string | null;
   link: string;
   domains: string[];
+  thumbnail: string;
 }> {
   const ver = source === "public" && row.published_version ? row.published_version : row.head_version;
   const versions = await query<{ document: unknown }>(
@@ -714,6 +740,7 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
     lastGreenAt: row.last_green_at,
     link: `bao://workflow/${row.id}`,
     domains: domainsOf(document),
+    thumbnail: await pickThumbnail(parsed, row.id, ver),
   };
 }
 

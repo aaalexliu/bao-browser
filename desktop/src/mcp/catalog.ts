@@ -2,7 +2,7 @@
 // and does not add a tool per workflow.
 
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import { BrowserDriver } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { expectedText, replay, type RunResult } from "../v1/replay";
 import { migrate, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { shotFile } from "../v1/shots";
 import { Library } from "../v1/store";
 import { loadState, type SyncState } from "../v1/sync";
 import { categoryFor, domainsOf, redactForRelease, releaseHash, summaryOf } from "../../../web/src/lib/publish";
@@ -162,7 +163,7 @@ export async function reviewWorkflow(
     state,
     "POST",
     `/api/workflows/${encodeURIComponent(id)}/review`,
-    { documentHash },
+    { documentHash, shots: outcome.runId ? redactedStepShots(library, replayDoc, outcome.runId) : [] },
     opts,
   );
   if (!recorded?.ok) return { ...outcome, reviewed: false, documentHash, reason: "review was not recorded" };
@@ -177,6 +178,23 @@ export async function reviewWorkflow(
   return { ...outcome, reviewed: true, documentHash };
 }
 
+function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string; redacted: true }[] {
+  const dir = path.join(library.root, "shots", "runs", runId);
+  const secrets = new Set((workflow.inputs || []).filter((input) => input.type === "secret").map((input) => input.name));
+  const shots: { stepId: string; png: string; redacted: true }[] = [];
+  for (const step of workflow.steps) {
+    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
+    const after = path.join(dir, shotFile(step.id, "after"));
+    const before = path.join(dir, shotFile(step.id, "before"));
+    const file = existsSync(after) ? after : before;
+    if (!existsSync(file)) continue;
+    const png = readFileSync(file);
+    if (png.length < 32 || png[0] !== 0x89 || png[1] !== 0x50) continue;
+    shots.push({ stepId: step.id, png: png.toString("base64"), redacted: true });
+  }
+  return shots;
+}
+
 export function getRun(library: Library, runId: string): WorkflowOutcome {
   const file = reportPath(library, runId);
   if (!existsSync(file)) throw new Error("run not found");
@@ -185,12 +203,19 @@ export function getRun(library: Library, runId: string): WorkflowOutcome {
 
 async function replayInBrowser(library: Library, workflow: WorkflowV2, args: ReplayArgs): Promise<RunResult> {
   const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
+  const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
+  const shotDir = path.join(library.root, "shots", "runs", runId);
+  const record = process.env.BAO_RUN_VIDEO === "1";
+  const videoDir = record ? path.join(library.root, "videos", "incoming") : undefined;
+  if (videoDir) mkdirSync(videoDir, { recursive: true });
   const context = await launchOwnedChrome({
     userDataDir: profile,
     headless: process.env.BAO_HEADED !== "1",
+    videoDir,
   });
+  const page = context.pages()[0] || await context.newPage();
+  const video = record ? page.video() : null;
   try {
-    const page = context.pages()[0] || await context.newPage();
     page.setDefaultNavigationTimeout(20000);
     page.setDefaultTimeout(15000);
     if (workflow.startUrl.startsWith("http")) {
@@ -198,13 +223,22 @@ async function replayInBrowser(library: Library, workflow: WorkflowV2, args: Rep
     }
     const driver = new BrowserDriver(page);
     return await replay(workflow, args, driver, {
-      runId: `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`,
+      runId,
+      shotDir,
       settings: library.settings(),
       heal: healProvider(),
       now: () => Date.now(),
     });
   } finally {
     await context.close().catch(() => undefined);
+    if (video) {
+      const src = await video.path().catch(() => "");
+      if (src && existsSync(src)) {
+        const dest = path.join(library.root, "videos", `${runId}.webm`);
+        mkdirSync(path.dirname(dest), { recursive: true });
+        copyFileSync(src, dest);
+      }
+    }
     await rm(profile, { recursive: true, force: true }).catch(() => undefined);
   }
 }

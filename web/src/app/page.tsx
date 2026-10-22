@@ -1,5 +1,6 @@
 import { listLibrary } from "@/lib/registry";
-import { principal, rate, when } from "@/lib/viewer";
+import { principal, when } from "@/lib/viewer";
+import { GalleryCard } from "./ui";
 
 export const dynamic = "force-dynamic";
 
@@ -32,18 +33,20 @@ export default async function LibraryPage({
       {query.share ? (
         <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission || "view"}). Personal values were cleared.</p>
       ) : null}
-      <div className="grid">
+      <div className="grid" data-testid="library">
         {workflows.map((workflow) => (
-          <a className="card" key={workflow.id} href={`/workflows/${workflow.id}`}>
-            <h2>{workflow.title}</h2>
-            <p className="muted">{workflow.summary || "No steps yet"}</p>
-            <div className="chips">
-              <span className="chip">{workflow.category}</span>
-              {workflow.site ? <span className="chip">{workflow.site}</span> : null}
-            </div>
-            <p className="muted">{rate(workflow.passRate)} · last green {when(workflow.lastGreenAt)}</p>
-            <p className="mono">bao://workflow/{workflow.id}</p>
-          </a>
+          <GalleryCard
+            key={workflow.id}
+            href={`/workflows/${workflow.id}`}
+            id={workflow.id}
+            title={workflow.title}
+            summary={workflow.summary || "No steps yet"}
+            thumbnail={workflow.thumbnail}
+            runs={workflow.passRate.total}
+            lastGreen={when(workflow.lastGreenAt)}
+            domains={workflow.domains}
+            verified={workflow.verified}
+          />
         ))}
       </div>
       {workflows.length ? null : <p>Nothing in the library yet. Pair a Mac and run <span className="mono">bao sync</span>.</p>}

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { viewer } from "@/lib/viewer";
+import { ThemeToggle } from "./ui";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <script dangerouslySetInnerHTML={{ __html: "try{if(localStorage.getItem('bao-theme')==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}" }} />
         <header>
           <strong>Bao</strong>
           <nav>
@@ -27,6 +29,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <a href="/pair">Devices</a>
           </nav>
           <div className="who">
+            <ThemeToggle />
             {name ? (
               <form action="/api/auth/logout" method="post">
                 <button type="submit">Sign out {name}</button>

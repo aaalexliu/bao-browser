@@ -50,7 +50,8 @@ let state: ShellState & {
     paired?: boolean;
     lastResult?: string;
     backupPath?: string;
-    devices?: { name: string }[];
+    lastSyncedAt?: string;
+    devices?: { name: string; last_seen_at?: string | null }[];
     categories?: { category: string; count: number }[];
     localCategories?: { category: string; count: number }[];
     conflicts?: { id: string; remoteVersion: number; file: string }[];
@@ -59,6 +60,7 @@ let state: ShellState & {
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
 } = {};
+let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
 let screen: Screen = "library";
 let lastWf = "";
 let argsWorkflow = "";
@@ -236,6 +238,7 @@ function replayForm(): string {
       <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
     </select></label>
     <form id="args"></form>
+    <p class="mono">bao://workflow/${esc(selected)}</p>
     <div class="row">
       <button class="primary" id="run" type="button">Run</button>
       <button id="rerun" type="button">Re-run with past inputs</button>
@@ -259,7 +262,7 @@ function settings(): string {
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
     <button id="save-settings" class="primary" type="button">Save</button>
-    ${syncPanel(state.sync)}
+    ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
@@ -345,6 +348,18 @@ function bind(): void {
   if (syncPush) syncPush.onclick = () => void postSync("/api/sync", { mode: "push" });
   const syncPull = document.getElementById("sync-pull");
   if (syncPull) syncPull.onclick = () => void postSync("/api/sync", { mode: "pull" });
+  document.querySelectorAll("[data-open-conflict]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => void postSync("/api/sync/conflict", {
+      id: (btn as HTMLButtonElement).dataset.openConflict,
+      action: "open",
+    });
+  });
+  document.querySelectorAll("[data-keep-mine]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => void postSync("/api/sync/conflict", {
+      id: (btn as HTMLButtonElement).dataset.keepMine,
+      action: "keep",
+    });
+  });
   bindAsk();
   bindHeal();
   const save = document.getElementById("save-settings");
@@ -977,9 +992,13 @@ async function postSync(url: string, body: unknown): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+  const payload = await res.json().catch(() => ({})) as { error?: string; id?: string; name?: string; steps?: string[] };
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: string };
-    banner = { id: "sync", title: "Sync", body: err.error || "Sync failed" };
+    banner = { id: "sync", title: "Sync", body: payload.error || "Sync failed" };
+  } else if (Array.isArray(payload.steps) && payload.id) {
+    conflictCopy = { id: payload.id, name: payload.name || payload.id, steps: payload.steps };
+  } else if (url.endsWith("/conflict")) {
+    conflictCopy = null;
   }
   renderKey = "";
   await refresh();

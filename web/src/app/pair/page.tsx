@@ -1,5 +1,6 @@
 import { activePairCode, categoryCounts, listDevices } from "@/lib/registry";
 import { principal } from "@/lib/viewer";
+import { LocalTime } from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export default async function PairPage() {
       <h2>Devices</h2>
       <ul data-testid="devices">
         {devices.map((device) => (
-          <li key={device.id}>{device.name} <span className="muted">{String(device.created_at)}</span></li>
+          <li className="device" key={device.id}>{device.name} <LocalTime iso={device.last_seen_at} /></li>
         ))}
       </ul>
       {devices.length ? null : <p>No devices paired yet.</p>}
