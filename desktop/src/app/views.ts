@@ -1392,7 +1392,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): stri
     const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
     const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
     const when = typeof run.at === "number" ? formatWhen(run.at) : "";
-    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td></tr>`;
+    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}" aria-label="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td></tr>`;
   }).join("");
   return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>When</th><th>Run</th></tr></thead><tbody>${rows}</tbody></table></section>`;
 }

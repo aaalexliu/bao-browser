@@ -767,7 +767,7 @@ async function showRun(id: string): Promise<void> {
       const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";
       const step = (run.steps || []).find((item) => item.id === stepId);
       selectedStep = stepId;
-      pendingSeek = step?.startedAt;
+      pendingSeek = stepMoment(step);
       void showRun(id);
     };
   });
@@ -806,7 +806,7 @@ async function showRun(id: string): Promise<void> {
     const step = (run.steps || [])[index];
     if (!step) return;
     selectedStep = step.id;
-    pendingSeek = step.startedAt;
+    pendingSeek = stepMoment(step);
     void showRun(id);
   };
   host.querySelectorAll("[data-marker]").forEach((btn) => {
@@ -814,7 +814,7 @@ async function showRun(id: string): Promise<void> {
       const stepId = (btn as HTMLButtonElement).dataset.marker || "";
       const step = (run.steps || []).find((item) => item.id === stepId);
       selectedStep = stepId;
-      pendingSeek = step?.startedAt ?? Number((btn as HTMLButtonElement).dataset.at || 0);
+      pendingSeek = stepMoment(step) ?? Number((btn as HTMLButtonElement).dataset.at || 0);
       void showRun(id);
     };
   });
@@ -1711,6 +1711,12 @@ function runCommand(item?: CommandItem): void {
   render();
 }
 
+function stepMoment(step: { startedAt?: number; endedAt?: number } | undefined): number | undefined {
+  if (!step) return undefined;
+  if (typeof step.endedAt === "number") return step.endedAt;
+  return step.startedAt;
+}
+
 function seekVideo(at: number | undefined): void {
   const video = document.getElementById("run-video") as HTMLVideoElement | null;
   const origin = Number((document.getElementById("video-bar") as HTMLElement | null)?.dataset.origin || 0);
@@ -1722,6 +1728,7 @@ function seekVideo(at: number | undefined): void {
     if (!(end > 0)) return false;
     const clamped = Math.min(target, Math.max(0, end - 0.001));
     if (Math.abs(video.currentTime - clamped) > 0.05) video.currentTime = clamped;
+    video.pause();
     return true;
   };
   if (apply()) return;

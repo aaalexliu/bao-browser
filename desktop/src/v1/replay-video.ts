@@ -3,7 +3,7 @@
 // A false preflight returns without calling SCShareableContent.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -68,6 +68,14 @@ async function startReplayVideo(pids: number[], dest: string): Promise<ReplayVid
   }
   return {
     async stop() {
+      // Replay has returned, so the page is already on the result. Wait
+      // until a frame is written after that, then stop. The last frame is
+      // the welcome and the dropped file, not the fixture's first paint.
+      const after = Date.now();
+      const settleBy = after + 5000;
+      while (Date.now() < settleBy && newestFrameMtime(dir) < after + 700) {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
       writeFileSync(path.join(dir, "stop"), "1");
       const status = await waitStatus(dir);
       const frames = Number(status?.frames || 0);
@@ -130,9 +138,24 @@ async function encodeWebm(dir: string, frames: number, dest: string): Promise<bo
   ], { encoding: "utf8" });
   const wrote = result.status === 0 && existsSync(dest) && statSync(dest).size > 1000;
   if (wrote) {
-    spawnSync(bin, ["-y", "-ss", "0.2", "-i", dest, "-frames:v", "1", "-update", "1", dest.replace(/\.webm$/, ".png")], { encoding: "utf8" });
+    const last = path.join(dir, `frame-${String(frames).padStart(4, "0")}.png`);
+    if (existsSync(last)) copyFileSync(last, dest.replace(/\.webm$/, ".png"));
   }
   return wrote;
+}
+
+function newestFrameMtime(dir: string): number {
+  let latest = 0;
+  let names: string[] = [];
+  try { names = readdirSync(dir); } catch { return 0; }
+  for (const name of names) {
+    if (!/^frame-\d+\.png$/.test(name)) continue;
+    try {
+      const mtime = statSync(path.join(dir, name)).mtimeMs;
+      if (mtime > latest) latest = mtime;
+    } catch { /* raced with the recorder */ }
+  }
+  return latest;
 }
 
 function runOnce(app: string, args: string[]): Promise<{ ok?: boolean; screenCapture?: boolean }> {

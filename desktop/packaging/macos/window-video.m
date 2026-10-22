@@ -263,17 +263,24 @@ int main(int argc, char **argv) {
             NSNumber *pid = @0;
             NSNumber *width = @0;
             NSNumber *height = @0;
+            // Resolve the window once. Listing shareable content on every
+            // frame was slower than the replay, so the clip ended on the
+            // fixture's first paint. A failed capture resolves it again.
+            SCWindow *window = nil;
             while (![[NSFileManager defaultManager] fileExistsAtPath:stop] && deadline.timeIntervalSinceNow > 0 && frames < 2000) {
                 NSDate *tick = [NSDate date];
-                NSError *error = nil;
-                SCShareableContent *content = waitShareable(&error);
-                SCWindow *window = content ? windowForPids(content, pids) : nil;
+                if (!window) {
+                    NSError *error = nil;
+                    SCShareableContent *content = waitShareable(&error);
+                    window = content ? windowForPids(content, pids) : nil;
+                }
                 if (window) {
                     frames += 1;
                     NSString *frame = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"frame-%04ld.png", (long)frames]];
                     NSDictionary *shot = captureWindow(window, frame);
                     if (![shot[@"ok"] boolValue]) {
                         frames -= 1;
+                        window = nil;
                     } else {
                         windowId = shot[@"windowId"];
                         pid = shot[@"pid"];
