@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, importErrorCard, libraryTable, onboarding, passGrid, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
@@ -248,6 +248,12 @@ test("library cards show a sparkline, inputs, and search", () => {
   ]);
   assert.match(html, /data-screen="replay"/);
   assert.match(html, /class="spark"/);
+  assert.equal((html.match(/class="swatch /g) || []).length, 7);
+  assert.match(html, /class="legend"/);
+  assert.equal(html.includes("<img"), false);
+  assert.equal(imageRef("run-1", "not-a-png"), "");
+  assert.equal(imageRef("run-1", "AAAASECRETBYTES"), "");
+  assert.match(imageRef("run-1", "step-after.png"), /\/api\/runs\/run-1\/shots\/step-after\.png/);
   assert.match(html, /\{\{note\}\}/);
   assert.match(html, /secret/);
   assert.match(html, />file</);
@@ -278,6 +284,11 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.match(html, /badge expect">verify/);
   assert.match(html, /data-screen="replay"/);
   assert.match(html, /you press Apply/);
+  assert.match(html, /class="crumb"/);
+  assert.match(html, /data-screen="library"/);
+  assert.equal(html.includes("id=\"library\""), false);
+  assert.equal(html.includes("<img"), false);
+  assert.match(html, /class="ph"/);
 });
 
 test("a failed run says the phase, the change, what bao tried, and shows the grid", () => {
@@ -306,6 +317,9 @@ test("a failed run says the phase, the change, what bao tried, and shows the gri
   assert.match(html, /What changed: name/);
   assert.match(html, /Bao tried label/);
   assert.match(html, /id="scrubber"/);
+  assert.equal((html.match(/class="frame /g) || []).length, 1);
+  assert.equal(html.includes("<img"), false);
+  assert.match(html, /class="legend"/);
   assert.match(html, /id="pass-grid"/);
   assert.match(html, /class="cell failed"/);
   assert.match(html, /class="cell healed"/);

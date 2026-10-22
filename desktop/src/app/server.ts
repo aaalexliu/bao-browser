@@ -2,7 +2,7 @@
 // Nothing is recorded unless a session was started.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -45,7 +45,8 @@ import {
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorHeal, cursorSessionHeal, effectiveMode, keepPatch, llmHealFromEnv, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
-import { interpret, type TrailEvent } from "../v1/interpret";
+import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
+import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { ReceiptLog } from "../v1/receipt";
 import { replay, type HealNotice, type ReplayOptions } from "../v1/replay";
@@ -77,6 +78,7 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
   let page: Page | undefined;
   let profile: string | undefined;
   const events: TrailEvent[] = [];
+  const captureShots = new Map<string, string>();
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
   let importing = false;
@@ -304,8 +306,24 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         }
         return json(res, { helper: bundledHelperApp() || null, helperReport, product, capture, replay });
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.includes("/shots/")) {
+        const parts = url.pathname.split("/");
+        const id = decodeURIComponent(parts[3] || "");
+        const file = path.basename(decodeURIComponent(parts[5] || ""));
+        return sendPng(res, path.join(library.root, "shots", "workflows", id, file));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/poster")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const file = newestPng(path.join(library.root, "shots", "workflows", id));
+        if (!file) return json(res, { error: "no picture" }, 404);
+        return sendPng(res, file);
+      }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/capture/shots/")) {
+        const file = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
+        return sendPng(res, path.join(library.root, "shots", "capture", file));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/video")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -315,6 +333,18 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         res.writeHead(200, { "content-type": "video/webm" });
         res.end(readFileSync(file));
         return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.includes("/shots/")) {
+        const parts = url.pathname.split("/");
+        const id = decodeURIComponent(parts[3] || "");
+        const file = path.basename(decodeURIComponent(parts[5] || ""));
+        return sendPng(res, path.join(library.root, "shots", "runs", id, file));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/poster")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const file = newestPng(path.join(library.root, "shots", "runs", id));
+        if (!file) return json(res, { error: "no picture" }, 404);
+        return sendPng(res, file);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/")) {
         return json(res, library.readRun(decodeURIComponent(url.pathname.split("/")[3] || "")));
@@ -344,9 +374,19 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
         profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
         context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
         capturePaused = false;
+        captureShots.clear();
         await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
           if (!recording || capturePaused) return;
-          events.push({ ...payload, id: `evt-${events.length}`, ts: Date.now() });
+          const id = `evt-${events.length}`;
+          events.push({ ...payload, id, ts: Date.now() });
+          if (!page || page.isClosed()) return;
+          const dir = path.join(opts.home, "shots", "capture");
+          mkdirSync(dir, { recursive: true });
+          const dest = path.join(dir, `${id}.png`);
+          try {
+            await page.screenshot({ path: dest, type: "png" });
+            captureShots.set(id, dest);
+          } catch { /* headed Chromium can refuse captureScreenshot */ }
         });
         await context.addInitScript(recorderSource());
         page = context.pages()[0] || await context.newPage();
@@ -394,6 +434,15 @@ export async function startApp(opts: { home: string; port?: number }): Promise<A
           return copy;
         });
         const workflow = interpret(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
+        const kept = retainedEvents(clean);
+        const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
+        mkdirSync(shotDest, { recursive: true });
+        for (let i = 0; i < workflow.steps.length; i++) {
+          const event = kept[i];
+          const step = workflow.steps[i];
+          const src = event ? captureShots.get(event.id) : undefined;
+          if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+        }
         library.save(workflow);
         library.saveTrail(id, ensureTrailTimes(clean).events);
         capturePaused = false;
@@ -701,12 +750,17 @@ async function runWorkflow(
   }, prompts);
   const heal = healProvider();
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
+  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const shotDir = path.join(library.root, "shots", "runs", runId);
   const result = await replay(workflow, args, driver, {
+    runId,
+    shotDir,
     settings: library.settings(),
     heal,
     now: () => Date.now(),
     receipts: receiptLog,
   } satisfies ReplayOptions);
+  spillBinaryShots(result, shotDir);
   for (const repair of result.repairs) {
     library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
   }
@@ -1054,6 +1108,48 @@ function summary(doc: WorkflowV2) {
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
   };
+}
+
+function sendPng(res: ServerResponse, file: string): void {
+  if (!/^[\w.-]+\.png$/.test(path.basename(file)) || !existsSync(file)) {
+    json(res, { error: "no picture" }, 404);
+    return;
+  }
+  res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
+  res.end(readFileSync(file));
+}
+
+function newestPng(dir: string): string | undefined {
+  if (!existsSync(dir)) return;
+  const ranked = readdirSync(dir)
+    .filter((name) => /^[\w.-]+\.png$/.test(name))
+    .map((name) => ({ name, mtime: statSync(path.join(dir, name)).mtimeMs, after: name.endsWith("-after.png") }))
+    .sort((a, b) => Number(b.after) - Number(a.after) || b.mtime - a.mtime);
+  const pick = ranked[0];
+  return pick ? path.join(dir, pick.name) : undefined;
+}
+
+function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  const write = (name: string, b64?: string): string | undefined => {
+    if (!b64 || !b64.startsWith("iVBORw0KGgo")) return;
+    const buf = Buffer.from(b64, "base64");
+    if (buf.length < 24 || buf[0] !== 0x89) return;
+    const file = path.basename(name);
+    if (!/^[\w.-]+\.png$/.test(file)) return;
+    writeFileSync(path.join(dir, file), buf);
+    return file;
+  };
+  for (const heal of result.heals) {
+    const before = write(shotFile(heal.id, "before"), heal.beforeShot);
+    if (before) heal.beforeShot = before;
+    const after = write(shotFile(heal.id, "after"), heal.snapshot?.screenshot);
+    if (after && heal.snapshot) heal.snapshot = { ...heal.snapshot, screenshot: undefined, screenshotRef: after };
+  }
+  const failed = write("failure.png", result.failure?.snapshot?.screenshot);
+  if (failed && result.failure?.snapshot) {
+    result.failure.snapshot = { ...result.failure.snapshot, screenshot: undefined, screenshotRef: failed };
+  }
 }
 
 function slimRun(run: ReturnType<Library["readRun"]>) {

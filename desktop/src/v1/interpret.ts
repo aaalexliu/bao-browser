@@ -45,6 +45,11 @@ const NOISE = new Set([
 const DIGIT = /^[0-9]$/;
 const OP = new Set(["+", "-", "*", "/", "×", "÷", "="]);
 
+/** Events that become steps, in step order. A merged type keeps the first event id. */
+export function retainedEvents(events: readonly TrailEvent[]): TrailEvent[] {
+  return mergeTyping(events.filter(keep));
+}
+
 export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
   const secrets = secretStrings(events, meta.secrets ?? []);
   const seen: InterpretMeta = { ...meta, secrets };

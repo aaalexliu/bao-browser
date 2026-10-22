@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
+import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import type { IdentityView, StepView } from "./view-types";
 
@@ -58,7 +59,7 @@ export interface FailureView {
   brokenAttr?: string;
   identity?: IdentityView;
   beforeShot?: string;
-  snapshot?: { screenshot?: string };
+  snapshot?: { screenshot?: string; screenshotRef?: string };
 }
 
 export interface HealView {
@@ -73,7 +74,7 @@ export interface HealView {
   proposedPatch?: { identity?: { name?: string; text?: string; testId?: string; id?: string; role?: string }; label?: string };
   failedStep?: { id?: string; label?: string; action?: string; identity?: { name?: string; text?: string; testId?: string; id?: string; role?: string } };
   postconditionPassed?: boolean;
-  snapshot?: { screenshot?: string };
+  snapshot?: { screenshot?: string; screenshotRef?: string };
   beforeShot?: string;
   identity?: IdentityView;
   executed?: { action?: string };
@@ -115,9 +116,41 @@ export function esc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
 }
 
-function png(b64: string | undefined): string {
-  if (!b64 || !/^[A-Za-z0-9+/=]+$/.test(b64)) return "";
-  return `data:image/png;base64,${b64}`;
+/** A URL for a real PNG. Anything else stays blank so the window never paints a broken image. */
+export function imageRef(runId: string, value: string | undefined): string {
+  if (!value) return "";
+  if (value.startsWith("iVBORw0KGgo") && /^[A-Za-z0-9+/=]+$/.test(value)) return `data:image/png;base64,${value}`;
+  if (/^[\w.-]+\.png$/.test(value)) return `/api/runs/${encodeURIComponent(runId)}/shots/${encodeURIComponent(value)}`;
+  return "";
+}
+
+function placeholder(action: string | undefined, label: string): string {
+  return `<div class="ph"><span class="ph-ico">${glyph(action)}</span><span class="ph-label">${esc(label)}</span></div>`;
+}
+
+function glyph(action: string | undefined): string {
+  const paths: Record<string, string> = {
+    type: "M5 5h14v3h-5.5v11h-3V8H5V5z",
+    login: "M12 8a3 3 0 110 6 3 3 0 010-6zm-6 11a6 6 0 0112 0H6z",
+    confirm: "M5 12l5 5L19 7",
+    upload: "M12 4v10m0-10l-3.5 3.5M12 4l3.5 3.5M5 16v3h14v-3",
+    drop: "M12 4v10m0-10l-3.5 3.5M12 4l3.5 3.5M5 16v3h14v-3",
+    verify: "M5 12l4 4L19 7",
+    click: "M7 3l6 14-2.4.7L9 22l-1.5-4.6L3 15.8 7 3z",
+  };
+  const d = paths[action || ""] || paths.click;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="${d || ""}"/></svg>`;
+}
+
+export function statusLegend(): string {
+  const items = [
+    ["passed", "Passed"],
+    ["healed", "Healed"],
+    ["provisional", "Provisional"],
+    ["paused", "Needs you"],
+    ["failed", "Failed"],
+  ];
+  return `<div class="legend">${items.map(([kind, label]) => `<span><i class="swatch ${kind}"></i> ${label}</span>`).join("")}</div>`;
 }
 
 export function maskSecrets(text: string, secrets: string[]): string {
@@ -327,9 +360,9 @@ export function runViewer(
     const dur = duration(step);
     return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em></button>`;
   }).join("");
-  const before = png(selected?.beforeShot || (failure && failure.stepId === selected?.id ? failure.beforeShot : undefined));
-  const after = png(selected?.afterShot || (failure && failure.stepId === selected?.id ? failure.snapshot?.screenshot : undefined));
-  const shot = shotPane(before, after);
+  const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
+  const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
+  const shot = shotPane(before, after, selected?.action, selected?.label || "");
   const table = identityTable(identity);
   const video = videoBar(run, steps);
   const safeHeadline = failed ? esc(headline) : headline;
@@ -344,10 +377,9 @@ export function runViewer(
     repairs: stepRepairs.length ? stepRepairs : (run.repairs || []),
     authRecovered: run.precondition?.recovered,
   }) : "";
-  const film = steps.map((step, index) => {
-    const src = png(step.afterShot || step.beforeShot || (failure && failure.stepId === step.id ? (failure.snapshot?.screenshot || failure.beforeShot) : undefined));
-    const frame = src ? `<img alt="" src="${src}">` : `<span>${esc(step.label || String(index + 1))}</span>`;
-    return `<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}">${frame}</button>`;
+  const film = steps.map((step) => {
+    const src = frameUrl(run.id, step, failure, "after");
+    return `<button type="button" class="frame ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" ${src ? `data-shot="${esc(src)}"` : ""}>${placeholder(step.action, step.label || step.id)}</button>`;
   }).join("");
   const recent = context.recent && context.recent.length ? context.recent : [run];
   return `<section id="run-viewer" data-run="${esc(run.id)}" data-status="${esc(run.status)}">
@@ -366,8 +398,7 @@ export function runViewer(
         ${shot}
         ${stepRepairs.length ? repairLines(stepRepairs) : ""}
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
-        ${table}
-        <p class="quiet">${identity ? `Postcondition ${selected?.status === "passed" ? "reached" : "not reached"}` : ""}</p>
+        ${identity && identity.candidates.length ? `<h3 class="section">Identity</h3>${table}` : ""}
       </div>
     </div>
     ${passGrid(recent, workflow.steps)}
@@ -391,15 +422,24 @@ function duration(step: StepView): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function shotPane(before: string, after: string): string {
-  if (!before && !after) return `<p class="quiet">No screenshot for this step.</p>`;
-  const current = after || before;
+function frameUrl(runId: string, step: StepView, failure: FailureView | undefined, which: "before" | "after"): string {
+  if (which === "before") return imageRef(runId, step.beforeShot);
+  const own = imageRef(runId, step.afterShot);
+  if (own) return own;
+  if (!failure || failure.stepId !== step.id) return "";
+  return imageRef(runId, failure.snapshot?.screenshot)
+    || imageRef(runId, failure.snapshot?.screenshotRef)
+    || imageRef(runId, failure.beforeShot);
+}
+
+function shotPane(before: string, after: string, action?: string, label?: string): string {
+  const which = after ? "after" : "before";
   return `<div class="shots" id="shots">
     <div class="row">
-      <button type="button" data-shot="before" ${before ? "" : "disabled"}>Before</button>
-      <button type="button" data-shot="after" ${after ? "" : "disabled"}>After</button>
+      <button type="button" class="toggle ${which === "before" ? "on" : ""}" data-frame="before" ${before ? "" : "disabled"}>Before</button>
+      <button type="button" class="toggle ${which === "after" ? "on" : ""}" data-frame="after" ${after ? "" : "disabled"}>After</button>
     </div>
-    <img id="step-shot" alt="Step screenshot" src="${current}" data-before="${before}" data-after="${after}">
+    <div class="shot-stage" id="shot-stage" data-before="${esc(before)}" data-after="${esc(after)}" data-which="${which}">${placeholder(action, label || "This step")}</div>
   </div>`;
 }
 
@@ -430,7 +470,7 @@ export function identityTable(identity: IdentityView | undefined): string {
 
 export function videoBar(run: RunSummary, steps: StepView[]): string {
   const timed = steps.filter((step) => typeof step.startedAt === "number");
-  if (timed.length === 0) return `<p class="quiet" id="video-bar">No per-step timestamps on this run.</p>`;
+  if (timed.length === 0) return `<div id="video-bar" hidden></div>`;
   const origin = run.videoStartedAt || timed[0]!.startedAt || 0;
   const end = Math.max(...steps.map((step) => step.endedAt || step.startedAt || origin));
   const span = Math.max(1, end - origin);
@@ -440,11 +480,9 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
     return `<button type="button" class="marker ${esc(step.status)}" data-marker="${esc(step.id)}" data-at="${step.startedAt}" style="left:${at}%">${mark}</button>`;
   }).join("");
   const src = run.video ? `/api/runs/${encodeURIComponent(run.id)}/video` : "";
-  const media = src
-    ? `<video id="run-video" src="${esc(src)}" controls preload="metadata"></video>`
-    : `<p class="quiet">Step timing. No screen recording was saved for this run.</p>`;
+  if (!src) return `<div id="video-bar" hidden data-origin="${origin}">${markers}</div>`;
   return `<div id="video-bar" data-origin="${origin}">
-    ${media}
+    <video id="run-video" src="${esc(src)}" controls preload="metadata"></video>
     <div class="timeline">${markers}</div>
     <div class="row"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button></div>
   </div>`;
@@ -514,17 +552,11 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
 export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = [], extra: { promotion?: PromotionView; workflowName?: string } = {}): string {
   const recorded = heal.failedStep?.identity;
   const proposed = heal.proposedPatch?.identity;
-  const before = png(heal.beforeShot);
-  const after = png(heal.snapshot?.screenshot);
-  const slider = before && after
-    ? `<div class="compare" id="shot-compare">
-        <img alt="Recorded page" src="${before}">
-        <img id="compare-top" alt="Page at failure" src="${after}" style="clip-path: inset(0 50% 0 0)">
-        <input id="shot-slider" type="range" min="0" max="100" value="50" aria-label="Screenshot comparison">
-      </div>`
-    : after
-      ? `<img alt="Page at failure" src="${after}">`
-      : `<p class="quiet">No screenshots on this heal.</p>`;
+  const before = imageRef(run.id, heal.beforeShot);
+  const after = imageRef(run.id, heal.snapshot?.screenshot) || imageRef(run.id, heal.snapshot?.screenshotRef);
+  const slider = before || after
+    ? `<div class="compare" id="shot-compare" data-before="${esc(before)}" data-after="${esc(after)}">${placeholder(heal.failedStep?.action, heal.failedStep?.label || "Recorded step")}<input id="shot-slider" type="range" min="0" max="100" value="50" aria-label="Screenshot comparison"></div>`
+    : `<div class="compare" id="shot-compare">${placeholder(heal.failedStep?.action, heal.failedStep?.label || "No picture stored")}</div>`;
   const prompt = maskSecrets(heal.prompt || "", secrets);
   const raw = maskSecrets(heal.rawResponse || "", secrets);
   const candidates = heal.identity?.candidates?.map((candidate, index) =>
@@ -549,7 +581,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
     <details id="heal-prompt"><summary>Prompt</summary><pre>${esc(prompt)}</pre></details>
     <details id="heal-response"><summary>Raw response</summary><pre>${esc(raw)}</pre></details>
     <div class="row">
-      <button type="button" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Keep</button>
+      <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Keep</button>
       <button type="button" data-revert="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Revert</button>
     </div>
     <p class="quiet">Keep writes the patch into the saved workflow. Revert puts the failed step back. Both are appended. ${esc(decisionLine)}</p>
@@ -575,15 +607,15 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     }).join("");
     const waits = workflow.waits ? `<span class="chip">you · ${workflow.waits}</span>` : "";
     const expects = workflow.expects ? `<span class="badge expect">expect</span>` : "";
-    const thumb = run
-      ? `<div class="thumb" data-thumb-run="${esc(run.id)}"><span>${esc(workflow.firstStep?.label || "Last step")}</span></div>`
-      : `<div class="thumb"><span>${esc(workflow.firstStep?.label || "No picture yet")}</span></div>`;
+    const poster = run
+      ? `/api/runs/${encodeURIComponent(run.id)}/poster`
+      : `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
+    const thumbLabel = workflow.firstStep?.label || workflow.name;
     return `<article class="wf-card" data-workflow="${esc(workflow.id)}">
-      ${thumb}
-      <div>
+      <div class="thumb" data-shot="${esc(poster)}" data-shot-fallback="/api/workflows/${encodeURIComponent(workflow.id)}/poster">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
+      <div class="wf-body">
         <h3><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
-        <span class="status ${esc(kind)}">${esc(label)}</span>
-        ${expects}
+        <p class="meta"><span class="status ${esc(kind)}">${esc(label)}</span> ${expects}</p>
         ${sparkline(history)}
         <div class="chips">${inputs}${waits}</div>
         <div class="row"><button type="button" data-screen="replay" data-workflow="${esc(workflow.id)}">Run</button></div>
@@ -597,8 +629,8 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
       <input id="library-search" type="search" placeholder="Search workflows" aria-label="Search workflows">
       <button type="button" id="palette-open" class="kbd">⌘K</button>
     </div>
+    ${workflows.length ? statusLegend() : ""}
     <div class="wf-grid">${cards || empty}</div>
-    <div id="library-extra"></div>
   </section>`;
 }
 
@@ -636,8 +668,11 @@ export function statusLabel(kind: string): string {
 
 function sparkline(runs: RunSummary[]): string {
   const recent = runs.slice().sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
-  if (!recent.length) return `<p class="quiet">No runs yet</p>`;
-  return `<div class="spark" aria-label="recent runs">${recent.map((run) => `<i class="${esc(runKind(run))}"></i>`).join("")}</div>`;
+  if (!recent.length) return `<p class="meta">No runs yet</p>`;
+  return `<div class="spark" aria-label="${recent.length} recent runs">${recent.map((run) => {
+    const kind = runKind(run);
+    return `<i class="swatch ${esc(kind)}" title="${esc(statusLabel(kind))}"></i>`;
+  }).join("")}</div>`;
 }
 
 export function plainFailure(input: {
@@ -678,7 +713,10 @@ export function receiptLines(receipts: { source?: string; expected?: string; act
 export function passGrid(runs: RunSummary[], steps: { id: string; label?: string }[]): string {
   const cols = runs.slice(0, 8);
   if (!cols.length || !steps.length) return "";
-  const head = cols.map((run) => `<th>${esc(statusLabel(runKind(run)))}</th>`).join("");
+  const head = cols.map((run) => {
+    const kind = runKind(run);
+    return `<th><i class="swatch ${esc(kind)}" title="${esc(statusLabel(kind))}"></i></th>`;
+  }).join("");
   const body = steps.map((step) => {
     const cells = cols.map((run) => {
       const found = (run.steps || []).find((item) => item.id === step.id);
@@ -689,15 +727,15 @@ export function passGrid(runs: RunSummary[], steps: { id: string; label?: string
     }).join("");
     return `<tr><th>${esc(step.label || step.id)}</th>${cells}</tr>`;
   }).join("");
-  return `<table id="pass-grid" aria-label="Recent runs"><thead><tr><th>Step</th>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  return `<div class="grid-wrap"><h3 class="section">Recent runs</h3>${statusLegend()}<table id="pass-grid" aria-label="Recent runs"><thead><tr><th>Step</th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 export function trajectoryPane(recorded: TrajectoryStep[] | undefined, replayed: TrajectoryStep[] | undefined): string {
-  if (!replayed || replayed.length === 0) return `<p class="quiet" id="trajectory">No trajectory was stored for this run.</p>`;
+  if (!replayed || replayed.length === 0) return `<details id="trajectory"><summary>Trajectory</summary><p class="meta">No trajectory was stored for this run.</p></details>`;
   const lines = recorded && recorded.length
     ? diffTrajectory(recorded, replayed)
     : replayed.map((step) => `Replay ${step.stepId}: ${step.action} on ${step.target}, ${step.postcondition}, ${bucketWords(step.timing as TimingBucket)}.`);
-  return `<div id="trajectory"><h3>Trajectory</h3><ul>${lines.map((line) => `<li>${esc(line)}</li>`).join("")}</ul></div>`;
+  return `<details id="trajectory"><summary>Trajectory</summary><ul>${lines.map((line) => `<li>${esc(line)}</li>`).join("")}</ul></details>`;
 }
 
 export function promotionLine(promotion: PromotionView | undefined): string {
@@ -755,23 +793,40 @@ function expectBadge(step: StepCard): string {
   return "";
 }
 
-export function workflowDetail(doc: { id: string; name: string; steps: StepCard[] }, lastRunId = ""): string {
-  const cards = doc.steps.map((step, index) => {
+export function workflowDetail(
+  doc: { id: string; name: string; steps: StepCard[]; inputs?: { name: string; type?: string }[] },
+  meta: { lastRunId?: string; lastLabel?: string } = {},
+): string {
+  const cards = doc.steps.map((step) => {
     const human = step.human || step.action === "login" || step.action === "confirm";
-    const thumb = lastRunId
-      ? `<div class="thumb" data-thumb-run="${esc(lastRunId)}" data-thumb-step="${esc(step.id)}"><span>${index + 1}</span></div>`
-      : `<div class="thumb"><span>${index + 1}</span></div>`;
+    const runShot = meta.lastRunId ? `/api/runs/${encodeURIComponent(meta.lastRunId)}/shots/${encodeURIComponent(shotFile(step.id, "after"))}` : "";
+    const captured = `/api/workflows/${encodeURIComponent(doc.id)}/shots/${encodeURIComponent(workflowShotName(step.id))}`;
+    const shot = runShot || captured;
     return `<article class="step-card ${human ? "human" : ""}" data-step-card="${esc(step.id)}">
-      ${thumb}
-      <div>
-        <div class="row"><strong>${esc(step.label || step.action || step.id)}</strong> ${expectBadge(step)} ${human ? `<span class="badge need">you</span>` : ""}</div>
-        <p>${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
+      <div class="thumb" data-shot="${esc(shot)}" ${runShot ? `data-shot-fallback="${esc(captured)}"` : ""}>${placeholder(step.action, step.label || step.action || step.id)}</div>
+      <div class="step-copy">
+        <div class="row"><strong>${esc(step.label || step.action || step.id)}</strong> ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
+        <p class="meta">${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
         <div class="chips">${identityChip(step.identity)}${inputChips(step)}</div>
       </div>
     </article>`;
   }).join("");
+  const inputs = (doc.inputs || []).map((input) => {
+    if (input.type === "secret") return `<span class="chip secret">secret</span>`;
+    if (input.type === "file") return `<span class="chip">file</span>`;
+    return `<span class="chip">{{${esc(input.name)}}}</span>`;
+  }).join("");
   return `<section id="workflow-detail" data-workflow="${esc(doc.id)}">
-    <header class="row"><h2>${esc(doc.name)}</h2><button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button></header>
+    <p class="crumb"><button type="button" class="link" data-screen="library">Library</button> <span aria-hidden="true">/</span> ${esc(doc.name)}</p>
+    <header class="wf-head">
+      <div>
+        <h2>${esc(doc.name)}</h2>
+        <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
+        <div class="chips">${inputs}</div>
+      </div>
+      <button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button>
+    </header>
+    <h3 class="section">Steps</h3>
     ${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}
   </section>`;
 }
@@ -828,8 +883,12 @@ export function recordBar(state: { recording?: boolean; capturePaused?: boolean;
 }
 
 export function liveStepList(events: { id?: string; op?: string; kind?: string }[]): string {
-  if (!events.length) return `<p class="quiet" id="live-steps-empty">Steps show up here as you record.</p>`;
-  return `<ol id="live-step-list">${events.map((event, index) => `<li><span class="quiet">${index + 1}</span> ${esc(event.op || event.kind || "step")}</li>`).join("")}</ol>`;
+  if (!events.length) return `<p class="meta" id="live-steps-empty">Steps show up here as you record.</p>`;
+  return `<ol id="live-step-list">${events.map((event, index) => {
+    const shot = event.id ? `/api/capture/shots/${encodeURIComponent(event.id)}.png` : "";
+    const label = event.op || event.kind || "step";
+    return `<li class="live-step"><div class="thumb mini" ${shot ? `data-shot="${esc(shot)}"` : ""}>${placeholder(event.op, label)}</div><span><span class="meta">${index + 1}</span> ${esc(label)}</span></li>`;
+  }).join("")}</ol>`;
 }
 
 export function onboarding(helper?: { label?: string; accessibility?: boolean; screenCapture?: boolean }): string {

@@ -369,7 +369,10 @@ is still the source of truth for the extension.
   worse fit for short human steps. A heal row is named from that heal's
   workflow id, so a login heal no longer picks up a sibling named
   `textedit write`. OpenAdapt and Simular did not have public app screens
-  worth copying.
+  worth copying. A follow-up replaced empty thumbnails with per-step PNGs
+  from capture and replay, gave the workflow its own page, and drew one
+  sparkline cell per recent run. A missing picture is an icon and the target
+  text. Red is reserved for a failed step.
 
 ---
 

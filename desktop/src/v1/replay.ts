@@ -37,6 +37,7 @@ import {
   type WorkflowStep,
   type WorkflowV2,
 } from "./schema";
+import { shotFile } from "./shots";
 import { postKey, targetKey, timingBucket, type TrajectoryStep } from "./trajectory";
 
 export interface LocatorHit {
@@ -88,6 +89,8 @@ export interface Driver {
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
+  /** Page PNG only. Unit-test drivers omit this, so they do not take pictures. */
+  shot?(): Promise<Buffer | undefined>;
 }
 
 export interface RunResult {
@@ -100,6 +103,8 @@ export interface RunResult {
     phase?: ReplayPhase;
     startedAt?: number;
     endedAt?: number;
+    beforeShot?: string;
+    afterShot?: string;
   }[];
   failure?: StepFailure;
   heals: HealRecord[];
@@ -127,6 +132,8 @@ export interface ReplayOptions {
   /** Append-only receipt file. Absent keeps the receipts on the run only. */
   receipts?: ReceiptLog;
   nowMs?: () => number;
+  /** Directory for per-step PNGs. Absent skips capture. */
+  shotDir?: string;
 }
 
 let seq = 0;
@@ -170,9 +177,11 @@ export async function replay(
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     const started = clock();
+    const beforeShot = await writeStepShot(driver, opts.shotDir, step.id, "before");
     const stamp = (patch: RunResult["steps"][number]) => {
-      steps[i] = { ...patch, startedAt: started, endedAt: clock() };
+      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot };
     };
+    try {
     const extra = i === workflow.steps.length - 1 ? workflow.readBack : undefined;
     if (step.unresolved) {
       const failure = await fail(driver, step, "find", "unresolved step", undefined, secrets);
@@ -241,7 +250,7 @@ export async function replay(
         : undefined,
       rawResponse: proposal ? maskText(proposal.rawResponse, secrets) : undefined,
       proposedPatch: proposal?.patch,
-      beforeShot: failure.beforeShot,
+      beforeShot: failure.beforeShot || beforeShot,
       identity: failure.identity,
     };
     if (!proposal) {
@@ -285,6 +294,10 @@ export async function replay(
     }
     stamp({ id: step.id, status: "passed" });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
+    } finally {
+      const afterShot = await writeStepShot(driver, opts.shotDir, step.id, "after");
+      if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot };
+    }
   }
   return finish({ runId, status: "passed", steps });
 }
@@ -1036,4 +1049,18 @@ function noteAuth(trail: RunTrailEvent[], stepId: string, recovered: boolean): v
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function writeStepShot(driver: Driver, dir: string | undefined, stepId: string, which: "before" | "after"): Promise<string | undefined> {
+  if (!dir || !driver.shot) return;
+  try {
+    const png = await driver.shot();
+    if (!png || png.length < 24 || png[0] !== 0x89 || png[1] !== 0x50) return;
+    mkdirSync(dir, { recursive: true });
+    const name = shotFile(stepId, which);
+    writeFileSync(path.join(dir, name), png);
+    return name;
+  } catch {
+    return;
+  }
 }

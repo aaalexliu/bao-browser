@@ -73,6 +73,17 @@ export class BrowserDriver implements Driver {
     }
   }
 
+  async shot(): Promise<Buffer | undefined> {
+    try {
+      await this.page.evaluate(maskPasswordFields).catch(() => undefined);
+      return await this.page.screenshot({ type: "png" });
+    } catch {
+      return undefined;
+    } finally {
+      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
+    }
+  }
+
   async snapshot(): Promise<FailureSnapshot> {
     await this.page.evaluate(maskPasswordFields).catch(() => undefined);
     let png: Buffer;

@@ -20,7 +20,9 @@ import {
   rail,
   recordBar,
   runsList,
+  runKind,
   runViewer,
+  statusLabel,
   trailPane,
   workflowDetail,
   type CommandItem,
@@ -31,7 +33,7 @@ import {
   type WorkflowSummary,
 } from "./views";
 
-type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run";
+type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow";
 
 let state: ShellState & {
   notices?: { title?: string; body?: string }[];
@@ -43,6 +45,7 @@ let state: ShellState & {
 let screen: Screen = "library";
 let lastWf = "";
 let argsWorkflow = "";
+let openWorkflow = "";
 let healFilter: "pending" | "kept" | "reverted" = "pending";
 let openHeal: { runId: string; healId: string } | null = null;
 let openRun = "";
@@ -60,8 +63,6 @@ try {
   onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
 } catch { /* private mode */ }
-const shotCache = new Map<string, { steps: Record<string, string>; any: string }>();
-
 const railEl = () => document.getElementById("rail")!;
 const actEl = () => document.getElementById("act")!;
 const mainEl = () => document.getElementById("main")!;
@@ -85,6 +86,7 @@ async function refresh(): Promise<void> {
     healFilter,
     openHeal,
     openRun,
+    openWorkflow,
     selectedStep,
     banner,
   });
@@ -118,13 +120,15 @@ function render(): void {
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
-  if (!keepReplay) {
+  const keepWorkflow = screen === "workflow" && document.getElementById("workflow-detail")?.getAttribute("data-workflow") === openWorkflow;
+  if (!keepReplay && !keepWorkflow) {
     const body = screen === "capture" ? capture()
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
-      : screen === "run" ? `<section id="run-host"><p class="quiet">Loading run…</p></section>`
+      : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
       : screen === "settings" ? settings()
       : screen === "replay" ? replayForm()
+      : screen === "workflow" ? `<section id="workflow-host"><p class="meta">Loading workflow…</p></section>`
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
@@ -142,13 +146,14 @@ function render(): void {
   applySearch();
   paintPalette();
   paintLive();
-  void paintThumbs();
+  mountShots();
+  if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
   if (screen === "run" && openRun) void showRun(openRun);
   if (screen === "heals" && openHeal) void showHeal(openHeal.runId, openHeal.healId);
 }
 
 function markNav(): void {
-  const current = screen === "replay" || screen === "run" ? "runs" : screen;
+  const current = screen === "replay" || screen === "run" ? "runs" : screen === "workflow" ? "library" : screen;
   document.querySelectorAll("#rail nav button").forEach((btn) => {
     const el = btn as HTMLButtonElement;
     el.classList.toggle("on", el.dataset.screen === current);
@@ -216,7 +221,7 @@ function settings(): string {
       <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
     </select></label>
     <p class="quiet">Auto is the default. Healing runs only when a model key is set, or when this build is started with the fixture healer. Otherwise replay stops on the failed step.</p>
-    <button id="save-settings" type="button">Save</button>
+    <button id="save-settings" class="primary" type="button">Save</button>
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
@@ -320,7 +325,12 @@ function bind(): void {
     };
   });
   document.querySelectorAll("[data-open-workflow]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => void openEditor((btn as HTMLButtonElement).dataset.openWorkflow || "");
+    (btn as HTMLButtonElement).onclick = () => {
+      openWorkflow = (btn as HTMLButtonElement).dataset.openWorkflow || "";
+      screen = "workflow";
+      renderKey = "";
+      render();
+    };
   });
   const search = document.getElementById("library-search") as HTMLInputElement | null;
   if (search) search.oninput = () => {
@@ -427,22 +437,30 @@ async function showRun(id: string): Promise<void> {
   const timings = (run.steps || []).map((step) => Math.max(0, (step.endedAt || 0) - (step.startedAt || 0)));
   const recorded = workflow.steps ? trajectoryFromWorkflow(workflow as unknown as WorkflowV2, timings) : [];
   const recent = (state.runs || []).filter((item) => item.workflowId === run.workflowId);
-  host.innerHTML = runViewer(run, workflow, selectedStep, { recent: recent.length ? recent : [run], recorded });
+  const merged = new Map(recent.map((item) => [item.id, item]));
+  merged.set(run.id, run);
+  const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
+  host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       selectedStep = (btn as HTMLButtonElement).dataset.selectStep || "";
       void showRun(id);
     };
   });
-  host.querySelectorAll("[data-shot]").forEach((btn) => {
+  host.querySelectorAll("[data-frame]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      const img = document.getElementById("step-shot") as HTMLImageElement | null;
-      if (!img) return;
-      const which = (btn as HTMLButtonElement).dataset.shot;
-      const src = which === "before" ? img.dataset.before : img.dataset.after;
-      if (src) img.src = src;
+      const stage = document.getElementById("shot-stage");
+      if (!stage) return;
+      const which = (btn as HTMLButtonElement).dataset.frame || "after";
+      if ((btn as HTMLButtonElement).disabled) return;
+      stage.dataset.which = which;
+      host.querySelectorAll("[data-frame]").forEach((el) => el.classList.toggle("on", (el as HTMLElement).dataset.frame === which));
+      mountStage(stage);
     };
   });
+  mountShots(host);
+  const stage = document.getElementById("shot-stage");
+  if (stage) mountStage(stage);
   const scrub = host.querySelector("#scrubber") as HTMLInputElement | null;
   if (scrub) scrub.onchange = () => {
     const index = Number(scrub.value);
@@ -487,14 +505,8 @@ async function showHeal(runId: string, healId: string): Promise<void> {
     promotion,
   });
   bindHeal();
-  const slider = document.getElementById("shot-slider") as HTMLInputElement | null;
-  const top = document.getElementById("compare-top") as HTMLImageElement | null;
-  if (slider && top) {
-    slider.oninput = () => {
-      const right = 100 - Number(slider.value);
-      top.style.clipPath = `inset(0 ${right}% 0 0)`;
-    };
-  }
+  const compare = document.getElementById("shot-compare");
+  if (compare) mountCompare(compare);
 }
 
 async function loadTrail(id: string, hostId: string): Promise<void> {
@@ -512,10 +524,11 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
 
 async function openEditor(id: string): Promise<void> {
   const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
-  const host = document.getElementById("library-extra");
-  if (!host) return;
+  const host = document.getElementById("workflow-host");
+  if (!host || !host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-  host.innerHTML = workflowDetail(doc, last?.id || "") + `<div class="card"><h3>Edit ${esc(doc.name)}</h3>
+  const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}` : "Not run yet";
+  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel }) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
       <button type="button" data-export="${esc(id)}">Export</button>
@@ -526,7 +539,7 @@ async function openEditor(id: string): Promise<void> {
     <h3>Import JSON</h3>
     <textarea id="import-json" rows="4"></textarea>
     <button id="import" type="button">Import JSON</button>
-  </div>`;
+  </details>`;
   (document.getElementById("edit-json") as HTMLTextAreaElement).value = JSON.stringify(doc, null, 2);
   document.getElementById("save-edit")!.onclick = async () => {
     const workflow = JSON.parse((document.getElementById("edit-json") as HTMLTextAreaElement).value);
@@ -583,7 +596,14 @@ async function openEditor(id: string): Promise<void> {
       render();
     };
   });
-  void paintThumbs();
+  host.querySelectorAll("[data-screen=library]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      screen = "library";
+      renderKey = "";
+      render();
+    };
+  });
+  mountShots(host);
 }
 
 async function fillArgs(id: string): Promise<void> {
@@ -718,7 +738,10 @@ function paintLive(): void {
   if (!host) return;
   const live = (state as ShellState & { liveTrail?: { id?: string; op?: string; kind?: string }[] }).liveTrail || [];
   const html = liveStepList(live);
-  if (host.innerHTML !== html) host.innerHTML = html;
+  if (host.innerHTML !== html) {
+    host.innerHTML = html;
+    mountShots(host);
+  }
 }
 
 function filteredCommands(): CommandItem[] {
@@ -763,11 +786,8 @@ function runCommand(item?: CommandItem): void {
     lastWf = item.workflowId;
     screen = "replay";
   } else if (item.kind === "workflow" && item.workflowId) {
-    screen = "library";
-    renderKey = "";
-    render();
-    void openEditor(item.workflowId);
-    return;
+    openWorkflow = item.workflowId;
+    screen = "workflow";
   } else if (item.screen) screen = item.screen as Screen;
   renderKey = "";
   render();
@@ -779,40 +799,82 @@ function seekVideo(at: number | undefined): void {
   if (video && at && origin) video.currentTime = Math.max(0, (at - origin) / 1000);
 }
 
-async function paintThumbs(): Promise<void> {
-  const nodes = [...document.querySelectorAll<HTMLElement>("[data-thumb-run]")];
-  const ids = [...new Set(nodes.map((node) => node.dataset.thumbRun || "").filter(Boolean))];
-  await Promise.all(ids.map(async (id) => {
-    if (shotCache.has(id)) return;
-    const run = await (await fetch("/api/runs/" + encodeURIComponent(id))).json() as RunSummary & {
-      failure?: { stepId?: string; beforeShot?: string; snapshot?: { screenshot?: string } };
-    };
-    const steps: Record<string, string> = {};
-    let any = "";
-    for (const step of run.steps || []) {
-      const shot = step.afterShot || step.beforeShot || "";
-      if (shot && /^[A-Za-z0-9+/=]+$/.test(shot)) {
-        steps[step.id] = shot;
-        any = shot;
+function mountShots(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>("[data-shot]").forEach((node) => {
+    if (node.dataset.shotMounted === "1") return;
+    node.dataset.shotMounted = "1";
+    const primary = node.dataset.shot || "";
+    const fallback = node.dataset.shotFallback || "";
+    const load = (src: string, next?: string) => {
+      if (!src) {
+        if (next) load(next);
+        return;
       }
-    }
-    const failShot = run.failure?.snapshot?.screenshot || run.failure?.beforeShot || "";
-    if (failShot && /^[A-Za-z0-9+/=]+$/.test(failShot)) {
-      if (run.failure?.stepId) steps[run.failure.stepId] = steps[run.failure.stepId] || failShot;
-      any = any || failShot;
-    }
-    shotCache.set(id, { steps, any });
-  }));
-  for (const node of document.querySelectorAll<HTMLElement>("[data-thumb-run]")) {
-    if (node.querySelector("img")) continue;
-    const cached = shotCache.get(node.dataset.thumbRun || "");
-    const shot = (node.dataset.thumbStep && cached?.steps[node.dataset.thumbStep]) || cached?.any || "";
-    if (!shot) continue;
-    const img = document.createElement("img");
+      const img = new Image();
+      img.alt = "";
+      img.onload = () => {
+        if (!node.isConnected) return;
+        node.classList.add("has-shot");
+        node.prepend(img);
+      };
+      img.onerror = () => {
+        if (next) load(next);
+      };
+      img.src = src;
+    };
+    load(primary, fallback);
+  });
+}
+
+function mountStage(stage: HTMLElement): void {
+  const which = stage.dataset.which || (stage.dataset.after ? "after" : "before");
+  const url = which === "before" ? stage.dataset.before || "" : stage.dataset.after || stage.dataset.before || "";
+  stage.querySelectorAll("img").forEach((img) => img.remove());
+  stage.classList.remove("has-shot");
+  if (!url) return;
+  const img = new Image();
+  img.alt = "";
+  img.onload = () => {
+    if (!stage.isConnected) return;
+    stage.classList.add("has-shot");
+    stage.prepend(img);
+  };
+  img.src = url;
+}
+
+function mountCompare(node: HTMLElement): void {
+  const load = (src: string) => new Promise<HTMLImageElement | null>((resolve) => {
+    if (!src) return resolve(null);
+    const img = new Image();
     img.alt = "";
-    img.src = `data:image/png;base64,${shot}`;
-    node.prepend(img);
-  }
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+  void Promise.all([load(node.dataset.before || ""), load(node.dataset.after || "")]).then(([before, after]) => {
+    if (!node.isConnected) return;
+    if (before) {
+      before.className = "compare-before";
+      node.prepend(before);
+      node.classList.add("has-shot");
+    }
+    if (after) {
+      after.id = "compare-top";
+      after.className = "compare-after";
+      node.prepend(after);
+      node.classList.add("has-shot");
+    }
+    const slider = document.getElementById("shot-slider") as HTMLInputElement | null;
+    const top = document.getElementById("compare-top") as HTMLImageElement | null;
+    if (slider && top) {
+      const paint = () => {
+        const right = 100 - Number(slider.value);
+        top.style.clipPath = `inset(0 ${right}% 0 0)`;
+      };
+      slider.oninput = paint;
+      paint();
+    }
+  });
 }
 
 document.addEventListener("keydown", (event) => {
