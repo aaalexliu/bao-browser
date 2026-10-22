@@ -15,6 +15,7 @@ import {
   installShare,
   issuePairCode,
   listDevices,
+  unpairDevice,
   listLibrary,
   listRuns,
   listVersions,
@@ -84,6 +85,11 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
         categoryCounts(principal.userId),
       ]);
       return NextResponse.json({ devices, categories });
+    }
+    if (parts[0] === "devices" && parts[2] === "unpair" && method === "POST") {
+      const principal = await requireUser(req);
+      await unpairDevice(principal.userId, parts[1] || "");
+      return finish(req, { ok: true }, "/pair");
     }
     if (parts[0] === "sync" && parts[1] === "snapshot" && method === "GET") {
       const principal = await requireUser(req);
@@ -231,6 +237,12 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
 }
 
 function finish(req: Request, body: unknown, location: string) {
-  if (formPost(req)) return NextResponse.redirect(new URL(location, req.url));
+  if (formPost(req)) {
+    const path = location.startsWith("/") ? location : `/${location}`;
+    const res = NextResponse.redirect(new URL(path, req.url), 303);
+    // A relative Location keeps the browser on the host it used. A 303 turns the POST into a GET.
+    res.headers.set("location", path);
+    return res;
+  }
   return NextResponse.json(body);
 }

@@ -158,9 +158,43 @@ export async function claimPairCode(code: string, name: string): Promise<{ devic
 }
 
 export async function listDevices(userId: string) {
-  return query<{ id: string; name: string; created_at: string; last_seen_at: string | null }>(
-    `SELECT id, name, created_at, last_seen_at FROM devices WHERE user_id = $1 ORDER BY created_at`,
+  return query<{
+    id: string;
+    name: string;
+    created_at: string;
+    last_seen_at: string | null;
+    last_synced_at: string | null;
+    workflow_count: number;
+  }>(
+    `SELECT id, name, created_at, last_seen_at, last_synced_at, workflow_count
+     FROM devices WHERE user_id = $1 ORDER BY created_at`,
     [userId],
+  );
+}
+
+export async function unpairDevice(userId: string, deviceId: string): Promise<void> {
+  if (!/^dev-[\w-]+$/.test(deviceId)) throw new HttpError("not found", 404);
+  const rows = await query<{ id: string }>(
+    `DELETE FROM devices WHERE id = $1 AND user_id = $2 RETURNING id`,
+    [deviceId, userId],
+  );
+  if (!rows.length) throw new HttpError("not found", 404);
+}
+
+async function noteDeviceSync(principal: Principal): Promise<void> {
+  if (!principal.deviceId) return;
+  const owned = await query<{ count: number }>(
+    `SELECT count(*)::int AS count FROM workflows WHERE owner_id = $1`,
+    [principal.userId],
+  );
+  const pushed = await query<{ count: number }>(
+    `SELECT count(DISTINCT workflow_id)::int AS count FROM workflow_versions WHERE device_id = $1`,
+    [principal.deviceId],
+  );
+  const count = Math.max(Number(owned[0]?.count ?? 0), Number(pushed[0]?.count ?? 0));
+  await query(
+    `UPDATE devices SET last_synced_at = now(), workflow_count = $2 WHERE id = $1 AND user_id = $3`,
+    [principal.deviceId, count, principal.userId],
   );
 }
 
@@ -193,6 +227,7 @@ export async function syncSnapshot(principal: Principal) {
     [principal.userId],
   );
   const settings = stored[0] ? pickAccountSettings(json(stored[0].document)) : null;
+  await noteDeviceSync(principal);
   return {
     counts: {
       workflows: workflows.length,
@@ -264,6 +299,7 @@ export async function pushVersion(
   if (!existing.length) {
     if (base !== 0) throw new HttpError("conflict", 409);
     await insertOwned(principal.userId, document, base, body.heal, body.shots ?? [], user.name, category);
+    await noteDeviceSync(principal);
     return { version: 1, created: true };
   }
   if (existing[0]?.owner_id !== principal.userId) throw new HttpError("not found", 404);
@@ -285,6 +321,7 @@ export async function pushVersion(
     throw Object.assign(new HttpError("conflict", 409), { current });
   }
   await writeShots(id, version, body.shots ?? []);
+  await noteDeviceSync(principal);
   return { version, created: false };
 }
 
@@ -362,6 +399,7 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
       [id, shot.stepId, key],
     );
   }
+  await noteDeviceSync(principal);
   return { id, status };
 }
 
@@ -809,6 +847,7 @@ interface WorkflowRow extends RankInput {
   head_version: number;
   published_version: number | null;
   last_green_at: string | null;
+  ci_verified: boolean | null;
   summary: string;
   name: string;
   site: string;
@@ -828,6 +867,7 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
   author: string;
   verified: boolean;
   lastGreenAt: string | null;
+  ciVerified: boolean;
   link: string;
   importLink: string;
   domains: string[];
@@ -854,6 +894,7 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
     author: row.author_name,
     verified: row.verified,
     lastGreenAt: row.last_green_at,
+    ciVerified: Boolean(row.ci_verified),
     link: `bao://workflow/${row.id}`,
     importLink: `bao://import/${row.id}`,
     domains: domainsOf(document),

@@ -172,5 +172,42 @@ form.inline { display: inline; }
 }
 .share-panel button, .share-panel a.button { text-align: left; }
 .share-why { margin: 0; color: var(--quiet); font-size: 12px; }
-.device { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0; border-top: 1px solid var(--line); }
+.devices { list-style: none; padding: 0; margin: 0.4rem 0 1rem; }
+.device { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.7rem 0; border-top: 1px solid var(--line); }
 .device:first-child { border-top: 0; }
+.device form { margin: 0; }
+.listing-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; margin-bottom: 1.2rem; }
+.listing-install { display: grid; gap: 0.35rem; justify-items: end; min-width: 11rem; }
+.listing-layout { display: grid; grid-template-columns: minmax(0, 1fr) 16rem; gap: 1.25rem; align-items: start; }
+.listing-side h2 { margin-top: 0.9rem; }
+.listing-side h2:first-child { margin-top: 0; }
+.listing-steps, .versions, .ask { list-style: none; padding: 0; margin: 0.4rem 0 1.2rem; }
+.listing-steps li {
+  display: grid;
+  grid-template-columns: 1.4rem 9rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--line);
+}
+.listing-steps .n { color: var(--quiet); font-variant-numeric: tabular-nums; }
+.listing-steps img, .crop-empty {
+  width: 9rem;
+  height: 5rem;
+  object-fit: cover;
+  object-position: left center;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--select);
+}
+.crop-empty { display: grid; place-items: center; color: var(--quiet); font-size: 12px; }
+.ask li { padding: 0.55rem 0; border-top: 1px solid var(--line); }
+.ask li:first-child { border-top: 0; }
+.versions li { padding: 0.35rem 0; border-top: 1px solid var(--line); }
+.versions li:first-child { border-top: 0; }
+.crumb { color: var(--quiet); font-size: 13px; margin: 0 0 0.35rem; }
+.crumb a { color: inherit; }
+@media (max-width: 800px) {
+  .listing-hero, .listing-layout { display: block; }
+  .listing-install { justify-items: start; margin-top: 0.8rem; }
+}
