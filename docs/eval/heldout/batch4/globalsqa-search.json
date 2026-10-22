@@ -1,0 +1,176 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653701459,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653701500,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653701542,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653701582,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Sample Page Test",
+      "cssPath": "#wrapper > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Sample Page Test",
+    "subtreeAfter": "Sample Page Test",
+    "beforeUrl": "https://www.globalsqa.com/samplepagetest/",
+    "afterUrl": "https://www.globalsqa.com/samplepagetest/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653701913,
+    "kind": "act",
+    "op": "type",
+    "value": "tooltipp",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "s",
+      "nameAttr": "s",
+      "tag": "input",
+      "cssPath": "#s",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.globalsqa.com/samplepagetest/",
+    "afterUrl": "https://www.globalsqa.com/samplepagetest/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653702115,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.globalsqa.com/samplepagetest/",
+    "afterUrl": "https://www.globalsqa.com/samplepagetest/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792653702115,
+    "kind": "act",
+    "op": "type",
+    "value": "tooltip",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "s",
+      "nameAttr": "s",
+      "tag": "input",
+      "cssPath": "#s",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.globalsqa.com/samplepagetest/",
+    "afterUrl": "https://www.globalsqa.com/samplepagetest/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792653702283,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "cssPath": "#subheader > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "beforeUrl": "https://www.globalsqa.com/samplepagetest/",
+    "afterUrl": "https://www.globalsqa.com/?s=tooltip"
+  }
+]

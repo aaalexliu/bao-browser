@@ -1,0 +1,243 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653632701,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653632741,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653632781,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653632822,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Web form",
+      "cssPath": "main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Web form",
+    "subtreeAfter": "Web form",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653633124,
+    "kind": "act",
+    "op": "type",
+    "value": "Pariss",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "my-text-id",
+      "nameAttr": "my-text",
+      "tag": "input",
+      "label": "Text input",
+      "cssPath": "#my-text-id",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653633264,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792653633264,
+    "kind": "act",
+    "op": "type",
+    "value": "Paris",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "my-text-id",
+      "nameAttr": "my-text",
+      "tag": "input",
+      "label": "Text input",
+      "cssPath": "#my-text-id",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792653633376,
+    "kind": "act",
+    "op": "type",
+    "value": "nope",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "my-textarea",
+      "tag": "textarea",
+      "label": "Textarea",
+      "cssPath": "main:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > label:nth-of-type(3) > textarea:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792653633489,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792653633490,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e10",
+    "ts": 1792653633490,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e11",
+    "ts": 1792653633492,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/web-form.html"
+  },
+  {
+    "id": "e12",
+    "ts": 1792653633492,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Submit",
+      "cssPath": "main:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Submit",
+    "subtreeAfter": "",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/submitted-form.html?my-text=Paris&my-password=&my-textarea=&my-readonly=Readonly+input&my-select=Open+this+select+menu&my-datalist=&my-file=&my-check=on&my-radio=on&my-colors=%23563d7c&my-date=&my-range=5&my-hidden="
+  }
+]
