@@ -260,10 +260,13 @@
     .chip { background: var(--select); border-radius: 999px; padding: 0.05rem 0.45rem; font-size: var(--text-xs); }
     .chip.secret { background: var(--prov-bg); color: var(--prov); }
     .chip.id-chip { font-family: var(--mono); }
-    .step-card { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: center; padding: 10px 12px; }
-    .step-card .thumb { height: 140px; }
-    .step-copy { display: grid; gap: 4px; min-width: 0; }
+    #workflow-steps { display: flex; flex-direction: column; gap: 8px; }
+    .step-card { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 12px; }
+    .step-card .thumb { width: 120px; height: 72px; flex: none; grid-area: auto; border-radius: 8px; }
+    .step-card .thumb img { object-fit: cover; object-position: center; }
+    .step-copy { display: grid; gap: 2px; min-width: 0; }
     .step-copy p { margin: 0; }
+    .step-copy .chips { margin-top: 0; }
     .step-card.human { background: var(--card); border-color: var(--line); box-shadow: inset 3px 0 0 #8d6a3a; }
     .split { display: grid; grid-template-columns: 240px 1fr; gap: 0.9rem; }
     .step-list { display: flex; flex-direction: column; gap: 0.25rem; }
@@ -338,7 +341,7 @@
     #palette button.hit.on { background: var(--select); }
     @media (max-width: 800px) {
       #app { grid-template-columns: 1fr; }
-      .split, .step-card { grid-template-columns: 1fr; }
+      .split { grid-template-columns: 1fr; }
       .wf-card { grid-template-columns: 1fr; }
       #main, #act, #onboard { padding-left: var(--space-3); padding-right: var(--space-3); }
     }

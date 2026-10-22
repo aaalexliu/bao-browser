@@ -375,6 +375,8 @@ is still the source of truth for the extension.
   text. Red is reserved for a failed step. A later polish shows every saved
   step on the workflow page, turns the heal notice into a dismissible toast,
   and crops each thumbnail around the target instead of shrinking the page.
+  Step rows stay about one line tall, and a healed step keeps a crop of the
+  control it actually used.
 
 ---
 

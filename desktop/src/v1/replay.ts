@@ -183,6 +183,7 @@ export async function replay(
 
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
+    let pictured = step;
     const started = clock();
     const beforeShot = await writeStepShot(driver, opts.shotDir, step, "before");
     const stamp = (patch: RunResult["steps"][number]) => {
@@ -280,6 +281,7 @@ export async function replay(
       return finish({ runId, status: "paused", steps, failure, proposal, pausedStepId: step.id });
     }
     const patched = applyPatch(step, proposal.patch);
+    pictured = patched;
     const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, extra);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
@@ -302,7 +304,7 @@ export async function replay(
     stamp({ id: step.id, status: "passed" });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
-      const afterShot = await writeStepShot(driver, opts.shotDir, step, "after");
+      const afterShot = await writeStepShot(driver, opts.shotDir, pictured, "after");
       if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot };
     }
   }
