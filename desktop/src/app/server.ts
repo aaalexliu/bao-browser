@@ -49,6 +49,7 @@ import {
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
+import { rollbackTo } from "../v1/element-history";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
 import { clipBox } from "../v1/browser-driver";
@@ -707,7 +708,7 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
         const body = await readBody(req) as { id: string; stepId: string; patch: HealProposal["patch"]; runId?: string; healId?: string };
-        const next = keepPatch(library.read(body.id), body.stepId, body.patch);
+        const next = keepPatch(library.read(body.id), body.stepId, body.patch, { runId: body.runId, score: 100 });
         library.save(next);
         if (body.runId && body.healId) {
           const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "keep" });
@@ -725,6 +726,16 @@ export async function startApp(opts: {
         library.save(next);
         const recorded = library.appendDecision(body.runId, { ts: Date.now(), healId: body.healId, decision: "revert" });
         return json(res, { workflow: next, decisions: recorded.decisions, heals: recorded.heals });
+      }
+      if (req.method === "POST" && /^\/api\/workflows\/[^/]+\/rollback$/.test(url.pathname)) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const body = await readBody(req) as { stepId?: string; versionId?: string };
+        const workflow = library.read(id);
+        const steps = workflow.steps.map((step) => step.id === body.stepId
+          ? rollbackTo(step, body.versionId || "", { at: Date.now(), recordedAt: workflow.createdAt })
+          : step);
+        library.save({ ...workflow, steps, updatedAt: Date.now() });
+        return json(res, library.read(id));
       }
       if (req.method === "PATCH" && url.pathname.startsWith("/api/workflows/")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -1507,7 +1518,7 @@ function recordProvisional(library: Library, workflow: WorkflowV2, heals: HealRe
     before,
     need: library.settings().promoteAfter,
   });
-  library.save(keepPatch(workflow, heal.failedStep.id, heal.proposedPatch));
+  library.save(keepPatch(workflow, heal.failedStep.id, heal.proposedPatch, { at: Date.now(), runId: heal.runId, score: 100 }));
   library.savePromotion(promotion);
   library.appendTrail(workflow.id, promotionEvent(promotion, Date.now()));
   return promotion;

@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
+import type { ElementVersion } from "../v1/element-history";
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
@@ -354,7 +355,7 @@ export interface ViewerContext {
 
 export function runViewer(
   run: RunSummary,
-  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number }[] },
+  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number; history?: ElementVersion[] }[] },
   selectedId?: string,
   context: ViewerContext = {},
 ): string {
@@ -391,7 +392,8 @@ export function runViewer(
     const dur = duration(step);
     const review = (context.reviewStepIds || []).includes(step.id) || step.triage === "review";
     const reviewMark = review ? `<em class="review">needs review</em>` : "";
-    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${reviewMark}</button>`;
+    const recoveredMark = step.reason?.startsWith("recovered:") ? `<em class="recovered">${esc(step.reason)}</em>` : "";
+    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${recoveredMark}${reviewMark}</button>`;
   }).join("");
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
@@ -400,6 +402,11 @@ export function runViewer(
   const video = videoBar(run, steps);
   const safeHeadline = failed ? esc(headline) : headline;
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
+  const workflowStep = workflow.steps.find((item) => item.id === selected?.id);
+  const history = elementHistory(selected?.id, workflowStep?.history);
+  const recoveredRow = selected?.reason?.startsWith("recovered:")
+    ? `<p id="recovered-row">${esc(selected.reason)}</p>`
+    : "";
   const stepRepairs = (run.repairs || []).filter((item) => !selected || item.stepId === selected.id);
   const stepReceipts = (run.receipts || []).filter((item) => !selected || item.stepId === selected.id);
   const snapDom = selected?.snapshot?.dom || (failure && failure.stepId === selected?.id ? failure.snapshot?.dom : undefined);
@@ -445,11 +452,13 @@ export function runViewer(
       <div class="step-list" id="step-list">${list}</div>
       <div class="step-detail" id="step-detail">
         <div class="row"><strong>${esc(selected?.label || "")}</strong></div>
+        ${recoveredRow}
         ${shot}
         ${stepRepairs.length ? repairLines(stepRepairs) : ""}
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
         <h3 class="section">Identity</h3>
         ${table}
+        ${history}
         ${snapshotPane(snapDom, snapAx)}
       </div>
       ${failurePanel(selected, failure, identity)}
@@ -487,6 +496,32 @@ function frameFace(runId: string, step: StepView, failure: FailureView | undefin
     src,
     body: `<img src="${esc(src)}" alt="" data-before="${esc(before)}" data-after="${esc(after)}">${hold}`,
   };
+}
+
+function elementHistory(stepId: string | undefined, history: ElementVersion[] | undefined): string {
+  if (!stepId || !history || history.length === 0) return "";
+  const latest = history[history.length - 1];
+  const rows = history.map((row) => {
+    const changed = row.changed.length ? row.changed.join(", ") : "none";
+    const button = row.id === latest?.id
+      ? ""
+      : `<button type="button" data-rollback="${esc(row.id)}" data-step="${esc(stepId)}">Roll back to this version</button>`;
+    return `<tr data-source="${esc(row.source)}" data-score="${row.score ?? ""}">
+      <td>${esc(formatWhen(row.at))}</td>
+      <td>${esc(row.source)}</td>
+      <td>${esc(row.runId || "—")}</td>
+      <td>${row.score ?? ""}</td>
+      <td>${esc(changed)}</td>
+      <td>${button}</td>
+    </tr>`;
+  }).join("");
+  return `<section id="element-history">
+    <h3>Element history</h3>
+    <table>
+      <thead><tr><th>When</th><th>Source</th><th>Run</th><th>Score</th><th>Changed</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </section>`;
 }
 
 function failurePanel(step: StepView | undefined, failure: FailureView | undefined, identity: IdentityView | undefined): string {

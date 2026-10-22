@@ -158,6 +158,24 @@
         "timeoutMs": { "type": "number" }
       }
     },
+    "elementVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "at", "source", "changed"],
+      "properties": {
+        "id": { "type": "string" },
+        "at": { "type": "number" },
+        "source": { "enum": ["recorded", "heal", "revert", "rollback"] },
+        "runId": { "type": "string" },
+        "score": { "type": "number" },
+        "changed": { "type": "array", "items": { "type": "string" } },
+        "identity": { "$ref": "#/$defs/identity" },
+        "locators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/locator" }
+        }
+      }
+    },
     "step": {
       "type": "object",
       "additionalProperties": false,
@@ -199,6 +217,10 @@
         },
         "timeoutMs": { "type": "number" },
         "heal": { "enum": ["auto", "ask", "never"] },
+        "history": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/elementVersion" }
+        },
         "provenance": {
           "type": "object",
           "additionalProperties": false,

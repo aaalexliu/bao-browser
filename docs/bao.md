@@ -159,6 +159,10 @@ The desktop window and the web app share one formatter (`web/src/lib/time.ts`). 
 
 A login or confirm wait is stored in the app home as `pending-prompt.json`. Closing the window and opening it again restores the bar and the badge. When the deadline passes and no replay is still in that wait, the file is removed and the run is marked stopped, timed out. A wait that finishes inside a running replay still stops with `nothing applied` or `waiting for you to log in`.
 
+### 2026-10-22 — Locator history and a banner that stays off the workflow
+
+A step stores each locator version: recorded, heal, revert, and a rollback. Roll back to this version copies that version onto the step and appends a row. It does not edit the older rows. When a click misses because a cookie banner, a modal, or a spinner is in the way, replay dismisses or waits for this run only, at most three times, and the run viewer says `recovered:` plus the reason. The workflow file is not changed. A CAPTCHA, a 5xx response, and a signed-out page stay failures and are not sent to a model.
+
 ### 2026-10-22 — Trace-style run viewer
 
 A filmstrip frame shows the step's cropped, redacted screenshot, with the outline drawn on the target when the picture was taken. A step with no picture keeps the icon. Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
