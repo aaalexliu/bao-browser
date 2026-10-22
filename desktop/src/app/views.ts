@@ -430,16 +430,24 @@ export function runViewer(
   const stopped = failed ? steps.indexOf(failed) + 1 : steps.length;
   const failure = run.failure;
   const identity = selected?.identity || (failure && failure.stepId === selected?.id ? failure.identity : undefined);
-  const headline = failed
-    ? stopHeadline({
-      stepNumber: (failure?.index ?? steps.indexOf(failed)) + 1,
-      label: failed.label || failure?.intent || failed.id,
-      action: failed.action,
-      identity: failed.identity || failure?.identity,
-      reason: failed.reason || failure?.reason,
-      brokenAttr: failure?.brokenAttr,
-    })
-    : `${esc(workflow.name)} passed`;
+  const wall = (run.pageClasses || []).find((item) =>
+    (item.class === "bot_wall" || item.class === "login_wall") && (!failed || item.stepId === failed.id),
+  );
+  const wallLine = failed && wall
+    ? wallStopLine((failure?.index ?? steps.indexOf(failed)) + 1, failed.label || failure?.intent || failed.id, wall)
+    : "";
+  const headline = wallLine
+    ? wallLine
+    : failed
+      ? stopHeadline({
+        stepNumber: (failure?.index ?? steps.indexOf(failed)) + 1,
+        label: failed.label || failure?.intent || failed.id,
+        action: failed.action,
+        identity: failed.identity || failure?.identity,
+        reason: failed.reason || failure?.reason,
+        brokenAttr: failure?.brokenAttr,
+      })
+      : `${esc(workflow.name)} passed`;
   const statusWord = run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
   const badge = modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
@@ -479,7 +487,7 @@ export function runViewer(
   const triageNote = selected?.triage && selected.triage !== "change"
     ? `<p id="triage">Sorted as ${esc(triageWord(selected.triage))}. Bao did not call a model.</p>`
     : "";
-  const showPlain = !!failed || phase === "auth";
+  const showPlain = !wallLine && (!!failed || phase === "auth");
   const words = showPlain ? plainFailure({
     phase,
     changed: identity?.changed || (failure && failure.stepId === selected?.id ? failure.identity?.changed : undefined),
@@ -507,7 +515,7 @@ export function runViewer(
     ${outputsHtml(run.id, run.outputs)}
     ${video}
     ${pageClassPane(run)}
-    ${envelopePane(run.envelope)}
+    ${envelopePane(run.envelope, failed ? { stepNumber: stopped, label: failed.label || failed.id } : undefined)}
     ${handoffPane(run.trail)}
     <div class="row" id="run-actions">
       <button id="rerun-run" type="button">Re-run with this run's inputs</button>
@@ -550,7 +558,8 @@ function pageClassPane(run: RunSummary): string {
   if (!items.length) return "";
   const rows = items.map((item) => {
     const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${bit.detail}`).join(" · ");
-    return `<li data-class="${esc(item.class)}"><strong>${esc(classLabel(item.class))}</strong>${item.vendor ? ` · ${esc(item.vendor)}` : ""} <span class="quiet">${esc(item.line || item.reason)}</span>${evidence ? ` <span class="quiet">${esc(evidence)}</span>` : ""}</li>`;
+    const note = evidence || item.reason;
+    return `<li data-class="${esc(item.class)}"><strong>${esc(classLabel(item.class))}</strong>${item.vendor ? ` · ${esc(item.vendor)}` : ""}${note ? ` <span class="quiet">${esc(note)}</span>` : ""}</li>`;
   }).join("");
   const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
   return `<section id="page-class" data-class="${esc(items[items.length - 1]?.class || "")}">
@@ -561,21 +570,57 @@ function pageClassPane(run: RunSummary): string {
 }
 
 function classLabel(name: string): string {
-  if (name === "bot_wall") return "Bot check";
-  if (name === "login_wall") return "Sign-in";
-  if (name === "clutter") return "Clutter";
-  if (name === "changed") return "Changed";
+  if (name === "bot_wall") return "bot check";
+  if (name === "login_wall") return "sign-in needed";
+  if (name === "clutter") return "popup";
+  if (name === "changed") return "page changed";
   return name;
 }
 
-function envelopePane(envelope: RunSummary["envelope"]): string {
+function wallStopLine(stepNumber: number, label: string, item: { class: string; vendor?: string }): string {
+  const name = label || "this step";
+  if (item.class === "login_wall") {
+    return `Step ${stepNumber} '${name}' stopped because a sign-in is needed. bao didn't try to fix it, since signing in needs a person.`;
+  }
+  const vendor = (item.vendor || "").trim();
+  const check = !vendor || vendor.toLowerCase() === "captcha"
+    ? "a bot check"
+    : `${/^[aeiou]/i.test(vendor) ? "an" : "a"} ${vendor} bot check`;
+  return `Step ${stepNumber} '${name}' stopped at ${check}. bao didn't try to fix it, since bot checks need a person.`;
+}
+
+function envelopePane(
+  envelope: RunSummary["envelope"],
+  wait?: { stepNumber: number; label: string },
+): string {
   if (!envelope || (envelope.status !== "needs_human" && envelope.status !== "needs_signin" && envelope.status !== "timed-out" && envelope.status !== "stopped" && envelope.status !== "completed")) return "";
   const heading = envelope.status === "completed" ? "Completed" : envelope.status === "timed-out" ? "Stopped, timed out" : envelope.status === "stopped" ? "Stopped" : "Needs you";
+  if (envelope.status === "needs_human" || envelope.status === "needs_signin") {
+    const message = envelope.ask || envelope.reason || "";
+    const where = wait
+      ? `waiting on step ${wait.stepNumber}, ${wait.label}`
+      : envelope.step
+        ? `waiting on step ${envelope.step}`
+        : "waiting";
+    const deadline = (envelope.deadline || "").trim();
+    const limit = !deadline || deadline === "No timeout" ? "no timeout" : deadline;
+    const bits = [
+      `<p id="envelope-status"><strong>${esc(envelope.status)}</strong></p>`,
+      envelope.run_id ? `<p class="mono" id="envelope-run">${esc(envelope.run_id)}</p>` : "",
+      envelope.resume_token ? `<p class="mono" id="envelope-token">${esc(envelope.resume_token)}</p>` : "",
+    ].filter(Boolean);
+    return `<section id="run-envelope" data-status="${esc(envelope.status)}">
+      <h3>${heading}</h3>
+      ${message ? `<p id="envelope-ask">${esc(message)}</p>` : ""}
+      <p id="envelope-wait">${esc(`${where} · ${limit}`)}</p>
+      <details id="envelope-details"><summary>Details</summary>${bits.join("")}</details>
+    </section>`;
+  }
   return `<section id="run-envelope" data-status="${esc(envelope.status)}">
     <h3>${heading}</h3>
     <p id="envelope-status"><strong>${esc(envelope.status)}</strong></p>
     ${envelope.ask ? `<p id="envelope-ask">${esc(envelope.ask)}</p>` : ""}
-    ${envelope.reason ? `<p id="envelope-reason">${esc(envelope.reason)}</p>` : ""}
+    ${envelope.reason && envelope.reason !== envelope.ask ? `<p id="envelope-reason">${esc(envelope.reason)}</p>` : ""}
     ${envelope.deadline ? `<p id="envelope-deadline">${esc(envelope.deadline)}</p>` : ""}
     ${envelope.step ? `<p id="envelope-step">Step ${esc(envelope.step)}</p>` : ""}
     ${envelope.run_id ? `<p class="mono" id="envelope-run">${esc(envelope.run_id)}</p>` : ""}

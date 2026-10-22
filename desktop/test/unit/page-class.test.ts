@@ -233,7 +233,7 @@ test("a bot wall and a login wall stop before the step, and clutter retries once
   assert.equal(login.heals.length, 0);
   assert.equal(login.modelCalls, 0);
   assert.equal(loginDriver.clicks.length, 0);
-  assert.equal(login.ask?.instruction, "Experian is asking you to sign in. Finish it in the Bao window, then press Continue.");
+  assert.equal(login.ask?.instruction, "Sign in in the Bao window, then press Continue.");
   assert.equal(quiet.proposed(), 0);
 
   const clutter = countingHeal();
@@ -308,10 +308,18 @@ test("the run page and the heals list show the class, the line, and zero calls",
   const html = runViewer(run, { name: "Experian", steps: [{ id: "open", label: "Open account" }] });
   assert.match(html, /id="page-class"/);
   assert.match(html, /data-class="bot_wall"/);
-  assert.match(html, /Bot check/);
+  assert.match(html, /bot check/);
   assert.match(html, /Imperva/);
   assert.match(html, /0 heals · 0 model calls/);
   assert.match(html, /needs_human/);
+  assert.match(html, /waiting on step 1, Open account · no timeout/);
+  assert.match(html, /Step 1 &#39;Open account&#39; stopped at an Imperva bot check\. bao didn&#39;t try to fix it, since bot checks need a person\./);
+  assert.equal(html.includes("Phase the step"), false);
+  assert.equal(html.includes("cheap repair"), false);
+  const envelope = html.slice(html.indexOf('id="run-envelope"'), html.indexOf('id="run-actions"'));
+  assert.equal((envelope.match(/Experian is showing a bot check/g) || []).length, 1);
+  assert.match(envelope, /id="envelope-details"/);
+  assert.equal(envelope.includes('id="envelope-reason"'), false);
   const workflow: WorkflowSummary = { id: "experian", name: "Experian", steps: 1 };
   const inbox = healInbox([run], [workflow], "pending");
   assert.match(inbox, /data-page-class="bot_wall"/);

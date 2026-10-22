@@ -28,6 +28,7 @@ process.env.BAO_HEADED = "0";
 
 const ARTIFACTS = "/opt/cursor/artifacts";
 const LINE = "Experian is showing a bot check. Finish it in the Bao window, then press Continue.";
+const LOGIN_LINE = "Sign in in the Bao window, then press Continue.";
 
 function pageOf(title: string, body: string): string {
   return `<!doctype html><html><head><title>${title}</title></head><body>${body}<button id="apply" data-testid="apply">Apply</button></body></html>`;
@@ -240,7 +241,7 @@ test("the-internet modals classify as clutter and a public challenge is reported
   }
 });
 
-test("the needs_human run page and act prompt render in light and dark", { timeout: 60_000 }, async () => {
+test("the needs_human run page and act prompt render in light and dark", { timeout: 90_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-shot-"));
   const library = new Library(home);
   library.save({
@@ -287,7 +288,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     envelope: { status: "needs_human", run_id: "run-wall", step: "open", reason: LINE, ask: LINE, deadline: "No timeout" },
   });
   writePendingPrompt(home, { ask, runId: "run-wall" });
-  const app = await startApp({ home, port: 0 });
+  let server: Awaited<ReturnType<typeof startApp>> | undefined = await startApp({ home, port: 0 });
   const browser: Browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const videoDir = path.join(tmpdir(), "bao-class-video");
   mkdirSync(videoDir, { recursive: true });
@@ -299,7 +300,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
   const shotDir = path.join(ARTIFACTS, "screenshots");
   mkdirSync(shotDir, { recursive: true });
   try {
-    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.goto(`http://127.0.0.1:${server.port}/`);
     await page.waitForSelector("#act-bar");
     await page.click("button[data-screen=runs]");
     await page.click("button[data-open-run=run-wall]");
@@ -307,8 +308,12 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     await page.waitForSelector("#act-continue");
     const lightText = await page.locator("#act-bar .instruction").innerText();
     assert.equal(lightText, LINE);
-    assert.match(await page.locator("#page-class").innerText(), /Bot check/);
+    assert.match(await page.locator("#page-class").innerText(), /bot check/);
     assert.match(await page.locator("#page-class-calls").innerText(), /0 heals · 0 model calls/);
+    const lightCard = await page.locator("#run-envelope").innerText();
+    assert.equal(lightCard.split(LINE).length - 1, 1);
+    assert.match(lightCard, /waiting on step 1, Open account · no timeout/);
+    assert.match(await page.locator("#why-stopped").innerText(), /stopped at an Imperva bot check/);
     await page.screenshot({ path: path.join(shotDir, "needs-human-run-light.png") });
     await page.locator("#act-bar").screenshot({ path: path.join(shotDir, "needs-human-act-light.png") });
     await page.waitForTimeout(900);
@@ -326,7 +331,73 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     await page.click("button[data-screen=heals]");
     await page.waitForSelector("[data-page-class=bot_wall]");
     await page.waitForTimeout(900);
+    assert.match(await page.locator("[data-page-class=bot_wall]").innerText(), /bot check/);
     assert.match(await page.locator("[data-page-class=bot_wall]").innerText(), /0 heals · 0 model calls/);
+    await server.close();
+    server = undefined;
+    library.saveRun({
+      id: "run-login",
+      workflowId: "experian",
+      status: "needs_human",
+      at: Date.now(),
+      heals: [],
+      modelCalls: 0,
+      steps: [{ id: "open", status: "paused", reason: "sign in", label: "Open account" }],
+      pageClasses: [{
+        stepId: "open",
+        at: Date.now(),
+        class: "login_wall",
+        reason: "session expired",
+        line: LOGIN_LINE,
+        evidence: [
+          { source: "url", detail: "https://usa.experian.com/login/index" },
+          { source: "response", detail: "POST /api/router/graphql 403" },
+        ],
+      }],
+      envelope: { status: "needs_human", run_id: "run-login", step: "open", reason: LOGIN_LINE, ask: LOGIN_LINE, deadline: "No timeout" },
+    });
+    const loginAsk = makeAsk({
+      kind: "wall",
+      wall: "login",
+      workflowId: "experian",
+      workflowName: "Experian",
+      stepId: "open",
+      stepIndex: 1,
+      stepCount: 1,
+      label: "Open account",
+      site: "usa.experian.com",
+      timeoutMs: 0,
+      runId: "run-login",
+    });
+    assert.equal(loginAsk.instruction, LOGIN_LINE);
+    writePendingPrompt(home, { ask: loginAsk, runId: "run-login" });
+    server = await startApp({ home, port: 0 });
+    try {
+      await page.goto(`http://127.0.0.1:${server.port}/`);
+      await page.evaluate(() => localStorage.setItem("bao-theme", "light"));
+      await page.reload();
+      await page.waitForSelector("#act-bar");
+      await page.click("button[data-screen=runs]");
+      await page.click("button[data-open-run=run-login]");
+      await page.waitForSelector("#page-class");
+      assert.equal(await page.locator("#envelope-ask").innerText(), LOGIN_LINE);
+      assert.equal(await page.locator("#act-bar .instruction").innerText(), LOGIN_LINE);
+      assert.match(await page.locator("#page-class").innerText(), /sign-in needed/);
+      assert.match(await page.locator("#page-class").innerText(), /POST \/api\/router\/graphql 403/);
+      await page.screenshot({ path: path.join(shotDir, "needs-human-login-light.png") });
+      await page.evaluate(() => localStorage.setItem("bao-theme", "dark"));
+      await page.reload();
+      await page.waitForSelector("#act-bar");
+      await page.click("button[data-screen=runs]");
+      await page.click("button[data-open-run=run-login]");
+      await page.waitForSelector("#envelope-ask");
+      assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "dark");
+      assert.equal(await page.locator("#envelope-ask").innerText(), LOGIN_LINE);
+      await page.screenshot({ path: path.join(shotDir, "needs-human-login-dark.png") });
+    } finally {
+      await server?.close();
+      server = undefined;
+    }
   } finally {
     const video = page.video();
     await context.close();
@@ -337,6 +408,6 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
       const { copyFileSync } = await import("node:fs");
       copyFileSync(src, path.join(ARTIFACTS, "page-class-needs-human.webm"));
     }
-    await app.close();
+    await server?.close();
   }
 });

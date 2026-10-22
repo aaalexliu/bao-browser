@@ -60,7 +60,7 @@ export function siteHost(url: string | undefined): string {
 export function wallInstruction(site: string, kind: "bot" | "login"): string {
   const name = siteName(site);
   if (kind === "bot") return `${name} is showing a bot check. Finish it in the Bao window, then press Continue.`;
-  return `${name} is asking you to sign in. Finish it in the Bao window, then press Continue.`;
+  return "Sign in in the Bao window, then press Continue.";
 }
 
 export function actAskLine(ask: { kind: AskKind; site?: string; button?: string; instruction?: string }): string {
