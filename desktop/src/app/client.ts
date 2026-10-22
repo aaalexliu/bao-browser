@@ -624,6 +624,17 @@ async function showRun(id: string): Promise<void> {
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
   host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds });
+  host.querySelectorAll("[data-rollback]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const versionId = (btn as HTMLButtonElement).dataset.rollback || "";
+      const stepId = (btn as HTMLButtonElement).dataset.step || "";
+      void fetch("/api/workflows/" + encodeURIComponent(workflow.id) + "/rollback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stepId, versionId }),
+      }).then(() => showRun(id));
+    };
+  });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";

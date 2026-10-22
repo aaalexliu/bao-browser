@@ -3,6 +3,7 @@
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { canonical } from "./canonical";
+import type { ElementVersion } from "./element-history";
 
 export const WORKFLOW_SCHEMA_ID = "bao.workflow/v2";
 
@@ -170,6 +171,8 @@ export interface WorkflowStep {
   timeoutMs: number;
   /** auto heals, ask pauses, never leaves the miss. Absent uses the workflow. */
   heal?: "auto" | "ask" | "never";
+  /** Append-only locator versions. Rollback adds a row and does not edit an older one. */
+  history?: ElementVersion[];
   provenance?: { x: number; y: number; space: "viewport" | "image" | "screen" };
   unresolved?: { reason: string };
 }
