@@ -1797,20 +1797,6 @@ function bindShare(host: HTMLElement, id: string): void {
       URL.revokeObjectURL(url);
     });
   }
-  const guide = host.querySelector("[data-testid=share-guide]") as HTMLButtonElement | null;
-  if (guide && !guide.disabled) {
-    guide.addEventListener("click", async () => {
-      const res = await fetch("/api/workflows/" + encodeURIComponent(id) + "/guide");
-      if (!res.ok) return;
-      const blob = new Blob([await res.text()], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${id.replace(/[^A-Za-z0-9._-]/g, "_")}-guide.html`;
-      link.click();
-      URL.revokeObjectURL(url);
-    });
-  }
 }
 
 async function stepCrops(runId: string): Promise<Record<string, string>> {

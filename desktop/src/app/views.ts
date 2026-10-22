@@ -1241,7 +1241,6 @@ function shareMenu(
       <button type="button" role="menuitem" data-testid="share-publish"${publishEnabled ? "" : " disabled"}>Publish to marketplace</button>
       ${publishWhy ? `<p class="share-why" data-testid="share-publish-why">${esc(publishWhy)}</p>` : ""}
       <button type="button" role="menuitem" data-testid="share-export"${exportEnabled ? "" : " disabled"}>Export file</button>
-      <button type="button" role="menuitem" data-testid="share-guide"${exportEnabled ? "" : " disabled"}>Export guide</button>
       ${exportWhy ? `<p class="share-why" data-testid="share-export-why">${esc(exportWhy)}</p>` : ""}
     </div>
   </div>`;

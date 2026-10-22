@@ -69,7 +69,6 @@ import {
   type TeachCorrection,
   type TeachDecision,
 } from "../v1/teach";
-import { guideCrops, guideHtml } from "../v1/guide";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
@@ -545,18 +544,6 @@ export async function startApp(opts: {
         if (body.action === "promote") return json(res, promoteVersion(library, id, n));
         if (body.action === "restore") return json(res, restoreVersion(library, id, n));
         return json(res, { error: "action" }, 400);
-      }
-      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/guide")) {
-        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        try {
-          const doc = library.read(id);
-          const html = guideHtml(doc, guideCrops(library.root, doc));
-          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-          res.end(html);
-          return;
-        } catch {
-          return json(res, { error: "not found" }, 404);
-        }
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));

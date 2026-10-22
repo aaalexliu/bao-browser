@@ -306,8 +306,6 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.match(html, /Pair this Mac before listing/);
   assert.match(html, /data-testid="share-export"/);
   assert.equal(html.includes('data-testid="share-export" disabled'), false);
-  assert.match(html, /data-testid="share-guide"/);
-  assert.equal(html.includes('data-testid="share-guide" disabled'), false);
   assert.equal(html.includes('data-testid="deeplink"'), false);
   assert.equal(html.includes('data-testid="import-link"'), false);
   const routed = workflowDetail({
@@ -325,7 +323,6 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.equal(routed.includes('data-testid="deeplink"'), false);
   const empty = workflowDetail({ id: "empty", name: "Empty", steps: [] });
   assert.match(empty, /data-testid="share-export" disabled/);
-  assert.match(empty, /data-testid="share-guide" disabled/);
   assert.match(empty, /This workflow has no steps to export/);
   const cropped = workflowDetail({
     id: "wf",
