@@ -57,6 +57,16 @@ export interface RunSummary {
   promotion?: PromotionView;
   console?: ConsoleLine[];
   network?: NetworkLine[];
+  trail?: { kind?: string; text?: string; ts?: number; phase?: string; stepId?: string }[];
+  envelope?: {
+    status: string;
+    run_id?: string;
+    step?: string;
+    reason?: string;
+    ask?: string;
+    deadline?: string | null;
+    resume_token?: string;
+  };
 }
 
 export interface FailureView {
@@ -441,6 +451,8 @@ export function runViewer(
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
     </header>
+    ${envelopePane(run.envelope)}
+    ${handoffPane(run.trail)}
     <div class="row" id="run-actions">
       <button id="rerun-run" type="button">Re-run with this run's inputs</button>
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
@@ -476,6 +488,27 @@ export function runViewer(
     </div>
     <div id="run-extra"></div>
   </section>`;
+}
+
+function envelopePane(envelope: RunSummary["envelope"]): string {
+  if (!envelope || (envelope.status !== "needs_human" && envelope.status !== "needs_signin" && envelope.status !== "timed-out" && envelope.status !== "stopped" && envelope.status !== "completed")) return "";
+  const heading = envelope.status === "completed" ? "Completed" : envelope.status === "timed-out" ? "Stopped, timed out" : envelope.status === "stopped" ? "Stopped" : "Needs you";
+  return `<section id="run-envelope" data-status="${esc(envelope.status)}">
+    <h3>${heading}</h3>
+    <p id="envelope-status"><strong>${esc(envelope.status)}</strong></p>
+    ${envelope.ask ? `<p id="envelope-ask">${esc(envelope.ask)}</p>` : ""}
+    ${envelope.reason ? `<p id="envelope-reason">${esc(envelope.reason)}</p>` : ""}
+    ${envelope.deadline ? `<p id="envelope-deadline">${esc(envelope.deadline)}</p>` : ""}
+    ${envelope.step ? `<p id="envelope-step">Step ${esc(envelope.step)}</p>` : ""}
+    ${envelope.run_id ? `<p class="mono" id="envelope-run">${esc(envelope.run_id)}</p>` : ""}
+    ${envelope.resume_token ? `<p class="mono" id="envelope-token">${esc(envelope.resume_token)}</p>` : ""}
+  </section>`;
+}
+
+function handoffPane(trail: RunSummary["trail"]): string {
+  const rows = (trail || []).filter((event) => event.kind === "handoff" && event.text);
+  if (!rows.length) return "";
+  return `<ol id="handoff-trail">${rows.map((event) => `<li>${esc(event.text || "")}</li>`).join("")}</ol>`;
 }
 
 function duration(step: StepView): string {

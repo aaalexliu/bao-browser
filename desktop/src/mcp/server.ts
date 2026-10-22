@@ -34,7 +34,7 @@ export const TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device. Outcome is ok, needs_human, needs_signin, or failed, plus a resume token. rerun reuses past non-secret inputs.",
+    description: "Replay a workflow on this device. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -42,6 +42,7 @@ export const TOOLS = [
         inputs: { type: "object" },
         resume: { type: "string" },
         rerun: { type: "boolean" },
+        cancel: { type: "boolean" },
       },
     },
   },
@@ -139,6 +140,7 @@ async function callTool(library: Library, name: string, args: Record<string, unk
       inputs: args.inputs && typeof args.inputs === "object" ? args.inputs as Record<string, string | number> : {},
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
+      cancel: args.cancel === true,
     });
   }
   if (name === "get_run") return getRun(library, String(args.run_id || ""));

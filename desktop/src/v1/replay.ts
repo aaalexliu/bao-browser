@@ -9,6 +9,7 @@ import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard"
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { lookup } from "./identity";
 import { actWaitMs, confirmButton, makeAsk, siteHost, type HumanAsk } from "./human-ask";
+import { formatClock } from "./time";
 import { identityView } from "./run-trace";
 import {
   applyPatch,
@@ -103,6 +104,9 @@ export interface Driver {
   captureStep?(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }>;
   /** Draw the match. Not an action: Try uses this and does not click or type. */
   outline?(node: Identity): Promise<void>;
+  /** Drop trail capture while a person has the page. */
+  pauseCapture?(): void;
+  resumeCapture?(): void;
   trace?(): {
     console: { stepId?: string; type?: string; text: string; ts?: number }[];
     network: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
@@ -144,6 +148,10 @@ export interface RunResult {
   precondition?: { phase: "auth"; reason: string; recovered: boolean; stepId: string };
   proposal?: HealProposal;
   pausedStepId?: string;
+  /** Set when replay stopped for a person instead of a heal approval. */
+  pausedKind?: "signin" | "confirm";
+  /** The ask that is waiting. Absent when the run is not waiting on a person. */
+  ask?: HumanAsk;
   /** Heal proposals that named a model. Zero is a run that did not call one. */
   modelCalls: number;
 }
@@ -172,6 +180,12 @@ export interface ReplayOptions {
    * A confirm or login step does not read this.
    */
   siteTrust?: SiteTrustMode;
+  /** Return as soon as a person must sign in or confirm. The page is not clicked. */
+  yieldHuman?: boolean;
+  /** The person already acted on this page. Confirm is observed and never pressed. */
+  humanReady?: boolean;
+  /** Trail lines already recorded for this run. Resume appends the handoff end. */
+  trail?: RunTrailEvent[];
 }
 
 let seq = 0;
@@ -194,8 +208,15 @@ export async function replay(
   const locatorMode = opts.locators ?? "all";
   const receiptLog = opts.receipts ?? new ReceiptLog();
   const trajectory: TrajectoryStep[] = [];
-  const trail: RunTrailEvent[] = [];
-  const gate: ApplyGate = { workflow, trail, actTimeoutMs: settings.actTimeoutMs, runId };
+  const trail: RunTrailEvent[] = opts.trail ?? [];
+  const gate: ApplyGate = {
+    workflow,
+    trail,
+    actTimeoutMs: settings.actTimeoutMs,
+    runId,
+    yieldHuman: opts.yieldHuman,
+    humanReady: opts.humanReady,
+  };
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
 
@@ -233,7 +254,8 @@ export async function replay(
     driver.markStep?.(step.id);
     let pictured = step;
     const started = clock();
-    const beforeShot = await writeStepShot(driver, opts.shotDir, step, "before");
+    const yieldShot = opts.yieldHuman && (step.action === "login" || step.action === "confirm");
+    const beforeShot = yieldShot ? undefined : await writeStepShot(driver, opts.shotDir, step, "before");
     const stamp = (patch: RunResult["steps"][number]) => {
       steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot };
     };
@@ -268,9 +290,11 @@ export async function replay(
       continue;
     }
     if ("paused" in outcome) {
-      stamp({ id: step.id, status: "paused", reason: outcome.paused === "trust" ? "always ask" : "confirm" });
+      const reason = outcome.paused === "trust" ? "always ask" : outcome.paused === "signin" ? "sign in" : "confirm";
+      stamp({ id: step.id, status: "paused", reason });
       noteTrajectory(trajectory, step, undefined, true, clock() - started);
-      return finish({ runId, status: "paused", steps, pausedStepId: step.id });
+      const pausedKind = outcome.paused === "signin" || outcome.paused === "confirm" ? outcome.paused : undefined;
+      return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind, ask: outcome.ask });
     }
     const failure = outcome.failure;
     const liveNodes = (await driver.tree().catch(() => undefined))?.nodes || [];
@@ -370,9 +394,11 @@ export async function replay(
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok && "paused" in retried) {
-      stamp({ id: step.id, status: "paused", reason: retried.paused === "trust" ? "always ask" : "confirm" });
+      const reason = retried.paused === "trust" ? "always ask" : retried.paused === "signin" ? "sign in" : "confirm";
+      stamp({ id: step.id, status: "paused", reason });
       noteTrajectory(trajectory, patched, undefined, true, clock() - started);
-      return finish({ runId, status: "paused", steps, pausedStepId: step.id });
+      const pausedKind = retried.paused === "signin" || retried.paused === "confirm" ? retried.paused : undefined;
+      return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind, ask: retried.ask });
     }
     if (!retried.ok) {
       if (retried.failure.phase === "auth") {
@@ -386,8 +412,9 @@ export async function replay(
     stamp({ id: step.id, status: "passed", ...(retried.recovered ? { reason: `recovered: ${retried.recovered}` } : {}) });
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
-      const afterShot = await writeStepShot(driver, opts.shotDir, pictured, "after");
-      const snapshot = driver.captureStep ? await driver.captureStep().catch(() => undefined) : undefined;
+      const quiet = gate.shotsPaused;
+      const afterShot = quiet ? undefined : await writeStepShot(driver, opts.shotDir, pictured, "after");
+      const snapshot = quiet || !driver.captureStep ? undefined : await driver.captureStep().catch(() => undefined);
       if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot, ...(snapshot ? { snapshot } : {}) };
     }
   }
@@ -397,7 +424,7 @@ export async function replay(
 type StepOutcome =
   | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
-  | { ok: false; paused: "confirm" | "trust"; repairs: RepairLog[] };
+  | { ok: false; paused: "confirm" | "trust" | "signin"; repairs: RepairLog[]; ask?: HumanAsk };
 
 interface RecoveryBudget {
   used: number;
@@ -693,23 +720,24 @@ async function runConfirm(
   secrets: string[],
   gate: ApplyGate,
 ): Promise<StepOutcome> {
-  const workflow = gate.workflow;
-  await driver.showAsk?.(makeAsk({
-    kind: "confirm",
-    workflowId: workflow.id,
-    workflowName: workflow.name,
-    stepId: step.id,
-    stepIndex: step.index + 1,
-    stepCount: workflow.steps.length,
-    label: step.label,
-    button: confirmButton(step),
-    site: siteHost(workflow.startUrl),
-    timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
-    runId: gate.runId,
-  }));
+  if (gate.humanReady) {
+    const seen = await driver.tree();
+    if (step.postcondition && holds(step.postcondition, seen, args)) {
+      gate.trail.push({ kind: "human-confirm", stepId: step.id });
+      endHandoff(driver, gate, step.id);
+      await driver.clearConfirm?.();
+      return { ok: true, repairs: [] };
+    }
+    endHandoff(driver, gate, step.id);
+    await driver.clearConfirm?.();
+    return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "nothing applied", undefined, secrets) };
+  }
+  const ask = personAsk(gate, step, "confirm");
+  await driver.showAsk?.(ask);
   await driver.showConfirm?.(step.label);
-  if (!step.postcondition) {
-    return { ok: false, paused: "confirm", repairs: [] };
+  beginHandoff(driver, gate, step.id);
+  if (gate.yieldHuman || !step.postcondition) {
+    return { ok: false, paused: "confirm", repairs: [], ask };
   }
   let finished = false;
   try {
@@ -719,6 +747,7 @@ async function runConfirm(
     while (!holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
       if (driver.shouldStop?.()) {
         finished = true;
+        endHandoff(driver, gate, step.id);
         return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "cancelled", undefined, secrets) };
       }
       await (driver.sleep ? driver.sleep(200) : sleep(200));
@@ -726,10 +755,12 @@ async function runConfirm(
     }
     if (!holds(step.postcondition, seen, args)) {
       finished = true;
+      endHandoff(driver, gate, step.id);
       const reason = driver.shouldStop?.() ? "cancelled" : "nothing applied";
       return { ok: false, repairs: [], failure: await fail(driver, step, "expect", reason, undefined, secrets) };
     }
     gate.trail.push({ kind: "human-confirm", stepId: step.id });
+    endHandoff(driver, gate, step.id);
     finished = true;
     return { ok: true, repairs: [] };
   } finally {
@@ -747,8 +778,21 @@ async function runLogin(
 ): Promise<StepOutcome> {
   const seen = await driver.tree();
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
-  if (loginSatisfied(workflow, step, seen, args) && !miss) return { ok: true, repairs: [] };
-  const filled = await settleLogin(workflow, step, args, driver, gate, !secretArg(workflow, args, step.input));
+  const human = !secretArg(workflow, args, step.input);
+  if (loginSatisfied(workflow, step, seen, args) && !miss) {
+    if (gate.humanReady) endHandoff(driver, gate, step.id);
+    return { ok: true, repairs: [] };
+  }
+  if (human && (gate.humanReady || gate.yieldHuman)) {
+    const ask = personAsk(gate, step, "login");
+    if (!gate.humanReady) {
+      await driver.showAsk?.(ask);
+      await driver.showLoginWait?.(step.label || "Sign in on the site window");
+    }
+    beginHandoff(driver, gate, step.id);
+    return { ok: false, paused: "signin", repairs: [], ask };
+  }
+  const filled = await settleLogin(workflow, step, args, driver, gate, human);
   const startedLoggedOut = !!miss || (workflow.precondition?.phase === "auth" && !loginSatisfied(workflow, step, seen, args));
   if (filled) return { ok: true, repairs: [], authRecovered: startedLoggedOut };
   const phase = workflow.precondition?.phase === "auth" || miss ? "auth" : "expect";
@@ -781,28 +825,68 @@ async function settleLogin(
       return false;
     }
   } else {
-    await driver.showAsk?.(makeAsk({
-      kind: "login",
-      workflowId: workflow.id,
-      workflowName: workflow.name,
-      stepId: step.id,
-      stepIndex: step.index + 1,
-      stepCount: workflow.steps.length,
-      label: step.label,
-      site: siteHost(workflow.startUrl),
-      timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
-      runId: gate.runId,
-    }));
+    await driver.showAsk?.(personAsk(gate, step, "login"));
     await driver.showLoginWait?.(step.label || "Sign in on the site window");
+    beginHandoff(driver, gate, step.id);
   }
   let finished = false;
   try {
     const ok = await waitForLogin(workflow, step, args, driver, gate);
+    if (human) endHandoff(driver, gate, step.id);
     finished = true;
     return ok;
   } finally {
     if (finished) await driver.clearLoginWait?.();
   }
+}
+
+function personAsk(gate: ApplyGate, step: WorkflowStep, kind: "login" | "confirm"): HumanAsk {
+  const workflow = gate.workflow;
+  return makeAsk({
+    kind,
+    workflowId: workflow.id,
+    workflowName: workflow.name,
+    stepId: step.id,
+    stepIndex: step.index + 1,
+    stepCount: workflow.steps.length,
+    label: step.label,
+    button: kind === "confirm" ? confirmButton(step) : undefined,
+    site: siteHost(workflow.startUrl),
+    timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
+    runId: gate.runId,
+  });
+}
+
+function beginHandoff(driver: Driver, gate: ApplyGate, stepId: string): void {
+  const started = gate.trail.some((event) => event.kind === "handoff" && event.phase === "start" && event.stepId === stepId);
+  const ended = gate.trail.some((event) => event.kind === "handoff" && event.phase === "end" && event.stepId === stepId);
+  gate.shotsPaused = true;
+  if (started && !ended) return;
+  const ts = Date.now();
+  gate.trail.push({
+    kind: "handoff",
+    stepId,
+    phase: "start",
+    ts,
+    text: `Handoff started ${formatClock(ts)}`,
+  });
+  driver.pauseCapture?.();
+}
+
+function endHandoff(driver: Driver, gate: ApplyGate, stepId: string): void {
+  const ended = gate.trail.some((event) => event.kind === "handoff" && event.phase === "end" && event.stepId === stepId);
+  if (!ended) {
+    const ts = Date.now();
+    gate.trail.push({
+      kind: "handoff",
+      stepId,
+      phase: "end",
+      ts,
+      text: `Handoff ended ${formatClock(ts)}`,
+    });
+  }
+  gate.shotsPaused = false;
+  driver.resumeCapture?.();
 }
 
 async function recoverAuth(

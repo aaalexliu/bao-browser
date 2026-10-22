@@ -52,12 +52,13 @@ import {
 type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import" | "teach";
 
 interface OpenedState {
-  kind: "workflow" | "import";
+  kind: "workflow" | "import" | "run";
   id: string;
   name: string;
   link: string;
   importLink: string;
   saved: boolean;
+  inputs?: Record<string, string>;
   questions: { name: string; type: string; label: string; required: boolean; choices?: string[]; prompt: string; hint?: string; example?: string; cleared?: string }[];
 }
 
@@ -84,6 +85,8 @@ let state: ShellState & {
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
 let screen: Screen = "library";
 let lastWf = "";
+let deeplinkInputs: Record<string, string> = {};
+let deeplinkPending = false;
 let argsWorkflow = "";
 let openWorkflow = "";
 let healFilter: "pending" | "kept" | "reverted" = "pending";
@@ -128,11 +131,17 @@ async function refresh(): Promise<void> {
   state = await (await fetch("/api/state")).json();
   const opened = state.opened;
   if (opened) {
-    const token = `${opened.kind}:${opened.id}:${opened.saved}`;
+    const token = `${opened.kind}:${opened.id}:${opened.saved}:${JSON.stringify(opened.inputs || {})}`;
     if (token !== seenOpen) {
       seenOpen = token;
       if (opened.kind === "import") screen = "import";
-      else {
+      else if (opened.kind === "run") {
+        openWorkflow = opened.id;
+        lastWf = opened.id;
+        deeplinkInputs = opened.inputs || {};
+        deeplinkPending = true;
+        screen = "replay";
+      } else {
         openWorkflow = opened.id;
         screen = "workflow";
       }
@@ -185,7 +194,7 @@ function render(): void {
   if (float && state.teach?.phase !== "live") float.innerHTML = recordBar(state);
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
-  const keepReplay = screen === "replay" && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
+  const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
   const keepWorkflow = screen === "workflow" && document.getElementById("workflow-detail")?.getAttribute("data-workflow") === openWorkflow;
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
   if (!keepReplay && !keepWorkflow && !keepImport) {
@@ -280,8 +289,12 @@ function replayForm(): string {
   const globalHeal = (state.settings && state.settings.heal) || "auto";
   const options = (state.workflows || []).map((workflow) =>
     `<option value="${esc(workflow.id)}" ${workflow.id === selected ? "selected" : ""}>${esc(workflow.name)}</option>`).join("");
+  const prefill = Object.keys(deeplinkInputs).length
+    ? `<p id="run-prefill">Prefilled from the link. A secret is asked again.</p>`
+    : "";
   return `<section id="run-form"><h2>Run ${esc(current?.name || "")}</h2>
     <p class="lede">Inputs are asked once, before the run. Secrets stay masked.</p>
+    ${prefill}
     ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
     <label>Healing for this workflow <select id="wf-heal">
@@ -504,6 +517,8 @@ function bind(): void {
   const wf = document.getElementById("wf") as HTMLSelectElement | null;
   if (wf) wf.onchange = () => {
     lastWf = wf.value;
+    deeplinkInputs = {};
+    deeplinkPending = false;
     pinnedRunId = "";
     pinnedInputs = null;
     debugStepId = "";
@@ -1075,9 +1090,10 @@ async function fillArgs(id: string): Promise<void> {
   if (!form || screen !== "replay") return;
   const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-  const prev = (pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {};
-  form.innerHTML = doc.inputs.map((input) => field(input, prev[input.name])).join("") || "<p>This workflow has no inputs.</p>";
+  const prev = { ...((pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {}), ...deeplinkInputs };
+  form.innerHTML = doc.inputs.map((input) => field(input, input.type === "secret" ? undefined : prev[input.name])).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
+  deeplinkPending = false;
   form.querySelectorAll(".drop").forEach((zone) => {
     const el = zone as HTMLElement;
     el.ondragover = (event) => { event.preventDefault(); el.classList.add("over"); };
