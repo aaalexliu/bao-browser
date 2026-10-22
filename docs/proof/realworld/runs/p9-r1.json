@@ -34,6 +34,7 @@
         "target": "Men's T-Shirts"
       }
     ],
+    "pageClasses": [],
     "console": [],
     "network": [
       {
@@ -41,150 +42,136 @@
         "method": "GET",
         "url": "https://shop.polymer-project.org/",
         "status": 200,
-        "ts": 1792675898945
+        "ts": 1792684373205
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
         "status": 200,
-        "ts": 1792675899106
+        "ts": 1792684373281
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
         "status": 200,
-        "ts": 1792675899463
-      },
-      {
-        "stepId": "open",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
-        "status": 200,
-        "ts": 1792675899651
+        "ts": 1792684373539
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
         "status": 200,
-        "ts": 1792675899669
+        "ts": 1792684373674
       },
       {
         "stepId": "open",
         "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
         "status": 200,
-        "ts": 1792675899676
+        "ts": 1792684373676
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
         "status": 200,
-        "ts": 1792675899687
+        "ts": 1792684373679
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "status": 200,
+        "ts": 1792684373694
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
         "status": 200,
-        "ts": 1792675899751
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://www.google-analytics.com/analytics.js",
-        "status": 200,
-        "ts": 1792675899814
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "POST",
-        "url": "https://www.google-analytics.com/j/collect",
-        "status": 200,
-        "ts": 1792675899854
+        "ts": 1792684373778
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/",
         "status": 200,
-        "ts": 1792675899885
+        "ts": 1792684373788
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
         "status": 200,
-        "ts": 1792675899889
+        "ts": 1792684373798
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
         "status": 200,
-        "ts": 1792675899889
+        "ts": 1792684373799
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
         "status": 200,
-        "ts": 1792675899909
+        "ts": 1792684373813
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
         "status": 200,
-        "ts": 1792675899911
+        "ts": 1792684373813
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
         "status": 200,
-        "ts": 1792675899911
+        "ts": 1792684373813
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
         "status": 200,
-        "ts": 1792675899911
+        "ts": 1792684373813
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
         "status": 200,
-        "ts": 1792675899919
+        "ts": 1792684373818
       },
       {
-        "stepId": "wf-1792675898524-0",
+        "stepId": "wf-1792675898524-1",
         "method": "GET",
         "url": "https://www.google-analytics.com/analytics.js",
         "status": 200,
-        "ts": 1792675899926
+        "ts": 1792684373863
       },
       {
         "stepId": "wf-1792675898524-1",
         "method": "POST",
         "url": "https://www.google-analytics.com/j/collect",
         "status": 200,
-        "ts": 1792675899964
+        "ts": 1792684373916
       }
     ],
-    "runId": "run-mvjky0xp-dmt9",
+    "runId": "run-mvjpzni8-i9r4",
     "status": "failed",
     "steps": [
       {
         "id": "wf-1792675898524-0",
         "status": "passed",
-        "startedAt": 1792675899724,
-        "endedAt": 1792675899941,
+        "startedAt": 1792684373708,
+        "endedAt": 1792684373840,
         "snapshot": {
           "dom": [
             {
@@ -301,8 +288,8 @@
       {
         "id": "wf-1792675898524-1",
         "status": "passed",
-        "startedAt": 1792675899964,
-        "endedAt": 1792675900032,
+        "startedAt": 1792684373863,
+        "endedAt": 1792684373961,
         "snapshot": {
           "dom": [
             {
@@ -432,5 +419,10 @@
     "title": "Men's T-Shirts - SHOP",
     "text": ""
   },
-  "downloaded": []
+  "downloaded": [],
+  "shot": {
+    "sha256": "dad7d9fc0048bc51102f10c6dc8e503930c49213fbf0f0ada14cd872a65b68de",
+    "samePixels": true,
+    "identity": ""
+  }
 }

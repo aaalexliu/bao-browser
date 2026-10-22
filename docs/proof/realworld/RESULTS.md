@@ -1,37 +1,37 @@
 # Real-world proof
 
-Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes. Pass means both the doc's check and 0 model calls. ACCEPT stays 60 and MARGIN stays 25.
+Measured on Linux with headless Chrome from v1/desktop. Pass means both the doc's check and 0 model calls. ACCEPT stays 60 and MARGIN stays 25.
 
-p1 and p8 were recorded and replayed again after the vignette and dialog-handler fixes. p3 and p7 are the passing measurement from the same tree (drag range, Enter, and the vector Go button). p2, p4, p5, p6, and p9 were not remeasured in this run. p5 and p9 are left on purpose.
+p1 replay 2 was run again in its own browser after the shared-window end shot matched replay 1 pixel for pixel. p4, p5, and p9 were replayed again the same way. Their end pages are still the same pixels, because each replay stops on the same screen. p6 replay 2 was never run; its png is the old replay 1 file. p2, p3, p7, and p8 were not replayed again in this pass.
 
 | Task | Pass | Model calls | Heals | First failure |
 |---|---|---|---|---|
 | p1 Sign-up, contact upload, delete account | 2/2 | 0, 0 | 0 ; 0 | — |
-| p2 Practice form with date picker and dependent selects | 0/2 | 0, 0 | 0 ; 0 | select "Select {{text}}": option-list name, closed date popup |
+| p2 Practice form with date picker and dependent selects | 0/2 | 0, 0 | 0 ; 0 | select name is the truncated option list of a closed date popup |
 | p3 Booking, stop before reserve | 2/2 | 0, 0 | 0 ; 0 | — |
-| p4 Trial search and CSV download | 0/2 | 0, 0 | 0 ; 0 | not remeasured; previous run typed an empty change into disabled `#from-age-input` |
+| p4 Trial search and CSV download | 0/2 | 0, 0 | 0 ; 0 | fill of disabled `#from-age-input` |
 | p5 Paginated catalog to CSV | 0/2 | 0, 0 | 0 ; 0 | no extract or CSV output; category is a click, not an input |
-| p6 Spreadsheet rows into a web table | 0/2 | 0, 0 | 0 ; 0 | not remeasured; previous run paused on a reCAPTCHA iframe in the ad stack |
+| p6 Spreadsheet rows into a web table | 0/2 | 0, 0 | 0 ; 0 | replay 2 was not run; the old png is a copy of replay 1 |
 | p7 Wikipedia history across skins | 2/2 | 0, 0 | 0 ; 0 | — |
 | p8 Unstable DOM, new tab, JS dialogs | 2/2 | 0, 0 | 0 ; 0 | — |
 | p9 Shadow-DOM shop, stop before place order | 0/2 | 0, 0 | 0 ; 0 | no confirm gate before Place Order |
 
 ## Failure causes
 
-The four passing tasks are not in this list. The rows below are the tasks this run did not turn green.
+1. p2 — the saved select step is named with the month or year option list, cut at 80 characters. The live select shows only the chosen option and sits in a closed `.react-datepicker`.
+2. p4 — both replays fill the disabled age field `#from-age-input`. A fresh browser for replay 2 still photographs that same screen, so the png bytes match. The run ids differ.
+3. p5 and p9 — replay 2 ran again in its own browser and stopped on the same page as replay 1, so the end png matches. p5 has no extract. p9 has no confirm gate.
+4. p6 — replay 2 has no run id. `p6-r2.png` is the same bytes and the same timestamp as `p6-r1.png`. It was not recaptured. A real bot wall holds the proof for the act timeout.
 
-1. p2 — the saved select step's accessible name is the month or year option list, truncated at 80 characters. The live `<select>` shows only the chosen option, and it sits inside a closed `.react-datepicker`. A recording after the input-kinds change does not emit that step: a `change` inside `.react-datepicker`, `.rbc-calendar`, or `[data-bao-picker]` is ignored.
-2. p4 — not remeasured. The recorder now skips an empty `change` on a hidden or closed field and scrolls a click target into view. The previous run never stored the Recruiting checkbox or the download.
-3. p5 — left for the extract step. p9 — left; a confirm gate before Place Order is a separate feature.
-4. p6 — not remeasured on demoqa. A bot wall now requires a visible challenge widget, a known interstitial title or body, or a document-level 403/429 with challenge markers, and the recorded target has to be missing. A hidden reCAPTCHA iframe does not pause. Fixture: `/ads` in `desktop/test/live/page-class.test.ts`, and the unit case in `desktop/test/unit/page-class.test.ts`.
+## Keyframes
+
+p2, p3, p7, and p8 already had distinct replay 2 shots. p1's new shots are distinct. p4, p5, and p9 were recaptured and are still the same pixels. p6 was not recaptured.
 
 ## Per task
 
 ### p1 Sign-up, contact upload, delete account
 
 Site: automationexercise.com
-
-Replay 2 of the previous recording clicked Delete Account and stayed on `/contact_us#google_vignette`. The ad script swallowed the navigation. Replay now follows the link when that hash is the only URL change. This recording passed 2/2.
 
 Recorded:
 
@@ -104,174 +104,183 @@ Recorded:
 }
 ```
 
-Replay 1: pass (passed), model calls 0, heals 0. End URL `https://automationexercise.com/delete_account`, text includes ACCOUNT DELETED!
+Replay 1 and replay 2 each opened a browser. The end shots are not the same file.
 
-Replay 2: pass (passed), model calls 0, heals 0. Same end state for the second account.
+| | Replay 1 | Replay 2 |
+|---|---|---|
+| Run id | `run-mvjpq0dq-5i25` | `run-mvjpriny-3emj` |
+| Started | 2026-10-22 15:45:23 UTC | 2026-10-22 15:46:34 UTC |
+| Ended | 2026-10-22 15:46:02 UTC | 2026-10-22 15:47:12 UTC |
+| Name | Bao Alpha | Bao Beta |
+| Email | bao-alpha-mvjp070t@example.com | bao-beta-mvjp070t@example.com |
+| End URL | `/delete_account` | `/delete_account` |
+| Shot sha256 | `2babf3c490891d3f…` | `e386fbfb6c8d9698…` |
+
+Replay 1: pass (passed), model calls 0, heals 0. ACCOUNT DELETED!
+
+Replay 2: pass (passed), model calls 0, heals 0. ACCOUNT DELETED! The banner ad is a different image from replay 1.
 
 Artifacts:
 
 - `docs/proof/realworld/artifacts/p1-r1.png`
 - `docs/proof/realworld/artifacts/p1-r2.png`
 
-### p2 Practice form with date picker and dependent selects
+### p4 Trial search and CSV download
 
-Site: demoqa.com/automation-practice-form
-
-Not remeasured. The saved workflow `docs/proof/realworld/workflows/p2.json` (recorded before the date-picker skip) has two select steps whose accessible name is the option list, truncated at 80 characters: `January February March April May June July August September October November Dec` and `1900 1901 1902 ...`. The live dump of a `<select>` shows only the selected option, and those selects sit inside a closed `.react-datepicker` until the date field is opened. The role and text locators therefore match nothing on the settled form.
-
-A recording made after the input-kinds change does not emit those steps. The miss is the old option-list locator against a closed popup, not the select action itself. The last scored run was 0/2, 0 model calls, 0 heals, first failure `select "Select {{text}}"`.
-
-### p3 Booking, stop before reserve
-
-Site: automationintesting.online
-
-Book now is found by its css path. The stay is a drag on `.rbc-calendar` from the 5th through the 6th, which the page shows as 2 nights. Run 2 shifts the checkout input by one day (3 nights). The grand total includes the cleaning fee and the service fee. Reserve Now is a confirm step, so the run pauses there and the proof counts that pause as a pass.
+Site: clinicaltrials.gov
 
 Recorded:
 
 ```json
 {
-  "id": "wf-1792681340536",
-  "openUrl": "https://automationintesting.online/",
-  "startUrl": "https://automationintesting.online/",
-  "steps": 4,
+  "id": "wf-1792676908524",
+  "openUrl": "https://clinicaltrials.gov/search",
+  "startUrl": "https://clinicaltrials.gov/search",
+  "steps": 28,
   "actions": {
     "navigate": 1,
-    "click": 2,
-    "confirm": 1
+    "type": 26,
+    "click": 1
   },
   "inputs": [
-    "checkIn:date=+14d",
-    "checkOut:date=+15d"
+    "text:text",
+    "text2:text",
+    "text3:text",
+    "text4:text",
+    "text5:text",
+    "text6:text",
+    "text7:text",
+    "text8:text",
+    "text9:text",
+    "text10:text",
+    "text11:text",
+    "text12:text",
+    "text13:text",
+    "text14:text",
+    "text15:text",
+    "text16:text",
+    "text17:text",
+    "text18:text",
+    "text19:text",
+    "text20:text",
+    "text21:text",
+    "text22:text",
+    "text23:text",
+    "text24:text",
+    "advcond:text=type 1 diabetes",
+    "text25:text=California"
   ],
   "labels": [
-    "navigate Open https://automationintesting.online/",
-    "click Click \"Book now\"",
-    "click Pick {{checkIn}} to {{checkOut}}",
-    "confirm Confirm \"Reserve Now\""
+    "navigate Open https://clinicaltrials.gov/search",
+    "type Type {{text}}",
+    "type Type {{text2}}",
+    "type Type {{text3}}",
+    "type Type {{text4}}",
+    "type Type {{text5}}",
+    "type Type {{text6}}",
+    "type Type {{text7}}",
+    "type Type {{text8}}",
+    "type Type {{text9}}",
+    "type Type {{text10}}",
+    "type Type {{text11}}",
+    "type Type {{text12}}",
+    "type Type {{text13}}",
+    "type Type {{text14}}",
+    "type Type {{text15}}",
+    "type Type {{text16}}",
+    "type Type {{text17}}",
+    "type Type {{text18}}",
+    "type Type {{text19}}",
+    "type Type {{text20}}",
+    "type Type {{text21}}",
+    "type Type {{text22}}",
+    "type Type {{text23}}",
+    "type Type {{text24}}",
+    "type Type {{advcond}}",
+    "type Type {{text25}}",
+    "click Click \"More Filters\""
   ]
 }
 ```
 
-Replay 1: pass (paused, confirm), model calls 0, heals 0. £100 x 2 nights, room £200, total £240.
+Replay 1: fail (failed), model calls 0, heals 0
+First failure: wf-1792676908524-1 type Type {{text}} — type "Type {{text}}": action locator.fill: Timeout 30000ms exceeded. Call log: - waiting for locator('[data-bao-i="225"]') - locator resolved to <input disabled data-bao-i="225" id="from-age-input" name="from-age-input" formcontrolname="fromAge" _ngcontent-ng-c956280390="" class="usa-input age-input ng-untouched ng-pristine"/> - fill("") - attempting fill action 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 20ms 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 100ms 60 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 500ms
 
-Replay 2: pass (paused, confirm), model calls 0, heals 0. £100 x 3 nights, room £300, total £340.
+Replay 2: fail (failed), model calls 0, heals 0
+First failure: wf-1792676908524-1 type Type {{text}} — type "Type {{text}}": action locator.fill: Timeout 30000ms exceeded. Call log: - waiting for locator('[data-bao-i="225"]') - locator resolved to <input disabled data-bao-i="225" id="from-age-input" name="from-age-input" formcontrolname="fromAge" _ngcontent-ng-c956280390="" class="usa-input age-input ng-untouched ng-pristine"/> - fill("") - attempting fill action 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 20ms 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 100ms 60 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 500ms
 
 Artifacts:
 
-- `docs/proof/realworld/artifacts/p3-r1.png`
-- `docs/proof/realworld/artifacts/p3-r2.png`
-
-### p4 Trial search and CSV download
-
-Site: clinicaltrials.gov
-
-Not remeasured after the recorder change. The previous run was 0/2, 0 model calls, 0 heals. Empty `change` events from the closed advanced date fields became type steps, and replay filled the disabled age field `#from-age-input`. The Recruiting checkbox `#adv-check0-status1` was outside the viewport, so it was never recorded and the download step was never stored.
-
-The recorder now drops an empty `change` when the field is hidden or closed, and a drive click scrolls the target into view before clicking.
+- `docs/proof/realworld/artifacts/p4-r1.png`
+- `docs/proof/realworld/artifacts/p4-r2.png`
 
 ### p5 Paginated catalog to CSV
 
 Site: books.toscrape.com
 
-Left for the extract step. Last measurement 0/2, 0 model calls. The recording is a navigate and a click on Travel. Mystery and Historical Fiction were not inputs, and there is no CSV.
-
-### p6 Spreadsheet rows into a web table
-
-Site: demoqa.com/webtables
-
-Not remeasured. The previous run paused on Click Add because an ad-stack reCAPTCHA iframe (`/recaptcha/api2/aframe`) was classified as a bot wall while the table was on screen. A real wall holds the proof for the act timeout, so this task was not started again.
-
-The classifier now requires a challenge that is actually blocking: a visible widget at least 40 by 40, a known interstitial title or body, or a document-level 403/429 with challenge markers, and the recorded target must be missing. An iframe src or a marker class alone does not pause. The `/ads` fixture is a working page with a hidden reCAPTCHA iframe and must not pause.
-
-### p7 Wikipedia history across skins
-
-Site: en.wikipedia.org
-
-Enter in the search field is the search step. The detail-0 click that Enter synthesizes is not recorded. Run 2 uses `useskin=vector` and replaces that Enter with a click on `#searchButton` (Go). The history link is `#ca-history > a`.
-
 Recorded:
 
 ```json
 {
-  "id": "wf-1792681416284",
-  "openUrl": "https://en.wikipedia.org/wiki/Special:Search",
-  "startUrl": "https://en.wikipedia.org/wiki/Special:Search",
-  "steps": 4,
+  "id": "wf-1792675534903",
+  "openUrl": "https://books.toscrape.com/",
+  "startUrl": "https://books.toscrape.com/",
+  "steps": 2,
   "actions": {
     "navigate": 1,
-    "type": 1,
-    "key": 1,
     "click": 1
   },
-  "inputs": [
-    "search:text=Baozi"
-  ],
+  "inputs": [],
   "labels": [
-    "navigate Open https://en.wikipedia.org/wiki/Special:Search",
-    "type Type {{search}}",
-    "key Press Enter",
-    "click Click \"Past revisions of this page [alt-h]\""
+    "navigate Open https://books.toscrape.com/",
+    "click Click \"Travel\""
   ]
 }
 ```
 
-Replay 1: pass (passed), model calls 0, heals 0. Baozi history, revision 19:53, 4 October 2026.
+Replay 1: fail (failed), model calls 0, heals 0
+First failure: check — no extract or CSV output; category is a click, not an input, so Mystery and Historical Fiction were not replayed
 
-Replay 2: pass (passed), model calls 0, heals 0. Xiaolongbao history on `useskin=vector`, revision 03:15, 21 October 2026.
-
-Artifacts:
-
-- `docs/proof/realworld/artifacts/p7-r1.png`
-- `docs/proof/realworld/artifacts/p7-r2.png`
-
-### p8 Unstable DOM, new tab, JS dialogs
-
-Site: the-internet.herokuapp.com
-
-Capture `goto` is a navigate step, so Gallery, the new window, and the alerts page are on the recording. The prompt value is an input, and the expect is `You entered: {{prompt}}`. Replay 1 and replay 2 share the page. The first dialog handler was accepting the prompt before the second driver supplied the text. One handler is kept per page.
-
-Recorded:
-
-```json
-{
-  "id": "wf-1792682913207",
-  "openUrl": "https://the-internet.herokuapp.com/challenging_dom",
-  "startUrl": "https://the-internet.herokuapp.com/challenging_dom",
-  "steps": 10,
-  "actions": {
-    "navigate": 4,
-    "click": 6
-  },
-  "inputs": [
-    "prompt:text=proof-prompt"
-  ],
-  "labels": [
-    "navigate Open https://the-internet.herokuapp.com/challenging_dom",
-    "click Click \"edit\"",
-    "navigate Open https://the-internet.herokuapp.com/shifting_content/menu?mode=random",
-    "click Click \"Gallery\"",
-    "navigate Open https://the-internet.herokuapp.com/windows",
-    "click Click \"Click Here\"",
-    "navigate Open https://the-internet.herokuapp.com/javascript_alerts",
-    "click Click \"Click for JS Alert\"",
-    "click Click \"Click for JS Confirm\"",
-    "click Click \"Click for JS Prompt\""
-  ]
-}
-```
-
-Replay 1: pass (passed), model calls 0, heals 0. Page text includes `You entered: alpha-prompt` and New Window.
-
-Replay 2: pass (passed), model calls 0, heals 0. Page text includes `You entered: beta-prompt` and New Window.
+Replay 2: fail (failed), model calls 0, heals 0
+First failure: check — no extract or CSV output; category is a click, not an input, so Mystery and Historical Fiction were not replayed
 
 Artifacts:
 
-- `docs/proof/realworld/artifacts/p8-r1.png`
-- `docs/proof/realworld/artifacts/p8-r2.png`
+- `docs/proof/realworld/artifacts/p5-r1.png`
+- `docs/proof/realworld/artifacts/p5-r2.png`
 
 ### p9 Shadow-DOM shop, stop before place order
 
 Site: shop.polymer-project.org
 
-Left. A confirm gate before Place Order is a separate feature. Last measurement 0/2, 0 model calls, first failure `no confirm gate before Place Order`.
+Recorded:
+
+```json
+{
+  "id": "wf-1792675898524",
+  "openUrl": "https://shop.polymer-project.org/",
+  "startUrl": "https://shop.polymer-project.org/",
+  "steps": 2,
+  "actions": {
+    "navigate": 1,
+    "click": 1
+  },
+  "inputs": [],
+  "labels": [
+    "navigate Open https://shop.polymer-project.org/",
+    "click Click \"Men's T-Shirts\""
+  ]
+}
+```
+
+Replay 1: fail (failed), model calls 0, heals 0
+First failure: check — no confirm gate before Place Order
+
+Replay 2: fail (failed), model calls 0, heals 0
+First failure: check — no confirm gate before Place Order
+
+Artifacts:
+
+- `docs/proof/realworld/artifacts/p9-r1.png`
+- `docs/proof/realworld/artifacts/p9-r2.png`
+

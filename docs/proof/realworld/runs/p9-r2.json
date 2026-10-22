@@ -34,6 +34,7 @@
         "target": "Men's T-Shirts"
       }
     ],
+    "pageClasses": [],
     "console": [],
     "network": [
       {
@@ -41,206 +42,136 @@
         "method": "GET",
         "url": "https://shop.polymer-project.org/",
         "status": 200,
-        "ts": 1792675930571
+        "ts": 1792684404735
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
         "status": 200,
-        "ts": 1792675930577
+        "ts": 1792684404809
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
         "status": 200,
-        "ts": 1792675930584
-      },
-      {
-        "stepId": "open",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
-        "status": 200,
-        "ts": 1792675930611
+        "ts": 1792684405040
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
         "status": 200,
-        "ts": 1792675930611
+        "ts": 1792684405146
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792684405147
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
         "status": 200,
-        "ts": 1792675930611
+        "ts": 1792684405148
       },
       {
         "stepId": "open",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
         "status": 200,
-        "ts": 1792675930611
+        "ts": 1792684405159
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
         "status": 200,
-        "ts": 1792675930632
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://www.google-analytics.com/analytics.js",
-        "status": 200,
-        "ts": 1792675930633
+        "ts": 1792684405190
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/",
         "status": 200,
-        "ts": 1792675930653
-      },
-      {
-        "stepId": "wf-1792675898524-0",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
-        "status": 200,
-        "ts": 1792675930661
+        "ts": 1792684405262
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
         "status": 200,
-        "ts": 1792675930661
+        "ts": 1792684405266
+      },
+      {
+        "stepId": "wf-1792675898524-0",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
+        "status": 200,
+        "ts": 1792684405266
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
         "status": 200,
-        "ts": 1792675930683
+        "ts": 1792684405282
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
         "status": 200,
-        "ts": 1792675930683
+        "ts": 1792684405282
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
         "status": 200,
-        "ts": 1792675930684
+        "ts": 1792684405282
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
         "status": 200,
-        "ts": 1792675930684
+        "ts": 1792684405282
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://shop.polymer-project.org/esm-bundled/src/lazy-resources.js",
         "status": 200,
-        "ts": 1792675930688
+        "ts": 1792684405288
       },
       {
         "stepId": "wf-1792675898524-0",
         "method": "GET",
         "url": "https://www.google-analytics.com/analytics.js",
         "status": 200,
-        "ts": 1792675930698
+        "ts": 1792684405325
       },
       {
         "stepId": "wf-1792675898524-1",
         "method": "POST",
         "url": "https://www.google-analytics.com/j/collect",
         "status": 200,
-        "ts": 1792675930733
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-list.js",
-        "status": 200,
-        "ts": 1792675930817
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/mens_tshirts.json",
-        "status": 200,
-        "ts": 1792675930820
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13058B.jpg",
-        "status": 200,
-        "ts": 1792675930824
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13256B.jpg",
-        "status": 200,
-        "ts": 1792675930825
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13239B.jpg",
-        "status": 200,
-        "ts": 1792675930826
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13264B.jpg",
-        "status": 200,
-        "ts": 1792675930826
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13265B.jpg",
-        "status": 200,
-        "ts": 1792675930843
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13280B.jpg",
-        "status": 200,
-        "ts": 1792675930843
-      },
-      {
-        "stepId": "wf-1792675898524-1",
-        "method": "GET",
-        "url": "https://shop.polymer-project.org/esm-bundled/data/images/10-13213B.jpg",
-        "status": 200,
-        "ts": 1792675930844
+        "ts": 1792684405377
       }
     ],
-    "runId": "run-mvjkyos6-tgew",
+    "runId": "run-mvjq0bse-jpsf",
     "status": "failed",
     "steps": [
       {
         "id": "wf-1792675898524-0",
         "status": "passed",
-        "startedAt": 1792675930631,
-        "endedAt": 1792675930710,
+        "startedAt": 1792684405180,
+        "endedAt": 1792684405310,
         "snapshot": {
           "dom": [
             {
@@ -357,8 +288,8 @@
       {
         "id": "wf-1792675898524-1",
         "status": "passed",
-        "startedAt": 1792675930732,
-        "endedAt": 1792675930816,
+        "startedAt": 1792684405344,
+        "endedAt": 1792684405427,
         "snapshot": {
           "dom": [
             {
@@ -469,7 +400,7 @@
               "text": "Made by Polymer"
             }
           ],
-          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main:\n  - img \"Men's T-Shirts\"\n  - heading \"Men's T-Shirts\" [level=1]\n  - text: (40 items)\n  - list:\n    - listitem:\n      - link \"YouTube Organic Cotton T-Shirt - Grey YouTube Organic Cotton T-Shirt - Grey $14.75\":\n        - /url: /detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey\n        - img \"YouTube Organic Cotton T-Shirt - Grey\"\n        - text: YouTube Organic Cotton T-Shirt - Grey $14.75\n    - listitem:\n      - link \"Inbox - Subtle Actions T-Shirt Inbox - Subtle Actions T-Shirt $17.05\":\n        - /url: /detail/mens_tshirts/Inbox+-+Subtle+Actions+T-Shirt\n        - img \"Inbox - Subtle Actions T-Shirt\"\n        - text: Inbox - Subtle Actions T-Shirt $17.05\n    - listitem:\n      - link \"Adult Android Superhero T-Shirt Adult Android Superhero T-Shirt $14.95\":\n        - /url: /detail/mens_tshirts/Adult+Android+Superhero+T-Shirt\n        - img \"Adult Android Superhero T-Shirt\"\n        - text: Adult Android Superhero T-Shirt $14.95\n    - listitem:\n      - link \"Men's Vintage Heather T-Shirt Men's Vintage Heather T-Shirt $15.80\":\n        - /url: /detail/mens_tshirts/Men+s+Vintage+Heather+T-Shirt\n        - img \"Men's Vintage Heather T-Shirt\"\n        - text: Men's Vintage Heather T-Shirt $15.80\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only"
+          "ax": "- text: SHOP\n- navigation:\n  - link \"SHOP Home\":\n    - /url: /\n    - text: SHOP\n  - 'link \"Shopping cart: 0 items\"':\n    - /url: /cart\n    - 'button \"Shopping cart: 0 items\"':\n      - img\n  - link \"Men's Outerwear\":\n    - /url: /list/mens_outerwear\n  - link \"Ladies Outerwear\":\n    - /url: /list/ladies_outerwear\n  - link \"Men's T-Shirts\":\n    - /url: /list/mens_tshirts\n  - link \"Ladies T-Shirts\":\n    - /url: /list/ladies_tshirts\n- main\n- contentinfo:\n  - link \"Made by Polymer\":\n    - /url: https://www.polymer-project.org/3.0/toolbox/\n  - text: Demo Only\n- text: Home, loaded"
         }
       }
     ],
@@ -488,5 +419,10 @@
     "title": "Men's T-Shirts - SHOP",
     "text": ""
   },
-  "downloaded": []
+  "downloaded": [],
+  "shot": {
+    "sha256": "dad7d9fc0048bc51102f10c6dc8e503930c49213fbf0f0ada14cd872a65b68de",
+    "samePixels": true,
+    "identity": ""
+  }
 }

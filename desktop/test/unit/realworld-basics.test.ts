@@ -137,6 +137,66 @@ test("a shared name loses to the recorded css path, test id, and href", () => {
   assert.equal(locs.some((item) => item.kind === "role" && item.name === ""), false);
 });
 
+test("the real signup-email tie is broken by the recorded test id and css path", async () => {
+  // find-debug wf-1792674880957-2: login and signup are both name="email".
+  // Role and input[name=email] scored 40. Both nameAttr scores were 70, a tie.
+  const login = dom({
+    role: "textbox",
+    tag: "input",
+    nameAttr: "email",
+    cssPath: "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(2)",
+  });
+  const signup = dom({
+    role: "textbox",
+    tag: "input",
+    nameAttr: "email",
+    testId: "signup-email",
+    cssPath: "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(3)",
+  });
+  const fields = [login, signup];
+  const tied = lookup(dom({ role: "textbox", nameAttr: "email" }), fields);
+  assert.equal(tied.ok, false);
+  assert.equal(scoreLocator({ kind: "role", role: "textbox", name: "" }, fields).score, 40);
+  assert.equal(scoreLocator({ kind: "css", value: 'input[name="email"]' }, fields).score, 40);
+  const recorded = interpret([
+    {
+      id: "e",
+      ts: 1,
+      kind: "act",
+      op: "type",
+      value: "bao-beta@example.com",
+      identity: signup,
+    },
+  ], { id: "wf-tie", name: "Tie", startUrl: "https://automationexercise.com/login" });
+  const step = recorded.steps[0]!;
+  assert.equal(step.locators?.some((item) => item.kind === "testid" && item.value === "signup-email"), true);
+  assert.equal(step.locators?.some((item) => item.kind === "css" && item.value === signup.cssPath), true);
+  assert.equal(scoreLocator({ kind: "testid", value: "signup-email" }, fields).score, 100);
+  assert.equal(matchLocator({ kind: "css", value: signup.cssPath || "" }, fields)?.index, 1);
+  delete step.expect;
+  delete step.postcondition;
+  const filled: string[] = [];
+  const live = tree(fields, { url: "https://automationexercise.com/login" });
+  const driver: Driver = {
+    tree: async () => live,
+    snapshot: async () => ({ dom: [] }),
+    click: async () => {},
+    fill: async (node) => { filled.push(node.testId || node.cssPath || ""); },
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+  };
+  const result = await replay(recorded, { username: "bao-beta@example.com" }, driver, { heal: unavailableHeal() });
+  assert.equal(result.modelCalls, 0);
+  assert.equal(result.locatorHits[0]?.kind, "testid");
+  assert.deepEqual(filled, ["signup-email"]);
+  assert.equal(result.steps[0]?.status, "passed");
+});
+
 test("Reserve Now is a confirm step and a prompt keeps the text it returned", () => {
   const events: TrailEvent[] = [
     { id: "r", ts: 1, kind: "act", op: "click", identity: dom({ role: "button", text: "Reserve Now", name: "Reserve Now" }) },

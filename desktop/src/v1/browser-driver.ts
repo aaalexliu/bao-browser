@@ -244,6 +244,18 @@ export class BrowserDriver implements Driver {
     return elementShot(this.page, target);
   }
 
+  /** The whole viewport. Proof uses this when the end page no longer shows who ran. */
+  async pageShot(): Promise<Buffer | undefined> {
+    await this.page.evaluate(maskPasswordFields).catch(() => undefined);
+    try {
+      return await this.page.screenshot({ type: "png" });
+    } catch {
+      return undefined;
+    } finally {
+      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
+    }
+  }
+
   async probe(queries: { kind: "css" | "text" | "role" | "xpath"; query: string; role?: string; name?: string }[]): Promise<{ url: string; hits: { kind: string; query: string; count: number; visible: number }[] }> {
     const hits: { kind: string; query: string; count: number; visible: number }[] = [];
     for (const query of queries) {

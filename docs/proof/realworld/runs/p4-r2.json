@@ -40,7 +40,7 @@
     "pageClasses": [
       {
         "stepId": "wf-1792676908524-1",
-        "at": 1792677063755,
+        "at": 1792684219431,
         "class": "changed",
         "reason": "page changed",
         "evidence": []
@@ -51,7 +51,7 @@
         "stepId": "wf-1792676908524-0",
         "type": "log",
         "text": "TypeError: Failed to fetch at fetch (https://cdn.ncbi.nlm.nih.gov/core/pinger/pinger.js:1:64328) at https://clinicaltrials.gov/polyfills-OSBUY2IV.js:2:3186 at n.<computed> (https://clinicaltrials.gov/polyfills-OSBUY2IV.js:1:15478) at getMes",
-        "ts": 1792677032443
+        "ts": 1792684187623
       }
     ],
     "network": [
@@ -60,570 +60,570 @@
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-XCST56TN.js",
         "status": 200,
-        "ts": 1792677032480
+        "ts": 1792684187661
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-42TBZQYA.js",
         "status": 200,
-        "ts": 1792677032480
+        "ts": 1792684187661
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-BM3E2NSC.js",
         "status": 200,
-        "ts": 1792677032480
+        "ts": 1792684187661
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-QBIYNLEG.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187661
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-FZRYKHK2.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187661
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-DW5BAKPM.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187662
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-O5R2NEDA.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187662
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-LWKUPASL.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187662
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-N5W3TRDQ.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187662
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-WTJ6AHDE.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187662
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-N3WLMKWZ.js",
         "status": 200,
-        "ts": 1792677032481
+        "ts": 1792684187662
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-TOFAEGEQ.js",
         "status": 200,
-        "ts": 1792677032481
-      },
-      {
-        "stepId": "wf-1792676908524-0",
-        "method": "GET",
-        "url": "https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3KUBGEe.woff2",
-        "status": 200,
-        "ts": 1792677032489
+        "ts": 1792684187662
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2",
         "status": 200,
-        "ts": 1792677032489
+        "ts": 1792684187669
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/search.svg",
         "status": 200,
-        "ts": 1792677032489
+        "ts": 1792684187670
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/add.svg",
         "status": 200,
-        "ts": 1792677032489
+        "ts": 1792684187670
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-MXBAIA6N.js",
         "status": 200,
-        "ts": 1792677032504
+        "ts": 1792684187685
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-SF6KOENN.js",
         "status": 200,
-        "ts": 1792677032505
+        "ts": 1792684187701
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-AB224BQT.js",
         "status": 200,
-        "ts": 1792677032505
+        "ts": 1792684187701
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-H7PLUPKI.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-IY34B7GB.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-UNC76QDN.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-RQ36OWE7.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-PJAH7P4X.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-QO4SBAZ5.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-YSI6QT3P.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-ABJHJXGS.js",
         "status": 200,
-        "ts": 1792677032506
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-2SKEFSRX.js",
         "status": 200,
-        "ts": 1792677032507
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/chunk-2KG2LKF2.js",
         "status": 200,
-        "ts": 1792677032507
+        "ts": 1792684187702
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://www.googletagmanager.com/gtag/js",
         "status": 200,
-        "ts": 1792677032550
+        "ts": 1792684187761
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://dap.digitalgov.gov/Universal-Federated-Analytics-Min.js",
         "status": 200,
-        "ts": 1792677032550
+        "ts": 1792684187761
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://www.googletagmanager.com/gtag/js",
         "status": 200,
-        "ts": 1792677032591
+        "ts": 1792684187762
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://www.ncbi.nlm.nih.gov/stat",
         "status": 200,
-        "ts": 1792677032607
+        "ts": 1792684187793
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://www.ncbi.nlm.nih.gov/stat",
         "status": 200,
-        "ts": 1792677032607
+        "ts": 1792684187793
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/us_flag_small.png",
         "status": 200,
-        "ts": 1792677032646
+        "ts": 1792684187834
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/icon-dot-gov.svg",
         "status": 200,
-        "ts": 1792677032646
+        "ts": 1792684187834
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/icon-https.svg",
         "status": 200,
-        "ts": 1792677032646
+        "ts": 1792684187835
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/main/img/AgencyLogo.svg",
         "status": 200,
-        "ts": 1792677032647
+        "ts": 1792684187835
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/images/ctg-header-logo.svg",
         "status": 200,
-        "ts": 1792677032647
+        "ts": 1792684187835
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/images/nih-nlm-ncbi-logo.png",
         "status": 200,
-        "ts": 1792677032647
+        "ts": 1792684187835
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/images/close.png",
         "status": 200,
-        "ts": 1792677032647
+        "ts": 1792684187835
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/images/warning.svg",
         "status": 200,
-        "ts": 1792677032648
+        "ts": 1792684187836
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/images/ctg-footer-logo.svg",
         "status": 200,
-        "ts": 1792677032648
+        "ts": 1792684187836
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/expand_more.svg",
         "status": 200,
-        "ts": 1792677032648
+        "ts": 1792684187836
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/navigate_next.svg",
         "status": 200,
-        "ts": 1792677032648
+        "ts": 1792684187836
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/warning.svg",
         "status": 200,
-        "ts": 1792677032648
+        "ts": 1792684187836
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/remove.svg",
         "status": 200,
-        "ts": 1792677032648
+        "ts": 1792684187836
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://cdn.ncbi.nlm.nih.gov/core/alerts/alerts.js",
         "status": 200,
-        "ts": 1792677032648
+        "ts": 1792684187836
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://zndikywqsjiuwn0q5-nlmenterprise.siteintercept.qualtrics.com/SIE/",
         "status": 304,
-        "ts": 1792677032649
+        "ts": 1792684187847
       },
       {
         "stepId": "wf-1792676908524-0",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/dxjsmodule/626.f09927365e9cfc5937fa.chunk.js",
         "status": 200,
-        "ts": 1792677032658
+        "ts": 1792684187855
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://cdn.ncbi.nlm.nih.gov/ncbi-media/alerts/alerts.json",
         "status": 200,
-        "ts": 1792677032681
+        "ts": 1792684187877
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://www.ncbi.nlm.nih.gov/stat",
         "status": 200,
-        "ts": 1792677032737
+        "ts": 1792684187956
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "POST",
         "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Targeting.php",
         "status": 200,
-        "ts": 1792677032793
+        "ts": 1792684187956
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/dxjsmodule/CoreModule.js",
         "status": 200,
-        "ts": 1792677032793
-      },
-      {
-        "stepId": "wf-1792676908524-1",
-        "method": "GET",
-        "url": "https://siteintercept.qualtrics.com/dxjsmodule/147.d10e323bc0517db5c988.chunk.js",
-        "status": 200,
-        "ts": 1792677032794
+        "ts": 1792684187956
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/dxjsmodule/463.beb1e5f34eda2e175645.chunk.js",
         "status": 200,
-        "ts": 1792677032794
+        "ts": 1792684188013
+      },
+      {
+        "stepId": "wf-1792676908524-1",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/dxjsmodule/147.d10e323bc0517db5c988.chunk.js",
+        "status": 200,
+        "ts": 1792684188013
+      },
+      {
+        "stepId": "wf-1792676908524-1",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Asset.php",
+        "status": 200,
+        "ts": 1792684188013
+      },
+      {
+        "stepId": "wf-1792676908524-1",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Asset.php",
+        "status": 200,
+        "ts": 1792684188013
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/dxjsmodule/FeedbackButtonModule.js",
         "status": 200,
-        "ts": 1792677032794
-      },
-      {
-        "stepId": "wf-1792676908524-1",
-        "method": "GET",
-        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Asset.php",
-        "status": 200,
-        "ts": 1792677032794
-      },
-      {
-        "stepId": "wf-1792676908524-1",
-        "method": "GET",
-        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Asset.php",
-        "status": 200,
-        "ts": 1792677032794
+        "ts": 1792684188015
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://iad1.qualtrics.com/WRQualtricsSiteIntercept/Graphic.php",
         "status": 200,
-        "ts": 1792677032901
+        "ts": 1792684188139
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/WRQualtricsShared/Graphics/siteintercept/wr-dialog-close-btn-black.png",
         "status": 307,
-        "ts": 1792677032914
+        "ts": 1792684188155
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/static/q-siteintercept/~/img/wr-dialog-close-btn-black.png",
         "status": 307,
-        "ts": 1792677032922
+        "ts": 1792684188163
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/static/q-siteintercept/986b17adc1a7896da80d3393d6e4f379c07ce1fb/img/wr-dialog-close-btn-black.png",
         "status": 301,
-        "ts": 1792677032923
+        "ts": 1792684188221
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://siteintercept.qualtrics.com/static/q-siteintercept/.blob/903d4c43fed535fb4d325b1612c605e48417dc74_wr-dialog-close-btn-black.png",
         "status": 200,
-        "ts": 1792677032925
+        "ts": 1792684188221
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "POST",
         "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/",
         "status": 200,
-        "ts": 1792677033005
+        "ts": 1792684188221
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/api/int/studies",
         "status": 200,
-        "ts": 1792677033076
-      },
-      {
-        "stepId": "wf-1792676908524-1",
-        "method": "GET",
-        "url": "https://clinicaltrials.gov/assets/images/expand_more.svg",
-        "status": 200,
-        "ts": 1792677033077
+        "ts": 1792684188549
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/unfold_more.svg",
         "status": 200,
-        "ts": 1792677033077
+        "ts": 1792684188656
+      },
+      {
+        "stepId": "wf-1792676908524-1",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/images/expand_more.svg",
+        "status": 200,
+        "ts": 1792684188657
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/calendar_today.svg",
         "status": 200,
-        "ts": 1792677033078
+        "ts": 1792684188658
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/assets/uswds/img/correct8.svg",
         "status": 200,
-        "ts": 1792677033095
+        "ts": 1792684188870
+      },
+      {
+        "stepId": "wf-1792676908524-1",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3KUBGEe.woff2",
+        "status": 200,
+        "ts": 1792684188870
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/api/int/suggest",
         "status": 200,
-        "ts": 1792677033286
+        "ts": 1792684188870
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/api/int/suggest",
         "status": 200,
-        "ts": 1792677033286
+        "ts": 1792684188870
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/api/int/suggest",
         "status": 200,
-        "ts": 1792677033286
+        "ts": 1792684188870
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/api/int/suggest",
         "status": 200,
-        "ts": 1792677033286
+        "ts": 1792684188870
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/api/int/suggest",
         "status": 200,
-        "ts": 1792677033286
+        "ts": 1792684188870
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://clinicaltrials.gov/api/int/suggest",
         "status": 200,
-        "ts": 1792677033286
+        "ts": 1792684188870
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "POST",
         "url": "https://www.google-analytics.com/g/collect",
         "status": 204,
-        "ts": 1792677033663
+        "ts": 1792684188871
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "POST",
         "url": "https://www.google-analytics.com/g/collect",
         "status": 204,
-        "ts": 1792677037610
+        "ts": 1792684192800
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "POST",
         "url": "https://www.google-analytics.com/g/collect",
         "status": 204,
-        "ts": 1792677038666
+        "ts": 1792684193854
       },
       {
         "stepId": "wf-1792676908524-1",
         "method": "GET",
         "url": "https://www.ncbi.nlm.nih.gov/stat",
         "status": 200,
-        "ts": 1792677042601
+        "ts": 1792684197759
       }
     ],
-    "runId": "run-mvjlmawf-a3gk",
+    "runId": "run-mvjpvnuy-tt6o",
     "status": "failed",
     "steps": [
       {
         "id": "wf-1792676908524-0",
         "status": "passed",
-        "startedAt": 1792677032375,
-        "endedAt": 1792677032590,
+        "startedAt": 1792684187544,
+        "endedAt": 1792684187754,
         "snapshot": {
           "dom": [
             {
@@ -800,8 +800,8 @@
         "reason": "action: locator.fill: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('[data-bao-i=\"225\"]')\n    - locator resolved to <input disabled data-bao-i=\"225\" id=\"from-age-input\" name=\"from-age-input\" formcontrolname=\"fromAge\" _ngcontent-ng-c956280390=\"\" class=\"usa-input age-input ng-untouched ng-pristine\"/>\n    - fill(\"\")\n  - attempting fill action\n    2 × waiting for element to be visible, enabled and editable\n      - element is not enabled\n    - retrying fill action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and editable\n      - element is not enabled\n    - retrying fill action\n      - waiting 100ms\n    60 × waiting for element to be visible, enabled and editable\n       - element is not enabled\n     - retrying fill action\n       - waiting 500ms\n",
         "phase": "action",
         "triage": "blocker",
-        "startedAt": 1792677032665,
-        "endedAt": 1792677063965,
+        "startedAt": 1792684187865,
+        "endedAt": 1792684219606,
         "afterShot": "wf-1792676908524-1-after.png",
         "snapshot": {
           "dom": [
@@ -3773,5 +3773,10 @@
     "title": "Search ClinicalTrials.gov for: All | Card Results | ClinicalTrials.gov",
     "text": "Show glossary Search for terms Hide glossary Study record managers: refer to the Data Element Definitions if submitting registration or results information. Accepts healthy volunteers Active comparator arm Adverse event Age or age group All-cause mortality Allocation Arm Arm type Baseline characteristics Canceled submission Certain agreements Certification Certification/extension first posted Certification/extension first submitted Certification/extension first submitted that met QC criteria Clinical study Clinical trial ClinicalTrials.gov identifier (NCT number) Collaborator Condition/disease Contact Cross-over assignment Data Monitoring Committee (DMC) Early Phase 1 (formerly listed as Phase 0) Eligibility criteria Enrollment Exclusion criteria Expanded access Expanded access status Expanded access type Experimental arm Extension request Facility name Factorial assignment FDAAA 801 Violations First posted First submitted First submitted that met QC criteria Food and Drug Administration Amendments Act of 2007, Section 801 (FDAAA 801) Funder type Gender-based eligibility Group/cohort Human subjects protection review board Inclusion criteria Informed consent Informed consent form (ICF) Intervention model Intervention/treatment Interventional study (clinical trial) Investigator Last update posted Last update submitted Last update submitted that met QC criteria Last verified Location Location countries Masking NCT number No intervention arm Observational study Observational study model Other adverse event Other study IDs Other terms Outcome measure Parallel assignment Participant flow Patient registry Phase Phase 1 Phase 2 Phase 3 Phase 4 Phase Not Applicable Placebo Placebo comparator arm Primary completion date Primary outcome measure Primary purpose Principal investigator (PI) Protocol Quality control (QC) review Randomized allocation Recruitment status Registration Removed location countries Reporting group Responsible party Results database Results delayed Results first posted Results first posted with QC comments Results first submitted Results first submitted that met QC criteria Results returned after quality control review Results submitted to ClinicalTrials.gov Secondary outcome measure Serious adverse event Sex Sham comparator arm Single group assignment Sort studies by Sponsor Statistical analysis plan (SAP) Study completion date Study design Study documents Study IDs Study record Study registry Study results Study start date Study status Study ty"
   },
-  "downloaded": []
+  "downloaded": [],
+  "shot": {
+    "sha256": "ac0e1e343209dabeb390ffe24b8a3fca6029f0486df1c54d6dbb9e06ede1ab0d",
+    "samePixels": true,
+    "identity": ""
+  }
 }

@@ -411,723 +411,723 @@
         "stepId": "open",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked; the ",
-        "ts": 1792682765807
+        "ts": 1792683923083
       },
       {
         "stepId": "open",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the content",
-        "ts": 1792682765807
+        "ts": 1792683923083
       },
       {
         "stepId": "open",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over HTTP",
-        "ts": 1792682765807
+        "ts": 1792683923083
       },
       {
         "stepId": "wf-1792682765516-0",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked; the ",
-        "ts": 1792682767736
+        "ts": 1792683923972
       },
       {
         "stepId": "wf-1792682765516-0",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the content",
-        "ts": 1792682767736
+        "ts": 1792683923972
       },
       {
         "stepId": "wf-1792682765516-0",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/login' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over HTTP",
-        "ts": 1792682767736
+        "ts": 1792683923972
       },
       {
         "stepId": "wf-1792682765516-3",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/signup' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked; the",
-        "ts": 1792682768613
+        "ts": 1792683924959
       },
       {
         "stepId": "wf-1792682765516-3",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/signup' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the conten",
-        "ts": 1792682768613
+        "ts": 1792683924959
       },
       {
         "stepId": "wf-1792682765516-3",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/signup' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over HTT",
-        "ts": 1792682768613
+        "ts": 1792683924959
       },
       {
         "stepId": "wf-1792682765516-18",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/account_created' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blo",
-        "ts": 1792682803190
+        "ts": 1792683959586
       },
       {
         "stepId": "wf-1792682765516-18",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/account_created' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; t",
-        "ts": 1792682803190
+        "ts": 1792683959586
       },
       {
         "stepId": "wf-1792682765516-18",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/account_created' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served",
-        "ts": 1792682803190
+        "ts": 1792683959586
       },
       {
         "stepId": "wf-1792682765516-19",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked; the conte",
-        "ts": 1792682803469
+        "ts": 1792683959852
       },
       {
         "stepId": "wf-1792682765516-19",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the content must",
-        "ts": 1792682803469
+        "ts": 1792683959852
       },
       {
         "stepId": "wf-1792682765516-19",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over HTTPS.",
-        "ts": 1792682803469
+        "ts": 1792683959852
       },
       {
         "stepId": "wf-1792682765516-20",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked; the conte",
-        "ts": 1792682803986
+        "ts": 1792683960366
       },
       {
         "stepId": "wf-1792682765516-20",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the content must",
-        "ts": 1792682803986
+        "ts": 1792683960366
       },
       {
         "stepId": "wf-1792682765516-20",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over HTTPS.",
-        "ts": 1792682803986
+        "ts": 1792683960366
       },
       {
         "stepId": "wf-1792682765516-21",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/contact_us' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been blocked;",
-        "ts": 1792682804575
+        "ts": 1792683960947
       },
       {
         "stepId": "wf-1792682765516-21",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/contact_us' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; the co",
-        "ts": 1792682804575
+        "ts": 1792683960947
       },
       {
         "stepId": "wf-1792682765516-21",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/contact_us' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served over",
-        "ts": 1792682804575
+        "ts": 1792683960947
       },
       {
         "stepId": "wf-1792682765516-22",
         "type": "warning",
         "text": "Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading",
-        "ts": 1792682804730
+        "ts": 1792683961108
       },
       {
         "stepId": "wf-1792682765516-28",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/delete_account' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Roboto:400,300,400italic,500,700,100'. This request has been bloc",
-        "ts": 1792682805979
+        "ts": 1792683962388
       },
       {
         "stepId": "wf-1792682765516-28",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/delete_account' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Open+Sans:400,800,300,600,700'. This request has been blocked; th",
-        "ts": 1792682805979
+        "ts": 1792683962388
       },
       {
         "stepId": "wf-1792682765516-28",
         "type": "error",
         "text": "Mixed Content: The page at 'https://automationexercise.com/delete_account' was loaded over HTTPS, but requested an insecure stylesheet 'http://fonts.googleapis.com/css?family=Abel'. This request has been blocked; the content must be served ",
-        "ts": 1792682805979
+        "ts": 1792683962388
       }
     ],
     "network": [
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxWL4zZocauuzctvWuw6ge_IS9r3ARtAxR0L_sbSwopRVoa0dCqYvuH0vNVmdaCHRX3aMpkueTuc5O5zFIlWyHwqxHwPiUEf1ppuDAvsuFoK_XU1G_oWl9BO1zffvwE9uOYJ",
+        "status": 200,
+        "ts": 1792683960784
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxVjDSM92MqEM685-DtImX9c_bkHipNLxQPedEo19G8gIGwGxHnLVtqCP1r81-e39-mcO_hAMr_92gJZbfg3WAeYO1-vrbAb8S6M2cEoyyzx1Hvm2M8ilyfS0scAeHBcQCn",
+        "status": 204,
+        "ts": 1792683960784
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxUvxLFlcBka4VjKCAUidHO_KKUQh32kZiGpG2jAzZsUAsefokOE69ywELUFCFWKNOZQrA3NDRL7SoEdPckvbuAOOBTR-Jb2Mvv-wtxb0LeIo1bp1Wa6UYq0_02smaySuZxW",
+        "status": 200,
+        "ts": 1792683960827
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "POST",
+        "url": "https://automationexercise.com/cdn-cgi/rum",
+        "status": 204,
+        "ts": 1792683960827
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "POST",
+        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "status": 204,
+        "ts": 1792683960907
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "GET",
+        "url": "https://automationexercise.com/contact_us",
+        "status": 200,
+        "ts": 1792683960936
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "GET",
+        "url": "https://automationexercise.com/static/css/bootstrap.min.css",
+        "status": 200,
+        "ts": 1792683960943
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "GET",
         "url": "https://automationexercise.com/static/css/font-awesome.min.css",
         "status": 200,
-        "ts": 1792682804573
+        "ts": 1792683960944
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/prettyPhoto.css",
         "status": 200,
-        "ts": 1792682804573
+        "ts": 1792683960944
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/animate.css",
         "status": 200,
-        "ts": 1792682804573
+        "ts": 1792683960944
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/main.css",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960944
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/responsive.css",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960944
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://fonts.googleapis.com/icon",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960945
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/images/home/logo.png",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/jquery.js",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/bootstrap.min.js",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/jquery.scrollUp.min.js",
         "status": 200,
-        "ts": 1792682804574
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/jquery.prettyPhoto.js",
         "status": 200,
-        "ts": 1792682804575
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/main.js",
         "status": 200,
-        "ts": 1792682804575
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/subscription.js",
         "status": 200,
-        "ts": 1792682804575
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
         "status": 200,
-        "ts": 1792682804575
+        "ts": 1792683960946
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/fonts/fontawesome-webfont.woff",
         "status": 200,
-        "ts": 1792682804578
+        "ts": 1792683960951
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://fonts.gstatic.com/s/materialicons/v145/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2",
         "status": 200,
-        "ts": 1792682804579
+        "ts": 1792683960951
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js",
         "status": 200,
-        "ts": 1792682804579
-      },
-      {
-        "stepId": "wf-1792682765516-21",
-        "method": "GET",
-        "url": "https://pagead2.googlesyndication.com/pagead/managed/js/adsense/m202610190101/show_ads_impl.js",
-        "status": 200,
-        "ts": 1792682804592
+        "ts": 1792683960951
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/gmaps.js",
         "status": 200,
-        "ts": 1792682804592
+        "ts": 1792683960962
+      },
+      {
+        "stepId": "wf-1792682765516-21",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/managed/js/adsense/m202610190101/show_ads_impl.js",
+        "status": 200,
+        "ts": 1792683960964
       },
       {
         "stepId": "wf-1792682765516-21",
         "method": "GET",
         "url": "https://googleads.g.doubleclick.net/pagead/html/r20261019/r20190131/zrt_lookup.html",
         "status": 200,
-        "ts": 1792682804598
+        "ts": 1792683960972
       },
       {
         "stepId": "wf-1792682765516-22",
         "method": "GET",
         "url": "https://maps.google.com/maps/api/js",
         "status": 200,
-        "ts": 1792682804709
+        "ts": 1792683961089
       },
       {
         "stepId": "wf-1792682765516-22",
         "method": "GET",
         "url": "https://googleads.g.doubleclick.net/pagead/ads",
         "status": 200,
-        "ts": 1792682804748
-      },
-      {
-        "stepId": "wf-1792682765516-22",
-        "method": "GET",
-        "url": "https://fonts.googleapis.com/css",
-        "status": 200,
-        "ts": 1792682804766
-      },
-      {
-        "stepId": "wf-1792682765516-22",
-        "method": "GET",
-        "url": "https://fonts.gstatic.com/s/roboto/v51/KFOMCnqEu92Fr1ME7kSn66aGLdTylUAMQXC89YmC2DPNWub2bVmUiAo.woff2",
-        "status": 200,
-        "ts": 1792682804766
+        "ts": 1792683961100
       },
       {
         "stepId": "wf-1792682765516-22",
         "method": "GET",
         "url": "https://maps.googleapis.com/maps/api/mapsjs/gen_204",
         "status": 200,
-        "ts": 1792682804787
+        "ts": 1792683961163
       },
       {
         "stepId": "wf-1792682765516-22",
         "method": "GET",
         "url": "https://fundingchoicesmessages.google.com/i/ca-pub-1677597403311019",
         "status": 200,
-        "ts": 1792682804818
+        "ts": 1792683961197
       },
       {
-        "stepId": "wf-1792682765516-22",
+        "stepId": "wf-1792682765516-23",
         "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
         "status": 204,
-        "ts": 1792682804860
+        "ts": 1792683961243
       },
       {
-        "stepId": "wf-1792682765516-22",
+        "stepId": "wf-1792682765516-23",
         "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
         "status": 204,
-        "ts": 1792682804861
+        "ts": 1792683961254
       },
       {
-        "stepId": "wf-1792682765516-22",
+        "stepId": "wf-1792682765516-23",
         "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
         "status": 204,
-        "ts": 1792682804864
+        "ts": 1792683961255
       },
       {
         "stepId": "wf-1792682765516-23",
         "method": "GET",
-        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxWmltOUkt0to2IjtPPAl6yNORxTtnGLRItTDNTLoBpAjWZ8gEmh5YlLnNtnutwfDEpDmFWbrdly53PkZ_MhMgIBKd022MgwOTLA3s-YxX7mw1VEjGXvpt0hbUdlXO0M1N2H",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxVjuNA3kitUFOwhC6bXcSXqTW-d-wYXGZgd6hIp_jRjXu1h9roOCRE_VzwNANdWPCutB447YkZgaOiM2vMZH0dvy9Wy85P3328MQNrAf9Lywqit5wEBUqK5DOvhV4_GKMet",
         "status": 200,
-        "ts": 1792682804877
+        "ts": 1792683961265
       },
       {
         "stepId": "wf-1792682765516-23",
         "method": "POST",
-        "url": "https://pagead2.googlesyndication.com/pagead/ping",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUG8eTHkF53PQDDqXxrpEU0fwbwIGvxT8VIJKxr6mylO-0Fmv5MhJOrznvo-DTM8-UI0gmnKRW4UDTTJzS_Or1WpYDcaYw-B1hzoVJmIUjUNsXZlhydnOwZfRXdneedgBz",
         "status": 204,
-        "ts": 1792682804894
-      },
-      {
-        "stepId": "wf-1792682765516-23",
-        "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxV6j_Grb0_FIz1ashaoYyl96FmfiJJX2s0s1G2WPyDIXcF6y-3zODWJeAc__Jw9hcVqX140qYecyUvtmjRhCeQL_ZUurA9Od31MugpVH0Ypbr75rnp1kx1czPEfs55yRD-",
-        "status": 204,
-        "ts": 1792682804907
+        "ts": 1792683961295
       },
       {
         "stepId": "wf-1792682765516-23",
         "method": "GET",
-        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxXtzPndqmzM4raCBCGtE0pyiiyPzENOx-1ojLK0iOcXO-F9bTlnwNpouLETdTmE6m-gaS66vfdqd3OyAQZTXtCtgnZ-7Ny7QrUDJlP10YYLfpvfSje7IjFG_B9Haz0t6g_s",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxXOTnTRi9zc0slYKXM2akd6ZaQnkPAj06XHep-zi39F4f-wCMnP3_Q4kBukHxfbKHnGR1_JWHOlWNuzlEpC1GNkBJayrYYGqfLd6cKfDKCzPYH6VuBxQvarQc2LqN3izdfX",
         "status": 200,
-        "ts": 1792682804923
+        "ts": 1792683961309
       },
       {
         "stepId": "wf-1792682765516-23",
         "method": "GET",
         "url": "https://googleads.g.doubleclick.net/pagead/ads",
         "status": 200,
-        "ts": 1792682804960
-      },
-      {
-        "stepId": "wf-1792682765516-23",
-        "method": "GET",
-        "url": "https://fonts.googleapis.com/css",
-        "status": 200,
-        "ts": 1792682804972
-      },
-      {
-        "stepId": "wf-1792682765516-23",
-        "method": "GET",
-        "url": "https://fonts.googleapis.com/css",
-        "status": 200,
-        "ts": 1792682804972
-      },
-      {
-        "stepId": "wf-1792682765516-23",
-        "method": "GET",
-        "url": "https://fonts.gstatic.com/s/googlesans/v71/4Ua_rENHsxJlGDuGo1OIlJfC6l_24rlCK1Yo_Iqcsih3SAyH6cAwhX9RFD48TE63OOYKtrwEIJllpyk.woff2",
-        "status": 200,
-        "ts": 1792682804979
-      },
-      {
-        "stepId": "wf-1792682765516-23",
-        "method": "GET",
-        "url": "https://fonts.gstatic.com/s/googlesans/v71/4Ua_rENHsxJlGDuGo1OIlJfC6l_24rlCK1Yo_Iqcsih3SAyH6cAwhX9RFD48TE63OOYKtrzjJ5llpyk.woff2",
-        "status": 200,
-        "ts": 1792682804980
+        "ts": 1792683961328
       },
       {
         "stepId": "wf-1792682765516-23",
         "method": "POST",
         "url": "https://automationexercise.com/cdn-cgi/rum",
         "status": 204,
-        "ts": 1792682804986
+        "ts": 1792683961350
+      },
+      {
+        "stepId": "wf-1792682765516-23",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/getconfig/sodar",
+        "status": 200,
+        "ts": 1792683961369
+      },
+      {
+        "stepId": "wf-1792682765516-23",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2.js",
+        "status": 200,
+        "ts": 1792683961371
+      },
+      {
+        "stepId": "wf-1792682765516-23",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2/255/runner.html",
+        "status": 200,
+        "ts": 1792683961374
+      },
+      {
+        "stepId": "wf-1792682765516-23",
+        "method": "GET",
+        "url": "https://www.google.com/recaptcha/api2/aframe",
+        "status": 200,
+        "ts": 1792683961375
+      },
+      {
+        "stepId": "wf-1792682765516-23",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/bg/Q4JUrRZKx44KoEV1oNKGtVt0B5XYxhrnEhIOwuBMW6U.js",
+        "status": 200,
+        "ts": 1792683961384
+      },
+      {
+        "stepId": "wf-1792682765516-23",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/sodar",
+        "status": 204,
+        "ts": 1792683961440
+      },
+      {
+        "stepId": "wf-1792682765516-23",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/generate_204",
+        "status": 204,
+        "ts": 1792683961468
       },
       {
         "stepId": "wf-1792682765516-24",
         "method": "POST",
         "url": "https://pagead2.googlesyndication.com/pagead/ping",
         "status": 204,
-        "ts": 1792682805101
-      },
-      {
-        "stepId": "wf-1792682765516-24",
-        "method": "GET",
-        "url": "https://ep1.adtrafficquality.google/getconfig/sodar",
-        "status": 200,
-        "ts": 1792682805224
-      },
-      {
-        "stepId": "wf-1792682765516-24",
-        "method": "GET",
-        "url": "https://ep2.adtrafficquality.google/sodar/sodar2.js",
-        "status": 200,
-        "ts": 1792682805226
-      },
-      {
-        "stepId": "wf-1792682765516-24",
-        "method": "GET",
-        "url": "https://ep2.adtrafficquality.google/sodar/sodar2/255/runner.html",
-        "status": 200,
-        "ts": 1792682805229
-      },
-      {
-        "stepId": "wf-1792682765516-24",
-        "method": "GET",
-        "url": "https://www.google.com/recaptcha/api2/aframe",
-        "status": 200,
-        "ts": 1792682805230
-      },
-      {
-        "stepId": "wf-1792682765516-24",
-        "method": "GET",
-        "url": "https://pagead2.googlesyndication.com/bg/RSECeySQvn440lQcXscb-W6a7TJMLa-KzGU1myOVZyU.js",
-        "status": 200,
-        "ts": 1792682805235
-      },
-      {
-        "stepId": "wf-1792682765516-24",
-        "method": "GET",
-        "url": "https://pagead2.googlesyndication.com/pagead/sodar",
-        "status": 204,
-        "ts": 1792682805258
-      },
-      {
-        "stepId": "wf-1792682765516-25",
-        "method": "GET",
-        "url": "https://ep2.adtrafficquality.google/generate_204",
-        "status": 204,
-        "ts": 1792682805304
+        "ts": 1792683961594
       },
       {
         "stepId": "wf-1792682765516-26",
         "method": "GET",
-        "url": "https://pagead2.googlesyndication.com/pagead/show_companion_ad.js",
+        "url": "https://pagead2.googlesyndication.com/pagead/js/google_top_exp.js",
         "status": 200,
-        "ts": 1792682805549
+        "ts": 1792683961931
+      },
+      {
+        "stepId": "wf-1792682765516-26",
+        "method": "GET",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxWXL_RbYNEKnDeCkEjGk7NsAAQDTVyS2h_Z9TgsPz7onLtOV5x80EdjJS6m5HhiXFqvICMjxIblOfpGu2yH7hYq4rrP1L25oVb31CBuMPWtmTQkwlSpBYOHC5suJMEytCHZ",
+        "status": 200,
+        "ts": 1792683961947
       },
       {
         "stepId": "wf-1792682765516-26",
         "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
         "status": 204,
-        "ts": 1792682805552
+        "ts": 1792683961952
       },
       {
         "stepId": "wf-1792682765516-26",
         "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
         "status": 204,
-        "ts": 1792682805574
+        "ts": 1792683961969
+      },
+      {
+        "stepId": "wf-1792682765516-26",
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
+        "status": 204,
+        "ts": 1792683961976
       },
       {
         "stepId": "wf-1792682765516-26",
         "method": "GET",
-        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxXneawrcVPCmOIn1Uu00K5hQR161cFw6UWb4DguDkIwiWvQ006jlpECTWCezQOp_nNTr-pUDpS9SE_juqETjPIQqJGrCsrlX11x5buBNdlrZoknh-UEPhv3GK5TllCu2n75",
+        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxVTwQgkX_FcLiLPAHbAFW05CdQZMZzBmEIDolMfvaSBwMAm18uNiYtUK752mrg5ewWhr8r4KU7Qy1guI2AeiH_gLMUxtFK7iogkUt1MeLjGKwpld_tDnEela5-6s_KU6Arr",
         "status": 200,
-        "ts": 1792682805575
+        "ts": 1792683961988
       },
       {
         "stepId": "wf-1792682765516-26",
         "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
         "status": 204,
-        "ts": 1792682805603
+        "ts": 1792683961992
       },
       {
         "stepId": "wf-1792682765516-26",
         "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxUXYjMAykHHJ63cNQwvzs5hwWf43pDCfgJ_VuekGSHEMGrd7T-97vQUb7d5IUoIWPRZmn_TDvHScfFH9BaJs_NN9-AMZ9Tlns7rXX9S1GKlgB_YHRq8OOi_zWV3f8_owy9",
         "status": 204,
-        "ts": 1792682805605
+        "ts": 1792683962017
       },
       {
         "stepId": "wf-1792682765516-26",
-        "method": "GET",
-        "url": "https://fundingchoicesmessages.google.com/f/AGSKWxX1anOuk_nC_9HSFwnvz-U1vtMX6NUkB5bwcBzFZA8eA8_Yli8KIDarvOYv61v-WX1CADHpUW3zM357TRxvfrNKJxNAlnHadx4u5XWXDG57dcTxQI1ntXdzLPRCvZL3JFlP",
-        "status": 200,
-        "ts": 1792682805619
+        "method": "POST",
+        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxXPRkbSqJBS2nihv-7YWqavAO_rYGM0lzTMoJJgehTs1kc-3I6TOotVsLSM-etnGhcFJxjKnQ5BLoxyC-KNFcIZSvd0GTLvDcGI-kyAd2_sUE6yXVw_U0XSejtBu9_jQM-",
+        "status": 204,
+        "ts": 1792683962022
       },
       {
         "stepId": "wf-1792682765516-27",
-        "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWtjVszISd6x99qLOQ_BSKhNUaAe-WCeMWmj520ls_dZWrS1nYU9ZIZ6Z5iJUS7UcXvuKgPS5x-L9qStVV-CyHDL6F7Dgo_PWo0MLYjLCHOj30wAHGirSSLSlC8e7NwAvb",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/pagead/sodar",
         "status": 204,
-        "ts": 1792682805653
-      },
-      {
-        "stepId": "wf-1792682765516-27",
-        "method": "POST",
-        "url": "https://fundingchoicesmessages.google.com/el/AGSKWxWkwxx3qL_IXWjfh5JvUVCRk2iToXJAuMXNq5wgaxXMONsR8mdRH9i8Ou-lDiXu0M_leEfZ4PPdTkDyxgSgCc_15NEcldmuHcwNIb8snLUm6B_hCNTkiFU3HBpQ2W7K5GR",
-        "status": 204,
-        "ts": 1792682805654
+        "ts": 1792683962033
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "POST",
         "url": "https://automationexercise.com/cdn-cgi/rum",
         "status": 204,
-        "ts": 1792682805857
-      },
-      {
-        "stepId": "wf-1792682765516-28",
-        "method": "GET",
-        "url": "https://ep1.adtrafficquality.google/pagead/sodar",
-        "status": 204,
-        "ts": 1792682805866
+        "ts": 1792683962260
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/delete_account",
         "status": 200,
-        "ts": 1792682805971
+        "ts": 1792683962377
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/bootstrap.min.css",
         "status": 200,
-        "ts": 1792682805977
+        "ts": 1792683962386
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/font-awesome.min.css",
         "status": 200,
-        "ts": 1792682805977
+        "ts": 1792683962386
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/prettyPhoto.css",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962386
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/animate.css",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962386
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/main.css",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962386
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/css/responsive.css",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962386
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://fonts.googleapis.com/icon",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/images/home/logo.png",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/jquery.js",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/jquery.scrollUp.min.js",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/bootstrap.min.js",
         "status": 200,
-        "ts": 1792682805978
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/jquery.prettyPhoto.js",
         "status": 200,
-        "ts": 1792682805979
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/main.js",
         "status": 200,
-        "ts": 1792682805979
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/js/subscription.js",
         "status": 200,
-        "ts": 1792682805979
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
         "status": 200,
-        "ts": 1792682805979
+        "ts": 1792683962387
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://automationexercise.com/static/fonts/fontawesome-webfont.woff",
         "status": 200,
-        "ts": 1792682805984
+        "ts": 1792683962394
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://fonts.gstatic.com/s/materialicons/v145/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2",
         "status": 200,
-        "ts": 1792682805985
+        "ts": 1792683962394
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://pagead2.googlesyndication.com/pagead/managed/js/adsense/m202610190101/show_ads_impl.js",
         "status": 200,
-        "ts": 1792682805993
+        "ts": 1792683962404
       },
       {
         "stepId": "wf-1792682765516-28",
         "method": "GET",
         "url": "https://googleads.g.doubleclick.net/pagead/html/r20261019/r20190131/zrt_lookup.html",
         "status": 200,
-        "ts": 1792682805999
+        "ts": 1792683962411
       }
     ],
-    "runId": "run-mvjp1883-fi6q",
+    "runId": "run-mvjpq0dq-5i25",
     "status": "passed",
     "steps": [
       {
         "id": "wf-1792682765516-0",
         "status": "passed",
-        "startedAt": 1792682767607,
-        "endedAt": 1792682767774,
+        "startedAt": 1792683923841,
+        "endedAt": 1792683924025,
         "snapshot": {
           "dom": [
             {
@@ -1234,8 +1234,8 @@
       {
         "id": "wf-1792682765516-1",
         "status": "passed",
-        "startedAt": 1792682767824,
-        "endedAt": 1792682768022,
+        "startedAt": 1792683924056,
+        "endedAt": 1792683924233,
         "beforeShot": "wf-1792682765516-1-before.png",
         "afterShot": "wf-1792682765516-1-after.png",
         "snapshot": {
@@ -1335,22 +1335,17 @@
             },
             {
               "role": "link",
-              "name": "Browse Reference",
-              "text": "Browse Reference"
-            },
-            {
-              "role": "link",
               "id": "scrollUp"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Login to your account\" [level=2]\n- textbox \"Email Address\"\n- button \"Login\"\n- heading \"OR\" [level=2]\n- heading \"New User Signup!\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email Address\"\n- button \"Signup\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph:\n    - text: Get the most recent updates from our site and be updated your self...\n    - link \"Browse Reference\":\n      - img\n      - text: Browse Reference\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation practice website\"\n  - link \"Test automation tools\"\n  - link \"Automation testing courses\""
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Login to your account\" [level=2]\n- textbox \"Email Address\"\n- button \"Login\"\n- heading \"OR\" [level=2]\n- heading \"New User Signup!\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email Address\"\n- button \"Signup\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - iframe"
         }
       },
       {
         "id": "wf-1792682765516-2",
         "status": "passed",
-        "startedAt": 1792682768149,
-        "endedAt": 1792682768264,
+        "startedAt": 1792683924359,
+        "endedAt": 1792683924561,
         "beforeShot": "wf-1792682765516-2-before.png",
         "afterShot": "wf-1792682765516-2-after.png",
         "snapshot": {
@@ -1450,11 +1445,6 @@
             },
             {
               "role": "link",
-              "name": "Browse Reference",
-              "text": "Browse Reference"
-            },
-            {
-              "role": "link",
               "id": "scrollUp"
             },
             {
@@ -1478,14 +1468,14 @@
               "text": "Automation testing courses"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Login to your account\" [level=2]\n- textbox \"Email Address\"\n- button \"Login\"\n- heading \"OR\" [level=2]\n- heading \"New User Signup!\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email Address\": bao-alpha-mvjp070t@example.com\n- button \"Signup\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph:\n    - text: Get the most recent updates from our site and be updated your self...\n    - link \"Browse Reference\":\n      - img\n      - text: Browse Reference\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation practice website\"\n  - link \"Test automation tools\"\n  - link \"Automation testing courses\""
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Login to your account\" [level=2]\n- textbox \"Email Address\"\n- button \"Login\"\n- heading \"OR\" [level=2]\n- heading \"New User Signup!\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email Address\": bao-alpha-mvjp070t@example.com\n- button \"Signup\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation practice website\"\n  - link \"Test automation tools\"\n  - link \"Automation testing courses\""
         }
       },
       {
         "id": "wf-1792682765516-3",
         "status": "passed",
-        "startedAt": 1792682768334,
-        "endedAt": 1792682768662,
+        "startedAt": 1792683924657,
+        "endedAt": 1792683925015,
         "beforeShot": "wf-1792682765516-3-before.png",
         "snapshot": {
           "dom": [
@@ -1690,8 +1680,8 @@
       {
         "id": "wf-1792682765516-4",
         "status": "passed",
-        "startedAt": 1792682768686,
-        "endedAt": 1792682768885,
+        "startedAt": 1792683925044,
+        "endedAt": 1792683925254,
         "beforeShot": "wf-1792682765516-4-before.png",
         "afterShot": "wf-1792682765516-4-after.png",
         "snapshot": {
@@ -1897,8 +1887,8 @@
       {
         "id": "wf-1792682765516-5",
         "status": "passed",
-        "startedAt": 1792682768989,
-        "endedAt": 1792682769246,
+        "startedAt": 1792683925413,
+        "endedAt": 1792683925687,
         "beforeShot": "wf-1792682765516-5-before.png",
         "afterShot": "wf-1792682765516-5-after.png",
         "snapshot": {
@@ -2104,8 +2094,8 @@
       {
         "id": "wf-1792682765516-6",
         "status": "passed",
-        "startedAt": 1792682769320,
-        "endedAt": 1792682769481,
+        "startedAt": 1792683925759,
+        "endedAt": 1792683925926,
         "beforeShot": "wf-1792682765516-6-before.png",
         "afterShot": "wf-1792682765516-6-after.png",
         "snapshot": {
@@ -2311,8 +2301,8 @@
       {
         "id": "wf-1792682765516-7",
         "status": "passed",
-        "startedAt": 1792682769573,
-        "endedAt": 1792682769734,
+        "startedAt": 1792683926016,
+        "endedAt": 1792683926174,
         "beforeShot": "wf-1792682765516-7-before.png",
         "afterShot": "wf-1792682765516-7-after.png",
         "snapshot": {
@@ -2518,8 +2508,8 @@
       {
         "id": "wf-1792682765516-8",
         "status": "passed",
-        "startedAt": 1792682769804,
-        "endedAt": 1792682799967,
+        "startedAt": 1792683926241,
+        "endedAt": 1792683956410,
         "beforeShot": "wf-1792682765516-8-before.png",
         "afterShot": "wf-1792682765516-8-after.png",
         "snapshot": {
@@ -2725,8 +2715,8 @@
       {
         "id": "wf-1792682765516-9",
         "status": "passed",
-        "startedAt": 1792682800057,
-        "endedAt": 1792682800220,
+        "startedAt": 1792683956493,
+        "endedAt": 1792683956660,
         "beforeShot": "wf-1792682765516-9-before.png",
         "afterShot": "wf-1792682765516-9-after.png",
         "snapshot": {
@@ -2932,8 +2922,8 @@
       {
         "id": "wf-1792682765516-10",
         "status": "passed",
-        "startedAt": 1792682800305,
-        "endedAt": 1792682800463,
+        "startedAt": 1792683956743,
+        "endedAt": 1792683956910,
         "beforeShot": "wf-1792682765516-10-before.png",
         "afterShot": "wf-1792682765516-10-after.png",
         "snapshot": {
@@ -3132,15 +3122,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-11",
         "status": "passed",
-        "startedAt": 1792682800540,
-        "endedAt": 1792682800710,
+        "startedAt": 1792683956986,
+        "endedAt": 1792683957161,
         "beforeShot": "wf-1792682765516-11-before.png",
         "afterShot": "wf-1792682765516-11-after.png",
         "snapshot": {
@@ -3339,15 +3328,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-12",
         "status": "passed",
-        "startedAt": 1792682800788,
-        "endedAt": 1792682800944,
+        "startedAt": 1792683957235,
+        "endedAt": 1792683957389,
         "beforeShot": "wf-1792682765516-12-before.png",
         "afterShot": "wf-1792682765516-12-after.png",
         "snapshot": {
@@ -3546,15 +3534,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-13",
         "status": "passed",
-        "startedAt": 1792682801020,
-        "endedAt": 1792682801180,
+        "startedAt": 1792683957468,
+        "endedAt": 1792683957622,
         "beforeShot": "wf-1792682765516-13-before.png",
         "afterShot": "wf-1792682765516-13-after.png",
         "snapshot": {
@@ -3753,15 +3740,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-14",
         "status": "passed",
-        "startedAt": 1792682801254,
-        "endedAt": 1792682801414,
+        "startedAt": 1792683957702,
+        "endedAt": 1792683957860,
         "beforeShot": "wf-1792682765516-14-before.png",
         "afterShot": "wf-1792682765516-14-after.png",
         "snapshot": {
@@ -3960,15 +3946,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-15",
         "status": "passed",
-        "startedAt": 1792682801486,
-        "endedAt": 1792682801649,
+        "startedAt": 1792683957936,
+        "endedAt": 1792683958093,
         "beforeShot": "wf-1792682765516-15-before.png",
         "afterShot": "wf-1792682765516-15-after.png",
         "snapshot": {
@@ -4167,15 +4152,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-16",
         "status": "passed",
-        "startedAt": 1792682801739,
-        "endedAt": 1792682801893,
+        "startedAt": 1792683958168,
+        "endedAt": 1792683958321,
         "beforeShot": "wf-1792682765516-16-before.png",
         "afterShot": "wf-1792682765516-16-after.png",
         "snapshot": {
@@ -4374,15 +4358,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-17",
         "status": "passed",
-        "startedAt": 1792682801971,
-        "endedAt": 1792682802156,
+        "startedAt": 1792683958403,
+        "endedAt": 1792683958583,
         "beforeShot": "wf-1792682765516-17-before.png",
         "afterShot": "wf-1792682765516-17-after.png",
         "snapshot": {
@@ -4581,16 +4564,14 @@
               "name": "Address * (Street address, P.O. Box, Company name, etc.)",
               "text": "Address * (Street address, P.O. Box, Company name, etc.)"
             }
-          ],
-          "ax": "- banner:\n  - link \"Website for practice automation\":\n    - /url: /\n    - img \"Website for practice automation\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Enter Account Information\" [level=2]\n- text: Title\n- radio \"Mr.\" [checked]\n- text: Mr.\n- radio \"Mrs.\"\n- text: Mrs. Name\n- superscript: \"*\"\n- textbox \"Name *\": Bao Alpha\n- text: Email\n- superscript: \"*\"\n- textbox \"Email *\" [disabled]: bao-alpha-mvjp070t@example.com\n- superscript: \"*\"\n- text: Date of Birth\n- combobox:\n  - option \"Day\"\n  - option \"1\"\n  - option \"2\"\n  - option \"3\"\n  - option \"4\"\n  - option \"5\"\n  - option \"6\"\n  - option \"7\"\n  - option \"8\"\n  - option \"9\"\n  - option \"10\"\n  - option \"11\"\n  - option \"12\" [selected]\n  - option \"13\"\n  - option \"14\"\n  - option \"15\"\n  - option \"16\"\n  - option \"17\"\n  - option \"18\"\n  - option \"19\"\n  - option \"20\"\n  - option \"21\"\n  - option \"22\"\n  - option \"23\"\n  - option \"24\"\n  - option \"25\"\n  - option \"26\"\n  - option \"27\"\n  - option \"28\"\n  - option \"29\"\n  - option \"30\"\n  - option \"31\"\n- combobox:\n  - option \"Month\"\n  - option \"January\"\n  - option \"February\"\n  - option \"March\" [selected]\n  - option \"April\"\n  - option \"May\"\n  - option \"June\"\n  - option \"July\"\n  - option \"August\"\n  - option \"September\"\n  - option \"October\"\n  - option \"November\"\n  - option \"December\"\n- combobox:\n  - option \"Year\"\n  - option \"2021\"\n  - option \"2020\"\n  - option \"2019\"\n  - option \"2018\"\n  - option \"2017\"\n  - option \"2016\"\n  - option \"2015\"\n  - option \"2014\"\n  - option \"2013\"\n  - option \"2012\"\n  - option \"2011\"\n  - option \"2010\"\n  - option \"2009\"\n  - option \"2008\"\n  - option \"2007\"\n  - option \"2006\"\n  - option \"2005\"\n  - option \"2004\"\n  - option \"2003\"\n  - option \"2002\"\n  - option \"2001\"\n  - option \"2000\"\n  - option \"1999\"\n  - option \"1998\"\n  - option \"1997\"\n  - option \"1996\"\n  - option \"1995\"\n  - option \"1994\"\n  - option \"1993\"\n  - option \"1992\" [selected]\n  - option \"1991\"\n  - option \"1990\"\n  - option \"1989\"\n  - option \"1988\"\n  - option \"1987\"\n  - option \"1986\"\n  - option \"1985\"\n  - option \"1984\"\n  - option \"1983\"\n  - option \"1982\"\n  - option \"1981\"\n  - option \"1980\"\n  - option \"1979\"\n  - option \"1978\"\n  - option \"1977\"\n  - option \"1976\"\n  - option \"1975\"\n  - option \"1974\"\n  - option \"1973\"\n  - option \"1972\"\n  - option \"1971\"\n  - option \"1970\"\n  - option \"1969\"\n  - option \"1968\"\n  - option \"1967\"\n  - option \"1966\"\n  - option \"1965\"\n  - option \"1964\"\n  - option \"1963\"\n  - option \"1962\"\n  - option \"1961\"\n  - option \"1960\"\n  - option \"1959\"\n  - option \"1958\"\n  - option \"1957\"\n  - option \"1956\"\n  - option \"1955\"\n  - option \"1954\"\n  - option \"1953\"\n  - option \"1952\"\n  - option \"1951\"\n  - option \"1950\"\n  - option \"1949\"\n  - option \"1948\"\n  - option \"1947\"\n  - option \"1946\"\n  - option \"1945\"\n  - option \"1944\"\n  - option \"1943\"\n  - option \"1942\"\n  - option \"1941\"\n  - option \"1940\"\n  - option \"1939\"\n  - option \"1938\"\n  - option \"1937\"\n  - option \"1936\"\n  - option \"1935\"\n  - option \"1934\"\n  - option \"1933\"\n  - option \"1932\"\n  - option \"1931\"\n  - option \"1930\"\n  - option \"1929\"\n  - option \"1928\"\n  - option \"1927\"\n  - option \"1926\"\n  - option \"1925\"\n  - option \"1924\"\n  - option \"1923\"\n  - option \"1922\"\n  - option \"1921\"\n  - option \"1920\"\n  - option \"1919\"\n  - option \"1918\"\n  - option \"1917\"\n  - option \"1916\"\n  - option \"1915\"\n  - option \"1914\"\n  - option \"1913\"\n  - option \"1912\"\n  - option \"1911\"\n  - option \"1910\"\n  - option \"1909\"\n  - option \"1908\"\n  - option \"1907\"\n  - option \"1906\"\n  - option \"1905\"\n  - option"
+          ]
         }
       },
       {
         "id": "wf-1792682765516-18",
         "status": "passed",
-        "startedAt": 1792682802237,
-        "endedAt": 1792682803206,
-        "beforeShot": "wf-1792682765516-18-before.png",
+        "startedAt": 1792683958654,
+        "endedAt": 1792683959601,
         "snapshot": {
           "dom": [
             {
@@ -4664,8 +4645,8 @@
       {
         "id": "wf-1792682765516-19",
         "status": "passed",
-        "startedAt": 1792682803238,
-        "endedAt": 1792682803565,
+        "startedAt": 1792683959632,
+        "endedAt": 1792683959990,
         "snapshot": {
           "dom": [
             {
@@ -4832,8 +4813,8 @@
       {
         "id": "wf-1792682765516-20",
         "status": "passed",
-        "startedAt": 1792682803598,
-        "endedAt": 1792682804078,
+        "startedAt": 1792683960042,
+        "endedAt": 1792683960475,
         "snapshot": {
           "dom": [
             {
@@ -5000,8 +4981,8 @@
       {
         "id": "wf-1792682765516-21",
         "status": "passed",
-        "startedAt": 1792682804110,
-        "endedAt": 1792682804590,
+        "startedAt": 1792683960506,
+        "endedAt": 1792683960962,
         "snapshot": {
           "dom": [
             {
@@ -5113,8 +5094,8 @@
       {
         "id": "wf-1792682765516-22",
         "status": "passed",
-        "startedAt": 1792682804617,
-        "endedAt": 1792682804782,
+        "startedAt": 1792683960989,
+        "endedAt": 1792683961144,
         "beforeShot": "wf-1792682765516-22-before.png",
         "afterShot": "wf-1792682765516-22-after.png",
         "snapshot": {
@@ -5167,11 +5148,6 @@
               "text": "CONTACT US"
             },
             {
-              "role": "link",
-              "name": "Software testing courses",
-              "text": "Software testing courses"
-            },
-            {
               "role": "heading",
               "text": "GET IN TOUCH"
             },
@@ -5231,14 +5207,14 @@
               "id": "scrollUp"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- link \"Software testing courses\":\n  - img\n  - text: Software testing courses\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\"\n- textbox \"Subject\"\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - iframe\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\"\n- textbox \"Subject\"\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - iframe\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
         }
       },
       {
         "id": "wf-1792682765516-23",
         "status": "passed",
-        "startedAt": 1792682804868,
-        "endedAt": 1792682804998,
+        "startedAt": 1792683961237,
+        "endedAt": 1792683961361,
         "beforeShot": "wf-1792682765516-23-before.png",
         "afterShot": "wf-1792682765516-23-after.png",
         "snapshot": {
@@ -5291,11 +5267,6 @@
               "text": "CONTACT US"
             },
             {
-              "role": "link",
-              "name": "Software testing courses",
-              "text": "Software testing courses"
-            },
-            {
               "role": "heading",
               "text": "GET IN TOUCH"
             },
@@ -5337,26 +5308,6 @@
             },
             {
               "role": "heading",
-              "name": "These are topics related to the article that might interest you",
-              "text": "Discover more"
-            },
-            {
-              "role": "link",
-              "name": "Automation tutorials",
-              "text": "Automation tutorials"
-            },
-            {
-              "role": "link",
-              "name": "Automation practice software",
-              "text": "Automation practice software"
-            },
-            {
-              "role": "link",
-              "name": "Website testing services",
-              "text": "Website testing services"
-            },
-            {
-              "role": "heading",
               "text": "SUBSCRIPTION"
             },
             {
@@ -5375,14 +5326,14 @@
               "id": "scrollUp"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- link \"Software testing courses\":\n  - img\n  - text: Software testing courses\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\"\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation tutorials\"\n  - link \"Automation practice software\"\n  - link \"Website testing services\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\"\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - iframe\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
         }
       },
       {
         "id": "wf-1792682765516-24",
         "status": "passed",
-        "startedAt": 1792682805065,
-        "endedAt": 1792682805178,
+        "startedAt": 1792683961474,
+        "endedAt": 1792683961593,
         "beforeShot": "wf-1792682765516-24-before.png",
         "afterShot": "wf-1792682765516-24-after.png",
         "snapshot": {
@@ -5435,11 +5386,6 @@
               "text": "CONTACT US"
             },
             {
-              "role": "link",
-              "name": "Software testing courses",
-              "text": "Software testing courses"
-            },
-            {
               "role": "heading",
               "text": "GET IN TOUCH"
             },
@@ -5481,26 +5427,6 @@
             },
             {
               "role": "heading",
-              "name": "These are topics related to the article that might interest you",
-              "text": "Discover more"
-            },
-            {
-              "role": "link",
-              "name": "Automation tutorials",
-              "text": "Automation tutorials"
-            },
-            {
-              "role": "link",
-              "name": "Automation practice software",
-              "text": "Automation practice software"
-            },
-            {
-              "role": "link",
-              "name": "Website testing services",
-              "text": "Website testing services"
-            },
-            {
-              "role": "heading",
               "text": "SUBSCRIPTION"
             },
             {
@@ -5519,14 +5445,14 @@
               "id": "scrollUp"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- link \"Software testing courses\":\n  - img\n  - text: Software testing courses\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\": Proof note\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation tutorials\"\n  - link \"Automation practice software\"\n  - link \"Website testing services\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\": Proof note\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - iframe\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
         }
       },
       {
         "id": "wf-1792682765516-25",
         "status": "passed",
-        "startedAt": 1792682805262,
-        "endedAt": 1792682805399,
+        "startedAt": 1792683961670,
+        "endedAt": 1792683961787,
         "beforeShot": "wf-1792682765516-25-before.png",
         "afterShot": "wf-1792682765516-25-after.png",
         "snapshot": {
@@ -5579,11 +5505,6 @@
               "text": "CONTACT US"
             },
             {
-              "role": "link",
-              "name": "Software testing courses",
-              "text": "Software testing courses"
-            },
-            {
               "role": "heading",
               "text": "GET IN TOUCH"
             },
@@ -5625,26 +5546,6 @@
             },
             {
               "role": "heading",
-              "name": "These are topics related to the article that might interest you",
-              "text": "Discover more"
-            },
-            {
-              "role": "link",
-              "name": "Automation tutorials",
-              "text": "Automation tutorials"
-            },
-            {
-              "role": "link",
-              "name": "Automation practice software",
-              "text": "Automation practice software"
-            },
-            {
-              "role": "link",
-              "name": "Website testing services",
-              "text": "Website testing services"
-            },
-            {
-              "role": "heading",
               "text": "SUBSCRIPTION"
             },
             {
@@ -5663,14 +5564,14 @@
               "id": "scrollUp"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- link \"Software testing courses\":\n  - img\n  - text: Software testing courses\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\": Proof note\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation tutorials\"\n  - link \"Automation practice software\"\n  - link \"Website testing services\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\": Proof note\n- textbox \"Your Message Here\"\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - iframe\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
         }
       },
       {
         "id": "wf-1792682765516-26",
         "status": "passed",
-        "startedAt": 1792682805448,
-        "endedAt": 1792682805562,
+        "startedAt": 1792683961838,
+        "endedAt": 1792683961946,
         "beforeShot": "wf-1792682765516-26-before.png",
         "afterShot": "wf-1792682765516-26-after.png",
         "snapshot": {
@@ -5723,11 +5624,6 @@
               "text": "CONTACT US"
             },
             {
-              "role": "link",
-              "name": "Software testing courses",
-              "text": "Software testing courses"
-            },
-            {
               "role": "heading",
               "text": "GET IN TOUCH"
             },
@@ -5769,26 +5665,6 @@
             },
             {
               "role": "heading",
-              "name": "These are topics related to the article that might interest you",
-              "text": "Discover more"
-            },
-            {
-              "role": "link",
-              "name": "Automation tutorials",
-              "text": "Automation tutorials"
-            },
-            {
-              "role": "link",
-              "name": "Automation practice software",
-              "text": "Automation practice software"
-            },
-            {
-              "role": "link",
-              "name": "Website testing services",
-              "text": "Website testing services"
-            },
-            {
-              "role": "heading",
               "text": "SUBSCRIPTION"
             },
             {
@@ -5807,14 +5683,14 @@
               "id": "scrollUp"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- link \"Software testing courses\":\n  - img\n  - text: Software testing courses\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\": Proof note\n- textbox \"Your Message Here\": Hello from replay alpha.\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation tutorials\"\n  - link \"Automation practice software\"\n  - link \"Website testing services\"\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- heading \"Get In Touch\" [level=2]\n- textbox \"Name\": Bao Alpha\n- textbox \"Email\": bao-alpha-mvjp070t@example.com\n- textbox \"Subject\": Proof note\n- textbox \"Your Message Here\": Hello from replay alpha.\n- button \"Choose File\"\n- button \"Submit\"\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- insertion:\n  - iframe\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
         }
       },
       {
         "id": "wf-1792682765516-27",
         "status": "passed",
-        "startedAt": 1792682805635,
-        "endedAt": 1792682805786,
+        "startedAt": 1792683962025,
+        "endedAt": 1792683962177,
         "beforeShot": "wf-1792682765516-27-before.png",
         "snapshot": {
           "dom": [
@@ -5866,11 +5742,6 @@
               "text": "CONTACT US"
             },
             {
-              "role": "link",
-              "name": "Software testing courses",
-              "text": "Software testing courses"
-            },
-            {
               "role": "heading",
               "text": "GET IN TOUCH"
             },
@@ -5906,14 +5777,14 @@
               "id": "scrollUp"
             }
           ],
-          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- link \"Software testing courses\":\n  - img\n  - text: Software testing courses\n- heading \"Get In Touch\" [level=2]\n- text: Success! Your details have been submitted successfully.\n- link \" Home\":\n  - /url: /\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
+          "ax": "- banner:\n  - link \"Website for automation practice\":\n    - /url: /\n    - img \"Website for automation practice\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Logout\":\n        - /url: /logout\n    - listitem:\n      - link \" Delete Account\":\n        - /url: /delete_account\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n    - listitem:  Logged in as Bao Alpha\n- heading \"Contact Us\" [level=2]:\n  - text: Contact\n  - strong: Us\n- text: \"Note: Below contact form is for testing purpose.\"\n- heading \"Get In Touch\" [level=2]\n- text: Success! Your details have been submitted successfully.\n- link \" Home\":\n  - /url: /\n- heading \"Feedback For Us\" [level=2]\n- paragraph: We really appreciate your response to our website.\n- paragraph:\n  - text: Kindly share your feedback with us at\n  - link \"feedback@automationexercise.com\":\n    - /url: mailto:feedback@automationexercise.com\n  - text: .\n- paragraph: If you have any suggestion areas or improvements, do let us know. We will definitely work on it.\n- paragraph: Thank you\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved"
         }
       },
       {
         "id": "wf-1792682765516-28",
         "status": "passed",
-        "startedAt": 1792682805794,
-        "endedAt": 1792682805989,
+        "startedAt": 1792683962185,
+        "endedAt": 1792683962401,
         "snapshot": {
           "dom": [
             {
@@ -6006,5 +5877,10 @@
     "title": "Automation Exercise - Account Created",
     "text": "Home  Products Cart Signup / Login Test Cases API Testing Video Tutorials Contact us ACCOUNT DELETED! Your account has been permanently deleted!Learn a Language You can create new account to take advantage of member privileges to enhance your online shopping experience with us. Continue SUBSCRIPTION Get the most recent updates from our site and be updated your self... Copyright © 2021 All rights reserved Discover more Automation testing software Website automation tools Automated testing services"
   },
-  "downloaded": []
+  "downloaded": [],
+  "shot": {
+    "sha256": "2babf3c490891d3f25936831343f6de29306e6735c0eac5df151ff7d9385600c",
+    "samePixels": false,
+    "identity": ""
+  }
 }

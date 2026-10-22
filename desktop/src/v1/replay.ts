@@ -147,6 +147,8 @@ export interface Driver {
   loginContinued?(): boolean;
   /** Page PNG of the target, when the driver can see it. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
+  /** Full viewport. Unit-test drivers omit this. */
+  pageShot?(): Promise<Buffer | undefined>;
   /** Tags console and network lines with the step that is running. */
   markStep?(id: string): void;
   /** DOM and accessibility tree at the end of the step. Browser drivers only. */
@@ -1920,8 +1922,16 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<string | undefined> {
-  if (!dir || !driver.shot) return;
+  if (!dir) return;
   try {
+    if (process.env.BAO_PROOF_PAGE === "1" && which === "before" && /delete account/i.test(step.label || "")) {
+      const full = await driver.pageShot?.();
+      if (full && full.length > 24 && full[0] === 0x89) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, "identity.png"), full);
+      }
+    }
+    if (!driver.shot) return;
     const png = await driver.shot({
       identity: step.identity,
       action: step.action,

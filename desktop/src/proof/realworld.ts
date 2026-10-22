@@ -4,6 +4,7 @@
 //   npm run proof:realworld
 //   PROOF_TASKS=p2,p6 npm run proof:realworld
 
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,6 +13,7 @@ import { startApp } from "../app/server";
 import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 
 process.env.BAO_DRIVE = "1";
+process.env.BAO_PROOF_PAGE = "1";
 process.env.BAO_CHROME_NO_SANDBOX = process.env.BAO_CHROME_NO_SANDBOX || "1";
 
 const ROOT = path.resolve("docs/proof/realworld");
@@ -664,17 +666,23 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
   const session = new Session(port);
   let workflow: WorkflowV2 | undefined;
   let recordError = "";
-  try {
-    await task.record(session, files);
-  } catch (err) {
-    recordError = err instanceof Error ? err.message : String(err);
-    console.log(`record error: ${recordError}`);
-  }
-  try {
-    workflow = await session.stop();
-  } catch (err) {
-    await session.discard();
-    if (!recordError) recordError = err instanceof Error ? err.message : String(err);
+  if (process.env.PROOF_REPLAY_ONLY === "1") {
+    const saved = path.join(ROOT, "workflows", `${task.id}.json`);
+    workflow = JSON.parse(readFileSync(saved, "utf8")) as WorkflowV2;
+    await call(port, "POST", "/api/workflows/import", workflow);
+  } else {
+    try {
+      await task.record(session, files);
+    } catch (err) {
+      recordError = err instanceof Error ? err.message : String(err);
+      console.log(`record error: ${recordError}`);
+    }
+    try {
+      workflow = await session.stop();
+    } catch (err) {
+      await session.discard();
+      if (!recordError) recordError = err instanceof Error ? err.message : String(err);
+    }
   }
   if (!workflow) {
     return {
@@ -757,7 +765,9 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
     const started = Date.now();
     let replay: RunView;
     try {
-      replay = sanitizeRun(await call(port, "POST", "/api/replay", { id: current.id, args }) as RunView);
+      // Run 2 gets its own browser. The shared window was still the right run,
+      // but its end page can be pixel-identical to run 1.
+      replay = sanitizeRun(await call(port, "POST", "/api/replay", { id: current.id, args, fresh: run === 2 }) as RunView);
     } catch (err) {
       replays.push({
         pass: false,
@@ -773,6 +783,14 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
     const page = await call(port, "GET", `/api/replay/page?id=${encodeURIComponent(current.id)}`).catch(() => ({})) as PageView;
     const shot = await saveShot(port, home, current.id, task.id, run);
     if (shot) artifacts.push(shot);
+    const identitySrc = replay.runId ? path.join(home, "shots", "runs", replay.runId, "identity.png") : "";
+    const identity = identitySrc && existsSync(identitySrc) ? publish(identitySrc, `${task.id}-r${run}-identity.png`) : undefined;
+    if (identity) artifacts.push(identity);
+    const shotFile = path.join(ARTIFACTS, `${task.id}-r${run}.png`);
+    const otherFile = path.join(ARTIFACTS, `${task.id}-r${run === 1 ? 2 : 1}.png`);
+    const shotSha = existsSync(shotFile) ? createHash("sha256").update(readFileSync(shotFile)).digest("hex") : "";
+    const samePixels = !!shotSha && existsSync(otherFile) && createHash("sha256").update(readFileSync(otherFile)).digest("hex") === shotSha;
+    if (samePixels) console.log(`  replay ${run} end shot matches the other run pixel for pixel`);
     const frames = copyFrames(home, replay.runId, task.id, run);
     artifacts.push(...frames);
     const judged = judge(task, { run, replay, page, workflow: current, args, files, openUrl: task.openUrl }, started);
@@ -781,7 +799,7 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
     const endFrames = [shot, ...frames].filter((item): item is string => !!item);
     const reel = writeReel(task.id, run, endFrames);
     if (reel) artifacts.push(reel);
-    writeFileSync(path.join(ROOT, "runs", `${task.id}-r${run}.json`), `${JSON.stringify({ args: publicArgs(args), replay, page: { url: page.url, title: page.title, text: (page.text || "").slice(0, 2500) }, downloaded: newCsvs(started) }, null, 2)}\n`);
+    writeFileSync(path.join(ROOT, "runs", `${task.id}-r${run}.json`), `${JSON.stringify({ args: publicArgs(args), replay, page: { url: page.url, title: page.title, text: (page.text || "").slice(0, 2500) }, downloaded: newCsvs(started), shot: { sha256: shotSha, samePixels, identity: identity || "" } }, null, 2)}\n`);
     replays.push(judged);
     console.log(`  replay ${run}: ${judged.pass ? "pass" : "fail"} model=${judged.modelCalls} heals=${judged.heals.length} ${judged.detail}`);
   }

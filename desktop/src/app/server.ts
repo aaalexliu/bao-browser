@@ -898,10 +898,17 @@ export async function startApp(opts: {
         return json(res, workflow);
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
-        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean };
+        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         const args = await materializeFiles(body.args || {});
+        if (body.fresh) {
+          const existing = replays.get(saved.id);
+          if (existing) {
+            await existing.context.close().catch(() => undefined);
+            replays.delete(saved.id);
+          }
+        }
         stopRun = false;
         loginContinued = false;
         replaying = true;
