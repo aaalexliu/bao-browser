@@ -4,13 +4,13 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
-import type { ElementVersion } from "../v1/element-history";
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
 import { stepsNeedingReview, type StepReview } from "../v1/triage";
 import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
+import { tokenFields, type TokenInput } from "../v1/input-token";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 export interface WorkflowSummary {
@@ -23,6 +23,7 @@ export interface WorkflowSummary {
   replayed?: boolean;
   firstStep?: { action?: string; label?: string };
   inputs?: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }[];
+  startUrl?: string;
 }
 
 export interface PromotionView {
@@ -112,6 +113,7 @@ export interface ShellState {
   promotions?: PromotionView[];
   activeAsk?: HumanAsk | null;
   pendingImport?: ImportPending | null;
+  teach?: TeachView;
 }
 
 export interface CommandItem {
@@ -176,6 +178,7 @@ function icon(name: string): string {
   const paths: Record<string, string> = {
     library: "M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z",
     capture: "M12 8a4 4 0 100 8 4 4 0 000-8zm8.5 4a8.5 8.5 0 11-17 0 8.5 8.5 0 0117 0z",
+    teach: "M5 4h10l4 4v12H5V4zm9 0v5h5M8 13h8M8 17h5",
     runs: "M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h10v3H4v-3z",
     heals: "M12 4l2.2 4.6L19 9.2l-3.5 3.4.8 4.9L12 15.8 7.7 17.5l.8-4.9L5 9.2l4.8-.6L12 4z",
     replay: "M8 5v14l11-7L8 5z",
@@ -203,6 +206,7 @@ export function rail(state: ShellState): string {
     <nav>
       <button data-screen="library">${icon("library")} Library</button>
       <button data-screen="capture">${icon("capture")} Capture</button>
+      <button data-screen="teach">${icon("teach")} Teach</button>
       <button data-screen="runs">${icon("runs")} Runs</button>
       <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
       <button data-screen="replay">${icon("replay")} Replay</button>
@@ -355,7 +359,7 @@ export interface ViewerContext {
 
 export function runViewer(
   run: RunSummary,
-  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number; history?: ElementVersion[] }[] },
+  workflow: { name: string; steps: { id: string; label?: string; action?: string; index?: number }[] },
   selectedId?: string,
   context: ViewerContext = {},
 ): string {
@@ -393,7 +397,8 @@ export function runViewer(
     const review = (context.reviewStepIds || []).includes(step.id) || step.triage === "review";
     const reviewMark = review ? `<em class="review">needs review</em>` : "";
     const recoveredMark = step.reason?.startsWith("recovered:") ? `<em class="recovered">${esc(step.reason)}</em>` : "";
-    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${recoveredMark}${reviewMark}</button>`;
+    const askMark = step.reason === "always ask" ? `<em class="ask">always ask</em>` : "";
+    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${recoveredMark}${askMark}${reviewMark}</button>`;
   }).join("");
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
@@ -402,8 +407,6 @@ export function runViewer(
   const video = videoBar(run, steps);
   const safeHeadline = failed ? esc(headline) : headline;
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
-  const workflowStep = workflow.steps.find((item) => item.id === selected?.id);
-  const history = elementHistory(selected?.id, workflowStep?.history);
   const recoveredRow = selected?.reason?.startsWith("recovered:")
     ? `<p id="recovered-row">${esc(selected.reason)}</p>`
     : "";
@@ -443,7 +446,7 @@ export function runViewer(
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
     </div>
     ${storedInputsLine(run.inputs)}
-    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button>` : ""}</div>
+    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button> <button type="button" id="teach-fix" data-workflow="${esc(run.workflowId)}" data-step="${esc(failed.id)}">Teach the fix</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
     ${idleNote}
     <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>
@@ -458,7 +461,6 @@ export function runViewer(
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
         <h3 class="section">Identity</h3>
         ${table}
-        ${history}
         ${snapshotPane(snapDom, snapAx)}
       </div>
       ${failurePanel(selected, failure, identity)}
@@ -496,32 +498,6 @@ function frameFace(runId: string, step: StepView, failure: FailureView | undefin
     src,
     body: `<img src="${esc(src)}" alt="" data-before="${esc(before)}" data-after="${esc(after)}">${hold}`,
   };
-}
-
-function elementHistory(stepId: string | undefined, history: ElementVersion[] | undefined): string {
-  if (!stepId || !history || history.length === 0) return "";
-  const latest = history[history.length - 1];
-  const rows = history.map((row) => {
-    const changed = row.changed.length ? row.changed.join(", ") : "none";
-    const button = row.id === latest?.id
-      ? ""
-      : `<button type="button" data-rollback="${esc(row.id)}" data-step="${esc(stepId)}">Roll back to this version</button>`;
-    return `<tr data-source="${esc(row.source)}" data-score="${row.score ?? ""}">
-      <td>${esc(formatWhen(row.at))}</td>
-      <td>${esc(row.source)}</td>
-      <td>${esc(row.runId || "—")}</td>
-      <td>${row.score ?? ""}</td>
-      <td>${esc(changed)}</td>
-      <td>${button}</td>
-    </tr>`;
-  }).join("");
-  return `<section id="element-history">
-    <h3>Element history</h3>
-    <table>
-      <thead><tr><th>When</th><th>Source</th><th>Run</th><th>Score</th><th>Changed</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </section>`;
 }
 
 function failurePanel(step: StepView | undefined, failure: FailureView | undefined, identity: IdentityView | undefined): string {
@@ -639,6 +615,24 @@ function skipMark(ms: number, left?: string): string {
 export function secretInput(name: string, label: string, hadSecret: boolean): string {
   const hint = hadSecret ? "Last run used a secret" : "";
   return `<label>${esc(label)} <input name="${esc(name)}" type="password" autocomplete="off" placeholder="${esc(hint)}"></label>`;
+}
+
+/** The run form. Defaults come from the same token fields the step text shows. */
+export function runField(input: TokenInput, previous?: string): string {
+  const shown = tokenFields(input);
+  const label = esc(shown.label);
+  if (shown.masked) return secretInput(input.name, shown.label, Boolean(previous));
+  if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || shown.default)}"></label>`;
+  if (input.type === "choice") {
+    const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
+    return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
+  }
+  if (input.type === "file") {
+    const hint = previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
+    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""}> <span>${esc(hint)}</span></label>`;
+  }
+  const text = previous && previous !== "••••" ? previous : shown.default;
+  return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(text)}</textarea></label>`;
 }
 
 function storedInputsLine(inputs: Record<string, string> | undefined): string {
@@ -788,7 +782,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
       <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Keep</button>
       <button type="button" data-revert="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Revert</button>
     </div>
-    <p class="quiet">Keep writes the patch into the saved workflow. Revert puts the failed step back. Both are appended. ${esc(decisionLine)}</p>
+    <p class="quiet">Keep saves a draft version. Replay keeps using the live version until you promote it. Revert puts the failed step back on the live workflow. Both are appended. ${esc(decisionLine)}</p>
   </article>`;
 }
 
@@ -995,11 +989,52 @@ export function identityChip(identity: StepCard["identity"]): string {
   return `<span class="chip id-chip">${esc(bits.join(" · "))}</span>`;
 }
 
-export function inputChips(step: StepCard): string {
+export function inputToken(input: TokenInput): string {
+  const shown = tokenFields(input);
+  const bits = [`<span class="token-label">${esc(shown.label)}</span>`, `<span class="token-meta">${esc(shown.type)}</span>`];
+  if (shown.masked) bits.push(`<span class="token-meta">••••</span>`);
+  else if (shown.default) bits.push(`<span class="token-meta">${esc(shown.default)}</span>`);
+  bits.push(`<span class="token-meta">${shown.required ? "required" : "optional"}</span>`);
+  const secret = shown.masked ? " secret" : "";
+  return `<button type="button" class="token${secret}" data-edit-input="${esc(input.name)}" data-type="${esc(shown.type)}" data-label="${esc(shown.label)}" data-default="${esc(shown.default)}" data-required="${shown.required ? "1" : "0"}">${bits.join("")}</button>`;
+}
+
+export function renderStepText(text: string, inputs: TokenInput[]): string {
+  return text.split(/(\{\{\s*[\w.-]+\s*\}\})/g).map((part) => {
+    const match = part.match(/^\{\{\s*([\w.-]+)\s*\}\}$/);
+    if (!match) return esc(part);
+    const input = inputs.find((item) => item.name === match[1]);
+    if (!input) return esc(part);
+    return inputToken(input);
+  }).join("");
+}
+
+function mustacheName(value: string | undefined): string {
+  return value?.match(/\{\{\s*([\w.-]+)\s*\}\}/)?.[1] || "";
+}
+
+function stepHeadline(step: StepCard, inputs: TokenInput[]): { html: string; token: boolean } {
+  const raw = step.label || step.action || step.id;
+  let html = inputs.length ? renderStepText(raw, inputs) : esc(raw);
+  let token = html.includes("data-edit-input");
+  const name = step.input || mustacheName(step.value);
+  if (!token && name) {
+    const input = inputs.find((item) => item.name === name);
+    if (input) {
+      html = `${html} ${inputToken(input)}`;
+      token = true;
+    }
+  }
+  return { html, token };
+}
+
+export function inputChips(step: StepCard, token = false): string {
   const chips: string[] = [];
-  const template = step.value && step.value.includes("{{") ? step.value : step.input ? `{{${step.input}}}` : "";
-  if (template) chips.push(`<span class="chip">${esc(template)}</span>`);
-  if (step.sensitive) chips.push(`<span class="chip secret">secret</span>`);
+  if (!token) {
+    const template = step.value && step.value.includes("{{") ? step.value : step.input ? `{{${step.input}}}` : "";
+    if (template) chips.push(`<span class="chip">${esc(template)}</span>`);
+    if (step.sensitive) chips.push(`<span class="chip secret">secret</span>`);
+  }
   if (step.action === "upload" || step.action === "drop") chips.push(`<span class="chip">file</span>`);
   return chips.join("");
 }
@@ -1011,31 +1046,81 @@ function expectBadge(step: StepCard): string {
   return "";
 }
 
+export function tryResult(result: {
+  matched?: boolean;
+  actions?: number;
+  modelCalls?: number;
+  identity?: IdentityView;
+  preview?: string;
+  reason?: string;
+  error?: string;
+}): string {
+  if (result.error) return `<div id="try-result" data-matched="0"><p class="notice">${esc(result.error)}</p></div>`;
+  const img = imageRef("try", result.preview);
+  const picture = img ? `<img class="try-outline" alt="Outlined match" src="${img}">` : "";
+  const lead = typeof result.identity?.lead === "number" ? `<p id="try-lead">lead ${result.identity.lead}</p>` : "";
+  const status = result.matched ? "Matched" : `No match${result.reason ? `: ${result.reason}` : ""}`;
+  const actions = result.actions ?? 0;
+  const calls = result.modelCalls ?? 0;
+  return `<div id="try-result" data-matched="${result.matched ? "1" : "0"}" data-actions="${actions}" data-model-calls="${calls}">
+    <p><strong>${esc(status)}</strong> <span class="quiet">${actions} actions · ${calls} model calls</span></p>
+    ${picture}
+    ${lead}
+    ${identityTable(result.identity)}
+  </div>`;
+}
+
+export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
+  const rows = sites.map((site) => `<label>${esc(site.origin)}
+      <select data-site-trust="${esc(site.origin)}">
+        <option value="ask" ${site.mode === "ask" ? "selected" : ""}>Always ask</option>
+        <option value="allow" ${site.mode === "allow" ? "selected" : ""}>Allow</option>
+      </select>
+    </label>`).join("");
+  const body = rows || `<p class="quiet">No sites yet. A site shows up here from a workflow's start address.</p>`;
+  return `<section id="site-trust">
+    <h3>Site trust</h3>
+    <p class="quiet">Always ask waits before an ordinary click or type on that site. Allow runs those. Confirm and Apply still wait for you. This is separate from when a step misses.</p>
+    ${body}
+  </section>`;
+}
+
 export function workflowDetail(
-  doc: { id: string; name: string; steps: StepCard[]; inputs?: { name: string; type?: string }[] },
-  meta: { lastRunId?: string; lastLabel?: string } = {},
+  doc: { id: string; name: string; steps: StepCard[]; inputs?: TokenInput[] },
+  meta: { lastRunId?: string; lastLabel?: string; shots?: Record<string, string> } = {},
 ): string {
-  const cards = doc.steps.map((step) => {
+  const inputs = doc.inputs || [];
+  const cards = doc.steps.map((step, index) => {
     const human = step.human || step.action === "login" || step.action === "confirm";
+    const known = meta.shots?.[step.id] || "";
     const runShot = meta.lastRunId ? `/api/runs/${encodeURIComponent(meta.lastRunId)}/shots/${encodeURIComponent(shotFile(step.id, "after"))}` : "";
     const captured = `/api/workflows/${encodeURIComponent(doc.id)}/shots/${encodeURIComponent(workflowShotName(step.id))}`;
-    const shot = runShot || captured;
+    const shot = known || runShot || captured;
+    const fallback = shot === captured ? "" : captured;
+    const face = known ? `<img src="${esc(known)}" alt="">` : "";
+    const headline = stepHeadline(step, inputs);
+    const n = index + 1;
     return `<article class="step-card ${human ? "human" : ""}" data-step-card="${esc(step.id)}">
-      <div class="thumb" data-shot="${esc(shot)}" ${runShot ? `data-shot-fallback="${esc(captured)}"` : ""}>${placeholder(step.action, step.label || step.action || step.id)}</div>
+      <div class="thumb${known ? " has-shot" : ""}" data-shot="${esc(shot)}" ${fallback ? `data-shot-fallback="${esc(fallback)}"` : ""}>${face}${placeholder(step.action, step.label || step.action || step.id)}</div>
       <div class="step-copy">
-        <div class="row"><strong>${esc(step.label || step.action || step.id)}</strong> ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
+        <div class="row"><strong>${headline.html}</strong> ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
         <p class="meta">${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
-        <div class="chips">${identityChip(step.identity)}${inputChips(step)}</div>
+        <div class="chips">${identityChip(step.identity)}${inputChips(step, headline.token)}</div>
         <label class="meta">If this step misses <select data-step-heal="${esc(step.id)}">
           <option value="" ${step.heal ? "" : "selected"}>Use the workflow setting</option>
           <option value="auto" ${step.heal === "auto" ? "selected" : ""}>Auto</option>
           <option value="ask" ${step.heal === "ask" ? "selected" : ""}>Ask</option>
           <option value="never" ${step.heal === "never" ? "selected" : ""}>Never</option>
         </select></label>
+        <div class="row step-actions">
+          <button type="button" data-try-step="${esc(step.id)}">Try</button>
+          <button type="button" data-run-from="${esc(step.id)}" data-step-n="${n}">Run from step ${n}</button>
+        </div>
+        <div class="try-slot" data-try-slot="${esc(step.id)}"></div>
       </div>
     </article>`;
   }).join("");
-  const inputs = (doc.inputs || []).map((input) => {
+  const headerChips = (doc.inputs || []).map((input) => {
     if (input.type === "secret") return `<span class="chip secret">secret</span>`;
     if (input.type === "file") return `<span class="chip">file</span>`;
     return `<span class="chip">{{${esc(input.name)}}}</span>`;
@@ -1046,7 +1131,7 @@ export function workflowDetail(
       <div>
         <h2>${esc(doc.name)}</h2>
         <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
-        <div class="chips">${inputs}</div>
+        <div class="chips">${headerChips}</div>
         <p class="mono" data-testid="deeplink">bao://workflow/${esc(doc.id)}</p>
         <p class="mono" data-testid="import-link">bao://import/${esc(doc.id)}</p>
       </div>
@@ -1054,6 +1139,96 @@ export function workflowDetail(
     </header>
     <h3 class="section">Steps</h3>
     <div id="workflow-steps">${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}</div>
+  </section>`;
+}
+
+export interface VersionRow {
+  n: number;
+  role: string;
+  source: string;
+  createdAt: number;
+  /** The locator this version holds. The panel lists these and no second history. */
+  locator?: {
+    stepId: string;
+    source: string;
+    at: number;
+    runId?: string;
+    score?: number;
+    changed: string[];
+  };
+  diff?: string;
+  steps?: { id: string; label: string; before: string; after: string; changed: boolean }[];
+  history?: {
+    stepId: string;
+    source: string;
+    at: number;
+    runId?: string;
+    score?: number;
+    changed: string[];
+  }[];
+}
+
+function versionChange(version: VersionRow): string {
+  const line = version.diff
+    ? `<p class="version-diff" data-testid="version-diff">${esc(version.diff)}</p>`
+    : "";
+  const steps = (version.steps || []).map((step) => {
+    const arrow = step.before
+      ? `<span>${esc(step.before)}</span><span aria-hidden="true">→</span>`
+      : "";
+    return `<li data-testid="version-step" data-changed="${step.changed ? "true" : "false"}"><span>${esc(step.label)}</span>${arrow}<span>${esc(step.after)}</span></li>`;
+  }).join("");
+  const details = steps
+    ? `<details class="version-steps" data-testid="version-steps"><summary>Before and after</summary><ol>${steps}</ol></details>`
+    : "";
+  return line + details;
+}
+
+function locatorHeld(version: VersionRow): string {
+  const rows = version.history?.length ? version.history : version.locator ? [version.locator] : [];
+  if (!rows.length) return "";
+  const body = rows.map((locator) => {
+    const changed = locator.changed.length ? locator.changed.join(", ") : "none";
+    return `<tr data-locator-source="${esc(locator.source)}" data-score="${locator.score ?? ""}" data-step="${esc(locator.stepId)}">
+      <td><time>${esc(formatClock(locator.at))}</time></td>
+      <td>${esc(locator.source)}</td>
+      <td>${esc(locator.runId || "—")}</td>
+      <td>${locator.score ?? ""}</td>
+      <td>${esc(changed)}</td>
+    </tr>`;
+  }).join("");
+  return `<table class="locator-history" data-testid="locator-history">
+    <thead><tr><th>When</th><th>Source</th><th>Run</th><th>Score</th><th>Changed</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
+export function versionsPanel(versions: VersionRow[]): string {
+  const rows = versions.map((version) => {
+    const role = version.role === "live" ? "Live" : version.role === "draft" ? "Draft" : "Past";
+    const source = version.source === "heal" ? "Heal" : version.source === "edit" ? "Edit" : version.source === "restore" ? "Restore" : "Saved";
+    const promote = version.role === "draft"
+      ? `<button type="button" class="primary" data-promote-version="${esc(version.n)}">Promote</button>`
+      : "";
+    return `<li data-testid="version" data-version="${esc(version.n)}" data-role="${esc(version.role)}">
+      <div class="row">
+        <strong>v${esc(version.n)}</strong>
+        <span class="badge">${esc(role)}</span>
+        <span class="quiet">${esc(source)}</span>
+        <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
+      </div>
+      ${locatorHeld(version)}
+      ${versionChange(version)}
+      <div class="row">
+        <button type="button" data-restore-version="${esc(version.n)}">Restore as draft</button>
+        ${promote}
+      </div>
+    </li>`;
+  }).join("");
+  return `<section class="card" id="versions" data-testid="versions">
+    <h3>Versions</h3>
+    <p class="quiet">Replay uses the live version. A heal or an edit is a draft until you promote it.</p>
+    <ol class="versions">${rows || `<li class="quiet">No versions yet.</li>`}</ol>
   </section>`;
 }
 
@@ -1076,6 +1251,7 @@ export function commandItems(workflows: { id: string; name: string }[]): Command
   const screens: CommandItem[] = [
     { id: "library", label: "Library", kind: "screen", screen: "library", hint: "Go" },
     { id: "capture", label: "Capture", kind: "screen", screen: "capture", hint: "Go" },
+    { id: "teach", label: "Teach", kind: "screen", screen: "teach", hint: "Go" },
     { id: "runs", label: "Runs", kind: "screen", screen: "runs", hint: "Go" },
     { id: "heals", label: "Heals", kind: "screen", screen: "heals", hint: "Go" },
     { id: "settings", label: "Settings", kind: "screen", screen: "settings", hint: "Go" },
@@ -1095,6 +1271,181 @@ export function paletteView(items: CommandItem[], query: string, active: number)
     <input id="palette-input" placeholder="Jump to a workflow or screen" value="${esc(query)}" aria-label="Command">
     <div id="palette-list">${rows || `<p class="quiet">No matches.</p>`}</div>
   </div>`;
+}
+
+export interface TeachCardView {
+  id: string;
+  intent: string;
+  outcome: string;
+  narrator: "heuristic" | "model";
+  modelName?: string;
+  human: boolean;
+  verify: boolean;
+  dropped: boolean;
+  merged: boolean;
+  note: string;
+  action: string;
+  values: { role: string; name: string; label: string }[];
+}
+
+export interface TeachView {
+  phase?: "idle" | "live" | "review";
+  paused?: boolean;
+  since?: number;
+  blur?: boolean;
+  blurredShots?: number;
+  narrator?: string;
+  fix?: { workflowId: string; stepId: string } | null;
+  error?: string;
+  cards?: TeachCardView[];
+  decisions?: { kind: string; detail: string; cardId: string }[];
+  review?: {
+    raw: { id?: string; op?: string; kind?: string; detail?: string }[];
+    decisions?: { kind: string; detail: string; cardId: string }[];
+    workflow: {
+      name: string;
+      inputs: { name: string; type: string }[];
+      steps: { id: string; label?: string; intent?: string; action?: string; human?: boolean; value?: string; input?: string; sensitive?: boolean }[];
+    };
+  };
+}
+
+function cropPlaceholder(action: string): string {
+  return `<div class="ph"><span class="ph-ico">${glyph(action)}</span></div>`;
+}
+
+function captureShot(id: string): string {
+  return `/api/capture/shots/${encodeURIComponent(id)}.png`;
+}
+
+function valueChip(value: { role: string; label: string }): string {
+  if (value.role === "secret") return `<span class="chip secret">secret</span>`;
+  return `<span class="chip">${esc(value.label)}</span>`;
+}
+
+function editedNote(decisions: { kind: string; detail: string; cardId: string }[] | undefined, cardId: string): string {
+  const details = (decisions || [])
+    .filter((decision) => decision.cardId === cardId && decision.kind !== "drop" && decision.kind !== "check")
+    .map((decision) => decision.detail)
+    .filter(Boolean);
+  if (!details.length) return "";
+  return `<span class="badge edited" title="${esc(details.join(", "))}">edited</span>`;
+}
+
+function teachList(teach: TeachView, edit: boolean): string {
+  const cards = teach.cards || [];
+  const kept = cards.filter((card) => !card.dropped && !card.merged);
+  const newest = kept[kept.length - 1]?.id;
+  const rows = kept.map((card) => teachCard(card, {
+    edit,
+    on: card.id === newest,
+    edited: editedNote(teach.decisions, card.id),
+  })).join("");
+  const dropped = cards.filter((card) => card.dropped);
+  const pile = dropped.length
+    ? `<details class="teach-dropped"><summary>Dropped (${dropped.length})</summary>${dropped.map((card) => `<p>${esc(card.intent)}</p>`).join("")}</details>`
+    : "";
+  return `${rows}${pile}`;
+}
+
+export function teachPanel(teach: TeachView): string {
+  const paused = teach.paused ? "Resume" : "Pause";
+  const who = teach.narrator === "model" ? "model" : "heuristic";
+  const list = teachList(teach, true);
+  return `<section id="teach-panel" data-phase="live" data-paused="${teach.paused ? "true" : "false"}">
+    <div id="teach-bar">
+      <span class="rec-dot" aria-hidden="true"></span>
+      <span id="rec-timer" data-since="${teach.since || 0}">0:00</span>
+      <span class="badge quiet-badge" id="teach-narrator">${esc(who)}</span>
+      <button type="button" id="teach-pause">${paused}</button>
+      <button type="button" id="teach-stop">Stop</button>
+      <button type="button" id="teach-check">Add check</button>
+      <button type="button" id="teach-discard">Discard</button>
+      <span class="quiet" id="teach-blur">Sensitive fields blurred</span>
+    </div>
+    <div id="teach-cards">${list || `<p class="meta">Steps show up here as you demonstrate. Click a step to correct it.</p>`}</div>
+  </section>`;
+}
+
+export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: boolean; edited?: string } = {}): string {
+  const who = card.narrator === "model" ? `model${card.modelName ? ` · ${card.modelName}` : ""}` : "heuristic";
+  const chip = card.values[0] ? valueChip(card.values[0]) : "";
+  const flags = [
+    card.human ? `<span class="badge you">you</span>` : "",
+    card.verify ? `<span class="badge expect">check</span>` : "",
+  ].join("");
+  const row = `<span class="thumb mini" data-shot="${esc(captureShot(card.id))}">${cropPlaceholder(card.action)}</span>
+      <span class="intent-read">${esc(card.intent)}</span>
+      ${chip}${flags}${opts.edited || ""}`;
+  const head = opts.edit
+    ? `<button type="button" class="teach-row" aria-expanded="false">${row}</button>`
+    : `<div class="teach-row">${row}</div>`;
+  const values = card.values.map((value) => {
+    const param = value.role === "constant" ? "" : `<input data-param value="${esc(value.name)}" aria-label="Parameter name">`;
+    return `<div class="row teach-value" data-role="${esc(value.role)}">${valueChip(value)}${param}
+      <button type="button" data-correct="input">Input</button>
+      <button type="button" data-correct="constant">Constant</button>
+      <button type="button" data-correct="secret">Secret</button>
+    </div>`;
+  }).join("");
+  const editor = opts.edit ? `<div class="teach-edit">
+      <span class="badge quiet-badge" data-narrator="${esc(card.narrator)}">${esc(who)}</span>
+      <label>Rename <input class="intent" data-intent value="${esc(card.intent)}" aria-label="Intent"></label>
+      ${card.outcome ? `<p class="meta">Expected: ${esc(card.outcome)}</p>` : ""}
+      ${values}
+      <div class="row teach-actions">
+        <button type="button" data-correct="human">You do this</button>
+        <button type="button" data-correct="verify">Check</button>
+        <button type="button" data-correct="drop">Drop</button>
+        <button type="button" data-correct="merge">Merge</button>
+      </div>
+      <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Saved as this step's intent" aria-label="Note"></label>
+    </div>` : "";
+  const classes = ["step-card", "teach-card", card.human ? "human" : "", opts.on ? "on" : ""].filter(Boolean).join(" ");
+  return `<article class="${classes}" data-card="${esc(card.id)}" data-narrator="${esc(card.narrator)}">
+    ${head}
+    ${editor}
+  </article>`;
+}
+
+export function teachReview(teach: TeachView): string {
+  const review = teach.review;
+  if (!review) return `<section id="teach-review"><h2>Review</h2><p class="quiet">Stop teaching to review the workflow.</p></section>`;
+  const raw = review.raw.map((event) => `<li>${esc(event.kind === "decision" ? `decision · ${event.detail || event.op}` : `${event.op || event.kind}`)}</li>`).join("");
+  return `<section id="teach-review">
+    <header class="wf-head">
+      <div>
+        <h2>Review</h2>
+        <p class="lede">These steps are what will replay. The raw trail stays beside them.</p>
+      </div>
+      <button type="button" class="primary" id="teach-save">Save</button>
+    </header>
+    <div class="teach-review-body">
+      <div id="teach-steps">${teachList(teach, false) || `<p class="quiet">No steps.</p>`}</div>
+      <details id="teach-trail">
+        <summary>Raw trail</summary>
+        <ol id="teach-raw">${raw}</ol>
+      </details>
+    </div>
+  </section>`;
+}
+
+export function teachHome(workflows: { id: string; name: string }[]): string {
+  const choices = workflows.map((workflow) => `<label class="row"><input type="checkbox" name="merge" value="${esc(workflow.id)}"> ${esc(workflow.name)}</label>`).join("");
+  return `<section id="teach-home">
+    <h2>Teach</h2>
+    <p class="lede">Show Bao a flow once. It narrates each step. Correct it on the spot, and the saved workflow keeps the intent.</p>
+    <div class="card">
+      <label>Start URL <input id="teach-url" value="${esc(typeof location !== "undefined" ? `${location.origin}/fixture` : "/fixture")}"></label>
+      <button class="primary" id="teach-start" type="button">Start teaching</button>
+    </div>
+    <div class="card">
+      <h3>Merge demonstrations</h3>
+      <p class="quiet">Two or more saved takes of the same task. Steps they share stay. Steps that differ become a branch.</p>
+      ${choices || `<p class="quiet">Save a workflow first.</p>`}
+      <button type="button" id="teach-merge">Merge</button>
+    </div>
+  </section>`;
 }
 
 export function recordBar(state: { recording?: boolean; capturePaused?: boolean; recordingSince?: number }): string {

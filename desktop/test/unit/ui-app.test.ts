@@ -202,7 +202,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.click("article#heal-detail [data-keep]");
     await page.waitForFunction(() => document.body.innerText.includes("Patch kept"));
     const kept = app.library.read("wf-heal");
-    assert.equal(kept.steps[0]?.identity?.testId, "login");
+    assert.equal(kept.steps[0]?.identity?.testId, "missing-login");
     assert.equal(JSON.stringify(app.library.readRun(healed.runId).heals), before);
     assert.equal(app.library.readRun(healed.runId).decisions?.[0]?.decision, "keep");
     await page.waitForSelector("[data-revert]");

@@ -16,6 +16,13 @@ export interface Settings extends HealSettings {
   circuitLimit: number;
   circuitWindowMs: number;
   syncServer?: string;
+  /** Scheduled library export. Absent means off. */
+  backupSchedule?: "off" | "daily" | "weekly";
+  /**
+   * Ordinary clicks and typing, per site origin.
+   * Absent allows them. Confirm and login do not read this.
+   */
+  siteTrust?: Record<string, "ask" | "allow">;
 }
 
 export interface StoredRun {
@@ -123,7 +130,7 @@ export class Library {
     writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(promotion, null, 2));
   }
 
-  readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string } | undefined {
+  readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string; version?: number } | undefined {
     try {
       return JSON.parse(readFileSync(path.join(this.root, "promotions", `${workflowId}.json`), "utf8")) as {
         workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string;
@@ -139,6 +146,25 @@ export class Library {
 
   listTrails(): string[] {
     return readdirSync(path.join(this.root, "trails")).filter((name) => name.endsWith(".json")).map((name) => name.replace(/\.json$/, ""));
+  }
+
+  saveIntentEval(id: string, pair: unknown): void {
+    const dir = path.join(this.root, "evals", "intent");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(pair, null, 2));
+  }
+
+  readIntentEval(id: string): unknown {
+    return JSON.parse(readFileSync(path.join(this.root, "evals", "intent", `${id}.json`), "utf8")) as unknown;
+  }
+
+  listIntentEvals(): string[] {
+    const dir = path.join(this.root, "evals", "intent");
+    try {
+      return readdirSync(dir).filter((name) => name.endsWith(".json")).map((name) => name.replace(/\.json$/, ""));
+    } catch {
+      return [];
+    }
   }
 
   saveRun(run: StoredRun): void {

@@ -11,6 +11,8 @@ export function recorderSource(): string {
   return `(() => {
     const norm = (v) => (v || "").replace(/\\s+/g, " ").trim();
     const send = (payload) => { if (window.__baoRecord) window.__baoRecord(payload); };
+    const fieldValues = () => new Set([...document.querySelectorAll("input, textarea")].map((el) => norm(el.value)).filter(Boolean));
+    const visible = () => [...document.querySelectorAll("[data-testid]")].map((el) => norm(el.innerText || el.value || "")).filter(Boolean);
     const secretSent = new WeakSet();
     const notePassword = (el) => {
       if (secretSent.has(el)) return;
@@ -35,8 +37,16 @@ export function recorderSource(): string {
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
       const el = raw && raw.closest ? raw.closest("button,a,input,textarea,select,li,[data-testid]") : raw;
       if (!el) return;
-      const before = location.href;
-      setTimeout(() => send({ kind: "act", op: "click", identity: ident(el), beforeUrl: before, afterUrl: location.href }), 0);
+      const beforeUrl = location.href;
+      const beforeLines = visible();
+      setTimeout(() => {
+        const typed = fieldValues();
+        const added = visible().filter((line) => !beforeLines.includes(line) && !typed.has(line));
+        const afterText = added.join(" ").slice(0, 180);
+        const payload = { kind: "act", op: "click", identity: ident(el), beforeUrl, afterUrl: location.href };
+        if (afterText) payload.afterText = afterText;
+        send(payload);
+      }, 0);
     }, true);
     document.addEventListener("input", (event) => {
       const el = event.target;

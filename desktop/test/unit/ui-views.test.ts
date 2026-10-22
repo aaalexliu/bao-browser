@@ -299,6 +299,13 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
   assert.equal(html.includes("id=\"library\""), false);
   assert.equal(html.includes("<img"), false);
   assert.match(html, /class="ph"/);
+  const cropped = workflowDetail({
+    id: "wf",
+    name: "fixture apply",
+    steps: [{ id: "signed-in", action: "click", label: "Click signed in" }],
+  }, { shots: { "signed-in": "/api/runs/run-1/shots/signed-in-after.png" } });
+  assert.match(cropped, /<img src="\/api\/runs\/run-1\/shots\/signed-in-after\.png"/);
+  assert.match(cropped, /class="thumb has-shot"/);
 });
 
 test("a failed run says the phase, the change, what bao tried, and shows the grid", () => {
