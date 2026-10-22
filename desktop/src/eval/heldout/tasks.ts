@@ -21,6 +21,11 @@ export interface HeldStep {
   file?: string;
 }
 
+export interface InvalidFixture {
+  reason: string;
+  evidence: string;
+}
+
 export interface HeldTask {
   id: string;
   name: string;
@@ -28,6 +33,8 @@ export interface HeldTask {
   secret?: string;
   replays: { texts: string[]; secret: string; file: string }[];
   oracle: Oracle;
+  /** The site cannot satisfy the oracle. The row stays in the table and is left out of bao misses. */
+  invalid?: InvalidFixture;
   steps: HeldStep[];
 }
 

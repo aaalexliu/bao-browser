@@ -21,3 +21,12 @@ The body oracle cannot pass while those apps do not create an item. The steps ma
 ## Batch 3, `jquery-api-search`
 
 The trail condenses to typing `ajax` into `input[name=s]` and pressing Enter. The type and the Enter both record `https://api.jquery.com/` as `beforeUrl` and `afterUrl`. Replay with `get` and `on` stays on that url, so the url oracle misses. Enter in the typesense search box does not navigate. The frozen trail already shows that, and the oracle stays as recorded. Step precision and recall are 1.00.
+
+## jquery-api-search and hn-search
+
+Replay video frames for both, plus the condensed expects:
+
+- `hn-search` submits. The condensed key step expects `q={{q}}`. Replay with Grace Hopper finishes at `https://hn.algolia.com/?q=Grace+Hopper` with a results list that names Grace Hopper (258 results). The step expect holds. The held-out page oracle asks the url to contain the phrase `Grace Hopper`, and the url contains `Grace+Hopper`.
+- `jquery-api-search` submits. The field shows `get` and a `.tsmb-suggestion_group` lists `jQuery.get()`. The url stays `https://api.jquery.com/`. The frozen Enter event has equal urls and no subtree, so expect is `settled`, not a url template. The page oracle asks the url to include `get`.
+
+Neither miss is a replay that never submitted the query. Expect inference is using the effect the frozen trail recorded. The trails were not edited, and expect inference was not changed. Batch 5 stays at its scored result.

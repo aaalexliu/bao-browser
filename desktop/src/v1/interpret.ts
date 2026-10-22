@@ -42,6 +42,10 @@ export interface TrailEvent {
   performed?: boolean;
   /** Message from Page.javascriptDialogOpening. The opening itself is an effect. */
   dialog?: string;
+  /** alert, confirm, or prompt. */
+  dialogType?: "alert" | "confirm" | "prompt";
+  /** Which button closed the dialog. An alert records accept. */
+  dialogDecision?: "accept" | "dismiss";
 }
 
 export interface InterpretMeta {

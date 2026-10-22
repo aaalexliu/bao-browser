@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright";
 import { dumpPage, type DomDump } from "../../v1/dom-page";
+import { leafTexts, smallestChange } from "../../v1/recorder";
 import type { TrailEvent } from "../../v1/interpret";
 import type { Identity } from "../../v1/schema";
 import { launchOwnedChrome } from "../../launch";
@@ -21,6 +22,7 @@ export interface HeldTruth {
   replays: HeldTask["replays"];
   oracle: Oracle;
   secret?: string;
+  invalid?: HeldTask["invalid"];
 }
 
 export async function captureHeldout(dir: string, tasks: readonly HeldTask[] = HELD_TASKS): Promise<HeldTruth[]> {
@@ -51,9 +53,13 @@ async function captureTask(task: HeldTask): Promise<{ events: TrailEvent[]; trut
   try {
     const page = context.pages()[0] || await context.newPage();
     page.setDefaultTimeout(15000);
-    let dialogNote: string | undefined;
+    let dialogNote: { type: "alert" | "confirm" | "prompt"; message: string; decision: "accept" | "dismiss" } | undefined;
     page.on("dialog", (dialog) => {
-      dialogNote = dialog.message().replace(/\s+/g, " ").trim().slice(0, 180) || "dialog";
+      const type = dialog.type();
+      const message = dialog.message().replace(/\s+/g, " ").trim().slice(0, 180) || "dialog";
+      if (type === "alert" || type === "confirm" || type === "prompt") {
+        dialogNote = { type, message, decision: "accept" };
+      }
       dialog.accept().catch(() => undefined);
     });
     const takeDialog = () => {
@@ -100,6 +106,7 @@ async function captureTask(task: HeldTask): Promise<{ events: TrailEvent[]; trut
       replays: task.replays,
       oracle: task.oracle,
       secret: task.secret,
+      invalid: task.invalid,
     },
   };
 }
@@ -109,7 +116,7 @@ async function runStep(
   step: HeldStep,
   index: number,
   before: string,
-  takeDialog: () => string | undefined,
+  takeDialog: () => { type: "alert" | "confirm" | "prompt"; message: string; decision: "accept" | "dismiss" } | undefined,
 ): Promise<TrailEvent[]> {
   const ts = Date.now();
   if (step.do === "read") {
@@ -181,7 +188,9 @@ async function runStep(
       op: "key",
       key: step.key || "Enter",
       identity,
-      dialog,
+      dialog: dialog?.message,
+      dialogType: dialog?.type,
+      dialogDecision: dialog?.decision,
       subtreeBefore: beforeFx.subtree,
       subtreeAfter: afterFx.missing ? "" : afterFx.subtree,
       valueBefore: beforeFx.value,
@@ -229,12 +238,16 @@ async function runStep(
   const identity = await actIdentity(page, selector);
   if (!identity) throw new Error(`no identity for ${selector}`);
   const beforeFx = await readEffect(locator);
+  const leavesBefore = await page.evaluate(leafTexts).catch(() => ({}));
   await locator.click({ timeout: 15000 });
   await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => undefined);
   await page.waitForTimeout(200);
   const afterFx = await readEffect(locator);
+  const leavesAfter = await page.evaluate(leafTexts).catch(() => ({}));
+  const appeared = smallestChange(leavesBefore, leavesAfter);
   const checked = await locator.isChecked().catch(() => undefined);
-  const subtreeAfter = afterFx.missing ? (beforeFx.subtree === "" ? "\u0000" : "") : afterFx.subtree;
+  const subtreeAfter = appeared ? appeared.after : afterFx.missing ? (beforeFx.subtree === "" ? "\u0000" : "") : afterFx.subtree;
+  const dialog = takeDialog();
   return [{
     id: `e${index}`,
     ts,
@@ -243,11 +256,13 @@ async function runStep(
     identity,
     gate: step.human,
     checked: typeof checked === "boolean" ? checked : undefined,
-    subtreeBefore: beforeFx.subtree,
+    subtreeBefore: appeared ? appeared.before : beforeFx.subtree,
     subtreeAfter,
     valueBefore: beforeFx.value,
     valueAfter: afterFx.missing ? undefined : afterFx.value,
-    dialog: takeDialog(),
+    dialog: dialog?.message,
+    dialogType: dialog?.type,
+    dialogDecision: dialog?.decision,
     beforeUrl: before,
     afterUrl: page.url(),
   }];

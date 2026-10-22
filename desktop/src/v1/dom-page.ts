@@ -122,8 +122,13 @@ export function dumpPage(): PageDump {
   const texts: string[] = [];
   let n = 0;
   document.querySelectorAll("body *").forEach((el) => {
-    if (!(el instanceof HTMLElement) || !interesting(el)) return;
+    if (!(el instanceof HTMLElement)) return;
     if (el.hidden || el.closest("[hidden]")) return;
+    const leaf = el.childElementCount === 0 ? norm(el.innerText || el.textContent || "").slice(0, 80) : "";
+    if (!interesting(el)) {
+      if (leaf && leaf.length < 80) texts.push(leaf);
+      return;
+    }
     const handle = String(n++);
     el.setAttribute("data-bao-i", handle);
     const text = norm(el.innerText || el.textContent || "").slice(0, 80);
