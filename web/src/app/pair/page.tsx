@@ -10,7 +10,7 @@ export default async function PairPage() {
     return (
       <section>
         <h1>Devices</h1>
-        <p>Sign in, then show a pairing code on this page. <a href="/login">Sign in</a></p>
+        <p>Sign in for a pairing code, then type it in the Mac app under Settings &gt; Sync. <a href="/login">Sign in</a></p>
       </section>
     );
   }
@@ -22,7 +22,7 @@ export default async function PairPage() {
   return (
     <section>
       <h1>Devices</h1>
-      <p>On the Mac, run <span className="mono">bao sync pair CODE --server THIS_ORIGIN</span>. The device token stays in that Mac&apos;s sync file.</p>
+      <p>Type this code in the Mac app, under Settings &gt; Sync.</p>
       <div className="card">
         <h2>Pairing code</h2>
         {pair ? <p className="pair" data-testid="pair-code">{pair.code}</p> : <p>No active code.</p>}
@@ -31,6 +31,7 @@ export default async function PairPage() {
           <button className="primary" type="submit">New code</button>
         </form>
       </div>
+      <p className="pair-hint" data-testid="pair-cli">Or from the command line: <span className="mono">bao sync pair CODE --server THIS_ORIGIN</span>. The device token stays in that Mac&apos;s sync file.</p>
       <h2>Paired Macs</h2>
       <ul className="devices" data-testid="devices">
         {devices.map((device) => (
