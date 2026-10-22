@@ -92,9 +92,11 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
     assert.match(versionList, /v3[\s\S]*Conflict[\s\S]*Home Mac/);
     assert.match(versionList, /EDT|EST/);
     assert.equal(await webPage.getByText("element crop").count(), 0);
-    await webPage.getByTestId("keep-mine").waitFor();
-    await webPage.getByTestId("keep-theirs").waitFor();
-    await webPage.getByTestId("keep-both").waitFor();
+    assert.equal(await webPage.getByTestId("keep-theirs").innerText(), "Keep Ada's Mac");
+    assert.equal(await webPage.getByTestId("keep-mine").innerText(), "Keep Home Mac");
+    assert.equal(await webPage.getByTestId("keep-both").innerText(), "Keep both as a copy");
+    assert.equal(await webPage.getByText("Keep mine", { exact: true }).count(), 0);
+    assert.equal(await webPage.getByText("Keep theirs", { exact: true }).count(), 0);
     await webPage.locator("main").screenshot({ path: path.join(shots, "conflict-web-light.png") });
     await webPage.evaluate(() => {
       localStorage.setItem("bao-theme", "dark");

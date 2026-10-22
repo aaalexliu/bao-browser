@@ -34,10 +34,9 @@ export default async function WorkflowPage({
   const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string; askOnImport?: boolean }[]; steps?: { id: string; label?: string }[] };
   const steps = doc.steps ?? [];
   const drafts = versions.filter((version) => version.kind === "conflict");
-  const draftDevices = [...new Set(drafts.map((version) => version.device_name).filter((name): name is string => Boolean(name)))];
-  const conflictOn = drafts.length
-    ? `Changed on ${workflow.deviceName || "The other Mac"} and ${draftDevices.join(" and ") || "This Mac"}`
-    : "";
+  const headDevice = workflow.deviceName || "The other Mac";
+  const draftDevice = [...new Set(drafts.map((version) => version.device_name).filter((name): name is string => Boolean(name)))].join(" and ") || "This Mac";
+  const conflictOn = drafts.length ? `Changed on ${headDevice} and ${draftDevice}` : "";
   const publishEnabled = preview.reviewed && !preview.gateStep;
   const publishWhy = publishEnabled
     ? ""
@@ -57,8 +56,8 @@ export default async function WorkflowPage({
         <div className="notice" data-testid="conflict-state">
           <p data-testid="conflict-devices">{conflictOn}</p>
           <form className="row" action={`/api/workflows/${id}/conflict`} method="post">
-            <button className="primary" type="submit" name="action" value="keep-mine" data-testid="keep-mine">Keep mine</button>
-            <button type="submit" name="action" value="keep-theirs" data-testid="keep-theirs">Keep theirs</button>
+            <button type="submit" name="action" value="keep-theirs" data-testid="keep-theirs">Keep {headDevice}</button>
+            <button type="submit" name="action" value="keep-mine" data-testid="keep-mine">Keep {draftDevice}</button>
             <button type="submit" name="action" value="keep-both" data-testid="keep-both">Keep both as a copy</button>
           </form>
         </div>
