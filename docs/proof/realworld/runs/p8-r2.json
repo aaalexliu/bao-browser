@@ -1,0 +1,259 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792672435140-0",
+        "action": "click",
+        "target": "a:edit",
+        "postcondition": "missed url /challenging_dom",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
+        "ts": 1792672475542
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/javascript_alerts",
+        "status": 200,
+        "ts": 1792672475515
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/298279967.js",
+        "status": 200,
+        "ts": 1792672475520
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/app.css",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/font-awesome.css",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/css/sauce.css",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-1.11.3.min.js",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/vendor/jquery-ui-1.11.4/jquery-ui.js",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.js",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/js/foundation/foundation.alerts.js",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/img/forkme_right_sauce.svg",
+        "status": 200,
+        "ts": 1792672475521
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/atkinson-hyperlegible-next.woff2",
+        "status": 200,
+        "ts": 1792672475542
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://the-internet.herokuapp.com/fonts/fraunces.woff2",
+        "status": 200,
+        "ts": 1792672475542
+      }
+    ],
+    "runId": "run-mvjiwmu0-i265",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792672435140-0",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792672475557,
+        "endedAt": 1792672484114,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "heading",
+              "text": "JavaScript Alerts"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Alert"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Confirm"
+            },
+            {
+              "role": "button",
+              "text": "Click for JS Prompt"
+            },
+            {
+              "role": "heading",
+              "text": "Result:"
+            },
+            {
+              "role": "link",
+              "text": "Elemental Selenium"
+            },
+            {
+              "role": "link",
+              "text": "Sauce Labs"
+            }
+          ],
+          "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"JavaScript Alerts\" [level=3]\n- paragraph: Here are some examples of different JavaScript alerts which can be troublesome for automation\n- list:\n  - listitem:\n    - button \"Click for JS Alert\"\n  - listitem:\n    - button \"Click for JS Confirm\"\n  - listitem:\n    - button \"Click for JS Prompt\"\n- heading \"Result:\" [level=4]\n- paragraph\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+        }
+      },
+      {
+        "id": "wf-1792672435140-1",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792672435140-2",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792672435140-3",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792672435140-4",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792672435140-5",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792672435140-0",
+      "index": 0,
+      "intent": "Click \"edit\"",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "role",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link"
+          },
+          {
+            "role": "heading",
+            "text": "JavaScript Alerts"
+          },
+          {
+            "role": "button",
+            "text": "Click for JS Alert"
+          },
+          {
+            "role": "button",
+            "text": "Click for JS Confirm"
+          },
+          {
+            "role": "button",
+            "text": "Click for JS Prompt"
+          },
+          {
+            "role": "heading",
+            "text": "Result:"
+          },
+          {
+            "role": "link",
+            "text": "Elemental Selenium"
+          },
+          {
+            "role": "link",
+            "text": "Sauce Labs"
+          }
+        ],
+        "ax": "- text: The Internet\n- link \"Fork me on GitHub\":\n  - /url: https://github.com/saucelabs/the-internet\n  - img \"Fork me on GitHub\"\n- heading \"JavaScript Alerts\" [level=3]\n- paragraph: Here are some examples of different JavaScript alerts which can be troublesome for automation\n- list:\n  - listitem:\n    - button \"Click for JS Alert\"\n  - listitem:\n    - button \"Click for JS Confirm\"\n  - listitem:\n    - button \"Click for JS Prompt\"\n- heading \"Result:\" [level=4]\n- paragraph\n- text: Powered by\n- link \"Elemental Selenium\":\n  - /url: http://elementalselenium.com/\n- text: and\n- link \"Sauce Labs\":\n  - /url: https://saucelabs.com/"
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "role",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "label": "role a edit",
+          "score": 0
+        },
+        {
+          "kind": "text",
+          "label": "text edit",
+          "score": 0
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://the-internet.herokuapp.com/javascript_alerts",
+    "title": "The Internet",
+    "text": "JavaScript Alerts Here are some examples of different JavaScript alerts which can be troublesome for automation Click for JS Alert Click for JS Confirm Click for JS Prompt Result: Powered by Elemental Selenium and Sauce Labs"
+  },
+  "downloaded": []
+}

@@ -1,0 +1,88 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [],
+    "trail": [],
+    "console": [],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/list/mens_tshirts",
+        "status": 200,
+        "ts": 1792672575875
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/node_assets/@webcomponents/webcomponentsjs/webcomponents-loader.js",
+        "status": 200,
+        "ts": 1792672575882
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-app.js",
+        "status": 200,
+        "ts": 1792672575887
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_outerwear.jpg",
+        "status": 200,
+        "ts": 1792672575917
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_outerwear.jpg",
+        "status": 200,
+        "ts": 1792672575917
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/mens_tshirts.jpg",
+        "status": 200,
+        "ts": 1792672575917
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/images/ladies_tshirts.jpg",
+        "status": 200,
+        "ts": 1792672575917
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://shop.polymer-project.org/esm-bundled/src/shop-list.js",
+        "status": 200,
+        "ts": 1792672575919
+      }
+    ],
+    "runId": "run-mvjiysa8-uuzg",
+    "status": "passed",
+    "steps": [],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://shop.polymer-project.org/list/mens_tshirts",
+    "title": "Men's T-Shirts - SHOP",
+    "text": ""
+  },
+  "downloaded": []
+}

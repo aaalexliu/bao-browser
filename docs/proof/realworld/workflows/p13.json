@@ -1,0 +1,10 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792672620080",
+  "name": "Captured workflow",
+  "startUrl": "https://excalidraw.com/",
+  "inputs": [],
+  "steps": [],
+  "createdAt": 0
+}

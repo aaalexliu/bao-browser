@@ -1,0 +1,355 @@
+{
+  "args": {
+    "name": "Bao Beta",
+    "username": "bao-beta@example.com",
+    "title": "Mr",
+    "password": "[secret]",
+    "days": "21",
+    "months": "11",
+    "years": "1988",
+    "first_name": "Bao",
+    "last_name": "Record",
+    "country": "India",
+    "address1": "1 Proof Street",
+    "state": "Ontario",
+    "city": "Toronto",
+    "zipcode": "M5V1A1",
+    "mobile_number": "5550100000"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792671600734-0",
+        "action": "type",
+        "target": "input[name=name]",
+        "postcondition": "missed value {{name}}",
+        "timing": "lt10s"
+      }
+    ],
+    "trail": [],
+    "console": [],
+    "network": [],
+    "runId": "run-mvjies64-2xyv",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792671600734-0",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792671642657,
+        "endedAt": 1792671650806,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "link",
+              "text": "Home"
+            },
+            {
+              "role": "link",
+              "text": " Products"
+            },
+            {
+              "role": "link",
+              "text": "Cart"
+            },
+            {
+              "role": "link",
+              "text": "Signup / Login"
+            },
+            {
+              "role": "link",
+              "text": "Test Cases"
+            },
+            {
+              "role": "link",
+              "text": "API Testing"
+            },
+            {
+              "role": "link",
+              "text": "Video Tutorials"
+            },
+            {
+              "role": "link",
+              "text": "Contact us"
+            },
+            {
+              "role": "heading",
+              "text": "ACCOUNT CREATED!"
+            },
+            {
+              "role": "link",
+              "name": "Get Writing Tools",
+              "text": "Get Writing Tools"
+            },
+            {
+              "role": "link",
+              "text": "shopping"
+            },
+            {
+              "role": "link",
+              "text": "Continue"
+            },
+            {
+              "role": "heading",
+              "text": "SUBSCRIPTION"
+            },
+            {
+              "role": "input"
+            },
+            {
+              "role": "textbox",
+              "id": "susbscribe_email"
+            },
+            {
+              "role": "button",
+              "id": "subscribe"
+            },
+            {
+              "role": "link",
+              "id": "scrollUp"
+            },
+            {
+              "role": "heading",
+              "name": "These are topics related to the article that might interest you",
+              "text": "Discover more"
+            },
+            {
+              "role": "link",
+              "name": "Automation testing tools",
+              "text": "Automation testing tools"
+            },
+            {
+              "role": "link",
+              "name": "Website automation services",
+              "text": "Website automation services"
+            },
+            {
+              "role": "link",
+              "name": "E-commerce platform solutions",
+              "text": "E-commerce platform solutions"
+            }
+          ],
+          "ax": "- banner:\n  - link \"Automation Exercise website\":\n    - /url: /\n    - img \"Automation Exercise website\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Account Created!\" [level=2]\n- paragraph:\n  - text: Congratulations! Your new account has been successfully created!\n  - link \"Get Writing Tools\":\n    - img\n    - text: Get Writing Tools\n- paragraph:\n  - text: You can now take advantage of member privileges to enhance your online\n  - link \"shopping\":\n    - /url: \"#\"\n    - img\n    - text: shopping\n  - text: experience with us.\n- link \"Continue\":\n  - /url: /\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation testing tools\"\n  - link \"Website automation services\"\n  - link \"E-commerce platform solutions\""
+        }
+      },
+      {
+        "id": "wf-1792671600734-1",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-2",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-3",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-4",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-5",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-6",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-7",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-8",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-9",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-10",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-11",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-12",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-13",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-14",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-15",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-16",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-17",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671600734-18",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792671600734-0",
+      "index": 0,
+      "intent": "Type {{name}}",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "css",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "link"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "link",
+            "text": " Products"
+          },
+          {
+            "role": "link",
+            "text": "Cart"
+          },
+          {
+            "role": "link",
+            "text": "Signup / Login"
+          },
+          {
+            "role": "link",
+            "text": "Test Cases"
+          },
+          {
+            "role": "link",
+            "text": "API Testing"
+          },
+          {
+            "role": "link",
+            "text": "Video Tutorials"
+          },
+          {
+            "role": "link",
+            "text": "Contact us"
+          },
+          {
+            "role": "heading",
+            "text": "ACCOUNT CREATED!"
+          },
+          {
+            "role": "link",
+            "name": "Get Writing Tools",
+            "text": "Get Writing Tools"
+          },
+          {
+            "role": "link",
+            "text": "shopping"
+          },
+          {
+            "role": "link",
+            "text": "Continue"
+          },
+          {
+            "role": "heading",
+            "text": "SUBSCRIPTION"
+          },
+          {
+            "role": "input"
+          },
+          {
+            "role": "textbox",
+            "id": "susbscribe_email"
+          },
+          {
+            "role": "button",
+            "id": "subscribe"
+          },
+          {
+            "role": "link",
+            "id": "scrollUp"
+          },
+          {
+            "role": "heading",
+            "name": "These are topics related to the article that might interest you",
+            "text": "Discover more"
+          },
+          {
+            "role": "link",
+            "name": "Automation testing tools",
+            "text": "Automation testing tools"
+          },
+          {
+            "role": "link",
+            "name": "Website automation services",
+            "text": "Website automation services"
+          },
+          {
+            "role": "link",
+            "name": "E-commerce platform solutions",
+            "text": "E-commerce platform solutions"
+          }
+        ],
+        "ax": "- banner:\n  - link \"Automation Exercise website\":\n    - /url: /\n    - img \"Automation Exercise website\"\n  - list:\n    - listitem:\n      - link \" Home\":\n        - /url: /\n    - listitem:\n      - link \" Products\":\n        - /url: /products\n    - listitem:\n      - link \" Cart\":\n        - /url: /view_cart\n    - listitem:\n      - link \" Signup / Login\":\n        - /url: /login\n    - listitem:\n      - link \" Test Cases\":\n        - /url: /test_cases\n    - listitem:\n      - link \" API Testing\":\n        - /url: /api_list\n    - listitem:\n      - link \" Video Tutorials\":\n        - /url: https://www.youtube.com/c/AutomationExercise\n    - listitem:\n      - link \" Contact us\":\n        - /url: /contact_us\n- heading \"Account Created!\" [level=2]\n- paragraph:\n  - text: Congratulations! Your new account has been successfully created!\n  - link \"Get Writing Tools\":\n    - img\n    - text: Get Writing Tools\n- paragraph:\n  - text: You can now take advantage of member privileges to enhance your online\n  - link \"shopping\":\n    - /url: \"#\"\n    - img\n    - text: shopping\n  - text: experience with us.\n- link \"Continue\":\n  - /url: /\n- contentinfo:\n  - heading \"Subscription\" [level=2]\n  - textbox \"Your email address\"\n  - button \"\"\n  - paragraph: Get the most recent updates from our site and be updated your self...\n  - paragraph: Copyright © 2021 All rights reserved\n- insertion:\n  - heading \"These are topics related to the article that might interest you\" [level=2]: Discover more\n  - link \"Automation testing tools\"\n  - link \"Website automation services\"\n  - link \"E-commerce platform solutions\""
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "css",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "label": "css input[name=\"name\"]",
+          "score": 0
+        },
+        {
+          "kind": "xpath",
+          "label": "xpath //input[@name=\"name\"]",
+          "score": 0
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://automationexercise.com/account_created#google_vignette",
+    "title": "Automation Exercise - Account Created",
+    "text": "Home  Products Cart Signup / Login Test Cases API Testing Video Tutorials Contact us ACCOUNT CREATED! Congratulations! Your new account has been successfully created!Get Writing Tools You can now take advantage of member privileges to enhance your online shopping experience with us. Continue SUBSCRIPTION Get the most recent updates from our site and be updated your self... Copyright © 2021 All rights reserved Discover more Automation testing tools Website automation services E-commerce platform solutions"
+  },
+  "downloaded": []
+}

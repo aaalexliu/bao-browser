@@ -1,0 +1,220 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792672435140",
+  "name": "Captured workflow",
+  "startUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-1792672435140-0",
+      "index": 0,
+      "action": "click",
+      "label": "Click \"edit\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "a",
+        "tag": "a",
+        "text": "edit",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "a",
+          "name": "edit"
+        },
+        {
+          "kind": "text",
+          "value": "edit"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "url",
+        "match": "/challenging_dom",
+        "timeoutMs": 8000
+      },
+      "expect": {
+        "kind": "url",
+        "match": "/challenging_dom",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792672435140-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"Gallery\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "a",
+        "tag": "a",
+        "text": "Gallery",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "a",
+          "name": "Gallery"
+        },
+        {
+          "kind": "text",
+          "value": "Gallery"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792672435140-2",
+      "index": 2,
+      "action": "click",
+      "label": "Click \"Click Here\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "a",
+        "tag": "a",
+        "text": "Click Here",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "a",
+          "name": "Click Here"
+        },
+        {
+          "kind": "text",
+          "value": "Click Here"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792672435140-3",
+      "index": 3,
+      "action": "click",
+      "label": "Click \"Click for JS Alert\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Click for JS Alert",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Click for JS Alert"
+        },
+        {
+          "kind": "text",
+          "value": "Click for JS Alert"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "You successfully clicked an alert",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "You successfully clicked an alert",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792672435140-4",
+      "index": 4,
+      "action": "click",
+      "label": "Click \"Click for JS Confirm\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Click for JS Confirm",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Click for JS Confirm"
+        },
+        {
+          "kind": "text",
+          "value": "Click for JS Confirm"
+        }
+      ],
+      "timeoutMs": 8000,
+      "gate": "confirm",
+      "postcondition": {
+        "kind": "text",
+        "match": "You clicked: Ok",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "You clicked: Ok",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792672435140-5",
+      "index": 5,
+      "action": "click",
+      "label": "Click \"Click for JS Prompt\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "text": "Click for JS Prompt",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Click for JS Prompt"
+        },
+        {
+          "kind": "text",
+          "value": "Click for JS Prompt"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "You entered:",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "You entered:",
+        "timeoutMs": 4000
+      }
+    }
+  ],
+  "createdAt": 1792672430588
+}

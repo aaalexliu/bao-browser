@@ -1,0 +1,10 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792672686913",
+  "name": "Captured workflow",
+  "startUrl": "https://practicesoftwaretesting.com/",
+  "inputs": [],
+  "steps": [],
+  "createdAt": 0
+}

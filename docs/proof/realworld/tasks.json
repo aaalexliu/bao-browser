@@ -1,0 +1,100 @@
+[
+  {
+    "id": "p1",
+    "title": "Sign-up, contact upload, delete account",
+    "site": "automationexercise.com",
+    "openUrl": "https://automationexercise.com/login",
+    "mac": false
+  },
+  {
+    "id": "p2",
+    "title": "Practice form with date picker and dependent selects",
+    "site": "demoqa.com",
+    "openUrl": "https://demoqa.com/automation-practice-form",
+    "mac": false
+  },
+  {
+    "id": "p3",
+    "title": "Booking, stop before reserve",
+    "site": "automationintesting.online",
+    "openUrl": "https://automationintesting.online/",
+    "mac": false
+  },
+  {
+    "id": "p4",
+    "title": "Trial search and CSV download",
+    "site": "clinicaltrials.gov",
+    "openUrl": "https://clinicaltrials.gov/search",
+    "mac": false
+  },
+  {
+    "id": "p5",
+    "title": "Paginated catalog to CSV",
+    "site": "books.toscrape.com",
+    "openUrl": "https://books.toscrape.com/",
+    "mac": false
+  },
+  {
+    "id": "p6",
+    "title": "Spreadsheet rows into a web table",
+    "site": "demoqa.com/webtables",
+    "openUrl": "https://demoqa.com/webtables",
+    "mac": false
+  },
+  {
+    "id": "p7",
+    "title": "Wikipedia history across skins",
+    "site": "en.wikipedia.org",
+    "openUrl": "https://en.wikipedia.org/wiki/Special:Search",
+    "mac": false
+  },
+  {
+    "id": "p8",
+    "title": "Unstable DOM, new tab, JS dialogs",
+    "site": "the-internet.herokuapp.com",
+    "openUrl": "https://the-internet.herokuapp.com/challenging_dom",
+    "mac": false
+  },
+  {
+    "id": "p9",
+    "title": "Shadow-DOM shop, stop before place order",
+    "site": "shop.polymer-project.org",
+    "openUrl": "https://shop.polymer-project.org/",
+    "mac": false
+  },
+  {
+    "id": "p10",
+    "title": "TextEdit",
+    "site": "TextEdit",
+    "openUrl": "",
+    "mac": true
+  },
+  {
+    "id": "p11",
+    "title": "W-9 download and Preview",
+    "site": "irs.gov + Preview",
+    "openUrl": "",
+    "mac": true
+  },
+  {
+    "id": "p12",
+    "title": "CSV into Numbers",
+    "site": "Numbers",
+    "openUrl": "",
+    "mac": true
+  },
+  {
+    "id": "p13",
+    "title": "Excalidraw canvas",
+    "site": "excalidraw.com",
+    "openUrl": "https://excalidraw.com/",
+    "mac": false
+  },
+  {
+    "id": "p14",
+    "title": "Bot wall",
+    "site": "practicesoftwaretesting.com",
+    "openUrl": "https://practicesoftwaretesting.com/",
+    "mac": false
+  }
+]

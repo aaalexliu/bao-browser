@@ -1,0 +1,43 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792672161233",
+  "name": "Captured workflow",
+  "startUrl": "https://books.toscrape.com/catalogue/category/books/travel_2/index.html",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-1792672161233-0",
+      "index": 0,
+      "action": "click",
+      "label": "Click \"Travel\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "a",
+        "tag": "a",
+        "text": "Travel",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "a",
+          "name": "Travel"
+        },
+        {
+          "kind": "text",
+          "value": "Travel"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792672160799
+}

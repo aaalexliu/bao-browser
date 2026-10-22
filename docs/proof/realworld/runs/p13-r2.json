@@ -1,0 +1,116 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [],
+    "trail": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "warning",
+        "text": "Error with Feature-Policy header: Unrecognized feature: '*'.",
+        "ts": 1792672651406
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/",
+        "status": 200,
+        "ts": 1792672651401
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2",
+        "status": 200,
+        "ts": 1792672651412
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/index-D0I-IbtP.css",
+        "status": 200,
+        "ts": 1792672651413
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTQ3j6zbXWjgeg.woff2",
+        "status": 200,
+        "ts": 1792672651414
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-SemiBold.woff2",
+        "status": 200,
+        "ts": 1792672651424
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/ComicShanns/ComicShanns-Regular-279a7b317d12eb88de06167bd672b4b4.woff2",
+        "status": 200,
+        "ts": 1792672651425
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://scripts.simpleanalyticscdn.com/latest.js",
+        "status": 200,
+        "ts": 1792672651431
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/mermaid-to-excalidraw-D-aVQaad.js",
+        "status": 200,
+        "ts": 1792672651434
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/index-BboF1hDf.js",
+        "status": 200,
+        "ts": 1792672651491
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://queue.simpleanalyticscdn.com/simple.gif",
+        "status": 202,
+        "ts": 1792672651537
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/workbox-window.prod.es5-B9K5rw8f.js",
+        "status": 200,
+        "ts": 1792672651540
+      }
+    ],
+    "runId": "run-mvjj0emt-7rf1",
+    "status": "passed",
+    "steps": [],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://excalidraw.com/",
+    "title": "Excalidraw Whiteboard",
+    "text": "Excalidraw Your drawings are saved in your browser's storage. Browser storage can be cleared unexpectedly. Save your work to a file regularly to avoid losing it. Open Ctrl+O Help ? Live collaboration... Sign up To move canvas, hold Scroll wheel or Space while dragging, or use the hand tool Shapes V R D O A L P T N E Try Excalidraw+ 14-day free trial Canvas actions 100%"
+  },
+  "downloaded": []
+}

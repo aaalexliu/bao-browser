@@ -1,0 +1,3325 @@
+{
+  "args": {
+    "advcond": "migraine",
+    "text25": "Texas"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792671927354-0",
+        "action": "type",
+        "target": "input#adv-date-start-from",
+        "postcondition": "missed settled no error and the page settled",
+        "timing": "lt60s"
+      }
+    ],
+    "trail": [],
+    "console": [],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-ZCNB2MOS.js",
+        "status": 200,
+        "ts": 1792672029419
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-CBBIZQSI.js",
+        "status": 200,
+        "ts": 1792672029419
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-6SKTPKVJ.js",
+        "status": 200,
+        "ts": 1792672029419
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-RBBAQYP3.js",
+        "status": 200,
+        "ts": 1792672029419
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-FLCU5GQ5.js",
+        "status": 200,
+        "ts": 1792672029420
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-XCST56TN.js",
+        "status": 200,
+        "ts": 1792672029420
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-42TBZQYA.js",
+        "status": 200,
+        "ts": 1792672029420
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-BM3E2NSC.js",
+        "status": 200,
+        "ts": 1792672029421
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-QBIYNLEG.js",
+        "status": 200,
+        "ts": 1792672029421
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-FZRYKHK2.js",
+        "status": 200,
+        "ts": 1792672029421
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-DW5BAKPM.js",
+        "status": 200,
+        "ts": 1792672029421
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-O5R2NEDA.js",
+        "status": 200,
+        "ts": 1792672029421
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-LWKUPASL.js",
+        "status": 200,
+        "ts": 1792672029421
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-N5W3TRDQ.js",
+        "status": 200,
+        "ts": 1792672029421
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-WTJ6AHDE.js",
+        "status": 200,
+        "ts": 1792672029422
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-N3WLMKWZ.js",
+        "status": 200,
+        "ts": 1792672029422
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-TOFAEGEQ.js",
+        "status": 200,
+        "ts": 1792672029422
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/add.svg",
+        "status": 200,
+        "ts": 1792672029422
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-MXBAIA6N.js",
+        "status": 200,
+        "ts": 1792672029439
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-SF6KOENN.js",
+        "status": 200,
+        "ts": 1792672029458
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-AB224BQT.js",
+        "status": 200,
+        "ts": 1792672029459
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-H7PLUPKI.js",
+        "status": 200,
+        "ts": 1792672029459
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-IY34B7GB.js",
+        "status": 200,
+        "ts": 1792672029459
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-UNC76QDN.js",
+        "status": 200,
+        "ts": 1792672029459
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-RQ36OWE7.js",
+        "status": 200,
+        "ts": 1792672029459
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-PJAH7P4X.js",
+        "status": 200,
+        "ts": 1792672029460
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-QO4SBAZ5.js",
+        "status": 200,
+        "ts": 1792672029460
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-YSI6QT3P.js",
+        "status": 200,
+        "ts": 1792672029460
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-ABJHJXGS.js",
+        "status": 200,
+        "ts": 1792672029460
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-2SKEFSRX.js",
+        "status": 200,
+        "ts": 1792672029460
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/chunk-2KG2LKF2.js",
+        "status": 200,
+        "ts": 1792672029460
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://www.googletagmanager.com/gtag/js",
+        "status": 200,
+        "ts": 1792672029505
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://dap.digitalgov.gov/Universal-Federated-Analytics-Min.js",
+        "status": 200,
+        "ts": 1792672029505
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://www.googletagmanager.com/gtag/js",
+        "status": 200,
+        "ts": 1792672029508
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://www.ncbi.nlm.nih.gov/stat",
+        "status": 200,
+        "ts": 1792672029536
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://www.ncbi.nlm.nih.gov/stat",
+        "status": 200,
+        "ts": 1792672029549
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/us_flag_small.png",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/icon-dot-gov.svg",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/icon-https.svg",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/main/img/AgencyLogo.svg",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/images/ctg-header-logo.svg",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/images/nih-nlm-ncbi-logo.png",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/images/close.png",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/images/warning.svg",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/images/ctg-footer-logo.svg",
+        "status": 200,
+        "ts": 1792672029596
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/expand_more.svg",
+        "status": 200,
+        "ts": 1792672029597
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/navigate_next.svg",
+        "status": 200,
+        "ts": 1792672029597
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/warning.svg",
+        "status": 200,
+        "ts": 1792672029597
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://zndikywqsjiuwn0q5-nlmenterprise.siteintercept.qualtrics.com/SIE/",
+        "status": 304,
+        "ts": 1792672029599
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://cdn.ncbi.nlm.nih.gov/core/alerts/alerts.js",
+        "status": 304,
+        "ts": 1792672029606
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/dxjsmodule/626.f09927365e9cfc5937fa.chunk.js",
+        "status": 200,
+        "ts": 1792672029610
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/api/int/studies",
+        "status": 200,
+        "ts": 1792672029675
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/images/expand_more.svg",
+        "status": 200,
+        "ts": 1792672029676
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/remove.svg",
+        "status": 200,
+        "ts": 1792672029677
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/unfold_more.svg",
+        "status": 200,
+        "ts": 1792672029677
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/usa-icons/calendar_today.svg",
+        "status": 200,
+        "ts": 1792672029678
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/assets/uswds/img/correct8.svg",
+        "status": 200,
+        "ts": 1792672029695
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "POST",
+        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Targeting.php",
+        "status": 200,
+        "ts": 1792672029698
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/dxjsmodule/CoreModule.js",
+        "status": 200,
+        "ts": 1792672029699
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/api/int/suggest",
+        "status": 200,
+        "ts": 1792672029699
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/api/int/suggest",
+        "status": 200,
+        "ts": 1792672029700
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/api/int/suggest",
+        "status": 200,
+        "ts": 1792672029703
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/api/int/suggest",
+        "status": 200,
+        "ts": 1792672029704
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://cdn.ncbi.nlm.nih.gov/ncbi-media/alerts/alerts.json",
+        "status": 200,
+        "ts": 1792672029706
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/dxjsmodule/147.d10e323bc0517db5c988.chunk.js",
+        "status": 200,
+        "ts": 1792672029729
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/dxjsmodule/463.beb1e5f34eda2e175645.chunk.js",
+        "status": 200,
+        "ts": 1792672029729
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/dxjsmodule/FeedbackButtonModule.js",
+        "status": 200,
+        "ts": 1792672029730
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/api/int/suggest",
+        "status": 200,
+        "ts": 1792672029732
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Asset.php",
+        "status": 200,
+        "ts": 1792672029738
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/Asset.php",
+        "status": 200,
+        "ts": 1792672029738
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://clinicaltrials.gov/api/int/suggest",
+        "status": 200,
+        "ts": 1792672029758
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://iad1.qualtrics.com/WRQualtricsSiteIntercept/Graphic.php",
+        "status": 200,
+        "ts": 1792672029813
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/WRQualtricsShared/Graphics/siteintercept/wr-dialog-close-btn-black.png",
+        "status": 307,
+        "ts": 1792672029824
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/static/q-siteintercept/~/img/wr-dialog-close-btn-black.png",
+        "status": 307,
+        "ts": 1792672029838
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/static/q-siteintercept/986b17adc1a7896da80d3393d6e4f379c07ce1fb/img/wr-dialog-close-btn-black.png",
+        "status": 301,
+        "ts": 1792672029839
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://siteintercept.qualtrics.com/static/q-siteintercept/.blob/903d4c43fed535fb4d325b1612c605e48417dc74_wr-dialog-close-btn-black.png",
+        "status": 200,
+        "ts": 1792672029839
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "POST",
+        "url": "https://siteintercept.qualtrics.com/WRSiteInterceptEngine/",
+        "status": 200,
+        "ts": 1792672029840
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "POST",
+        "url": "https://www.google-analytics.com/g/collect",
+        "status": 204,
+        "ts": 1792672034553
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "POST",
+        "url": "https://www.google-analytics.com/g/collect",
+        "status": 204,
+        "ts": 1792672034588
+      },
+      {
+        "stepId": "wf-1792671927354-0",
+        "method": "GET",
+        "url": "https://www.ncbi.nlm.nih.gov/stat",
+        "status": 200,
+        "ts": 1792672039540
+      }
+    ],
+    "runId": "run-mvjin2q6-qpkh",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792671927354-0",
+        "status": "failed",
+        "reason": "find: below-threshold",
+        "phase": "find",
+        "startedAt": 1792672029593,
+        "endedAt": 1792672068689,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "button",
+              "text": "Show glossary"
+            },
+            {
+              "role": "heading",
+              "text": "Search for terms"
+            },
+            {
+              "role": "button",
+              "text": "Hide glossary"
+            },
+            {
+              "role": "link",
+              "text": "Data Element Definitions"
+            },
+            {
+              "role": "input",
+              "id": "glossary-search"
+            },
+            {
+              "role": "button",
+              "text": "Accepts healthy volunteers"
+            },
+            {
+              "role": "button",
+              "text": "Active comparator arm"
+            },
+            {
+              "role": "button",
+              "text": "Adverse event"
+            },
+            {
+              "role": "button",
+              "text": "Age or age group"
+            },
+            {
+              "role": "button",
+              "text": "All-cause mortality"
+            },
+            {
+              "role": "button",
+              "text": "Allocation"
+            },
+            {
+              "role": "button",
+              "text": "Arm"
+            },
+            {
+              "role": "button",
+              "text": "Arm type"
+            },
+            {
+              "role": "button",
+              "text": "Baseline characteristics"
+            },
+            {
+              "role": "button",
+              "text": "Canceled submission"
+            },
+            {
+              "role": "button",
+              "text": "Certain agreements"
+            },
+            {
+              "role": "button",
+              "text": "Certification"
+            },
+            {
+              "role": "link",
+              "text": "Delay Results Type"
+            },
+            {
+              "role": "button",
+              "text": "Certification/extension first posted"
+            },
+            {
+              "role": "button",
+              "text": "Certification/extension first submitted"
+            },
+            {
+              "role": "button",
+              "text": "Certification/extension first submitted that met QC criteria"
+            },
+            {
+              "role": "button",
+              "text": "Clinical study"
+            },
+            {
+              "role": "button",
+              "text": "Clinical trial"
+            },
+            {
+              "role": "button",
+              "text": "ClinicalTrials.gov identifier (NCT number)"
+            },
+            {
+              "role": "button",
+              "text": "Collaborator"
+            },
+            {
+              "role": "button",
+              "text": "Condition/disease"
+            },
+            {
+              "role": "button",
+              "text": "Contact"
+            },
+            {
+              "role": "button",
+              "text": "Cross-over assignment"
+            },
+            {
+              "role": "button",
+              "text": "Data Monitoring Committee (DMC)"
+            },
+            {
+              "role": "button",
+              "text": "Early Phase 1 (formerly listed as Phase 0)"
+            },
+            {
+              "role": "button",
+              "text": "Eligibility criteria"
+            },
+            {
+              "role": "button",
+              "text": "Enrollment"
+            },
+            {
+              "role": "button",
+              "text": "Exclusion criteria"
+            },
+            {
+              "role": "button",
+              "text": "Expanded access"
+            },
+            {
+              "role": "link",
+              "name": "Expanded Access: Information for Patients (opens in a new tab)",
+              "text": "Expanded Access: Information for Patients"
+            },
+            {
+              "role": "button",
+              "text": "Expanded access status"
+            },
+            {
+              "role": "button",
+              "text": "Expanded access type"
+            },
+            {
+              "role": "link",
+              "id": "treatment-ind"
+            },
+            {
+              "role": "button",
+              "text": "Experimental arm"
+            },
+            {
+              "role": "button",
+              "text": "Extension request"
+            }
+          ],
+          "ax": "- button \"Show glossary\":\n  - text: Show glossary\n  - img\n- region \"Official website of the United States government\":\n  - button \"Here’s how you know\"\n- link \"Skip to main page content\":\n  - /url: \"#main-content\"\n- region \"Alert\":\n  - heading \"NIH Websites Are Changing\" [level=3]\n  - list:\n    - listitem:\n      - link \"Get the Latest Updates and FAQs on the transition\":\n        - /url: https://www.nih.gov/web-modernization\n    - listitem:\n      - text: Per\n      - link \"Executive Order 14434\":\n        - /url: https://www.whitehouse.gov/presidential-actions/2026/09/inaugurating-the-era-of-super-intelligence/\n      - text: \", federal agencies are now using \\\"Super Intelligence\\\" (SI) in place of \\\"Artificial Intelligence\\\" (AI). You may see both terms across NIH content during this transition.\"\n  - button \"Close Alert\"\n- banner:\n  - link \"NIH National Library of Medicine, National Center for Biotechnology Information (opens in a new tab)\":\n    - /url: https://ncbi.nlm.nih.gov\n    - img \"NIH National Library of Medicine, National Center for Biotechnology Information (opens in a new tab)\"\n  - button \"PRS Login\"\n- banner:\n  - link \"ClinicalTrials.gov return to the CTG homepage\":\n    - /url: /\n    - img \"ClinicalTrials.gov return to the CTG homepage\"\n  - navigation \"Primary navigation\":\n    - list:\n      - listitem:\n        - button \"Find Studies\"\n      - listitem:\n        - button \"Study Basics\"\n      - listitem:\n        - button \"Submit Studies\"\n      - listitem:\n        - button \"Data About Studies\": Data and API\n      - listitem:\n        - button \"Policy\"\n      - listitem:\n        - button \"About This Site\": About\n      - listitem:\n        - button \"Go to My Saved Studies page\": My Saved Studies (0)\n- navigation \"Breadcrumbs\":\n  - list:\n    - listitem:\n      - link \"Home\":\n        - /url: /\n    - listitem: Search Results\n- main:\n  - alert:\n    - img \"Disclaimer\"\n    - button \"Expand disclaimer\":\n      - paragraph: The U.S. government does not review or approve the safety and science of all studies listed on this website.\n      - paragraph:\n        - text: Read our full\n        - link \"disclaimer\":\n          - /url: /about-site/disclaimer\n        - text: for details.\n  - heading \"Search Results\" [level=2]\n  - list:\n    - listitem:\n      - button \"Card view is shown\": Card\n    - listitem:\n      - button \"Table view is hidden\": Table\n    - listitem:\n      - button \"Map view is hidden\": Map\n    - listitem:\n      - button \"Topic view is hidden\": By Topic\n  - text: Focus Your Search (all filters optional)\n  - button \"Hide\"\n  - text: Condition/disease\n  - button \"opens glossary for condition/disease\":\n    - img\n  - combobox \"Condition/disease\"\n  - text: Other terms\n  - button \"opens glossary for other terms\":\n    - img\n  - combobox \"Other terms\"\n  - text: Intervention/treatment\n  - button \"opens glossary for intervention/treatment\":\n    - img\n  - combobox \"Intervention/treatment\"\n  - text: Location\n  - button \"opens glossary for location\":\n    - img\n  - text: Search by address, city, state, zip code, or country. For information on using this field, see the\n  - link \"How to Search for Clinical Studies\":\n    - /url: /find-studies/how-to-search\n  - text: page\n  - combobox \"In country, state, or city\"\n  - text: Study Status\n  - button \"opens glossary for study status\":\n    - img\n  - text: Looking for participants\n  - checkbox \"Not yet recruiting (30,060)\"\n  - text: Not yet recruiting (30,060)\n  - checkbox \"Recruiting (64,948)\"\n  - text: Recruiting (64,948) No longer looking for participants\n  - checkbox \"Active, not recruiting (22,170)\"\n  - text: Active, not recruiting (22,170)\n  - checkbox \"Completed (332,698)\"\n  - text: Completed (332,698)\n  - checkbox \"Terminated (34,559)\"\n  - text: Terminated (34,559) Other\n  - checkbox \"Enrolling by invitation (5,275)\"\n  - text: Enrolling by invitation (5,275)\n  - checkbox \"Suspended (1,778)\"\n  - text: Suspended (1,778)\n  - checkbox \"Withdrawn (16,914)\"\n  - text: Withdrawn (16,914)\n  - checkbox \"Unkn"
+        }
+      },
+      {
+        "id": "wf-1792671927354-1",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-2",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-3",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-4",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-5",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-6",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-7",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-8",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-9",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-10",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-11",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-12",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-13",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-14",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-15",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-16",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-17",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-18",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-19",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-20",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-21",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-22",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-23",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-24",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-25",
+        "status": "pending"
+      },
+      {
+        "id": "wf-1792671927354-26",
+        "status": "pending"
+      }
+    ],
+    "failure": {
+      "stepId": "wf-1792671927354-0",
+      "index": 0,
+      "intent": "Type {{text}}",
+      "phase": "find",
+      "reason": "below-threshold",
+      "brokenAttr": "css",
+      "snapshot": {
+        "screenshotRef": "failure.png",
+        "dom": [
+          {
+            "role": "button",
+            "text": "Show glossary"
+          },
+          {
+            "role": "heading",
+            "text": "Search for terms"
+          },
+          {
+            "role": "button",
+            "text": "Hide glossary"
+          },
+          {
+            "role": "link",
+            "text": "Data Element Definitions"
+          },
+          {
+            "role": "input",
+            "id": "glossary-search"
+          },
+          {
+            "role": "button",
+            "text": "Accepts healthy volunteers"
+          },
+          {
+            "role": "button",
+            "text": "Active comparator arm"
+          },
+          {
+            "role": "button",
+            "text": "Adverse event"
+          },
+          {
+            "role": "button",
+            "text": "Age or age group"
+          },
+          {
+            "role": "button",
+            "text": "All-cause mortality"
+          },
+          {
+            "role": "button",
+            "text": "Allocation"
+          },
+          {
+            "role": "button",
+            "text": "Arm"
+          },
+          {
+            "role": "button",
+            "text": "Arm type"
+          },
+          {
+            "role": "button",
+            "text": "Baseline characteristics"
+          },
+          {
+            "role": "button",
+            "text": "Canceled submission"
+          },
+          {
+            "role": "button",
+            "text": "Certain agreements"
+          },
+          {
+            "role": "button",
+            "text": "Certification"
+          },
+          {
+            "role": "link",
+            "text": "Delay Results Type"
+          },
+          {
+            "role": "button",
+            "text": "Certification/extension first posted"
+          },
+          {
+            "role": "button",
+            "text": "Certification/extension first submitted"
+          },
+          {
+            "role": "button",
+            "text": "Certification/extension first submitted that met QC criteria"
+          },
+          {
+            "role": "button",
+            "text": "Clinical study"
+          },
+          {
+            "role": "button",
+            "text": "Clinical trial"
+          },
+          {
+            "role": "button",
+            "text": "ClinicalTrials.gov identifier (NCT number)"
+          },
+          {
+            "role": "button",
+            "text": "Collaborator"
+          },
+          {
+            "role": "button",
+            "text": "Condition/disease"
+          },
+          {
+            "role": "button",
+            "text": "Contact"
+          },
+          {
+            "role": "button",
+            "text": "Cross-over assignment"
+          },
+          {
+            "role": "button",
+            "text": "Data Monitoring Committee (DMC)"
+          },
+          {
+            "role": "button",
+            "text": "Early Phase 1 (formerly listed as Phase 0)"
+          },
+          {
+            "role": "button",
+            "text": "Eligibility criteria"
+          },
+          {
+            "role": "button",
+            "text": "Enrollment"
+          },
+          {
+            "role": "button",
+            "text": "Exclusion criteria"
+          },
+          {
+            "role": "button",
+            "text": "Expanded access"
+          },
+          {
+            "role": "link",
+            "name": "Expanded Access: Information for Patients (opens in a new tab)",
+            "text": "Expanded Access: Information for Patients"
+          },
+          {
+            "role": "button",
+            "text": "Expanded access status"
+          },
+          {
+            "role": "button",
+            "text": "Expanded access type"
+          },
+          {
+            "role": "link",
+            "id": "treatment-ind"
+          },
+          {
+            "role": "button",
+            "text": "Experimental arm"
+          },
+          {
+            "role": "button",
+            "text": "Extension request"
+          },
+          {
+            "role": "link",
+            "text": "Good Cause Extension Request Process and Criteria (PDF)"
+          },
+          {
+            "role": "link",
+            "text": "Delay Results Type"
+          },
+          {
+            "role": "button",
+            "text": "Facility name"
+          },
+          {
+            "role": "button",
+            "text": "Factorial assignment"
+          },
+          {
+            "role": "button",
+            "text": "FDAAA 801 Violations"
+          },
+          {
+            "role": "button",
+            "text": "First posted"
+          },
+          {
+            "role": "button",
+            "text": "First submitted"
+          },
+          {
+            "role": "button",
+            "text": "First submitted that met QC criteria"
+          },
+          {
+            "role": "link",
+            "text": "quality control review criteria"
+          },
+          {
+            "role": "button",
+            "text": "Food and Drug Administration Amendments Act of 2007, Section 801 (FDAAA 801)"
+          },
+          {
+            "role": "link",
+            "text": "FDAAA 801 and the Final Rule"
+          },
+          {
+            "role": "button",
+            "text": "Funder type"
+          },
+          {
+            "role": "button",
+            "text": "Gender-based eligibility"
+          },
+          {
+            "role": "button",
+            "text": "Group/cohort"
+          },
+          {
+            "role": "button",
+            "text": "Human subjects protection review board"
+          },
+          {
+            "role": "link",
+            "text": "Who can join clinical research?"
+          },
+          {
+            "role": "button",
+            "text": "Inclusion criteria"
+          },
+          {
+            "role": "button",
+            "text": "Informed consent"
+          },
+          {
+            "role": "link",
+            "text": "What happens during clinical research?"
+          },
+          {
+            "role": "button",
+            "text": "Informed consent form (ICF)"
+          },
+          {
+            "role": "button",
+            "text": "Intervention model"
+          },
+          {
+            "role": "button",
+            "text": "Intervention/treatment"
+          },
+          {
+            "role": "button",
+            "text": "Interventional study (clinical trial)"
+          },
+          {
+            "role": "button",
+            "text": "Investigator"
+          },
+          {
+            "role": "button",
+            "text": "Last update posted"
+          },
+          {
+            "role": "button",
+            "text": "Last update submitted"
+          },
+          {
+            "role": "button",
+            "text": "Last update submitted that met QC criteria"
+          },
+          {
+            "role": "button",
+            "text": "Last verified"
+          },
+          {
+            "role": "button",
+            "text": "Location"
+          },
+          {
+            "role": "button",
+            "text": "Location countries"
+          },
+          {
+            "role": "button",
+            "text": "Masking"
+          },
+          {
+            "role": "button",
+            "text": "NCT number"
+          },
+          {
+            "role": "button",
+            "text": "No intervention arm"
+          },
+          {
+            "role": "button",
+            "text": "Observational study"
+          },
+          {
+            "role": "button",
+            "text": "Observational study model"
+          },
+          {
+            "role": "button",
+            "text": "Other adverse event"
+          },
+          {
+            "role": "button",
+            "text": "Other study IDs"
+          },
+          {
+            "role": "button",
+            "text": "Other terms"
+          },
+          {
+            "role": "button",
+            "text": "Outcome measure"
+          },
+          {
+            "role": "button",
+            "text": "Parallel assignment"
+          },
+          {
+            "role": "button",
+            "text": "Participant flow"
+          },
+          {
+            "role": "button",
+            "text": "Patient registry"
+          },
+          {
+            "role": "button",
+            "text": "Phase"
+          },
+          {
+            "role": "button",
+            "text": "Phase 1"
+          },
+          {
+            "role": "button",
+            "text": "Phase 2"
+          },
+          {
+            "role": "button",
+            "text": "Phase 3"
+          },
+          {
+            "role": "button",
+            "text": "Phase 4"
+          },
+          {
+            "role": "button",
+            "text": "Phase Not Applicable"
+          },
+          {
+            "role": "button",
+            "text": "Placebo"
+          },
+          {
+            "role": "button",
+            "text": "Placebo comparator arm"
+          },
+          {
+            "role": "button",
+            "text": "Primary completion date"
+          },
+          {
+            "role": "button",
+            "text": "Primary outcome measure"
+          },
+          {
+            "role": "button",
+            "text": "Primary purpose"
+          },
+          {
+            "role": "button",
+            "text": "Principal investigator (PI)"
+          },
+          {
+            "role": "button",
+            "text": "Protocol"
+          },
+          {
+            "role": "button",
+            "text": "Quality control (QC) review"
+          },
+          {
+            "role": "button",
+            "text": "Randomized allocation"
+          },
+          {
+            "role": "button",
+            "text": "Recruitment status"
+          },
+          {
+            "role": "button",
+            "text": "Registration"
+          },
+          {
+            "role": "button",
+            "text": "Removed location countries"
+          },
+          {
+            "role": "button",
+            "text": "Reporting group"
+          },
+          {
+            "role": "button",
+            "text": "Responsible party"
+          },
+          {
+            "role": "button",
+            "text": "Results database"
+          },
+          {
+            "role": "button",
+            "text": "Results delayed"
+          },
+          {
+            "role": "button",
+            "text": "Results first posted"
+          },
+          {
+            "role": "button",
+            "text": "Results first posted with QC comments"
+          },
+          {
+            "role": "link",
+            "text": "quality control review criteria"
+          },
+          {
+            "role": "button",
+            "text": "Results first submitted"
+          },
+          {
+            "role": "button",
+            "text": "Results first submitted that met QC criteria"
+          },
+          {
+            "role": "link",
+            "text": "quality control review criteria"
+          },
+          {
+            "role": "button",
+            "text": "Results returned after quality control review"
+          },
+          {
+            "role": "button",
+            "text": "Results submitted to ClinicalTrials.gov"
+          },
+          {
+            "role": "button",
+            "text": "Secondary outcome measure"
+          },
+          {
+            "role": "button",
+            "text": "Serious adverse event"
+          },
+          {
+            "role": "button",
+            "text": "Sex"
+          },
+          {
+            "role": "button",
+            "text": "Sham comparator arm"
+          },
+          {
+            "role": "button",
+            "text": "Single group assignment"
+          },
+          {
+            "role": "button",
+            "text": "Sort studies by"
+          },
+          {
+            "role": "button",
+            "text": "Sponsor"
+          },
+          {
+            "role": "button",
+            "text": "Statistical analysis plan (SAP)"
+          },
+          {
+            "role": "button",
+            "text": "Study completion date"
+          },
+          {
+            "role": "button",
+            "text": "Study design"
+          },
+          {
+            "role": "button",
+            "text": "Study documents"
+          },
+          {
+            "role": "button",
+            "text": "Study IDs"
+          },
+          {
+            "role": "button",
+            "text": "Study record"
+          },
+          {
+            "role": "button",
+            "text": "Study registry"
+          },
+          {
+            "role": "button",
+            "text": "Study results"
+          },
+          {
+            "role": "button",
+            "text": "Study start date"
+          },
+          {
+            "role": "button",
+            "text": "Study status"
+          },
+          {
+            "role": "button",
+            "text": "Study type"
+          },
+          {
+            "role": "button",
+            "text": "Submitted date"
+          },
+          {
+            "role": "button",
+            "text": "Title"
+          },
+          {
+            "role": "button",
+            "text": "Title acronym"
+          },
+          {
+            "role": "button",
+            "text": "Type of intervention"
+          },
+          {
+            "role": "button",
+            "text": "U.S. Agency for Healthcare Research and Quality (AHRQ)"
+          },
+          {
+            "role": "button",
+            "text": "U.S. Food and Drug Administration (FDA)"
+          },
+          {
+            "role": "button",
+            "text": "Unknown"
+          },
+          {
+            "role": "button",
+            "text": "Here’s how you know"
+          },
+          {
+            "role": "link",
+            "text": "Skip to main page content"
+          },
+          {
+            "role": "region",
+            "name": "Alert",
+            "id": "4fa1a138-caad-458d-8602-9308066cd9f0",
+            "text": "NIH Websites Are Changing Get the Latest Updates and FAQs on the transition Per "
+          },
+          {
+            "role": "heading",
+            "text": "NIH Websites Are Changing"
+          },
+          {
+            "role": "link",
+            "text": "Get the Latest Updates and FAQs on the transition"
+          },
+          {
+            "role": "link",
+            "text": "Executive Order 14434"
+          },
+          {
+            "role": "button",
+            "name": "Close Alert"
+          },
+          {
+            "role": "banner",
+            "text": "PRS Login"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "button",
+            "name": "PRS Login",
+            "text": "PRS Login"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "link",
+            "id": "local-menu-action-print"
+          },
+          {
+            "role": "button",
+            "name": "Menu button",
+            "id": "local-menu-action",
+            "text": "Menu"
+          },
+          {
+            "role": "button",
+            "name": "Menu close button"
+          },
+          {
+            "role": "img"
+          },
+          {
+            "role": "button",
+            "name": "Find Studies",
+            "text": "Find Studies"
+          },
+          {
+            "role": "button",
+            "name": "Study Basics",
+            "text": "Study Basics"
+          },
+          {
+            "role": "button",
+            "name": "Submit Studies",
+            "text": "Submit Studies"
+          },
+          {
+            "role": "button",
+            "name": "Data About Studies",
+            "text": "Data and API"
+          },
+          {
+            "role": "button",
+            "name": "Policy",
+            "text": "Policy"
+          },
+          {
+            "role": "button",
+            "name": "About This Site",
+            "text": "About"
+          },
+          {
+            "role": "button",
+            "name": "Go to My Saved Studies page",
+            "text": "My Saved Studies (0)"
+          },
+          {
+            "role": "link",
+            "text": "Home"
+          },
+          {
+            "role": "alert",
+            "text": "The U.S. government does not review or approve the safety and science of all stu"
+          },
+          {
+            "role": "button",
+            "name": "Expand disclaimer",
+            "text": "The U.S. government does not review or approve the safety and science of all stu"
+          },
+          {
+            "role": "link",
+            "name": "disclaimer",
+            "text": "disclaimer"
+          },
+          {
+            "role": "heading",
+            "text": "Search Results"
+          },
+          {
+            "role": "button",
+            "name": "Card view is shown",
+            "text": "Card"
+          },
+          {
+            "role": "button",
+            "name": "Table view is hidden",
+            "text": "Table"
+          },
+          {
+            "role": "button",
+            "name": "Map view is hidden",
+            "text": "Map"
+          },
+          {
+            "role": "button",
+            "name": "Topic view is hidden",
+            "text": "By Topic"
+          },
+          {
+            "role": "button",
+            "text": "Hide"
+          },
+          {
+            "role": "label",
+            "text": "Condition/disease"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for condition/disease"
+          },
+          {
+            "role": "combobox",
+            "name": "Condition/disease",
+            "id": "advcond"
+          },
+          {
+            "role": "label",
+            "text": "Other terms"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for other terms"
+          },
+          {
+            "role": "combobox",
+            "name": "Other terms",
+            "id": "advterm"
+          },
+          {
+            "role": "label",
+            "text": "Intervention/treatment"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for intervention/treatment"
+          },
+          {
+            "role": "combobox",
+            "name": "Intervention/treatment",
+            "id": "advintr"
+          },
+          {
+            "role": "label",
+            "text": "Location"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for location"
+          },
+          {
+            "role": "label",
+            "text": "Search by address, city, state, zip code, or country. For information on using t"
+          },
+          {
+            "role": "link",
+            "name": "How to Search for Clinical Studies",
+            "text": "How to Search for Clinical Studies"
+          },
+          {
+            "role": "combobox",
+            "name": "In country, state, or city",
+            "id": "location-input"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for study status"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-status0"
+          },
+          {
+            "role": "label",
+            "text": "Not yet recruiting (30,060)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-status1"
+          },
+          {
+            "role": "label",
+            "text": "Recruiting (64,948)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check1-status0"
+          },
+          {
+            "role": "label",
+            "text": "Active, not recruiting (22,170)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check1-status1"
+          },
+          {
+            "role": "label",
+            "text": "Completed (332,698)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check1-status2"
+          },
+          {
+            "role": "label",
+            "text": "Terminated (34,559)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check2-status0"
+          },
+          {
+            "role": "label",
+            "text": "Enrolling by invitation (5,275)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check2-status1"
+          },
+          {
+            "role": "label",
+            "text": "Suspended (1,778)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check2-status2"
+          },
+          {
+            "role": "label",
+            "text": "Withdrawn (16,914)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check2-status3"
+          },
+          {
+            "role": "label",
+            "text": "Unknown (97,767)"
+          },
+          {
+            "role": "button",
+            "name": "Expand"
+          },
+          {
+            "role": "heading",
+            "text": "More Filters"
+          },
+          {
+            "role": "button",
+            "text": "More Filters"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for eligibility criteria"
+          },
+          {
+            "role": "label",
+            "text": "Sex"
+          },
+          {
+            "role": "radio",
+            "id": "adv-radio-sex0"
+          },
+          {
+            "role": "label",
+            "text": "All (608,228)"
+          },
+          {
+            "role": "radio",
+            "id": "adv-radio-sex1"
+          },
+          {
+            "role": "label",
+            "text": "Female (582,221)"
+          },
+          {
+            "role": "radio",
+            "id": "adv-radio-sex2"
+          },
+          {
+            "role": "label",
+            "text": "Male (548,132)"
+          },
+          {
+            "role": "label",
+            "text": "Age"
+          },
+          {
+            "role": "radio",
+            "id": "age-groups-radio"
+          },
+          {
+            "role": "label",
+            "text": "Select ranges"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check-age-0"
+          },
+          {
+            "role": "label",
+            "text": "Child (birth - 17) (117,666)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check-age-1"
+          },
+          {
+            "role": "label",
+            "text": "Adult (18 - 64) (560,655)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check-age-2"
+          },
+          {
+            "role": "label",
+            "text": "Older adult (65+) (461,356)"
+          },
+          {
+            "role": "radio",
+            "id": "manual-age-range-radio"
+          },
+          {
+            "role": "label",
+            "text": "Manually enter range"
+          },
+          {
+            "role": "label",
+            "text": "From"
+          },
+          {
+            "role": "textbox",
+            "id": "from-age-input"
+          },
+          {
+            "role": "listbox",
+            "name": "From Age",
+            "id": "from-age-select",
+            "text": "Years Old Months Old Weeks Old Days Old Hours Old Minutes Old"
+          },
+          {
+            "role": "label",
+            "text": "To"
+          },
+          {
+            "role": "textbox",
+            "id": "to-age-input"
+          },
+          {
+            "role": "listbox",
+            "name": "To Age",
+            "id": "to-age-select",
+            "text": "Years Old Months Old Weeks Old Days Old Hours Old Minutes Old"
+          },
+          {
+            "role": "label",
+            "text": "Accepts healthy volunteers"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-healthy0"
+          },
+          {
+            "role": "label",
+            "text": "Yes (160,968)"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for phase"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-phase0"
+          },
+          {
+            "role": "label",
+            "text": "Early Phase 1 (6,516)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-phase1"
+          },
+          {
+            "role": "label",
+            "text": "Phase 1 (66,056)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-phase2"
+          },
+          {
+            "role": "label",
+            "text": "Phase 2 (90,685)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-phase3"
+          },
+          {
+            "role": "label",
+            "text": "Phase 3 (50,077)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-phase4"
+          },
+          {
+            "role": "label",
+            "text": "Phase 4 (35,978)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-phase5"
+          },
+          {
+            "role": "label",
+            "text": "Not applicable (239,449)"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for study type"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-studyType0"
+          },
+          {
+            "role": "label",
+            "text": "Interventional (464,099)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-studyType1"
+          },
+          {
+            "role": "label",
+            "text": "Observational (142,070)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-studyType1-0"
+          },
+          {
+            "role": "label",
+            "text": "Patient registries (18,014)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-studyType2"
+          },
+          {
+            "role": "label",
+            "text": "Expanded access (1,073)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-studyType2-0"
+          },
+          {
+            "role": "label",
+            "text": "Individual patients (310)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-studyType2-1"
+          },
+          {
+            "role": "label",
+            "text": "Intermediate-size population (228)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-studyType2-2"
+          },
+          {
+            "role": "label",
+            "text": "Treatment IND/Protocol (216)"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for study results"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-results0"
+          },
+          {
+            "role": "label",
+            "text": "With results (80,639)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-results1"
+          },
+          {
+            "role": "label",
+            "text": "Without results (527,589)"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for study documents"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-docs0"
+          },
+          {
+            "role": "label",
+            "text": "Study protocols (52,611)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-docs1"
+          },
+          {
+            "role": "label",
+            "text": "Statistical analysis plans (SAPs) (49,033)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-docs2"
+          },
+          {
+            "role": "label",
+            "text": "Informed consent forms (ICFs) (16,755)"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for funder type"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-funderType0"
+          },
+          {
+            "role": "label",
+            "text": "NIH (44,523)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-funderType1"
+          },
+          {
+            "role": "label",
+            "text": "Other U.S. federal agency (9,751)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-funderType2"
+          },
+          {
+            "role": "label",
+            "text": "Industry (169,421)"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-funderType3"
+          },
+          {
+            "role": "label",
+            "text": "All others (individuals, universities, organizations) (471,642)"
+          },
+          {
+            "role": "label",
+            "text": "Study start"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for study start date"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-start-from-label",
+            "text": "From"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-start-from"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-start-to-label",
+            "text": "To"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-start-to"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "text": "Primary completion"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for primary completion date"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-primComp-from-label",
+            "text": "From"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-primComp-from"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-primComp-to-label",
+            "text": "To"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-primComp-to"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "text": "First posted"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for first posted"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-firstPost-from-label",
+            "text": "From"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-firstPost-from"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-firstPost-to-label",
+            "text": "To"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-firstPost-to"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "text": "Results first posted"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for results first posted"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-resFirstPost-from-label",
+            "text": "From"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-resFirstPost-from"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-resFirstPost-to-label",
+            "text": "To"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-resFirstPost-to"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "text": "Last update posted"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for last update posted"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-lastUpdPost-from-label",
+            "text": "From"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-lastUpdPost-from"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-lastUpdPost-to-label",
+            "text": "To"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-lastUpdPost-to"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "text": "Study completion"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for study completion date"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-studyComp-from-label",
+            "text": "From"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-studyComp-from"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "id": "adv-date-studyComp-to-label",
+            "text": "To"
+          },
+          {
+            "role": "textbox",
+            "id": "adv-date-studyComp-to"
+          },
+          {
+            "role": "textbox",
+            "name": "Date Picker"
+          },
+          {
+            "role": "button",
+            "name": "Toggle calendar"
+          },
+          {
+            "role": "status"
+          },
+          {
+            "role": "label",
+            "text": "Title"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for title"
+          },
+          {
+            "role": "label",
+            "text": "Title Acronym"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for title acronym"
+          },
+          {
+            "role": "combobox",
+            "name": "Title,Title Acronym",
+            "id": "advtitles"
+          },
+          {
+            "role": "label",
+            "text": "Outcome measure"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for outcome measure"
+          },
+          {
+            "role": "combobox",
+            "name": "Outcome measure",
+            "id": "advoutc"
+          },
+          {
+            "role": "label",
+            "text": "Sponsor"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for sponsor"
+          },
+          {
+            "role": "label",
+            "text": "Collaborator"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for collaborator"
+          },
+          {
+            "role": "combobox",
+            "name": "Sponsor,Collaborator",
+            "id": "advspons"
+          },
+          {
+            "role": "label",
+            "text": "Sponsor (Lead)"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for sponsor"
+          },
+          {
+            "role": "combobox",
+            "name": "Sponsor (Lead)",
+            "id": "advlead"
+          },
+          {
+            "role": "label",
+            "text": "Study IDs"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for study ids"
+          },
+          {
+            "role": "combobox",
+            "name": "Study IDs",
+            "id": "advid"
+          },
+          {
+            "role": "label",
+            "text": "Facility Name"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for facility name"
+          },
+          {
+            "role": "combobox",
+            "name": "Facility Name",
+            "id": "advlocn"
+          },
+          {
+            "role": "label",
+            "text": "FDAAA 801 Violations"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for fdaaa 801 violations"
+          },
+          {
+            "role": "checkbox",
+            "id": "adv-check0-violation0"
+          },
+          {
+            "role": "label",
+            "text": "Yes (8)"
+          },
+          {
+            "role": "label",
+            "text": "Results Submitted"
+          },
+          {
+            "role": "button",
+            "name": "opens glossary for results submitted to clinicaltrials.gov"
+          },
+          {
+            "role": "radio",
+            "id": "adv-radio-ressub0"
+          },
+          {
+            "role": "label",
+            "text": "No selection"
+          },
+          {
+            "role": "radio",
+            "id": "adv-radio-ressub1"
+          },
+          {
+            "role": "label",
+            "text": "No results submitted (515,296)"
+          },
+          {
+            "role": "radio",
+            "id": "adv-radio-ressub2"
+          },
+          {
+            "role": "label",
+            "text": "Submitted, QC review not concluded (12,293)"
+          },
+          {
+            "role": "radio",
+            "id": "adv-radio-child-ressub2-0"
+          },
+          {
+            "role": "label",
+            "text": "Submission with QC comments available (1,711)"
+          },
+          {
+            "role": "button",
+            "id": "clear-filters",
+            "text": "Clear Filters (0)"
+          },
+          {
+            "role": "button",
+            "id": "apply-filters",
+            "text": "Apply Filters"
+          },
+          {
+            "role": "button",
+            "text": "Search Details: Viewing 1-10 out of 608,228 studies for: All"
+          },
+          {
+            "role": "button",
+            "name": "download",
+            "id": "action-bar-download-btn",
+            "text": "Download"
+          },
+          {
+            "role": "button",
+            "name": "Save selected studies",
+            "id": "action-bar-save-study-btn",
+            "text": "Save"
+          },
+          {
+            "role": "button",
+            "id": "action-bar-rss-btn",
+            "text": "RSS"
+          },
+          {
+            "role": "button",
+            "id": "action-bar-table-manage-columns-btn",
+            "text": "Display"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select Effects of Root Extract Ashwagandha (KSM-66) on Perception of Recovery and Muscle Strength in Adolescents Aged 11 to 19 Engaged in Grassroots Football",
+            "id": "hit-sel-0"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "Effects of Root Extract Ashwagandha (KSM-66) on Perception of Recovery and Muscl"
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select AI-Assisted Systemic Health Risk Assessment in General Ophthalmology: A Cluster Randomized Trial",
+            "id": "hit-sel-1"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "AI-Assisted Systemic Health Risk Assessment in General Ophthalmology: A Cluster "
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select A Phase 3b Study of Participant Experience on Povetacicept Administered Via Autoinjector as Compared to Sibeprenlimab Administered Via Prefilled Syringe",
+            "id": "hit-sel-2"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "A Phase 3b Study of Participant Experience on Povetacicept Administered Via Auto"
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select Improving Women's Mental Health Through Tele-based Wellbeing Centres in Bangladesh.",
+            "id": "hit-sel-3"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "Improving Women's Mental Health Through Tele-based Wellbeing Centres in Banglade"
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select Bone Health in Adults With Duchenne Muscular Dystrophy: A Survey on Osteoporosis, Fractures and Treatment.",
+            "id": "hit-sel-4"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "Bone Health in Adults With Duchenne Muscular Dystrophy: A Survey on Osteoporosis"
+          },
+          {
+            "role": "link",
+            "text": "Show all 15 locations"
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select A Study to Evaluate a Single Dose of IBIO-610 in Participant With Obesity.",
+            "id": "hit-sel-5"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "A Study to Evaluate a Single Dose of IBIO-610 in Participant With Obesity."
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select Superficial Parasternal Block Combined With Rectus Sheath Block for Open Cardiac Surgery",
+            "id": "hit-sel-6"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "Superficial Parasternal Block Combined With Rectus Sheath Block for Open Cardiac"
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select Associations of Respiratory Muscle Strength and Trunk Muscle Mechanical Properties With Dynamic Postural Control",
+            "id": "hit-sel-7"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "Associations of Respiratory Muscle Strength and Trunk Muscle Mechanical Properti"
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select Dermis on Demand Allograft Augmentation for Rotator Cuff Repair",
+            "id": "hit-sel-8"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "Dermis on Demand Allograft Augmentation for Rotator Cuff Repair"
+          },
+          {
+            "role": "checkbox",
+            "name": "Select Transitioning Recently Admitted Patients With Non-Insulin and Insulin-treated Type 2 Diabetes to Innovative Glucose Monitoring",
+            "id": "hit-sel-9"
+          },
+          {
+            "role": "label"
+          },
+          {
+            "role": "link",
+            "text": "Transitioning Recently Admitted Patients With Non-Insulin and Insulin-treated Ty"
+          },
+          {
+            "role": "link",
+            "text": "Find contact information"
+          },
+          {
+            "role": "link",
+            "text": "Check who can join"
+          },
+          {
+            "role": "button",
+            "name": "Previous page",
+            "text": "Previous"
+          },
+          {
+            "role": "button",
+            "name": "Page 2",
+            "text": "2"
+          },
+          {
+            "role": "button",
+            "name": "Page 3",
+            "text": "3"
+          },
+          {
+            "role": "button",
+            "name": "Page 4",
+            "text": "4"
+          },
+          {
+            "role": "button",
+            "name": "Page 5",
+            "text": "5"
+          },
+          {
+            "role": "button",
+            "name": "Page 6",
+            "text": "6"
+          },
+          {
+            "role": "button",
+            "name": "Skip to Page 7",
+            "text": "..."
+          },
+          {
+            "role": "button",
+            "name": "Page 1000",
+            "text": "1000"
+          },
+          {
+            "role": "button",
+            "name": "Next page",
+            "text": "Next"
+          },
+          {
+            "role": "button",
+            "text": "About"
+          },
+          {
+            "role": "link",
+            "name": "About ClinicalTrials.gov (opens in a new tab)",
+            "text": "About ClinicalTrials.gov"
+          },
+          {
+            "role": "link",
+            "name": "Release Notes (opens in a new tab)",
+            "text": "Release Notes"
+          },
+          {
+            "role": "link",
+            "name": "Site Map (opens in a new tab)",
+            "text": "Site Map"
+          },
+          {
+            "role": "button",
+            "text": "Help"
+          },
+          {
+            "role": "link",
+            "text": "Give us feedback"
+          },
+          {
+            "role": "link",
+            "name": "Glossary (opens in a new tab)",
+            "text": "Glossary"
+          },
+          {
+            "role": "link",
+            "text": "Customer Support"
+          },
+          {
+            "role": "button",
+            "text": "Legal"
+          },
+          {
+            "role": "link",
+            "name": "Disclaimer (opens in a new tab)",
+            "text": "Disclaimer"
+          },
+          {
+            "role": "link",
+            "name": "Terms and Conditions (opens in a new tab)",
+            "text": "Terms and Conditions"
+          },
+          {
+            "role": "link",
+            "text": "About ClinicalTrials.gov"
+          },
+          {
+            "role": "link",
+            "text": "Release Notes"
+          },
+          {
+            "role": "link",
+            "text": "Site Map"
+          },
+          {
+            "role": "link",
+            "name": "Give us feedback",
+            "text": "Give us feedback"
+          },
+          {
+            "role": "link",
+            "text": "Glossary"
+          },
+          {
+            "role": "link",
+            "name": "Customer Support",
+            "text": "Customer Support"
+          },
+          {
+            "role": "link",
+            "text": "Disclaimer"
+          },
+          {
+            "role": "link",
+            "text": "Terms and Conditions"
+          },
+          {
+            "role": "link"
+          },
+          {
+            "role": "img"
+          },
+          {
+            "role": "link",
+            "name": "U.S. Department of Health and Human Services (opens in a new tab)",
+            "text": "U.S. Department of Health and Human Services"
+          },
+          {
+            "role": "link",
+            "name": "National Institutes of Health (opens in a new tab)",
+            "text": "National Institutes of Health"
+          },
+          {
+            "role": "link",
+            "name": "National Library of Medicine (opens in a new tab)",
+            "text": "National Library of Medicine"
+          },
+          {
+            "role": "link",
+            "name": "National Center for Biotechnology Information (opens in a new tab)",
+            "text": "National Center for Biotechnology Information"
+          },
+          {
+            "role": "link",
+            "name": "About HHS (opens in a new tab)",
+            "text": "About HHS"
+          },
+          {
+            "role": "link",
+            "name": "About NIH (opens in a new tab)",
+            "text": "About NIH"
+          },
+          {
+            "role": "link",
+            "name": "About NLM (opens in a new tab)",
+            "text": "About NLM"
+          },
+          {
+            "role": "link",
+            "name": "About NCBI (opens in a new tab)",
+            "text": "About NCBI"
+          },
+          {
+            "role": "link",
+            "name": "Accessibility support (opens in a new tab)",
+            "text": "Accessibility support"
+          },
+          {
+            "role": "link",
+            "name": "FOIA requests (opens in a new tab)",
+            "text": "FOIA requests"
+          },
+          {
+            "role": "link",
+            "name": "No FEAR Act Data (opens in a new tab)",
+            "text": "No FEAR Act Data"
+          },
+          {
+            "role": "link",
+            "name": "Office of the Inspector General (opens in a new tab)",
+            "text": "Office of the Inspector General"
+          },
+          {
+            "role": "link",
+            "name": "Privacy policy (opens in a new tab)",
+            "text": "Privacy policy"
+          },
+          {
+            "role": "link",
+            "name": "HHS Vulnerability Disclosure (opens in a new tab)",
+            "id": "vdp",
+            "text": "HHS Vulnerability Disclosure"
+          },
+          {
+            "role": "link",
+            "name": "Visit USA.gov (opens in a new tab)",
+            "text": "Visit USA.gov"
+          },
+          {
+            "role": "dialog",
+            "id": "rss",
+            "text": "Create RSS Feed Get updates on your search for:AllInclude:New studies first post"
+          },
+          {
+            "role": "heading",
+            "id": "rss-modal-heading",
+            "text": "Create RSS Feed"
+          },
+          {
+            "role": "radio",
+            "id": "StudyFirstPostDate"
+          },
+          {
+            "role": "label",
+            "text": "New studies first posted in the last 14 days"
+          },
+          {
+            "role": "radio",
+            "id": "LastUpdatePostDate"
+          },
+          {
+            "role": "label",
+            "text": "New and existing studies added or modified (last update posted) in the last 14 d"
+          },
+          {
+            "role": "link",
+            "name": "RSS Feeds (opens in a new tab)",
+            "text": "RSS Feeds"
+          },
+          {
+            "role": "link",
+            "text": "Create RSS Link"
+          },
+          {
+            "role": "button",
+            "text": "Copy RSS Link"
+          },
+          {
+            "role": "button",
+            "name": "Close this window"
+          },
+          {
+            "role": "dialog",
+            "id": "download-modal",
+            "text": "What would you like to download? File FormatCSVJSONRIS Note: Excel will incorrec"
+          },
+          {
+            "role": "heading",
+            "id": "download-modal-heading",
+            "text": "What would you like to download?"
+          },
+          {
+            "role": "radio",
+            "id": "download-format-csv"
+          },
+          {
+            "role": "label",
+            "text": "CSV"
+          },
+          {
+            "role": "radio",
+            "id": "download-format-json"
+          },
+          {
+            "role": "label",
+            "text": "JSON"
+          },
+          {
+            "role": "radio",
+            "id": "download-format-ris"
+          },
+          {
+            "role": "label",
+            "text": "RIS"
+          },
+          {
+            "role": "radio",
+            "id": "download-results-all"
+          },
+          {
+            "role": "label",
+            "text": "All 608,228 studies"
+          },
+          {
+            "role": "radio",
+            "id": "download-results-sel"
+          },
+          {
+            "role": "label",
+            "text": "0 selected"
+          },
+          {
+            "role": "radio",
+            "id": "download-results-top"
+          },
+          {
+            "role": "label",
+            "text": "Top"
+          },
+          {
+            "role": "combobox"
+          },
+          {
+            "role": "button",
+            "text": "Select all"
+          },
+          {
+            "role": "button",
+            "text": "De-select all"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-NCT Number"
+          },
+          {
+            "role": "label",
+            "text": "NCT Number"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Study Title"
+          },
+          {
+            "role": "label",
+            "text": "Study Title"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Study URL"
+          },
+          {
+            "role": "label",
+            "text": "Study URL"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Acronym"
+          },
+          {
+            "role": "label",
+            "text": "Acronym"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Study Status"
+          },
+          {
+            "role": "label",
+            "text": "Study Status"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Brief Summary"
+          },
+          {
+            "role": "label",
+            "text": "Brief Summary"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Study Results"
+          },
+          {
+            "role": "label",
+            "text": "Study Results"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Conditions"
+          },
+          {
+            "role": "label",
+            "text": "Conditions"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Interventions"
+          },
+          {
+            "role": "label",
+            "text": "Interventions"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Primary Outcome Measures"
+          },
+          {
+            "role": "label",
+            "text": "Primary Outcome Measures"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Secondary Outcome Measures"
+          },
+          {
+            "role": "label",
+            "text": "Secondary Outcome Measures"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Other Outcome Measures"
+          },
+          {
+            "role": "label",
+            "text": "Other Outcome Measures"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Sponsor"
+          },
+          {
+            "role": "label",
+            "text": "Sponsor"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Collaborators"
+          },
+          {
+            "role": "label",
+            "text": "Collaborators"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Sex"
+          },
+          {
+            "role": "label",
+            "text": "Sex"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Age"
+          },
+          {
+            "role": "label",
+            "text": "Age"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Phases"
+          },
+          {
+            "role": "label",
+            "text": "Phases"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Enrollment"
+          },
+          {
+            "role": "label",
+            "text": "Enrollment"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Funder Type"
+          },
+          {
+            "role": "label",
+            "text": "Funder Type"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Study Type"
+          },
+          {
+            "role": "label",
+            "text": "Study Type"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Study Design"
+          },
+          {
+            "role": "label",
+            "text": "Study Design"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Other IDs"
+          },
+          {
+            "role": "label",
+            "text": "Other IDs"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Start Date"
+          },
+          {
+            "role": "label",
+            "text": "Start Date"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Primary Completion Date"
+          },
+          {
+            "role": "label",
+            "text": "Primary Completion Date"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Completion Date"
+          },
+          {
+            "role": "label",
+            "text": "Completion Date"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-First Posted"
+          },
+          {
+            "role": "label",
+            "text": "First Posted"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Results First Posted"
+          },
+          {
+            "role": "label",
+            "text": "Results First Posted"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Last Update Posted"
+          },
+          {
+            "role": "label",
+            "text": "Last Update Posted"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Locations"
+          },
+          {
+            "role": "label",
+            "text": "Locations"
+          },
+          {
+            "role": "checkbox",
+            "id": "download-field-Study Documents"
+          },
+          {
+            "role": "label",
+            "text": "Study Documents"
+          },
+          {
+            "role": "button",
+            "text": "Download"
+          },
+          {
+            "role": "button",
+            "text": "Cancel"
+          },
+          {
+            "role": "button",
+            "name": "Close this window"
+          },
+          {
+            "role": "button",
+            "name": "Tell us what you think!",
+            "id": "QSIFeedbackButton-btn"
+          },
+          {
+            "role": "dialog",
+            "id": "QSIFeedbackButton-target-container"
+          },
+          {
+            "role": "button",
+            "id": "QSIFeedbackButton-close-btn"
+          }
+        ],
+        "ax": "- button \"Show glossary\":\n  - text: Show glossary\n  - img\n- region \"Official website of the United States government\":\n  - button \"Here’s how you know\"\n- link \"Skip to main page content\":\n  - /url: \"#main-content\"\n- region \"Alert\":\n  - heading \"NIH Websites Are Changing\" [level=3]\n  - list:\n    - listitem:\n      - link \"Get the Latest Updates and FAQs on the transition\":\n        - /url: https://www.nih.gov/web-modernization\n    - listitem:\n      - text: Per\n      - link \"Executive Order 14434\":\n        - /url: https://www.whitehouse.gov/presidential-actions/2026/09/inaugurating-the-era-of-super-intelligence/\n      - text: \", federal agencies are now using \\\"Super Intelligence\\\" (SI) in place of \\\"Artificial Intelligence\\\" (AI). You may see both terms across NIH content during this transition.\"\n  - button \"Close Alert\"\n- banner:\n  - link \"NIH National Library of Medicine, National Center for Biotechnology Information (opens in a new tab)\":\n    - /url: https://ncbi.nlm.nih.gov\n    - img \"NIH National Library of Medicine, National Center for Biotechnology Information (opens in a new tab)\"\n  - button \"PRS Login\"\n- banner:\n  - link \"ClinicalTrials.gov return to the CTG homepage\":\n    - /url: /\n    - img \"ClinicalTrials.gov return to the CTG homepage\"\n  - navigation \"Primary navigation\":\n    - list:\n      - listitem:\n        - button \"Find Studies\"\n      - listitem:\n        - button \"Study Basics\"\n      - listitem:\n        - button \"Submit Studies\"\n      - listitem:\n        - button \"Data About Studies\": Data and API\n      - listitem:\n        - button \"Policy\"\n      - listitem:\n        - button \"About This Site\": About\n      - listitem:\n        - button \"Go to My Saved Studies page\": My Saved Studies (0)\n- navigation \"Breadcrumbs\":\n  - list:\n    - listitem:\n      - link \"Home\":\n        - /url: /\n    - listitem: Search Results\n- main:\n  - alert:\n    - img \"Disclaimer\"\n    - button \"Expand disclaimer\":\n      - paragraph: The U.S. government does not review or approve the safety and science of all studies listed on this website.\n      - paragraph:\n        - text: Read our full\n        - link \"disclaimer\":\n          - /url: /about-site/disclaimer\n        - text: for details.\n  - heading \"Search Results\" [level=2]\n  - list:\n    - listitem:\n      - button \"Card view is shown\": Card\n    - listitem:\n      - button \"Table view is hidden\": Table\n    - listitem:\n      - button \"Map view is hidden\": Map\n    - listitem:\n      - button \"Topic view is hidden\": By Topic\n  - text: Focus Your Search (all filters optional)\n  - button \"Hide\"\n  - text: Condition/disease\n  - button \"opens glossary for condition/disease\":\n    - img\n  - combobox \"Condition/disease\"\n  - text: Other terms\n  - button \"opens glossary for other terms\":\n    - img\n  - combobox \"Other terms\"\n  - text: Intervention/treatment\n  - button \"opens glossary for intervention/treatment\":\n    - img\n  - combobox \"Intervention/treatment\"\n  - text: Location\n  - button \"opens glossary for location\":\n    - img\n  - text: Search by address, city, state, zip code, or country. For information on using this field, see the\n  - link \"How to Search for Clinical Studies\":\n    - /url: /find-studies/how-to-search\n  - text: page\n  - combobox \"In country, state, or city\"\n  - text: Study Status\n  - button \"opens glossary for study status\":\n    - img\n  - text: Looking for participants\n  - checkbox \"Not yet recruiting (30,060)\"\n  - text: Not yet recruiting (30,060)\n  - checkbox \"Recruiting (64,948)\"\n  - text: Recruiting (64,948) No longer looking for participants\n  - checkbox \"Active, not recruiting (22,170)\"\n  - text: Active, not recruiting (22,170)\n  - checkbox \"Completed (332,698)\"\n  - text: Completed (332,698)\n  - checkbox \"Terminated (34,559)\"\n  - text: Terminated (34,559) Other\n  - checkbox \"Enrolling by invitation (5,275)\"\n  - text: Enrolling by invitation (5,275)\n  - checkbox \"Suspended (1,778)\"\n  - text: Suspended (1,778)\n  - checkbox \"Withdrawn (16,914)\"\n  - text: Withdrawn (16,914)\n  - checkbox \"Unknown (97,767)\"\n  - text: Unknown (97,767) Expanded access\n  - button \"Expand\"\n  - heading \"More Filters\" [level=4]:\n    - button \"More Filters\" [expanded]\n  - text: Eligibility Criteria\n  - button \"opens glossary for eligibility criteria\":\n    - img\n  - text: Sex\n  - radio \"All (608,228)\" [checked]\n  - text: All (608,228)\n  - radio \"Female (582,221)\"\n  - text: Female (582,221)\n  - radio \"Male (548,132)\"\n  - text: Male (548,132) Age\n  - group:\n    - radio \"Select ranges\" [checked]\n    - text: Select ranges\n    - checkbox \"Child (birth - 17) (117,666)\"\n    - text: Child (birth - 17) (117,666)\n    - checkbox \"Adult (18 - 64) (560,655)\"\n    - text: Adult (18 - 64) (560,655)\n    - checkbox \"Older adult (65+) (461,356)\"\n    - text: Older adult (65+) (461,356)\n    - radio \"Manually enter range\"\n    - text: Manually enter range From\n    - textbox \"From\" [disabled]\n    - combobox \"From Age\" [disabled]:\n      - option \"Years Old\" [selected]\n      - option \"Months Old\"\n      - option \"Weeks Old\"\n "
+      },
+      "identity": {
+        "accepted": false,
+        "reason": "below-threshold",
+        "brokenAttr": "css",
+        "candidates": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "label": "css #adv-date-start-from",
+          "score": 15
+        },
+        {
+          "kind": "xpath",
+          "label": "xpath //*[@id=\"adv-date-start-from\"]",
+          "score": 15
+        }
+      ]
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://clinicaltrials.gov/search?viewType=Card",
+    "title": "Search ClinicalTrials.gov for: All | Card Results | ClinicalTrials.gov",
+    "text": "Show glossary Search for terms Hide glossary Study record managers: refer to the Data Element Definitions if submitting registration or results information. Accepts healthy volunteers Active comparator arm Adverse event Age or age group All-cause mortality Allocation Arm Arm type Baseline characteristics Canceled submission Certain agreements Certification Certification/extension first posted Certification/extension first submitted Certification/extension first submitted that met QC criteria Clinical study Clinical trial ClinicalTrials.gov identifier (NCT number) Collaborator Condition/disease Contact Cross-over assignment Data Monitoring Committee (DMC) Early Phase 1 (formerly listed as Phase 0) Eligibility criteria Enrollment Exclusion criteria Expanded access Expanded access status Expanded access type Experimental arm Extension request Facility name Factorial assignment FDAAA 801 Violations First posted First submitted First submitted that met QC criteria Food and Drug Administration Amendments Act of 2007, Section 801 (FDAAA 801) Funder type Gender-based eligibility Group/cohort Human subjects protection review board Inclusion criteria Informed consent Informed consent form (ICF) Intervention model Intervention/treatment Interventional study (clinical trial) Investigator Last update posted Last update submitted Last update submitted that met QC criteria Last verified Location Location countries Masking NCT number No intervention arm Observational study Observational study model Other adverse event Other study IDs Other terms Outcome measure Parallel assignment Participant flow Patient registry Phase Phase 1 Phase 2 Phase 3 Phase 4 Phase Not Applicable Placebo Placebo comparator arm Primary completion date Primary outcome measure Primary purpose Principal investigator (PI) Protocol Quality control (QC) review Randomized allocation Recruitment status Registration Removed location countries Reporting group Responsible party Results database Results delayed Results first posted Results first posted with QC comments Results first submitted Results first submitted that met QC criteria Results returned after quality control review Results submitted to ClinicalTrials.gov Secondary outcome measure Serious adverse event Sex Sham comparator arm Single group assignment Sort studies by Sponsor Statistical analysis plan (SAP) Study completion date Study design Study documents Study IDs Study record Study registry Study results Study start date Study status Study ty"
+  },
+  "downloaded": []
+}
