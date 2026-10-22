@@ -485,6 +485,7 @@ export function runViewer(
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
     </header>
+    ${video}
     ${envelopePane(run.envelope)}
     ${handoffPane(run.trail)}
     <div class="row" id="run-actions">
@@ -513,7 +514,6 @@ export function runViewer(
     </div>
     ${passGrid(recent, workflow.steps)}
     ${trajectoryPane(context.recorded, run.trajectory)}
-    ${video}
     <div class="tabs" id="run-tabs">
       <button type="button" data-run-tab="trail">Trail</button>
       <button type="button" data-run-tab="inputs">Inputs</button>
@@ -656,7 +656,7 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
   const skipData = esc(JSON.stringify(idleSkips(steps, origin).map((item) => ({ from: item.from, to: item.to, label: item.label }))));
   if (!src) return `<div id="video-bar" hidden data-origin="${origin}">${markers}</div>`;
   return `<div id="video-bar" data-origin="${origin}">
-    <video id="run-video" src="${esc(src)}" data-skips="${skipData}" controls preload="metadata"></video>
+    <video id="run-video" src="${esc(src)}" poster="/api/runs/${encodeURIComponent(run.id)}/poster" data-skips="${skipData}" controls preload="auto" style="display:block;width:100%;height:240px;object-fit:contain;background:#1c1915"></video>
     <div class="timeline">${markers}</div>
     <p id="skip-live" class="quiet"></p>
     <div class="row"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button></div>

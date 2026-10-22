@@ -7,12 +7,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, pidsForDataDir } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, replay, type RunResult } from "../v1/replay";
+import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
@@ -207,7 +208,7 @@ export async function runWorkflow(
     const played = await replayInBrowser(library, workflow, inputs, secrets);
     if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
-    saveWorkflowRun(library, workflow, played.run, inputs, played.outcome);
+    saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
     return stamp(played.outcome);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -307,11 +308,12 @@ async function replayInBrowser(
   workflow: WorkflowV2,
   args: ReplayArgs,
   secrets: string[],
-): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean }> {
+): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
   const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
-  const record = process.env.BAO_RUN_VIDEO === "1";
+  const windowVideo = process.platform === "darwin" && process.env.BAO_HEADED === "1";
+  const record = !windowVideo && process.env.BAO_RUN_VIDEO === "1";
   const videoDir = record ? path.join(library.root, "videos", "incoming") : undefined;
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   const context = await launchOwnedChrome({
@@ -321,6 +323,18 @@ async function replayInBrowser(
   });
   const page = context.pages()[0] || await context.newPage();
   const video = record ? page.video() : null;
+  const videoStartedAt = Date.now();
+  const owned = windowVideo
+    ? await openReplayVideo(pidsForDataDir(profile), path.join(library.root, "videos", `${runId}.webm`))
+    : undefined;
+  let clip: { video: string; videoStartedAt: number } | undefined;
+  let videoDone = false;
+  const finishVideo = async () => {
+    if (videoDone || !owned) return;
+    videoDone = true;
+    const recorded = await owned.stop();
+    if (recorded.wrote) clip = { video: `${runId}.webm`, videoStartedAt };
+  };
   let hold = false;
   try {
     page.setDefaultNavigationTimeout(20000);
@@ -361,11 +375,14 @@ async function replayInBrowser(
         ask: run.ask.instruction,
       };
       liveRuns.set(outcome.resume, live);
-      saveWorkflowRun(library, workflow, run, args, outcome);
-      return { run, outcome, held: true };
+      await finishVideo();
+      saveWorkflowRun(library, workflow, run, args, outcome, clip);
+      return { run, outcome, held: true, clip };
     }
-    return { run, outcome, held: false };
+    await finishVideo();
+    return { run, outcome, held: false, clip };
   } finally {
+    await finishVideo();
     if (!hold) await releaseBrowser(library, { context, video, profile, runId });
   }
 }
@@ -520,7 +537,14 @@ function rememberRun(
   return storeOutcome(library, result, secrets);
 }
 
-function saveWorkflowRun(library: Library, workflow: WorkflowV2, run: RunResult, inputs: ReplayArgs, outcome: WorkflowOutcome): void {
+function saveWorkflowRun(
+  library: Library,
+  workflow: WorkflowV2,
+  run: RunResult,
+  inputs: ReplayArgs,
+  outcome: WorkflowOutcome,
+  clip?: { video: string; videoStartedAt: number },
+): void {
   const paused = outcome.status === "needs_signin" || outcome.status === "needs_human";
   library.saveRun({
     id: run.runId,
@@ -542,6 +566,7 @@ function saveWorkflowRun(library: Library, workflow: WorkflowV2, run: RunResult,
       deadline: outcome.deadline,
       resume_token: outcome.resume_token,
     } : undefined,
+    ...(clip ?? {}),
   });
 }
 
