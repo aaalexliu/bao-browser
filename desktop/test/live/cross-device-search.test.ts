@@ -104,6 +104,8 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
     const searchBody = toolJson(search) as { hits: Hit[] };
     assert.deepEqual(searchBody.hits.map((item) => item.id), [LOCAL_ID, WORKFLOW_ID, LISTING_ID], JSON.stringify(searchBody.hits));
     assert.deepEqual(searchBody.hits.map((item) => item.source), ["this Mac", "Mac A", "marketplace"]);
+    const listingHit = searchBody.hits.find((item) => item.id === LISTING_ID);
+    assert.match(listingHit?.lastGreen || "", /^publisher green · /);
     const deviceHit = searchBody.hits[1];
     assert.equal(deviceHit?.lastGreen, "Not replayed yet");
     assert.ok(Array.isArray(deviceHit?.inputs));
@@ -165,6 +167,7 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
     assert.equal(installBody.workflowId, LISTING_ID);
     assert.equal(libB.read(LISTING_ID).name, "Span on the marketplace");
     assertGreen(installBody.lastGreen);
+    assert.equal(installBody.lastGreen.startsWith("publisher green"), false);
 
     const syncedB = await syncAll(libB);
     assert.match(syncedB.lastResult || "", /conflicts 0/);
