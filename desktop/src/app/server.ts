@@ -604,9 +604,9 @@ export async function startApp(opts: {
         return json(res, library.updateSettings(patch));
       }
       if (req.method === "POST" && url.pathname === "/api/sync/pair") {
-        const body = await readBody(req) as { code?: string; server?: string; name?: string };
+        const body = await readBody(req) as { code?: string; server?: string; name?: string; secret?: string };
         if (!body.code || !body.server) return json(res, { error: "code and server" }, 400);
-        return json(res, await pairDevice(library, { code: body.code, server: body.server, name: body.name }));
+        return json(res, await pairDevice(library, { code: body.code, server: body.server, name: body.name, secret: body.secret }));
       }
       if (req.method === "POST" && url.pathname === "/api/sync") {
         const body = await readBody(req) as { mode?: "sync" | "push" | "pull" };

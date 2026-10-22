@@ -169,6 +169,7 @@ export function syncPanel(sync: {
   paired?: boolean;
   lastResult?: string;
   lastSyncedAt?: string;
+  inviteSaved?: boolean;
   backupPath?: string;
   devices?: { name: string; last_seen_at?: string | null }[];
   categories?: { category: string; count: number }[];
@@ -209,6 +210,8 @@ export function syncPanel(sync: {
     <p>Secrets, cookies, and unredacted screenshots stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
     <label>Server <input id="sync-server" value="${esc(row.server || "")}" placeholder="http://127.0.0.1:3000"></label>
     <label>Pairing code <input id="pair-code" autocomplete="off"></label>
+    <label>Invite secret <input id="invite-secret" type="password" autocomplete="off" placeholder="${row.inviteSaved ? "Saved on this Mac" : "Paste once"}"></label>
+    <p class="quiet">Paste the invite secret once, next to the pairing code. It stays in this Mac's sync file and is not sent on later syncs.</p>
     <label>Device name <input id="device-name" value="${esc(row.deviceName || "")}"></label>
     <div class="row">
       <button id="pair" type="button">Pair</button>
