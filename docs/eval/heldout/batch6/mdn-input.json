@@ -1,0 +1,88 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666976151,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666976191,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666976231,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666976271,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "<input> HTML input element",
+      "cssPath": "#content > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "<input> HTML input element",
+    "subtreeAfter": "<input> HTML input element",
+    "beforeUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input",
+    "afterUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666977321,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "user agent",
+      "cssPath": "#content > div:nth-of-type(1) > section:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(2)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "UI",
+    "beforeUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input",
+    "afterUrl": "https://developer.mozilla.org/en-US/docs/Glossary/User_agent"
+  }
+]

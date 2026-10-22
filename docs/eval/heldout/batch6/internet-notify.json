@@ -1,0 +1,79 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666974046,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666974086,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666974127,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666974167,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Notification Message",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Notification Message",
+    "subtreeAfter": "Notification Message",
+    "beforeUrl": "https://the-internet.herokuapp.com/notification_message_rendered",
+    "afterUrl": "https://the-internet.herokuapp.com/notification_message_rendered"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666974450,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Click here",
+      "cssPath": "#content > div:nth-of-type(1) > p:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "×",
+    "beforeUrl": "https://the-internet.herokuapp.com/notification_message_rendered",
+    "afterUrl": "https://the-internet.herokuapp.com/notification_message_rendered"
+  }
+]
