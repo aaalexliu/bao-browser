@@ -15,7 +15,7 @@ import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, notifyOs, type PersonPrompts } from "../v1/browser-driver";
 import type { HumanAsk } from "../v1/human-ask";
 import { ensureTrailTimes } from "../v1/trail-time";
-import { maskPasswordFields, unmaskPasswordFields } from "../v1/dom-page";
+import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
 import {
   cookieHeader,
   loginDocument,
@@ -51,6 +51,19 @@ import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { interpret, retainedEvents, type TrailEvent } from "../v1/interpret";
+import {
+  decide,
+  decisionEvent,
+  intentEvalPair,
+  mergeDemonstrations,
+  narratorFromEnv,
+  projectTeach,
+  publicTrail,
+  spliceFix,
+  type Spoken,
+  type TeachCorrection,
+  type TeachDecision,
+} from "../v1/teach";
 import { clipBox } from "../v1/browser-driver";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
@@ -129,6 +142,16 @@ export async function startApp(opts: {
   let loginContinued = false;
   let replaying = false;
   let recordingSince = 0;
+  let sessionMode: "capture" | "teach" = "capture";
+  let teachPhase: "idle" | "live" | "review" = "idle";
+  let teachDecisions: TeachDecision[] = [];
+  let teachFix: { workflowId: string; stepId: string } | null = null;
+  let teachStartUrl = "";
+  let teachName = "";
+  let blurredShots = 0;
+  let teachBaseline: string[] = [];
+  let narrateGen = 0;
+  const narrationCache = new Map<string, Spoken & { sig: string }>();
   const notifications: { title: string; body: string }[] = [];
   let opened: OpenedView | null = null;
   let pendingDoc: WorkflowV2 | null = null;
@@ -279,6 +302,7 @@ export async function startApp(opts: {
           capturePaused: capture.paused,
           recordingSince: capture.recording ? recordingSince : 0,
           liveTrail: capture.events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
+          teach: teachState(),
           notifications,
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
@@ -537,7 +561,19 @@ export async function startApp(opts: {
         return json(res, library.importJson(String(await readBody(req, true))));
       }
       if (req.method === "POST" && url.pathname === "/api/sessions") {
-        const body = await readBody(req) as { url?: string };
+        const body = await readBody(req) as { url?: string; teach?: boolean; fix?: { workflowId?: string; stepId?: string } };
+        if (body.teach) {
+          let nextFix: { workflowId: string; stepId: string } | null = null;
+          let nextUrl = body.url || "";
+          if (body.fix?.workflowId && body.fix.stepId) {
+            const saved = library.read(body.fix.workflowId);
+            if (!saved.steps.some((step) => step.id === body.fix?.stepId)) return json(res, { error: "missing step" }, 404);
+            nextFix = { workflowId: body.fix.workflowId, stepId: body.fix.stepId };
+            if (!nextUrl) nextUrl = saved.startUrl;
+          }
+          await enqueue(() => beginTeach(nextUrl || `http://127.0.0.1:${boundPort}/fixture`, nextFix));
+          return json(res, { recording: capture.recording, teach: true });
+        }
         await enqueue(() => beginSession(body.url || `http://127.0.0.1:${boundPort}/fixture`));
         return json(res, { recording: capture.recording, paused: capture.paused });
       }
@@ -605,6 +641,7 @@ export async function startApp(opts: {
         return json(res, { events: capture.events.length });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/stop") {
+        if (sessionMode === "teach") return json(res, await finishTeach());
         const workflow = await enqueue(() => saveSession());
         return json(res, workflow);
       }
@@ -674,6 +711,68 @@ export async function startApp(opts: {
         if (capture.recording) capture.push({ kind: "act", op: "mark" });
         publishCapture();
         return json(res, { events: capture.events.length });
+      }
+      if (req.method === "GET" && url.pathname === "/api/evals/intent") {
+        return json(res, library.listIntentEvals());
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/evals/intent/")) {
+        return json(res, library.readIntentEval(decodeURIComponent(url.pathname.split("/")[4] || "")));
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/correct") {
+        if (teachPhase === "idle") return json(res, { error: "not teaching" }, 409);
+        const body = await readBody(req) as TeachCorrection;
+        const projected = projectTeach(capture.events, teachDecisions, teachMeta(), spokenMap());
+        const index = projected.cards.findIndex((card) => card.id === body.cardId);
+        if (index < 0) return json(res, { error: "no step" }, 404);
+        if (body.kind === "merge") {
+          const previous = projected.cards.slice(0, index).reverse().find((card) => !card.dropped && !card.merged);
+          if (!previous) return json(res, { error: "nothing to merge" }, 400);
+        }
+        teachDecisions = decide(teachDecisions, body, Date.now());
+        return json(res, teachState());
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/check") {
+        if (teachPhase !== "live" || !page || page.isClosed()) return json(res, { error: "not teaching" }, 409);
+        const text = await checkText(page);
+        if (!capture.push({ kind: "act", op: "verify", afterText: text })) return json(res, { error: "not teaching" }, 409);
+        const id = capture.events[capture.events.length - 1]!.id;
+        teachDecisions = decide(teachDecisions, { kind: "check", cardId: id, outcome: text }, Date.now());
+        void narrateSoon();
+        return json(res, teachState());
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/stop") {
+        if (teachPhase !== "live") return json(res, { error: "not teaching" }, 409);
+        return json(res, await finishTeach());
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/discard") {
+        if (teachPhase === "idle") return json(res, { error: "not teaching" }, 409);
+        teachDecisions = [];
+        narrationCache.clear();
+        teachBaseline = [];
+        teachFix = null;
+        teachPhase = "idle";
+        sessionMode = "capture";
+        recordingSince = 0;
+        await discardSession();
+        return json(res, { phase: "idle" });
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/save") {
+        if (teachPhase !== "review") return json(res, { error: "review first" }, 409);
+        const body = await readBody(req) as { name?: string };
+        if (body.name) teachName = body.name;
+        const saved = saveTeach();
+        return json(res, saved);
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/merge") {
+        const body = await readBody(req) as { ids?: string[]; name?: string };
+        const ids = body.ids || [];
+        if (ids.length < 2) return json(res, { error: "need two demonstrations" }, 400);
+        const docs = ids.map((id) => library.read(id));
+        const id = `wf-${Date.now()}`;
+        const merged = mergeDemonstrations(docs, { id, name: body.name || "Merged workflow", now: Date.now() });
+        library.save(merged);
+        library.saveTrail(id, [{ id: "dec-0", ts: Date.now(), kind: "decision", op: "decision", decision: "merge", detail: `merged ${ids.join(", ")}`, cardId: id }]);
+        return json(res, merged);
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/replay/press") {
         const body = await readBody(req) as { name?: string; fill?: { selector: string; value: string } };
@@ -971,12 +1070,45 @@ export async function startApp(opts: {
     const dir = path.join(opts.home, "shots", "capture");
     mkdirSync(dir, { recursive: true });
     const dest = path.join(dir, `${stored.id}.png`);
+    if (sessionMode === "teach") void narrateSoon();
     try {
       const clip = await clipBox(page, { identity: payload.identity, action: payload.op, label: payload.identity?.text });
       if (!clip) return;
-      await shotWithBlur(page, { path: dest, type: "png", clip });
+      if (sessionMode === "teach") {
+        const blurred = await page.evaluate(blurSensitiveFields);
+        try {
+          await page.screenshot({ path: dest, type: "png", clip });
+        } finally {
+          await page.evaluate(unblurSensitiveFields).catch(() => undefined);
+        }
+        if (blurred > 0) blurredShots += 1;
+      } else {
+        await shotWithBlur(page, { path: dest, type: "png", clip });
+      }
       captureShots.set(stored.id, dest);
     } catch { /* headed Chromium can refuse captureScreenshot */ }
+  }
+
+  async function beginTeach(startUrl: string, fix: { workflowId: string; stepId: string } | null): Promise<void> {
+    teachDecisions = [];
+    narrationCache.clear();
+    narrateGen += 1;
+    blurredShots = 0;
+    teachBaseline = [];
+    teachName = "";
+    teachStartUrl = startUrl;
+    teachFix = fix;
+    sessionMode = "teach";
+    teachPhase = "live";
+    try {
+      await beginSession(startUrl);
+      if (page && !page.isClosed()) teachBaseline = await page.evaluate(visibleStatusLines).catch(() => []);
+    } catch (err) {
+      sessionMode = "capture";
+      teachPhase = "idle";
+      teachFix = null;
+      throw err;
+    }
   }
 
   async function saveSession(): Promise<WorkflowV2> {
@@ -1039,6 +1171,146 @@ export async function startApp(opts: {
       else capture.pause();
     } else return;
     publishCapture();
+  }
+
+  function teachMeta(): { id: string; name: string; startUrl: string } {
+    return {
+      id: "teach-draft",
+      name: teachName || (teachFix ? "Taught fix" : "Taught workflow"),
+      startUrl: teachStartUrl,
+    };
+  }
+
+  function spokenMap(): Map<string, Spoken> {
+    const map = new Map<string, Spoken>();
+    for (const [id, value] of narrationCache) {
+      if (value.narrator === "model") map.set(id, { narrator: "model", modelName: value.modelName, intent: value.intent, outcome: value.outcome });
+    }
+    return map;
+  }
+
+  function teachState(): Record<string, unknown> {
+    if (teachPhase === "idle") return { phase: "idle" };
+    let projected: ReturnType<typeof projectTeach> | undefined;
+    let error = "";
+    try {
+      projected = projectTeach(capture.events, teachDecisions, teachMeta(), spokenMap());
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+    const narrator = projected?.cards.some((card) => card.narrator === "model") ? "model" : "heuristic";
+    return {
+      phase: teachPhase,
+      paused: capture.paused,
+      since: recordingSince,
+      blur: true,
+      blurredShots,
+      narrator,
+      fix: teachFix,
+      error,
+      cards: projected?.cards || [],
+      decisions: teachDecisions.map((decision) => ({ kind: decision.kind, detail: decision.detail, cardId: decision.cardId })),
+      review: teachPhase === "review" && projected ? {
+        raw: publicTrail(capture.events).map((event) => ({ id: event.id, op: event.op, kind: event.kind, detail: event.detail })),
+        decisions: teachDecisions,
+        workflow: {
+          name: projected.workflow.name,
+          inputs: projected.workflow.inputs.map((input) => ({ name: input.name, type: input.type })),
+          steps: projected.workflow.steps.map((step) => ({
+            id: step.id,
+            label: step.label,
+            intent: step.intent,
+            action: step.action,
+            human: step.human,
+            value: step.value,
+            input: step.input,
+            sensitive: step.sensitive,
+          })),
+        },
+      } : undefined,
+    };
+  }
+
+  async function narrateSoon(): Promise<void> {
+    const gen = ++narrateGen;
+    const narrator = narratorFromEnv();
+    if (!narrator) return;
+    let drafted: ReturnType<typeof projectTeach>;
+    try {
+      drafted = projectTeach(capture.events, [], teachMeta());
+    } catch {
+      return;
+    }
+    for (const card of drafted.cards) {
+      if (gen !== narrateGen) return;
+      const sig = `${card.action}|${card.intent}|${card.outcome}`;
+      const cached = narrationCache.get(card.id);
+      if (cached?.sig === sig) continue;
+      const spoken = await narrator.narrate(card);
+      if (gen !== narrateGen) return;
+      narrationCache.set(card.id, spoken
+        ? { sig, narrator: "model", modelName: narrator.name, intent: spoken.intent, outcome: spoken.outcome }
+        : { sig, narrator: "heuristic", intent: card.intent, outcome: card.outcome });
+    }
+  }
+
+  async function checkText(current: Page): Promise<string> {
+    const lines = await current.evaluate(visibleStatusLines).catch(() => [] as string[]);
+    const fresh = lines.filter((line) => !teachBaseline.includes(line));
+    return fresh.slice(-2).join(" ").slice(0, 180) || "the page matches this check";
+  }
+
+  async function finishTeach(): Promise<Record<string, unknown>> {
+    if (page && !page.isClosed()) teachStartUrl = page.url();
+    teachPhase = "review";
+    sessionMode = "teach";
+    capture.stop();
+    recordingSince = 0;
+    await stopBrowser();
+    publishCapture();
+    return teachState();
+  }
+
+  function saveTeach(): WorkflowV2 {
+    const id = teachFix ? teachFix.workflowId : `wf-${Date.now()}`;
+    const meta = { id: teachFix ? `${id}-fix` : id, name: teachName || teachMeta().name, startUrl: teachStartUrl };
+    const projected = projectTeach(capture.events, teachDecisions, { ...meta, id: teachFix ? `${id}-taught` : id }, spokenMap());
+    let workflow = projected.workflow;
+    const decisions = [...teachDecisions];
+    if (teachFix) {
+      workflow = spliceFix(library.read(teachFix.workflowId), teachFix.stepId, { ...projected.workflow, id });
+      decisions.push({ ts: Date.now(), cardId: teachFix.stepId, kind: "splice", detail: `spliced into ${teachFix.stepId}` });
+      workflow = { ...workflow, name: teachName || library.read(teachFix.workflowId).name };
+    } else {
+      workflow = { ...projected.workflow, id, name: meta.name, startUrl: teachStartUrl };
+    }
+    if (!workflow.steps.length) throw new Error("nothing to save");
+    const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
+    mkdirSync(shotDest, { recursive: true });
+    let stepIndex = 0;
+    for (const card of projected.cards) {
+      if (card.dropped || card.merged) continue;
+      const step = workflow.steps[teachFix ? workflow.steps.findIndex((item) => item.id.startsWith(`${workflow.id}-fix-`)) + stepIndex : stepIndex];
+      stepIndex += 1;
+      const src = captureShots.get(card.id);
+      if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+    }
+    library.save(workflow);
+    const trail = [...publicTrail(capture.events), ...decisions.map((decision, index) => decisionEvent(decision, index))];
+    library.saveTrail(workflow.id, ensureTrailTimes(trail).events);
+    const pair = intentEvalPair(workflow.id, capture.events, teachDecisions, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl }, spokenMap());
+    if (teachFix) {
+      pair.workflow = workflow;
+      pair.decisions = decisions;
+    }
+    library.saveIntentEval(workflow.id, pair);
+    capture.discard();
+    teachDecisions = [];
+    narrationCache.clear();
+    teachFix = null;
+    teachPhase = "idle";
+    sessionMode = "capture";
+    return workflow;
   }
 
   async function stopBrowser(): Promise<void> {

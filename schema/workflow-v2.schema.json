@@ -215,6 +215,15 @@
           "type": "array",
           "items": { "$ref": "#/$defs/locator" }
         },
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input", "value"],
+          "properties": {
+            "input": { "type": "string" },
+            "value": { "type": "string" }
+          }
+        },
         "timeoutMs": { "type": "number" },
         "heal": { "enum": ["auto", "ask", "never"] },
         "history": {

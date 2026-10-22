@@ -111,6 +111,7 @@ export interface ShellState {
   promotions?: PromotionView[];
   activeAsk?: HumanAsk | null;
   pendingImport?: ImportPending | null;
+  teach?: TeachView;
 }
 
 export interface CommandItem {
@@ -175,6 +176,7 @@ function icon(name: string): string {
   const paths: Record<string, string> = {
     library: "M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z",
     capture: "M12 8a4 4 0 100 8 4 4 0 000-8zm8.5 4a8.5 8.5 0 11-17 0 8.5 8.5 0 0117 0z",
+    teach: "M5 4h10l4 4v12H5V4zm9 0v5h5M8 13h8M8 17h5",
     runs: "M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h10v3H4v-3z",
     heals: "M12 4l2.2 4.6L19 9.2l-3.5 3.4.8 4.9L12 15.8 7.7 17.5l.8-4.9L5 9.2l4.8-.6L12 4z",
     replay: "M8 5v14l11-7L8 5z",
@@ -202,6 +204,7 @@ export function rail(state: ShellState): string {
     <nav>
       <button data-screen="library">${icon("library")} Library</button>
       <button data-screen="capture">${icon("capture")} Capture</button>
+      <button data-screen="teach">${icon("teach")} Teach</button>
       <button data-screen="runs">${icon("runs")} Runs</button>
       <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
       <button data-screen="replay">${icon("replay")} Replay</button>
@@ -440,7 +443,7 @@ export function runViewer(
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
     </div>
     ${storedInputsLine(run.inputs)}
-    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button>` : ""}</div>
+    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">Nothing after step ${Math.max(0, stopped - 1)} ran.</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button> <button type="button" id="teach-fix" data-workflow="${esc(run.workflowId)}" data-step="${esc(failed.id)}">Teach the fix</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
     ${idleNote}
     <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>
@@ -1103,6 +1106,7 @@ export function commandItems(workflows: { id: string; name: string }[]): Command
   const screens: CommandItem[] = [
     { id: "library", label: "Library", kind: "screen", screen: "library", hint: "Go" },
     { id: "capture", label: "Capture", kind: "screen", screen: "capture", hint: "Go" },
+    { id: "teach", label: "Teach", kind: "screen", screen: "teach", hint: "Go" },
     { id: "runs", label: "Runs", kind: "screen", screen: "runs", hint: "Go" },
     { id: "heals", label: "Heals", kind: "screen", screen: "heals", hint: "Go" },
     { id: "settings", label: "Settings", kind: "screen", screen: "settings", hint: "Go" },
@@ -1122,6 +1126,181 @@ export function paletteView(items: CommandItem[], query: string, active: number)
     <input id="palette-input" placeholder="Jump to a workflow or screen" value="${esc(query)}" aria-label="Command">
     <div id="palette-list">${rows || `<p class="quiet">No matches.</p>`}</div>
   </div>`;
+}
+
+export interface TeachCardView {
+  id: string;
+  intent: string;
+  outcome: string;
+  narrator: "heuristic" | "model";
+  modelName?: string;
+  human: boolean;
+  verify: boolean;
+  dropped: boolean;
+  merged: boolean;
+  note: string;
+  action: string;
+  values: { role: string; name: string; label: string }[];
+}
+
+export interface TeachView {
+  phase?: "idle" | "live" | "review";
+  paused?: boolean;
+  since?: number;
+  blur?: boolean;
+  blurredShots?: number;
+  narrator?: string;
+  fix?: { workflowId: string; stepId: string } | null;
+  error?: string;
+  cards?: TeachCardView[];
+  decisions?: { kind: string; detail: string; cardId: string }[];
+  review?: {
+    raw: { id?: string; op?: string; kind?: string; detail?: string }[];
+    decisions?: { kind: string; detail: string; cardId: string }[];
+    workflow: {
+      name: string;
+      inputs: { name: string; type: string }[];
+      steps: { id: string; label?: string; intent?: string; action?: string; human?: boolean; value?: string; input?: string; sensitive?: boolean }[];
+    };
+  };
+}
+
+function cropPlaceholder(action: string): string {
+  return `<div class="ph"><span class="ph-ico">${glyph(action)}</span></div>`;
+}
+
+function captureShot(id: string): string {
+  return `/api/capture/shots/${encodeURIComponent(id)}.png`;
+}
+
+function valueChip(value: { role: string; label: string }): string {
+  if (value.role === "secret") return `<span class="chip secret">secret</span>`;
+  return `<span class="chip">${esc(value.label)}</span>`;
+}
+
+function editedNote(decisions: { kind: string; detail: string; cardId: string }[] | undefined, cardId: string): string {
+  const details = (decisions || [])
+    .filter((decision) => decision.cardId === cardId && decision.kind !== "drop" && decision.kind !== "check")
+    .map((decision) => decision.detail)
+    .filter(Boolean);
+  if (!details.length) return "";
+  return `<span class="badge edited" title="${esc(details.join(", "))}">edited</span>`;
+}
+
+function teachList(teach: TeachView, edit: boolean): string {
+  const cards = teach.cards || [];
+  const kept = cards.filter((card) => !card.dropped && !card.merged);
+  const newest = kept[kept.length - 1]?.id;
+  const rows = kept.map((card) => teachCard(card, {
+    edit,
+    on: card.id === newest,
+    edited: editedNote(teach.decisions, card.id),
+  })).join("");
+  const dropped = cards.filter((card) => card.dropped);
+  const pile = dropped.length
+    ? `<details class="teach-dropped"><summary>Dropped (${dropped.length})</summary>${dropped.map((card) => `<p>${esc(card.intent)}</p>`).join("")}</details>`
+    : "";
+  return `${rows}${pile}`;
+}
+
+export function teachPanel(teach: TeachView): string {
+  const paused = teach.paused ? "Resume" : "Pause";
+  const who = teach.narrator === "model" ? "model" : "heuristic";
+  const list = teachList(teach, true);
+  return `<section id="teach-panel" data-phase="live" data-paused="${teach.paused ? "true" : "false"}">
+    <div id="teach-bar">
+      <span class="rec-dot" aria-hidden="true"></span>
+      <span id="rec-timer" data-since="${teach.since || 0}">0:00</span>
+      <span class="badge quiet-badge" id="teach-narrator">${esc(who)}</span>
+      <button type="button" id="teach-pause">${paused}</button>
+      <button type="button" id="teach-stop">Stop</button>
+      <button type="button" id="teach-check">Add check</button>
+      <button type="button" id="teach-discard">Discard</button>
+      <span class="quiet" id="teach-blur">Sensitive fields blurred</span>
+    </div>
+    <div id="teach-cards">${list || `<p class="meta">Steps show up here as you demonstrate. Click a step to correct it.</p>`}</div>
+  </section>`;
+}
+
+export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: boolean; edited?: string } = {}): string {
+  const who = card.narrator === "model" ? `model${card.modelName ? ` · ${card.modelName}` : ""}` : "heuristic";
+  const chip = card.values[0] ? valueChip(card.values[0]) : "";
+  const flags = [
+    card.human ? `<span class="badge you">you</span>` : "",
+    card.verify ? `<span class="badge expect">check</span>` : "",
+  ].join("");
+  const row = `<span class="thumb mini" data-shot="${esc(captureShot(card.id))}">${cropPlaceholder(card.action)}</span>
+      <span class="intent-read">${esc(card.intent)}</span>
+      ${chip}${flags}${opts.edited || ""}`;
+  const head = opts.edit
+    ? `<button type="button" class="teach-row" aria-expanded="false">${row}</button>`
+    : `<div class="teach-row">${row}</div>`;
+  const values = card.values.map((value) => {
+    const param = value.role === "constant" ? "" : `<input data-param value="${esc(value.name)}" aria-label="Parameter name">`;
+    return `<div class="row teach-value" data-role="${esc(value.role)}">${valueChip(value)}${param}
+      <button type="button" data-correct="input">Input</button>
+      <button type="button" data-correct="constant">Constant</button>
+      <button type="button" data-correct="secret">Secret</button>
+    </div>`;
+  }).join("");
+  const editor = opts.edit ? `<div class="teach-edit">
+      <span class="badge quiet-badge" data-narrator="${esc(card.narrator)}">${esc(who)}</span>
+      <label>Rename <input class="intent" data-intent value="${esc(card.intent)}" aria-label="Intent"></label>
+      ${card.outcome ? `<p class="meta">Expected: ${esc(card.outcome)}</p>` : ""}
+      ${values}
+      <div class="row teach-actions">
+        <button type="button" data-correct="human">You do this</button>
+        <button type="button" data-correct="verify">Check</button>
+        <button type="button" data-correct="drop">Drop</button>
+        <button type="button" data-correct="merge">Merge</button>
+      </div>
+      <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Saved as this step's intent" aria-label="Note"></label>
+    </div>` : "";
+  const classes = ["step-card", "teach-card", card.human ? "human" : "", opts.on ? "on" : ""].filter(Boolean).join(" ");
+  return `<article class="${classes}" data-card="${esc(card.id)}" data-narrator="${esc(card.narrator)}">
+    ${head}
+    ${editor}
+  </article>`;
+}
+
+export function teachReview(teach: TeachView): string {
+  const review = teach.review;
+  if (!review) return `<section id="teach-review"><h2>Review</h2><p class="quiet">Stop teaching to review the workflow.</p></section>`;
+  const raw = review.raw.map((event) => `<li>${esc(event.kind === "decision" ? `decision · ${event.detail || event.op}` : `${event.op || event.kind}`)}</li>`).join("");
+  return `<section id="teach-review">
+    <header class="wf-head">
+      <div>
+        <h2>Review</h2>
+        <p class="lede">These steps are what will replay. The raw trail stays beside them.</p>
+      </div>
+      <button type="button" class="primary" id="teach-save">Save</button>
+    </header>
+    <div class="teach-review-body">
+      <div id="teach-steps">${teachList(teach, false) || `<p class="quiet">No steps.</p>`}</div>
+      <details id="teach-trail">
+        <summary>Raw trail</summary>
+        <ol id="teach-raw">${raw}</ol>
+      </details>
+    </div>
+  </section>`;
+}
+
+export function teachHome(workflows: { id: string; name: string }[]): string {
+  const choices = workflows.map((workflow) => `<label class="row"><input type="checkbox" name="merge" value="${esc(workflow.id)}"> ${esc(workflow.name)}</label>`).join("");
+  return `<section id="teach-home">
+    <h2>Teach</h2>
+    <p class="lede">Show Bao a flow once. It narrates each step. Correct it on the spot, and the saved workflow keeps the intent.</p>
+    <div class="card">
+      <label>Start URL <input id="teach-url" value="${esc(typeof location !== "undefined" ? `${location.origin}/fixture` : "/fixture")}"></label>
+      <button class="primary" id="teach-start" type="button">Start teaching</button>
+    </div>
+    <div class="card">
+      <h3>Merge demonstrations</h3>
+      <p class="quiet">Two or more saved takes of the same task. Steps they share stay. Steps that differ become a branch.</p>
+      ${choices || `<p class="quiet">Save a workflow first.</p>`}
+      <button type="button" id="teach-merge">Merge</button>
+    </div>
+  </section>`;
 }
 
 export function recordBar(state: { recording?: boolean; capturePaused?: boolean; recordingSince?: number }): string {

@@ -394,6 +394,79 @@
     details { margin: 0.45rem 0; }
     .empty { padding: 1.6rem 0.2rem; color: var(--quiet); }
     .empty strong { display: block; color: var(--ink); font-size: var(--text-lg); margin-bottom: 0.25rem; }
+    #teach-panel {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      width: 360px;
+      max-width: calc(100vw - 24px);
+      max-height: min(72vh, 680px);
+      display: flex;
+      flex-direction: column;
+      z-index: 32;
+      background: var(--card);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+    }
+    #teach-bar {
+      display: flex;
+      gap: 0.3rem;
+      align-items: center;
+      background: var(--ink);
+      color: var(--bg);
+      padding: 0.4rem 0.45rem 0.4rem 0.7rem;
+      flex-wrap: wrap;
+    }
+    #teach-bar button { background: transparent; color: inherit; border-color: transparent; height: 26px; padding: 0 8px; }
+    #teach-bar button:hover { background: rgba(255, 255, 255, 0.12); }
+    #teach-bar .quiet, #teach-blur { color: inherit; opacity: 0.8; font-size: var(--text-xs); }
+    #teach-cards { overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .teach-card { align-items: stretch; flex-wrap: wrap; padding: 4px 8px; }
+    .teach-card.on { background: var(--select); }
+    button.teach-row, .teach-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      height: auto;
+      margin: 0;
+      padding: 2px 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      color: inherit;
+      text-align: left;
+      min-height: 44px;
+      box-shadow: none;
+      font-size: inherit;
+    }
+    .teach-card .thumb.mini { width: 72px; height: 44px; grid-area: auto; border-radius: 6px; }
+    .teach-card .intent-read {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .teach-edit { display: none; width: 100%; }
+    .teach-card.open .teach-edit { display: grid; gap: 6px; padding: 4px 0 8px; }
+    .teach-card label { margin: 0; }
+    .teach-value input { width: 7.5rem; }
+    .teach-actions button, .teach-value button { height: 26px; padding: 0 8px; font-size: var(--text-xs); }
+    .badge.edited { flex: none; }
+    .teach-dropped summary { cursor: pointer; font-weight: 650; color: var(--quiet); }
+    .teach-dropped p { margin: 0.2rem 0; }
+    .teach-review-body { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; align-items: start; }
+    #teach-trail { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 0.65rem 0.8rem; }
+    #teach-trail summary { cursor: pointer; font-weight: 650; }
+    #teach-steps { display: flex; flex-direction: column; gap: 6px; }
+    #teach-review .step-card { margin: 0; }
     #record-bar {
       position: fixed;
       left: 50%;

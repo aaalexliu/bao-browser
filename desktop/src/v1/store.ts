@@ -143,6 +143,25 @@ export class Library {
     return readdirSync(path.join(this.root, "trails")).filter((name) => name.endsWith(".json")).map((name) => name.replace(/\.json$/, ""));
   }
 
+  saveIntentEval(id: string, pair: unknown): void {
+    const dir = path.join(this.root, "evals", "intent");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(pair, null, 2));
+  }
+
+  readIntentEval(id: string): unknown {
+    return JSON.parse(readFileSync(path.join(this.root, "evals", "intent", `${id}.json`), "utf8")) as unknown;
+  }
+
+  listIntentEvals(): string[] {
+    const dir = path.join(this.root, "evals", "intent");
+    try {
+      return readdirSync(dir).filter((name) => name.endsWith(".json")).map((name) => name.replace(/\.json$/, ""));
+    } catch {
+      return [];
+    }
+  }
+
   saveRun(run: StoredRun): void {
     writeFileSync(path.join(this.root, "runs", `${run.id}.json`), JSON.stringify(run, null, 2));
   }
