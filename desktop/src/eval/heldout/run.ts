@@ -478,7 +478,7 @@ export async function evalHeldout(args: string[] = []): Promise<{ markdown: stri
       "",
       `Model access: ${info.available ? `${info.provider} / ${info.model}` : info.reason}. ${judged.note}`,
       "",
-      "The prejudge lint runs first. It rejects a missing input, a secret literal, a step with no effect, and an unknown domain. The rubric is unchanged. The model scores only the texts the lint passes.",
+      "The prejudge lint runs first. It rejects a missing input, a secret literal, a sentence that does not match the recorded step, and a step with no effect. The rubric is unchanged. The model scores only the texts the lint passes.",
       "",
       `Prejudge lint caught ${counts.alone}/${judged.rows.length} known-bad intents on its own. Combined with the judge, ${counts.combined}/${judged.rows.length} are caught. ${goods.length}/${GOOD_INTENTS.length} good intents were falsely rejected.`,
       "",
@@ -720,14 +720,13 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
       text: step.intent || "",
       target,
       secrets,
-      startUrl: workflow.startUrl,
       effect: step.confidence === "low" ? false : undefined,
     }) || lintIntent(step.intent || "", target, secrets);
     if (reason) failed.add(step.id);
     else passing.push({ id: step.id, intent: step.intent || "" });
   }
   const summary = workflow.summary || "";
-  const summaryFail = prejudgeLint({ text: summary, secrets, startUrl: workflow.startUrl })
+  const summaryFail = prejudgeLint({ text: summary, secrets })
     || lintIntent(summary, undefined, secrets);
   const ids = workflow.steps.map((step) => step.id);
   if (summaryFail && passing.length === 0) return { score: 0, tokens: 0 };
@@ -799,7 +798,7 @@ function render(
         ].join("\n\n")
       : `Replay pass rate: condense ${replayPasses(rows, (row) => row.condenser === "condense")}, model ${replayPasses(rows, (row) => row.condenser !== "condense" && !row.condenser.startsWith("hybrid/"))}, hybrid ${replayPasses(rows, (row) => row.condenser.startsWith("hybrid/"))}.`,
     "",
-    `Prejudge lint caught ${counts.alone}/${bad.length} known-bad intents on its own (missing input, secret literal, no effect, unknown domain) and falsely rejected ${goods.length}/${GOOD_INTENTS.length} good intents. Combined with the judge, ${counts.combined}/${bad.length} are caught.`,
+    `Prejudge lint caught ${counts.alone}/${bad.length} known-bad intents on its own (missing input, secret literal, step mismatch, no effect) and falsely rejected ${goods.length}/${GOOD_INTENTS.length} good intents. Combined with the judge, ${counts.combined}/${bad.length} are caught.`,
     "",
     `Model access: ${modelNote}.`,
     "",
