@@ -4,8 +4,8 @@
     "name": "Search Hacker News",
     "startUrl": "https://news.ycombinator.com/",
     "keep": [
-      "e11",
-      "e12"
+      "e22",
+      "e23"
     ],
     "secrets": [],
     "secretIds": [],
@@ -36,8 +36,8 @@
     "name": "Search Project Gutenberg",
     "startUrl": "https://www.gutenberg.org/",
     "keep": [
-      "e9",
-      "e10"
+      "e20",
+      "e21"
     ],
     "secrets": [],
     "secretIds": [],
@@ -68,8 +68,8 @@
     "name": "Search MusicBrainz",
     "startUrl": "https://musicbrainz.org/search",
     "keep": [
-      "e9",
-      "e10"
+      "e20",
+      "e21"
     ],
     "secrets": [],
     "secretIds": [],
@@ -100,7 +100,7 @@
     "name": "Open the git-add manual",
     "startUrl": "https://git-scm.com/docs",
     "keep": [
-      "e9"
+      "e20"
     ],
     "secrets": [],
     "secretIds": [],
@@ -127,7 +127,7 @@
     "name": "Open the Rust Vec page",
     "startUrl": "https://doc.rust-lang.org/std/",
     "keep": [
-      "e9"
+      "e20"
     ],
     "secrets": [],
     "secretIds": [],
@@ -154,7 +154,7 @@
     "name": "Open the Node.js synopsis",
     "startUrl": "https://nodejs.org/docs/latest/api/assert.html",
     "keep": [
-      "e9"
+      "e20"
     ],
     "secrets": [],
     "secretIds": [],
@@ -181,7 +181,7 @@
     "name": "Open the Markdown cheat sheet",
     "startUrl": "https://www.markdownguide.org/basic-syntax/",
     "keep": [
-      "e9"
+      "e20"
     ],
     "secrets": [],
     "secretIds": [],
@@ -208,7 +208,7 @@
     "name": "Open the Puppeteer API",
     "startUrl": "https://pptr.dev/",
     "keep": [
-      "e9"
+      "e20"
     ],
     "secrets": [],
     "secretIds": [],
@@ -235,7 +235,7 @@
     "name": "Open the HTTP semantics spec",
     "startUrl": "https://httpwg.org/specs/",
     "keep": [
-      "e9"
+      "e20"
     ],
     "secrets": [],
     "secretIds": [],
@@ -262,7 +262,7 @@
     "name": "Open the nginx core module",
     "startUrl": "https://nginx.org/en/docs/",
     "keep": [
-      "e9"
+      "e20"
     ],
     "secrets": [],
     "secretIds": [],
@@ -289,18 +289,18 @@
     "name": "Fill the Pico email field",
     "startUrl": "https://picocss.com/docs/forms",
     "keep": [
-      "e9",
-      "e10"
+      "e20",
+      "e21"
     ],
     "secrets": [
       "PracticeFiveSecret!"
     ],
     "secretIds": [
-      "e10"
+      "e21"
     ],
     "human": [
       {
-        "id": "e10",
+        "id": "e21",
         "gate": "login"
       }
     ],
@@ -332,7 +332,7 @@
     "name": "Open the Lua reference manual",
     "startUrl": "https://www.lua.org/manual/5.4/",
     "keep": [
-      "e7"
+      "e18"
     ],
     "secrets": [],
     "secretIds": [],

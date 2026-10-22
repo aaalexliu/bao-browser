@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656449067,
+    "ts": 1792657629585,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656449107,
+    "ts": 1792657629626,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656449147,
+    "ts": 1792657629666,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656449188,
+    "ts": 1792657629707,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657629798,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -49,27 +57,67 @@
     "subtreeBefore": "HTTP Caching",
     "subtreeAfter": "",
     "beforeUrl": "https://httpwg.org/specs/",
-    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
-  },
-  {
-    "id": "e4",
-    "ts": 1792656479756,
-    "kind": "act",
-    "op": "scroll",
-    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
     "afterUrl": "https://httpwg.org/specs/rfc9111.html"
   },
   {
     "id": "e5",
-    "ts": 1792656479788,
+    "ts": 1792657660297,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657660325,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657660359,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657660392,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657660425,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657660459,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
+    "afterUrl": "https://httpwg.org/specs/rfc9111.html"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657660459,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
     "afterUrl": "https://httpwg.org/specs/"
   },
   {
-    "id": "e6",
-    "ts": 1792656479851,
+    "id": "e12",
+    "ts": 1792657660521,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -102,24 +150,64 @@
     "afterUrl": "https://httpwg.org/specs/rfc9111.html"
   },
   {
-    "id": "e7",
-    "ts": 1792656510124,
+    "id": "e13",
+    "ts": 1792657690820,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://httpwg.org/specs/rfc9111.html",
     "afterUrl": "https://httpwg.org/specs/"
   },
   {
-    "id": "e8",
-    "ts": 1792656510187,
+    "id": "e14",
+    "ts": 1792657690901,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://httpwg.org/specs/",
     "afterUrl": "https://httpwg.org/specs/"
   },
   {
-    "id": "e9",
-    "ts": 1792656510236,
+    "id": "e15",
+    "ts": 1792657690925,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657690958,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657690990,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657691025,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657691057,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://httpwg.org/specs/",
+    "afterUrl": "https://httpwg.org/specs/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657691057,
     "kind": "act",
     "op": "click",
     "identity": {

@@ -95,6 +95,11 @@ async function main(): Promise<void> {
     const { captureHeldout } = await import("../eval/heldout/capture");
     const dir = flag(rest, "--dir") || "docs/eval/heldout/batch1";
     const tasks = flag(rest, "--tasks");
+    if (tasks === "alerts") {
+      const { recordAlertsTrail } = await import("../eval/heldout/record-alerts");
+      await recordAlertsTrail(dir);
+      return;
+    }
     const list = tasks === "batch5"
       ? (await import("../eval/heldout/tasks5")).HELD_TASKS_5
       : tasks === "batch4"

@@ -10,9 +10,11 @@ export interface CaptureStep {
 }
 
 export interface ActNotice {
-  title: "You need to act";
+  title: string;
   body: string;
   badge: "!";
+  /** Same string as title and body. The Dock tooltip uses it too. */
+  tooltip: string;
 }
 
 export class Capture {
@@ -83,9 +85,9 @@ export class Capture {
   }
 }
 
-export function actNotice(detail: string): ActNotice {
-  const body = detail.replace(/\s+/g, " ").trim().slice(0, 120) || "Bao is waiting.";
-  return { title: "You need to act", body, badge: "!" };
+export function actNotice(text: string): ActNotice {
+  const clean = text.replace(/\s+/g, " ").trim().slice(0, 240) || "Bao is waiting.";
+  return { title: clean, body: clean, badge: "!", tooltip: clean };
 }
 
 function cleanAnnotation(text: string): string {

@@ -1,25 +1,33 @@
 [
   {
     "id": "e0",
-    "ts": 1792656350173,
+    "ts": 1792657528395,
     "kind": "read",
     "op": "screenshot"
   },
   {
     "id": "e1",
-    "ts": 1792656350213,
+    "ts": 1792657528435,
     "kind": "read",
     "op": "move"
   },
   {
     "id": "e2",
-    "ts": 1792656350254,
+    "ts": 1792657528475,
     "kind": "read",
     "op": "ax"
   },
   {
     "id": "e3",
-    "ts": 1792656350294,
+    "ts": 1792657528515,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657528610,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -52,27 +60,67 @@
     "subtreeBefore": "About",
     "subtreeAfter": "About",
     "beforeUrl": "https://git-scm.com/docs",
-    "afterUrl": "https://git-scm.com/about"
-  },
-  {
-    "id": "e4",
-    "ts": 1792656350639,
-    "kind": "act",
-    "op": "scroll",
-    "beforeUrl": "https://git-scm.com/about",
     "afterUrl": "https://git-scm.com/about"
   },
   {
     "id": "e5",
-    "ts": 1792656350670,
+    "ts": 1792657528990,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657529014,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657529064,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657529097,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657529130,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657529164,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/about",
+    "afterUrl": "https://git-scm.com/about"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657529164,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://git-scm.com/about",
     "afterUrl": "https://git-scm.com/docs"
   },
   {
-    "id": "e6",
-    "ts": 1792656350735,
+    "id": "e12",
+    "ts": 1792657529228,
     "kind": "act",
     "op": "click",
     "identity": {
@@ -108,24 +156,64 @@
     "afterUrl": "https://git-scm.com/about"
   },
   {
-    "id": "e7",
-    "ts": 1792656351083,
+    "id": "e13",
+    "ts": 1792657529570,
     "kind": "act",
     "op": "back",
     "beforeUrl": "https://git-scm.com/about",
     "afterUrl": "https://git-scm.com/docs"
   },
   {
-    "id": "e8",
-    "ts": 1792656351146,
+    "id": "e14",
+    "ts": 1792657529664,
     "kind": "act",
     "op": "scroll",
     "beforeUrl": "https://git-scm.com/docs",
     "afterUrl": "https://git-scm.com/docs"
   },
   {
-    "id": "e9",
-    "ts": 1792656351192,
+    "id": "e15",
+    "ts": 1792657529714,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657529764,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657529814,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657529864,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657529914,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://git-scm.com/docs",
+    "afterUrl": "https://git-scm.com/docs"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657529914,
     "kind": "act",
     "op": "click",
     "identity": {

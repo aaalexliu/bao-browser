@@ -14,7 +14,7 @@ import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, clearOsNotify, elementShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
-import type { HumanAsk } from "../v1/human-ask";
+import { actAskLine, actDeadlineLine, actSurfaceText, type HumanAsk } from "../v1/human-ask";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
 import {
@@ -105,7 +105,7 @@ export interface App {
   library: Library;
   port: number;
   notices: Notice[];
-  notifications: { title: string; body: string }[];
+  notifications: { title: string; body: string; tooltip: string }[];
   recording: boolean;
   close(): Promise<void>;
 }
@@ -161,7 +161,7 @@ export async function startApp(opts: {
   let teachBaseline: string[] = [];
   let narrateGen = 0;
   const narrationCache = new Map<string, Spoken & { sig: string }>();
-  const notifications: { title: string; body: string }[] = [];
+  const notifications: { title: string; body: string; tooltip: string }[] = [];
   let opened: OpenedView | null = null;
   let pendingDoc: WorkflowV2 | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
@@ -180,11 +180,20 @@ export async function startApp(opts: {
     }
     bar.send({ cmd: "show", paused: capture.paused, steps: capture.steps.map((step) => step.label) });
   }
-  function raiseAct(detail: string): void {
-    const notice = actNotice(detail);
-    notifications.push({ title: notice.title, body: notice.body });
-    if (bar.running) bar.send({ cmd: "act", title: notice.title, body: notice.body, badge: notice.badge });
-    void notifyOs(notice.title, notice.body);
+  function raiseAct(ask: HumanAsk): void {
+    const text = actSurfaceText(ask);
+    const notice = actNotice(text);
+    notifications.push({ title: notice.title, body: notice.body, tooltip: notice.tooltip });
+    if (bar.running) {
+      bar.send({
+        cmd: "act",
+        title: actAskLine(ask),
+        detail: actDeadlineLine(ask.deadline),
+        badge: notice.badge,
+        tooltip: notice.tooltip,
+      });
+    }
+    void notifyOs(notice.title, notice.body, notice.tooltip);
   }
   function clearAct(): void {
     if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
@@ -218,7 +227,7 @@ export async function startApp(opts: {
     showAsk(ask) {
       activeAsk = ask;
       rememberPending(ask);
-      raiseAct(ask.instruction);
+      raiseAct(ask);
     },
     shouldStop: () => stopRun,
     loginContinued: () => loginContinued,
@@ -1114,6 +1123,9 @@ export async function startApp(opts: {
       });
       await context.addInitScript(recorderSource());
       page = context.pages()[0] || await context.newPage();
+      page.on("dialog", (dialog) => {
+        dialog.accept().catch(() => undefined);
+      });
       fileChooser = await armFileChooser(page, async (chosen) => {
         await recordCaptured({
           kind: "act",
@@ -1245,6 +1257,18 @@ export async function startApp(opts: {
       return;
     } else if (event.event === "notify-off") {
       console.log(`bao notify off ${JSON.stringify({ title: event.title || "", button: event.button || "", url: event.url || "" })}`);
+      return;
+    } else if (event.event === "show-window") {
+      const session = [...replays.values()].find((item) => !item.page.isClosed());
+      if (!session) {
+        console.log("bao show window missed");
+        return;
+      }
+      void session.page.bringToFront().then(() => {
+        console.log("bao show window");
+      }, () => {
+        console.log("bao show window missed");
+      });
       return;
     } else if (event.event === "hotkey" && event.name === "pause") {
       if (!capture.recording) return;

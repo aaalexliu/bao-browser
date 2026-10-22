@@ -82,13 +82,13 @@ test("a pending prompt is restored after the app is closed and opened", async ()
   const second = await startApp({ home: dir, port: 0 });
   try {
     const restored = await state(second.port);
-    assert.equal(restored.activeAsk?.instruction, "Sign in on the Bao Chrome window. bao is not recording keystrokes in password fields.");
+    assert.equal(restored.activeAsk?.instruction, "Sign in to the site in the Bao window");
     assert.equal(restored.activeAsk?.runId, "run-restore");
     assert.ok(readPendingPrompt(dir));
     const bar = actBar({ activeAsk: restored.activeAsk });
     assert.match(bar, /id="act-bar"/);
     assert.match(bar, /You need to act/);
-    assert.match(bar, /Sign in on the Bao Chrome window/);
+    assert.match(bar, /Sign in to the site in the Bao window/);
     const side = rail({ activeAsk: restored.activeAsk, runs: [] });
     assert.match(side, /id="attention" data-count="1"/);
     assert.match(side, /1 waiting/);
