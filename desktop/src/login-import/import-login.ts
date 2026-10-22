@@ -361,8 +361,17 @@ async function readStorageNames(page: Page): Promise<{ keys: string[]; databases
   });
 }
 
+/** Signed-in is judged only after this long, and after the network is idle. */
+export const PROBE_SETTLE_MS = 5_000;
+
 export async function observePage(page: Page, probeUrl: string, selector: string, text: string): Promise<ProbeObservation> {
+  // A client redirect often lands after DOMContentLoaded. Wait out the first
+  // paint, then until the network is idle, and always at least PROBE_SETTLE_MS.
+  const started = Date.now();
   await page.goto(probeUrl, { waitUntil: "domcontentloaded", timeout: 20_000 });
+  await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
+  const remaining = PROBE_SETTLE_MS - (Date.now() - started);
+  if (remaining > 0) await page.waitForTimeout(remaining);
   const finalUrl = page.url();
   const selectorFound = selector ? (await page.locator(selector).count()) > 0 : false;
   const bodyText = text ? await page.locator("body").innerText().catch(() => "") : "";

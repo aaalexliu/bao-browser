@@ -1,12 +1,12 @@
 # macOS test
 
-Follow this with a fresh `BAO_HOME` on this Mac, from an empty data directory to a saved workflow. Use the signing certificate and the helper grants already on this account. A grant on another account does not carry over.
+Open the installed `/Applications/Bao.app`. It keeps `~/Library/Application Support/bao` and port `4787`. Record one workflow on the fixture with a typed input and a dragged-in file, then replay it twice with different inputs and a window move. Use the signing certificate and the helper grants already on this account. A grant on another account does not carry over. Do not delete that home.
 
 The pictures in this file are the Bao window on the built-in fixture (`http://127.0.0.1/fixture`). They were taken where the Mac helper is absent, so the sidebar footer reads **helper off**. On your Mac, before the two grants below, Library has a collapsible permission card and the other screens have a sidebar dot. After both grants, that footer reads **helper ok** and the card and the dot are gone. The rest of the window is the same. Linux does not show the card.
 
 Use the fixture, or a public page you are not signed into. Type a made-up username such as `ada`. Use a made-up password only if a step asks for one, and confirm afterward that the trail and the workflow file do not contain it. Do not point capture at a daily Chrome profile or at a site where you have a real session.
 
-Build commit `6c249b9` on `v1/desktop`, or a later commit that contains this procedure. That commit has the desktop window, the floating capture bar, Chrome login import (cookies, localStorage, and IndexedDB for one site), multi-machine sync, the marketplace web app, the clean product window, the file step, and the act ask (the site host, the deadline with its zone, and Show window). Build both package scripts from this checkout.
+Build commit `410c1f7` on `v1/desktop`, or a later commit that contains this procedure. That commit has the desktop window, the floating capture bar, Chrome login import (cookies, localStorage, and IndexedDB for one site), a Finder drop recorded as one `file` input, a window-only replay webm, multi-machine sync, the marketplace web app, the clean product window, and the act ask (the site host, the deadline with its zone, and Show window). The installed copy on this Mac is `/Applications/Bao.app`, built from exactly `410c1f7` and signed with `bao dev signing`. Build both package scripts from this checkout when you are producing that app.
 
 The signed app is still two scripts, in this order, from the repo root:
 
@@ -115,18 +115,18 @@ There is no notarization step.
 
 ### This checkout
 
-This procedure was checked at `6c249b9` on `v1/desktop`. `0a3276f` is an older pin. Check out `v1/desktop` at `6c249b9` or a descendant that contains this file.
+This procedure was checked at `410c1f7` on `v1/desktop`. `6c249b9` is an older pin. Check out `v1/desktop` at `410c1f7` or a descendant that contains this file.
 
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
 git fetch origin v1/desktop
 git checkout v1/desktop
-git merge-base --is-ancestor 6c249b9 HEAD
+git merge-base --is-ancestor 410c1f7 HEAD
 git rev-parse --short HEAD
 ```
 
-**What you should see:** `git merge-base --is-ancestor 6c249b9 HEAD` exits 0. `git rev-parse --short HEAD` prints `6c249b9` or a later commit on `v1/desktop`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
+**What you should see:** `git merge-base --is-ancestor 410c1f7 HEAD` exits 0. `git rev-parse --short HEAD` prints `410c1f7` or a later commit on `v1/desktop`. `test -f docs/mac-test.md && test -f desktop/packaging/macos/package-app.sh && test -f desktop/src/login-import/import-login.ts && test -f desktop/src/v1/sync.ts && test -f web/package.json` exits 0.
 
 ## Build
 
@@ -160,28 +160,20 @@ The app is signed with a self-signed certificate. Gatekeeper shows its sheets wh
 
 When the app is quarantined, Finder shows two sheets. The first says `"Bao.app" cannot be opened because the developer cannot be verified.` The confirmation says `macOS cannot verify the developer of "Bao.app". Are you sure you want to open it?` Those sheets are macOS. They are quoted here.
 
-Do not use that Finder launch for this test when `~/Library/Application Support/bao` or port `4787` is already in use. Finder starts the default home and the default port. Quit a Finder launch if one appeared, then use the Terminal launch below so `BAO_NODE` and `BAO_HOME` are set.
+A Finder double-click of `/Applications/Bao.app` uses a short `PATH` and does not see a mise or Homebrew `node`. Launch the installed binary from Terminal so `BAO_NODE` is set. Do not remove `~/Library/Application Support/bao`. That is the home the installed app uses.
 
-## Launch from Terminal
+## Launch the installed app
 
-A Finder launch uses a short `PATH` and the default data directory `~/Library/Application Support/bao`. Launch from Terminal on a fresh account. Use a throwaway home so this test does not read or write anything already in the default directory.
-
-`4787` is the app default and may already belong to another Bao. This test uses `4807`.
+The installed app is `/Applications/Bao.app`. It uses the default data directory `~/Library/Application Support/bao` and the default port `4787`. Quit any older Bao that is already listening on `4787` before this launch. Do not pass `--prompt`, and do not delete the home.
 
 ```sh
-export BAO_HOME="$HOME/Library/Application Support/bao-mac-test"
-export BAO_PORT=4807
 export BAO_NODE="$(command -v node)"
-# This path is the throwaway home, not ~/Library/Application Support/bao.
-# mkdir -p does not empty a previous run. Remove it first when it already has files.
-rm -rf "$BAO_HOME"
-mkdir -p "$BAO_HOME"
-desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
+/Applications/Bao.app/Contents/MacOS/bao
 ```
 
-The entry point sets `BAO_HEADED=1` when it is unset, points `BAO_BROWSER` at `Contents/Resources/Chromium.app`, and points `BAO_OS_HELPER` at the nested `BaoOSHelper.app`. Leave this Terminal process running. Do not `open` the app again while it is running. LaunchServices would start a second instance on the default home.
+The entry point sets `BAO_HEADED=1` when it is unset, points `BAO_BROWSER` at `Contents/Resources/Chromium.app`, and points `BAO_OS_HELPER` at the nested `BaoOSHelper.app`. Leave this Terminal process running. Do not `open` the app again while it is running. LaunchServices would start a second instance on the same home and port.
 
-**What you should see:** a window opens on `http://127.0.0.1:4807`. It is app mode: no address bar, no tab strip, and no Chrome for Testing infobar (`--disable-infobars`). The page does not ask to show notifications. The first screen is Library, with an empty library on a fresh home. The capture panel is not on screen yet. There is no act sentence, no Dock badge, and no notification prompt at idle. The sidebar lists Library, Capture, Teach, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Teach, Replay, and Logins were on the rail, and before the permission card was limited to macOS. The build includes those screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone and the footer reads **helper ok**. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
+**What you should see:** a window opens on `http://127.0.0.1:4787`. It is app mode: no address bar, no tab strip, and no Chrome for Testing infobar (`--disable-infobars`). The page does not ask to show notifications. The first screen is Library. The capture panel is not on screen yet. There is no act sentence, no Dock badge, and no notification prompt at idle. The sidebar lists Library, Capture, Teach, Runs, Heals, Replay, Logins, and Settings. The pictures below were taken before Teach, Replay, and Logins were on the rail, and before the permission card was limited to macOS. The build includes those screens. On a Mac that has not granted the helper yet, Library shows a collapsed row, **Two permissions on the Mac**. Open it for Accessibility and Screen Recording. The footer reads **helper needs permission**. Continue dismisses that card. Logins, Settings, and the other screens do not repeat it. While a grant is still missing they show a dot beside the footer label; open the dot for the same two rows. When both are granted, the card and the dot are gone and the footer reads **helper ok**. Linux shows neither, and the footer reads **helper off**. The picture is the earlier card on a machine with no Mac helper.
 
 ![Two permissions on the Mac. Accessibility and Screen Recording both say not granted yet. The footer says helper off.](mac-test/01-onboarding.png)
 
@@ -189,7 +181,7 @@ In another Terminal:
 
 ```sh
 ps aux | grep -F 'Bao.app/Contents/Resources/Chromium.app'
-curl -s "http://127.0.0.1:${BAO_PORT}/api/pids"
+curl -s "http://127.0.0.1:4787/api/pids"
 ```
 
 **What you should see:** the process list includes `Bao.app/Contents/Resources/Chromium.app`. `curl` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
@@ -203,19 +195,19 @@ The product window does not need Accessibility. The nested helper does. On the f
 
 **What you should see:** those two sheets, in that order, naming **BaoOSHelper**. Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility, and again under Screen & System Audio Recording (the Screen Recording list). Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by your `bao dev signing` certificate. A rebuild with that same certificate keeps the grant. A new certificate, or an ad-hoc signature, is a different app and the grant does not follow it. Do not pass `--prompt` after the rows are on.
 
-Quit Bao (Ctrl-C in the launch Terminal) and launch it again with the same `BAO_HOME`, `BAO_PORT`, and `BAO_NODE`.
+Quit Bao (Ctrl-C in the launch Terminal) and launch it again with the same `BAO_NODE`. Leave `BAO_HOME` and `BAO_PORT` unset so the app stays on `~/Library/Application Support/bao` and port `4787`.
 
 **What you should see:** no new privacy sheet. The sidebar footer reads **helper ok**. The permission card and the sidebar dot are gone, because both grants are present. Library is the main page. The picture of Library below was taken with the footer still **helper off**.
 
 ![Library with two workflow cards, sign in and fixture login, and a search field.](mac-test/02-library.png)
 
-`curl -s "http://127.0.0.1:${BAO_PORT}/api/state"` reports `helper.accessibility` true, `helper.screenCapture` true, and `helper.label` equal to `helper ok`.
+`curl -s "http://127.0.0.1:4787/api/state"` reports `helper.accessibility` true, `helper.screenCapture` true, and `helper.label` equal to `helper ok`.
 
 ## Record on the fixture
 
 Click **Capture** in the sidebar.
 
-**What you should see:** Start URL is already the fixture on this server (`http://127.0.0.1:4807/fixture`). The page says nothing is recorded until you start, and that the capture browser uses an app-owned profile. The Mac app card names `Bao.app/Contents/Resources/BaoOSHelper.app` and bundle `dev.bao.oshelper`.
+**What you should see:** Start URL is already the fixture on this server (`http://127.0.0.1:4787/fixture`). The page says nothing is recorded until you start, and that the capture browser uses an app-owned profile. The Mac app card names `Bao.app/Contents/Resources/BaoOSHelper.app` and bundle `dev.bao.oshelper`.
 
 ![Capture screen with Start URL, Start capture, and Stop and save.](mac-test/03-capture.png)
 
@@ -227,7 +219,7 @@ Click **Capture** in the sidebar.
 
 The drag has to be a real file drop. A scripted pointer move does not start an `NSDraggingSession`, and the helper's `drag-file` command still reports that it cannot offer the file. The proof is a throwaway file dragged from a throwaway Finder window, or a small source window that begins the dragging session while the already-granted helper moves the pointer. Do not rebuild the helper to do it, and do not request a permission.
 
-**What you should see:** Library gains a card for the capture. Open the workflow. It has a `secret` input. The chooser and the drag each add a `file` input. A capture that stopped after Log in has the secret and the click, and no file input. The secret string is absent. The absolute path of the file is absent. The trail view says `Password values are not stored.` The saved `startUrl` is the page URL at stop time. The fixture's Log in button uses `pushState` to `/secure`, and this server serves the fixture HTML there too, so a capture that continued through the file step saves `http://127.0.0.1:4807/secure`. On any other site, stop on the page replay should open.
+**What you should see:** Library gains a card for the capture. Open the workflow. It has a `secret` input. The chooser and the drag each add a `file` input. A capture that stopped after Log in has the secret and the click, and no file input. The secret string is absent. The absolute path of the file is absent. The trail view says `Password values are not stored.` The saved `startUrl` is the page URL at stop time. The fixture's Log in button uses `pushState` to `/secure`, and this server serves the fixture HTML there too, so a capture that continued through the file step saves `http://127.0.0.1:4787/secure`. On any other site, stop on the page replay should open.
 
 ## Replay twice, with inputs
 
