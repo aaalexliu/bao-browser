@@ -1,7 +1,7 @@
 {
   "schema": "bao.workflow/v2",
   "version": 2,
-  "id": "wf-1792675287453",
+  "id": "wf-1792676908524",
   "name": "Captured workflow",
   "startUrl": "https://clinicaltrials.gov/search",
   "inputs": [
@@ -166,7 +166,7 @@
   ],
   "steps": [
     {
-      "id": "wf-1792675287453-0",
+      "id": "wf-1792676908524-0",
       "index": 0,
       "action": "navigate",
       "label": "Open https://clinicaltrials.gov/search",
@@ -180,7 +180,7 @@
       }
     },
     {
-      "id": "wf-1792675287453-1",
+      "id": "wf-1792676908524-1",
       "index": 1,
       "action": "type",
       "label": "Type {{text}}",
@@ -225,7 +225,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-2",
+      "id": "wf-1792676908524-2",
       "index": 2,
       "action": "type",
       "label": "Type {{text2}}",
@@ -260,7 +260,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-3",
+      "id": "wf-1792676908524-3",
       "index": 3,
       "action": "type",
       "label": "Type {{text3}}",
@@ -305,7 +305,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-4",
+      "id": "wf-1792676908524-4",
       "index": 4,
       "action": "type",
       "label": "Type {{text4}}",
@@ -340,7 +340,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-5",
+      "id": "wf-1792676908524-5",
       "index": 5,
       "action": "type",
       "label": "Type {{text5}}",
@@ -385,7 +385,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-6",
+      "id": "wf-1792676908524-6",
       "index": 6,
       "action": "type",
       "label": "Type {{text6}}",
@@ -420,7 +420,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-7",
+      "id": "wf-1792676908524-7",
       "index": 7,
       "action": "type",
       "label": "Type {{text7}}",
@@ -465,7 +465,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-8",
+      "id": "wf-1792676908524-8",
       "index": 8,
       "action": "type",
       "label": "Type {{text8}}",
@@ -500,7 +500,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-9",
+      "id": "wf-1792676908524-9",
       "index": 9,
       "action": "type",
       "label": "Type {{text9}}",
@@ -545,7 +545,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-10",
+      "id": "wf-1792676908524-10",
       "index": 10,
       "action": "type",
       "label": "Type {{text10}}",
@@ -580,7 +580,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-11",
+      "id": "wf-1792676908524-11",
       "index": 11,
       "action": "type",
       "label": "Type {{text11}}",
@@ -625,7 +625,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-12",
+      "id": "wf-1792676908524-12",
       "index": 12,
       "action": "type",
       "label": "Type {{text12}}",
@@ -660,7 +660,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-13",
+      "id": "wf-1792676908524-13",
       "index": 13,
       "action": "type",
       "label": "Type {{text13}}",
@@ -705,7 +705,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-14",
+      "id": "wf-1792676908524-14",
       "index": 14,
       "action": "type",
       "label": "Type {{text14}}",
@@ -740,7 +740,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-15",
+      "id": "wf-1792676908524-15",
       "index": 15,
       "action": "type",
       "label": "Type {{text15}}",
@@ -785,7 +785,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-16",
+      "id": "wf-1792676908524-16",
       "index": 16,
       "action": "type",
       "label": "Type {{text16}}",
@@ -820,7 +820,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-17",
+      "id": "wf-1792676908524-17",
       "index": 17,
       "action": "type",
       "label": "Type {{text17}}",
@@ -865,7 +865,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-18",
+      "id": "wf-1792676908524-18",
       "index": 18,
       "action": "type",
       "label": "Type {{text18}}",
@@ -900,7 +900,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-19",
+      "id": "wf-1792676908524-19",
       "index": 19,
       "action": "type",
       "label": "Type {{text19}}",
@@ -945,7 +945,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-20",
+      "id": "wf-1792676908524-20",
       "index": 20,
       "action": "type",
       "label": "Type {{text20}}",
@@ -980,7 +980,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-21",
+      "id": "wf-1792676908524-21",
       "index": 21,
       "action": "type",
       "label": "Type {{text21}}",
@@ -1025,7 +1025,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-22",
+      "id": "wf-1792676908524-22",
       "index": 22,
       "action": "type",
       "label": "Type {{text22}}",
@@ -1060,7 +1060,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-23",
+      "id": "wf-1792676908524-23",
       "index": 23,
       "action": "type",
       "label": "Type {{text23}}",
@@ -1105,7 +1105,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-24",
+      "id": "wf-1792676908524-24",
       "index": 24,
       "action": "type",
       "label": "Type {{text24}}",
@@ -1140,7 +1140,7 @@
       "confidence": "low"
     },
     {
-      "id": "wf-1792675287453-25",
+      "id": "wf-1792676908524-25",
       "index": 25,
       "action": "type",
       "label": "Type {{advcond}}",
@@ -1184,7 +1184,7 @@
       }
     },
     {
-      "id": "wf-1792675287453-26",
+      "id": "wf-1792676908524-26",
       "index": 26,
       "action": "type",
       "label": "Type {{text25}}",
@@ -1228,7 +1228,7 @@
       }
     },
     {
-      "id": "wf-1792675287453-27",
+      "id": "wf-1792676908524-27",
       "index": 27,
       "action": "click",
       "label": "Click \"More Filters\"",
@@ -1260,5 +1260,5 @@
       "confidence": "low"
     }
   ],
-  "createdAt": 1792675152745
+  "createdAt": 1792676773861
 }

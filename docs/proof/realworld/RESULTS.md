@@ -2,23 +2,26 @@
 
 Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes (and a keyframe webm when ffmpeg could encode one). Pass means both the doc's check and 0 model calls.
 
+p4 and p6 were recorded and replayed again after rebasing onto `42a80cc` (extract, files and dates, and the page classifier). The other rows are the earlier measurement on this branch.
+
 | Task | Pass | Model calls | Heals | First failure |
 |---|---|---|---|---|
 | p1 Sign-up, contact upload, delete account | 0/2 | 0, 0 | 0 ; 0 | type "Type {{username}}": find below-threshold |
 | p2 Practice form with date picker and dependent selects | 0/2 | 0, 0 | 0 ; 0 | select "Select {{text}}": find below-threshold |
 | p3 Booking, stop before reserve | 0/2 | 0, 0 | 0 ; 0 | click "Click "Book now"": find below-threshold |
-| p4 Trial search and CSV download | 0/2 | 0, 0 | 0 ; 0 | type "Type {{text}}": action locator.fill: Timeout 30000ms exceeded. Call log: - waiting for locator('[data-bao-i="225"]') - locator resolved to <input disabled data-bao-i="225" id="from-age-input" name="from-age-input" formcontrolname="fromAge" _ngcontent-ng-c956280390="" class="usa-input age-input ng-untouched ng-pristine"/> - fill("") - attempting fill action 2 × waiting for element to be visib |
+| p4 Trial search and CSV download | 0/2 | 0, 0 | 0 ; 0 | type into disabled `#from-age-input` (empty date-field changes; download never recorded) |
 | p5 Paginated catalog to CSV | 0/2 | 0, 0 | 0 ; 0 | no extract or CSV output; category is a click, not an input, so Mystery and Historical Fiction were not replayed |
-| p6 Spreadsheet rows into a web table | 0/2 | 0, 0 | 0 ; 0 | click "Click "Submit"": find below-threshold |
+| p6 Spreadsheet rows into a web table | 0/2 | 0, 0 | 0 ; 0 | paused on Click Add: bot check (reCAPTCHA iframe in the ad stack) |
 | p7 Wikipedia history across skins | 0/2 | 0, 0 | 0 ; 0 | click "Click "Search"": find below-threshold |
 | p8 Unstable DOM, new tab, JS dialogs | 0/2 | 0, 0 | 0 ; 0 | click "Click "edit"": find below-threshold |
 | p9 Shadow-DOM shop, stop before place order | 0/2 | 0, 0 | 0 ; 0 | no confirm gate before Place Order |
 
 ## Failure causes
 
-1. lookup miss — 6 tasks
+1. lookup miss — 5 tasks
 2. missing step type — 2 tasks
-3. action — 1 task
+3. action — 1 task (p4)
+4. bot check — 1 task (p6, rerun on 42a80cc)
 
 ## Per task
 
@@ -222,119 +225,15 @@ Artifacts:
 
 Site: clinicaltrials.gov
 
-Recording error before stop: POST /api/sessions/drive 500 page.click: Timeout 12000ms exceeded.
-Call log:
-  - waiting for locator('#adv-check0-status1')
-    - locator resolved to <input value="rec" type="checkbox" id="adv-check0-status1" _ngcontent-ng-c938690190="" class="usa-checkbox__input"/>
-  - attempting click action
-    2 × waiting for element to be visible, enabled and stable
-      - element is visible, enabled and stable
-      - scrolling into view if needed
-      - done scrolling
-      - element is outside of the viewport
-    - retrying click action
-    - waiting 20ms
-    2 × waiting for element to be visible, enabled and stable
-      - element is visible, enabled and stable
-      - scrolling into view if needed
-      - done scrolling
-      - element is outside of the viewport
-    - retrying click action
-      - waiting 100ms
-    23 × waiting for element to be visible, enabled and stable
-       - element is visible, enabled and stable
-       - scrolling into view if needed
-       - done scrolling
-       - element is outside of the viewport
-     - retrying click action
-       - waiting 500ms
+Rerun on `42a80cc`. Still 0/2, 0 model calls, 0 heals.
 
+The page's advanced date inputs fire empty `change` events while the filter panel is closed. Those became 24 `type` steps (`#adv-date-start-from` and the other From/To fields, accessible name "From" or "Date Picker") before the condition "type 1 diabetes" and the location "California". None became a `datePicker` step: there was no parsed date to fold. Replay's first type step looks up a textbox named From, hits the disabled age field `#from-age-input` (the date input is not in the tree until filters open), and `locator.fill("")` waits out the timeout because the control is disabled.
 
-Recorded:
+Recording also never reached download. The Recruiting checkbox `#adv-check0-status1` is in the filter panel and Playwright reports it outside the viewport, so the click times out. The workflow ends at Click "More Filters". No `download` step, so the files-and-dates download path does not run.
 
-```json
-{
-  "id": "wf-1792675287453",
-  "openUrl": "https://clinicaltrials.gov/search",
-  "startUrl": "https://clinicaltrials.gov/search",
-  "steps": 28,
-  "actions": {
-    "navigate": 1,
-    "type": 26,
-    "click": 1
-  },
-  "inputs": [
-    "text:text",
-    "text2:text",
-    "text3:text",
-    "text4:text",
-    "text5:text",
-    "text6:text",
-    "text7:text",
-    "text8:text",
-    "text9:text",
-    "text10:text",
-    "text11:text",
-    "text12:text",
-    "text13:text",
-    "text14:text",
-    "text15:text",
-    "text16:text",
-    "text17:text",
-    "text18:text",
-    "text19:text",
-    "text20:text",
-    "text21:text",
-    "text22:text",
-    "text23:text",
-    "text24:text",
-    "advcond:text=type 1 diabetes",
-    "text25:text=California"
-  ],
-  "labels": [
-    "navigate Open https://clinicaltrials.gov/search",
-    "type Type {{text}}",
-    "type Type {{text2}}",
-    "type Type {{text3}}",
-    "type Type {{text4}}",
-    "type Type {{text5}}",
-    "type Type {{text6}}",
-    "type Type {{text7}}",
-    "type Type {{text8}}",
-    "type Type {{text9}}",
-    "type Type {{text10}}",
-    "type Type {{text11}}",
-    "type Type {{text12}}",
-    "type Type {{text13}}",
-    "type Type {{text14}}",
-    "type Type {{text15}}",
-    "type Type {{text16}}",
-    "type Type {{text17}}",
-    "type Type {{text18}}",
-    "type Type {{text19}}",
-    "type Type {{text20}}",
-    "type Type {{text21}}",
-    "type Type {{text22}}",
-    "type Type {{text23}}",
-    "type Type {{text24}}",
-    "type Type {{advcond}}",
-    "type Type {{text25}}",
-    "click Click \"More Filters\""
-  ],
-  "recordError": "POST /api/sessions/drive 500 page.click: Timeout 12000ms exceeded.\nCall log:\n  - waiting for locator('#adv-check0-status1')\n    - locator resolved to <input value=\"rec\" type=\"checkbox\" id=\"adv-check0-status1\" _ngcontent-ng-c938690190=\"\" class=\"usa-checkbox__input\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - element is outside of the viewport\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - element is outside of the viewport\n    - retrying click action\n      - waiting 100ms\n    23 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - element is outside of the viewport\n     - retrying click action\n       - waiting 500ms\n"
-}
-```
+Replay 1 and replay 2: failed on `Type {{text}}`, model calls 0, heals 0.
 
-Replay 1: fail (failed), model calls 0, heals 0
-First failure: wf-1792675287453-1 type Type {{text}} — type "Type {{text}}": action locator.fill: Timeout 30000ms exceeded. Call log: - waiting for locator('[data-bao-i="225"]') - locator resolved to <input disabled data-bao-i="225" id="from-age-input" name="from-age-input" formcontrolname="fromAge" _ngcontent-ng-c956280390="" class="usa-input age-input ng-untouched ng-pristine"/> - fill("") - attempting fill action 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 20ms 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 100ms 60 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 500ms
-
-Replay 2: fail (failed), model calls 0, heals 0
-First failure: wf-1792675287453-1 type Type {{text}} — type "Type {{text}}": action locator.fill: Timeout 30000ms exceeded. Call log: - waiting for locator('[data-bao-i="225"]') - locator resolved to <input disabled data-bao-i="225" id="from-age-input" name="from-age-input" formcontrolname="fromAge" _ngcontent-ng-c956280390="" class="usa-input age-input ng-untouched ng-pristine"/> - fill("") - attempting fill action 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 20ms 2 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 100ms 60 × waiting for element to be visible, enabled and editable - element is not enabled - retrying fill action - waiting 500ms
-
-Artifacts:
-
-- `docs/proof/realworld/artifacts/p4-r1.png`
-- `docs/proof/realworld/artifacts/p4-r2.png`
+Artifacts: `docs/proof/realworld/artifacts/p4-r1.png`, `docs/proof/realworld/artifacts/p4-r2.png`.
 
 ### p5 Paginated catalog to CSV
 
@@ -375,79 +274,15 @@ Artifacts:
 
 Site: demoqa.com/webtables
 
-Recorded:
+Rerun on `42a80cc`. The registration dialog is recorded. Replay does not reach it.
 
-```json
-{
-  "id": "wf-1792675612583",
-  "openUrl": "https://demoqa.com/webtables",
-  "startUrl": "https://demoqa.com/webtables",
-  "steps": 25,
-  "actions": {
-    "navigate": 1,
-    "click": 6,
-    "type": 18
-  },
-  "inputs": [
-    "firstName:text=Ada",
-    "lastName:text=Lovelace",
-    "username:text=ada-table@example.com",
-    "age:text=36",
-    "salary:text=10001",
-    "department:text=Math",
-    "firstName2:text=Grace",
-    "lastName2:text=Hopper",
-    "username2:text=grace-table@example.com",
-    "age2:text=41",
-    "salary2:text=10002",
-    "department2:text=Compilers",
-    "firstName3:text=Radia",
-    "lastName3:text=Perlman",
-    "username3:text=radia-table@example.com",
-    "age3:text=44",
-    "salary3:text=10003",
-    "department3:text=Networks"
-  ],
-  "labels": [
-    "navigate Open https://demoqa.com/webtables",
-    "click Click \"Add\"",
-    "type Type {{firstName}}",
-    "type Type {{lastName}}",
-    "type Type {{username}}",
-    "type Type {{age}}",
-    "type Type {{salary}}",
-    "type Type {{department}}",
-    "click Click \"Submit\"",
-    "click Click \"Add\"",
-    "type Type {{firstName2}}",
-    "type Type {{lastName2}}",
-    "type Type {{username2}}",
-    "type Type {{age2}}",
-    "type Type {{salary2}}",
-    "type Type {{department2}}",
-    "click Click \"Submit\"",
-    "click Click \"Add\"",
-    "type Type {{firstName3}}",
-    "type Type {{lastName3}}",
-    "type Type {{username3}}",
-    "type Type {{age3}}",
-    "type Type {{salary3}}",
-    "type Type {{department3}}",
-    "click Click \"Submit\""
-  ]
-}
-```
+The capture has 25 steps: navigate, then Add, six fields, and Submit, three times (Ada Lovelace, Grace Hopper, Radia Perlman). `startUrl` is `https://demoqa.com/webtables`.
 
-Replay 1: fail (failed), model calls 0, heals 0
-First failure: wf-1792675612583-8 click Click "Submit" — click "Click "Submit"": find below-threshold
+Replay 1 paused on Click "Add" (step 2 of 25) before the click. The act bar said "Demoqa is showing a bot check." The visible page is the web table, with no challenge and no registration dialog. A fresh load of the same URL classifies as `bot_wall` / reCAPTCHA because the ad stack loads `https://www.google.com/recaptcha/api2/aframe` (a script/iframe src). That is the page classifier from #107. This run did not change it. Replay holds for a person (two hours), so replay 2 was not started; a second load of the URL classifies the same way. Model calls 0. Heals 0.
 
-Replay 2: fail (failed), model calls 0, heals 0
-First failure: wf-1792675612583-8 click Click "Submit" — click "Click "Submit"": find below-threshold
+The earlier measurement failed later, on Click "Submit" inside the dialog (below threshold). That is no longer the first failure.
 
-Artifacts:
-
-- `docs/proof/realworld/artifacts/p6-r1.png`
-- `docs/proof/realworld/artifacts/p6-r2.png`
+Artifact: `docs/proof/realworld/artifacts/p6-bot-check.png`.
 
 ### p7 Wikipedia history across skins
 
