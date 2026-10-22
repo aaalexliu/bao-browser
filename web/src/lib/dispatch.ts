@@ -12,6 +12,7 @@ import {
   forkPublic,
   getShare,
   githubStub,
+  HttpError,
   installShare,
   issuePairCode,
   listDevices,
@@ -30,6 +31,7 @@ import {
   recordReview,
   rememberGrant,
   reportWorkflow,
+  resolveConflict,
   requestMagicLink,
   saveAccountSettings,
   setImportMarks,
@@ -145,6 +147,13 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
     if (parts[0] === "workflows" && parts[2] === "versions" && method === "GET") {
       const principal = await requireUser(req);
       return NextResponse.json({ versions: await listVersions(principal, parts[1] || "") });
+    }
+    if (parts[0] === "workflows" && parts[2] === "conflict" && method === "POST") {
+      const principal = await requireUser(req);
+      const body = await readBody(req);
+      const action = String(body.action || "");
+      if (action !== "keep-mine" && action !== "keep-theirs" && action !== "keep-both") throw new HttpError("action", 400);
+      return NextResponse.json(await resolveConflict(principal, parts[1] || "", action));
     }
     if (parts[0] === "workflows" && parts[2] === "versions" && method === "POST") {
       const principal = await requireUser(req);

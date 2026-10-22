@@ -169,6 +169,50 @@ test("bao open round trip", { timeout: 30_000 }, async () => {
   }
 });
 
+test("bao open round trip fills non-secret inputs", { timeout: 30_000 }, async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-open-run-"));
+  const app = await startApp({ home, port: 0 });
+  try {
+    app.library.save(workflow("local-one", "Local one"));
+    const inputs = encodeURIComponent(JSON.stringify({ email: "ada@other.com", desk: "west" }));
+    const link = `bao://run/local-one?inputs=${inputs}`;
+    const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
+    const opened = await runCli(cli, ["open", link], home);
+    assert.equal(opened.status, 0, `${opened.stderr}\n${opened.stdout}`);
+    const body = JSON.parse(opened.stdout) as { ok: boolean; opened: { kind: string; inputs?: Record<string, string> } };
+    assert.equal(body.ok, true);
+    assert.equal(body.opened.kind, "run");
+    assert.equal(body.opened.inputs?.email, "ada@other.com");
+    assert.equal(body.opened.inputs?.desk, "west");
+    assert.equal(body.opened.inputs?.password, undefined);
+    const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { opened: { kind: string; inputs?: Record<string, string> } };
+    assert.equal(state.opened.kind, "run");
+    assert.equal(state.opened.inputs?.email, "ada@other.com");
+    assert.equal(state.opened.inputs?.password, undefined);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a secret key in a run link is refused", { timeout: 30_000 }, async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-open-secret-"));
+  const app = await startApp({ home, port: 0 });
+  try {
+    app.library.save(workflow("local-one", "Local one"));
+    const inputs = encodeURIComponent(JSON.stringify({ password: "nope", email: "ada@other.com" }));
+    const link = `bao://run/local-one?inputs=${inputs}`;
+    const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
+    const opened = await runCli(cli, ["open", link], home);
+    assert.notEqual(opened.status, 0);
+    assert.match(`${opened.stdout}\n${opened.stderr}`, /Secret inputs are re-asked on this device\. Remove Password from the link\./);
+    const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { opened: { inputs?: Record<string, string> } | null };
+    assert.equal(state.opened, null);
+    assert.equal(`${opened.stdout}\n${opened.stderr}`.includes("nope"), false);
+  } finally {
+    await app.close();
+  }
+});
+
 function runCli(cli: string, args: string[], home: string): Promise<{ status: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [cli, ...args], {

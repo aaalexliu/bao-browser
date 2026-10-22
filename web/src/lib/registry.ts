@@ -302,27 +302,31 @@ export async function pushVersion(
   );
   if (!existing.length) {
     if (base !== 0) throw new HttpError("conflict", 409);
-    await insertOwned(principal.userId, document, base, body.heal, body.shots ?? [], user.name, category);
+    await insertOwned(principal.userId, document, base, body.heal, body.shots ?? [], user.name, category, undefined, principal.deviceId ?? null);
     await noteDeviceSync(principal);
     return { version: 1, created: true };
   }
   if (existing[0]?.owner_id !== principal.userId) throw new HttpError("not found", 404);
-  const bumped = await query<{ version: number }>(
-    `WITH upd AS (
-       UPDATE workflows
-       SET head_version = head_version + 1, name = $3, summary = $4, site = $5, category = $6, updated_at = now()
-       WHERE id = $1 AND owner_id = $2 AND head_version = $7
-       RETURNING head_version
-     )
-     INSERT INTO workflow_versions (workflow_id, version, document, heal, device_id)
-     SELECT $1, upd.head_version, $8::jsonb, $9::jsonb, $10 FROM upd
-     RETURNING version`,
-    [id, principal.userId, doc.name, summary, site, category, base, JSON.stringify(document), body.heal ? JSON.stringify(body.heal) : null, principal.deviceId ?? null],
-  );
-  const version = bumped[0]?.version;
+  const bumped = await acceptVersion(id, principal.userId, {
+    name: doc.name || id,
+    summary,
+    site,
+    category,
+    base,
+    document,
+    heal: body.heal,
+    deviceId: principal.deviceId ?? null,
+  });
+  const version = bumped?.version;
   if (!version) {
+    const draft = await insertConflict(id, principal.userId, base, document, body.heal, principal.deviceId ?? null);
+    if (draft) await writeShots(id, draft, body.shots ?? []);
     const current = await pull(principal, id);
-    throw Object.assign(new HttpError("conflict", 409), { current });
+    await noteDeviceSync(principal);
+    throw new HttpError("conflict", 409, {
+      ...(draft ? { draft: { version: draft, parent: base } } : {}),
+      current,
+    });
   }
   await writeShots(id, version, body.shots ?? []);
   await noteDeviceSync(principal);
@@ -332,8 +336,19 @@ export async function pushVersion(
 export async function pull(principal: Principal, id: string, version?: number) {
   const row = await readable(principal, id);
   const ver = version ?? row.head_version;
-  const versions = await query<{ version: number; document: unknown; heal: unknown; created_at: string }>(
-    `SELECT version, document, heal, created_at FROM workflow_versions WHERE workflow_id = $1 AND version = $2`,
+  const versions = await query<{
+    version: number;
+    document: unknown;
+    heal: unknown;
+    created_at: string;
+    device_id: string | null;
+    parent_version: number | null;
+    device_name: string | null;
+  }>(
+    `SELECT v.version, v.document, v.heal, v.created_at, v.device_id, v.parent_version, d.name AS device_name
+     FROM workflow_versions v
+     LEFT JOIN devices d ON d.id = v.device_id
+     WHERE v.workflow_id = $1 AND v.version = $2`,
     [id, ver],
   );
   const found = versions[0];
@@ -355,13 +370,20 @@ export async function pull(principal: Principal, id: string, version?: number) {
     importLink: `bao://import/${id}`,
     domains: domainsOf(json(found.document)),
     passRate: await passRate(id),
+    deviceId: found.device_id,
+    deviceName: found.device_name,
+    parentVersion: found.parent_version,
   };
 }
 
 export async function listVersions(principal: Principal, id: string) {
   await readable(principal, id);
-  return query<{ version: number; created_at: string; heal: unknown }>(
-    `SELECT version, created_at, heal FROM workflow_versions WHERE workflow_id = $1 ORDER BY version`,
+  return query<{ version: number; created_at: string; heal: unknown; parent_version: number | null; device_id: string | null; kind: string; device_name: string | null }>(
+    `SELECT v.version, v.created_at, v.heal, v.parent_version, v.device_id, COALESCE(v.kind, 'version') AS kind, d.name AS device_name
+     FROM workflow_versions v
+     LEFT JOIN devices d ON d.id = v.device_id
+     WHERE v.workflow_id = $1
+     ORDER BY v.version`,
     [id],
   );
 }
@@ -574,19 +596,19 @@ export async function confirmPublish(principal: Principal, id: string) {
   const bumped = await query<{ version: number }>(
     `WITH upd AS (
        UPDATE workflows
-       SET head_version = head_version + 1,
+       SET head_version = COALESCE((SELECT MAX(version) FROM workflow_versions WHERE workflow_id = $1), 0) + 1,
            name = $3,
            summary = $4,
            site = $5,
            visibility = 'public',
-           published_version = head_version + 1,
+           published_version = COALESCE((SELECT MAX(version) FROM workflow_versions WHERE workflow_id = $1), 0) + 1,
            author_name = $6,
            updated_at = now()
        WHERE id = $1 AND owner_id = $2 AND head_version = $7
        RETURNING head_version
      )
-     INSERT INTO workflow_versions (workflow_id, version, document, device_id)
-     SELECT $1, upd.head_version, $8::jsonb, $9 FROM upd
+     INSERT INTO workflow_versions (workflow_id, version, document, device_id, parent_version, kind)
+     SELECT $1, upd.head_version, $8::jsonb, $9, $7, 'version' FROM upd
      RETURNING version`,
     [
       id,
@@ -629,7 +651,7 @@ export async function publicWorkflow(id: string) {
   );
   const document = json(version[0]?.document);
   const versions = await query<{ version: number; created_at: string }>(
-    `SELECT version, created_at FROM workflow_versions WHERE workflow_id = $1 ORDER BY version`,
+    `SELECT version, created_at FROM workflow_versions WHERE workflow_id = $1 AND COALESCE(kind, 'version') = 'version' ORDER BY version`,
     [id],
   );
   const reports = await query<{ count: number }>(`SELECT count(*)::int AS count FROM reports WHERE workflow_id = $1`, [id]);
@@ -751,6 +773,134 @@ export async function setImportMarks(principal: Principal, id: string, names: st
   return pushVersion(principal, id, { baseVersion: head.version, document: doc });
 }
 
+async function acceptVersion(
+  id: string,
+  userId: string,
+  input: {
+    name: string;
+    summary: string;
+    site: string;
+    category: string;
+    base: number;
+    document: unknown;
+    heal?: unknown;
+    deviceId: string | null;
+  },
+): Promise<{ version: number } | undefined> {
+  const bumped = await query<{ version: number }>(
+    `WITH upd AS (
+       UPDATE workflows
+       SET head_version = COALESCE((SELECT MAX(version) FROM workflow_versions WHERE workflow_id = $1), 0) + 1,
+           name = $3, summary = $4, site = $5, category = $6, updated_at = now()
+       WHERE id = $1 AND owner_id = $2 AND head_version = $7
+       RETURNING head_version
+     )
+     INSERT INTO workflow_versions (workflow_id, version, document, heal, device_id, parent_version, kind)
+     SELECT $1, upd.head_version, $8::jsonb, $9::jsonb, $10, NULLIF($7, 0), 'version' FROM upd
+     RETURNING version`,
+    [
+      id,
+      userId,
+      input.name,
+      input.summary,
+      input.site,
+      input.category,
+      input.base,
+      JSON.stringify(input.document),
+      input.heal ? JSON.stringify(input.heal) : null,
+      input.deviceId,
+    ],
+  );
+  return bumped[0];
+}
+
+async function insertConflict(
+  id: string,
+  userId: string,
+  parent: number,
+  document: unknown,
+  heal: unknown,
+  deviceId: string | null,
+): Promise<number | undefined> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const rows = await query<{ version: number }>(
+      `INSERT INTO workflow_versions (workflow_id, version, document, heal, device_id, parent_version, kind)
+       SELECT $1, COALESCE((SELECT MAX(version) FROM workflow_versions WHERE workflow_id = $1), 0) + 1,
+              $2::jsonb, $3::jsonb, $4, $5, 'conflict'
+       WHERE EXISTS (
+         SELECT 1 FROM workflows WHERE id = $1 AND owner_id = $6 AND head_version IS DISTINCT FROM $5
+       )
+       ON CONFLICT (workflow_id, version) DO NOTHING
+       RETURNING version`,
+      [id, JSON.stringify(document), heal ? JSON.stringify(heal) : null, deviceId, parent, userId],
+    );
+    if (rows[0]) return rows[0].version;
+  }
+  return undefined;
+}
+
+export async function resolveConflict(
+  principal: Principal,
+  id: string,
+  action: "keep-mine" | "keep-theirs" | "keep-both",
+) {
+  assertId(id);
+  const owned = await query<{ owner_id: string; head_version: number; category: string }>(
+    `SELECT owner_id, head_version, category FROM workflows WHERE id = $1`,
+    [id],
+  );
+  if (owned[0]?.owner_id !== principal.userId) throw new HttpError("not found", 404);
+  const drafts = await query<{ version: number; document: unknown; device_id: string | null }>(
+    `SELECT version, document, device_id FROM workflow_versions
+     WHERE workflow_id = $1 AND kind = 'conflict' ORDER BY version DESC`,
+    [id],
+  );
+  const draft = drafts[0];
+  if (!draft) throw new HttpError("no conflict", 404);
+  if (action === "keep-theirs") {
+    await query(`DELETE FROM workflow_versions WHERE workflow_id = $1 AND version = $2 AND kind = 'conflict'`, [id, draft.version]);
+    const current = await pull(principal, id);
+    return { action, version: current.version, document: current.document };
+  }
+  const document = json(draft.document) as { id?: string; name?: string };
+  if (action === "keep-both") {
+    const copyId = await freshCopyId(id);
+    const copy = { ...(document as Record<string, unknown>), id: copyId, name: `Copy of ${document.name || id}` };
+    const user = await mustUser(principal.userId);
+    const created = await insertOwned(principal.userId, copy, 0, null, [], user.name, categoryFor(copy), undefined, draft.device_id);
+    await query(`DELETE FROM workflow_versions WHERE workflow_id = $1 AND version = $2 AND kind = 'conflict'`, [id, draft.version]);
+    const current = await pull(principal, id);
+    return { action, version: current.version, document: current.document, copyId, copyVersion: created, copy };
+  }
+  const errors = workflowErrors(document);
+  if (errors.length) throw new HttpError(errors.join("; "), 400);
+  const head = owned[0]?.head_version ?? 0;
+  const accepted = await acceptVersion(id, principal.userId, {
+    name: document.name || id,
+    summary: summaryOf(document),
+    site: domainsOf(document)[0] || "",
+    category: categoryFor(document, owned[0]?.category),
+    base: head,
+    document: { ...document, id },
+    deviceId: draft.device_id,
+  });
+  if (!accepted) throw new HttpError("conflict", 409);
+  await query(`DELETE FROM workflow_versions WHERE workflow_id = $1 AND version = $2 AND kind = 'conflict'`, [id, draft.version]);
+  await noteDeviceSync(principal);
+  return { action, version: accepted.version, document: { ...document, id } };
+}
+
+async function freshCopyId(id: string): Promise<string> {
+  const base = `${id}-copy`.slice(0, 64);
+  for (let n = 0; n < 20; n += 1) {
+    const candidate = n === 0 ? base : `${base}-${n + 1}`;
+    assertId(candidate);
+    const rows = await query(`SELECT id FROM workflows WHERE id = $1`, [candidate]);
+    if (!rows.length) return candidate;
+  }
+  throw new HttpError("copy", 409);
+}
+
 async function insertOwned(
   userId: string,
   document: unknown,
@@ -760,6 +910,7 @@ async function insertOwned(
   author: string,
   category: string,
   forkedFrom?: string,
+  deviceId?: string | null,
 ) {
   const doc = document as { id: string; name?: string };
   const site = domainsOf(document)[0] || "";
@@ -774,13 +925,14 @@ async function insertOwned(
        WHERE id = $1 AND owner_id = $2 AND head_version = $3
        RETURNING head_version
      )
-     INSERT INTO workflow_versions (workflow_id, version, document, heal)
-     SELECT $1, upd.head_version, $4::jsonb, $5::jsonb FROM upd
+     INSERT INTO workflow_versions (workflow_id, version, document, heal, device_id, parent_version, kind)
+     SELECT $1, upd.head_version, $4::jsonb, $5::jsonb, $6, NULL, 'version' FROM upd
      RETURNING version`,
-    [doc.id, userId, base, JSON.stringify(document), heal ? JSON.stringify(heal) : null],
+    [doc.id, userId, base, JSON.stringify(document), heal ? JSON.stringify(heal) : null, deviceId ?? null],
   );
   if (!bumped[0]) throw new HttpError("conflict", 409);
   await writeShots(doc.id, bumped[0].version, shots);
+  return bumped[0].version;
 }
 
 async function writeShots(workflowId: string, version: number, shots: ShotIn[]) {

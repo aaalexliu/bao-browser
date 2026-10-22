@@ -24,6 +24,14 @@
       font-size: 1.4rem;
     }
     #cookie-banner button { font: inherit; padding: 0.55rem 1rem; }
+    #interstitial {
+      border: 2px solid #1c1915;
+      background: #fff4d6;
+      padding: 0.8rem;
+      display: grid;
+      gap: 0.5rem;
+    }
+    #interstitial button { font: inherit; padding: 0.55rem 0.8rem; }
     #flash, #files, #dropped { font-weight: 700; font-size: 1.6rem; margin: 0; min-height: 2.4rem; background: #efe7d2; padding: 0.45rem 0.7rem; }
     ul { padding-left: 1.2rem; }
     li { padding: 0.2rem 0; }
@@ -62,6 +70,22 @@
   <p id="picked" data-testid="picked"></p>
   <script>
     const params = new URLSearchParams(location.search);
+    if (params.get("signedin") === "1") {
+      document.getElementById("login").hidden = true;
+      document.getElementById("flash").textContent = "Already signed in";
+    }
+    if (params.get("interstitial") === "1") {
+      const apply = document.getElementById("apply-btn");
+      apply.hidden = true;
+      const panel = document.createElement("div");
+      panel.id = "interstitial";
+      panel.innerHTML = "<p id=\"interstitial-copy\">A new step is in the way</p><button id=\"interstitial-go\" type=\"button\" data-testid=\"interstitial-go\">Review notice</button>";
+      document.body.insertBefore(panel, document.body.firstChild);
+      panel.querySelector("button").addEventListener("click", () => {
+        panel.remove();
+        apply.hidden = false;
+      });
+    }
     if (params.get("banner") === "1") {
       const banner = document.createElement("div");
       banner.id = "cookie-banner";

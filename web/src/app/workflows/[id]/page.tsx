@@ -97,7 +97,7 @@ export default async function WorkflowPage({
       </form>
       <h2>Versions</h2>
       <ul>
-        {versions.map((version) => (
+        {versions.filter((version) => version.kind !== "conflict").map((version) => (
           <li key={version.version}>v{version.version}{version.heal ? " · heal" : ""} · {when(version.created_at)}</li>
         ))}
       </ul>

@@ -81,7 +81,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     await syncAll(libA);
     libB.rename("cross-mac", "Edited on the second Mac");
     const conflicted = await syncAll(libB);
-    assert.equal(libB.read("cross-mac").name, "From the first Mac again");
+    assert.equal(libB.read("cross-mac").name, "Edited on the second Mac");
     const stashed = readFileSync(path.join(homeB, "conflicts", "cross-mac.json"), "utf8");
     assert.match(stashed, /Edited on the second Mac/);
     assert.ok(conflicted.conflicts.some((item) => item.id === "cross-mac"));
@@ -318,8 +318,8 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         const page = await desk.newPage();
         await page.goto(`http://127.0.0.1:${app.port}/`);
         await page.getByRole("button", { name: "Library" }).click();
-        await page.getByText("From the first Mac again").waitFor();
-        await page.locator("article.wf-card", { hasText: "From the first Mac again" }).getByRole("button", { name: "Run" }).click();
+        await page.getByText("Edited on the second Mac").waitFor();
+        await page.locator("article.wf-card", { hasText: "Edited on the second Mac" }).getByRole("button", { name: "Run" }).click();
         await page.getByText("bao://workflow/cross-mac").waitFor();
         await page.getByRole("button", { name: "Re-run with past inputs" }).waitFor();
         await page.getByRole("button", { name: "Settings" }).click();

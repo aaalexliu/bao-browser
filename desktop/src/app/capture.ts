@@ -38,6 +38,14 @@ export class Capture {
     if (this.recording) this.paused = false;
   }
 
+  /** A handoff line is the record of the pause. It is kept while UI events are dropped. */
+  handoff(text: string): void {
+    if (!this.recording) return;
+    const clean = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    if (!clean) return;
+    this.events.push(this.stamp({ kind: "act", op: "note", afterText: clean }));
+  }
+
   /** False while idle or paused, so the UI event is not stored. */
   push(event: Omit<TrailEvent, "id" | "ts"> & { id?: string; ts?: number }): boolean {
     if (!this.recording || this.paused) return false;

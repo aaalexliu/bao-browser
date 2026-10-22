@@ -179,6 +179,70 @@ test("an offline home catches up on reconnect, and a disabled category stays put
   }
 });
 
+test("an offline edit stays queued and pushes when the Mac reconnects", async () => {
+  let open = false;
+  const pushed: string[] = [];
+  const { server, port } = await listen((req, res) => {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    const send = (code: number, body: unknown) => {
+      res.writeHead(code, { "content-type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    if (!open) {
+      send(503, { error: "offline" });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/sync/snapshot") {
+      send(404, { error: "not found" });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/workflows") {
+      send(200, { workflows: [] });
+      return;
+    }
+    if (req.method === "POST" && url.pathname.endsWith("/versions")) {
+      pushed.push(url.pathname);
+      send(201, { version: 1 });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/devices") {
+      send(200, { devices: [], categories: [] });
+      return;
+    }
+    send(404, { error: "not found" });
+  });
+  try {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-outbox-"));
+    const library = new Library(home);
+    library.save(workflow("queued", "Queued"));
+    saveState(home, {
+      server: `http://127.0.0.1:${port}`,
+      deviceToken: "device-token",
+      deviceId: "dev",
+      deviceName: "Offline Mac",
+      backedUp: true,
+      workflows: {},
+      pushedRuns: [],
+      remoteDevices: [],
+      remoteCategories: [],
+      conflicts: [],
+    });
+    await assert.rejects(() => syncAll(library), /offline/);
+    const waiting = loadState(home);
+    assert.equal(waiting.outbox?.length, 1);
+    assert.equal(waiting.outbox?.[0]?.id, "queued");
+    assert.match(waiting.lastResult || "", /1 edit/);
+    assert.match(waiting.lastResult || "", /reconnect/);
+    open = true;
+    const synced = await syncAll(library);
+    assert.equal(loadState(home).outbox?.length ?? 0, 0);
+    assert.equal(pushed.length, 1);
+    assert.match(synced.lastResult || "", /pushed 1/);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  }
+});
+
 function zoned(compiled: string, call: string, tz: string): string {
   const result = spawnSync(process.execPath, ["-e", `process.stdout.write(String(require(${JSON.stringify(compiled)}).${call}))`], {
     env: { ...process.env, TZ: tz },
