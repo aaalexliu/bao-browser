@@ -1,0 +1,244 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648083070,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648083110,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648083150,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648083190,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "nameAttr": "size",
+      "tag": "input",
+      "label": "Small",
+      "cssPath": "form:nth-of-type(1) > fieldset:nth-of-type(1) > p:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "checked": true,
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "small",
+    "valueAfter": "small",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648083475,
+    "kind": "act",
+    "op": "type",
+    "value": "ada@example.comx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "custemail",
+      "tag": "input",
+      "label": "E-mail address:",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(3) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648083723,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648083723,
+    "kind": "act",
+    "op": "type",
+    "value": "ada@example.com",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "custemail",
+      "tag": "input",
+      "label": "E-mail address:",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(3) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648083946,
+    "kind": "act",
+    "op": "type",
+    "value": "nope",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "comments",
+      "tag": "textarea",
+      "label": "Delivery instructions:",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(5) > label:nth-of-type(1) > textarea:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e8",
+    "ts": 1792648084047,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e9",
+    "ts": 1792648084048,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e10",
+    "ts": 1792648084048,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e11",
+    "ts": 1792648084049,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e12",
+    "ts": 1792648084049,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "nameAttr": "topping",
+      "tag": "input",
+      "label": "Bacon",
+      "cssPath": "form:nth-of-type(1) > fieldset:nth-of-type(2) > p:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "p"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "checked": true,
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "bacon",
+    "valueAfter": "bacon",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/forms/post"
+  },
+  {
+    "id": "e13",
+    "ts": 1792648084303,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Submit order",
+      "cssPath": "form:nth-of-type(1) > p:nth-of-type(6) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "Submit order",
+    "subtreeAfter": "",
+    "beforeUrl": "https://httpbingo.org/forms/post",
+    "afterUrl": "https://httpbingo.org/post"
+  }
+]
