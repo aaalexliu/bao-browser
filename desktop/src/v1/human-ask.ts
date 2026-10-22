@@ -110,8 +110,9 @@ export function attentionCount(input: {
   ask?: { kind: string } | null;
   importPhase?: string | null;
   pendingHeals: number;
+  reviews?: number;
 }): number {
-  let count = input.pendingHeals;
+  let count = input.pendingHeals + (input.reviews || 0);
   if (input.ask) count += 1;
   const phase = input.importPhase;
   if (phase === "confirm" || phase === "pick" || phase === "running" || phase === "error") count += 1;

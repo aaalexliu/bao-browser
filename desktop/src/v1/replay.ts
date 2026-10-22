@@ -114,7 +114,7 @@ export interface RunResult {
   status: "passed" | "failed" | "paused";
   steps: {
     id: string;
-    status: "passed" | "failed" | "paused" | "pending";
+    status: "passed" | "failed" | "paused" | "pending" | "skipped";
     reason?: string;
     phase?: ReplayPhase;
     startedAt?: number;
@@ -156,6 +156,10 @@ export interface ReplayOptions {
   shotDir?: string;
   /** Auto-heal stays off after too many recent failures. */
   circuitOpen?: boolean;
+  /** Steps whose last runs each needed a heal. Auto-heal stays off for these. */
+  reviewSteps?: ReadonlySet<string>;
+  /** Replay starts here. Earlier steps are not run again. */
+  fromStepId?: string;
 }
 
 let seq = 0;
@@ -200,8 +204,14 @@ export async function replay(
     };
   };
 
+  const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
+  const startAt = fromIndex < 0 ? 0 : fromIndex;
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
+    if (i < startAt) {
+      steps[i] = { id: step.id, status: "skipped", reason: "not re-run" };
+      continue;
+    }
     const mode = stepPolicy(step, workflow, settings);
     driver.markStep?.(step.id);
     let pictured = step;
@@ -254,13 +264,16 @@ export async function replay(
       return finish({ runId, status: "failed", steps, failure });
     }
     const triage = classifyFailure(failure);
+    const review = mode === "auto" && opts.reviewSteps?.has(step.id) === true;
     const skip = mode === "never"
       ? "never"
       : triage !== "change"
         ? triage
-        : mode === "auto" && opts.circuitOpen
-          ? "circuit"
-          : "";
+        : review
+          ? "review"
+          : mode === "auto" && opts.circuitOpen
+            ? "circuit"
+            : "";
     if (skip) {
       stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase, triage: skip });
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
