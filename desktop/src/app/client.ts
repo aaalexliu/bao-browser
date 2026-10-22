@@ -404,25 +404,7 @@ function bind(): void {
       render();
     };
   });
-  document.querySelectorAll("[data-open-run]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => {
-      const el = btn as HTMLButtonElement;
-      openRunStep(el.dataset.openRun || "", el.dataset.openStep || "");
-    };
-  });
-  document.querySelectorAll("[data-open-step]").forEach((btn) => {
-    const el = btn as HTMLButtonElement;
-    if (el.dataset.openRun) return;
-    el.onclick = () => openRunStep("", el.dataset.openStep || "", el.dataset.workflow || "");
-  });
-  document.querySelectorAll("[data-rerun]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => {
-      const id = (btn as HTMLButtonElement).dataset.rerun || "";
-      const run = (state.runs || []).find((item) => item.id === id);
-      if (!run) return;
-      openPastRun(run.workflowId, run.id, "", run.inputs);
-    };
-  });
+  bindDeepLinks(document);
   const saveImport = document.getElementById("import-save");
   if (saveImport) saveImport.onclick = async () => {
     const answers: Record<string, string> = {};
@@ -856,12 +838,36 @@ async function showRun(id: string): Promise<void> {
   if (rerunRun) (rerunRun as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, "", run.inputs);
   const debug = host.querySelector("#debug-step");
   if (debug) (debug as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, (debug as HTMLButtonElement).dataset.step || "", run.inputs);
+  bindDeepLinks(host);
   bindVideoSkip();
   if (typeof pendingSeek === "number") {
     const at = pendingSeek;
     pendingSeek = undefined;
     seekVideo(at);
   }
+}
+
+/** Library, the runs list, and the viewer grid all use these attributes. The grid is painted after the first bind. */
+function bindDeepLinks(root: ParentNode): void {
+  root.querySelectorAll("[data-open-run]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const el = btn as HTMLButtonElement;
+      openRunStep(el.dataset.openRun || "", el.dataset.openStep || "");
+    };
+  });
+  root.querySelectorAll("[data-open-step]").forEach((btn) => {
+    const el = btn as HTMLButtonElement;
+    if (el.dataset.openRun) return;
+    el.onclick = () => openRunStep("", el.dataset.openStep || "", el.dataset.workflow || "");
+  });
+  root.querySelectorAll("[data-rerun]").forEach((btn) => {
+    (btn as HTMLButtonElement).onclick = () => {
+      const id = (btn as HTMLButtonElement).dataset.rerun || "";
+      const run = (state.runs || []).find((item) => item.id === id);
+      if (!run) return;
+      openPastRun(run.workflowId, run.id, "", run.inputs);
+    };
+  });
 }
 
 function openRunStep(runId: string, stepId: string, workflowId = ""): void {
