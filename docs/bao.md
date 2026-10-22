@@ -223,7 +223,7 @@ Browserbase Contexts persist a whole browser profile and reuse it on a later ses
 
 ## Signed in, and still signed in
 
-After the cookies and localStorage are in place, Bao loads the probe URL in its own Chrome. With no selector and no text, signed in means the final URL is not a login URL (`login`, `sign-in`, and the same words with an underscore or an extra hyphen). A site can instead name a selector, a text fragment, or both. Those are combined, and the login URL is then ignored. The probe URL should be a page that redirects to login when the session is dead. If the probe URL is itself the login page, Bao treats a healthy session as signed out.
+After the cookies and localStorage are in place, Bao loads the probe URL in its own Chrome. The signed-in decision waits until that page has been open for at least 5 seconds and the network is idle. It is not taken at DOMContentLoaded, so a client redirect that follows the first paint still counts. With no selector and no text, signed in means the final URL is not a login URL (`login`, `sign-in`, and the same words with an underscore or an extra hyphen). A site can instead name a selector, a text fragment, or both. Those are combined, and the login URL is then ignored. The probe URL should be a page that redirects to login when the session is dead. If the probe URL is itself the login page, Bao treats a healthy session as signed out.
 
 The import click saves the site. From then on, a workflow whose start URL is that origin is checked before it runs. Bao opens the probe in its own Chrome. If the probe is signed out, or the probe page does not load, the run stops. The status is `needs-sign-in`, the step list is empty, and replay does not start. The message is:
 
