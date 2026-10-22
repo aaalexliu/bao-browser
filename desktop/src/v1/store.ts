@@ -7,7 +7,8 @@ import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { HealMode, WorkflowV2 } from "./schema";
-import { migrate, toJson, validateWorkflow } from "./schema";
+import { migrateFilesDates } from "./files-dates";
+import { toJson, validateWorkflow } from "./schema";
 
 export interface Settings extends HealSettings {
   heal: HealMode;
@@ -85,7 +86,7 @@ export class Library {
 
   read(id: string): WorkflowV2 {
     const raw = JSON.parse(readFileSync(this.file(id), "utf8")) as unknown;
-    const doc = migrate(raw);
+    const doc = migrateFilesDates(raw);
     const errors = validateWorkflow(doc);
     if (errors.length) throw new Error(`workflow ${id} is invalid: ${errors.join(", ")}`);
     return doc;
@@ -108,7 +109,7 @@ export class Library {
   }
 
   importJson(raw: string): WorkflowV2 {
-    const doc = migrate(JSON.parse(raw) as unknown);
+    const doc = migrateFilesDates(JSON.parse(raw) as unknown);
     const errors = validateWorkflow(doc);
     if (errors.length) throw new Error(errors.join(", "));
     this.save(doc);

@@ -10,6 +10,10 @@ export interface TokenInput {
   required?: boolean;
   choices?: string[];
   multiple?: boolean;
+  format?: string;
+  relative?: string;
+  zone?: string;
+  fromOutput?: string;
 }
 
 export interface TokenFields {
@@ -21,7 +25,7 @@ export interface TokenFields {
   masked: boolean;
 }
 
-const TYPES: readonly InputType[] = ["text", "secret", "number", "choice", "file"];
+const TYPES: readonly InputType[] = ["text", "secret", "number", "choice", "file", "date"];
 
 export function tokenFields(input: TokenInput): TokenFields {
   const type = input.type || "text";

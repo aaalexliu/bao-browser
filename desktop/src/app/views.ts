@@ -10,6 +10,7 @@ import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } f
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
 import { stepsNeedingReview, type StepReview } from "../v1/triage";
 import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
+import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
@@ -686,7 +687,7 @@ export function secretInput(name: string, label: string, hadSecret: boolean): st
 }
 
 /** The run form. Defaults come from the same token fields the step text shows. */
-export function runField(input: TokenInput, previous?: string): string {
+export function runField(input: TokenInput, previous?: string, now = new Date()): string {
   const shown = tokenFields(input);
   const label = esc(shown.label);
   if (shown.masked) return secretInput(input.name, shown.label, Boolean(previous));
@@ -696,8 +697,22 @@ export function runField(input: TokenInput, previous?: string): string {
     return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
   }
   if (input.type === "file") {
-    const hint = previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
-    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""}> <span>${esc(hint)}</span></label>`;
+    const hint = input.fromOutput
+      ? `Uses the ${input.fromOutput} download from this run.`
+      : previous ? `Last file: ${previous}. Drop a file here, or choose one.` : "Drop a file here, or choose one.";
+    return `<label class="drop">${label} <input name="${esc(input.name)}" type="file" ${input.multiple ? "multiple" : ""} ${input.fromOutput ? "data-from-output=\"" + esc(input.fromOutput) + "\"" : ""}> <span>${esc(hint)}</span></label>`;
+  }
+  if (input.type === "date") {
+    const expr = previous || input.relative || input.default || "today";
+    const format = input.format || "YYYY-MM-DD";
+    const zone = input.zone || "UTC";
+    let preview = "";
+    try {
+      preview = datePreview(expr, format, zone, now);
+    } catch {
+      preview = "not a date";
+    }
+    return `<label class="date-field">${label} <input name="${esc(input.name)}" type="text" value="${esc(expr)}" autocomplete="off" data-date="${esc(expr)}"> <span class="date-preview" data-resolved="${esc(preview)}">Resolves to ${esc(preview)}</span></label>`;
   }
   const text = previous && previous !== "••••" ? previous : shown.default;
   return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(text)}</textarea></label>`;

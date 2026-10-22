@@ -140,5 +140,7 @@ function stepLabel(event: TrailEvent): string {
   if (event.op === "type" || event.op === "input") return event.sensitive ? "Type secret" : "Type";
   if (event.op === "upload") return "Upload file";
   if (event.op === "drop") return "Drop file";
+  if (event.op === "download") return "Download";
+  if (event.op === "open") return "Open";
   return event.op;
 }
