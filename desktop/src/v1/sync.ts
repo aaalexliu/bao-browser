@@ -1,4 +1,4 @@
-// Push and pull against the registry. The device token stays in sync.json.
+// Push and pull against the registry. The device token and invite secret stay in sync.json.
 // The first sync copies the library aside before anything is sent.
 
 import { createHash } from "node:crypto";
@@ -47,6 +47,7 @@ export interface SyncState {
   deviceToken?: string;
   deviceId?: string;
   deviceName?: string;
+  inviteSecret?: string;
   backedUp: boolean;
   backupPath?: string;
   lastResult?: string;
@@ -69,6 +70,7 @@ export interface SyncView {
   deviceId?: string;
   deviceName?: string;
   paired: boolean;
+  inviteSaved: boolean;
   backedUp: boolean;
   backupPath?: string;
   lastResult?: string;
@@ -111,6 +113,7 @@ export function loadState(root: string): SyncState {
     deviceToken: parsed.deviceToken,
     deviceId: parsed.deviceId,
     deviceName: parsed.deviceName,
+    inviteSecret: parsed.inviteSecret,
     backedUp: Boolean(parsed.backedUp),
     backupPath: parsed.backupPath,
     lastResult: parsed.lastResult,
@@ -144,6 +147,7 @@ export function syncStatus(library: Library): SyncView {
     deviceId: state.deviceId,
     deviceName: state.deviceName,
     paired: Boolean(state.deviceToken),
+    inviteSaved: Boolean(state.inviteSecret),
     backedUp: state.backedUp,
     backupPath: state.backupPath,
     lastResult: state.lastResult,
@@ -162,20 +166,22 @@ export function syncStatus(library: Library): SyncView {
 
 export async function pairDevice(
   library: Library,
-  opts: { code: string; server: string; name?: string },
+  opts: { code: string; server: string; name?: string; secret?: string },
 ): Promise<SyncView> {
   const state = loadState(library.root);
   state.server = opts.server.replace(/\/$/, "");
+  const secret = (opts.secret || "").trim() || state.inviteSecret || "";
   const claimed = await request<{ deviceToken: string; deviceId: string; name: string }>(
     state,
     "POST",
     "/api/pair/claim",
-    { code: opts.code, name: opts.name || hostname() },
+    { code: opts.code, name: opts.name || hostname(), ...(secret ? { secret } : {}) },
     false,
   );
   state.deviceToken = claimed.deviceToken;
   state.deviceId = claimed.deviceId;
   state.deviceName = claimed.name;
+  if (secret) state.inviteSecret = secret;
   state.lastResult = `Paired ${claimed.name}`;
   saveState(library.root, state);
   library.setSyncServer(state.server);

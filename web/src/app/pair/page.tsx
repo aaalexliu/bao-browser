@@ -31,7 +31,7 @@ export default async function PairPage() {
           <button className="primary" type="submit">New code</button>
         </form>
       </div>
-      <p className="pair-hint" data-testid="pair-cli">Or from the command line: <span className="mono">bao sync pair CODE --server THIS_ORIGIN</span>. The device token stays in that Mac&apos;s sync file.</p>
+      <p className="pair-hint" data-testid="pair-cli">Or from the command line: <span className="mono">bao sync pair CODE --server THIS_ORIGIN --secret SECRET</span>. Paste the invite secret once. The device token stays in that Mac&apos;s sync file.</p>
       <h2>Paired Macs</h2>
       <ul className="devices" data-testid="devices">
         {devices.map((device) => (

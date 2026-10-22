@@ -48,7 +48,7 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
     if (method === "POST" && parts[0] === "auth" && parts[1] === "magic") {
       await actor(req);
       const body = await readBody(req);
-      const result = await requestMagicLink(String(body.email || ""));
+      const result = await requestMagicLink(String(body.email || ""), typeof body.secret === "string" ? body.secret : undefined);
       return NextResponse.json({ ok: true, ...result });
     }
     if (method === "GET" && parts[0] === "auth" && parts[1] === "verify") {
@@ -76,7 +76,11 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
     if (parts[0] === "pair" && parts[1] === "claim" && method === "POST") {
       await actor(req);
       const body = await readBody(req);
-      return NextResponse.json(await claimPairCode(String(body.code || ""), String(body.name || "device")));
+      return NextResponse.json(await claimPairCode(
+        String(body.code || ""),
+        String(body.name || "device"),
+        typeof body.secret === "string" ? body.secret : undefined,
+      ));
     }
     if (parts[0] === "devices" && method === "GET") {
       const principal = await requireUser(req);

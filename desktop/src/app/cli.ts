@@ -40,8 +40,9 @@ async function main(): Promise<void> {
     if (sub === "pair") {
       const code = positional(rest)[1];
       const server = flag(rest, "--server") || process.env.BAO_SYNC_SERVER || "";
-      if (!code || !server) throw new Error("usage: bao sync pair CODE --server URL");
-      console.log(JSON.stringify(await pairDevice(library, { code, server, name: flag(rest, "--name") }), null, 2));
+      if (!code || !server) throw new Error("usage: bao sync pair CODE --server URL [--secret SECRET]");
+      const secret = flag(rest, "--secret") || process.env.BAO_INVITE_SECRET;
+      console.log(JSON.stringify(await pairDevice(library, { code, server, name: flag(rest, "--name"), secret }), null, 2));
       return;
     }
     if (sub === "review") {

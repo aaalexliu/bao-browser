@@ -317,7 +317,7 @@ npm --prefix web install
 npm --prefix web run dev
 ```
 
-The dev server uses PGlite under `web/.data/pglite` and files under `web/.data/blobs` when `DATABASE_URL` is unset. `BAO_AUTH_STUB=1` (or any non-production run) returns the email sign-in link in the response instead of sending mail. The GitHub button signs you in as a verified stub user.
+The dev server uses PGlite under `web/.data/pglite` and files under `web/.data/blobs` when `DATABASE_URL` is unset. `BAO_AUTH_STUB=1` (or any non-production run) returns the email sign-in link in the response instead of sending mail. The GitHub button signs you in as a verified stub user on a local build. Do not set `BAO_AUTH_STUB` on a hosted deployment. Production refuses to start if it is set. A hosted registry uses `BAO_OWNER_EMAIL` and `BAO_INVITE_SECRET` instead: sign-in accepts that email only, and only with the secret.
 
 Pair a Mac from Devices. The page shows a code. Type it in the Mac app under Settings → Sync. The command line is the other way:
 
@@ -325,6 +325,8 @@ Pair a Mac from Devices. The page shows a code. Type it in the Mac app under Set
 npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/share/bao
 npm run bao -- sync --home ~/.local/share/bao
 ```
+
+A hosted registry also needs the invite secret on that command (`--secret`) or in the Settings → Sync field. Paste it once. It is stored in `sync.json` with the device token and is not sent on later syncs. Local `vercel dev` leaves the owner variables unset, so pairing does not ask for a secret.
 
 `bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. Back up daily or Back up weekly, beside that copy, writes `backups/scheduled-<time>/` when the interval is due. Settings → Sync shows the backup as a local phrase from the shared formatter, such as “Last night, 2:00 AM EDT”. Reveal in Finder opens that folder. The path stays on the tooltip. A newer remote version wins. The copy you had is written to `conflicts/<id>.json` and shown under Settings → Sync. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
 
@@ -392,7 +394,7 @@ The password never appears in that result. The full redacted exchange is the liv
 
 ## Deploy
 
-The click-through for a hosted registry is [web/README.md](../web/README.md). It imports this repo with root `web/`, connects a private Blob store and Neon from the Marketplace, and points Settings → Sync at the deployment URL. This repo does not create the project or the stores.
+The click-through for a hosted registry is [web/README.md](../web/README.md). It imports this repo with root `web/`, sets `BAO_OWNER_EMAIL` and a generated `BAO_INVITE_SECRET`, leaves Standard Protection on, connects a private Blob store and Neon from the Marketplace, and points Settings → Sync at the production domain. This repo does not create the project or the stores.
 
 The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres URL, and the `pg` driver for `localhost`. Blob uploads use the private store when `BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID` is set. With neither, the files stay on disk, which is the local path above.
 

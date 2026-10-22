@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SyncRejected } from "./guard";
+import { OwnerAuthError } from "./owner";
 import { HttpError, boot, principalFrom, type Principal } from "./registry";
 
 export async function actor(req: Request): Promise<Principal | null> {
@@ -11,6 +12,7 @@ export async function actor(req: Request): Promise<Principal | null> {
 
 export function fail(err: unknown) {
   if (err instanceof SyncRejected) return NextResponse.json({ error: err.message }, { status: 400 });
+  if (err instanceof OwnerAuthError) return NextResponse.json({ error: err.message }, { status: err.status });
   if (err instanceof HttpError) {
     const current = (err as HttpError & { current?: unknown }).current;
     return NextResponse.json({ error: err.message, ...(err.detail || {}), ...(current ? { current } : {}) }, { status: err.status });

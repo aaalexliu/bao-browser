@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
+  const [secret, setSecret] = useState("");
   const [verifyUrl, setVerifyUrl] = useState("");
   const [error, setError] = useState("");
 
@@ -13,7 +14,7 @@ export function LoginForm() {
     const res = await fetch("/api/auth/magic", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, secret }),
     });
     const body = await res.json() as { verifyUrl?: string; error?: string };
     if (!res.ok) {
@@ -27,6 +28,9 @@ export function LoginForm() {
     <form onSubmit={submit}>
       <label>Email
         <input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+      </label>
+      <label>Invite secret
+        <input name="secret" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} autoComplete="off" />
       </label>
       <button className="primary" type="submit">Email me a link</button>
       {error ? <p className="notice">{error}</p> : null}

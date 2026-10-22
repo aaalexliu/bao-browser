@@ -407,15 +407,15 @@ Testing (unit e2e, the headless CI runner, live-site suites): **[TESTING.md](doc
 The registry is the Next.js app in `web/`. Its project settings are [`web/vercel.json`](web/vercel.json). Import and deploy it yourself. This repository does not create the Vercel project, the database, or the blob store.
 
 1. Open [vercel.com/new](https://vercel.com/new) and import this git repository.
-2. Framework preset: Next.js.
-3. Root Directory: `web`.
-4. Environment variable: `BAO_AUTH_STUB` = `1` when the API should return the email sign-in link. Leave it unset in production once a real mailer exists.
-5. Deploy.
-6. In the project, Storage → Create → Blob. Choose Private and connect it to the project. That sets `BLOB_STORE_ID` for the redacted PNGs. Do not create a public store.
-7. Marketplace → Neon → the free plan. Read the plan, then accept. Neon injects `DATABASE_URL`. Do not install Vercel Postgres or KV. Those products are sunset.
-8. Redeploy so the functions see `DATABASE_URL` and `BLOB_STORE_ID`.
+2. Framework preset: Next.js. Root Directory: `web`.
+3. Generate an invite secret with `openssl rand -hex 32`. Do not commit it. Set `BAO_OWNER_EMAIL` to the one email that may sign in, and `BAO_INVITE_SECRET` to that secret (Sensitive). Do not set `BAO_AUTH_STUB`. Production refuses to start if it is set.
+4. Deploy. Leave Standard Protection on. Copy the production domain, not a preview URL and not the generated deployment URL. All Deployments would block the Mac, which sends only its device token.
+5. In the project, Storage → Create → Blob. Choose Private and connect it to the project. That sets `BLOB_STORE_ID` for the redacted PNGs. Do not create a public store.
+6. Marketplace → Neon → the free plan. Read the plan, then accept. Neon injects `DATABASE_URL`. Do not install Vercel Postgres or KV. Those products are sunset.
+7. Redeploy so the functions see `DATABASE_URL`, `BLOB_STORE_ID`, and the owner variables.
+8. Sign in on the site with the owner email and the invite secret. In Settings → Sync, paste the production domain, the Devices pairing code, and the invite secret once. Pair, then Sync.
 
-Variable names, with empty values, are in [`web/.env.example`](web/.env.example). The same click-through is under Deploy in [docs/bao.md](docs/bao.md).
+Variable names, with empty values, are in [`web/.env.example`](web/.env.example). The same click-through, with the click names, is [web/README.md](web/README.md).
 
 Locally, from `web/`, `npx vercel dev --local` leaves `DATABASE_URL` and `BLOB_STORE_ID` unset. The app then uses PGlite under `BAO_PG_DIR` (or `web/.data/pglite`) and files under `BAO_BLOB_DIR` (or `web/.data/blobs`). Pair, push, and pull against that server the same way as a hosted registry.
 

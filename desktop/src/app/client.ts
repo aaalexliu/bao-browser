@@ -548,6 +548,7 @@ function bind(): void {
     code: (document.getElementById("pair-code") as HTMLInputElement).value,
     server: (document.getElementById("sync-server") as HTMLInputElement).value,
     name: (document.getElementById("device-name") as HTMLInputElement).value,
+    secret: (document.getElementById("invite-secret") as HTMLInputElement | null)?.value || "",
   });
   const syncNow = document.getElementById("sync-now");
   if (syncNow) syncNow.onclick = () => void postSync("/api/sync", { mode: "sync" });

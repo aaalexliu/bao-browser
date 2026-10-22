@@ -9,6 +9,7 @@ import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
 import { runPublishGate } from "./review-gate";
 import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
 import schema from "./workflow-v2.schema.json";
+import { assertInviteSecret, assertOwnerEmail, assertOwnerSignIn, assertProductionAuth, magicLinkVisible } from "./owner";
 import { SEED_WORKFLOWS } from "./seeds";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -56,14 +57,15 @@ export async function ensureSeed(): Promise<void> {
   seeded = true;
 }
 
-export async function requestMagicLink(email: string): Promise<{ verifyUrl?: string }> {
+export async function requestMagicLink(email: string, secret?: string): Promise<{ verifyUrl?: string }> {
   const clean = email.trim().toLowerCase();
   if (!clean.includes("@")) throw new HttpError("email", 400);
+  const proved = assertOwnerSignIn(clean, secret);
   const token = randomBytes(24).toString("hex");
   const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   await query(`INSERT INTO magic_links (token, email, expires_at) VALUES ($1, $2, $3)`, [token, clean, expires]);
   const path = `/api/auth/verify?token=${token}`;
-  if (process.env.BAO_AUTH_STUB === "1" || process.env.NODE_ENV !== "production") return { verifyUrl: path };
+  if (magicLinkVisible(process.env, proved)) return { verifyUrl: path };
   console.log(`bao magic link ${path}`);
   return {};
 }
@@ -77,13 +79,14 @@ export async function verifyMagicLink(token: string): Promise<{ session: string;
   );
   const email = rows[0]?.email;
   if (!email) throw new HttpError("link expired", 400);
+  assertOwnerEmail(email);
   const user = await upsertUser(email, email.split("@")[0] || email, false);
   return { session: await createSession(user.id), user };
 }
 
 export async function githubStub(): Promise<{ session: string; user: User }> {
-  if (process.env.BAO_AUTH_STUB !== "1" && process.env.NODE_ENV === "production") {
-    throw new HttpError("GitHub sign-in is a stub. Set BAO_AUTH_STUB=1 on the project.", 501);
+  if (process.env.NODE_ENV === "production") {
+    throw new HttpError("GitHub sign-in is not available.", 501);
   }
   const user = await upsertUser("github-stub@bao.local", "GitHub stub", true);
   return { session: await createSession(user.id), user };
@@ -138,7 +141,8 @@ export async function activePairCode(userId: string): Promise<{ code: string; ex
   return row ? { code: row.code, expiresAt: String(row.expires_at) } : null;
 }
 
-export async function claimPairCode(code: string, name: string): Promise<{ deviceToken: string; deviceId: string; name: string }> {
+export async function claimPairCode(code: string, name: string, secret?: string): Promise<{ deviceToken: string; deviceId: string; name: string }> {
+  assertInviteSecret(secret);
   const rows = await query<{ user_id: string }>(
     `UPDATE pair_codes SET used_at = now()
      WHERE code = $1 AND used_at IS NULL AND expires_at > now()
@@ -476,6 +480,7 @@ export async function rememberGrant(userId: string, token: string) {
 }
 
 export async function boot(): Promise<void> {
+  assertProductionAuth();
   const { ready } = await import("./db");
   await ready();
   await ensureSeed();
