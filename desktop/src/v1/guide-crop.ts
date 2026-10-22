@@ -7,66 +7,149 @@ const ORANGE = [0xd4, 0x53, 0x2b] as const;
 
 export type GuideCropKind = "plain" | "type" | "secret";
 
-/** Outline the control. Typed crops lose the recorded value. Secrets use one clipped mask. */
+/** Outline the control. The value box is one opaque color, then dots for a secret. */
 export function prepareGuideCrop(png: Buffer, kind: GuideCropKind): Buffer {
   const decoded = decodePng(png);
   if (!decoded) return png;
   const { width, height, rgba } = decoded;
-  if (kind === "type" || kind === "secret") blankValue(rgba, width, height, kind === "secret");
+  if (kind === "type" || kind === "secret") fillValueBox(rgba, width, height, kind === "secret");
   closeOutline(rgba, width, height);
   if (orangeCount(rgba, width, height) < 80) drawOutline(rgba, width, height);
   return encodePng(width, height, rgba);
 }
 
-function blankValue(rgba: Uint8Array, width: number, height: number, secret: boolean): void {
-  const split = valueSplit(rgba, width, height);
-  const margin = Math.max(4, Math.round(Math.min(width, height) * 0.04));
+/**
+ * Replace the whole input interior with the field color.
+ * A per-pixel dark overlay leaves the antialiased edge of the recorded value.
+ */
+function fillValueBox(rgba: Uint8Array, width: number, height: number, secret: boolean): void {
   const bg = cornerColor(rgba, width);
-  for (let y = split; y < height; y++) {
+  const core = lowestRun(rgba, width, height, (i) => differs(rgba, i, bg));
+  if (!core) return;
+  let top = core.top;
+  let bottom = core.bottom;
+  for (let y = core.top - 1; y >= Math.max(0, core.top - 4); y--) {
+    if (!fringeRow(rgba, width, y, bg)) break;
+    top = y;
+  }
+  for (let y = core.bottom + 1; y <= Math.min(height - 1, core.bottom + 4); y++) {
+    if (!fringeRow(rgba, width, y, bg)) break;
+    bottom = y;
+  }
+  let left = width;
+  let right = 0;
+  for (let y = top; y <= bottom; y++) {
     for (let x = 0; x < width; x++) {
+      if (!differs(rgba, (y * width + x) * 4, bg)) continue;
+      if (x < left) left = x;
+      if (x > right) right = x;
+    }
+  }
+  if (right - left < 8 || bottom - top < 4) return;
+  const color = fieldColor(rgba, width, left, top, right, bottom);
+  for (let y = top; y <= bottom; y++) {
+    for (let x = left; x <= right; x++) {
       const i = (y * width + x) * 4;
       if (isOrange(rgba, i)) continue;
-      const luma = (rgba[i] + rgba[i + 1] + rgba[i + 2]) / 3;
-      if (luma >= 176) continue;
-      const edge = x < margin || x >= width - margin;
-      paint(rgba, i, edge ? bg : [255, 255, 255, 255]);
+      paint(rgba, i, color);
     }
   }
-  if (secret) drawDots(rgba, width, height, split, margin);
+  if (secret) drawDots(rgba, width, height, left, top, right, bottom);
 }
 
-/** First light gap under the label. The typed value sits below it. */
-function valueSplit(rgba: Uint8Array, width: number, height: number): number {
-  const from = Math.floor(height * 0.2);
-  const to = Math.floor(height * 0.58);
-  for (let y = from; y < to; y++) {
-    let light = 0;
-    const span = Math.max(1, width - 8);
-    for (let x = 4; x < width - 4; x++) {
+function lowestRun(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  hit: (i: number) => boolean,
+): { top: number; bottom: number } | undefined {
+  let best: { top: number; bottom: number } | undefined;
+  let start = -1;
+  const finish = (end: number) => {
+    if (start < 0 || end - start < 4) return;
+    best = { top: start, bottom: end - 1 };
+  };
+  for (let y = 0; y < height; y++) {
+    let count = 0;
+    for (let x = 0; x < width; x++) if (hit((y * width + x) * 4)) count += 1;
+    const on = count > width * 0.45;
+    if (on && start < 0) start = y;
+    if (!on && start >= 0) {
+      finish(y);
+      start = -1;
+    }
+  }
+  if (start >= 0) finish(height);
+  return best;
+}
+
+function fringeRow(rgba: Uint8Array, width: number, y: number, bg: [number, number, number, number]): boolean {
+  let diff = 0;
+  let dark = 0;
+  for (let x = 0; x < width; x++) {
+    const i = (y * width + x) * 4;
+    if (!differs(rgba, i, bg)) continue;
+    diff += 1;
+    if (lumaAt(rgba, i) < 80) dark += 1;
+  }
+  if (dark > 0 && diff < width * 0.4) return false;
+  return diff > 8;
+}
+
+function fieldColor(
+  rgba: Uint8Array,
+  width: number,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+): [number, number, number, number] {
+  const counts = new Map<string, { n: number; color: [number, number, number, number] }>();
+  for (let y = top; y <= bottom; y++) {
+    for (let x = left; x <= right; x++) {
       const i = (y * width + x) * 4;
-      const luma = (rgba[i] + rgba[i + 1] + rgba[i + 2]) / 3;
-      if (luma > 200 || isOrange(rgba, i)) light += 1;
+      if (isOrange(rgba, i) || lumaAt(rgba, i) < 200) continue;
+      const color: [number, number, number, number] = [rgba[i], rgba[i + 1], rgba[i + 2], 255];
+      const key = color.slice(0, 3).join(",");
+      const row = counts.get(key);
+      if (row) row.n += 1;
+      else counts.set(key, { n: 1, color });
     }
-    if (light > span * 0.82) return y + 1;
   }
-  return Math.max(1, Math.floor(height * 0.34));
+  let best: { n: number; color: [number, number, number, number] } | undefined;
+  for (const row of counts.values()) if (!best || row.n > best.n) best = row;
+  return best?.color || [255, 255, 255, 255];
 }
 
-function drawDots(rgba: Uint8Array, width: number, height: number, split: number, margin: number): void {
-  const bandTop = split;
-  const bandBottom = height - margin;
-  if (bandBottom - bandTop < 6 || width < 24) return;
-  const cy = Math.round((bandTop + bandBottom) / 2);
-  const radius = Math.max(1, Math.min(3, Math.round((bandBottom - bandTop) * 0.12)));
+function differs(rgba: Uint8Array, i: number, bg: [number, number, number, number]): boolean {
+  if (isOrange(rgba, i)) return false;
+  const delta = Math.abs(rgba[i] - bg[0]) + Math.abs(rgba[i + 1] - bg[1]) + Math.abs(rgba[i + 2] - bg[2]);
+  return delta > 18;
+}
+
+function drawDots(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+): void {
+  const band = bottom - top;
+  const span = right - left;
+  if (band < 6 || span < 24) return;
+  const cy = Math.round((top + bottom) / 2);
+  const radius = Math.max(1, Math.min(3, Math.round(band * 0.12)));
   const count = 6;
   const gap = radius * 5;
   const total = (count - 1) * gap;
-  let x0 = Math.round((width - total) / 2);
-  const inset = margin + radius + 2;
+  let x0 = left + Math.round((span - total) / 2);
+  const inset = left + radius + 2;
   if (x0 < inset) x0 = inset;
   for (let n = 0; n < count; n++) {
     const cx = x0 + n * gap;
-    if (cx > width - inset) break;
+    if (cx > right - radius - 2) break;
     fillCircle(rgba, width, height, cx, cy, radius, [110, 106, 100, 255]);
   }
 }
@@ -89,6 +172,8 @@ function closeOutline(rgba: Uint8Array, width: number, height: number): void {
   const color: [number, number, number, number] = [ORANGE[0], ORANGE[1], ORANGE[2], 255];
   seal(rgba, width, left.x, right.x, left.top, 1, color);
   seal(rgba, width, left.x, right.x, left.bottom, -1, color);
+  sealColumn(rgba, width, left.x, left.top, left.bottom, 1, color);
+  sealColumn(rgba, width, right.x, right.top, right.bottom, -1, color);
 }
 
 function rail(rgba: Uint8Array, width: number, height: number, from: number, to: number, step: number): { x: number; top: number; bottom: number } | undefined {
@@ -111,6 +196,27 @@ function rail(rgba: Uint8Array, width: number, height: number, from: number, to:
     if (y > bottom) bottom = y;
   }
   return { x: bestX, top, bottom };
+}
+
+function sealColumn(
+  rgba: Uint8Array,
+  width: number,
+  x: number,
+  top: number,
+  bottom: number,
+  dir: number,
+  color: [number, number, number, number],
+): void {
+  const span = bottom - top;
+  if (span < 4) return;
+  let orange = 0;
+  for (let y = top; y <= bottom; y++) if (isOrange(rgba, (y * width + x) * 4)) orange += 1;
+  if (orange >= span * 0.6) return;
+  for (let t = 0; t < 2; t++) {
+    const col = x + dir * t;
+    if (col < 0 || col >= width) continue;
+    for (let y = top; y <= bottom; y++) paint(rgba, (y * width + col) * 4, color);
+  }
 }
 
 function seal(rgba: Uint8Array, width: number, left: number, right: number, y: number, dir: number, color: [number, number, number, number]): void {
@@ -176,6 +282,10 @@ function isOrange(rgba: Uint8Array, i: number): boolean {
   const g = rgba[i + 1];
   const b = rgba[i + 2];
   return r > 180 && r > g + 40 && b < 100;
+}
+
+function lumaAt(rgba: Uint8Array, i: number): number {
+  return (rgba[i] + rgba[i + 1] + rgba[i + 2]) / 3;
 }
 
 function cornerColor(rgba: Uint8Array, width: number): [number, number, number, number] {

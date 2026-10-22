@@ -175,12 +175,16 @@ test("a focus click folds into the type step and recorded values stay out of the
   const username = readGuidePng(images[0]);
   assert.ok(username);
   assert.equal(countColor(username, (r, g, b) => g > 200 && r < 40 && b < 40), 0);
+  assert.equal(countColor(username, (r, g, b) => r > 160 && r < 230 && g > 160 && g < 230 && b > 160 && b < 230), 0);
   assert.ok(countColor(username, (r, g, b) => r > 180 && r > g + 40 && b < 100) > 20);
+  assert.equal(countColor(username, (r, g, b) => r < 20 && g < 20 && b < 20), 14 * 5);
+  assert.equal(variance(username, { x: 6, y: 18, w: 52, h: 16 }, () => false), 0);
   const password = readGuidePng(images[1]);
   assert.ok(password);
-  const edge = 20 * password.width * 4;
+  const edge = (22 * password.width + 12) * 4;
   assert.ok(password.rgba[edge] > 200, "password mask overflows the card");
-  assert.equal(countColor(password, (r, g, b) => r < 20 && g < 20 && b < 20), 0);
+  assert.equal(countColor(password, (r, g, b) => r < 20 && g < 20 && b < 20), 14 * 5);
+  assert.equal(variance(password, { x: 6, y: 16, w: 52, h: 16 }, isDot), 0);
   assert.ok(countColor(password, (r, g, b) => r > 90 && r < 140 && g > 90 && g < 140) > 4);
   assert.ok(countColor(password, (r, g, b) => r > 180 && r > g + 40 && b < 100) > 20);
   const apply = readGuidePng(images[3]);
@@ -193,14 +197,77 @@ function field(name: string): WorkflowStep["identity"] {
 }
 
 function textCrop(value: string): Buffer {
-  const image = png(48, 36, [255, 255, 255]);
-  const painted = paintRect(image, 8, 22, 32, 8, [0, 255, 0]);
+  const image = outlined(png(64, 40, [245, 245, 247]));
+  let painted = paintRect(image, 8, 6, 14, 5, [0, 0, 0]);
+  painted = paintRect(painted, 6, 18, 52, 16, [255, 255, 255]);
+  painted = paintRect(painted, 10, 23, 28, 6, [0, 255, 0]);
+  painted = paintRect(painted, 10, 22, 28, 1, [210, 210, 210]);
+  painted = paintRect(painted, 10, 29, 28, 1, [190, 190, 190]);
   return withText(painted, `${value} alpha note`);
 }
 
 function maskCrop(): Buffer {
-  const image = png(48, 36, [245, 245, 247]);
-  return paintRect(image, 0, 16, 48, 14, [0, 0, 0]);
+  const image = outlined(png(64, 40, [245, 245, 247]));
+  let painted = paintRect(image, 8, 6, 14, 5, [0, 0, 0]);
+  painted = paintRect(painted, 6, 16, 52, 16, [0, 0, 0]);
+  painted = paintRect(painted, 8, 16, 30, 1, [180, 180, 180]);
+  painted = paintRect(painted, 8, 20, 12, 4, [160, 160, 160]);
+  return painted;
+}
+
+function outlined(image: Buffer): Buffer {
+  const decoded = readGuidePng(image);
+  if (!decoded) throw new Error("png");
+  const color: [number, number, number] = [212, 83, 43];
+  for (let t = 0; t < 2; t++) {
+    for (let x = 2; x < decoded.width - 2; x++) {
+      paintDecoded(decoded, x, 2 + t, color);
+      paintDecoded(decoded, x, decoded.height - 3 - t, color);
+    }
+    for (let y = 2; y < decoded.height - 2; y++) {
+      paintDecoded(decoded, 2 + t, y, color);
+      paintDecoded(decoded, decoded.width - 3 - t, y, color);
+    }
+  }
+  return encodeRgb(decoded.width, decoded.height, decoded.rgba);
+}
+
+function paintDecoded(
+  image: { width: number; rgba: Uint8Array },
+  x: number,
+  y: number,
+  rgb: [number, number, number],
+): void {
+  const i = (y * image.width + x) * 4;
+  image.rgba[i] = rgb[0];
+  image.rgba[i + 1] = rgb[1];
+  image.rgba[i + 2] = rgb[2];
+}
+
+function isDot(r: number, g: number, b: number): boolean {
+  return r === 110 && g === 106 && b === 100;
+}
+
+function variance(
+  image: { width: number; height: number; rgba: Uint8Array },
+  box: { x: number; y: number; w: number; h: number },
+  ignore: (r: number, g: number, b: number) => boolean,
+): number {
+  const samples: number[] = [];
+  for (let y = box.y; y < box.y + box.h; y++) {
+    for (let x = box.x; x < box.x + box.w; x++) {
+      const i = (y * image.width + x) * 4;
+      const r = image.rgba[i];
+      const g = image.rgba[i + 1];
+      const b = image.rgba[i + 2];
+      if (ignore(r, g, b)) continue;
+      if (r > 180 && r > g + 40 && b < 100) continue;
+      samples.push(r, g, b);
+    }
+  }
+  if (samples.length < 3) return 999;
+  const mean = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+  return samples.reduce((sum, value) => sum + (value - mean) ** 2, 0) / samples.length;
 }
 
 function paintRect(image: Buffer, x: number, y: number, w: number, h: number, rgb: [number, number, number]): Buffer {
