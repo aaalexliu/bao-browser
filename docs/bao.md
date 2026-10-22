@@ -392,16 +392,7 @@ The password never appears in that result. The full redacted exchange is the liv
 
 ## Deploy
 
-Do this yourself when you want a hosted registry. This repo does not create the project or the stores.
-
-1. Open [vercel.com/new](https://vercel.com/new) and import this git repository.
-2. Framework preset: Next.js.
-3. Root Directory: Edit, then `web`.
-4. Environment variable: `BAO_AUTH_STUB` = `1` if you want the email link returned in the API instead of mail. Leave it unset in production when a real mailer exists. The GitHub route stays a stub until you replace it, and returns 501 in production without `BAO_AUTH_STUB`.
-5. Deploy.
-6. In the project, Storage → Create → Blob. Choose Private. Connect it to the project. That sets `BLOB_STORE_ID` for the private redacted PNGs. Do not pick a public store.
-7. Marketplace → Neon → the free plan. Read the plan, then accept. Neon injects `DATABASE_URL`. Do not choose Vercel Postgres or KV. Those products are sunset.
-8. Redeploy so the function sees `DATABASE_URL` and the Blob store.
+The click-through for a hosted registry is [web/README.md](../web/README.md). It imports this repo with root `web/`, connects a private Blob store and Neon from the Marketplace, and points Settings → Sync at the deployment URL. This repo does not create the project or the stores.
 
 The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres URL, and the `pg` driver for `localhost`. Blob uploads use the private store when `BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID` is set. With neither, the files stay on disk, which is the local path above.
 
