@@ -2,6 +2,28 @@
 
 Earlier desktop notes are in [v1.md](v1.md) and the fixture drift report is [drift-linux.md](drift-linux.md). This file is the log for spikes after that.
 
+## 2026-10-23 — Extension driver
+
+A workflow can run on `driver: extension` or `driver: playwright`. Absent stays Playwright, so an old workflow is unchanged. `validateWorkflow` rejects any other driver string. How to load it is [extension.md](extension.md).
+
+The link is native messaging, host name `com.bao.desktop`. `bao serve` writes the per-user host manifest and a `0600` token. The extension id is the only `allowed_origins` entry. The extension never sees the token. Replay opens a new window and drives that tab. Record and replay request the site's origin at runtime. The manifest has optional host permissions and no install-time `<all_urls>`.
+
+The spike used a throwaway Chrome for Testing profile and public pages. It did not open a real Chrome profile.
+
+### What passed
+
+The unpacked extension loaded, the native host completed hello, and a click on Chrome's Allow button granted 14 origins. `navigator.webdriver` was false. On bot.sannysoft, WebDriver was "missing (passed)" for a human navigation and for the extension in that same profile. A local page importing BotD from `https://openfpcdn.io/botd/v2` (the fingerprintjs GitHub Pages demo returns 404) printed `bot: false kind: none` for both. CreepJS reported webdriver false for both.
+
+`https://nowsecure.nl/` cleared to "NOWSECURE BY NODRIVER" for the human navigation and for the extension. Across 10 runs the challenge counts were human 0/10, extension 0/10, Playwright 10/10 on the Turnstile. The widget was not clicked. `https://bluefish.impvdemo.com/abp/` challenged none of the three (0/10). That URL is an Imperva demo form, not a wall.
+
+The polymer shop recording paused at Place Order on the extension (`pausedKind: confirm`, zero model calls). Playwright's replay of that same recording showed the YouTube shirt at $29.50 and paused at the same gate.
+
+### What failed
+
+The extension's captured text for that shop run did not include the shirt at $29.50, so the cart check failed even though the confirm gate held. The automationexercise recording reached ACCOUNT CREATED on the first extension replay and then missed the contact success line, the uploaded file name, and ACCOUNT DELETED. The books extract was recorded; the scorer threw `Cannot read properties of undefined (reading 'map')` before it could score the CSV.
+
+Content-script clicks and typing are `isTrusted: false`. The toolbar badge is on during record and replay. File inputs attach `chrome.debugger` and detach. Those are left in place. Spoofing `navigator` or the TLS handshake is out of scope, and so is clicking a challenge widget.
+
 ## 2026-10-21 — Real-app drift and multi-locator
 
 Recorded three public login-free pages and two stock Linux apps into schema-v2 workflows, then replayed them with no model. A second pass tried every stored locator before the repair tiers. Profiles and app homes were throwaway directories. Nothing here is a person's real session.

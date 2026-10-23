@@ -27,7 +27,7 @@ const PNG = Buffer.from(
   "base64",
 );
 
-interface PageView {
+export interface PageView {
   open?: boolean;
   url?: string;
   title?: string;
@@ -44,7 +44,7 @@ interface HealView {
   proposedPatch?: unknown;
 }
 
-interface RunView {
+export interface RunView {
   runId?: string;
   status?: string;
   modelCalls?: number;
@@ -204,7 +204,7 @@ interface RunFiles {
   replayImage: [string, string];
 }
 
-interface ScoreInput {
+export interface ScoreInput {
   run: 1 | 2;
   replay: RunView;
   page: PageView;
@@ -1004,7 +1004,7 @@ function replayStopped(run: RunView, workflow: WorkflowV2, openUrl: string, page
   return { cause: phase === "find" ? "lookup miss" : phase || "replay failed", detail };
 }
 
-function scoreP1(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
+export function scoreP1(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = evidence(input);
   const name = String(input.args.name || input.args.username || findArg(input.args, /Bao|name/i) || "");
   const file = fileName(input.args);
@@ -1073,7 +1073,7 @@ function scoreDownload(page: PageView, started: number): { pass: boolean; cause:
   return { pass: true, cause: "", detail: `${parsed.rows.length} RECRUITING rows matched the page count` };
 }
 
-function scoreP5(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
+export function scoreP5(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const category = input.run === 1 ? "Travel" : "Historical Fiction";
   const extract = input.workflow.steps.find((step) => step.action === "extract");
   const declared = input.workflow.outputs?.some((item) => item.name === "books");
@@ -1165,7 +1165,7 @@ function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: str
   return { pass: true, cause: "", detail: "prompt text and New Window heading were both read" };
 }
 
-function scoreP9(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
+export function scoreP9(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   if (input.expect !== "needs_human") {
     return { pass: false, cause: "missing step type", detail: "Place Order is scored as needs_human" };
   }
@@ -1217,7 +1217,7 @@ function evidence(input: ScoreInput): string {
   return parts.join("\n");
 }
 
-function argsFor(workflow: WorkflowV2, spec: {
+export function argsFor(workflow: WorkflowV2, spec: {
   secret?: string;
   file?: { name: string; path: string };
   byDefault?: Record<string, string>;
@@ -1637,7 +1637,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

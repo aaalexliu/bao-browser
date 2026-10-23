@@ -188,6 +188,19 @@ export function recorderSource(): string {
       if (tag === "input") return "textbox";
       return tag;
     };
+    // composedPath walks shadow hosts. parentElement stops at the shadow root,
+    // so the role path is what a later replay uses to tell a slotted control
+    // from the host. The css path stays the short id path the scorer already matches.
+    const pathOf = (el) => {
+      const out = [];
+      let node = parentOf(el);
+      while (node && node !== document.body && node !== document.documentElement && out.length < 6) {
+        const name = accName(node).slice(0, 40);
+        out.unshift(name ? { role: roleOf(node), name: name } : { role: roleOf(node) });
+        node = parentOf(node);
+      }
+      return out;
+    };
     const ident = (el) => {
       const name = accName(el);
       const text = norm(el.innerText || el.textContent || "").slice(0, 80);
@@ -208,7 +221,7 @@ export function recorderSource(): string {
         name: shown || undefined,
         label: shown || undefined,
         text: text || buttonValue || undefined,
-        path: [],
+        path: pathOf(el),
       };
     };
     const eventEl = (event) => {
@@ -400,7 +413,12 @@ export function recorderSource(): string {
       if (!value) return;
       send({ kind: "act", op: "type", identity: ident(el), value: value });
     }, true);
+    // One change event is delivered to every shadow listener and to document.
+    // Record it once. A later change on the same control is a new event.
+    const seenChange = new WeakSet();
     const onChange = (event) => {
+      if (!event || seenChange.has(event)) return;
+      seenChange.add(event);
       const el = eventEl(event);
       if (!el) return;
       if (el.disabled) return;
@@ -483,5 +501,20 @@ export function recorderSource(): string {
       if (zone.matches && zone.matches("input[type=file]")) window.__baoSkipNextFile = true;
       send({ kind: "act", op: "drop", identity: ident(host), fileName: base });
     }, true);
+    // attachShadow is patched for roots created after this script. A root that
+    // already exists (the extension injects into a live tab) would otherwise
+    // swallow change events. Walk the ones that are already open.
+    const wireShadows = (root) => {
+      if (!root || !root.querySelectorAll) return;
+      root.querySelectorAll("*").forEach((el) => {
+        if (!el.shadowRoot) return;
+        const shadow = el.shadowRoot;
+        if (shadow.__baoWired) return;
+        shadow.__baoWired = true;
+        shadow.addEventListener("change", onChange, true);
+        wireShadows(shadow);
+      });
+    };
+    wireShadows(document);
   })();`;
 }
