@@ -9,6 +9,8 @@ const AT = Date.parse("2026-10-22T04:50:16.442Z");
 test("the act sentence names the site and the notification matches the tooltip", () => {
   assert.equal(siteHost("https://example.com/login?next=/home"), "example.com");
   assert.equal(siteHost("not a url"), "the site");
+  assert.equal(siteHost("http://127.0.0.1:4787/fixture"), "the fixture");
+  assert.equal(siteHost("http://localhost:4787/secure"), "the fixture");
   const login = makeAsk({
     kind: "login",
     workflowId: "wf",
@@ -48,4 +50,19 @@ test("the act sentence names the site and the notification matches the tooltip",
     now: AT,
   });
   assert.equal(actAskLine(confirm), "Press Apply on example.com in the Bao window");
+
+  const loopback = makeAsk({
+    kind: "login",
+    workflowId: "wf",
+    workflowName: "Fixture login",
+    stepId: "login",
+    stepIndex: 1,
+    stepCount: 1,
+    label: "sign in",
+    site: "127.0.0.1",
+    timeoutMs: 1000,
+    now: AT,
+  });
+  assert.equal(loopback.instruction, "Sign in to the fixture in the Bao window");
+  assert.equal(loopback.site, "the fixture");
 });

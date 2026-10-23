@@ -106,7 +106,7 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
     assert.equal(await bar.getAttribute("data-step"), "login");
     assert.match(await bar.locator(".kicker").innerText(), /upload note/);
     assert.match(await bar.locator(".kicker").innerText(), /step 1 of 3/);
-    assert.match(await bar.locator(".instruction").innerText(), /Sign in to 127\.0\.0\.1 in the Bao window/);
+    assert.match(await bar.locator(".instruction").innerText(), /Sign in to the fixture in the Bao window/);
     assert.equal(await page.locator("#act-show").innerText(), "Show window");
     assert.equal(await page.locator("#act-continue").innerText(), "I'm signed in, continue");
     assert.equal(await page.locator("#act-cancel").innerText(), "Cancel run");

@@ -35,8 +35,10 @@ static void emit(NSDictionary *obj) {
     [outLock unlock];
 }
 
+// This process is an accessory. Touching the Dock tile can create an icon.
+// Bao.app owns the badge.
 static void setBadge(NSString *label) {
-    [[NSApp dockTile] setBadgeLabel:label];
+    (void)label;
 }
 
 static void renderSteps(NSArray *steps) {
@@ -94,7 +96,7 @@ static void handle(NSDictionary *msg) {
         timeLabel.hidden = YES;
         showButton.hidden = YES;
         setBadge(nil);
-        emit(@{@"event": @"badge", @"badge": [NSApp dockTile].badgeLabel ?: @""});
+        emit(@{@"event": @"badge", @"badge": @""});
         return;
     }
     if ([cmd isEqualToString:@"notify-off"]) {
@@ -237,7 +239,9 @@ static void readStdin(void) {
 @implementation BarApp
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
     (void)note;
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    // Accessory: the panel stays on screen and this process has no Dock icon.
+    // Bao.app keeps the badge. Promoting to Regular was the third Dock icon.
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     NSRect frame = NSMakeRect(40, 80, 380, 620);
     panel = [[NSPanel alloc] initWithContentRect:frame
         styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)

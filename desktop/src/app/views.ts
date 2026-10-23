@@ -13,6 +13,7 @@ import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
+import { controlKey, visibleCopy } from "../v1/visible-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 /** Chromium app mode uses the document title as the window title. */
@@ -159,8 +160,13 @@ export interface CommandItem {
   workflowId?: string;
 }
 
-export function esc(value: unknown): string {
+export function htmlEsc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
+}
+
+/** Visible copy. Loopback addresses read as Fixture, a path, or "the fixture". */
+export function esc(value: unknown): string {
+  return htmlEsc(visibleCopy(String(value ?? "")));
 }
 
 /** A URL for a real PNG. Anything else stays blank so the window never paints a broken image. */
@@ -1276,7 +1282,7 @@ export function tryResult(result: {
 
 export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
   const rows = sites.map((site) => `<label>${esc(site.origin)}
-      <select data-site-trust="${esc(site.origin)}">
+      <select data-site-trust="${htmlEsc(controlKey(site.origin))}">
         <option value="ask" ${site.mode === "ask" ? "selected" : ""}>Always ask</option>
         <option value="allow" ${site.mode === "allow" ? "selected" : ""}>Allow</option>
       </select>

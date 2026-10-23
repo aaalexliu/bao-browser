@@ -2,6 +2,7 @@
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
 import { sitesForTrust } from "../v1/site-trust";
+import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
@@ -1201,7 +1202,7 @@ function field(
 function readSiteTrust(): Record<string, "ask" | "allow"> {
   const siteTrust: Record<string, "ask" | "allow"> = {};
   document.querySelectorAll<HTMLSelectElement>("[data-site-trust]").forEach((sel) => {
-    const origin = sel.dataset.siteTrust || "";
+    const origin = expandControlKey(sel.dataset.siteTrust || "");
     if (!origin) return;
     siteTrust[origin] = sel.value === "ask" ? "ask" : "allow";
   });
@@ -1491,7 +1492,7 @@ function bindLogins(): void {
       const res = await fetch("/api/login-sites/recheck", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ origin: btn.dataset.recheck }),
+        body: JSON.stringify({ origin: expandControlKey(btn.dataset.recheck || "") }),
       });
       const body = await res.json() as { error?: string };
       if (!res.ok) login.error = body.error || "Re-check failed";
@@ -1504,7 +1505,7 @@ function bindLogins(): void {
       await fetch("/api/login-sites", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ origin: btn.dataset.remove }),
+        body: JSON.stringify({ origin: expandControlKey(btn.dataset.remove || "") }),
       });
       await loadSaved();
     };
