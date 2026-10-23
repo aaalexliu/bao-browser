@@ -18,6 +18,10 @@
     "readBack": { "$ref": "#/$defs/readBack" },
     "precondition": { "$ref": "#/$defs/precondition" },
     "summary": { "type": "string" },
+    "driver": {
+      "enum": ["playwright", "extension"],
+      "description": "Which browser runs this workflow. Absent means Playwright, Bao's own Chrome."
+    },
     "inputs": {
       "type": "array",
       "items": { "$ref": "#/$defs/input" }

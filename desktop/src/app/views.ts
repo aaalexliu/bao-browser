@@ -37,6 +37,17 @@ export interface WorkflowSummary {
   firstStep?: { action?: string; label?: string };
   inputs?: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }[];
   startUrl?: string;
+  /** Playwright is Bao's Chrome. Extension is this machine's Chrome. Absent is Playwright. */
+  driver?: "playwright" | "extension" | string;
+}
+
+/** The run form's driver line. Absent stays on Playwright. */
+export function runDriverField(driver: string | undefined): string {
+  const extension = driver === "extension";
+  return `<label>Driver <select id="wf-driver" data-testid="run-driver">
+      <option value="playwright" ${extension ? "" : "selected"}>Playwright — Bao's Chrome</option>
+      <option value="extension" ${extension ? "selected" : ""}>Extension — this Chrome profile</option>
+    </select></label>`;
 }
 
 export interface PromotionView {

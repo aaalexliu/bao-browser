@@ -45,6 +45,7 @@ import {
   imageRef,
   versionsPanel,
   workflowDetail,
+  runDriverField,
   type CommandItem,
   type HealView,
   type ImportPending,
@@ -305,6 +306,7 @@ function replayForm(): string {
     ${prefill}
     ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
+    ${runDriverField(current?.driver)}
     <label>Healing for this workflow <select id="wf-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
       <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
@@ -521,6 +523,17 @@ function bind(): void {
     fromNote = "";
     renderKey = "";
     render();
+  };
+  const wfDriver = document.getElementById("wf-driver") as HTMLSelectElement | null;
+  if (wfDriver) wfDriver.onchange = async () => {
+    const id = (document.getElementById("wf") as HTMLSelectElement).value;
+    await fetch("/api/workflows/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ driver: wfDriver.value === "extension" ? "extension" : "playwright" }),
+    });
+    renderKey = "";
+    await refresh();
   };
   const wfHeal = document.getElementById("wf-heal") as HTMLSelectElement | null;
   if (wfHeal) wfHeal.onchange = async () => {

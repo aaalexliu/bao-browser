@@ -102,6 +102,11 @@ import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
+import { ExtensionDriver } from "../extension/driver";
+import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
+import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
+import { workflowDriver, type Gesture } from "../extension/protocol";
+import { defaultConfigHome } from "../extension/install-host";
 import { keepMine, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -156,6 +161,11 @@ export async function startApp(opts: {
   loginKeys?: KeySources | (() => KeySources | Promise<KeySources>);
   /** Preview copy only. Cookie decryption follows loginKeys.platform. */
   loginPlatform?: NodeJS.Platform;
+  /** Install the native host and accept a connection from the Chrome extension. */
+  extensionHost?: boolean;
+  /** Chrome config home for the host manifest. The socket still lives under home. */
+  extensionConfigHome?: string;
+  extensionHostDirs?: string[];
 }): Promise<App> {
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
@@ -166,6 +176,17 @@ export async function startApp(opts: {
   const notices: Notice[] = [];
   let boundPort = opts.port ?? 0;
   const capture = new Capture();
+  let captureVia: "playwright" | "extension" = "playwright";
+  const gestureById = new Map<string, Gesture>();
+  const extensionOn = opts.extensionHost === true || process.env.BAO_EXTENSION_HOST === "1";
+  const extensionLink: ExtensionLink | undefined = extensionOn
+    ? await startExtensionLink({
+      home: opts.home,
+      configHome: opts.extensionConfigHome || defaultConfigHome(),
+      hostScript: hostScriptPath(),
+      extraDirs: opts.extensionHostDirs,
+    })
+    : undefined;
   const bar = new CaptureBar();
   watchOsNotify((report) => {
     if (!bar.running) return;
@@ -942,6 +963,12 @@ export async function startApp(opts: {
             return json(res, run);
           }
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
+          if (workflowDriver(workflow) === "extension") {
+            if (!extensionLink?.connected()) return json(res, { error: "extension is not connected" }, 409);
+            const run = await runRecorded(library, workflow, args, notices, replays, prompts, undefined, fromStep, extensionLink);
+            library.savePublicInputs(workflow.id, keptInputs(workflow, args));
+            return json(res, run);
+          }
           const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
             baoProfile,
             sites,
@@ -1185,6 +1212,7 @@ export async function startApp(opts: {
           name?: string;
           workflow?: WorkflowV2;
           heal?: HealMode | null;
+          driver?: "playwright" | "extension" | null;
           stepHeal?: { stepId?: string; heal?: string | null };
           inputEdit?: { name?: string; label?: string; type?: string; default?: string; required?: boolean };
         };
@@ -1216,6 +1244,14 @@ export async function startApp(opts: {
         }
         if (body.workflow) {
           const next = { ...body.workflow, id, updatedAt: Date.now() };
+          draftVersion(library, next, "edit");
+          return json(res, next);
+        }
+        if (body.driver === "playwright" || body.driver === "extension" || body.driver === null) {
+          const doc = library.read(id);
+          const next: WorkflowV2 = { ...doc, updatedAt: Date.now() };
+          if (body.driver) next.driver = body.driver;
+          else delete next.driver;
           draftVersion(library, next, "edit");
           return json(res, next);
         }
@@ -1373,6 +1409,8 @@ export async function startApp(opts: {
   async function beginSession(startUrl: string): Promise<void> {
     startUrl = resolveCaptureUrl(startUrl, boundPort);
     await stopBrowser();
+    captureVia = "playwright";
+    gestureById.clear();
     capture.start();
     recordingSince = Date.now();
     captureShots.clear();
@@ -1530,6 +1568,10 @@ export async function startApp(opts: {
     extractProposal = undefined;
     const built = explain(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
     const workflow = built.workflow;
+    if (captureVia === "extension") {
+      workflow.driver = "extension";
+      writeGestures(opts.home, workflow.id, gestureQueue(workflow.steps, built.groups, gestureById));
+    }
     const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
     mkdirSync(shotDest, { recursive: true });
     for (let i = 0; i < workflow.steps.length; i++) {
@@ -1543,6 +1585,8 @@ export async function startApp(opts: {
     }
     library.save(workflow);
     library.saveTrail(id, ensureTrailTimes(clean).events);
+    captureVia = "playwright";
+    gestureById.clear();
     await stopBrowser();
     publishCapture();
     return workflow;
@@ -1553,9 +1597,32 @@ export async function startApp(opts: {
     recordingSince = 0;
     extractProposal = undefined;
     captureOpenUrl = "";
+    captureVia = "playwright";
+    gestureById.clear();
     await stopBrowser();
     publishCapture();
   }
+
+  extensionLink?.onTrail((event, gesture) => {
+    if (captureVia !== "extension" || !capture.recording) return;
+    if (!capture.push(event as Omit<TrailEvent, "id" | "ts">)) return;
+    const stored = capture.events[capture.events.length - 1];
+    if (stored && gesture) gestureById.set(stored.id, gesture);
+    publishCapture();
+  });
+  extensionLink?.onRecord((kind, url) => {
+    if (kind === "start") {
+      if (capture.recording) return;
+      captureVia = "extension";
+      gestureById.clear();
+      captureOpenUrl = url;
+      capture.start();
+      recordingSince = Date.now();
+      publishCapture();
+      return;
+    }
+    if (capture.recording && captureVia === "extension") void enqueue(() => saveSession());
+  });
 
   async function onBar(event: BarEvent): Promise<void> {
     if (event.event === "pause") {
@@ -2013,6 +2080,7 @@ export async function startApp(opts: {
         }
       }
       replays.clear();
+      await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
   };
@@ -2159,6 +2227,72 @@ function persistedRun(
   }), extra.secretList)) as Parameters<Library["saveRun"]>[0];
 }
 
+async function runExtension(
+  library: Library,
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  notices: Notice[],
+  prompts: PersonPrompts | undefined,
+  link: ExtensionLink,
+  fromStep?: string,
+) {
+  const driver = new ExtensionDriver(link, readGestures(library.root, workflow.id), prompts, (notice) => {
+    notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
+  }, true);
+  if (workflow.startUrl.startsWith("http")) await driver.open(workflow.startUrl);
+  const secretList = workflow.inputs.flatMap((input) => {
+    if (input.type !== "secret") return [];
+    const value = args[input.name];
+    return typeof value === "string" && value ? [value] : [];
+  });
+  const heal = await healProvider(secretList);
+  const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
+  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const shotDir = path.join(library.root, "shots", "runs", runId);
+  const settings = library.settings();
+  const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
+  const reviewSteps = new Set(stepsNeedingReview(recent as Parameters<typeof stepsNeedingReview>[0]).map((item) => item.stepId));
+  let result: Awaited<ReturnType<typeof replay>>;
+  try {
+    result = await replay(workflow, args, driver, {
+      runId,
+      shotDir,
+      settings,
+      heal,
+      now: () => Date.now(),
+      receipts: receiptLog,
+      fromStepId: fromStep,
+      reviewSteps,
+      circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
+      siteTrust: trustMode(settings, originOf(workflow.startUrl)),
+      holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
+      onPause: (partial) => {
+        library.saveRun(persistedRun(partial, workflow, args, {
+          promotion: undefined,
+          recorded: { wrote: false },
+          videoStartedAt: Date.now(),
+          secretList,
+        }));
+      },
+    });
+  } finally {
+    await driver.end();
+  }
+  spillBinaryShots(result, shotDir);
+  for (const repair of result.repairs) library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
+  for (const receipt of result.receipts) library.appendTrail(workflow.id, receipt);
+  const promotion = recordProvisional(library, workflow, result.heals);
+  const saved = persistedRun(result, workflow, args, {
+    promotion,
+    recorded: { wrote: false },
+    videoStartedAt: Date.now(),
+    secretList,
+  });
+  library.saveRun(saved);
+  if (result.status !== "paused") clearPendingPrompt(library.root);
+  return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs };
+}
+
 async function runRecorded(
   library: Library,
   workflow: WorkflowV2,
@@ -2168,7 +2302,12 @@ async function runRecorded(
   prompts?: PersonPrompts,
   profileDir?: string,
   fromStep?: string,
+  link?: ExtensionLink,
 ) {
+  if (workflowDriver(workflow) === "extension") {
+    if (!link) throw new Error("extension is not connected");
+    return runExtension(library, workflow, args, notices, prompts, link, fromStep);
+  }
   const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
   const driver = new BrowserDriver(page, (notice) => {
@@ -2604,6 +2743,7 @@ function summary(doc: WorkflowV2) {
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
     startUrl: doc.startUrl,
+    driver: workflowDriver(doc),
   };
 }
 

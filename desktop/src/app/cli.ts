@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   if (cmd === "serve" || !cmd) {
     const home = flag(rest, "--home") || process.env.BAO_HOME || defaultHome();
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || 4787);
-    const app = await startApp({ home, port });
+    const app = await startApp({ home, port, extensionHost: true });
     console.log(`bao ${app.port} home ${home}`);
     await new Promise(() => {});
     return;
