@@ -1,8 +1,11 @@
 // One model pass when a recording is saved. The deterministic title is the floor.
-// A missing key, a bad reply, or a timeout leaves that title and does not fail the save.
+// The logged-in Cursor account answers first. A vendor key is the fallback.
+// No provider, a bad reply, or a timeout leaves that title and does not fail the save.
 // The result is stored on the workflow so the pass does not run again.
 
 import { isSensitiveValue } from "../../../src/mask";
+import { completeFor, saveModel } from "../eval/intent/model";
+import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
 import type { WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
 
@@ -111,6 +114,43 @@ export function applySaveEdits(
     else delete next.intent;
   }
   return next;
+}
+
+/**
+ * Cursor account via the CLI when it is logged in, then XAI_API_KEY (grok),
+ * then Groq, OpenAI, and Anthropic. Null when none of those can run.
+ * `BAO_HEAL_CURSOR_ACCOUNT=0` skips the account. `BAO_CURSOR_MODEL` selects its model.
+ */
+export async function saveCompleter(
+  env: NodeJS.ProcessEnv = process.env,
+  agent: CursorAgentRun = realCursorAgent(),
+): Promise<SaveCompleter | null> {
+  const account = await readCursorAccount(env, agent);
+  const vendor = () => saveModel(env);
+  if (!account.authenticated && !vendor().available) return null;
+  const picked = account.authenticated
+    ? { provider: "cursor", model: env.BAO_CURSOR_MODEL || "cursor-agent" }
+    : vendor();
+  const completer: SaveCompleter = {
+    provider: picked.provider,
+    model: picked.model,
+    async complete(prompt: string) {
+      if (account.authenticated) {
+        const asked = await askCursorAgent(prompt, env, agent, SAVE_TIMEOUT_MS);
+        if (asked) {
+          completer.provider = "cursor";
+          completer.model = asked.model;
+          return asked.text;
+        }
+      }
+      const info = vendor();
+      if (!info.available) throw new Error(info.reason);
+      completer.provider = info.provider;
+      completer.model = info.model;
+      return (await completeFor(info, prompt, env)).text;
+    },
+  };
+  return completer;
 }
 
 export async function inferSavedWorkflow(

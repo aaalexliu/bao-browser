@@ -60,11 +60,10 @@ import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from ".
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
 import { installDataPage } from "../v1/data-page";
-import { completeFor, saveModel } from "../eval/intent/model";
 import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
 import { isPageAct, selectCardPoster } from "../v1/poster";
-import { applySaveEdits, inferSavedWorkflow, secretValues, type SaveCompleter } from "../v1/save-intent";
+import { applySaveEdits, inferSavedWorkflow, saveCompleter, secretValues } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
 import {
   decide,
@@ -1577,16 +1576,6 @@ export async function startApp(opts: {
     };
   }
 
-  function modelForSave(): SaveCompleter | null {
-    const info = saveModel();
-    if (!info.available) return null;
-    return {
-      provider: info.provider,
-      model: info.model,
-      complete: async (prompt: string) => (await completeFor(info, prompt)).text,
-    };
-  }
-
   async function takeCardPoster(): Promise<void> {
     if (capturePosterPath || !page || page.isClosed()) return;
     try {
@@ -1635,7 +1624,7 @@ export async function startApp(opts: {
       pageTitle: capturePageTitle,
       groups: built.groups,
       secrets,
-    }, modelForSave());
+    }, await saveCompleter());
     if (pendingSave) await rm(path.join(opts.home, "shots", "pending", pendingSave.workflow.id), { recursive: true, force: true }).catch(() => undefined);
     const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
     mkdirSync(shotDir, { recursive: true });

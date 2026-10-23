@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { completeFor, configuredModel, saveModel } from "../../src/eval/intent/model";
 import { libraryTable, saveSheetView, workflowDetail } from "../../src/app/views";
+import { resetCursorAccountCache } from "../../src/v1/cursor-account";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { selectCardPoster } from "../../src/v1/poster";
 import { blankPng, isElementCrop, isFullPageShot, redactedPng } from "../../src/v1/redacted-png";
-import { applySaveEdits, inferSavedWorkflow, redactModelText, saveIntentPrompt } from "../../src/v1/save-intent";
+import { applySaveEdits, inferSavedWorkflow, redactModelText, saveCompleter, saveIntentPrompt } from "../../src/v1/save-intent";
 import { Library } from "../../src/v1/store";
 import { workflowFloorTitle } from "../../src/v1/workflow-name";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -323,7 +324,129 @@ test("the save sheet and the card show the title, summary, and full-page poster"
   assert.match(detail, /id="workflow-intent"/);
 });
 
-test("grok is the save-pass default and the other providers stay available", async () => {
+test("a logged-in Cursor account writes the summary and a disabled account falls back to grok", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-save-agent-"));
+  const bin = path.join(dir, "agent");
+  const log = path.join(dir, "args.json");
+  const stdin = path.join(dir, "stdin.txt");
+  writeFileSync(bin, `#!${process.execPath}
+const fs = require("fs");
+const args = process.argv.slice(2);
+const leaked = Object.keys(process.env).filter((key) => /API_KEY|API_TOKEN/i.test(key));
+if (process.env.BAO_AGENT_LOG) fs.writeFileSync(process.env.BAO_AGENT_LOG, JSON.stringify({ args, leaked }));
+if (args[0] === "status") {
+  process.stdout.write(JSON.stringify({ status: "authenticated", isAuthenticated: true, hasAccessToken: true, hasRefreshToken: true }));
+  process.exit(0);
+}
+let input = "";
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  if (process.env.BAO_AGENT_STDIN) fs.writeFileSync(process.env.BAO_AGENT_STDIN, input);
+  const modelAt = args.indexOf("--model");
+  const model = modelAt >= 0 ? args[modelAt + 1] : "Composer";
+  const lines = [
+    { type: "system", subtype: "init", apiKeySource: "login", model, session_id: "s" },
+    { type: "result", subtype: "success", is_error: false, result: process.env.BAO_AGENT_REPLY || "", session_id: "s" },
+  ];
+  process.stdout.write(lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
+  process.exit(0);
+});
+`);
+  chmodSync(bin, 0o755);
+  const events = booking();
+  const doc = interpret(events, { id: "wf-cursor", startUrl: HOST });
+  const floor = workflowFloorTitle({ startUrl: HOST, events, steps: doc.steps });
+  const source = { floorTitle: floor, startUrl: HOST, events, steps: doc.steps };
+  const reply = JSON.stringify({
+    title: "Reserve a room",
+    summary: "Books a table through Cursor.",
+    intent: "Get a table.",
+    steps: [{ id: doc.steps[0]!.id, intent: "Open the booking page." }],
+  });
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    BAO_CURSOR_AGENT: bin,
+    BAO_AGENT_LOG: log,
+    BAO_AGENT_STDIN: stdin,
+    BAO_CURSOR_MODEL: "composer-save",
+    BAO_AGENT_REPLY: reply,
+    XAI_API_KEY: "xai-test",
+  };
+  delete env.BAO_HEAL_CURSOR_ACCOUNT;
+  delete env.GROQ_API_KEY;
+  delete env.OPENAI_API_KEY;
+  delete env.ANTHROPIC_API_KEY;
+  delete env.CURSOR_API_KEY;
+  const original = globalThis.fetch;
+  let fetches = 0;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    throw new Error("vendor key must not run while the Cursor account is logged in");
+  };
+  resetCursorAccountCache();
+  try {
+    const completer = await saveCompleter(env);
+    assert.ok(completer);
+    const saved = await inferSavedWorkflow(doc, source, completer, 11);
+    assert.equal(saved.name, "Reserve a room");
+    assert.equal(saved.summary, "Books a table through Cursor.");
+    assert.equal(saved.intent, "Get a table.");
+    assert.equal(saved.steps[0]?.intent, "Open the booking page.");
+    assert.equal(saved.inference?.status, "ok");
+    assert.equal(saved.inference?.provider, "cursor");
+    assert.equal(saved.inference?.model, "composer-save");
+    assert.equal(fetches, 0);
+    const recorded = JSON.parse(readFileSync(log, "utf8")) as { args: string[]; leaked: string[] };
+    assert.equal(recorded.args.includes("--api-key"), false);
+    assert.equal(recorded.args.includes("--print"), true);
+    assert.equal(recorded.args.includes("ask"), true);
+    assert.equal(recorded.args.includes("stream-json"), true);
+    assert.equal(recorded.args[recorded.args.indexOf("--model") + 1], "composer-save");
+    assert.equal(recorded.leaked.length, 0);
+    assert.equal(JSON.stringify(recorded.args).includes("Name this recorded workflow"), false);
+    const sent = readFileSync(stdin, "utf8");
+    assert.match(sent, /Name this recorded workflow/);
+    assert.equal(sent.includes("xai-test"), false);
+
+    rmSync(log, { force: true });
+    rmSync(stdin, { force: true });
+    fetches = 0;
+    let url = "";
+    globalThis.fetch = async (input) => {
+      fetches += 1;
+      url = String(input);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({
+          title: "Vendor title",
+          summary: "Books a table through grok.",
+          intent: "Get a table from the vendor.",
+          steps: [],
+        }) } }],
+      }));
+    };
+    const disabled: NodeJS.ProcessEnv = { ...env, BAO_HEAL_CURSOR_ACCOUNT: "0" };
+    resetCursorAccountCache();
+    const fallback = await saveCompleter(disabled);
+    assert.ok(fallback);
+    assert.equal(fallback.provider, "grok");
+    const vendorDoc = interpret(events, { id: "wf-vendor", startUrl: HOST });
+    const vendorSaved = await inferSavedWorkflow(vendorDoc, source, fallback, 12);
+    assert.equal(vendorSaved.summary, "Books a table through grok.");
+    assert.equal(vendorSaved.inference?.status, "ok");
+    assert.equal(vendorSaved.inference?.provider, "grok");
+    assert.equal(vendorSaved.inference?.model, "grok-4.7");
+    assert.equal(url, "https://api.x.ai/v1/chat/completions");
+    assert.equal(fetches, 1);
+    assert.equal(existsSync(log), false);
+    assert.equal(existsSync(stdin), false);
+  } finally {
+    globalThis.fetch = original;
+    resetCursorAccountCache();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("grok is the first vendor fallback and the other providers stay available", async () => {
   const none = saveModel({});
   assert.equal(none.available, false);
   assert.match(none.reason, /XAI_API_KEY/);

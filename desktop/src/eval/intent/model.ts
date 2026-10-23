@@ -60,7 +60,7 @@ export function configuredModel(env: NodeJS.ProcessEnv = process.env): ModelInfo
   };
 }
 
-/** Grok is the default for the save-time summary. Groq, OpenAI, and Anthropic are fallbacks. */
+/** Vendor fallback after the Cursor account. Grok, then Groq, OpenAI, and Anthropic. */
 export function saveModel(env: NodeJS.ProcessEnv = process.env): ModelInfo {
   if (env.XAI_API_KEY) return grokInfo(env);
   return configuredModel(env);
