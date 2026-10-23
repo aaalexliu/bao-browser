@@ -792,7 +792,7 @@ test("owned Chrome launch args do not hide automation", () => {
   const joined = OWNED_CHROME_ARGS.join(" ");
   assert.equal(joined.includes("AutomationControlled"), false);
   assert.equal(joined.includes("disable-blink-features"), false);
-  assert.equal(OWNED_CHROME_ARGS.includes("--restore-last-session"), true);
+  assert.equal(OWNED_CHROME_ARGS.includes("--restore-last-session"), false);
 });
 
 test("the login routes refuse a read without a click and hide storage values", async () => {

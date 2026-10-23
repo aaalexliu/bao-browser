@@ -2098,5 +2098,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 void refresh();
-setInterval(() => { refresh().catch(() => undefined); }, 400);
+// The login bar has to be on screen within a second of replay. This poll is what paints it.
+let polling = false;
+setInterval(() => {
+  if (polling) return;
+  polling = true;
+  refresh().catch(() => undefined).finally(() => { polling = false; });
+}, 100);
 setInterval(tickClock, 250);

@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome, pidsForDataDir, productHeadless } from "../launch";
+import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
@@ -377,7 +377,7 @@ async function replayInBrowser(
     page.setDefaultNavigationTimeout(20000);
     page.setDefaultTimeout(15000);
     if (workflow.startUrl.startsWith("http")) {
-      await page.goto(workflow.startUrl, { waitUntil: "domcontentloaded" });
+      await navigateOwned(page, workflow.startUrl, { waitUntil: "domcontentloaded" });
     }
     const trail: RunTrailEvent[] = [];
     const driver = new BrowserDriver(page);

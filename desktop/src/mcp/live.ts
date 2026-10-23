@@ -7,7 +7,7 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { FileChooser, Page } from "playwright";
-import { launchOwnedChrome, productHeadless } from "../launch";
+import { launchOwnedChrome, navigateOwned, productHeadless } from "../launch";
 import { osHit, osNodes } from "../proxy/os";
 import type { TrailEvent } from "../v1/interpret";
 import type { Identity } from "../v1/schema";
@@ -87,7 +87,7 @@ export class LiveSession {
     });
     const page = context.pages()[0] || await context.newPage();
     const url = env.BAO_MCP_URL || "about:blank";
-    if (url !== "about:blank") await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    if (url !== "about:blank") await navigateOwned(page, url, { waitUntil: "domcontentloaded", timeout: 30000 });
     const session = new LiveSession(trailPath, secrets, surface, page, screen, helper);
     session.write({
       id: "live-nav",

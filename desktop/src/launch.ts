@@ -4,10 +4,10 @@
 // only used when a caller asks for page.video().
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { chromium, type BrowserContext } from "playwright";
+import { chromium, type BrowserContext, type Page } from "playwright";
 import { assertNotDailyChrome } from "./profile";
 
 export const ACCOUNT_CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -27,11 +27,14 @@ export const OWNED_CHROME_ARGS = [
   "--no-first-run",
   "--no-default-browser-check",
   "--disable-sync",
-  // Continue where you left off. Chrome then keeps session cookies on a clean exit.
-  "--restore-last-session",
 ];
 
-/** Chrome's "Continue where you left off". Session cookies survive a clean exit. */
+/**
+ * Chrome's "Continue where you left off". Session cookies survive a clean exit.
+ * The launch does not pass --restore-last-session: that flag reopens a tab, and
+ * the restored navigation races the first replay. Saved tab files are removed
+ * instead, and the window is parked on about:blank.
+ */
 export const RESTORE_LAST_SESSION = 1;
 
 export function keepSessionCookies(userDataDir: string): void {
@@ -51,6 +54,15 @@ export function keepSessionCookies(userDataDir: string): void {
   session.restore_on_startup = RESTORE_LAST_SESSION;
   prefs.session = session;
   writeFileSync(file, JSON.stringify(prefs));
+}
+
+/** Drop saved tabs. The startup preference still keeps session cookies. */
+export function discardRestoredTabs(userDataDir: string): void {
+  const base = path.join(userDataDir, "Default");
+  for (const name of ["Current Session", "Current Tabs", "Last Session", "Last Tabs"]) {
+    rmSync(path.join(base, name), { force: true });
+  }
+  rmSync(path.join(base, "Sessions"), { recursive: true, force: true });
 }
 
 /**
@@ -81,6 +93,7 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     "--use-mock-keychain",
     "--password-store=basic",
     "--enable-unsafe-swiftshader",
+    "--restore-last-session",
   ]);
   const cleaned = extra.filter((arg) => {
     if (drop.has(arg)) return false;
@@ -151,6 +164,33 @@ function freeLoopbackPort(): Promise<number> {
   });
 }
 
+/**
+ * A port in this process's slice of the ephemeral range. Two launches that
+ * both take the port the kernel just released can attach to one Chrome, and
+ * closing either one closes both. Different processes start at different ports.
+ */
+async function ownedDebugPort(): Promise<number> {
+  const start = 20000 + (process.pid % 20000);
+  for (let offset = 0; offset < 32; offset++) {
+    const port = (start + offset) % 20000 + 20000;
+    if (port === 9222) continue;
+    if (await loopbackPortFree(port)) return port;
+  }
+  let port = await freeLoopbackPort();
+  if (port === 9222) port = await freeLoopbackPort();
+  return port;
+}
+
+function loopbackPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
 async function waitForCdp(port: number): Promise<void> {
   const deadline = Date.now() + 15000;
   let last = "not open";
@@ -167,6 +207,71 @@ async function waitForCdp(port: number): Promise<void> {
   throw new Error(`Chrome debugging port did not open (${last})`);
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Startup page Chrome opens when it has no tabs to restore. */
+function startupUrl(url: string): boolean {
+  return url === "about:blank"
+    || url === ""
+    || url.startsWith("chrome://new-tab-page")
+    || url.startsWith("chrome://newtab");
+}
+
+/**
+ * One blank tab whose blank navigation has committed. Saved tabs are already
+ * gone, so this replaces the new-tab page before the caller navigates.
+ */
+async function parkOnBlank(context: BrowserContext): Promise<void> {
+  const appear = Date.now() + 5000;
+  while (context.pages().every((page) => page.isClosed()) && Date.now() < appear) await delay(50);
+  const limit = Date.now() + 8000;
+  let keep: Page | undefined;
+  while (Date.now() < limit) {
+    const open = context.pages().filter((page) => !page.isClosed());
+    keep = open[0] ?? await context.newPage();
+    for (const page of open.slice(1)) await page.close().catch(() => undefined);
+    if (keep.url() !== "about:blank") {
+      await keep.goto("about:blank", { waitUntil: "commit", timeout: 5000 }).catch(() => undefined);
+      continue;
+    }
+    await delay(50);
+    const still = context.pages().filter((page) => !page.isClosed());
+    if (still.length === 1 && still[0] === keep && keep.url() === "about:blank") return;
+  }
+  const left = context.pages().filter((page) => !page.isClosed()).map((page) => page.url());
+  throw new Error(`Chrome did not settle on a blank page (${left.join(", ") || "no page"})`);
+}
+
+function navigationInterrupted(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /interrupted by another navigation|net::ERR_ABORTED/i.test(message);
+}
+
+/**
+ * The first capture or replay navigation. The window is already on about:blank.
+ * A navigation that is interrupted, or that never leaves the startup page, is
+ * retried. A redirect away from that page is the site's own navigation.
+ */
+export async function navigateOwned(page: Page, url: string, opts?: { waitUntil?: "commit" | "domcontentloaded" | "load" | "networkidle"; timeout?: number }): Promise<void> {
+  const waitUntil = opts?.waitUntil ?? "load";
+  const timeout = opts?.timeout ?? 30000;
+  let last = "not started";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await page.goto(url, { waitUntil, timeout });
+    } catch (err) {
+      last = err instanceof Error ? err.message.split("\n")[0] : String(err);
+      if (attempt === 2 || !navigationInterrupted(err)) throw err;
+      continue;
+    }
+    if (!startupUrl(page.url())) return;
+    last = page.url();
+  }
+  throw new Error(`Navigation to ${url} did not leave the startup page (${last})`);
+}
+
 /**
  * Account browser: the user's Chrome, our profile, then a CDP attach.
  * Headless and headed both go through launchOwnedChrome. noDefaults skips
@@ -180,21 +285,27 @@ export async function launchAccountChrome(opts: {
   if (opts.headless) return launchOwnedChrome(opts);
   assertNotDailyChrome(opts.userDataDir);
   keepSessionCookies(opts.userDataDir);
+  discardRestoredTabs(opts.userDataDir);
   const exe = resolveAccountChrome();
-  let port = await freeLoopbackPort();
-  if (port === 9222) port = await freeLoopbackPort();
+  const port = await ownedDebugPort();
   const args = accountLaunchArgs(port);
   const child: ChildProcess = spawn(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], { stdio: "ignore" });
+  try {
+    await waitForCdp(port);
+  } catch (err) {
+    if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
+    throw err;
+  }
   const stop = () => {
     if (child.exitCode == null) child.kill("SIGTERM");
   };
   try {
-    await waitForCdp(port);
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { noDefaults: true });
     const context = browser.contexts()[0];
     if (!context) throw new Error("Chrome opened without a profile context");
     const verdict = assessOwnedCommand(readOwnedCommand(child.pid, opts.userDataDir, process.platform), opts.userDataDir);
     if (!verdict.ok) throw new Error(verdict.reason);
+    await parkOnBlank(context);
     browser.on("disconnected", stop);
     const orig = context.close.bind(context);
     context.close = async () => {
@@ -256,10 +367,10 @@ async function launchNormalChrome(opts: {
   assertNotDailyChrome(opts.userDataDir);
   mkdirSync(opts.userDataDir, { recursive: true });
   keepSessionCookies(opts.userDataDir);
+  discardRestoredTabs(opts.userDataDir);
   const exe = resolveNormalChrome();
-  let port = await freeLoopbackPort();
-  if (port === 9222) port = await freeLoopbackPort();
   const headless = opts.headless ?? true;
+  const port = await ownedDebugPort();
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args),
@@ -267,17 +378,23 @@ async function launchNormalChrome(opts: {
     ...(headless ? ["--headless=new"] : []),
   ];
   const child: ChildProcess = spawn(exe, args, { stdio: "ignore" });
+  try {
+    await waitForCdp(port);
+  } catch (err) {
+    if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
+    throw err;
+  }
   const stop = () => {
     if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
   };
   try {
-    await waitForCdp(port);
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { noDefaults: true });
     const context = browser.contexts()[0];
     if (!context) throw new Error("Chrome opened without a profile context");
     if (opts.deviceScaleFactor && opts.deviceScaleFactor !== 1) await applyDeviceScale(context, opts.deviceScaleFactor);
     const verdict = assessOwnedCommand(readOwnedCommand(child.pid, opts.userDataDir, process.platform), opts.userDataDir);
     if (!verdict.ok) throw new Error(verdict.reason);
+    await parkOnBlank(context);
     let closed = false;
     browser.on("disconnected", () => {
       if (!closed) stop();
@@ -345,6 +462,7 @@ async function launchOwnedChromeForVideo(opts: {
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   keepSessionCookies(opts.userDataDir);
+  discardRestoredTabs(opts.userDataDir);
   const exe = resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,
@@ -358,6 +476,7 @@ async function launchOwnedChromeForVideo(opts: {
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);
+    await parkOnBlank(ctx);
   } catch (err) {
     await ctx.close();
     throw err;

@@ -9,7 +9,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome, pidsForDataDir, productHeadless } from "../launch";
+import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
@@ -1431,7 +1431,7 @@ export async function startApp(opts: {
         }));
       });
       captureOpenUrl = startUrl;
-      await page.goto(startUrl);
+      await navigateOwned(page, startUrl);
       // The init script does not observe this goto, and a later page.url() is not
       // the URL the capture began on. Record that opening navigation explicitly.
       if (sessionMode === "capture") capture.push({ kind: "act", op: "navigate", beforeUrl: startUrl, afterUrl: startUrl });
@@ -1822,7 +1822,7 @@ export async function startApp(opts: {
     const session = await openReplay(library, workflow.id, replays, baoProfile);
     const page = session.page;
     const driver = new BrowserDriver(page, undefined, prompts);
-    if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
+    if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
     await driver.watchGuide();
     const runId = `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const first = workflow.steps[0];
@@ -2003,13 +2003,13 @@ export async function startApp(opts: {
     }
     if (watch && !watch.page.isClosed()) {
       if (startUrl.startsWith("http") && !sameTarget(watch.page.url(), startUrl)) {
-        await watch.page.goto(startUrl, { waitUntil: "domcontentloaded" });
+        await navigateOwned(watch.page, startUrl, { waitUntil: "domcontentloaded" });
       }
       return watch.page;
     }
     if (site && !site.page.isClosed()) {
       if (startUrl.startsWith("http") && !sameTarget(site.page.url(), startUrl)) {
-        await site.page.goto(startUrl, { waitUntil: "domcontentloaded" });
+        await navigateOwned(site.page, startUrl, { waitUntil: "domcontentloaded" });
       }
       watch = { context: site.context, page: site.page, profile: site.profile };
       return site.page;
@@ -2017,7 +2017,7 @@ export async function startApp(opts: {
     mkdirSync(baoProfile, { recursive: true });
     const opened = await launchOwnedChrome({ userDataDir: baoProfile, headless: productHeadless() });
     const live = opened.pages()[0] || await opened.newPage();
-    if (startUrl.startsWith("http")) await live.goto(startUrl, { waitUntil: "domcontentloaded" });
+    if (startUrl.startsWith("http")) await navigateOwned(live, startUrl, { waitUntil: "domcontentloaded" });
     watch = { context: opened, page: live, profile: baoProfile };
     return live;
   }
@@ -2211,7 +2211,7 @@ async function runRecorded(
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
   }, prompts);
   driver.markStep("open");
-  if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
+  if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
   const secretList = workflow.inputs.flatMap((input) => {
     if (input.type !== "secret") return [];
     const value = args[input.name];
