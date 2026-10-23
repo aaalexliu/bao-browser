@@ -14,6 +14,17 @@ export interface ModelReply {
 }
 
 const GROQ_MODEL = "openai/gpt-oss-120b";
+const XAI_MODEL = "grok-4.7";
+
+function grokInfo(env: NodeJS.ProcessEnv): ModelInfo {
+  const model = env.BAO_XAI_MODEL || XAI_MODEL;
+  return {
+    provider: "grok",
+    model,
+    available: true,
+    reason: `XAI_API_KEY set, model ${model}`,
+  };
+}
 
 export function configuredModel(env: NodeJS.ProcessEnv = process.env): ModelInfo {
   if (env.GROQ_API_KEY) {
@@ -40,17 +51,28 @@ export function configuredModel(env: NodeJS.ProcessEnv = process.env): ModelInfo
       reason: "ANTHROPIC_API_KEY set",
     };
   }
+  if (env.XAI_API_KEY) return grokInfo(env);
   return {
     provider: "none",
     model: "",
     available: false,
-    reason: "GROQ_API_KEY, OPENAI_API_KEY, and ANTHROPIC_API_KEY are unset",
+    reason: "XAI_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, and ANTHROPIC_API_KEY are unset",
   };
 }
 
+/** Vendor fallback after the Cursor account. Grok, then Groq, OpenAI, and Anthropic. */
+export function saveModel(env: NodeJS.ProcessEnv = process.env): ModelInfo {
+  if (env.XAI_API_KEY) return grokInfo(env);
+  return configuredModel(env);
+}
+
 export async function complete(prompt: string, env: NodeJS.ProcessEnv = process.env): Promise<ModelReply> {
-  const info = configuredModel(env);
+  return completeFor(configuredModel(env), prompt, env);
+}
+
+export async function completeFor(info: ModelInfo, prompt: string, env: NodeJS.ProcessEnv = process.env): Promise<ModelReply> {
   if (!info.available) throw new Error(info.reason);
+  if (info.provider === "grok") return chat("https://api.x.ai/v1/chat/completions", env.XAI_API_KEY || "", info.model, prompt);
   if (info.provider === "groq") return chat("https://api.groq.com/openai/v1/chat/completions", env.GROQ_API_KEY || "", info.model, prompt);
   if (info.provider === "openai") return chat("https://api.openai.com/v1/chat/completions", env.OPENAI_API_KEY || "", info.model, prompt);
   return anthropic(env.ANTHROPIC_API_KEY || "", info.model, prompt);

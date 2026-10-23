@@ -787,7 +787,26 @@ function installGuideWatch(): void {
   }, true);
 }
 
-/** Crop around the step's target and outline it. A full-page picture is not used. */
+/**
+ * The whole page, with password fields covered. Not a control crop.
+ * A scrolling capture is tried first and gives up quickly; the viewport is the fallback.
+ */
+export async function pagePoster(page: Page): Promise<Buffer | undefined> {
+  await page.evaluate(maskPasswordFields).catch(() => undefined);
+  try {
+    try {
+      return await shotWithBlur(page, { type: "png", fullPage: true, timeout: 4000 });
+    } catch {
+      return await shotWithBlur(page, { type: "png", timeout: 4000 });
+    }
+  } catch {
+    return undefined;
+  } finally {
+    await page.evaluate(unmaskPasswordFields).catch(() => undefined);
+  }
+}
+
+/** Crop around the step's target and outline it. The card poster does not use this. */
 export async function elementShot(page: Page, target?: ShotTarget, opts?: { blur?: boolean }): Promise<Buffer | undefined> {
   try {
     await page.evaluate(maskPasswordFields).catch(() => undefined);

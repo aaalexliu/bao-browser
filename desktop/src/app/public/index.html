@@ -314,15 +314,23 @@
       display: grid;
       grid-template-columns: 1fr;
       grid-template-areas: "title" "thumb" "mid" "foot";
-      grid-template-rows: 28px 148px minmax(28px, 1fr) 32px;
+      grid-template-rows: auto 148px auto 32px;
       gap: 8px;
       margin: 0;
       align-items: stretch;
-      height: 276px;
+      height: auto;
+      min-height: 276px;
       padding: 12px;
     }
-    .wf-title { grid-area: title; margin: 0; text-align: left; align-self: center; }
-    .wf-title button.link { color: var(--ink); font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.02em; }
+    .wf-title { grid-area: title; margin: 0; text-align: left; align-self: center; min-width: 0; }
+    .wf-title button.link { color: var(--ink); font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.02em; display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+    .wf-summary { margin: 0 0 4px; color: var(--quiet); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #sheet { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, 0.28); padding: 24px; }
+    #sheet:empty { display: none; }
+    #save-sheet { width: min(440px, calc(100vw - 32px)); background: var(--card); color: var(--ink); border-radius: 16px; padding: 20px; display: grid; gap: 10px; }
+    #save-sheet label { display: grid; gap: 4px; font-weight: 600; }
+    #save-sheet input, #save-sheet textarea { font-weight: 400; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    #save-sheet .thumb { height: 160px; border-radius: 10px; overflow: hidden; background: var(--select); }
     .wf-mid { grid-area: mid; min-width: 0; align-self: center; }
     .wf-foot { grid-area: foot; display: flex; align-items: center; gap: 10px; min-width: 0; height: 32px; }
     .wf-foot .spark { flex: 1; }
@@ -338,6 +346,7 @@
     .wf-card .thumb { height: 148px; }
     .thumb.mini { width: 96px; height: 64px; flex: none; }
     .thumb img, .frame img, .shot-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; border: 0; }
+    .wf-card .thumb img, #save-sheet .thumb img { object-fit: cover; object-position: top center; }
     .ph { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 4px; padding: 6px; color: var(--quiet); text-align: center; }
     .ph-ico svg { width: 18px; height: 18px; }
     .ph-label { font-size: 11px; line-height: 1.2; max-width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -651,6 +660,7 @@
     </div>
   </div>
   <div id="float"></div>
+  <div id="sheet"></div>
   <div id="palette" hidden></div>
   <script src="/app.js"></script>
 </body>

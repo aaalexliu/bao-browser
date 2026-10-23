@@ -675,7 +675,7 @@ function writeSample(home: string, name: string): string {
 
 function redact(text: string): string {
   let out = text;
-  for (const secret of [process.env.GROQ_API_KEY, process.env.OPENAI_API_KEY, process.env.ANTHROPIC_API_KEY, CAPTURE_SECRET]) {
+  for (const secret of [process.env.XAI_API_KEY, process.env.GROQ_API_KEY, process.env.OPENAI_API_KEY, process.env.ANTHROPIC_API_KEY, CAPTURE_SECRET]) {
     if (secret) out = out.split(secret).join("[redacted]");
   }
   return out.replace(/\/(?:var\/folders|private\/tmp|tmp)\/[^\s'")]+/g, "[tmp]");
