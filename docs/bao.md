@@ -16,13 +16,15 @@ The unpacked extension loaded, the native host completed hello, and a click on C
 
 `https://nowsecure.nl/` cleared to "NOWSECURE BY NODRIVER" for the human navigation and for the extension. Across 10 runs the challenge counts were human 0/10, extension 0/10, Playwright 10/10 on the Turnstile. The widget was not clicked. `https://bluefish.impvdemo.com/abp/` challenged none of the three (0/10). That URL is an Imperva demo form, not a wall.
 
-The polymer shop recording paused at Place Order on the extension (`pausedKind: confirm`, zero model calls). Playwright's replay of that same recording showed the YouTube shirt at $29.50 and paused at the same gate.
+A content-script `element.click()` is `isTrusted: false`. The same click through `Input.dispatchMouseEvent`, and typing through `Input.insertText`, are `isTrusted: true`. With the debugger attached, `navigator.webdriver` stayed false and the viewport did not shrink (`innerHeight` delta 0). This Chrome for Testing build did not paint a "started debugging this browser" bar. The toolbar badge still says REC or RUN. The debugger detaches when the action finishes.
 
-### What failed
+automationexercise replayed 2/2 on the extension and passed on Playwright, with zero model calls: ACCOUNT CREATED, the contact-form success line, the uploaded file name, and ACCOUNT DELETED. Books to Scrape replayed 2/2 and passed on Playwright: 11 Travel rows and 26 Historical Fiction rows, each scored against a books CSV. The polymer shop replayed 2/2 and passed on Playwright, with zero model calls: the YouTube Organic Cotton shirt at $29.50, paused at Place Order (`pausedKind: confirm`).
 
-The extension's captured text for that shop run did not include the shirt at $29.50, so the cart check failed even though the confirm gate held. The automationexercise recording reached ACCOUNT CREATED on the first extension replay and then missed the contact success line, the uploaded file name, and ACCOUNT DELETED. The books extract was recorded; the scorer threw `Cannot read properties of undefined (reading 'map')` before it could score the CSV.
+A native `<select>` is set from the page and held on that option, because the shop writes the quantity back to 1 when the product data arrives. A click waits for an in-flight XHR on that tab. The shop cart is stored in the page, so a replay zeros that storage after the page loads and loads once more; otherwise the recorded cart is added a second time.
 
-Content-script clicks and typing are `isTrusted: false`. The toolbar badge is on during record and replay. File inputs attach `chrome.debugger` and detach. Those are left in place. Spoofing `navigator` or the TLS handshake is out of scope, and so is clicking a challenge widget.
+### What stayed out
+
+Spoofing `navigator` or the TLS handshake is out of scope, and so is clicking a challenge widget. `captureVisibleTab` still throws without an install-time host permission, so the proof's window shots are the ones that count.
 
 ## 2026-10-21 — Real-app drift and multi-locator
 

@@ -55,7 +55,7 @@ export interface RunView {
   steps?: { id: string; status: string; reason?: string; phase?: string; snapshot?: { ax?: string; dom?: { text?: string; name?: string }[] } }[];
   ask?: { kind?: string; instruction?: string };
   bounds?: { width?: number; height?: number };
-  outputs?: { name?: string; type?: string; rows?: Record<string, string>[] }[];
+  outputs?: { name?: string; type?: string; rows?: Record<string, string>[]; columns?: { name: string }[] }[];
 }
 
 interface ReplayScore {

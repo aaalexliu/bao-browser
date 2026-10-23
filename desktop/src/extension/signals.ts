@@ -41,8 +41,8 @@ const RULES: CauseRule[] = [
   {
     test: /^event\.isTrusted$/,
     when: "extension",
-    cause: "A click dispatched from a content script is untrusted. chrome.debugger can produce trusted input, and Chrome then shows the debugging infobar, which is its own tell. Replay stays off the debugger except for a file input.",
-    fix: "No in-page fix that keeps the event trusted without the debugger bar or spoofing isTrusted.",
+    cause: "A click dispatched from a content script is untrusted. Replay dispatches that click and the keystrokes through chrome.debugger, which the page sees as trusted, and detaches when the action finishes.",
+    fix: "Use Input.dispatchMouseEvent and Input.insertText so the action stays trusted, then detach. Do not spoof isTrusted from the page.",
   },
   {
     test: /^timing\./,
@@ -89,8 +89,8 @@ const RULES: CauseRule[] = [
   {
     test: /^debugger\./,
     when: "any",
-    cause: "Attaching chrome.debugger paints Chrome's debugging infobar and can shrink the viewport. The page's navigator.webdriver stays false. File inputs are the only replay path that attaches, and they detach immediately.",
-    fix: "Prefer element.click and InputEvent. Use the debugger only for DOM.setFileInputFiles.",
+    cause: "Attaching chrome.debugger can paint Chrome's debugging infobar. The page's navigator.webdriver stays false. Clicks, typing, and file inputs attach for that action and detach when it finishes.",
+    fix: "Dispatch the action through Input.dispatchMouseEvent or Input.insertText, then detach. Do not leave the debugger attached, and do not spoof navigator.",
   },
 ];
 

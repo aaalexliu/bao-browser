@@ -324,6 +324,11 @@ export function recorderSource(): string {
     }, true);
     document.addEventListener("click", (event) => {
       if (window.__baoPicking) return;
+      // A fill focuses the field with a real click. That click is not a step.
+      if (document.documentElement && document.documentElement.getAttribute("data-bao-ignore-click") === "1") {
+        document.documentElement.removeAttribute("data-bao-ignore-click");
+        return;
+      }
       if (event.detail === 0 && Date.now() < suppressClickUntil) return;
       const raw = eventEl(event);
       if (raw && raw.closest && raw.closest("input[type=file]")) return;
@@ -394,6 +399,8 @@ export function recorderSource(): string {
         send({ kind: "act", op: "click", picker: true, value: range.start, endValue: range.end, identity: ident(cal) });
       }, 250);
     }, true);
+    // insertText fires input. change may also fire for the same value. Record one.
+    const lastTyped = new WeakMap();
     document.addEventListener("input", (event) => {
       const el = eventEl(event);
       if (!el) return;
@@ -408,10 +415,14 @@ export function recorderSource(): string {
       const combo = comboId.indexOf("react-select-") === 0
         || el.getAttribute("role") === "combobox"
         || el.getAttribute("aria-autocomplete") === "list";
-      if (!combo) return;
-      const value = norm(el.value == null ? "" : String(el.value));
-      if (!value) return;
-      send({ kind: "act", op: "type", identity: ident(el), value: value });
+      const kind = String(el.type || "").toLowerCase();
+      if (el.tagName === "SELECT" || kind === "checkbox" || kind === "radio" || kind === "file" || kind === "button" || kind === "submit") return;
+      if (!combo && (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
+      const valueNow = el.value == null ? "" : String(el.value);
+      if (!norm(valueNow)) return;
+      if (lastTyped.get(el) === valueNow) return;
+      lastTyped.set(el, valueNow);
+      send({ kind: "act", op: "type", identity: ident(el), value: valueNow });
     }, true);
     // One change event is delivered to every shadow listener and to document.
     // Record it once. A later change on the same control is a new event.
@@ -429,7 +440,11 @@ export function recorderSource(): string {
       if (el.tagName === "SELECT") {
         const option = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
         const label = norm(option && (option.label || option.text) || "");
-        send({ kind: "act", op: "select", identity: ident(el), value: label || el.value || "" });
+        const picked = label || el.value || "";
+        const mark = "select:" + picked;
+        if (lastTyped.get(el) === mark) return;
+        lastTyped.set(el, mark);
+        send({ kind: "act", op: "select", identity: ident(el), value: picked });
         return;
       }
       const kind = (el.type || "").toLowerCase();
@@ -454,12 +469,15 @@ export function recorderSource(): string {
       }
       // The input listener already kept the combobox text. change would append it again.
       if ((el.id || "").indexOf("react-select-") === 0 || el.getAttribute("role") === "combobox" || el.getAttribute("aria-autocomplete") === "list") return;
-      if (!norm(el.value == null ? "" : String(el.value))) return;
+      const valueNow = el.value == null ? "" : String(el.value);
+      if (!norm(valueNow)) return;
+      if (lastTyped.get(el) === valueNow) return;
+      lastTyped.set(el, valueNow);
       if (el.type === "date" || dateLike(el)) {
-        send({ kind: "act", op: "type", identity: ident(el), value: el.value, dateField: true, inputType: el.type || "text" });
+        send({ kind: "act", op: "type", identity: ident(el), value: valueNow, dateField: true, inputType: el.type || "text" });
         return;
       }
-      send({ kind: "act", op: "type", identity: ident(el), value: el.value });
+      send({ kind: "act", op: "type", identity: ident(el), value: valueNow });
     };
     document.addEventListener("change", onChange, true);
     // change does not cross a shadow root, so a select or typed field inside

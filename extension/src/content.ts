@@ -41,12 +41,18 @@ declare global {
   let lastAct = performance.now();
   let lastKey = 0;
   let lastPointer = 0;
+  let lastClickTrusted: boolean | null = null;
+  let lastKeyTrusted: boolean | null = null;
+  let lastInputTrusted: boolean | null = null;
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function note(event: Event): void {
     const now = performance.now();
     const trusted = event.isTrusted;
+    if (event.type === "click") lastClickTrusted = trusted;
+    if (event.type === "keydown") lastKeyTrusted = trusted;
+    if (event.type === "input" || event.type === "beforeinput") lastInputTrusted = trusted;
     const pointer = event instanceof PointerEvent || event instanceof MouseEvent;
     const key = event instanceof KeyboardEvent;
     if (pointer && event.type === "pointermove") {
@@ -82,7 +88,7 @@ declare global {
     }
   }
 
-  for (const type of ["pointermove", "pointerdown", "click", "keydown", "keyup"]) {
+  for (const type of ["pointermove", "pointerdown", "click", "keydown", "keyup", "beforeinput", "input"]) {
     document.addEventListener(type, note, true);
   }
 
@@ -161,7 +167,28 @@ declare global {
       }
     };
     walk(root);
-    return found.find(shown) || found[0] || null;
+    const visible = found.filter(shown);
+    const pool = visible.length ? visible : found;
+    // A link under the app shell still has a box. Prefer the one the pointer can hit.
+    const hittable = pool.find((el) => pointerHits(el));
+    return hittable || pool[0] || null;
+  }
+
+  function pointerHits(el: Element): boolean {
+    const rects = el.getClientRects();
+    const boxes: DOMRect[] = [];
+    for (let i = 0; i < rects.length; i++) {
+      const rect = rects.item(i);
+      if (rect && rect.width >= 1 && rect.height >= 1) boxes.push(rect);
+    }
+    if (!boxes.length) boxes.push(el.getBoundingClientRect());
+    for (const rect of boxes) {
+      const x = rect.left + Math.min(rect.width / 2, Math.max(rect.width - 2, 1));
+      const y = rect.top + Math.min(rect.height / 2, Math.max(rect.height - 2, 1));
+      if (x < 1 || y < 1 || x > window.innerWidth - 1 || y > window.innerHeight - 1) continue;
+      if (onTarget(el, document.elementFromPoint(x, y))) return true;
+    }
+    return false;
   }
 
   function byHandle(handle: string): Element | null {
@@ -222,96 +249,189 @@ declare global {
     return pool[0] || null;
   }
 
-  function setNativeValue(el: Element, value: string): void {
-    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const desc = Object.getOwnPropertyDescriptor(proto, "value");
-    if (desc?.set) desc.set.call(el, value);
-    else if ("value" in el) (el as HTMLInputElement).value = value;
-  }
-
-  async function fill(el: Element, text: string, gesture?: Gesture): Promise<void> {
-    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) throw new Error("not a field");
-    el.focus();
-    const gaps = gesture?.keyGaps || [];
-    const max = capOf(gesture);
-    if (!gaps.length) {
-      setNativeValue(el, text);
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }));
-      el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-      return;
-    }
-    setNativeValue(el, "");
-    let built = "";
-    for (let i = 0; i < text.length; i++) {
-      if (i > 0) {
-        const gap = gaps[i - 1] != null ? gaps[i - 1] : gaps[gaps.length - 1];
-        if (gap != null && gap > 0) await delay(Math.min(gap, max));
-      }
-      const key = text[i] || "";
-      el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, composed: true, cancelable: true }));
-      built += key;
-      setNativeValue(el, built);
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, data: key, inputType: "insertText" }));
-      el.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true, composed: true, cancelable: true }));
-    }
-    el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-  }
-
   function choose(el: Element, value: string): void {
     if (!(el instanceof HTMLSelectElement)) throw new Error("not a select");
     const options = [...el.options];
     const option = options.find((item) => item.label === value || item.text === value) || options.find((item) => item.value === value);
     if (!option) throw new Error(`option missing: ${value}`);
+    walkElements((node) => node.removeAttribute("data-bao-focus"));
     el.value = option.value;
     option.selected = true;
+    el.setAttribute("data-bao-focus", "1");
     el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
     el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
   }
 
-  function setChecked(el: Element, checked: boolean): void {
-    const input = el instanceof HTMLInputElement ? el : el.querySelector("input[type=checkbox], input[type=radio]");
-    if (!(input instanceof HTMLInputElement)) throw new Error("not a checkbox");
-    if (input.checked !== checked) input.click();
-  }
-
-  function press(key: string): void {
-    const el = document.activeElement instanceof Element ? document.activeElement : document.body;
-    const named = key.replace(/^ctrl\+/i, "Control+").replace(/^cmd\+/i, "Meta+").replace(/^alt\+/i, "Alt+");
-    el.dispatchEvent(new KeyboardEvent("keydown", { key: named, bubbles: true, composed: true, cancelable: true }));
-    el.dispatchEvent(new KeyboardEvent("keyup", { key: named, bubbles: true, composed: true, cancelable: true }));
-  }
-
+  // Same visible string the Playwright proof reads (body.innerText), plus open
+  // shadow text. Inline siblings stay on one line so "$" + "29.50" remains "$29.50".
+  // Prices, file names, and field values are kept at the front so a long page
+  // cannot slice them off.
   function pageText(): string {
-    const parts: string[] = [];
-    const visit = (node: Node): void => {
+    const prices = new Set<string>();
+    const files: string[] = [];
+    const values: string[] = [];
+    const skipTag = /^(SCRIPT|STYLE|NOSCRIPT|SVG)$/;
+    const blockDisplay = /^(block|flex|grid|list-item|table|table-row|table-caption|flow-root)$/;
+    const walk = (node: Node): string => {
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+      if (!(node instanceof Element) && !(node instanceof ShadowRoot)) return "";
       if (node instanceof Element) {
-        if (node.tagName === "SCRIPT" || node.tagName === "STYLE" || node.tagName === "NOSCRIPT") return;
-        if (node instanceof HTMLInputElement && node.type === "password") return;
-        const style = window.getComputedStyle(node);
-        if (style.display === "none" || style.visibility === "hidden") return;
-        if (node.shadowRoot) visit(node.shadowRoot);
-        if ((node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) && node.type !== "password" && node.value) {
-          parts.push(node.value);
+        if (skipTag.test(node.tagName)) return "";
+        if (node instanceof HTMLInputElement && node.type === "password") return "";
+        const style = getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden") return "";
+        if (node instanceof HTMLInputElement && node.type === "file") {
+          const name = node.files?.[0]?.name || "";
+          if (name) files.push(name);
+          return "";
         }
+        if ((node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) && node.value) values.push(node.value);
         if (node instanceof HTMLSelectElement) {
           const label = node.selectedOptions[0]?.label || node.selectedOptions[0]?.text || "";
-          if (label) parts.push(label);
+          if (label) values.push(label);
         }
-      }
-      const children = node instanceof ShadowRoot || node instanceof Document || node instanceof Element ? node.childNodes : [];
-      for (const child of children) {
-        if (child.nodeType === Node.TEXT_NODE) {
-          const bit = (child.textContent || "").replace(/\s+/g, " ").trim();
-          if (bit) parts.push(bit);
-        } else {
-          visit(child);
+        if (node.shadowRoot) {
+          const joined = `${walk(node.shadowRoot)}${[...node.childNodes].map((child) => walk(child)).join("")}`;
+          for (const price of joined.match(/\$\d+\.\d{2}/g) || []) prices.add(price);
+          return blockDisplay.test(style.display) ? `\n${joined}\n` : joined;
         }
+        const joined = [...node.childNodes].map((child) => walk(child)).join("");
+        for (const price of joined.match(/\$\d+\.\d{2}/g) || []) prices.add(price);
+        if (blockDisplay.test(style.display) || node.tagName === "BR") return `\n${joined}\n`;
+        return joined;
       }
+      const joined = [...node.childNodes].map((child) => walk(child)).join("");
+      for (const price of joined.match(/\$\d+\.\d{2}/g) || []) prices.add(price);
+      return `\n${joined}\n`;
     };
-    const strip = document.getElementById("bao-control-strip");
-    if (strip) parts.push((strip.innerText || "").replace(/\s+/g, " ").trim());
-    if (document.body) visit(document.body);
-    return parts.join("\n").split("\n").filter((line) => !/password/i.test(line)).join("\n").slice(0, 16000);
+    const rendered = document.body ? walk(document.body) : "";
+    const plain = document.body?.innerText || "";
+    for (const price of plain.match(/\$\d+\.\d{2}/g) || []) prices.add(price);
+    const strip = document.getElementById("bao-control-strip")?.innerText || "";
+    const text = [strip, [...prices].join(" "), files.join("\n"), values.join("\n"), plain, rendered]
+      .filter((part) => part && part.trim())
+      .join("\n");
+    return text.split("\n").filter((line) => !/password/i.test(line)).join("\n").slice(0, 20000);
+  }
+
+  function deepActive(): Element | null {
+    let node: Element | null = document.activeElement;
+    while (node?.shadowRoot?.activeElement) node = node.shadowRoot.activeElement;
+    return node;
+  }
+
+  // The point has to land on the target or something inside it. A parent that
+  // contains the target (the li around a category link) is not a hit: clicking
+  // that padding does not activate the link.
+  function onTarget(target: Element, hit: Element | null): boolean {
+    if (!hit) return false;
+    if (hit === target || target.contains(hit)) return true;
+    if (target instanceof HTMLLabelElement && target.control) {
+      const control = target.control;
+      if (hit === control || control.contains(hit)) return true;
+    }
+    let node: Node | null = hit;
+    while (node) {
+      if (node === target) return true;
+      if (node instanceof ShadowRoot) {
+        node = node.host;
+        continue;
+      }
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  function walkElements(visit: (el: Element) => void, root: ParentNode = document): void {
+    root.querySelectorAll?.("*").forEach((el) => {
+      visit(el);
+      if (el.shadowRoot) walkElements(visit, el.shadowRoot);
+    });
+  }
+
+  function checkable(el: Element): HTMLInputElement | null {
+    if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) return el;
+    if (el instanceof HTMLLabelElement && el.control instanceof HTMLInputElement) {
+      const input = el.control;
+      if (input.type === "checkbox" || input.type === "radio") return input;
+    }
+    const inner = el.querySelector("input[type=checkbox], input[type=radio]");
+    return inner instanceof HTMLInputElement ? inner : null;
+  }
+
+  function fieldOf(message: { handle?: string; identity?: IdentityHint; selector?: string }): HTMLInputElement | HTMLTextAreaElement | null {
+    try {
+      const el = targetOf(message);
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el;
+    } catch {
+      /* the caret is the field when the locator was not sent */
+    }
+    const active = deepActive();
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return active;
+    return null;
+  }
+
+  // CSS pixels in the viewport. The debugger click uses this point, not a stale sample.
+  // An inline link with a blank line has a union box whose center sits on the parent.
+  // Sample each line box and keep the first point that is actually on the element.
+  function viewportPoint(el: Element): { x: number; y: number; covered: boolean; hit: string } {
+    if (el instanceof HTMLElement) {
+      el.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" } as ScrollIntoViewOptions);
+    }
+    dismissCoveringAds();
+    const rects: DOMRect[] = [];
+    const client = el.getClientRects();
+    for (let i = 0; i < client.length; i++) {
+      const rect = client.item(i);
+      if (rect && rect.width >= 1 && rect.height >= 1) rects.push(rect);
+    }
+    if (!rects.length) rects.push(el.getBoundingClientRect());
+    const samples: { x: number; y: number }[] = [];
+    for (const rect of rects) {
+      samples.push({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+          samples.push({
+            x: rect.left + (rect.width * (col + 0.5)) / 3,
+            y: rect.top + (rect.height * (row + 0.5)) / 3,
+          });
+        }
+      }
+    }
+    let fallbackHit = "";
+    let fallbackEl: Element | null = null;
+    for (const sample of samples) {
+      if (sample.x < 1 || sample.y < 1 || sample.x > window.innerWidth - 1 || sample.y > window.innerHeight - 1) continue;
+      const hit = document.elementFromPoint(sample.x, sample.y);
+      if (!hit) continue;
+      fallbackHit = hit.tagName;
+      fallbackEl = hit;
+      if (onTarget(el, hit)) return { x: sample.x, y: sample.y, covered: false, hit: hit.tagName };
+    }
+    const rect = el.getBoundingClientRect();
+    const x = Math.min(window.innerWidth - 1, Math.max(1, rect.left + Math.max(rect.width, 0) / 2));
+    const y = Math.min(window.innerHeight - 1, Math.max(1, rect.top + Math.max(rect.height, 0) / 2));
+    // A closed shadow host is what elementFromPoint returns for a link inside it.
+    // The click at the link's box still reaches that link. A plain parent (an li)
+    // does not, so those stay covered.
+    if (fallbackEl && fallbackEl.tagName.includes("-") && insideHost(el, fallbackEl)) {
+      return { x, y, covered: false, hit: fallbackHit };
+    }
+    return { x, y, covered: true, hit: fallbackHit };
+  }
+
+  function insideHost(target: Element, hit: Element): boolean {
+    let node: Node | null = target;
+    while (node) {
+      if (node === hit) return true;
+      if (node instanceof ShadowRoot) {
+        if (node.host === hit) return true;
+        node = node.host;
+        continue;
+      }
+      node = node.parentNode;
+    }
+    return false;
   }
 
   function screenPoint(el: Element): Record<string, number> {
@@ -404,37 +524,110 @@ declare global {
         .map((node) => ({ role: node.role, name: node.name, text: node.text, testId: node.testId, id: node.id }));
       return { ok: true, dom, ax: pageText() };
     }
-    if (op === "click" || op === "drive-click") {
-      await playGesture(gesture);
-      dismissCoveringAds();
+    if (op === "point") {
+      if (message.skipGesture !== true) await playGesture(gesture);
       const el = targetOf(message as { handle?: string; identity?: IdentityHint; selector?: string; text?: string });
-      if (el instanceof HTMLElement) {
-        el.scrollIntoView({ block: "center", inline: "nearest" });
-        el.click();
+      const input = checkable(el);
+      if (typeof message.desiredChecked === "boolean" && input && input.checked === message.desiredChecked) {
+        return { ok: true, skipClick: true };
       }
+      const point = viewportPoint(el);
+      const tag = el.tagName;
+      const inputType = el instanceof HTMLInputElement ? el.type : "";
+      return {
+        ok: true,
+        x: point.x,
+        y: point.y,
+        covered: point.covered,
+        hit: point.hit,
+        tag,
+        inputType,
+        checked: input ? input.checked : undefined,
+      };
+    }
+    if (op === "raw-click") {
+      const el = targetOf(message as { handle?: string; identity?: IdentityHint; selector?: string; text?: string });
+      let trusted = false;
+      const onClick = (event: Event) => { trusted = event.isTrusted; };
+      document.addEventListener("click", onClick, true);
+      if (el instanceof HTMLElement) el.click();
+      document.removeEventListener("click", onClick, true);
+      return { ok: true, isTrusted: trusted };
+    }
+    if (op === "last-trust") {
+      return {
+        ok: true,
+        click: lastClickTrusted === true,
+        key: lastKeyTrusted === true,
+        input: lastInputTrusted === true,
+      };
+    }
+    if (op === "arm-click") {
+      document.documentElement?.setAttribute("data-bao-ignore-click", "1");
       return { ok: true };
     }
-    if (op === "fill" || op === "drive-fill") {
-      await playGesture(gesture);
-      const el = targetOf(message as { handle?: string; identity?: IdentityHint; selector?: string });
-      await fill(el, String(message.text ?? ""), gesture);
+    if (op === "disarm-click") {
+      document.documentElement?.removeAttribute("data-bao-ignore-click");
       return { ok: true };
+    }
+    if (op === "mark-focus") {
+      walkElements((el) => el.removeAttribute("data-bao-focus"));
+      const el = targetOf(message as { handle?: string; identity?: IdentityHint; selector?: string; text?: string });
+      el.setAttribute("data-bao-focus", "1");
+      return { ok: true, tag: el.tagName };
+    }
+    if (op === "clear-focus") {
+      walkElements((el) => el.removeAttribute("data-bao-focus"));
+      return { ok: true };
+    }
+    if (op === "field-state") {
+      let el: Element | null = null;
+      try {
+        el = targetOf(message as { handle?: string; identity?: IdentityHint; selector?: string; text?: string });
+      } catch {
+        el = null;
+      }
+      const active = deepActive();
+      const field = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
+      return {
+        ok: true,
+        found: !!el,
+        focused: !!(el && active === el),
+        value: field ? field.value : "",
+        tag: el ? el.tagName : "",
+        type: field ? field.type : "",
+      };
+    }
+    if (op === "select-all") {
+      const el = fieldOf(message as { handle?: string; identity?: IdentityHint; selector?: string });
+      if (el) {
+        el.focus();
+        try {
+          el.select();
+          el.setSelectionRange(0, el.value.length);
+        } catch {
+          /* number and date inputs refuse a selection range */
+        }
+      }
+      const active = deepActive();
+      return { ok: true, focused: !!(el && active === el), value: el ? el.value : "" };
+    }
+    if (op === "commit") {
+      const el = fieldOf(message as { handle?: string; identity?: IdentityHint; selector?: string });
+      // insertText already fired the trusted input. A second input event makes
+      // some bindings append. change is what the recorder and plain forms read.
+      if (el && message.flush === true) {
+        el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+      }
+      return { ok: true, value: el ? el.value : "" };
+    }
+    if (op === "click" || op === "drive-click" || op === "fill" || op === "drive-fill" || op === "check" || op === "key") {
+      throw new Error(`${op} is dispatched through the debugger`);
     }
     if (op === "select" || op === "drive-select") {
       await playGesture(gesture);
       const el = targetOf(message as { handle?: string; identity?: IdentityHint; selector?: string });
       choose(el, String(message.value ?? message.label ?? ""));
-      return { ok: true };
-    }
-    if (op === "check") {
-      await playGesture(gesture);
-      const el = targetOf(message as { handle?: string; identity?: IdentityHint });
-      setChecked(el, message.checked === true);
-      return { ok: true };
-    }
-    if (op === "key") {
-      await playGesture(gesture);
-      press(String(message.key || "Enter"));
       return { ok: true };
     }
     if (op === "focus") {
@@ -474,8 +667,9 @@ declare global {
       const marked = host.__baoMark ? host.__baoMark(message.locators) : false;
       if (!marked) return { ok: false, activated: false };
       const el = document.querySelector("[data-bao-pick]");
-      if (el instanceof HTMLElement) el.click();
-      return { ok: true, activated: true };
+      if (!(el instanceof HTMLElement)) return { ok: false, activated: false };
+      const point = viewportPoint(el);
+      return { ok: true, activated: true, pendingClick: true, x: point.x, y: point.y };
     }
     if (op === "drop") {
       await playGesture(gesture);

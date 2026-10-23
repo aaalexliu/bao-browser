@@ -33,6 +33,7 @@ for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CURSOR_API_KEY"]) del
 
 const ARTIFACTS = "/opt/cursor/artifacts/extension-proof";
 const PART = (process.env.PROOF_PART || "all").toLowerCase();
+const RATES = (process.env.PROOF_RATES || "cloudflare,imperva").toLowerCase().split(",").map((item) => item.trim()).filter(Boolean);
 const WAIT_MS = Number(process.env.PROOF_WAIT_MS || 12000);
 const ROOT = path.join(tmpdir(), `bao-ext-proof-${Date.now().toString(36)}`);
 const HOME = path.join(ROOT, "home");
@@ -1053,10 +1054,10 @@ function challenged(page: PageRead): { challenged: boolean; reason: string; snip
 
 async function runRates(link: ExtensionLink, chrome: ChromeRun): Promise<void> {
   log("rates");
-  const sites = [
+  const sites = ([
     ["cloudflare", SITES.cloudflare],
     ["imperva", String(results.impervaUrl || SITES.imperva)],
-  ] as const;
+  ] as const).filter(([name]) => RATES.includes(name));
   const table: Record<string, unknown> = {};
   await chrome.launch({});
   for (const [name, url] of sites) {
@@ -1211,13 +1212,19 @@ function runView(result: RunResult, proofs: { action?: string; name?: string; vi
       snapshot: step.snapshot ? { ax: typeof step.snapshot.ax === "string" ? step.snapshot.ax : undefined, dom: step.snapshot.dom } : undefined,
     })),
     ask: result.ask,
-    outputs: (result.outputs || []).flatMap((item) => item.type === "table" ? [{ name: item.name, type: item.type, rows: item.rows }] : []),
+    outputs: (result.outputs || []).flatMap((item) => item.type === "table" ? [{ name: item.name, type: item.type, rows: item.rows, columns: item.columns }] : []),
   };
 }
 
 async function replayExtension(link: ExtensionLink, workflow: WorkflowV2, args: ReplayArgs, dialogs: boolean): Promise<{ result: RunResult; page: PageView; proofs: { name?: string }[] }> {
   const driver = new ExtensionDriver(link, readGestures(BAO, workflow.id), undefined, undefined, dialogs);
-  if (workflow.startUrl.startsWith("http")) await driver.open(workflow.startUrl);
+  if (workflow.startUrl.startsWith("http")) {
+    await driver.open(workflow.startUrl);
+    // The cart (and any other site storage) is read during that load. Zero it
+    // on the live page, then load once more so the app starts empty.
+    await cmd(link, "clear-site", { url: workflow.startUrl }).catch(() => undefined);
+    await driver.open(workflow.startUrl);
+  }
   const result = await replay(workflow, args, driver, {
     heal: unavailableHeal(),
     holdForPerson: false,
@@ -1335,7 +1342,7 @@ async function runTasks(link: ExtensionLink, chrome: ChromeRun): Promise<void> {
     taskResults.p1 = await scoreTask(link, workflow, "p1", "completed", (run) => p1Args(workflow, run, run === 1 ? replayA : replayB), scoreP1, [replayA, replayB]);
   } catch (err) {
     taskResults.p1 = { error: err instanceof Error ? err.message : String(err) };
-    log(`p1 ${taskResults.p1 && (taskResults.p1 as { error?: string }).error}`);
+    log(`p1 ${err instanceof Error ? err.stack || err.message : String(err)}`);
   }
   save();
   try {
@@ -1365,12 +1372,12 @@ async function runTasks(link: ExtensionLink, chrome: ChromeRun): Promise<void> {
     taskResults.p5 = await scoreTask(link, workflow, "p5", "completed", (run) => argsFor(workflow, {
       byName: { category: run === 1 ? "Travel" : "Historical Fiction" },
     }) as ReplayArgs, (input) => {
-      const csv = outputCsv(input.replay.outputs as Parameters<typeof outputCsv>[0], "books") || "";
+      const csv = input.csv || outputCsv(input.replay.outputs as Parameters<typeof outputCsv>[0], "books") || "";
       return scoreP5({ ...input, csv });
     }, ["", ""]);
   } catch (err) {
     taskResults.p5 = { error: err instanceof Error ? err.message : String(err) };
-    log(`p5 ${String((taskResults.p5 as { error?: string }).error)}`);
+    log(`p5 ${err instanceof Error ? err.stack || err.message : String(err)}`);
   }
   save();
   try {
@@ -1401,7 +1408,7 @@ async function runTasks(link: ExtensionLink, chrome: ChromeRun): Promise<void> {
     }) as ReplayArgs, scoreP9, ["", ""]);
   } catch (err) {
     taskResults.p9 = { error: err instanceof Error ? err.message : String(err) };
-    log(`p9 ${String((taskResults.p9 as { error?: string }).error)}`);
+    log(`p9 ${err instanceof Error ? err.stack || err.message : String(err)}`);
   }
   results.tasks = taskResults;
   save();
@@ -1433,6 +1440,7 @@ async function scoreTask(
       csv: outputCsv(played.result.outputs, "books") || "",
     });
     await shot(link, `${id}-extension-r${run}.jpg`);
+    const failure = played.result.failure;
     runs.push({
       driver: "extension",
       run,
@@ -1442,7 +1450,13 @@ async function scoreTask(
       status: played.result.status,
       pausedKind: played.result.pausedKind,
       modelCalls: played.result.modelCalls,
+      failure: failure ? { stepId: failure.stepId, phase: failure.phase, reason: failure.reason } : undefined,
     });
+    if (!judged.pass) {
+      const blob = played.page.text || "";
+      const prices = blob.match(/\$\d+\.\d{2}/g) || [];
+      log(`${id} r${run} prices ${prices.slice(0, 8).join(",") || "none"} shirt ${/YouTube Organic Cotton/i.test(blob)}`);
+    }
     log(`${id} extension r${run} ${judged.pass ? "pass" : judged.detail}`);
   }
   const pw = await replayPlaywright(workflow, argsForRun(1));
@@ -1457,6 +1471,7 @@ async function scoreTask(
     expect,
     csv: outputCsv(pw.result.outputs, "books") || "",
   });
+  const pwFailure = pw.result.failure;
   const playwright = {
     driver: "playwright",
     run: 1,
@@ -1466,6 +1481,7 @@ async function scoreTask(
     status: pw.result.status,
     pausedKind: pw.result.pausedKind,
     modelCalls: pw.result.modelCalls,
+    failure: pwFailure ? { stepId: pwFailure.stepId, phase: pwFailure.phase, reason: pwFailure.reason } : undefined,
   };
   log(`${id} playwright ${pwScore.pass ? "pass" : pwScore.detail}`);
   const passed = runs.filter((item) => item.pass).length;
@@ -1528,7 +1544,7 @@ async function runCadence(link: ExtensionLink, url: string): Promise<void> {
   await cmd(link, "drive-fill", { selector: "#note", text: "bao", gesture: { dwellMs: 0, pointer: [], keyGaps } }, 20000);
   await sleep(200);
   const replayEvents = await flushEvents(link);
-  const replayKeys = replayEvents.filter((event) => event.type === "keydown" && event.trusted === false && event.t != null);
+  const replayKeys = replayEvents.filter((event) => event.type === "keydown" && event.t != null);
   const replayGaps: number[] = [];
   for (let i = 1; i < replayKeys.length; i++) replayGaps.push(Math.max(0, Math.round((replayKeys[i]!.t || 0) - (replayKeys[i - 1]!.t || 0))));
   results.cadence = {
@@ -1582,8 +1598,11 @@ async function runDebugger(link: ExtensionLink, chrome: ChromeRun, port: number)
     webdriver: measured.webdriver === true,
     innerDelta: measured.innerDelta,
     attached: measured.attached === true,
+    clickBefore: measured.clickBefore === true,
+    clickAfter: measured.clickAfter === true,
+    typeAfter: measured.typeAfter === true,
     windowShot: windowFile,
-    prefer: "element.click and InputEvent. chrome.debugger is only used for DOM.setFileInputFiles and this measurement.",
+    prefer: "Input.dispatchMouseEvent and Input.insertText, then detach. File inputs use the same session for DOM.setFileInputFiles.",
   };
   save();
 }

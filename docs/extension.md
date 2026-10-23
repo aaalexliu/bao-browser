@@ -34,7 +34,7 @@ Record asks for that tab's origin and injects the same recorder the Playwright d
 
 The toolbar badge says REC or RUN while a session is active. A strip inside the page appears only for "needs you" (a confirm, a login, or a bot wall).
 
-Steps, locators, the confirm gate, and the page classifier are the ones the Playwright driver already uses. Place Order, Buy, Pay, Submit order, and Reserve stay confirm steps. A bot wall pauses. Password values are dropped. A file input is the one place that attaches `chrome.debugger`, only long enough to call `DOM.setFileInputFiles`, then detaches.
+Steps, locators, the confirm gate, and the page classifier are the ones the Playwright driver already uses. Place Order, Buy, Pay, Submit order, and Reserve stay confirm steps. A bot wall pauses. Password values are dropped. A click, a key, and a file input attach `chrome.debugger` for that action. The click is `Input.dispatchMouseEvent`, typing is `Input.insertText` or `Input.dispatchKeyEvent`, and a file input is `DOM.setFileInputFiles`. The debugger detaches when the action finishes. A native `<select>` is set from the page and held on that option, so a control that resets when its data arrives stays where the workflow put it. The browser's select popup does not open. A click waits for an in-flight XHR on that tab to finish before it lands.
 
 ## What it does not touch
 
@@ -42,7 +42,7 @@ Steps, locators, the confirm gate, and the page classifier are the ones the Play
 - Tabs the person did not pick are not read. Network and cookie listeners drop events for any other tab.
 - `navigator` is not patched. The extension does not invent a user agent, client hints, or a TLS fingerprint.
 - Captchas and challenge widgets are not solved and not clicked. The run pauses as needs you.
-- Ordinary clicks and typing go through the content script, so the page sees `isTrusted: false`. Attaching the debugger to make those events trusted would show Chrome's debugging bar, so replay does not do that.
+- Clicks and typing are real input events (`isTrusted: true`) from the debugger session above. The extension does not spoof `isTrusted` from the page. The toolbar badge stays visible. Chrome may show its debugging infobar while the debugger is attached.
 - Nothing leaves the machine except the local Bao server.
 
 ## Select the driver

@@ -37,11 +37,18 @@ interface HarEntry {
   tabId: number;
 }
 
+interface InflightMeta {
+  at: number;
+  type: string;
+  tabId: number;
+}
+
 let port: chrome.runtime.Port | null = null;
 let persist: Persist = { phase: "idle" };
 let watchAll = false;
 const har: HarEntry[] = [];
 const inflight = new Map<string, HarEntry>();
+const inflightMeta = new Map<string, InflightMeta>();
 const observed: Record<string, unknown>[] = [];
 
 function delay(ms: number): Promise<void> {
@@ -184,6 +191,13 @@ async function ensureInjected(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] }).catch(() => undefined);
 }
 
+const RETRY_AFTER_NAV = new Set([
+  "tree", "text", "captureStep", "markers", "metrics", "flush-events", "box", "point",
+  "readList", "propose", "file-name", "showAsk", "clearAsk", "commit", "select-all",
+  "last-trust", "gesture", "mask", "unmask", "dismiss",
+  "field-state", "mark-focus", "clear-focus", "arm-click", "disarm-click",
+]);
+
 async function withTab(message: Record<string, unknown>, timeoutMs?: number): Promise<Record<string, unknown>> {
   const tabId = await ownedTab();
   try {
@@ -195,7 +209,12 @@ async function withTab(message: Record<string, unknown>, timeoutMs?: number): Pr
     if (!/Receiving end does not exist|message port closed|back\/forward cache|tab was closed/i.test(text)) throw err;
     await waitComplete(tabId, 15000);
     await ensureInjected(tabId);
-    return { ok: true, navigated: true };
+    const op = String(message.op || "");
+    // A click that navigated must not be sent again. A read after that navigation should.
+    if (!RETRY_AFTER_NAV.has(op)) return { ok: true, navigated: true };
+    const again = await sendTab(tabId, message, timeoutMs);
+    if (again.ok === false) throw new Error(String(again.error || "page command failed"));
+    return again;
   }
 }
 
@@ -219,28 +238,429 @@ async function openOwned(url: string, dialogs: boolean, inject: boolean): Promis
   await pending;
   if (inject) await ensureInjected(tabId!);
   persist = { phase: persist.phase === "recording" ? "recording" : "replaying", tabId, windowId, dialogs, origin };
+  if (dialogs) await ensureDialogs(tabId!);
   await savePersist();
   if (persist.phase === "replaying") await badge("RUN");
   const tab = await chrome.tabs.get(tabId!);
   return { ok: true, tabId, url: tab.url || url };
 }
 
-async function setFiles(tabId: number, paths: string[]): Promise<void> {
-  await chrome.debugger.attach({ tabId }, "1.3");
+const debuggerTabs = new Set<number>();
+
+chrome.debugger.onDetach.addListener((source) => {
+  if (source.tabId != null) debuggerTabs.delete(source.tabId);
+});
+
+async function attachDebugger(tabId: number): Promise<void> {
+  if (debuggerTabs.has(tabId)) return;
+  try {
+    await chrome.debugger.attach({ tabId }, "1.3");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/already attached/i.test(message)) throw err;
+  }
+  debuggerTabs.add(tabId);
+}
+
+async function detachDebugger(tabId: number): Promise<void> {
+  debuggerTabs.delete(tabId);
+  await chrome.debugger.detach({ tabId }).catch(() => undefined);
+}
+
+/** Attach for one action and detach when it finishes. A caller that already attached keeps the session. */
+async function withDebugger<T>(tabId: number, run: () => Promise<T>): Promise<T> {
+  const held = debuggerTabs.has(tabId);
+  if (!held) await attachDebugger(tabId);
+  try {
+    return await run();
+  } finally {
+    if (!held) await detachDebugger(tabId);
+  }
+}
+
+async function ensureDialogs(tabId: number): Promise<void> {
+  if (!persist.dialogs) return;
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["dialogs.js"],
+    world: "MAIN",
+  }).catch(() => undefined);
+}
+
+async function mouseClick(tabId: number, x: number, y: number): Promise<void> {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("no point for the click");
+  const point = { x, y };
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mousePressed", ...point, button: "left", buttons: 1, clickCount: 1,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mouseReleased", ...point, button: "left", buttons: 0, clickCount: 1,
+  });
+}
+
+interface KeySpec {
+  key: string;
+  code: string;
+  vk: number;
+  text?: string;
+  modifiers?: number;
+}
+
+async function dispatchKey(tabId: number, type: "keyDown" | "keyUp", spec: KeySpec): Promise<void> {
+  const payload: Record<string, unknown> = {
+    type,
+    key: spec.key,
+    code: spec.code,
+    windowsVirtualKeyCode: spec.vk,
+    nativeVirtualKeyCode: spec.vk,
+    modifiers: spec.modifiers || 0,
+  };
+  if (type === "keyDown" && spec.text != null) {
+    payload.text = spec.text;
+    payload.unmodifiedText = spec.text;
+  }
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", payload);
+}
+
+const NAMED_KEYS: Record<string, KeySpec> = {
+  Enter: { key: "Enter", code: "Enter", vk: 13 },
+  Tab: { key: "Tab", code: "Tab", vk: 9 },
+  Escape: { key: "Escape", code: "Escape", vk: 27 },
+  Backspace: { key: "Backspace", code: "Backspace", vk: 8 },
+  Delete: { key: "Delete", code: "Delete", vk: 46 },
+  ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", vk: 37 },
+  ArrowRight: { key: "ArrowRight", code: "ArrowRight", vk: 39 },
+  ArrowUp: { key: "ArrowUp", code: "ArrowUp", vk: 38 },
+  ArrowDown: { key: "ArrowDown", code: "ArrowDown", vk: 40 },
+  Home: { key: "Home", code: "Home", vk: 36 },
+  End: { key: "End", code: "End", vk: 35 },
+  " ": { key: " ", code: "Space", vk: 32, text: " " },
+};
+
+function specForChar(ch: string): KeySpec {
+  if (ch === "\n" || ch === "\r") return { key: "Enter", code: "Enter", vk: 13, text: "\r" };
+  const named = NAMED_KEYS[ch];
+  if (named) return { ...named, text: named.text ?? ch };
+  if (/^[a-zA-Z]$/.test(ch)) {
+    const upper = ch !== ch.toLowerCase();
+    return { key: ch, code: `Key${ch.toUpperCase()}`, vk: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: upper ? 8 : 0 };
+  }
+  if (/^[0-9]$/.test(ch)) return { key: ch, code: `Digit${ch}`, vk: ch.charCodeAt(0), text: ch };
+  return { key: ch, code: "", vk: ch.charCodeAt(0), text: ch };
+}
+
+async function typeChar(tabId: number, ch: string): Promise<void> {
+  const spec = specForChar(ch);
+  await dispatchKey(tabId, "keyDown", spec);
+  await dispatchKey(tabId, "keyUp", { key: spec.key, code: spec.code, vk: spec.vk, modifiers: spec.modifiers });
+}
+
+async function pressNamed(tabId: number, key: string): Promise<void> {
+  const parts = key.split("+").map((part) => part.trim()).filter(Boolean);
+  let modifiers = 0;
+  const names: string[] = [];
+  for (const part of parts) {
+    const low = part.toLowerCase();
+    if (low === "ctrl" || low === "control") modifiers |= 2;
+    else if (low === "cmd" || low === "meta" || low === "command") modifiers |= 4;
+    else if (low === "alt" || low === "option") modifiers |= 1;
+    else if (low === "shift") modifiers |= 8;
+    else names.push(part);
+  }
+  const last = names[0] || "Enter";
+  const base = NAMED_KEYS[last] || (last.length === 1 ? specForChar(last) : NAMED_KEYS.Enter!);
+  const spec: KeySpec = { key: base.key, code: base.code, vk: base.vk, modifiers };
+  if (!modifiers && base.text) spec.text = base.text;
+  await dispatchKey(tabId, "keyDown", spec);
+  await dispatchKey(tabId, "keyUp", { key: spec.key, code: spec.code, vk: spec.vk, modifiers });
+}
+
+async function focusTab(tabId: number): Promise<void> {
+  const tab = await chrome.tabs.get(tabId).catch(() => undefined);
+  if (!tab) return;
+  if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+  await chrome.tabs.update(tabId, { active: true }).catch(() => undefined);
+}
+
+/** Resolves once a load starts, or after `ms` if the click stayed on this document. */
+function watchNavigation(tabId: number, ms = 1000): Promise<"done" | "loading" | "none"> {
+  return new Promise((resolve) => {
+    let loading = false;
+    let settled = false;
+    const finish = (value: "done" | "loading" | "none") => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(loading ? "loading" : "none"), ms);
+    const onUpdated = (id: number, info: { status?: string }) => {
+      if (id !== tabId || !info.status) return;
+      if (info.status === "loading") loading = true;
+      if (info.status === "complete" && loading) finish("done");
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
+function waitNextComplete(tabId: number, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timer);
+      setTimeout(resolve, 120);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    const onUpdated = (id: number, info: { status?: string }) => {
+      if (id === tabId && info.status === "complete") finish();
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
+async function focusMarked(tabId: number): Promise<boolean> {
   try {
     await chrome.debugger.sendCommand({ tabId }, "DOM.getDocument", { depth: -1, pierce: true });
-    const search = await chrome.debugger.sendCommand({ tabId }, "DOM.performSearch", { query: "[data-bao-file]" }) as { searchId: string; resultCount?: number };
+    const search = await chrome.debugger.sendCommand({ tabId }, "DOM.performSearch", { query: "[data-bao-focus]" }) as { searchId?: string; resultCount?: number };
+    if (!search.searchId || !search.resultCount) return false;
     const found = await chrome.debugger.sendCommand({ tabId }, "DOM.getSearchResults", {
       searchId: search.searchId,
       fromIndex: 0,
       toIndex: 1,
     }) as { nodeIds?: number[] };
-    const nodeId = found.nodeIds?.[0];
+    await chrome.debugger.sendCommand({ tabId }, "DOM.discardSearchResults", { searchId: search.searchId }).catch(() => undefined);
+    const nodeId = found.nodeIds?.[0] || 0;
+    if (!nodeId) return false;
+    await chrome.debugger.sendCommand({ tabId }, "DOM.focus", { nodeId });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Dispatch change in the page world so the recorder, which runs there, sees a select.
+ * The chosen option is held: shop-detail writes the quantity back to 1 on a
+ * microtask when the item loads, and that assignment has to keep the workflow's option.
+ */
+async function pageChange(tabId: number, wanted = ""): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [wanted],
+    func: (wanted: string) => {
+      const walk = (root: ParentNode): Element | null => {
+        const hit = root.querySelector?.("[data-bao-focus]");
+        if (hit) return hit;
+        const nodes = root.querySelectorAll?.("*");
+        if (!nodes) return null;
+        for (const el of nodes) {
+          if (!el.shadowRoot) continue;
+          const inner = walk(el.shadowRoot);
+          if (inner) return inner;
+        }
+        return null;
+      };
+      const el = walk(document);
+      if (!el) return;
+      if (el instanceof HTMLSelectElement) {
+        const options = Array.from(el.options);
+        const option = options.find((item) => item.label === wanted || item.text === wanted)
+          || options.find((item) => item.value === wanted);
+        const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+        const held = option ? option.value : el.value;
+        if (proto && proto.get && proto.set) {
+          proto.set.call(el, held);
+          const node = el as HTMLSelectElement & { __baoHold?: number };
+          if (node.__baoHold) window.clearTimeout(node.__baoHold);
+          const restore = proto.set;
+          Object.defineProperty(el, "value", {
+            configurable: true,
+            enumerable: true,
+            get() { return proto.get!.call(this); },
+            set(_next: string) { restore.call(this, held); },
+          });
+          node.__baoHold = window.setTimeout(() => {
+            window.clearTimeout(node.__baoHold);
+            delete node.__baoHold;
+            Reflect.deleteProperty(el, "value");
+          }, 15000);
+        } else if (option) {
+          el.value = option.value;
+          option.selected = true;
+        }
+      }
+      el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+      el.removeAttribute("data-bao-focus");
+    },
+  }).catch(() => undefined);
+}
+
+function pendingData(tabId: number): number {
+  const now = Date.now();
+  let count = 0;
+  for (const meta of inflightMeta.values()) {
+    if (meta.tabId !== tabId) continue;
+    if (meta.type !== "xmlhttprequest" && meta.type !== "fetch") continue;
+    if (now - meta.at > 8000) continue;
+    count += 1;
+  }
+  return count;
+}
+
+// A click or select that lands while the page's own XHR is still applying
+// reads the control before that response. Wait it out, then one task so the
+// page's microtask (a select reset) runs before we set or click.
+async function waitForQuiet(tabId: number): Promise<void> {
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    if (pendingData(tabId) === 0) {
+      await delay(50);
+      if (pendingData(tabId) === 0) return;
+    } else {
+      await delay(50);
+    }
+  }
+}
+
+function targetOf(cmd: Record<string, unknown>): Record<string, unknown> {
+  return { handle: cmd.handle, identity: cmd.identity, selector: cmd.selector, text: cmd.text };
+}
+
+function usablePoint(point: Record<string, unknown>): boolean {
+  return point.ok !== false && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y));
+}
+
+async function freshPoint(tabId: number, cmd: Record<string, unknown>, fallback: Record<string, unknown>): Promise<Record<string, unknown>> {
+  let point = await sendTab(tabId, { ...targetOf(cmd), op: "point", skipGesture: true }).catch(() => fallback);
+  if (!usablePoint(point)) point = fallback;
+  if (point.covered !== true) return point;
+  await sendTab(tabId, { op: "dismiss" }).catch(() => undefined);
+  const again = await sendTab(tabId, { ...targetOf(cmd), op: "point", skipGesture: true }).catch(() => point);
+  return usablePoint(again) ? again : point;
+}
+
+async function trustedClick(tabId: number, cmd: Record<string, unknown>, point: Record<string, unknown>): Promise<void> {
+  if (String(point.tag || "") === "SELECT") return;
+  await focusTab(tabId);
+  await waitForQuiet(tabId);
+  let watch: Promise<"done" | "loading" | "none"> = Promise.resolve("none");
+  await withDebugger(tabId, async () => {
+    const fresh = await freshPoint(tabId, cmd, point);
+    if (String(fresh.tag || point.tag || "") === "SELECT") return;
+    if (fresh.covered === true) {
+      throw new Error(`click was covered (${String(fresh.hit || "nothing")} over ${String(fresh.tag || "target")})`);
+    }
+    watch = watchNavigation(tabId);
+    await mouseClick(tabId, Number(fresh.x), Number(fresh.y));
+  });
+  const state = await watch;
+  if (state === "loading") {
+    await waitNextComplete(tabId, 15000);
+    await ensureInjected(tabId);
+    await ensureDialogs(tabId);
+  }
+}
+
+async function backspace(tabId: number): Promise<void> {
+  await dispatchKey(tabId, "keyDown", { key: "Backspace", code: "Backspace", vk: 8 });
+  await dispatchKey(tabId, "keyUp", { key: "Backspace", code: "Backspace", vk: 8 });
+}
+
+async function typeText(tabId: number, text: string, gaps: number[], maxMs: number): Promise<void> {
+  if (!gaps.length) {
+    await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text });
+    return;
+  }
+  for (let i = 0; i < text.length; i++) {
+    if (i > 0) {
+      const gap = gaps[i - 1] != null ? gaps[i - 1]! : gaps[gaps.length - 1]!;
+      if (gap > 0) await delay(Math.min(gap, maxMs));
+    }
+    await typeChar(tabId, text[i] || "");
+  }
+}
+
+async function trustedFill(tabId: number, cmd: Record<string, unknown>, point: Record<string, unknown>): Promise<void> {
+  const text = String(cmd.text ?? "");
+  const secret = cmd.secret === true;
+  const { gaps, maxMs } = keyGapsOf(cmd);
+  const target = targetOf(cmd);
+  let landed = "";
+  let focused = false;
+  await focusTab(tabId);
+  await withDebugger(tabId, async () => {
+    try {
+      for (let attempt = 0; attempt < 2 && landed !== text; attempt++) {
+        await sendTab(tabId, { op: "arm-click" }).catch(() => undefined);
+        const fresh = await freshPoint(tabId, cmd, point);
+        if (String(fresh.tag || "") === "SELECT") return;
+        if (fresh.covered !== true) await mouseClick(tabId, Number(fresh.x), Number(fresh.y));
+        await sendTab(tabId, { op: "mark-focus", ...target });
+        await focusMarked(tabId);
+        await delay(30);
+        const state = await sendTab(tabId, { op: "field-state", ...target });
+        focused = state.focused === true;
+        await sendTab(tabId, { op: "select-all", ...target }).catch(() => undefined);
+        const current = String(state.value ?? "");
+        // One Backspace deletes a selection in the focused field. Ctrl+A is
+        // not used: without focus it selects the page and Backspace leaves it.
+        if (focused && current && current !== text) await backspace(tabId);
+        if (text) {
+          if (attempt === 0) await typeText(tabId, text, gaps, maxMs);
+          else for (const ch of text) await typeChar(tabId, ch);
+        }
+        await delay(40);
+        const after = await sendTab(tabId, { op: "field-state", ...target });
+        landed = String(after.value ?? "");
+        focused = after.focused === true || focused;
+      }
+    } finally {
+      await sendTab(tabId, { op: "disarm-click" }).catch(() => undefined);
+      await sendTab(tabId, { op: "clear-focus" }).catch(() => undefined);
+    }
+  });
+  if (landed !== text) {
+    const got = secret ? `${landed.length} chars` : JSON.stringify(landed).slice(0, 48);
+    throw new Error(`typed text did not land (wanted ${text.length}, got ${got}, focused ${focused})`);
+  }
+  await withTab({ op: "commit", ...target, flush: true }).catch(() => undefined);
+}
+
+function keyGapsOf(cmd: Record<string, unknown>): { gaps: number[]; maxMs: number } {
+  const gesture = cmd.gesture;
+  if (!gesture || typeof gesture !== "object") return { gaps: [], maxMs: Number.POSITIVE_INFINITY };
+  const record = gesture as { keyGaps?: unknown; maxMs?: unknown };
+  const gaps = Array.isArray(record.keyGaps) ? record.keyGaps.map((item) => Number(item)).filter((item) => Number.isFinite(item)) : [];
+  const max = Number(record.maxMs);
+  return { gaps, maxMs: max > 0 ? max : Number.POSITIVE_INFINITY };
+}
+
+async function setFiles(tabId: number, paths: string[], selector?: string): Promise<void> {
+  await withDebugger(tabId, async () => {
+    await chrome.debugger.sendCommand({ tabId }, "DOM.getDocument", { depth: -1, pierce: true });
+    const queries = ["[data-bao-file]"];
+    if (selector) queries.push(selector);
+    let nodeId = 0;
+    for (const query of queries) {
+      const search = await chrome.debugger.sendCommand({ tabId }, "DOM.performSearch", { query }) as { searchId: string; resultCount?: number };
+      if (!search.resultCount) continue;
+      const found = await chrome.debugger.sendCommand({ tabId }, "DOM.getSearchResults", {
+        searchId: search.searchId,
+        fromIndex: 0,
+        toIndex: 1,
+      }) as { nodeIds?: number[] };
+      nodeId = found.nodeIds?.[0] || 0;
+      if (nodeId) break;
+    }
     if (!nodeId) throw new Error("file input missing");
     await chrome.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", { nodeId, files: paths });
-  } finally {
-    await chrome.debugger.detach({ tabId }).catch(() => undefined);
-  }
+  });
 }
 
 function watching(tabId: number): boolean {
@@ -251,6 +671,7 @@ function watching(tabId: number): boolean {
 
 const onSend: Parameters<typeof chrome.webRequest.onBeforeSendHeaders.addListener>[0] = (details) => {
   if (!watching(details.tabId)) return;
+  inflightMeta.set(details.requestId, { at: Date.now(), type: details.type, tabId: details.tabId });
   inflight.set(details.requestId, {
     url: details.url,
     method: details.method,
@@ -261,6 +682,7 @@ const onSend: Parameters<typeof chrome.webRequest.onBeforeSendHeaders.addListene
 };
 
 const onDone: Parameters<typeof chrome.webRequest.onCompleted.addListener>[0] = (details) => {
+  inflightMeta.delete(details.requestId);
   const entry = inflight.get(details.requestId);
   if (!entry) return;
   entry.status = details.statusCode;
@@ -270,16 +692,24 @@ const onDone: Parameters<typeof chrome.webRequest.onCompleted.addListener>[0] = 
   if (har.length > 240) har.shift();
 };
 
+const onFail: Parameters<typeof chrome.webRequest.onErrorOccurred.addListener>[0] = (details) => {
+  inflightMeta.delete(details.requestId);
+  inflight.delete(details.requestId);
+};
+
 function watchNetwork(): void {
   const filter: chrome.webRequest.RequestFilter = { urls: ["<all_urls>"] };
   const send = () => chrome.webRequest.onBeforeSendHeaders.addListener(onSend, filter, ["requestHeaders", "extraHeaders"]);
   const done = () => chrome.webRequest.onCompleted.addListener(onDone, filter, ["responseHeaders", "extraHeaders"]);
+  const fail = () => chrome.webRequest.onErrorOccurred.addListener(onFail, filter);
   try {
     send();
     done();
+    fail();
   } catch {
     chrome.webRequest.onBeforeSendHeaders.addListener(onSend, filter, ["requestHeaders"]);
     chrome.webRequest.onCompleted.addListener(onDone, filter, ["responseHeaders"]);
+    chrome.webRequest.onErrorOccurred.addListener(onFail, filter);
   }
 }
 
@@ -470,6 +900,7 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
     await chrome.tabs.update(tabId, { url, active: true });
     await pending;
     await ensureInjected(tabId);
+    await ensureDialogs(tabId);
     persist.origin = origin;
     await savePersist();
     const tab = await chrome.tabs.get(tabId);
@@ -481,15 +912,23 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
     const paths = files.map((file) => file.path || "").filter(Boolean);
     await withTab({ op: "gesture", gesture: cmd.gesture });
     await withTab({ op: "mark-file", handle: cmd.handle, identity: cmd.identity, selector: cmd.selector });
-    await setFiles(tabId, paths);
+    await setFiles(tabId, paths, typeof cmd.selector === "string" ? cmd.selector : undefined);
     const named = await withTab({ op: "file-name" });
     return { ok: true, name: named.name || files[0]?.name || "" };
   }
   if (op === "measure-debugger") {
     const tabId = await ownedTab();
+    const raw = await sendTab(tabId, { op: "raw-click", selector: "#one" });
     const before = await sendTab(tabId, { op: "metrics" });
-    await chrome.debugger.attach({ tabId }, "1.3");
-    await delay(500);
+    await attachDebugger(tabId);
+    const clicked = await sendTab(tabId, { op: "point", selector: "#two" });
+    await mouseClick(tabId, Number(clicked.x), Number(clicked.y));
+    const note = await sendTab(tabId, { op: "point", selector: "#note" });
+    await mouseClick(tabId, Number(note.x), Number(note.y));
+    await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text: "ab" });
+    await delay(80);
+    const trust = await sendTab(tabId, { op: "last-trust" });
+    await delay(400);
     const after = await sendTab(tabId, { op: "metrics" });
     return {
       attached: true,
@@ -497,10 +936,13 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
       after,
       webdriver: after.webdriver === true,
       innerDelta: Number(before.innerHeight || 0) - Number(after.innerHeight || 0),
+      clickBefore: raw.isTrusted === true,
+      clickAfter: trust.click === true,
+      typeAfter: trust.input === true || trust.key === true,
     };
   }
   if (op === "detach-debugger") {
-    if (persist.tabId) await chrome.debugger.detach({ tabId: persist.tabId }).catch(() => undefined);
+    if (persist.tabId) await detachDebugger(persist.tabId);
     return { attached: false };
   }
   if (op === "shot") {
@@ -545,19 +987,95 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
   }
   if (op === "clear-site") {
     const url = String(cmd.url || "");
-    const list = await chrome.cookies.getAll({ url });
-    for (const cookie of list) await chrome.cookies.remove({ url, name: cookie.name });
-    return { removed: list.length };
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    const all = await chrome.cookies.getAll({});
+    let removed = 0;
+    for (const cookie of all) {
+      const domain = cookie.domain.replace(/^\./, "");
+      if (domain !== host && !domain.endsWith(`.${host}`) && host !== domain) continue;
+      const cookieUrl = `${cookie.secure ? "https" : "http"}://${domain}${cookie.path}`;
+      const gone = await chrome.cookies.remove({ url: cookieUrl, name: cookie.name });
+      if (gone) removed += 1;
+    }
+    const tabId = persist.tabId;
+    if (tabId) {
+      // The shop keeps its cart in an app-localstorage-document inside shadow DOM.
+      // Clearing storage on the previous document loses to that element writing the
+      // cart back as the next page loads, so the live element is zeroed too.
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        func: () => {
+          const wipe = (root: ParentNode) => {
+            const nodes = root.querySelectorAll?.("*");
+            if (!nodes) return;
+            for (const el of nodes) {
+              if (el.localName === "app-localstorage-document") {
+                try { (el as { data?: unknown }).data = []; } catch { /* the element can reject the write */ }
+              }
+              if (el.shadowRoot) wipe(el.shadowRoot);
+            }
+          };
+          try { wipe(document); } catch { /* the page can refuse the walk */ }
+          try { localStorage.clear(); } catch { /* the page can refuse storage */ }
+          try { sessionStorage.clear(); } catch { /* same */ }
+        },
+      }).catch(() => undefined);
+    }
+    return { removed };
   }
   if (op === "waitIdle") {
     const tabId = persist.tabId;
     if (tabId) await waitComplete(tabId, Number(cmd.timeoutMs || 4000));
     return { ok: true };
   }
+  if (op === "click" || op === "drive-click") {
+    const tabId = await ownedTab();
+    await ensureDialogs(tabId);
+    const point = await withTab({ ...cmd, op: "point" });
+    if (point.skipClick === true || String(point.tag || "") === "SELECT") return { ok: true, trusted: String(point.tag || "") !== "SELECT", skipped: point.tag || true };
+    await trustedClick(tabId, cmd, point);
+    return { ok: true, trusted: true, covered: point.covered === true, hit: point.hit || "" };
+  }
+  if (op === "fill" || op === "drive-fill") {
+    const tabId = await ownedTab();
+    await ensureDialogs(tabId);
+    const point = await withTab({ ...cmd, op: "point" });
+    await trustedFill(tabId, cmd, point);
+    return { ok: true, trusted: true };
+  }
+  if (op === "check") {
+    const tabId = await ownedTab();
+    await ensureDialogs(tabId);
+    const point = await withTab({ ...cmd, op: "point", desiredChecked: cmd.checked === true });
+    if (point.skipClick === true) return { ok: true, trusted: true, skipped: true };
+    await trustedClick(tabId, cmd, point);
+    return { ok: true, trusted: true };
+  }
+  if (op === "key") {
+    const tabId = await ownedTab();
+    await ensureDialogs(tabId);
+    if (cmd.gesture) await withTab({ op: "gesture", gesture: cmd.gesture });
+    await withDebugger(tabId, () => pressNamed(tabId, String(cmd.key || "Enter")));
+    return { ok: true, trusted: true };
+  }
+  if (op === "select" || op === "drive-select") {
+    const tabId = await ownedTab();
+    await waitForQuiet(tabId);
+    const result = await withTab(cmd);
+    await pageChange(tabId, String(cmd.value ?? cmd.text ?? ""));
+    return result;
+  }
+  if (op === "activate") {
+    const tabId = await ownedTab();
+    const marked = await withTab(cmd, 20000);
+    if (marked.pendingClick === true) await trustedClick(tabId, cmd, marked);
+    return marked;
+  }
   const pageOps = new Set([
-    "tree", "click", "fill", "select", "check", "key", "focus", "readList", "activate",
+    "tree", "select", "focus", "readList",
     "showAsk", "clearAsk", "captureStep", "dismiss", "text", "box", "metrics", "flush-events",
-    "drive-click", "drive-fill", "drive-select", "propose", "gesture",
+    "drive-select", "propose", "gesture", "drop",
   ]);
   if (pageOps.has(op)) return withTab(cmd, op === "readList" ? 30000 : 20000);
   throw new Error(`unknown command ${op}`);
