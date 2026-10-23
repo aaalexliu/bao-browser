@@ -3,11 +3,11 @@
 // BAO_MCP_STUB stays the protocol-only path. This file runs only for BAO_MCP_LIVE=1.
 
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { FileChooser, Page } from "playwright";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, productHeadless } from "../launch";
 import { osHit, osNodes } from "../proxy/os";
 import type { TrailEvent } from "../v1/interpret";
 import type { Identity } from "../v1/schema";
@@ -79,10 +79,11 @@ export class LiveSession {
     if (surface === "desktop") {
       return new LiveSession(trailPath, secrets, surface, undefined, screen, helper);
     }
-    const profile = mkdtempSync(path.join(tmpdir(), "bao-mcp-profile-"));
+    const profile = path.join(home, "chrome-profile");
+    mkdirSync(profile, { recursive: true });
     const context = await launchOwnedChrome({
       userDataDir: profile,
-      headless: env.BAO_HEADED !== "1",
+      headless: productHeadless(env),
     });
     const page = context.pages()[0] || await context.newPage();
     const url = env.BAO_MCP_URL || "about:blank";

@@ -27,7 +27,7 @@ process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 process.env.BAO_HEADED = "0";
 
 const ARTIFACTS = "/opt/cursor/artifacts";
-const LINE = "Experian is showing a bot check. Finish it in the Bao window, then press Continue.";
+const LINE = "Experian is showing a bot check. Complete the check in the Bao window, then press Continue.";
 const LOGIN_LINE = "Sign in in the Bao window, then press Continue.";
 
 function pageOf(title: string, body: string, withApply = true): string {

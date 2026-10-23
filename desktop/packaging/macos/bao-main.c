@@ -64,7 +64,7 @@ int main(void) {
     fprintf(stderr, "bao: bundled browser executable was not found under Resources/Chromium.app\n");
     return 1;
   }
-  /* Capture and replay use this binary too, not an installed Chrome. */
+  /* Fallback when Google Chrome is not installed. The launcher prefers Chrome. */
   setenv("BAO_BROWSER", browser, 1);
   /* v1 launches the helper inside this app, not a second copy on disk. */
   char helper[4096];

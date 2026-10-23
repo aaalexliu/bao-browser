@@ -9,7 +9,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
-import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
+import { launchOwnedChrome, pidsForDataDir, productHeadless } from "../launch";
 import { Capture, actNotice } from "./capture";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
@@ -935,6 +935,7 @@ export async function startApp(opts: {
         loginContinued = false;
         replaying = true;
         try {
+          await releaseSharedProfile({ keepReplays: true });
           if (body.guide) {
             const run = await runGuide(library, workflow, args, replays, prompts);
             return json(res, run);
@@ -1368,15 +1369,35 @@ export async function startApp(opts: {
     }
   }
 
+  async function releaseSharedProfile(opts: { keepReplays: boolean }): Promise<void> {
+    if (context) await stopBrowser();
+    const replayContexts = new Set([...replays.values()].map((session) => session.context));
+    if (site && !replayContexts.has(site.context) && path.resolve(site.profile) === path.resolve(baoProfile)) {
+      await site.context.close().catch(() => undefined);
+      site = undefined;
+    }
+    if (watch && !replayContexts.has(watch.context) && path.resolve(watch.profile) === path.resolve(baoProfile)) {
+      await watch.context.close().catch(() => undefined);
+      watch = undefined;
+    }
+    if (opts.keepReplays) return;
+    for (const [id, session] of replays) {
+      if (path.resolve(session.profile) !== path.resolve(baoProfile)) continue;
+      await session.context.close().catch(() => undefined);
+      replays.delete(id);
+    }
+  }
+
   async function beginSession(startUrl: string): Promise<void> {
-    await stopBrowser();
+    await releaseSharedProfile({ keepReplays: false });
     capture.start();
     recordingSince = Date.now();
     captureShots.clear();
     captureGuideShots.clear();
     try {
-      profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
-      context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
+      profile = baoProfile;
+      mkdirSync(profile, { recursive: true });
+      context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless() });
       await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
         await watchShot(recordCaptured(payload));
       });
@@ -1798,7 +1819,7 @@ export async function startApp(opts: {
     replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
     prompts?: PersonPrompts,
   ) {
-    const session = await openReplay(library, workflow.id, replays);
+    const session = await openReplay(library, workflow.id, replays, baoProfile);
     const page = session.page;
     const driver = new BrowserDriver(page, undefined, prompts);
     if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
@@ -1851,21 +1872,33 @@ export async function startApp(opts: {
     await context?.close().catch(() => undefined);
     context = undefined;
     page = undefined;
-    if (profile) await rm(profile, { recursive: true, force: true }).catch(() => undefined);
     profile = undefined;
   }
 
   async function sitePage(): Promise<Page> {
     if (site && !site.page.isClosed()) return site.page;
-    const profile = path.join(opts.home, "site-profile");
-    mkdirSync(profile, { recursive: true });
-    const context = await launchAccountChrome({
-      userDataDir: profile,
-      headless: process.env.BAO_HEADED !== "1",
+    if (page && !page.isClosed() && context) {
+      site = { context, page, profile: baoProfile };
+      return page;
+    }
+    for (const session of replays.values()) {
+      if (session.page.isClosed()) continue;
+      if (path.resolve(session.profile) !== path.resolve(baoProfile)) continue;
+      site = session;
+      return session.page;
+    }
+    if (watch && !watch.page.isClosed()) {
+      site = { context: watch.context, page: watch.page, profile: watch.profile };
+      return watch.page;
+    }
+    mkdirSync(baoProfile, { recursive: true });
+    const opened = await launchOwnedChrome({
+      userDataDir: baoProfile,
+      headless: productHeadless(),
     });
-    const page = context.pages()[0] || await context.newPage();
-    site = { context, page, profile };
-    return page;
+    const live = opened.pages()[0] || await opened.newPage();
+    site = { context: opened, page: live, profile: baoProfile };
+    return live;
   }
 
   async function settleImport(): Promise<void> {
@@ -1974,12 +2007,18 @@ export async function startApp(opts: {
       }
       return watch.page;
     }
-    const dir = await mkdtemp(path.join(tmpdir(), "bao-try-"));
-    const opened = await launchOwnedChrome({ userDataDir: dir, headless: process.env.BAO_HEADED !== "1" });
+    if (site && !site.page.isClosed()) {
+      if (startUrl.startsWith("http") && !sameTarget(site.page.url(), startUrl)) {
+        await site.page.goto(startUrl, { waitUntil: "domcontentloaded" });
+      }
+      watch = { context: site.context, page: site.page, profile: site.profile };
+      return site.page;
+    }
+    mkdirSync(baoProfile, { recursive: true });
+    const opened = await launchOwnedChrome({ userDataDir: baoProfile, headless: productHeadless() });
     const live = opened.pages()[0] || await opened.newPage();
-    await live.setViewportSize({ width: 1280, height: 800 }).catch(() => undefined);
     if (startUrl.startsWith("http")) await live.goto(startUrl, { waitUntil: "domcontentloaded" });
-    watch = { context: opened, page: live, profile: dir };
+    watch = { context: opened, page: live, profile: baoProfile };
     return live;
   }
 
@@ -1999,7 +2038,9 @@ export async function startApp(opts: {
       await site?.context.close().catch(() => undefined);
       site = undefined;
       await watch?.context.close().catch(() => undefined);
-      if (watch) await rm(watch.profile, { recursive: true, force: true }).catch(() => undefined);
+      if (watch && path.resolve(watch.profile) !== path.resolve(baoProfile)) {
+        await rm(watch.profile, { recursive: true, force: true }).catch(() => undefined);
+      }
       watch = undefined;
       for (const session of replays.values()) {
         await session.context.close().catch(() => undefined);
@@ -2057,7 +2098,7 @@ async function runWorkflow(
     const gated = await gateSavedLogin(library, workflow, args, notices, replays, prompts, gate, fromStep);
     if (gated) return gated;
   }
-  return runRecorded(library, workflow, args, notices, replays, prompts, undefined, fromStep);
+  return runRecorded(library, workflow, args, notices, replays, prompts, gate?.baoProfile, fromStep);
 }
 
 async function gateSavedLogin(
@@ -2247,13 +2288,22 @@ async function openReplay(
     if (!sameDir) await rm(existing.profile, { recursive: true, force: true }).catch(() => undefined);
     replays.delete(id);
   }
+  if (fixedDir) {
+    for (const session of replays.values()) {
+      if (session.page.isClosed()) continue;
+      if (path.resolve(session.profile) !== path.resolve(fixedDir)) continue;
+      replays.set(id, session);
+      return session;
+    }
+  }
   const profile = fixedDir ?? await mkdtemp(path.join(tmpdir(), "bao-replay-"));
+  if (fixedDir) mkdirSync(profile, { recursive: true });
   const record = process.env.BAO_RUN_VIDEO === "1";
   const videoDir = record ? path.join(library.root, "videos", "incoming") : undefined;
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   const context = await launchOwnedChrome({
     userDataDir: profile,
-    headless: process.env.BAO_HEADED !== "1",
+    headless: productHeadless(),
     videoDir,
   });
   const page = context.pages()[0] || await context.newPage();

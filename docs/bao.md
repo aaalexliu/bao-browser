@@ -127,6 +127,18 @@ The replay form used to rebuild on each state change and drop a password that ha
 
 ## Decisions
 
+### 2026-10-22 — Look like a normal browser
+
+Capture, replay, login import, and the computer-use spikes start the installed Google Chrome and attach over a private debugging port (`connectOverCDP` with `noDefaults`). The binary is Google Chrome when it is installed (`/Applications/Google Chrome.app` on macOS, `/opt/google/chrome/chrome` on Linux), otherwise `BAO_BROWSER`, otherwise Playwright's Chromium. Bao does not look up `google-chrome` on `PATH`. A wrapper there can inject `--no-sandbox` and port 9222.
+
+Playwright's `launchPersistentContext` was putting `--no-sandbox` on the command line whenever `chromiumSandbox` was left unset, plus `--disable-extensions`, a debugging pipe, a mock keychain, SwiftShader, and a long `--disable-features` list. That launch reports `navigator.webdriver === true`, and on a Mac the window shows the unsupported-flag infobar for `--no-sandbox`. A Chrome process started with the profile and a private port keeps `navigator.webdriver === false` after the attach, including after `Runtime.evaluate`. The port is never 9222, and the profile is never the daily Chrome. `page.video()` does not exist on a CDP attach, so `BAO_RUN_VIDEO=1` is the one path that still uses Playwright's launcher. The Mac window recorder does not need it.
+
+The Mac app is headed unless `BAO_HEADED=0`. `--no-sandbox` is never added on macOS, including when `BAO_CHROME_NO_SANDBOX=1` or `CI` is set. Linux adds `--no-sandbox` and `--disable-dev-shm-usage` only when `BAO_CHROME_NO_SANDBOX=1` or `CI` is `1` / `true`. The sandbox starts on a normal Linux desktop.
+
+Capture and replay share one directory, `<home>/chrome-profile`. Stopping a capture does not delete it. A cookie set while capturing is still there for the next replay. Hermetic tests, evals, and a replay that was not given that directory still get a throwaway profile.
+
+Bao does not spoof a fingerprint, patch `navigator`, or solve a check. It also does not pass the switches that advertise automation. A check that is still on the page stays the existing pause: complete the check in the Bao window, then press Continue. Replay continues in the same profile.
+
 ### 2026-10-22 — Read a failure before healing it
 
 Compared with Playwright trace viewer, mabl, Momentic, and Skyvern, the run viewer was a filmstrip of equal frames and a single failure card. It now keeps a per-step identity score table, the step's accessibility and DOM snapshot, and the console and network lines captured on that browser. Filmstrip width follows the step, and gaps longer than a second are left out. The failure card opens the step that stopped.
@@ -185,7 +197,7 @@ The integration branch (pull request 58) is the tree a Mac build should use. It 
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
 
-`docs/mac-test.md` is the path from a fresh macOS account to the signed `Bao.app`. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` to Bao's owned Chrome only.
+`docs/mac-test.md` is the path from a fresh macOS account to the signed `Bao.app`. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` on Linux only. It does nothing on macOS.
 
 # Importing one site's login
 
@@ -211,7 +223,7 @@ The result line is `Imported N. Signed in: yes.` or `Imported N. Signed in: no.`
 
 Copying the Chrome user-data directory would bring every site's cookies, storage, history, and passwords. Bao's rule is one site per click. The profile directory stays where Chrome left it. Bao reads the cookie database and the storage for the origins of that site, then writes those into a profile Bao owns.
 
-That owned profile is not the daily Chrome, and it is not started with remote-debugging port 9222. Replay uses the same profile, so a session imported earlier is still there for the next run. Capture still uses a separate temporary profile.
+That owned profile is not the daily Chrome, and it is not started with remote-debugging port 9222. Capture and replay use this same profile, so a session imported earlier is still there for the next run.
 
 ## CDP getCookies on the person's Chrome
 
@@ -235,7 +247,7 @@ Saved sites are listed on Logins. Each row shows the last probe time and whether
 
 ## Sites that tie the session down
 
-Some sessions do not survive a change of browser, even when the cookies and storage copied cleanly. Bao skips anti-bot cookies by default. A site can be switched to include them. Bao does not spoof a fingerprint, solve a captcha, or hide that this Chrome is automated. There is no stealth flag on the owned Chrome launch.
+Some sessions do not survive a change of browser, even when the cookies and storage copied cleanly. Bao skips anti-bot cookies by default. A site can be switched to include them. Bao does not spoof a fingerprint or solve a captcha, and it does not pass automation switches. There is no stealth plugin that rewrites navigator.
 
 The cookie names Bao treats as anti-bot:
 

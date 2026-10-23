@@ -306,7 +306,7 @@ test("a bot wall and a login wall stop before the step, and clutter retries once
 });
 
 test("the run page and the heals list show the class, the line, and zero calls", () => {
-  const line = "Experian is showing a bot check. Finish it in the Bao window, then press Continue.";
+  const line = "Experian is showing a bot check. Complete the check in the Bao window, then press Continue.";
   const ask = makeAsk({
     kind: "wall",
     wall: "bot",

@@ -55,9 +55,14 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   assert.equal(args.includes("--password-store=basic"), false);
   assert.equal(args.includes("--no-sandbox"), false);
   assert.equal(args.includes("--restore-last-session"), false);
-  assert.equal(ownedChromeLaunchArgs([], {}).includes("--no-sandbox"), false);
-  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }).includes("--no-sandbox"), true);
-  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }).includes("--disable-dev-shm-usage"), true);
+  assert.equal(ownedChromeLaunchArgs([], {}, "linux").includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }, "linux").includes("--no-sandbox"), true);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }, "linux").includes("--disable-dev-shm-usage"), true);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }, "darwin").includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs([], { CI: "true" }, "linux").includes("--no-sandbox"), true);
+  assert.equal(ownedChromeLaunchArgs([], { CI: "true" }, "darwin").includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs(["--enable-automation", "--no-sandbox"], {}, "darwin").includes("--enable-automation"), false);
+  assert.equal(ownedChromeLaunchArgs(["--no-sandbox"], {}, "darwin").includes("--no-sandbox"), false);
   assert.throws(() => accountLaunchArgs(9222), /9222/);
   const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
   const bundled = "/tmp/Bao.app/Chromium";
