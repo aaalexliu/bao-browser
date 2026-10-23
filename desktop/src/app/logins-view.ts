@@ -2,7 +2,8 @@
 
 import type { BotCookiePolicy, PublicImportResult, PublicPreview, PublicProfile, SiteLoginConfig } from "../login-import/types";
 import { formatClock, formatFriendly, formatWhen } from "../v1/time";
-import { esc } from "./views";
+import { controlKey } from "../v1/visible-copy";
+import { esc, htmlEsc } from "./views";
 
 export interface SavedSite extends SiteLoginConfig {
   lastProbeLabel?: string | null;
@@ -72,14 +73,14 @@ export function loginsScreen(login: LoginForm): string {
     <p class="lede">Name a site, then import its login from your Chrome. Bao reads that site only, and only after this click. Values are not shown.</p>
     ${savedLogins(login.saved)}
     <div class="card">
-      <label>Site <input id="login-site" value="${esc(login.site)}" placeholder="https://www.example.com/account"></label>
+      <label>Site <input id="login-site" value="${htmlEsc(login.site)}" placeholder="https://www.example.com/account"></label>
       <details id="login-advanced" ${login.advancedOpen ? "open" : ""}>
         <summary>Advanced</summary>
         <p class="hint">A blank probe uses the page in Site. With no selector and no text, Bao checks whether that page landed on a login URL. Extra origins must be the same host. Anti-bot cookies are skipped unless you include them here.</p>
-        <label>Probe URL <input id="login-probe" value="${esc(login.probeUrl)}" placeholder="Page that redirects to login when signed out"></label>
-        <label>Same-host origins <input id="login-origins" value="${esc(login.origins)}" placeholder="Optional. https://app.example.com"></label>
-        <label>Signed-in selector <input id="login-selector" value="${esc(login.selector)}" placeholder="Optional. Example: #account"></label>
-        <label>Signed-in text <input id="login-text" value="${esc(login.text)}" placeholder="Optional. Example: Welcome back"></label>
+        <label>Probe URL <input id="login-probe" value="${htmlEsc(login.probeUrl)}" placeholder="Page that redirects to login when signed out"></label>
+        <label>Same-host origins <input id="login-origins" value="${htmlEsc(login.origins)}" placeholder="Optional. https://app.example.com"></label>
+        <label>Signed-in selector <input id="login-selector" value="${htmlEsc(login.selector)}" placeholder="Optional. Example: #account"></label>
+        <label>Signed-in text <input id="login-text" value="${htmlEsc(login.text)}" placeholder="Optional. Example: Welcome back"></label>
         <label>Anti-bot cookies <select id="login-bots">
           <option value="skip" ${login.botCookies === "skip" ? "selected" : ""}>Skip (default)</option>
           <option value="include" ${login.botCookies === "include" ? "selected" : ""}>Include for this site</option>
@@ -113,12 +114,13 @@ function savedLogins(sites: SavedSite[]): string {
     const when = site.lastProbeLabel
       ? `Last checked ${esc(site.lastProbeLabel)}`
       : site.lastProbeAt ? `Last checked ${esc(formatWhen(site.lastProbeAt))}` : "Not checked yet";
-    return `<div class="row saved-row" data-saved-origin="${esc(site.origin)}">
+    const key = htmlEsc(controlKey(site.origin));
+    return `<div class="row saved-row" data-saved-origin="${key}">
       <strong>${esc(site.origin)}</strong>
       ${badge}
       <span class="quiet">${when}</span>
-      <button type="button" data-recheck="${esc(site.origin)}">Re-check</button>
-      <button type="button" data-remove="${esc(site.origin)}">Remove</button>
+      <button type="button" data-recheck="${key}">Re-check</button>
+      <button type="button" data-remove="${key}">Remove</button>
     </div>`;
   }).join("");
   return `<div class="card" id="saved-logins"><h3>Saved sites</h3>${rows}</div>`;
@@ -208,7 +210,7 @@ export function syncPanel(sync: {
   return `<div class="card" id="sync-panel" data-testid="sync">
     <h3>Sync</h3>
     <p>Secrets, cookies, and unredacted screenshots stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
-    <label>Server <input id="sync-server" value="${esc(row.server || "")}" placeholder="http://127.0.0.1:3000"></label>
+    <label>Server <input id="sync-server" value="${htmlEsc(row.server || "")}" placeholder="Pairing server"></label>
     <label>Pairing code <input id="pair-code" autocomplete="off"></label>
     <label>Invite secret <input id="invite-secret" type="password" autocomplete="off" placeholder="${row.inviteSaved ? "Saved on this Mac" : "Paste once"}"></label>
     <p class="quiet">Paste the invite secret once, next to the pairing code. It stays in this Mac's sync file and is not sent on later syncs.</p>

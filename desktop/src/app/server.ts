@@ -12,6 +12,7 @@ import type { BrowserContext, Page } from "playwright";
 import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
 import { Capture, actNotice } from "./capture";
 import { resolveCaptureUrl } from "./capture-url";
+import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
@@ -2032,7 +2033,8 @@ async function keepReplayClip(root: string, profile: string): Promise<void> {
 }
 
 function captureStepLabel(step: { label: string; note?: string }): string {
-  return step.note ? `${step.label} — ${step.note}` : step.label;
+  const text = step.note ? `${step.label} — ${step.note}` : step.label;
+  return visibleCopy(text);
 }
 
 function stepHealChoice(value: string | null | undefined): "auto" | "ask" | "never" | undefined {

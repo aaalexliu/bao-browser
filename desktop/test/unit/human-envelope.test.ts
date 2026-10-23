@@ -88,7 +88,8 @@ test("the run viewer shows the sign-in envelope and the handoff clock", () => {
   assert.match(html, /id="run-envelope"/);
   assert.match(html, /data-status="needs_signin"/);
   assert.match(html, /id="envelope-ask"/);
-  assert.match(html, /Sign in to 127\.0\.0\.1 in the Bao window/);
+  assert.match(html, /Sign in to the fixture in the Bao window/);
+  assert.equal(html.includes("127.0.0.1"), false);
   assert.match(html, /id="envelope-token"/);
   assert.match(html, /id="handoff-trail"/);
   assert.match(html, ZONE);
@@ -108,8 +109,8 @@ test("scripted driver on the sign-in fixture resumes the same run", { timeout: 6
     assert.equal(first.status, "needs_signin");
     assert.equal(first.outcome, "needs_signin");
     assert.equal(first.step, "signin");
-    assert.match(first.ask || "", /Sign in to 127\.0\.0\.1 in the Bao window/);
-    assert.match(first.reason || "", /Sign in to 127\.0\.0\.1/);
+    assert.match(first.ask || "", /Sign in to the fixture in the Bao window/);
+    assert.match(first.reason || "", /Sign in to the fixture/);
     assert.match(first.deadline || "", ZONE);
     assert.match(first.resume_token || "", /^r_[a-f0-9]+$/);
     assert.equal(first.run_id, first.runId);
@@ -180,7 +181,7 @@ test("cancel and resume leave the confirm button unpressed", { timeout: 60_000 }
     const first = await runWorkflow(app.library, { id: "confirm-one" });
     token = first.resume_token || "";
     assert.equal(first.status, "needs_human");
-    assert.match(first.ask || "", /Press Apply on 127\.0\.0\.1 in the Bao window/);
+    assert.match(first.ask || "", /Press Apply on the fixture in the Bao window/);
     let waiting = "";
     await withHeldPage(token, async (page) => {
       waiting = await page.locator("#apply-status").innerText();
