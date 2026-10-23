@@ -91,4 +91,18 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   assert.match(main, /Chromium\.app/);
   assert.match(main, /--app=/);
   assert.match(main, /--disable-infobars/);
+  assert.match(script, /bao-launch\.c/);
+  assert.equal(/codesign[^\n]*--deep/.test(script), false);
+  assert.equal(main.includes("execlp"), false);
+  assert.match(main, /bao_discover_node/);
+  assert.match(main, /bao_instance_acquire/);
+  assert.match(main, /bao_show_alert/);
+  assert.match(main, /bao_focus_pid/);
+  assert.match(main, /bao_wait_for_port/);
+  const messages = [...main.matchAll(/static const char k\w+\[\] =\s*((?:"[^"]*"\s*)+);/g)].map((match) => match[1]);
+  assert.ok(messages.length >= 4);
+  for (const message of messages) {
+    assert.equal(message.includes("127.0.0.1"), false, message);
+    assert.equal(message.includes("4787"), false, message);
+  }
 });

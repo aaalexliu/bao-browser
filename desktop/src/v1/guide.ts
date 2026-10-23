@@ -7,6 +7,7 @@ import { prepareGuideCrop, type GuideCropKind } from "./guide-crop";
 import { isElementCrop } from "./redacted-png";
 import { looksLikePath, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { guideShotName, shotFile, workflowShotName } from "./shots";
+import { visibleCopy } from "./visible-copy";
 
 const PATH_PREFIX = /\/(?:Users|home|tmp|var|opt|private|workspace|etc|usr)\/[^\s"'<>]*/g;
 const FILE_URL = /file:\/\/\S+/gi;
@@ -316,7 +317,7 @@ function tidy(value: string): string {
 }
 
 function esc(value: string): string {
-  return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
+  return visibleCopy(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
 }
 
 function safeId(id: string): string | undefined {
