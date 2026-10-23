@@ -2,6 +2,7 @@
 // name even when no model key is set. A model pass may replace it later.
 
 import { isSensitiveValue } from "../../../src/mask";
+import { isLoopbackHost, visibleCopy } from "./visible-copy";
 
 export interface NameEvent {
   op?: string;
@@ -62,14 +63,15 @@ export function primaryHost(source: NameSource): string {
   return best;
 }
 
-/** A human title. Never "Captured workflow". */
+/** A human title. Never "Captured workflow", and never a loopback address. */
 export function workflowFloorTitle(source: NameSource): string {
-  const host = primaryHost(source);
+  const host = displayHost(primaryHost(source));
   const phrase = obviousPhrase(source, host);
-  if (phrase && host) return `${phrase} · ${host}`;
-  if (phrase) return phrase;
-  if (host) return host;
-  return "Untitled workflow";
+  let title = "Untitled workflow";
+  if (phrase && host && phrase !== host && !phrase.endsWith(` ${host}`)) title = `${phrase} · ${host}`;
+  else if (phrase) title = phrase;
+  else if (host) title = host;
+  return presentTitle(title, host);
 }
 
 function obviousPhrase(source: NameSource, host: string): string {
@@ -111,19 +113,41 @@ function phraseFrom(raw: string | undefined, secrets: string[]): string {
     const loose = text.match(/^(?:click|confirm|press)\s+(.+)$/i);
     if (loose?.[1] && !/^https?:/i.test(loose[1])) text = loose[1].replace(/^"|"$/g, "").trim();
   }
+  text = hideLoopback(text);
   if (!text || text.length > 60 || /^https?:/i.test(text)) return "";
-  if (/^(click|type|note|check|open|press key)$/i.test(text) || /^type\b/i.test(text)) return "";
+  if (/^(click|type|note|check|open|press key|fixture)$/i.test(text) || /^type\b/i.test(text)) return "";
   if (!VERB.test(text) || blocked(text, secrets)) return "";
   return text;
 }
 
 function usableTitle(title: string | undefined, host: string): string {
-  const text = (title || "").replace(/\s+/g, " ").trim();
+  const text = hideLoopback((title || "").replace(/\s+/g, " ").trim());
   if (!text || text.length > 80) return "";
   if (host && text.toLowerCase() === host.toLowerCase()) return "";
-  if (/^(home|untitled|new tab|about:blank)$/i.test(text)) return "";
+  if (/^(home|untitled|new tab|about:blank|fixture)$/i.test(text)) return "";
   if (blocked(text, [])) return "";
   return text;
+}
+
+/** Same loopback rule as product copy: the fixture host is Fixture, never the address or port. */
+function displayHost(host: string): string {
+  if (!host) return "";
+  if (isLoopbackHost(host)) return "Fixture";
+  return host;
+}
+
+function hideLoopback(text: string): string {
+  return visibleCopy(text).replace(/\bthe fixture\b/g, "Fixture").replace(/\s+/g, " ").trim();
+}
+
+function leaksListen(text: string): boolean {
+  return /127\.0\.0\.1|localhost|\[::1\]|:4787/i.test(text);
+}
+
+function presentTitle(text: string, host: string): string {
+  const cleaned = hideLoopback(text);
+  if (cleaned && !leaksListen(cleaned)) return cleaned;
+  return host || "Untitled workflow";
 }
 
 function blocked(text: string, secrets: string[]): boolean {

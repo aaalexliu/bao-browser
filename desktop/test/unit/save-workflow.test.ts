@@ -76,6 +76,44 @@ test("the primary host is the first navigate, otherwise the most-used host", () 
   }), "files.test");
 });
 
+test("a loopback recording is titled Fixture and never the listen address", () => {
+  const urls = [
+    "http://127.0.0.1:4787/fixture",
+    "http://localhost:4787/fixture",
+    "http://127.0.0.1:4787/",
+    "http://[::1]:4787/fixture",
+  ];
+  for (const url of urls) {
+    const events = [
+      act({ id: "n", op: "navigate", beforeUrl: url, afterUrl: url }),
+      act({
+        id: "c",
+        op: "click",
+        beforeUrl: url,
+        afterUrl: url,
+        identity: { surface: "dom", role: "button", name: "Save note", path: [] },
+      }),
+    ];
+    const titled = workflowFloorTitle({
+      startUrl: url,
+      events,
+      steps: [{ action: "click", label: 'Click "Save note"' }],
+      pageTitle: "127.0.0.1:4787",
+    });
+    assert.equal(titled, "Save note · Fixture", url);
+    assert.equal(titled.includes("127.0.0.1"), false, url);
+    assert.equal(titled.includes(":4787"), false, url);
+  }
+  const bare = workflowFloorTitle({
+    startUrl: "http://127.0.0.1:4787/login",
+    events: [act({ id: "n", op: "navigate", afterUrl: "http://localhost:4787/login" })],
+    pageTitle: "http://127.0.0.1:4787/account",
+  });
+  assert.equal(bare, "Fixture");
+  assert.equal(bare.includes("127.0.0.1"), false);
+  assert.equal(bare.includes(":4787"), false);
+});
+
 test("the card poster is the full page, never an element crop", () => {
   const page = blankPng(800, 600);
   const crop = blankPng(80, 40);
