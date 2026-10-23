@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cursorAccountHeal, resetCursorAccountCache } from "../../src/v1/cursor-account";
 
-const REAL_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "CURSOR_API_KEY"] as const;
+const REAL_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"] as const;
 
 test("the suite cannot reach a logged-in Cursor account or a real model", async () => {
   assert.equal(process.env.BAO_HEAL_CURSOR_ACCOUNT, "0");
