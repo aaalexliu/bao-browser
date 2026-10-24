@@ -138,7 +138,7 @@ int main(void) {
     bao_show_alert(kOpenTitle, kBrowserBody);
     return 1;
   }
-  /* Capture and replay use this binary too, not an installed Chrome. */
+  /* Fallback when Google Chrome is not installed. The launcher prefers Chrome. */
   setenv("BAO_BROWSER", browser, 1);
   /* v1 launches the helper inside this app, not a second copy on disk. */
   char helper[4096];

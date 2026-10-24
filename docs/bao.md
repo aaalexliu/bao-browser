@@ -151,6 +151,18 @@ The replay form used to rebuild on each state change and drop a password that ha
 
 ## Decisions
 
+### 2026-10-22 — Look like a normal browser
+
+Capture, replay, login import, and the computer-use spikes start the installed Google Chrome and attach over a private debugging port (`connectOverCDP` with `noDefaults`). The binary is Google Chrome when it is installed (`/Applications/Google Chrome.app` on macOS, `/opt/google/chrome/chrome` on Linux), otherwise `BAO_BROWSER`, otherwise Playwright's Chromium. Bao does not look up `google-chrome` on `PATH`. A wrapper there can inject `--no-sandbox` and port 9222.
+
+Playwright's `launchPersistentContext` was putting `--no-sandbox` on the command line whenever `chromiumSandbox` was left unset, plus `--disable-extensions`, a debugging pipe, a mock keychain, SwiftShader, and a long `--disable-features` list. That launch reports `navigator.webdriver === true`, and on a Mac the window shows the unsupported-flag infobar for `--no-sandbox`. A Chrome process started with the profile and a private port keeps `navigator.webdriver === false` after the attach, including after `Runtime.evaluate`. The port is never 9222, and the profile is never the daily Chrome. `page.video()` does not exist on a CDP attach, so `BAO_RUN_VIDEO=1` is the one path that still uses Playwright's launcher. The Mac window recorder does not need it.
+
+The Mac app is headed unless `BAO_HEADED=0`. `--no-sandbox` is never added on macOS, including when `BAO_CHROME_NO_SANDBOX=1` or `CI` is set. Linux adds `--no-sandbox` and `--disable-dev-shm-usage` only when `BAO_CHROME_NO_SANDBOX=1` or `CI` is `1` / `true`. The sandbox starts on a normal Linux desktop.
+
+Capture and replay share one directory, `<home>/chrome-profile`. Stopping a capture does not delete it. A cookie set while capturing is still there for the next replay. Hermetic tests, evals, and a replay that was not given that directory still get a throwaway profile. The launch does not pass `--restore-last-session`. Saved tabs are removed before Chrome starts, the window is parked on `about:blank`, and the first capture or replay navigation is the one Bao issues.
+
+Bao does not spoof a fingerprint, patch `navigator`, or solve a check. It also does not pass the switches that advertise automation. A check that is still on the page stays the existing pause: complete the check in the Bao window, then press Continue. Replay continues in the same profile.
+
 ### 2026-10-22 — Read a failure before healing it
 
 Compared with Playwright trace viewer, mabl, Momentic, and Skyvern, the run viewer was a filmstrip of equal frames and a single failure card. It now keeps a per-step identity score table, the step's accessibility and DOM snapshot, and the console and network lines captured on that browser. Filmstrip width follows the step, and gaps longer than a second are left out. The failure card opens the step that stopped.
@@ -209,7 +221,7 @@ The integration branch (pull request 58) is the tree a Mac build should use. It 
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
 
-`docs/mac-build.md` is the path from a fresh macOS account to the signed `Bao.app`. `docs/mac-test.md` is the pass on an installed app. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` to Bao's owned Chrome only.
+`docs/mac-build.md` is the path from a fresh macOS account to the signed `Bao.app`. `docs/mac-test.md` is the pass on an installed app. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` on Linux only. It does nothing on macOS.
 
 # Importing one site's login
 
@@ -223,7 +235,7 @@ The profile picker lists every profile in that Chrome's `Local State`: name, ema
 
 Three stores, all limited to the clicked site:
 
-- **Cookies.** The profile's cookie SQLite (`Network/Cookies`, or the legacy `Cookies` file). A cookie matches when it is host-only for that host, or a domain cookie for that host or a parent that is not a public suffix. Expired cookies are counted and left behind. Bao sets the ones it keeps one at a time with `Network.setCookie`, so one rejected `__Host-` or `SameSite=None` row does not drop the session cookie next to it. A cookie with no expiry is a session cookie. Chrome deletes those on a clean exit unless the profile is set to continue where you left off. Bao sets that on its own profile: `session.restore_on_startup` is 1, and the launch passes `--restore-last-session`. A session cookie then stays in Bao's profile when Bao's Chrome exits, and the next launch sends it. Bao does not mark the profile as crashed, and it does not read the person's Chrome again to fill a cookie back in. If the cookie is gone at run time, the pre-run probe returns needs sign-in.
+- **Cookies.** The profile's cookie SQLite (`Network/Cookies`, or the legacy `Cookies` file). A cookie matches when it is host-only for that host, or a domain cookie for that host or a parent that is not a public suffix. Expired cookies are counted and left behind. Bao sets the ones it keeps one at a time with `Network.setCookie`, so one rejected `__Host-` or `SameSite=None` row does not drop the session cookie next to it. A cookie with no expiry is a session cookie. Chrome deletes those on a clean exit unless the profile is set to continue where you left off. Bao sets that on its own profile: `session.restore_on_startup` is 1. The launch does not pass `--restore-last-session`, because a restored tab navigates on its own and can interrupt the first replay. Before each launch Bao deletes the saved tab files (`Sessions`, `Current Session`, `Current Tabs`, `Last Session`, and `Last Tabs`) so Chrome has no tab to reopen. The window starts on `about:blank`, and capture or replay then navigates to its own URL. A session cookie still stays in Bao's profile when Bao's Chrome exits, and the next launch sends it. Bao does not mark the profile as crashed, and it does not read the person's Chrome again to fill a cookie back in. If the cookie is gone at run time, the pre-run probe returns needs sign-in.
 - **localStorage.** Chrome keeps every origin in one LevelDB, `Local Storage/leveldb`. The map key is `_`, the origin, a NUL, and the item key. The value is tagged Latin-1 or UTF-16. Chrome is also moving this store to SQLite (`maps` joined to `map_entries`). When that file is present, Bao reads it the same way: the origin is the start of `storage_key`, up to the first NUL. `VERSION` and `META` rows are not site data. Bao then writes the items into its own Chrome one at a time with `DOMStorage.setDOMStorageItem`. One rejected item does not drop the rest.
 - **IndexedDB.** Chrome stores this as one directory per origin, named `scheme_host_port.indexeddb.leveldb` (and `.indexeddb.blob` when Chrome has one). The default port is `0`. Bao copies only the directories for the clicked origin, and for extra origins the person listed on the **same host**. It skips `LOCK` files. There is no CDP call that writes IndexedDB, so the copy happens before Bao's Chrome starts.
 
@@ -235,7 +247,7 @@ The result line is `Imported N. Signed in: yes.` or `Imported N. Signed in: no.`
 
 Copying the Chrome user-data directory would bring every site's cookies, storage, history, and passwords. Bao's rule is one site per click. The profile directory stays where Chrome left it. Bao reads the cookie database and the storage for the origins of that site, then writes those into a profile Bao owns.
 
-That owned profile is not the daily Chrome, and it is not started with remote-debugging port 9222. Replay uses the same profile, so a session imported earlier is still there for the next run. Capture still uses a separate temporary profile.
+That owned profile is not the daily Chrome, and it is not started with remote-debugging port 9222. Capture and replay use this same profile, so a session imported earlier is still there for the next run.
 
 ## CDP getCookies on the person's Chrome
 
@@ -259,7 +271,7 @@ Saved sites are listed on Logins. Each row shows the last probe time and whether
 
 ## Sites that tie the session down
 
-Some sessions do not survive a change of browser, even when the cookies and storage copied cleanly. Bao skips anti-bot cookies by default. A site can be switched to include them. Bao does not spoof a fingerprint, solve a captcha, or hide that this Chrome is automated. There is no stealth flag on the owned Chrome launch.
+Some sessions do not survive a change of browser, even when the cookies and storage copied cleanly. Bao skips anti-bot cookies by default. A site can be switched to include them. Bao does not spoof a fingerprint or solve a captcha, and it does not pass automation switches. There is no stealth plugin that rewrites navigator.
 
 The cookie names Bao treats as anti-bot:
 
