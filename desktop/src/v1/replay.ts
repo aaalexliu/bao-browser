@@ -345,6 +345,22 @@ export async function replay(
   let guard: { present: string; open: boolean } | undefined;
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
+    if (driver.shouldStop?.()) {
+      steps[i] = { id: step.id, status: "failed", reason: "cancelled" };
+      return finish({
+        runId,
+        status: "failed",
+        steps,
+        failure: {
+          stepId: step.id,
+          index: step.index,
+          intent: step.intent || step.label,
+          phase: "action",
+          reason: "cancelled",
+          snapshot: {},
+        },
+      });
+    }
     if (i < startAt) {
       steps[i] = { id: step.id, status: "skipped", reason: "not re-run" };
       continue;
@@ -478,6 +494,12 @@ export async function replay(
       }
     }
     if (!outcome) outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+    if (!outcome.ok && "failure" in outcome && (outcome.failure.reason === "cancelled" || driver.shouldStop?.())) {
+      const failure = { ...outcome.failure, reason: "cancelled" };
+      stamp({ id: step.id, status: "failed", reason: "cancelled", phase: "action" });
+      noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
+      return finish({ runId, status: "failed", steps, failure });
+    }
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
       const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
@@ -880,6 +902,21 @@ async function runStepAction(
   }
   const held = await readExpect(step, args, driver, repairs, gate, recovery);
   if (!held.ok) {
+    if (held.cancelled || driver.shouldStop?.()) {
+      return {
+        ok: false,
+        repairs,
+        acted: node,
+        failure: {
+          stepId: step.id,
+          index: step.index,
+          intent: step.intent || step.label,
+          phase: "action",
+          reason: "cancelled",
+          snapshot: {},
+        },
+      };
+    }
     const failure = await fail(driver, step, "expect", expectReason(step), undefined, secrets);
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
@@ -1107,14 +1144,16 @@ async function readExpect(
   repairs: RepairLog[],
   gate: ApplyGate,
   recovery: RecoveryBudget,
-): Promise<{ ok: boolean; recovered?: string }> {
+): Promise<{ ok: boolean; recovered?: string; cancelled?: boolean }> {
   if (!step.expect && !step.postcondition) return { ok: true };
   if (await expectationsHold(step, await driver.tree(), args)) return { ok: true };
   const timeout = step.expect?.timeoutMs || step.postcondition?.timeoutMs || 0;
   const start = Date.now();
   if (driver.waitIdle) await driver.waitIdle(Math.min(timeout || step.timeoutMs || 1000, 2000));
   while (Date.now() - start < timeout) {
+    if (driver.shouldStop?.()) return { ok: false, cancelled: true };
     await (driver.sleep ? driver.sleep(100) : sleep(100));
+    if (driver.shouldStop?.()) return { ok: false, cancelled: true };
     if (await expectationsHold(step, await driver.tree(), args)) {
       repairs.push({ stepId: step.id, repair: "wait", detail: "expect became true" });
       return { ok: true };

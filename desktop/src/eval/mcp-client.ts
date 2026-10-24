@@ -1,6 +1,7 @@
 // A small MCP client for the driver eval. Frames match bao mcp.
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { frameRpc, takeRpcChunk } from "../mcp/frame";
 
 interface Pending {
   resolve: (value: McpResult) => void;
@@ -89,24 +90,16 @@ export class McpClient {
   }
 
   private send(msg: unknown): void {
-    const json = JSON.stringify(msg);
-    this.child.stdin.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+    this.child.stdin.write(frameRpc(msg, "json"));
   }
 
   private onData(chunk: Buffer): void {
     this.buf = Buffer.concat([this.buf, chunk]);
     while (true) {
-      const headerEnd = this.buf.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-      const header = this.buf.slice(0, headerEnd).toString("utf8");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) return;
-      const length = Number(match[1]);
-      const start = headerEnd + 4;
-      if (this.buf.length < start + length) return;
-      const body = this.buf.slice(start, start + length).toString("utf8");
-      this.buf = this.buf.slice(start + length);
-      this.onMessage(body);
+      const next = takeRpcChunk(this.buf, null);
+      if (!next) return;
+      this.buf = Buffer.from(next.rest);
+      this.onMessage(next.body);
     }
   }
 

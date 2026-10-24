@@ -4,11 +4,15 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { frameRpc } from "../../src/mcp/frame";
 import { TOOL_NAMES } from "../../src/mcp/server";
 
 function frame(msg: unknown): Buffer {
-  const json = JSON.stringify(msg);
-  return Buffer.from(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  return Buffer.from(frameRpc(msg, "json"));
+}
+
+function headerFrame(msg: unknown): Buffer {
+  return Buffer.from(frameRpc(msg, "headers"));
 }
 
 test("MCP tool names stay fixed", () => {
@@ -22,20 +26,15 @@ test("tools/list stays the same four tools after workflows are added", async () 
     stdio: ["pipe", "pipe", "pipe"],
   });
   const messages: { id?: number; result?: { tools?: { name: string }[] } }[] = [];
-  let buf = Buffer.alloc(0);
+  let buf = "";
   child.stdout.on("data", (chunk: Buffer) => {
-    buf = Buffer.concat([buf, chunk]);
-    while (true) {
-      const headerEnd = buf.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-      const header = buf.slice(0, headerEnd).toString("utf8");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) return;
-      const length = Number(match[1]);
-      const start = headerEnd + 4;
-      if (buf.length < start + length) return;
-      messages.push(JSON.parse(buf.slice(start, start + length).toString("utf8")));
-      buf = buf.slice(start + length);
+    buf += chunk.toString("utf8");
+    let nl = buf.indexOf("\n");
+    while (nl >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) messages.push(JSON.parse(line));
+      nl = buf.indexOf("\n");
     }
   });
   const send = (msg: unknown) => child.stdin.write(frame(msg));
@@ -59,4 +58,33 @@ test("tools/list stays the same four tools after workflows are added", async () 
   const names = (id: number) => messages.find((msg) => msg.id === id)?.result?.tools?.map((tool) => tool.name);
   assert.deepEqual(names(2), ["search_workflows", "describe_workflow", "run_workflow", "get_run"]);
   assert.deepEqual(names(3), names(2));
+});
+
+test("a Content-Length request still gets a newline-delimited reply", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-header-"));
+  const child = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
+    env: { ...process.env, BAO_HOME: home },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let buf = "";
+  const messages: { id?: number }[] = [];
+  child.stdout.on("data", (chunk: Buffer) => {
+    buf += chunk.toString("utf8");
+    let nl = buf.indexOf("\n");
+    while (nl >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line.startsWith("{")) messages.push(JSON.parse(line));
+      nl = buf.indexOf("\n");
+    }
+  });
+  child.stdin.write(headerFrame({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "old", version: "0" } } }));
+  const start = Date.now();
+  while (!messages.some((msg) => msg.id === 1) && Date.now() - start < 5000) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  child.kill();
+  const reply = messages.find((msg) => msg.id === 1);
+  assert.ok(reply);
+  assert.equal(JSON.stringify(reply).includes("Content-Length"), false);
 });

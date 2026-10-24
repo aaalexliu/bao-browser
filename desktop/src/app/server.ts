@@ -110,6 +110,7 @@ import { gestureQueue, readGestures, writeGestures } from "../extension/gestures
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
 import { workflowDriver, type Gesture } from "../extension/protocol";
 import { defaultConfigHome } from "../extension/install-host";
+import { createRemoteAgent } from "../v1/remote-agent";
 import { keepMine, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -327,6 +328,12 @@ export async function startApp(opts: {
       capture.resume();
     },
   };
+  const remote = createRemoteAgent({
+    library,
+    prompts,
+    stop: () => { stopRun = true; },
+    clearStop: () => { stopRun = false; },
+  });
   const sessions = new Map<string, FreezeSession>();
   const pendings = new Map<string, { user: string; exp: number }>();
   let applyClicks = 0;
@@ -428,6 +435,7 @@ export async function startApp(opts: {
           sync: syncStatus(library),
           opened,
           saveSheet: saveSheetState(),
+          remote: remote.view(),
         });
       }
       if (req.method === "POST" && url.pathname === "/api/open") {
@@ -1048,6 +1056,21 @@ export async function startApp(opts: {
         loginContinued = true;
         return json(res, { ok: true });
       }
+      if (req.method === "POST" && url.pathname === "/api/remote/allow") {
+        remote.allow();
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/deny") {
+        remote.deny();
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/kill") {
+        remote.kill();
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/confirm") {
+        return json(res, await remote.approveConfirm());
+      }
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
         stopRun = true;
         if (!replaying) {
@@ -1447,6 +1470,7 @@ export async function startApp(opts: {
 
   syncPending();
   await new Promise<void>((resolve) => server.listen(opts.port ?? 0, "127.0.0.1", resolve));
+  remote.start();
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
   boundPort = port;
@@ -2299,6 +2323,7 @@ export async function startApp(opts: {
         }
       }
       replays.clear();
+      await remote.stop();
       await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },

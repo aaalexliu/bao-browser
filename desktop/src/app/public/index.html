@@ -203,6 +203,23 @@
     #act-bar .kicker { margin: 0; font-weight: 700; color: var(--need); font-size: var(--text-sm); letter-spacing: 0.01em; }
     #act-bar .instruction { margin: 0.3rem 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
     #act-bar .timeout { margin: 0.1rem 0 0.5rem; color: var(--quiet); }
+    #remote-agent {
+      background: var(--heal-bg);
+      border: 1px solid var(--heal);
+      border-left: 4px solid var(--heal);
+      border-radius: var(--radius);
+      padding: 0.9rem 1rem;
+      margin-bottom: 0.35rem;
+    }
+    #remote-agent .kicker { margin: 0; font-weight: 700; color: var(--heal); font-size: var(--text-sm); }
+    #remote-agent .instruction { margin: 0.3rem 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+    #remote-agent .timeout { margin: 0.1rem 0 0.5rem; color: var(--quiet); }
+    #remote-agent[data-phase="approval"],
+    #remote-agent[data-phase="confirm"] { background: var(--need-bg); border-color: var(--need); }
+    #remote-agent[data-phase="approval"] .kicker,
+    #remote-agent[data-phase="confirm"] .kicker { color: var(--need); }
+    #remote-agent[data-phase="running"] { background: var(--ok-bg); border-color: var(--ok); }
+    #remote-agent[data-phase="running"] .kicker { color: var(--ok); }
     label { display: grid; gap: 0.25rem; margin: 0.5rem 0; }
     input, select, textarea {
       padding: 0.4rem 0.5rem;
