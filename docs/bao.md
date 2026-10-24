@@ -2,6 +2,8 @@
 
 Earlier desktop notes are in [v1.md](v1.md) and the fixture drift report is [drift-linux.md](drift-linux.md). This file is the log for spikes after that.
 
+Goal: You just want your personal agent to use your own computer, because all the bot-blocking on cloud VMs is so annoying. Cloud-VM agents get bot-walled and payment-blocked, so bao drives the user's real Chrome and real session (#117 installed-Chrome launch, #116 extension driver) instead of a streamed VM. See Riley Brown, [the VM is overrated](https://x.com/rileybrown/status/2113773696863064377).
+
 ## 2026-10-23 — Extension driver
 
 A workflow can run on `driver: extension` or `driver: playwright`. Absent stays Playwright, so an old workflow is unchanged. `validateWorkflow` rejects any other driver string. How to load it is [extension.md](extension.md).
