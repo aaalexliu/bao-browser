@@ -11,6 +11,7 @@ import path from "node:path";
 import test from "node:test";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
+import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
@@ -323,16 +324,10 @@ function mcpClient(child: ChildProcess | undefined) {
   child.stdout?.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
-      const headerEnd = buf.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-      const header = buf.slice(0, headerEnd).toString("utf8");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) return;
-      const length = Number(match[1]);
-      const start = headerEnd + 4;
-      if (buf.length < start + length) return;
-      messages.push(JSON.parse(buf.slice(start, start + length).toString("utf8")));
-      buf = buf.slice(start + length);
+      const next = takeRpcChunk(buf, null);
+      if (!next) return;
+      messages.push(JSON.parse(next.body));
+      buf = Buffer.from(next.rest);
     }
   });
   const send = (msg: unknown) => child.stdin?.write(frame(msg));
@@ -351,8 +346,7 @@ function mcpClient(child: ChildProcess | undefined) {
 }
 
 function frame(msg: unknown): Buffer {
-  const json = JSON.stringify(msg);
-  return Buffer.from(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  return Buffer.from(frameRpc(msg, "json"));
 }
 
 function toolNames(msg: { result?: { tools?: { name: string }[] } }): string[] {

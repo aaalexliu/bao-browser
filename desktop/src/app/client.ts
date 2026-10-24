@@ -10,6 +10,7 @@ import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
+  remoteBanner,
   commandItems,
   esc,
   healDetail,
@@ -171,6 +172,7 @@ async function refresh(): Promise<void> {
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     guide: state.guide ? { status: state.guide.status, stepId: state.guide.stepId, actions: state.guide.actions } : null,
     extract: state.extractPicker || "",
+    remote: state.remote,
     screen,
     healFilter,
     openHeal,
@@ -196,7 +198,7 @@ function render(): void {
   const showCard = missing && !onboarded && screen === "library";
   railEl().innerHTML = rail({ ...state, permDot: missing && !showCard });
   const importAsk = screen === "logins" ? loginAct(login) : "";
-  actEl().innerHTML = (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
+  actEl().innerHTML = remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
@@ -606,6 +608,7 @@ function bind(): void {
   const reveal = document.getElementById("reveal-backup");
   if (reveal) reveal.onclick = () => void postSync("/api/sync/reveal", {});
   bindAsk();
+  bindRemote();
   bindHeal();
   const save = document.getElementById("save-settings");
   if (save) save.onclick = async () => {
@@ -754,6 +757,17 @@ function bindTeachFix(root: ParentNode): void {
     renderKey = "";
     await refresh();
   };
+}
+
+function bindRemote(): void {
+  const allow = document.getElementById("remote-allow");
+  if (allow) allow.onclick = () => void fetch("/api/remote/allow", { method: "POST" });
+  const deny = document.getElementById("remote-deny");
+  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" });
+  const kill = document.getElementById("remote-kill");
+  if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
+  const confirm = document.getElementById("remote-confirm-allow");
+  if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
 }
 
 function bindAsk(): void {

@@ -160,6 +160,15 @@ export interface ShellState {
   guide?: GuideView | null;
   /** HTML for the capture column picker. Empty when nothing is picked. */
   extractPicker?: string;
+  remote?: RemoteView;
+}
+
+export interface RemoteView {
+  phase: "idle" | "approval" | "running" | "confirm";
+  workflowId?: string;
+  workflowName?: string;
+  stepLabel?: string;
+  jobId?: string;
 }
 
 export interface CommandItem {
@@ -270,6 +279,35 @@ export function rail(state: ShellState): string {
       <div class="channel" id="helper-status">${perm}${esc(helper)}</div>
       <div class="channel" id="model-status">${esc(model)}</div>
     </div>`;
+}
+
+/** Shown while a cloud agent is asking this Mac to run something. */
+export function remoteBanner(remote: RemoteView | undefined): string {
+  if (!remote || remote.phase === "idle") return "";
+  const name = remote.workflowName || remote.workflowId || "a workflow";
+  if (remote.phase === "approval") {
+    return `<section id="remote-agent" data-testid="remote-approval" data-phase="approval">
+      <p class="kicker">Remote agent</p>
+      <p class="instruction">Allow ${esc(name)} on this Mac?</p>
+      <p class="timeout">Nothing runs until you choose. A confirm step still has to be approved here.</p>
+      <div class="row">
+        <button id="remote-allow" data-testid="remote-allow" type="button">Allow</button>
+        <button id="remote-deny" data-testid="remote-deny" type="button">Deny</button>
+      </div>
+    </section>`;
+  }
+  if (remote.phase === "running") {
+    return `<section id="remote-agent" data-testid="remote-running" data-phase="running">
+      <p class="kicker">Remote agent running</p>
+      <p class="instruction">${esc(name)} is running in a Bao window.</p>
+      <div class="row"><button id="remote-kill" data-testid="remote-kill" type="button">Kill</button></div>
+    </section>`;
+  }
+  return `<section id="remote-agent" data-testid="remote-confirm" data-phase="confirm">
+    <p class="kicker">Confirm on this Mac</p>
+    <p class="instruction">A remote agent cannot approve ${esc(remote.stepLabel || "this step")}. Approve it here.</p>
+    <div class="row"><button id="remote-confirm-allow" data-testid="remote-confirm-allow" type="button">Approve on this Mac</button></div>
+  </section>`;
 }
 
 export function actBar(state: ShellState, now = Date.now()): string {

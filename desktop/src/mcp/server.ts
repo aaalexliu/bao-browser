@@ -3,6 +3,7 @@
 
 import path from "node:path";
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
+import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 
 interface Rpc {
@@ -68,17 +69,10 @@ export async function mcpMain(): Promise<void> {
   process.stdin.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
-      const headerEnd = buf.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-      const header = buf.slice(0, headerEnd).toString("utf8");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) return;
-      const length = Number(match[1]);
-      const start = headerEnd + 4;
-      if (buf.length < start + length) return;
-      const body = buf.slice(start, start + length).toString("utf8");
-      buf = buf.slice(start + length);
-      chain = chain.then(() => handle(body, library)).catch((err: unknown) => {
+      const next = takeRpcChunk(buf, null);
+      if (!next) return;
+      buf = Buffer.from(next.rest);
+      chain = chain.then(() => handle(next.body, library)).catch((err: unknown) => {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       });
     }
@@ -152,6 +146,5 @@ function stringArg(value: unknown): string | undefined {
 }
 
 function send(msg: unknown): void {
-  const json = JSON.stringify(msg);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  process.stdout.write(frameRpc(msg, "json"));
 }

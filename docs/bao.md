@@ -4,6 +4,35 @@ Earlier desktop notes are in [v1.md](v1.md) and the fixture drift report is [dri
 
 Goal: You just want your personal agent to use your own computer, because all the bot-blocking on cloud VMs is so annoying. Cloud-VM agents get bot-walled and payment-blocked, so bao drives the user's real Chrome and real session (#117 installed-Chrome launch, #116 extension driver) instead of a streamed VM. See Riley Brown, [the VM is overrated](https://x.com/rileybrown/status/2113773696863064377).
 
+## 2026-10-24 — Remote MCP for a cloud agent
+
+A cloud agent runs a saved workflow in the user's local Chrome by calling the registry. Bao desktop dials out with its device token and long-polls `/api/agent/poll`. The Chrome extension stays behind the native-messaging bridge and never calls the registry.
+
+The registry serves `POST /mcp` (streamable HTTP, JSON responses). The only tools are `search_workflows`, `describe_workflow`, `run_workflow`, and `resume_workflow`. Auth is `Authorization: Bearer bao_at_…` or `X-Bao-Agent-Token`. Minting is `POST /api/agent/tokens` with a signed-in session and `{ deviceId, label }`. The token is shown once, stored as a sha256 hash, bound to that one device, and revoked with `POST /api/agent/tokens/:id/revoke`. A job is inserted for that device only. `deviceId` or `X-Bao-Device` for a different device is HTTP 403 and an audit row `forbidden`. It is not queued, so the other Mac's poll never sees it.
+
+A device counts as online only while `agent_poll_at` is inside the last 2 seconds. The poll loop and a heartbeat during a job keep that fresh. Anything else returns `{ outcome: "device_offline" }` immediately.
+
+The server attaches a fixed policy: local approval required, confirm steps local-only, the remote agent may not approve a confirm. The Mac checks that object again and refuses anything else before it runs. `run_workflow` shows Allow / Deny. Search and describe do not. Deny runs nothing. A confirm, payment, send, or Place Order pauses, and `resume_workflow` returns `needs_human` without clicking. The Mac's Approve button is the only way through. A bot wall or a login wall returns `needs_human`. Nothing solves a captcha or spoofs a fingerprint.
+
+While a remote run is in progress the window says "Remote agent running" and Kill cancels it. Each job writes an audit row (agent token id, workflow, device, outcome, timestamps). The row drops cookie, password, and secret fields, resume tokens, and screenshot bytes.
+
+`bao mcp` now writes newline-delimited JSON, which is what the MCP stdio spec requires. A Content-Length request is still read, so an older client is not stuck. Replies are JSON lines only.
+
+Cursor can point a cloud agent at a running registry with:
+
+```json
+{
+  "mcpServers": {
+    "bao": {
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": { "Authorization": "Bearer bao_at_…" }
+    }
+  }
+}
+```
+
+The mint response includes that object as `mcp`, with the real origin and token. This spike runs the registry locally (`npm --prefix web run build && npm --prefix web run start`) on PGlite. It does not deploy. The in-memory job waiter that returns a screenshot lives in one Node process, so a multi-instance serverless deploy would need a follow-up before `/mcp` can wait on a Mac.
+
 ## 2026-10-23 — Extension driver
 
 A workflow can run on `driver: extension` or `driver: playwright`. Absent stays Playwright, so an old workflow is unchanged. `validateWorkflow` rejects any other driver string. How to load it is [extension.md](extension.md).

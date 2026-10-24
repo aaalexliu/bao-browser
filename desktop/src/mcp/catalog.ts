@@ -9,7 +9,7 @@ import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
-import { BrowserDriver } from "../v1/browser-driver";
+import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, replay, type RunResult } from "../v1/replay";
@@ -184,10 +184,16 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   };
 }
 
+export interface RunControl {
+  prompts?: PersonPrompts;
+  onContext?: (context: BrowserContext) => void;
+}
+
 export async function runWorkflow(
   library: Library,
   request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; startUrl?: string; document?: WorkflowV2 },
   auth?: RemoteAuth,
+  control?: RunControl,
 ): Promise<WorkflowOutcome> {
   if (request.cancel) return cancelWorkflow(library, request.resume || "");
   const peeked = request.resume ? peekResume(library, request.resume) : undefined;
@@ -241,7 +247,7 @@ export async function runWorkflow(
   if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs));
   const secrets = secretStrings(workflow, inputs);
   try {
-    const played = await replayInBrowser(library, workflow, inputs, secrets);
+    const played = await replayInBrowser(library, workflow, inputs, secrets, control);
     if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
@@ -344,6 +350,7 @@ async function replayInBrowser(
   workflow: WorkflowV2,
   args: ReplayArgs,
   secrets: string[],
+  control?: RunControl,
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
   const profile = path.join(library.root, "chrome-profile");
   mkdirSync(profile, { recursive: true });
@@ -358,6 +365,7 @@ async function replayInBrowser(
     headless: productHeadless(),
     videoDir,
   });
+  control?.onContext?.(context);
   const page = context.pages()[0] || await context.newPage();
   const video = record ? page.video() : null;
   const videoStartedAt = Date.now();
@@ -380,7 +388,7 @@ async function replayInBrowser(
       await navigateOwned(page, workflow.startUrl, { waitUntil: "domcontentloaded" });
     }
     const trail: RunTrailEvent[] = [];
-    const driver = new BrowserDriver(page);
+    const driver = new BrowserDriver(page, undefined, control?.prompts);
     const run = await replay(workflow, args, driver, {
       runId,
       shotDir,
