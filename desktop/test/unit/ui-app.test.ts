@@ -90,9 +90,9 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });
     assert.ok(Date.now() - started < 1000, "login bar was late");
     const loginBar = await page.locator("#act-bar").innerText();
-    assert.match(loginBar, /Sign in to 127\.0\.0\.1 in the Bao window/);
+    assert.match(loginBar, /Sign in to the fixture in the Bao window/);
     assert.match(await page.locator("#attention").getAttribute("data-count") || "", /[1-9]/);
-    assert.ok(app.notifications.some((item) => item.title.includes("Sign in to 127.0.0.1 in the Bao window") && item.title === item.body && item.title === item.tooltip));
+    assert.ok(app.notifications.some((item) => item.title.includes("Sign in to the fixture in the Bao window") && item.title === item.body && item.title === item.tooltip));
 
     const pressedLogin = Date.now();
     await post(app.port, "/api/replay/press", { fill: { selector: "#username", value: "ada" } });
@@ -101,7 +101,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.waitForSelector("#act-bar[data-ask=confirm]", { timeout: 2000 });
     assert.ok(Date.now() - pressedLogin < 2000);
     const confirmBar = await page.locator("#act-bar").innerText();
-    assert.match(confirmBar, /Press Apply on 127\.0\.0\.1 in the Bao window/);
+    assert.match(confirmBar, /Press Apply on the fixture in the Bao window/);
     assert.match(confirmBar, /nothing applied/);
     assert.equal(await page.locator("#act-bar button", { hasText: "Approve" }).count(), 0);
     assert.equal(await page.locator("#act-continue").count(), 0);

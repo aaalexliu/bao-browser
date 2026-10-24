@@ -2,6 +2,30 @@
 
 Earlier desktop notes are in [v1.md](v1.md) and the fixture drift report is [drift-linux.md](drift-linux.md). This file is the log for spikes after that.
 
+## 2026-10-23 — Extension driver
+
+A workflow can run on `driver: extension` or `driver: playwright`. Absent stays Playwright, so an old workflow is unchanged. `validateWorkflow` rejects any other driver string. How to load it is [extension.md](extension.md).
+
+The link is native messaging, host name `com.bao.desktop`. `bao serve` writes the per-user host manifest and a `0600` token. The extension id is the only `allowed_origins` entry. The extension never sees the token. Replay opens a new window and drives that tab. Record and replay request the site's origin at runtime. The manifest has optional host permissions and no install-time `<all_urls>`.
+
+The spike used a throwaway Chrome for Testing profile and public pages. It did not open a real Chrome profile.
+
+### What passed
+
+The unpacked extension loaded, the native host completed hello, and a click on Chrome's Allow button granted 14 origins. `navigator.webdriver` was false. On bot.sannysoft, WebDriver was "missing (passed)" for a human navigation and for the extension in that same profile. A local page importing BotD from `https://openfpcdn.io/botd/v2` (the fingerprintjs GitHub Pages demo returns 404) printed `bot: false kind: none` for both. CreepJS reported webdriver false for both.
+
+`https://nowsecure.nl/` cleared to "NOWSECURE BY NODRIVER" for the human navigation and for the extension. Across 10 runs the challenge counts were human 0/10, extension 0/10, Playwright 10/10 on the Turnstile. The widget was not clicked. `https://bluefish.impvdemo.com/abp/` challenged none of the three (0/10). That URL is an Imperva demo form, not a wall.
+
+A content-script `element.click()` is `isTrusted: false`. The same click through `Input.dispatchMouseEvent`, and typing through `Input.insertText`, are `isTrusted: true`. With the debugger attached, `navigator.webdriver` stayed false and the viewport did not shrink (`innerHeight` delta 0). This Chrome for Testing build did not paint a "started debugging this browser" bar. The toolbar badge still says REC or RUN. The debugger detaches when the action finishes.
+
+automationexercise replayed 2/2 on the extension and passed on Playwright, with zero model calls: ACCOUNT CREATED, the contact-form success line, the uploaded file name, and ACCOUNT DELETED. Books to Scrape replayed 2/2 and passed on Playwright: 11 Travel rows and 26 Historical Fiction rows, each scored against a books CSV. The polymer shop replayed 2/2 and passed on Playwright, with zero model calls: the YouTube Organic Cotton shirt at $29.50, paused at Place Order (`pausedKind: confirm`).
+
+A native `<select>` is set from the page and held on that option, because the shop writes the quantity back to 1 when the product data arrives. A click waits for an in-flight XHR on that tab. The shop cart is stored in the page, so a replay zeros that storage after the page loads and loads once more; otherwise the recorded cart is added a second time.
+
+### What stayed out
+
+Spoofing `navigator` or the TLS handshake is out of scope, and so is clicking a challenge widget. `captureVisibleTab` still throws without an install-time host permission, so the proof's window shots are the ones that count.
+
 ## 2026-10-21 — Real-app drift and multi-locator
 
 Recorded three public login-free pages and two stock Linux apps into schema-v2 workflows, then replayed them with no model. A second pass tried every stored locator before the repair tiers. Profiles and app homes were throwaway directories. Nothing here is a person's real session.
@@ -197,7 +221,7 @@ The integration branch (pull request 58) is the tree a Mac build should use. It 
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the four-tool MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. `bao mcp` exposes `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
 
-`docs/mac-test.md` is the path from a fresh macOS account to the signed `Bao.app`. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` on Linux only. It does nothing on macOS.
+`docs/mac-build.md` is the path from a fresh macOS account to the signed `Bao.app`. `docs/mac-test.md` is the pass on an installed app. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` on Linux only. It does nothing on macOS.
 
 # Importing one site's login
 

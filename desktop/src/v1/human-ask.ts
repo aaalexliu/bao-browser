@@ -2,6 +2,7 @@
 
 import { siteName } from "./page-class";
 import { formatClock } from "./time";
+import { isLoopbackHost, publicSite } from "./visible-copy";
 
 export type AskKind = "login" | "confirm" | "wall";
 
@@ -45,12 +46,14 @@ export function confirmButton(step: { label: string; identity?: { name?: string;
   return "the button";
 }
 
-/** Host only. The path and any query stay off the ask. */
+/** Host only. The path and any query stay off the ask. Loopback is the fixture. */
 export function siteHost(url: string | undefined): string {
   if (!url) return "the site";
   try {
     const host = new URL(url).hostname;
-    return host || "the site";
+    if (!host) return "the site";
+    if (isLoopbackHost(host)) return "the fixture";
+    return host;
   } catch {
     return "the site";
   }
@@ -64,7 +67,7 @@ export function wallInstruction(site: string, kind: "bot" | "login"): string {
 }
 
 export function actAskLine(ask: { kind: AskKind; site?: string; button?: string; instruction?: string }): string {
-  const site = (ask.site || "the site").trim() || "the site";
+  const site = publicSite(ask.site || "the site");
   if (ask.kind === "wall") return ask.instruction || wallInstruction(site, "bot");
   if (ask.kind === "confirm") return `Press ${ask.button || "the button"} on ${site} in the Bao window`;
   return `Sign in to ${site} in the Bao window`;
@@ -112,7 +115,7 @@ export function makeAsk(input: {
 }): HumanAsk {
   const now = input.now ?? Date.now();
   const windowName = input.windowName || "Bao window";
-  const site = (input.site || "the site").trim() || "the site";
+  const site = publicSite(input.site || "the site");
   const timeoutMs = input.timeoutMs > 0 ? input.timeoutMs : 0;
   const button = input.kind === "confirm" ? (input.button || confirmButton({ label: input.label })) : undefined;
   const instruction = input.kind === "wall"

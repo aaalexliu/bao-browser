@@ -176,6 +176,8 @@ export interface Driver {
   pageSignals?(): Promise<PageSignals>;
   /** Click a known close control. Does not click a captcha. */
   dismissClutter?(): Promise<boolean>;
+  /** Drop the visible replay indicator. Playwright has nothing to clear. */
+  end?(): Promise<void>;
 }
 
 export interface ShotTarget {

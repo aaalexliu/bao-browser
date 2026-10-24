@@ -13,7 +13,18 @@ import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
+import { controlKey, visibleCopy } from "../v1/visible-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
+
+/** Chromium app mode uses the document title as the window title. */
+export function productWindowTitle(): string {
+  return "Bao";
+}
+
+/** Default capture target. A path, so the product window does not show the listen address. */
+export function fixtureStartValue(): string {
+  return "/fixture";
+}
 
 export interface WorkflowSummary {
   id: string;
@@ -26,6 +37,17 @@ export interface WorkflowSummary {
   firstStep?: { action?: string; label?: string };
   inputs?: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }[];
   startUrl?: string;
+  /** Playwright is Bao's Chrome. Extension is this machine's Chrome. Absent is Playwright. */
+  driver?: "playwright" | "extension" | string;
+}
+
+/** The run form's driver line. Absent stays on Playwright. */
+export function runDriverField(driver: string | undefined): string {
+  const extension = driver === "extension";
+  return `<label>Driver <select id="wf-driver" data-testid="run-driver">
+      <option value="playwright" ${extension ? "" : "selected"}>Playwright — Bao's Chrome</option>
+      <option value="extension" ${extension ? "selected" : ""}>Extension — this Chrome profile</option>
+    </select></label>`;
 }
 
 export interface PromotionView {
@@ -149,8 +171,13 @@ export interface CommandItem {
   workflowId?: string;
 }
 
-export function esc(value: unknown): string {
+export function htmlEsc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
+}
+
+/** Visible copy. Loopback addresses read as Fixture, a path, or "the fixture". */
+export function esc(value: unknown): string {
+  return htmlEsc(visibleCopy(String(value ?? "")));
 }
 
 /** A URL for a real PNG. Anything else stays blank so the window never paints a broken image. */
@@ -1266,7 +1293,7 @@ export function tryResult(result: {
 
 export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
   const rows = sites.map((site) => `<label>${esc(site.origin)}
-      <select data-site-trust="${esc(site.origin)}">
+      <select data-site-trust="${htmlEsc(controlKey(site.origin))}">
         <option value="ask" ${site.mode === "ask" ? "selected" : ""}>Always ask</option>
         <option value="allow" ${site.mode === "allow" ? "selected" : ""}>Allow</option>
       </select>
@@ -1739,7 +1766,7 @@ export function teachHome(workflows: { id: string; name: string }[]): string {
     <h2>Teach</h2>
     <p class="lede">Show Bao a flow once. It narrates each step. Correct it on the spot, and the saved workflow keeps the intent.</p>
     <div class="card">
-      <label>Start URL <input id="teach-url" value="${esc(typeof location !== "undefined" ? `${location.origin}/fixture` : "/fixture")}"></label>
+      <label>Start URL <input id="teach-url" value="${esc(fixtureStartValue())}"></label>
       <button class="primary" id="teach-start" type="button">Start teaching</button>
     </div>
     <div class="card">

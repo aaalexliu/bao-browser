@@ -2,6 +2,7 @@
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
 import { sitesForTrust } from "../v1/site-trust";
+import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
@@ -35,6 +36,8 @@ import {
   runField,
   siteTrustPanel,
   tryResult,
+  fixtureStartValue,
+  productWindowTitle,
   teachHome,
   teachPanel,
   teachReview,
@@ -42,6 +45,7 @@ import {
   imageRef,
   versionsPanel,
   workflowDetail,
+  runDriverField,
   type CommandItem,
   type HealView,
   type ImportPending,
@@ -252,7 +256,7 @@ function capture(): string {
     <p class="quiet">Nothing is recorded until you start. The capture browser uses an app-owned profile, not your daily Chrome.</p>
     <div class="card">
       <h3>Browser</h3>
-      <label>Start URL <input id="start-url" value="${location.origin}/fixture"></label>
+      <label>Start URL <input id="start-url" value="${esc(fixtureStartValue())}"></label>
       <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="open-teach" type="button">Teach</button><button id="stop" type="button">Stop and save</button></div>
     </div>
     <div class="card">
@@ -302,6 +306,7 @@ function replayForm(): string {
     ${prefill}
     ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
+    ${runDriverField(current?.driver)}
     <label>Healing for this workflow <select id="wf-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
       <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
@@ -518,6 +523,17 @@ function bind(): void {
     fromNote = "";
     renderKey = "";
     render();
+  };
+  const wfDriver = document.getElementById("wf-driver") as HTMLSelectElement | null;
+  if (wfDriver) wfDriver.onchange = async () => {
+    const id = (document.getElementById("wf") as HTMLSelectElement).value;
+    await fetch("/api/workflows/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ driver: wfDriver.value === "extension" ? "extension" : "playwright" }),
+    });
+    renderKey = "";
+    await refresh();
   };
   const wfHeal = document.getElementById("wf-heal") as HTMLSelectElement | null;
   if (wfHeal) wfHeal.onchange = async () => {
@@ -1199,7 +1215,7 @@ function field(
 function readSiteTrust(): Record<string, "ask" | "allow"> {
   const siteTrust: Record<string, "ask" | "allow"> = {};
   document.querySelectorAll<HTMLSelectElement>("[data-site-trust]").forEach((sel) => {
-    const origin = sel.dataset.siteTrust || "";
+    const origin = expandControlKey(sel.dataset.siteTrust || "");
     if (!origin) return;
     siteTrust[origin] = sel.value === "ask" ? "ask" : "allow";
   });
@@ -1373,7 +1389,7 @@ function paintDockBadge(): void {
     pendingHeals: pendingHealCount(state.runs || []),
     reviews: reviewItems(state.runs).length,
   });
-  document.title = count > 0 ? `(${count}) bao` : "bao";
+  document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);
   else void nav.clearAppBadge?.().catch(() => undefined);
@@ -1489,7 +1505,7 @@ function bindLogins(): void {
       const res = await fetch("/api/login-sites/recheck", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ origin: btn.dataset.recheck }),
+        body: JSON.stringify({ origin: expandControlKey(btn.dataset.recheck || "") }),
       });
       const body = await res.json() as { error?: string };
       if (!res.ok) login.error = body.error || "Re-check failed";
@@ -1502,7 +1518,7 @@ function bindLogins(): void {
       await fetch("/api/login-sites", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ origin: btn.dataset.remove }),
+        body: JSON.stringify({ origin: expandControlKey(btn.dataset.remove || "") }),
       });
       await loadSaved();
     };
