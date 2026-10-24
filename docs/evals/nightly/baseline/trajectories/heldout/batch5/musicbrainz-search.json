@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch5/musicbrainz-search",
+  "steps": [
+    {
+      "stepId": "musicbrainz-search-0",
+      "action": "type",
+      "target": "textbox#id-query",
+      "postcondition": "value {{query}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "musicbrainz-search-1",
+      "action": "click",
+      "target": "button:Search",
+      "postcondition": "url query={{query}}",
+      "timing": "lt10s"
+    }
+  ]
+}

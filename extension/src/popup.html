@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Bao</title>
+  <style>
+    body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; width: 260px; color: #1d1d1f; }
+    main { padding: 12px; }
+    p { margin: 0 0 8px; }
+    button { font: inherit; padding: 6px 10px; margin-right: 6px; }
+    .quiet { color: #555; }
+  </style>
+</head>
+<body>
+  <main>
+    <p id="status" class="quiet">Checking the link…</p>
+    <p><button id="allow" type="button">Allow this site</button></p>
+    <p><button id="record" type="button">Record</button><button id="stop" type="button">Stop</button></p>
+    <p class="quiet">Bao only touches a site after you allow it. Replay opens its own window.</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

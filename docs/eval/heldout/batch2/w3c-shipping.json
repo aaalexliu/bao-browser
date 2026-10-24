@@ -1,0 +1,219 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644113360,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644113400,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644113441,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644113480,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "check_1",
+      "nameAttr": "newsletter",
+      "tag": "input",
+      "label": "The weekly newsletter",
+      "cssPath": "#check_1",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "checked": true,
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644113804,
+    "kind": "act",
+    "op": "type",
+    "value": "nope",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "name": "Search",
+      "id": "header-search",
+      "nameAttr": "q",
+      "tag": "input",
+      "label": "Search:",
+      "cssPath": "#header-search",
+      "path": [
+        {
+          "role": "nav",
+          "name": "Meta & Search"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        },
+        {
+          "role": "search"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644113950,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792644113951,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792644113952,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792644113954,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792644113954,
+    "kind": "act",
+    "op": "type",
+    "value": "Adx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "shipping_name",
+      "nameAttr": "shipping_name",
+      "tag": "input",
+      "label": "Name:",
+      "cssPath": "#shipping_name",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e10",
+    "ts": 1792644114074,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  },
+  {
+    "id": "e11",
+    "ts": 1792644114074,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "shipping_name",
+      "nameAttr": "shipping_name",
+      "tag": "input",
+      "label": "Name:",
+      "cssPath": "#shipping_name",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "fieldset"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/grouping/"
+  }
+]

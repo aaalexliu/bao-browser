@@ -1,0 +1,357 @@
+[
+  {
+    "id": "hn-search",
+    "name": "Search Hacker News",
+    "startUrl": "https://news.ycombinator.com/",
+    "keep": [
+      "e22",
+      "e23"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Grace Hopper"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Alan Turing"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "gutenberg-search",
+    "name": "Search Project Gutenberg",
+    "startUrl": "https://www.gutenberg.org/",
+    "keep": [
+      "e20",
+      "e21"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Dracula"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Moby"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "musicbrainz-search",
+    "name": "Search MusicBrainz",
+    "startUrl": "https://musicbrainz.org/search",
+    "keep": [
+      "e20",
+      "e21"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Mozart"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Bach"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "git-add",
+    "name": "Open the git-add manual",
+    "startUrl": "https://git-scm.com/docs",
+    "keep": [
+      "e20"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/docs/git-add"
+    }
+  },
+  {
+    "id": "rust-vec",
+    "name": "Open the Rust Vec page",
+    "startUrl": "https://doc.rust-lang.org/std/",
+    "keep": [
+      "e20"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "vec/struct.Vec.html"
+    }
+  },
+  {
+    "id": "node-synopsis",
+    "name": "Open the Node.js synopsis",
+    "startUrl": "https://nodejs.org/docs/latest/api/assert.html",
+    "keep": [
+      "e20"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "synopsis.html"
+    }
+  },
+  {
+    "id": "markdown-cheat",
+    "name": "Open the Markdown cheat sheet",
+    "startUrl": "https://www.markdownguide.org/basic-syntax/",
+    "keep": [
+      "e20"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/cheat-sheet/"
+    }
+  },
+  {
+    "id": "pptr-api",
+    "name": "Open the Puppeteer API",
+    "startUrl": "https://pptr.dev/",
+    "keep": [
+      "e20"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/api/puppeteer.puppeteernode"
+    }
+  },
+  {
+    "id": "httpwg-semantics",
+    "name": "Open the HTTP semantics spec",
+    "startUrl": "https://httpwg.org/specs/",
+    "keep": [
+      "e20"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "rfc9110"
+    }
+  },
+  {
+    "id": "nginx-core",
+    "name": "Open the nginx core module",
+    "startUrl": "https://nginx.org/en/docs/",
+    "keep": [
+      "e20"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "ngx_http_core_module"
+    }
+  },
+  {
+    "id": "pico-email",
+    "name": "Fill the Pico email field",
+    "startUrl": "https://picocss.com/docs/forms",
+    "keep": [
+      "e20",
+      "e21"
+    ],
+    "secrets": [
+      "PracticeFiveSecret!"
+    ],
+    "secretIds": [
+      "e21"
+    ],
+    "human": [
+      {
+        "id": "e21",
+        "gate": "login"
+      }
+    ],
+    "replays": [
+      {
+        "texts": [
+          "lin@example.com"
+        ],
+        "secret": "ReplayFiveA!",
+        "file": ""
+      },
+      {
+        "texts": [
+          "grace@example.com"
+        ],
+        "secret": "ReplayFiveB!",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "#email",
+      "equals": "{{0}}"
+    },
+    "secret": "PracticeFiveSecret!"
+  },
+  {
+    "id": "lua-manual",
+    "name": "Open the Lua reference manual",
+    "startUrl": "https://www.lua.org/manual/5.4/",
+    "keep": [
+      "e18"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "manual.html"
+    }
+  }
+]

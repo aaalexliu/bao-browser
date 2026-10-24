@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bao.workflow/v3",
+  "title": "Bao workflow v3",
+  "description": "A document is version 3 only when it uses data steps or files and dates. A plain version 2 document stays version 2 in memory and on disk. This schema references both revision files and is composed onto bao.workflow/v2.",
+  "revisions": [
+    { "$ref": "data-steps.schema.json" },
+    { "$ref": "files-dates.schema.json" }
+  ]
+}

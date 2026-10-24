@@ -1,0 +1,122 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666981794,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666981834,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666981875,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666981916,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Floating Menu",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Floating Menu",
+    "subtreeAfter": "Floating Menu",
+    "beforeUrl": "https://the-internet.herokuapp.com/floating_menu",
+    "afterUrl": "https://the-internet.herokuapp.com/floating_menu"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666982202,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Home",
+      "cssPath": "#menu > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "Home",
+    "subtreeAfter": "Home",
+    "beforeUrl": "https://the-internet.herokuapp.com/floating_menu",
+    "afterUrl": "https://the-internet.herokuapp.com/floating_menu#home"
+  },
+  {
+    "id": "e5",
+    "ts": 1792666982449,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "News",
+      "cssPath": "#menu > ul:nth-of-type(1) > li:nth-of-type(2) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "News",
+    "subtreeAfter": "News",
+    "beforeUrl": "https://the-internet.herokuapp.com/floating_menu#home",
+    "afterUrl": "https://the-internet.herokuapp.com/floating_menu#news"
+  }
+]

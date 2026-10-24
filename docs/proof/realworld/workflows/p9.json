@@ -1,0 +1,711 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792701379505",
+  "name": "Captured workflow",
+  "startUrl": "https://shop.polymer-project.org/",
+  "inputs": [
+    {
+      "name": "sizeSelect",
+      "type": "text",
+      "required": true,
+      "label": "sizeSelect",
+      "default": "M"
+    },
+    {
+      "name": "quantitySelect",
+      "type": "text",
+      "required": true,
+      "label": "quantitySelect",
+      "default": "2"
+    },
+    {
+      "name": "username",
+      "type": "text",
+      "required": true,
+      "label": "username",
+      "default": "bao-buyer@example.com"
+    },
+    {
+      "name": "accountPhone",
+      "type": "text",
+      "required": true,
+      "label": "accountPhone",
+      "default": "4155550199"
+    },
+    {
+      "name": "shipAddress",
+      "type": "text",
+      "required": true,
+      "label": "shipAddress",
+      "default": "1 Market"
+    },
+    {
+      "name": "shipCity",
+      "type": "text",
+      "required": true,
+      "label": "shipCity",
+      "default": "San Francisco"
+    },
+    {
+      "name": "shipState",
+      "type": "text",
+      "required": true,
+      "label": "shipState",
+      "default": "CA"
+    },
+    {
+      "name": "shipZip",
+      "type": "text",
+      "required": true,
+      "label": "shipZip",
+      "default": "94105"
+    },
+    {
+      "name": "ccName",
+      "type": "text",
+      "required": true,
+      "label": "ccName",
+      "default": "Bao"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792701379505-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://shop.polymer-project.org/",
+      "surface": "dom",
+      "value": "https://shop.polymer-project.org/",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "shop.polymer-project.org",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792701379505-1",
+      "index": 1,
+      "action": "navigate",
+      "label": "Open https://shop.polymer-project.org/list/mens_tshirts",
+      "surface": "dom",
+      "value": "https://shop.polymer-project.org/list/mens_tshirts",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "shop.polymer-project.org",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792701379505-2",
+      "index": 2,
+      "action": "click",
+      "label": "Click",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "tag": "a",
+        "cssPath": "ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+        "href": "/detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "url",
+        "match": "/detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey",
+        "timeoutMs": 8000
+      },
+      "expect": {
+        "kind": "url",
+        "match": "/detail/mens_tshirts/YouTube+Organic+Cotton+T-Shirt+-+Grey",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792701379505-3",
+      "index": 3,
+      "action": "select",
+      "label": "Select {{sizeSelect}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "id": "sizeSelect",
+        "tag": "select",
+        "cssPath": "#sizeSelect",
+        "name": "Size",
+        "label": "Size",
+        "text": "XS S M L XL",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "Size"
+        },
+        {
+          "kind": "text",
+          "value": "XS S M L XL"
+        },
+        {
+          "kind": "css",
+          "value": "#sizeSelect"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"sizeSelect\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "sizeSelect",
+      "value": "{{sizeSelect}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792701379505-4",
+      "index": 4,
+      "action": "select",
+      "label": "Select {{quantitySelect}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "id": "quantitySelect",
+        "tag": "select",
+        "cssPath": "#quantitySelect",
+        "name": "Quantity",
+        "label": "Quantity",
+        "text": "1 2 3 4 5",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "Quantity"
+        },
+        {
+          "kind": "text",
+          "value": "1 2 3 4 5"
+        },
+        {
+          "kind": "css",
+          "value": "#quantitySelect"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"quantitySelect\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "quantitySelect",
+      "value": "{{quantitySelect}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792701379505-5",
+      "index": 5,
+      "action": "click",
+      "label": "Click \"Add this item to cart\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "cssPath": "#content > div:nth-of-type(1) > shop-button:nth-of-type(1) > button:nth-of-type(1)",
+        "name": "Add this item to cart",
+        "label": "Add this item to cart",
+        "text": "ADD TO CART",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Add this item to cart"
+        },
+        {
+          "kind": "text",
+          "value": "ADD TO CART"
+        },
+        {
+          "kind": "css",
+          "value": "#content > div:nth-of-type(1) > shop-button:nth-of-type(1) > button:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "2",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "2",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-6",
+      "index": 6,
+      "action": "click",
+      "label": "Click \"VIEW CART\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "id": "viewCartAnchor",
+        "tag": "a",
+        "cssPath": "#viewCartAnchor",
+        "href": "/cart",
+        "text": "VIEW CART",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "VIEW CART"
+        },
+        {
+          "kind": "text",
+          "value": "VIEW CART"
+        },
+        {
+          "kind": "css",
+          "value": "#viewCartAnchor"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/cart\"]"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"viewCartAnchor\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Add to Cart",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Add to Cart",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-7",
+      "index": 7,
+      "action": "click",
+      "label": "Click \"Checkout\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "tag": "a",
+        "cssPath": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > shop-button:nth-of-type(1) > a:nth-of-type(1)",
+        "href": "/checkout",
+        "text": "Checkout",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "Checkout"
+        },
+        {
+          "kind": "text",
+          "value": "Checkout"
+        },
+        {
+          "kind": "css",
+          "value": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > shop-button:nth-of-type(1) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/checkout\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Checkout",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Checkout",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-8",
+      "index": 8,
+      "action": "type",
+      "label": "Type {{username}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "accountEmail",
+        "nameAttr": "accountEmail",
+        "tag": "input",
+        "cssPath": "#accountEmail",
+        "name": "Email Account Information",
+        "label": "Email Account Information",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Email Account Information"
+        },
+        {
+          "kind": "text",
+          "value": "Email Account Information"
+        },
+        {
+          "kind": "css",
+          "value": "#accountEmail"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"accountEmail\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username",
+      "value": "{{username}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-9",
+      "index": 9,
+      "action": "type",
+      "label": "Type {{accountPhone}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "accountPhone",
+        "nameAttr": "accountPhone",
+        "tag": "input",
+        "cssPath": "#accountPhone",
+        "name": "Phone Number Account Information",
+        "label": "Phone Number Account Information",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Phone Number Account Information"
+        },
+        {
+          "kind": "text",
+          "value": "Phone Number Account Information"
+        },
+        {
+          "kind": "css",
+          "value": "#accountPhone"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"accountPhone\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "accountPhone",
+      "value": "{{accountPhone}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{accountPhone}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-10",
+      "index": 10,
+      "action": "type",
+      "label": "Type {{shipAddress}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "shipAddress",
+        "nameAttr": "shipAddress",
+        "tag": "input",
+        "cssPath": "#shipAddress",
+        "name": "Address Shipping Address",
+        "label": "Address Shipping Address",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Address Shipping Address"
+        },
+        {
+          "kind": "text",
+          "value": "Address Shipping Address"
+        },
+        {
+          "kind": "css",
+          "value": "#shipAddress"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"shipAddress\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "shipAddress",
+      "value": "{{shipAddress}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{shipAddress}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-11",
+      "index": 11,
+      "action": "type",
+      "label": "Type {{shipCity}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "shipCity",
+        "nameAttr": "shipCity",
+        "tag": "input",
+        "cssPath": "#shipCity",
+        "name": "City Shipping Address",
+        "label": "City Shipping Address",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "City Shipping Address"
+        },
+        {
+          "kind": "text",
+          "value": "City Shipping Address"
+        },
+        {
+          "kind": "css",
+          "value": "#shipCity"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"shipCity\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "shipCity",
+      "value": "{{shipCity}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{shipCity}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-12",
+      "index": 12,
+      "action": "type",
+      "label": "Type {{shipState}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "shipState",
+        "nameAttr": "shipState",
+        "tag": "input",
+        "cssPath": "#shipState",
+        "name": "State/Province Shipping Address",
+        "label": "State/Province Shipping Address",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "State/Province Shipping Address"
+        },
+        {
+          "kind": "text",
+          "value": "State/Province Shipping Address"
+        },
+        {
+          "kind": "css",
+          "value": "#shipState"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"shipState\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "shipState",
+      "value": "{{shipState}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{shipState}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-13",
+      "index": 13,
+      "action": "type",
+      "label": "Type {{shipZip}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "shipZip",
+        "nameAttr": "shipZip",
+        "tag": "input",
+        "cssPath": "#shipZip",
+        "name": "Zip/Postal Code Shipping Address",
+        "label": "Zip/Postal Code Shipping Address",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Zip/Postal Code Shipping Address"
+        },
+        {
+          "kind": "text",
+          "value": "Zip/Postal Code Shipping Address"
+        },
+        {
+          "kind": "css",
+          "value": "#shipZip"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"shipZip\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "shipZip",
+      "value": "{{shipZip}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{shipZip}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-14",
+      "index": 14,
+      "action": "type",
+      "label": "Type {{ccName}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "ccName",
+        "nameAttr": "ccName",
+        "tag": "input",
+        "cssPath": "#ccName",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#ccName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"ccName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "ccName",
+      "value": "{{ccName}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{ccName}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792701379505-15",
+      "index": 15,
+      "action": "confirm",
+      "label": "Confirm \"Place Order\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "input",
+        "cssPath": "#submitBox > input:nth-of-type(1)",
+        "name": "Place Order",
+        "label": "Place Order",
+        "text": "Place Order",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Place Order"
+        },
+        {
+          "kind": "text",
+          "value": "Place Order"
+        },
+        {
+          "kind": "css",
+          "value": "#submitBox > input:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "human": true,
+      "confirm": true,
+      "gate": "confirm"
+    }
+  ],
+  "createdAt": 1792701341422
+}

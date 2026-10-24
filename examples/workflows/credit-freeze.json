@@ -1,0 +1,68 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-credit-freeze",
+  "name": "Credit freeze",
+  "startUrl": "http://127.0.0.1:4787/freeze",
+  "createdAt": 1,
+  "precondition": { "kind": "url", "match": "/freeze", "phase": "auth" },
+  "inputs": [
+    { "name": "username", "type": "text", "label": "Username", "default": "ada" },
+    { "name": "password", "type": "secret", "label": "Password" }
+  ],
+  "steps": [
+    {
+      "id": "wf-credit-freeze-0",
+      "index": 0,
+      "action": "login",
+      "label": "Sign in on the site window",
+      "surface": "dom",
+      "human": true,
+      "input": "password",
+      "value": "{{password}}",
+      "sensitive": true,
+      "timeoutMs": 8000,
+      "postcondition": { "kind": "url", "match": "/freeze", "timeoutMs": 8000 }
+    },
+    {
+      "id": "wf-credit-freeze-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click Frozen",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "frozen",
+        "nameAttr": "freeze",
+        "path": []
+      },
+      "timeoutMs": 4000,
+      "expect": {
+        "kind": "state",
+        "state": "checked",
+        "timeoutMs": 2000,
+        "identity": {
+          "surface": "dom",
+          "role": "radio",
+          "id": "frozen",
+          "path": []
+        }
+      },
+      "readBack": {
+        "source": "text",
+        "match": "Status: none",
+        "timeoutMs": 2000
+      }
+    },
+    {
+      "id": "wf-credit-freeze-2",
+      "index": 2,
+      "action": "confirm",
+      "label": "Confirm before Apply",
+      "surface": "dom",
+      "human": true,
+      "timeoutMs": 0
+    }
+  ]
+}

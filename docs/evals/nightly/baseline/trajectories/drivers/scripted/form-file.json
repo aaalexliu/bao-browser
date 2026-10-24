@@ -1,0 +1,33 @@
+{
+  "caseId": "drivers/scripted/form-file",
+  "steps": [
+    {
+      "stepId": "drv-form-file-0",
+      "action": "type",
+      "target": "textbox#name",
+      "postcondition": "value {{name}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-form-file-1",
+      "action": "upload",
+      "target": "textbox#file",
+      "postcondition": "text {{file}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-form-file-2",
+      "action": "click",
+      "target": "button#noop",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-form-file-3",
+      "action": "click",
+      "target": "button#save",
+      "postcondition": "text Saved",
+      "timing": "lt1s"
+    }
+  ]
+}

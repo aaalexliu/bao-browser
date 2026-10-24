@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch4/sauce-username",
+  "steps": [
+    {
+      "stepId": "sauce-username-0",
+      "action": "type",
+      "target": "textbox#user-name",
+      "postcondition": "value {{username}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "sauce-username-1",
+      "action": "type",
+      "target": "textbox#password",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}

@@ -1,0 +1,264 @@
+{
+  "source": "bao-os-helper nodes",
+  "surface": "atspi",
+  "app": "baocalc.py",
+  "screen": "1400x900",
+  "nodes": [
+    {
+      "actions": 0,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 220,
+        "sh": 900,
+        "sw": 1400,
+        "w": 320,
+        "x": 40,
+        "y": 40
+      },
+      "name": "BaoCalc",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        }
+      ],
+      "role": "frame"
+    },
+    {
+      "actions": 0,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 220,
+        "sh": 900,
+        "sw": 1400,
+        "w": 320,
+        "x": 40,
+        "y": 40
+      },
+      "name": "",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        }
+      ],
+      "role": "filler"
+    },
+    {
+      "actions": 0,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 19,
+        "sh": 900,
+        "sw": 1400,
+        "w": 320,
+        "x": 40,
+        "y": 40
+      },
+      "name": "0",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        }
+      ],
+      "role": "label"
+    },
+    {
+      "actions": 0,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 34,
+        "sh": 900,
+        "sw": 1400,
+        "w": 320,
+        "x": 40,
+        "y": 67
+      },
+      "name": "",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        }
+      ],
+      "role": "filler"
+    },
+    {
+      "actions": 1,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 34,
+        "sh": 900,
+        "sw": 1400,
+        "w": 74,
+        "x": 40,
+        "y": 67
+      },
+      "name": "7",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        }
+      ],
+      "role": "push button"
+    },
+    {
+      "actions": 1,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 34,
+        "sh": 900,
+        "sw": 1400,
+        "w": 74,
+        "x": 122,
+        "y": 67
+      },
+      "name": "+",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        }
+      ],
+      "role": "push button"
+    },
+    {
+      "actions": 1,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 34,
+        "sh": 900,
+        "sw": 1400,
+        "w": 74,
+        "x": 204,
+        "y": 67
+      },
+      "name": "5",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        }
+      ],
+      "role": "push button"
+    },
+    {
+      "actions": 1,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 34,
+        "sh": 900,
+        "sw": 1400,
+        "w": 74,
+        "x": 286,
+        "y": 67
+      },
+      "name": "=",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        }
+      ],
+      "role": "push button"
+    },
+    {
+      "actions": 0,
+      "app": "baocalc.py",
+      "bbox": {
+        "h": 80,
+        "sh": 900,
+        "sw": 1400,
+        "w": 320,
+        "x": 40,
+        "y": 109
+      },
+      "name": "",
+      "path": [
+        {
+          "name": "baocalc.py",
+          "role": "application"
+        },
+        {
+          "name": "BaoCalc",
+          "role": "frame"
+        },
+        {
+          "name": "",
+          "role": "filler"
+        }
+      ],
+      "role": "drawing area"
+    }
+  ]
+}

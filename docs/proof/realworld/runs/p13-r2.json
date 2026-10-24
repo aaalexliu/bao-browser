@@ -1,0 +1,434 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792701525922-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url excalidraw.com",
+        "timing": "lt1s"
+      }
+    ],
+    "trail": [],
+    "pageClasses": [],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "warning",
+        "text": "Error with Feature-Policy header: Unrecognized feature: '*'.",
+        "ts": 1792701558227
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "type": "warning",
+        "text": "Error with Feature-Policy header: Unrecognized feature: '*'.",
+        "ts": 1792701558824
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/",
+        "status": 200,
+        "ts": 1792701558225
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/index-D0I-IbtP.css",
+        "status": 200,
+        "ts": 1792701558246
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTQ3j6zbXWjgeg.woff2",
+        "status": 200,
+        "ts": 1792701558267
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-SemiBold.woff2",
+        "status": 200,
+        "ts": 1792701558268
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/ComicShanns/ComicShanns-Regular-279a7b317d12eb88de06167bd672b4b4.woff2",
+        "status": 200,
+        "ts": 1792701558269
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/mermaid-to-excalidraw-D-aVQaad.js",
+        "status": 200,
+        "ts": 1792701558269
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2",
+        "status": 200,
+        "ts": 1792701558272
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://scripts.simpleanalyticscdn.com/latest.js",
+        "status": 200,
+        "ts": 1792701558288
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/index-BboF1hDf.js",
+        "status": 200,
+        "ts": 1792701558341
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/workbox-window.prod.es5-B9K5rw8f.js",
+        "status": 200,
+        "ts": 1792701558516
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/roundRect-0PYZxl1G.js",
+        "status": 200,
+        "ts": 1792701558516
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Medium.woff2",
+        "status": 200,
+        "ts": 1792701558525
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Bold.woff2",
+        "status": 200,
+        "ts": 1792701558537
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Regular.woff2",
+        "status": 200,
+        "ts": 1792701558537
+      },
+      {
+        "stepId": "open",
+        "method": "POST",
+        "url": "https://sentry.io/api/5179260/envelope/",
+        "status": 200,
+        "ts": 1792701558574
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://queue.simpleanalyticscdn.com/simple.gif",
+        "status": 202,
+        "ts": 1792701558772
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.com/",
+        "status": 200,
+        "ts": 1792701558821
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2",
+        "status": 200,
+        "ts": 1792701558826
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTQ3j6zbXWjgeg.woff2",
+        "status": 200,
+        "ts": 1792701558826
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-SemiBold.woff2",
+        "status": 200,
+        "ts": 1792701558827
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/ComicShanns/ComicShanns-Regular-279a7b317d12eb88de06167bd672b4b4.woff2",
+        "status": 200,
+        "ts": 1792701558827
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/mermaid-to-excalidraw-D-aVQaad.js",
+        "status": 304,
+        "ts": 1792701558840
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/index-BboF1hDf.js",
+        "status": 304,
+        "ts": 1792701558842
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/index-D0I-IbtP.css",
+        "status": 304,
+        "ts": 1792701558845
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://scripts.simpleanalyticscdn.com/latest.js",
+        "status": 200,
+        "ts": 1792701558845
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Regular.woff2",
+        "status": 200,
+        "ts": 1792701558847
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Medium.woff2",
+        "status": 200,
+        "ts": 1792701558847
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Bold.woff2",
+        "status": 200,
+        "ts": 1792701558847
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/workbox-window.prod.es5-B9K5rw8f.js",
+        "status": 304,
+        "ts": 1792701558884
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "GET",
+        "url": "https://excalidraw.com/assets/roundRect-0PYZxl1G.js",
+        "status": 304,
+        "ts": 1792701558929
+      },
+      {
+        "stepId": "wf-1792701525922-0",
+        "method": "POST",
+        "url": "https://sentry.io/api/5179260/envelope/",
+        "status": 200,
+        "ts": 1792701558937
+      }
+    ],
+    "runId": "run-mvk07zlh-0t7l",
+    "status": "failed",
+    "steps": [
+      {
+        "id": "wf-1792701525922-0",
+        "status": "passed",
+        "startedAt": 1792701558796,
+        "endedAt": 1792701558927,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "heading",
+              "text": "Excalidraw"
+            },
+            {
+              "role": "button",
+              "testId": "main-menu-trigger",
+              "id": "radix-:r2:"
+            },
+            {
+              "role": "heading",
+              "text": "Shapes",
+              "id": "TwMMWcw_IoU25w-dyLDDU-shapes-title"
+            },
+            {
+              "role": "button",
+              "name": "Keep selected tool active after drawing",
+              "testId": "toolbar-lock"
+            },
+            {
+              "role": "button",
+              "name": "Hand (panning tool)",
+              "testId": "toolbar-hand"
+            },
+            {
+              "role": "button",
+              "name": "Selection",
+              "text": "V",
+              "testId": "toolbar-selection"
+            },
+            {
+              "role": "button",
+              "name": "Rectangle",
+              "text": "R",
+              "testId": "toolbar-rectangle"
+            },
+            {
+              "role": "button",
+              "name": "Diamond",
+              "text": "D",
+              "testId": "toolbar-diamond"
+            },
+            {
+              "role": "button",
+              "name": "Ellipse",
+              "text": "O",
+              "testId": "toolbar-ellipse"
+            },
+            {
+              "role": "button",
+              "name": "Arrow",
+              "text": "A",
+              "testId": "toolbar-arrow"
+            },
+            {
+              "role": "button",
+              "name": "Line",
+              "text": "L",
+              "testId": "toolbar-line"
+            },
+            {
+              "role": "button",
+              "name": "Draw",
+              "text": "P",
+              "testId": "toolbar-freedraw"
+            },
+            {
+              "role": "button",
+              "name": "Text",
+              "text": "T",
+              "testId": "toolbar-text"
+            },
+            {
+              "role": "button",
+              "name": "Sticky note",
+              "text": "N",
+              "testId": "toolbar-stickynote"
+            },
+            {
+              "role": "button",
+              "name": "Eraser",
+              "text": "E",
+              "testId": "toolbar-eraser"
+            },
+            {
+              "role": "button",
+              "name": "More tools",
+              "testId": "dropdown-menu-button",
+              "id": "radix-:r0:"
+            },
+            {
+              "role": "link",
+              "text": "Try Excalidraw+ 14-day free trial"
+            },
+            {
+              "role": "button",
+              "name": "Live collaboration..."
+            },
+            {
+              "role": "button",
+              "name": "Library"
+            },
+            {
+              "role": "contentinfo",
+              "text": "Canvas actions 100%"
+            },
+            {
+              "role": "heading",
+              "text": "Canvas actions",
+              "id": "TwMMWcw_IoU25w-dyLDDU-canvasActions-title"
+            },
+            {
+              "role": "button",
+              "name": "Zoom out"
+            },
+            {
+              "role": "button",
+              "name": "Reset zoom",
+              "text": "100%"
+            },
+            {
+              "role": "button",
+              "name": "Zoom in"
+            },
+            {
+              "role": "button",
+              "name": "Undo",
+              "testId": "button-undo"
+            },
+            {
+              "role": "button",
+              "name": "Redo",
+              "testId": "button-redo"
+            },
+            {
+              "role": "link",
+              "name": "Blog post on end-to-end encryption in Excalidraw"
+            },
+            {
+              "role": "button",
+              "name": "Help"
+            },
+            {
+              "role": "button",
+              "text": "Exit zen mode"
+            }
+          ],
+          "ax": "- banner:\n  - heading \"Excalidraw\" [level=1]\n- img\n- img\n- text: Your drawings are saved in your browser's storage. Browser storage can be cleared unexpectedly. Save your work to a file regularly to avoid losing it.\n- button \"Open Ctrl+O\"\n- button \"Help ?\"\n- button \"Live collaboration...\"\n- link \"Sign up\":\n  - /url: https://plus.excalidraw.com/plus?utm_source=excalidraw&utm_medium=app&utm_content=welcomeScreenGuest\n- button\n- region \"Shapes\":\n  - text: To move canvas, hold Scroll wheel or Space while dragging, or use the hand tool\n  - heading \"Shapes\" [level=2]\n  - button \"Keep selected tool active after drawing\"\n  - button \"Hand (panning tool)\"\n  - button \"Selection\" [pressed]: V\n  - button \"Rectangle\": R\n  - button \"Diamond\": D\n  - button \"Ellipse\": O\n  - button \"Arrow\": A\n  - button \"Line\": L\n  - button \"Draw\": P\n  - button \"Text\": T\n  - button \"Sticky note\": \"N\"\n  - button \"Eraser\": E\n  - button \"More tools\"\n- link \"Try Excalidraw+ 14-day free trial\":\n  - /url: https://plus.excalidraw.com/plus?utm_source=excalidraw&utm_medium=app&utm_content=guestBanner#excalidraw-redirect\n- button \"Live collaboration...\"\n- button \"Library\"\n- contentinfo:\n  - region \"Canvas actions\":\n    - heading \"Canvas actions\" [level=2]\n    - button \"Zoom out\"\n    - button \"Reset zoom\": 100%\n    - button \"Zoom in\"\n    - button \"Undo\" [disabled]\n    - button \"Redo\" [disabled]\n  - link \"Blog post on end-to-end encryption in Excalidraw\":\n    - /url: https://plus.excalidraw.com/blog/end-to-end-encryption\n  - button \"Help\"\n- img\n- text: Drawing canvas"
+        }
+      }
+    ],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://excalidraw.com/",
+    "title": "Excalidraw Whiteboard",
+    "text": "Excalidraw Your drawings are saved in your browser's storage. Browser storage can be cleared unexpectedly. Save your work to a file regularly to avoid losing it. Open Ctrl+O Help ? Live collaboration... Sign up To move canvas, hold Scroll wheel or Space while dragging, or use the hand tool Shapes V R D O A L P T N E Try Excalidraw+ 14-day free trial Canvas actions 100%"
+  },
+  "downloaded": [],
+  "shot": {
+    "sha256": "9585b0ab50388d98afa6053bdc0217e1c48b3d45c81e1b22dd4dc00089982e4a",
+    "samePixels": true,
+    "identity": ""
+  }
+}

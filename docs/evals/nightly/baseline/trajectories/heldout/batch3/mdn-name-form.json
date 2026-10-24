@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/mdn-name-form",
+  "steps": [
+    {
+      "stepId": "mdn-name-form-0",
+      "action": "type",
+      "target": "textbox#name",
+      "postcondition": "value {{username}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "mdn-name-form-1",
+      "action": "click",
+      "target": "button:Send your message",
+      "postcondition": "url /my-handling-form-page",
+      "timing": "lt1s"
+    }
+  ]
+}

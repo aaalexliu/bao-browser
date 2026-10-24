@@ -1,0 +1,33 @@
+{
+  "caseId": "drivers/scripted/tabs",
+  "steps": [
+    {
+      "stepId": "drv-tabs-0",
+      "action": "click",
+      "target": "button#tab-address",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-tabs-1",
+      "action": "type",
+      "target": "textbox#city",
+      "postcondition": "value {{city}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-tabs-2",
+      "action": "click",
+      "target": "button#tab-review",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "drv-tabs-3",
+      "action": "click",
+      "target": "button#finish",
+      "postcondition": "text Done",
+      "timing": "lt1s"
+    }
+  ]
+}

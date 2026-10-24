@@ -47,7 +47,7 @@ async function main() {
     const page = await ctx.newPage();
     await page.goto(parent.origin + "/");
     const childFrameLoc = page.frameLocator("iframe");
-    await childFrameLoc.locator("#card").waitFor({ timeout: 10_000 }); // child content loaded
+    await childFrameLoc.locator("#note").waitFor({ timeout: 10_000 }); // child content loaded
     const childFrame = page.frames().find((f) => f.url().startsWith(child.origin));
     check("cross-origin child frame present", !!childFrame && childFrame.url().startsWith(child.origin), childFrame?.url());
 
@@ -57,7 +57,7 @@ async function main() {
     await sw.evaluate(() => { self.__baoSteps = []; });
     await bcast(tabId, { cmd: "start-record" });
     await page.click('[data-testid="parent-btn"]');              // top frame
-    await childFrameLoc.locator("#card").fill("4242424242424242"); // child frame
+    await childFrameLoc.locator("#note").fill("hello-from-the-frame"); // child frame
     await childFrameLoc.locator('[data-testid="pay-btn"]').click();// child frame
     await bcast(tabId, { cmd: "stop-record" });
     await page.waitForTimeout(250); // let each frame report to the SW
@@ -71,7 +71,7 @@ async function main() {
 
     // ---- replay: SW routes each step back to its frame ----
     await page.evaluate(() => (window.__fired = []));
-    await childFrame.evaluate(() => { window.__fired = []; document.getElementById("card").value = ""; });
+    await childFrame.evaluate(() => { window.__fired = []; document.getElementById("note").value = ""; });
     const res = await sw.evaluate(([id, s]) => self.baoReplayAcrossFrames(id, s), [tabId, steps]);
     check("replay ok", res?.ok === true, JSON.stringify(res?.results));
     check("step 0 routed to frame 0, child steps to the child frame",
@@ -80,10 +80,10 @@ async function main() {
 
     const parentFired = await page.evaluate(() => window.__fired);
     check("parent button fired by replay", parentFired.some((e) => e.id === "parent-btn"));
-    const cardVal = await childFrame.evaluate(() => document.getElementById("card").value);
-    check("child input refilled across the origin boundary", cardVal === "4242424242424242", cardVal);
+    const noteVal = await childFrame.evaluate(() => document.getElementById("note").value);
+    check("child input refilled across the origin boundary", noteVal === "hello-from-the-frame", noteVal);
     const childFired = await childFrame.evaluate(() => window.__fired);
-    check("child Pay fired with the typed card", childFired.some((e) => e.id === "pay-btn" && e.card === "4242424242424242"), JSON.stringify(childFired));
+    check("child Pay fired with the typed note", childFired.some((e) => e.id === "pay-btn" && e.note === "hello-from-the-frame"), JSON.stringify(childFired));
   } finally {
     await ctx.close();
     child.server.close();

@@ -1,5 +1,11 @@
 # Dependencies
 node_modules/
+web/node_modules/
+
+# Next build and local registry data
+web/.next/
+web/.data/
+.data/
 
 # Build / generated output
 out/
@@ -14,5 +20,17 @@ out/
 *.log
 npm-debug.log*
 
+# Nightly runs are local. The committed comparison is docs/evals/nightly/baseline.
+docs/evals/nightly/runs/
+
 # TypeScript build output (esbuild)
 dist/
+*.tsbuildinfo
+
+# Rust helper build
+desktop/os-helper/target/
+desktop/os-helper-macos/target/
+desktop/os-helper-macos/BaoOSHelper.app/
+
+# Packaged binaries stay out of git. The build writes them under artifacts.
+*.AppImage

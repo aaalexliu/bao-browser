@@ -1,0 +1,77 @@
+{
+  "$id": "bao.files-dates/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Additive files and dates revision",
+  "description": "Composed onto bao.workflow/v2. Does not replace that file. Workflow version becomes 3 when this revision is present. Version 2 documents still load.",
+  "filesDates": 1,
+  "workflowVersion": 3,
+  "inputTypes": ["date"],
+  "actions": ["download", "open"],
+  "documentProperties": {
+    "filesDates": { "const": 1 }
+  },
+  "inputProperties": {
+    "format": { "type": "string", "description": "Recorded display format. Tokens YYYY YY MMMM MMM MM M DD D." },
+    "relative": { "type": "string", "description": "today, +14d, -2d, next monday, or first of next month." },
+    "zone": { "type": "string", "description": "IANA zone used to resolve the relative value. Absent uses the run zone." },
+    "fromOutput": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+      "description": "File input satisfied by a previous download output."
+    }
+  },
+  "stepProperties": {
+    "download": { "$ref": "#/$defs/download" },
+    "open": { "$ref": "#/$defs/open" },
+    "datePicker": { "$ref": "#/$defs/datePicker" },
+    "fileFrom": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
+  },
+  "$defs": {
+    "download": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["output", "name"],
+      "description": "Save the download triggered by this step. name is a filename template, not a path. Benchmark: Power Automate renames after the fact, UiPath Wait for Download returns a path, Playwright saveAs uses the suggested name. Bao waits on CDP Browser.downloadWillBegin and writes the template.",
+      "properties": {
+        "output": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string" }
+      }
+    },
+    "open": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target"],
+      "description": "Open a URL in the browser, or a file. macOS uses open -a <app> <file>. Linux tests use xdg-open and record needs Mac test when an app is named.",
+      "properties": {
+        "target": { "enum": ["url", "file"] },
+        "url": { "type": "string" },
+        "file": { "type": "string" },
+        "app": { "type": "string" }
+      }
+    },
+    "datePicker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input"],
+      "description": "Replay clicks or drags the cell for the resolved date. The recorded day-cell clicks are not replayed.",
+      "properties": {
+        "input": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "endInput": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
+      }
+    },
+    "fileOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "path", "size", "sha256"],
+      "description": "Run output of a download step. Not stored in the workflow.",
+      "properties": {
+        "kind": { "const": "file" },
+        "name": { "type": "string" },
+        "path": { "type": "string" },
+        "size": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

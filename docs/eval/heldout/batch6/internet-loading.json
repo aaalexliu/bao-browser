@@ -1,0 +1,79 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792666975110,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792666975151,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792666975191,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792666975231,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Dynamically Loaded Page Elements",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Dynamically Loaded Page Elements",
+    "subtreeAfter": "Dynamically Loaded Page Elements",
+    "beforeUrl": "https://the-internet.herokuapp.com/dynamic_loading/1",
+    "afterUrl": "https://the-internet.herokuapp.com/dynamic_loading/1"
+  },
+  {
+    "id": "e4",
+    "ts": 1792666975518,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Start",
+      "cssPath": "#start > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "Start",
+    "beforeUrl": "https://the-internet.herokuapp.com/dynamic_loading/1",
+    "afterUrl": "https://the-internet.herokuapp.com/dynamic_loading/1"
+  }
+]

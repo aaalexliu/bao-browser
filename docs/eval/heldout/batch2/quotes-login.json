@@ -1,0 +1,174 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644065610,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644065650,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644065690,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644065731,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Quotes to Scrape",
+      "cssPath": "div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://quotes.toscrape.com/login",
+    "afterUrl": "https://quotes.toscrape.com/login"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644065991,
+    "kind": "act",
+    "op": "type",
+    "value": "adax",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "username",
+      "nameAttr": "username",
+      "tag": "input",
+      "label": "Username",
+      "cssPath": "#username",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://quotes.toscrape.com/login",
+    "afterUrl": "https://quotes.toscrape.com/login"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644066090,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://quotes.toscrape.com/login",
+    "afterUrl": "https://quotes.toscrape.com/login"
+  },
+  {
+    "id": "e6",
+    "ts": 1792644066090,
+    "kind": "act",
+    "op": "type",
+    "value": "ada",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "username",
+      "nameAttr": "username",
+      "tag": "input",
+      "label": "Username",
+      "cssPath": "#username",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://quotes.toscrape.com/login",
+    "afterUrl": "https://quotes.toscrape.com/login"
+  },
+  {
+    "id": "e7",
+    "ts": 1792644066170,
+    "kind": "act",
+    "op": "type",
+    "sensitive": true,
+    "gate": "login",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "cssPath": "#password",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://quotes.toscrape.com/login",
+    "afterUrl": "https://quotes.toscrape.com/login"
+  },
+  {
+    "id": "e8",
+    "ts": 1792644066440,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "input",
+      "cssPath": "div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(2)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "gate": "login",
+    "beforeUrl": "https://quotes.toscrape.com/login",
+    "afterUrl": "https://quotes.toscrape.com/"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/pptr-api",
+  "steps": [
+    {
+      "stepId": "pptr-api-0",
+      "action": "click",
+      "target": "link:Puppeteer API",
+      "postcondition": "url /api/puppeteer.puppeteernode",
+      "timing": "lt1s"
+    }
+  ]
+}

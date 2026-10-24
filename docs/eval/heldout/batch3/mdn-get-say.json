@@ -1,0 +1,139 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648080668,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648080708,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648080749,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648080789,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Send my greetings",
+      "cssPath": "form:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Send my greetings",
+    "subtreeAfter": "Go back",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html",
+    "afterUrl": "chrome-error://chromewebdata/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648081136,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "chrome-error://chromewebdata/",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648081202,
+    "kind": "act",
+    "op": "type",
+    "value": "Hix",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "say",
+      "nameAttr": "say",
+      "tag": "input",
+      "label": "What greeting do you want to say?",
+      "cssPath": "#say",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648081315,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648081315,
+    "kind": "act",
+    "op": "type",
+    "value": "Hi",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "say",
+      "nameAttr": "say",
+      "tag": "input",
+      "label": "What greeting do you want to say?",
+      "cssPath": "#say",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792648081383,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Send my greetings",
+      "cssPath": "form:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Send my greetings",
+    "subtreeAfter": "Go back",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html",
+    "afterUrl": "chrome-error://chromewebdata/"
+  }
+]

@@ -1,0 +1,16 @@
+[package]
+name = "bao-os-helper"
+version = "0.1.0"
+edition = "2021"
+description = "Linux AT-SPI helper for the desktop spike. Throwaway dialogs only."
+publish = false
+
+[[bin]]
+name = "bao-os-helper"
+path = "src/main.rs"
+
+[dependencies]
+atspi = { version = "0.30", default-features = false, features = ["proxies", "connection", "zbus"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

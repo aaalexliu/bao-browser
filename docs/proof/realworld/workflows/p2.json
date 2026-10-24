@@ -1,0 +1,882 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 3,
+  "id": "wf-1792700745872",
+  "name": "Captured workflow",
+  "startUrl": "https://demoqa.com/automation-practice-form",
+  "inputs": [
+    {
+      "name": "firstName",
+      "type": "text",
+      "required": true,
+      "label": "firstName",
+      "default": "Ada"
+    },
+    {
+      "name": "lastName",
+      "type": "text",
+      "required": true,
+      "label": "lastName",
+      "default": "Lovelace"
+    },
+    {
+      "name": "username",
+      "type": "text",
+      "required": true,
+      "label": "username",
+      "default": "ada-form@example.com"
+    },
+    {
+      "name": "username2",
+      "type": "text",
+      "required": true,
+      "label": "username2",
+      "default": "9990001111"
+    },
+    {
+      "name": "subjectsInput",
+      "type": "text",
+      "required": true,
+      "label": "subjectsInput",
+      "default": "Maths"
+    },
+    {
+      "name": "file",
+      "type": "file",
+      "required": true,
+      "label": "file"
+    },
+    {
+      "name": "currentAddress",
+      "type": "text",
+      "required": true,
+      "label": "currentAddress",
+      "default": "1 Market Street"
+    },
+    {
+      "name": "text",
+      "type": "text",
+      "required": true,
+      "label": "text",
+      "default": "NCR"
+    },
+    {
+      "name": "text2",
+      "type": "text",
+      "required": true,
+      "label": "text2",
+      "default": "Delhi"
+    },
+    {
+      "name": "dateOfBirthInput",
+      "type": "date",
+      "required": true,
+      "label": "dateOfBirthInput",
+      "format": "YYYY-MM-DD",
+      "relative": "-13429d",
+      "zone": "UTC",
+      "default": "-13429d"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792700745872-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://demoqa.com/automation-practice-form",
+      "surface": "dom",
+      "value": "https://demoqa.com/automation-practice-form",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "demoqa.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792700745872-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{firstName}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "firstName",
+        "tag": "input",
+        "cssPath": "#firstName",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#firstName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"firstName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "firstName",
+      "value": "{{firstName}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{firstName}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-2",
+      "index": 2,
+      "action": "type",
+      "label": "Type {{lastName}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "lastName",
+        "tag": "input",
+        "cssPath": "#lastName",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#lastName"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"lastName\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "lastName",
+      "value": "{{lastName}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{lastName}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-3",
+      "index": 3,
+      "action": "type",
+      "label": "Type {{username}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "userEmail",
+        "tag": "input",
+        "cssPath": "#userEmail",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#userEmail"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"userEmail\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username",
+      "value": "{{username}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-4",
+      "index": 4,
+      "action": "check",
+      "label": "Check \"Male\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "gender-radio-1",
+        "nameAttr": "gender",
+        "tag": "input",
+        "cssPath": "#gender-radio-1",
+        "name": "Male",
+        "label": "Male",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "radio",
+          "name": "Male"
+        },
+        {
+          "kind": "text",
+          "value": "Male"
+        },
+        {
+          "kind": "css",
+          "value": "#gender-radio-1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"gender-radio-1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "checked": true,
+      "expect": {
+        "kind": "state",
+        "state": "checked",
+        "identity": {
+          "surface": "dom",
+          "role": "radio",
+          "id": "gender-radio-1",
+          "nameAttr": "gender",
+          "tag": "input",
+          "cssPath": "#gender-radio-1",
+          "name": "Male",
+          "label": "Male",
+          "path": []
+        },
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-5",
+      "index": 5,
+      "action": "click",
+      "label": "Click \"Male\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#genterWrapper > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)",
+        "name": "Male",
+        "label": "Male",
+        "text": "Male",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "Male"
+        },
+        {
+          "kind": "text",
+          "value": "Male"
+        },
+        {
+          "kind": "css",
+          "value": "#genterWrapper > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700745872-6",
+      "index": 6,
+      "action": "click",
+      "label": "Click \"Male\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "gender-radio-1",
+        "nameAttr": "gender",
+        "tag": "input",
+        "cssPath": "#gender-radio-1",
+        "name": "Male",
+        "label": "Male",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "radio",
+          "name": "Male"
+        },
+        {
+          "kind": "text",
+          "value": "Male"
+        },
+        {
+          "kind": "css",
+          "value": "#gender-radio-1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"gender-radio-1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700745872-7",
+      "index": 7,
+      "action": "type",
+      "label": "Type {{username2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "userNumber",
+        "tag": "input",
+        "cssPath": "#userNumber",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#userNumber"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"userNumber\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username2",
+      "value": "{{username2}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username2}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-8",
+      "index": 8,
+      "action": "click",
+      "label": "Pick {{dateOfBirthInput}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "dateOfBirthInput",
+        "tag": "input",
+        "cssPath": "#dateOfBirthInput",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#dateOfBirthInput"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"dateOfBirthInput\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low",
+      "input": "dateOfBirthInput",
+      "value": "{{dateOfBirthInput}}",
+      "datePicker": {
+        "input": "dateOfBirthInput"
+      }
+    },
+    {
+      "id": "wf-1792700745872-9",
+      "index": 9,
+      "action": "type",
+      "label": "Type {{subjectsInput}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "subjectsInput",
+        "tag": "input",
+        "cssPath": "#subjectsInput",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#subjectsInput"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"subjectsInput\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "subjectsInput",
+      "value": "{{subjectsInput}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{subjectsInput}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-10",
+      "index": 10,
+      "action": "click",
+      "label": "Click {{subjectsInput}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "option",
+        "id": "react-select-2-option-0",
+        "tag": "div",
+        "cssPath": "#react-select-2-option-0",
+        "text": "Maths",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "option",
+          "name": "Maths"
+        },
+        {
+          "kind": "text",
+          "value": "Maths"
+        },
+        {
+          "kind": "css",
+          "value": "#react-select-2-option-0"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "{{subjectsInput}}",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "{{subjectsInput}}",
+        "timeoutMs": 4000
+      },
+      "selection": {
+        "by": "text",
+        "input": "subjectsInput"
+      }
+    },
+    {
+      "id": "wf-1792700745872-11",
+      "index": 11,
+      "action": "check",
+      "label": "Check \"Sports\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "checkbox",
+        "id": "hobbies-checkbox-1",
+        "tag": "input",
+        "cssPath": "#hobbies-checkbox-1",
+        "name": "Sports",
+        "label": "Sports",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "checkbox",
+          "name": "Sports"
+        },
+        {
+          "kind": "text",
+          "value": "Sports"
+        },
+        {
+          "kind": "css",
+          "value": "#hobbies-checkbox-1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"hobbies-checkbox-1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "checked": true,
+      "expect": {
+        "kind": "state",
+        "state": "checked",
+        "identity": {
+          "surface": "dom",
+          "role": "checkbox",
+          "id": "hobbies-checkbox-1",
+          "tag": "input",
+          "cssPath": "#hobbies-checkbox-1",
+          "name": "Sports",
+          "label": "Sports",
+          "path": []
+        },
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-12",
+      "index": 12,
+      "action": "click",
+      "label": "Click \"Sports\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#hobbiesWrapper > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)",
+        "name": "Sports",
+        "label": "Sports",
+        "text": "Sports",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "Sports"
+        },
+        {
+          "kind": "text",
+          "value": "Sports"
+        },
+        {
+          "kind": "css",
+          "value": "#hobbiesWrapper > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700745872-13",
+      "index": 13,
+      "action": "click",
+      "label": "Click \"Sports\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "checkbox",
+        "id": "hobbies-checkbox-1",
+        "tag": "input",
+        "cssPath": "#hobbies-checkbox-1",
+        "name": "Sports",
+        "label": "Sports",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "checkbox",
+          "name": "Sports"
+        },
+        {
+          "kind": "text",
+          "value": "Sports"
+        },
+        {
+          "kind": "css",
+          "value": "#hobbies-checkbox-1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"hobbies-checkbox-1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700745872-14",
+      "index": 14,
+      "action": "upload",
+      "label": "Upload file",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "uploadPicture",
+        "tag": "input",
+        "cssPath": "#uploadPicture",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#uploadPicture"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"uploadPicture\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "file",
+      "value": "{{file}}",
+      "postcondition": {
+        "kind": "text",
+        "match": "{{file}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-15",
+      "index": 15,
+      "action": "type",
+      "label": "Type {{currentAddress}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "id": "currentAddress",
+        "tag": "textarea",
+        "cssPath": "#currentAddress",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#currentAddress"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"currentAddress\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "currentAddress",
+      "value": "{{currentAddress}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{currentAddress}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-16",
+      "index": 16,
+      "action": "type",
+      "label": "Type {{text}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "react-select-3-input",
+        "tag": "input",
+        "cssPath": "#react-select-3-input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#react-select-3-input"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text",
+      "value": "{{text}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-17",
+      "index": 17,
+      "action": "click",
+      "label": "Click {{text}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "option",
+        "id": "react-select-3-option-0",
+        "tag": "div",
+        "cssPath": "#react-select-3-option-0",
+        "text": "NCR",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "option",
+          "name": "NCR"
+        },
+        {
+          "kind": "text",
+          "value": "NCR"
+        },
+        {
+          "kind": "css",
+          "value": "#react-select-3-option-0"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "{{text}}",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "{{text}}",
+        "timeoutMs": 4000
+      },
+      "selection": {
+        "by": "text",
+        "input": "text"
+      }
+    },
+    {
+      "id": "wf-1792700745872-18",
+      "index": 18,
+      "action": "type",
+      "label": "Type {{text2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "react-select-4-input",
+        "tag": "input",
+        "cssPath": "#react-select-4-input",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "#react-select-4-input"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text2",
+      "value": "{{text2}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text2}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700745872-19",
+      "index": 19,
+      "action": "click",
+      "label": "Click {{text2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "option",
+        "id": "react-select-4-option-0",
+        "tag": "div",
+        "cssPath": "#react-select-4-option-0",
+        "text": "Delhi",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "option",
+          "name": "Delhi"
+        },
+        {
+          "kind": "text",
+          "value": "Delhi"
+        },
+        {
+          "kind": "css",
+          "value": "#react-select-4-option-0"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "{{text2}}",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "{{text2}}",
+        "timeoutMs": 4000
+      },
+      "selection": {
+        "by": "text",
+        "input": "text2"
+      }
+    },
+    {
+      "id": "wf-1792700745872-20",
+      "index": 20,
+      "action": "click",
+      "label": "Click \"Submit\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "submit",
+        "tag": "button",
+        "cssPath": "#submit",
+        "text": "Submit",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        {
+          "kind": "text",
+          "value": "Submit"
+        },
+        {
+          "kind": "css",
+          "value": "#submit"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"submit\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Male",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Male",
+        "timeoutMs": 4000
+      }
+    }
+  ],
+  "createdAt": 1792700732795,
+  "filesDates": 1
+}

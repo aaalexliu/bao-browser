@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch4/webscraper-laptop",
+  "steps": [
+    {
+      "stepId": "webscraper-laptop-0",
+      "action": "click",
+      "target": "link:Asus VivoBook...",
+      "postcondition": "url /test-sites/e-commerce/allinone/product/60",
+      "timing": "lt1s"
+    }
+  ]
+}

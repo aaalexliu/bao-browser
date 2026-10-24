@@ -1,0 +1,96 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-gedit",
+  "name": "gedit",
+  "startUrl": "desktop://gedit",
+  "inputs": [
+    {
+      "name": "text",
+      "type": "text",
+      "required": true,
+      "label": "text",
+      "default": "bao drift"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-gedit-0",
+      "index": 0,
+      "action": "type",
+      "label": "Type {{text}}",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "text",
+        "app": "gedit",
+        "path": [
+          {
+            "name": "gedit",
+            "role": "application"
+          },
+          {
+            "name": "",
+            "role": "panel"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          },
+          {
+            "name": "",
+            "role": "split pane"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          },
+          {
+            "name": "",
+            "role": "split pane"
+          },
+          {
+            "name": "",
+            "role": "panel"
+          },
+          {
+            "name": "",
+            "role": "page tab list"
+          },
+          {
+            "name": "",
+            "role": "page tab"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          },
+          {
+            "name": "",
+            "role": "panel"
+          },
+          {
+            "name": "",
+            "role": "scroll pane"
+          }
+        ]
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "text",
+          "name": ""
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text",
+      "value": "{{text}}",
+      "expect": {
+        "kind": "text",
+        "match": "*note.txt",
+        "timeoutMs": 8000
+      }
+    }
+  ],
+  "createdAt": 1
+}

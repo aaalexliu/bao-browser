@@ -1,0 +1,334 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792657503824,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792657503864,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792657503905,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792657503946,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657504037,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "comments",
+      "cssPath": "#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(2) > span:nth-of-type(1) > a:nth-of-type(3)",
+      "path": [
+        {
+          "role": "td"
+        },
+        {
+          "role": "table"
+        },
+        {
+          "role": "tbody"
+        },
+        {
+          "role": "tr"
+        },
+        {
+          "role": "td"
+        },
+        {
+          "role": "span"
+        }
+      ]
+    },
+    "subtreeBefore": "comments",
+    "subtreeAfter": "comments",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e5",
+    "ts": 1792657504507,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657504532,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657504565,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657504598,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657504632,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657504665,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657504665,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e12",
+    "ts": 1792657504725,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "comments",
+      "cssPath": "#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(2) > span:nth-of-type(1) > a:nth-of-type(3)",
+      "path": [
+        {
+          "role": "td"
+        },
+        {
+          "role": "table"
+        },
+        {
+          "role": "tbody"
+        },
+        {
+          "role": "tr"
+        },
+        {
+          "role": "td"
+        },
+        {
+          "role": "span"
+        }
+      ]
+    },
+    "subtreeBefore": "comments",
+    "subtreeAfter": "comments",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/newcomments"
+  },
+  {
+    "id": "e13",
+    "ts": 1792657505134,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://news.ycombinator.com/newcomments",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e14",
+    "ts": 1792657505210,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e15",
+    "ts": 1792657505231,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657505265,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657505298,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657505333,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657505365,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657505365,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelacex",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "q",
+      "tag": "input",
+      "cssPath": "#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(4) > td:nth-of-type(1) > center:nth-of-type(2) > form:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "table"
+        },
+        {
+          "role": "tbody"
+        },
+        {
+          "role": "tr"
+        },
+        {
+          "role": "td"
+        },
+        {
+          "role": "center"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e21",
+    "ts": 1792657505653,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e22",
+    "ts": 1792657505653,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada Lovelace",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "q",
+      "tag": "input",
+      "cssPath": "#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(4) > td:nth-of-type(1) > center:nth-of-type(2) > form:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "table"
+        },
+        {
+          "role": "tbody"
+        },
+        {
+          "role": "tr"
+        },
+        {
+          "role": "td"
+        },
+        {
+          "role": "center"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://news.ycombinator.com/"
+  },
+  {
+    "id": "e23",
+    "ts": 1792657505891,
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "nameAttr": "q",
+      "tag": "input",
+      "cssPath": "#hnmain > tbody:nth-of-type(1) > tr:nth-of-type(4) > td:nth-of-type(1) > center:nth-of-type(2) > form:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "table"
+        },
+        {
+          "role": "tbody"
+        },
+        {
+          "role": "tr"
+        },
+        {
+          "role": "td"
+        },
+        {
+          "role": "center"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "Ada Lovelace",
+    "beforeUrl": "https://news.ycombinator.com/",
+    "afterUrl": "https://hn.algolia.com/?q=Ada+Lovelace"
+  }
+]

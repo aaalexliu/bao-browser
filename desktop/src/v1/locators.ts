@@ -1,0 +1,366 @@
+// Ordered locators, tried before the repair tiers.
+// A locator hits only when exactly one node matches. Two matches are a miss,
+// unless they are checkable inputs that share a name and the recorded label
+// picks exactly one of them.
+
+import { normRole, normText } from "./identity";
+import type { Box } from "./repair";
+import type { Identity, StepLocator } from "./schema";
+
+export function locatorsFromIdentity(identity: Identity | undefined): StepLocator[] | undefined {
+  if (!identity) return undefined;
+  const list = buildLocators(identity, [identity]);
+  return list.length ? list : undefined;
+}
+
+/** role, text, test id, css, xpath, then a relative anchor when the boxes are real. */
+export function buildLocators(
+  target: Identity,
+  nodes: Identity[],
+  boxes?: Box[],
+  targetIndex?: number,
+): StepLocator[] {
+  const out: StepLocator[] = [];
+  const roleName = target.name || target.label || target.text;
+  if (target.role && target.role !== "unknown" && roleName) {
+    out.push({ kind: "role", role: target.role, name: roleName });
+  }
+  const text = target.text || target.name;
+  if (text && text.length <= 80) out.push({ kind: "text", value: text });
+  if (target.testId) out.push({ kind: "testid", value: target.testId });
+  const css = stableCss(target);
+  if (css) out.push({ kind: "css", value: css });
+  if (target.cssPath && target.cssPath !== css) out.push({ kind: "css", value: target.cssPath });
+  if (target.tag === "a" && target.href && !target.href.includes("\"")) {
+    out.push({ kind: "css", value: `a[href="${cssAttr(target.href)}"]` });
+  }
+  const xpath = target.xpath || stableXPath(target);
+  if (xpath) out.push({ kind: "xpath", value: xpath });
+  const anchor = anchorLocator(target, nodes, boxes, targetIndex);
+  if (anchor) out.push(anchor);
+  return out;
+}
+
+/** 100 is one visible hit. 40 is more than one. 15 is only a collapsed or hidden hit. 0 is a miss. */
+export function scoreLocator(
+  locator: StepLocator,
+  nodes: Identity[],
+  boxes?: Box[],
+  hidden?: boolean[],
+): { score: number; label: string } {
+  const label = locatorLabel(locator);
+  const found = matchLocator(locator, nodes, boxes, hidden);
+  if (found) return { score: 100, label: found.detail };
+  if (locator.kind !== "anchor") {
+    const hits = locatorIndexes(locator, nodes);
+    if (hits.length > 1) return { score: 40, label };
+    if (hits.length === 1) return { score: 15, label };
+  }
+  return { score: 0, label };
+}
+
+function locatorLabel(locator: StepLocator): string {
+  if (locator.kind === "role") return ["role", locator.role, locator.name].filter(Boolean).join(" ");
+  if (locator.kind === "anchor") return ["anchor", locator.relation, locator.role].filter(Boolean).join(" ");
+  return [locator.kind, locator.value].filter(Boolean).join(" ");
+}
+
+export function matchLocator(
+  locator: StepLocator,
+  nodes: Identity[],
+  boxes?: Box[],
+  hidden?: boolean[],
+): { index: number; detail: string } | undefined {
+  if (locator.kind === "anchor") return matchAnchor(locator, nodes, boxes);
+  const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
+  const index = hits.length === 1 ? hits[0] : preferExactControl(locator, hits, nodes);
+  if (index == null) return undefined;
+  const node = nodes[index];
+  return { index, detail: `${locator.kind} ${shown(node)}` };
+}
+
+/**
+ * Several nodes can show the same words. A heading and a landmark are not the
+ * control. One interactive node whose visible text or accessible name equals
+ * the query is that control. Two controls with the same name stay a miss.
+ */
+function preferExactControl(locator: StepLocator, hits: number[], nodes: Identity[]): number | undefined {
+  if (hits.length < 2 || (locator.kind !== "text" && locator.kind !== "role")) return undefined;
+  const want = normText(locator.kind === "text" ? locator.value || "" : locator.name || "");
+  if (!want) return undefined;
+  const exact = hits.filter((index) => exactVisible(nodes[index], want));
+  const controls = exact.filter((index) => isControl(nodes[index]));
+  const other = exact.filter((index) => !isControl(nodes[index]));
+  if (controls.length === 1 && other.length > 0 && controls.length + other.length === exact.length) return controls[0];
+  const named = hits.filter((index) => accessibleEquals(nodes[index], want) && isControl(nodes[index]));
+  if (named.length === 1) {
+    const rest = hits.filter((index) => index !== named[0]);
+    if (rest.every((index) => !isControl(nodes[index]) || !accessibleEquals(nodes[index], want))) return named[0];
+  }
+  return undefined;
+}
+
+function exactVisible(node: Identity | undefined, want: string): boolean {
+  if (!node) return false;
+  return [node.text, node.name, node.label, node.title].some((value) => !!value && normText(value) === want);
+}
+
+function accessibleEquals(node: Identity | undefined, want: string): boolean {
+  if (!node) return false;
+  return [node.name, node.label, node.title].some((value) => !!value && normText(value) === want);
+}
+
+function isControl(node: Identity | undefined): boolean {
+  if (!node) return false;
+  const role = normRole(node.role);
+  return role === "button" || role === "link" || role === "textbox" || role === "checkbox" || role === "radio"
+    || role === "combobox" || role === "listbox" || role === "menuitem" || role === "tab" || role === "option"
+    || role === "switch" || role === "searchbox";
+}
+
+/**
+ * A name selector that hits several radios or checkboxes.
+ * The recorded label chooses the input inside that label.
+ * A unique locator is left untouched, and two inputs with the same label stay a miss.
+ */
+export function matchLabeledControl(
+  locators: StepLocator[],
+  identity: Identity | undefined,
+  nodes: Identity[],
+  boxes?: Box[],
+  hidden?: boolean[],
+): { index: number; kind: "css" | "xpath"; detail: string } | undefined {
+  const want = identity?.label;
+  if (!want || !identity || !isCheckable(identity.role)) return undefined;
+  for (const locator of locators) {
+    if (locator.kind !== "css" && locator.kind !== "xpath") continue;
+    const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
+    if (hits.length < 2) continue;
+    const labeled = hits.filter((index) => {
+      const node = nodes[index];
+      if (!node || !isCheckable(node.role)) return false;
+      if (identity.nameAttr && node.nameAttr !== identity.nameAttr) return false;
+      return same(want, node.label, node.name, node.text);
+    });
+    if (labeled.length !== 1) continue;
+    const index = labeled[0]!;
+    const node = nodes[index];
+    return { index, kind: locator.kind, detail: `${locator.kind} ${node?.label || want}` };
+  }
+  return undefined;
+}
+
+function isCheckable(role: string | undefined): boolean {
+  const name = normRole(role || "");
+  return name === "input" || name === "radio" || name === "checkbox";
+}
+
+/** Every node the locator names, including a 0×0 or hidden box. */
+export function locatorIndexes(locator: StepLocator, nodes: Identity[]): number[] {
+  if (locator.kind === "anchor") return [];
+  const hits: number[] = [];
+  nodes.forEach((node, index) => {
+    if (nodeMatches(locator, node)) hits.push(index);
+  });
+  return hits;
+}
+
+/** A 0×0 box, or a node the page marked hidden. */
+export function isCollapsedBox(index: number, boxes?: Box[], hidden?: boolean[]): boolean {
+  if (hidden?.[index]) return true;
+  const box = boxes?.[index];
+  return !!box && box.w <= 0 && box.h <= 0;
+}
+
+function nodeMatches(locator: StepLocator, node: Identity): boolean {
+  if (locator.kind === "role") return roleMatches(locator, node);
+  if (locator.kind === "text") return !!locator.value && same(locator.value, node.text, node.name, node.label);
+  if (locator.kind === "testid") return !!locator.value && same(locator.value, node.testId);
+  if (locator.kind === "css") return !!locator.value && cssMatches(locator.value, node);
+  if (locator.kind === "xpath") return !!locator.value && xpathMatches(locator.value, node);
+  return false;
+}
+
+function roleMatches(locator: StepLocator, node: Identity): boolean {
+  if (!locator.role || locator.name == null) return false;
+  if (normRole(locator.role) !== normRole(node.role)) return false;
+  if (locator.name === "") {
+    return !normText(node.name || "") && !normText(node.text || "") && !normText(node.label || "");
+  }
+  return same(locator.name, node.name, node.text, node.label, node.title);
+}
+
+function cssMatches(selector: string, node: Identity): boolean {
+  if (node.cssPath && node.cssPath === selector) return true;
+  if (selector.startsWith("#") && node.id === cssUnescape(selector.slice(1))) return true;
+  const test = selector.match(/^\[data-testid="([^"]+)"\]$/);
+  if (test && node.testId === cssUnescape(test[1] || "")) return true;
+  const linked = selector.match(/^a\[href="([^"]*)"\]$/);
+  if (linked && node.tag === "a" && node.href === cssUnescape(linked[1] || "")) return true;
+  const named = selector.match(/^(?:[a-z0-9]+)?\[name="([^"]+)"\]$/);
+  return !!named && node.nameAttr === named[1];
+}
+
+function xpathMatches(selector: string, node: Identity): boolean {
+  if (node.xpath && node.xpath === selector) return true;
+  const id = selector.match(/^\/\/\*\[@id="([^"]+)"\]$/);
+  if (id && node.id === id[1]) return true;
+  const named = selector.match(/^\/\/([a-z0-9]+)\[@name="([^"]+)"\]$/);
+  return !!named && node.tag === named[1] && node.nameAttr === named[2];
+}
+
+function stableCss(node: Identity): string | undefined {
+  if (node.id && !unstable(node.id)) return `#${cssEscape(node.id)}`;
+  if (node.testId) return `[data-testid="${cssAttr(node.testId)}"]`;
+  if (node.nameAttr && node.tag) return `${node.tag}[name="${cssAttr(node.nameAttr)}"]`;
+  if (node.nameAttr) return `[name="${cssAttr(node.nameAttr)}"]`;
+  return node.cssPath;
+}
+
+function stableXPath(node: Identity): string | undefined {
+  if (node.id && !unstable(node.id)) return `//*[@id="${node.id.replace(/"/g, "")}"]`;
+  if (node.nameAttr && node.tag) return `//${node.tag}[@name="${node.nameAttr.replace(/"/g, "")}"]`;
+  return undefined;
+}
+
+function anchorLocator(
+  target: Identity,
+  nodes: Identity[],
+  boxes: Box[] | undefined,
+  targetIndex: number | undefined,
+): StepLocator | undefined {
+  if (!boxes || !usable(boxes)) return undefined;
+  const index = targetIndex ?? nodes.indexOf(target);
+  const origin = center(boxes[index]);
+  if (!origin) return undefined;
+  let best: { index: number; distance: number; relation: StepLocator["relation"] } | undefined;
+  nodes.forEach((node, i) => {
+    if (i === index || !stableNeighbor(node)) return;
+    const point = center(boxes[i]);
+    if (!point) return;
+    const relation = relationOf(origin, point);
+    if (!relation) return;
+    const distance = Math.hypot(point.x - origin.x, point.y - origin.y);
+    if (!best || distance < best.distance) best = { index: i, distance, relation };
+  });
+  if (!best) return undefined;
+  const neighbor = nodes[best.index];
+  if (!neighbor) return undefined;
+  return {
+    kind: "anchor",
+    role: target.role,
+    relation: best.relation,
+    anchor: {
+      surface: neighbor.surface,
+      role: neighbor.role,
+      name: neighbor.name,
+      text: neighbor.text,
+      testId: neighbor.testId,
+      id: neighbor.id,
+      path: [],
+    },
+  };
+}
+
+function matchAnchor(
+  locator: StepLocator,
+  nodes: Identity[],
+  boxes: Box[] | undefined,
+): { index: number; detail: string } | undefined {
+  if (!locator.anchor || !locator.relation || !boxes) return undefined;
+  let anchorAt = -1;
+  nodes.forEach((node, index) => {
+    if (anchorAt >= 0) return;
+    if (sameNode(locator.anchor!, node)) anchorAt = index;
+  });
+  if (anchorAt < 0) return undefined;
+  const origin = center(boxes[anchorAt]);
+  if (!origin) return undefined;
+  const role = locator.role ? normRole(locator.role) : "";
+  const hits: number[] = [];
+  nodes.forEach((node, index) => {
+    if (index === anchorAt) return;
+    if (role && normRole(node.role) !== role) return;
+    const point = center(boxes[index]);
+    if (!point || !onSide(origin, point, locator.relation!)) return;
+    hits.push(index);
+  });
+  if (hits.length !== 1) return undefined;
+  const index = hits[0]!;
+  return { index, detail: `${locator.relation} ${shown(nodes[index])}` };
+}
+
+function sameNode(query: Identity, node: Identity): boolean {
+  if (query.testId && node.testId === query.testId) return true;
+  if (query.id && node.id === query.id) return true;
+  if (query.role && normRole(query.role) === normRole(node.role) && query.text && same(query.text, node.text, node.name)) return true;
+  if (query.role && normRole(query.role) === normRole(node.role) && query.name && same(query.name, node.name, node.text, node.label)) return true;
+  return false;
+}
+
+function stableNeighbor(node: Identity): boolean {
+  if (node.testId) return true;
+  if (node.id && !unstable(node.id)) return true;
+  return normRole(node.role) === "heading" && !!(node.text || node.name);
+}
+
+function usable(boxes: Box[]): boolean {
+  const real = boxes.filter((box) => box.w > 0 && box.h > 0 && (box.x !== 0 || box.y !== 0));
+  return real.length >= 2;
+}
+
+function relationOf(
+  target: { x: number; y: number },
+  neighbor: { x: number; y: number },
+): StepLocator["relation"] | undefined {
+  const dx = target.x - neighbor.x;
+  const dy = target.y - neighbor.y;
+  if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return undefined;
+  if (Math.abs(dy) >= Math.abs(dx)) return dy > 0 ? "below" : "above";
+  return dx > 0 ? "right" : "left";
+}
+
+function onSide(
+  origin: { x: number; y: number },
+  point: { x: number; y: number },
+  relation: NonNullable<StepLocator["relation"]>,
+): boolean {
+  const dx = point.x - origin.x;
+  const dy = point.y - origin.y;
+  if (relation === "below") return dy > 8 && Math.abs(dx) < Math.max(160, dy * 2);
+  if (relation === "above") return dy < -8 && Math.abs(dx) < Math.max(160, Math.abs(dy) * 2);
+  if (relation === "right") return dx > 8 && Math.abs(dy) < Math.max(80, dx * 2);
+  return dx < -8 && Math.abs(dy) < Math.max(80, Math.abs(dx) * 2);
+}
+
+function center(box: Box | undefined): { x: number; y: number } | undefined {
+  if (!box || box.w <= 0 || box.h <= 0) return undefined;
+  return { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+}
+
+function same(want: string, ...values: (string | undefined)[]): boolean {
+  const left = normText(want);
+  if (!left) return false;
+  return values.some((value) => !!value && normText(value) === left);
+}
+
+function shown(node: Identity | undefined): string {
+  if (!node) return "";
+  return node.name || node.text || node.label || node.testId || node.id || node.role;
+}
+
+function unstable(id: string): boolean {
+  return /^(ember|react|mui|css-)/i.test(id) || /[0-9a-f]{8,}/i.test(id) || /:r[0-9a-z]+:/i.test(id) || /\d{4,}/.test(id);
+}
+
+function cssEscape(value: string): string {
+  return value.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
+}
+
+function cssUnescape(value: string): string {
+  return value.replace(/\\(.)/g, "$1");
+}
+
+function cssAttr(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}

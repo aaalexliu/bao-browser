@@ -1,0 +1,2049 @@
+{
+  "bundle": "com.apple.calculator",
+  "focusedOnly": false,
+  "geometry": {
+    "flipY": false,
+    "screenH": 1117,
+    "screenW": 1728
+  },
+  "manualAccessibility": true,
+  "nodeCount": 35,
+  "nodes": [
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:2",
+        "AXChildrenInNavigationOrder": "elements:2",
+        "AXEnhancedUserInterface": "true",
+        "AXExtrasMenuBar": null,
+        "AXFocusedUIElement": "element",
+        "AXFocusedWindow": "element",
+        "AXFrame": null,
+        "AXFrontmost": "true",
+        "AXFunctionRowTopLevelElements": "",
+        "AXHidden": "false",
+        "AXMainWindow": "element",
+        "AXMenuBar": "element",
+        "AXPosition": null,
+        "AXPreferredLanguage": "en",
+        "AXRole": "AXApplication",
+        "AXRoleDescription": "application",
+        "AXSize": null,
+        "AXTitle": "Calculator",
+        "AXWindows": "elements:1"
+      },
+      "childCount": 2,
+      "children": [
+        {
+          "identifier": "main",
+          "name": "Calculator",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXMenuBar"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": null,
+      "identifier": "",
+      "label": "",
+      "role": "AXApplication",
+      "subrole": "",
+      "title": "Calculator",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXRaise"
+      ],
+      "attrs": {
+        "AXActivationPoint": "870,476",
+        "AXCancelButton": null,
+        "AXChildren": "elements:5",
+        "AXChildrenInNavigationOrder": "elements:5",
+        "AXCloseButton": "element",
+        "AXDefaultButton": null,
+        "AXDocument": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXFullScreen": "false",
+        "AXFullScreenButton": null,
+        "AXGrowArea": null,
+        "AXIdentifier": "main",
+        "AXMain": "true",
+        "AXMinimizeButton": "element",
+        "AXMinimized": "false",
+        "AXModal": "false",
+        "AXParent": "element",
+        "AXPosition": "860,460",
+        "AXProxy": null,
+        "AXRole": "AXWindow",
+        "AXRoleDescription": "standard window",
+        "AXSections": "",
+        "AXSize": "230,408",
+        "AXSubrole": "AXStandardWindow",
+        "AXTitle": "Calculator",
+        "AXTitleUIElement": null,
+        "AXToolbarButton": null,
+        "AXZoomButton": "element"
+      },
+      "childCount": 5,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXToolbar"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 408,
+        "w": 230,
+        "x": 860,
+        "y": 460
+      },
+      "identifier": "main",
+      "label": "",
+      "role": "AXWindow",
+      "subrole": "AXStandardWindow",
+      "title": "Calculator",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEdited": "false",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "878,478",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "close button",
+        "AXSize": "16,16",
+        "AXSubrole": "AXCloseButton",
+        "AXTitle": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 878,
+        "y": 478
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXCloseButton",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "901,478",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "minimize button",
+        "AXSize": "16,16",
+        "AXSubrole": "AXMinimizeButton",
+        "AXTitle": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 901,
+        "y": 478
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXMinimizeButton",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXEnabled": "false",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "924,478",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "zoom button",
+        "AXSize": "16,16",
+        "AXSubrole": "AXZoomButton",
+        "AXTitle": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": false,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 924,
+        "y": 478
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXZoomButton",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "925,479",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "14,14",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 14,
+        "w": 14,
+        "x": 925,
+        "y": 479
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXChildren": "elements:2",
+        "AXChildrenInNavigationOrder": "elements:2",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXOverflowButton": null,
+        "AXParent": "element",
+        "AXPosition": "860,460",
+        "AXRole": "AXToolbar",
+        "AXRoleDescription": "toolbar",
+        "AXSelectedChildren": "",
+        "AXSize": "230,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 2,
+      "children": [
+        {
+          "identifier": "",
+          "name": "Show Sidebar",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Mode: basic; unitConversion: false",
+          "name": "Mode",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 230,
+        "x": 860,
+        "y": 460
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXToolbar",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXIncrement",
+        "AXDecrement",
+        "AXDelete",
+        "AXShowMenu",
+        "AXCancel",
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "0,1117",
+        "AXAllowedValues": null,
+        "AXAttributedDescription": null,
+        "AXAttributedUserInputLabels": null,
+        "AXAudiograph": null,
+        "AXAutoInteractable": "false",
+        "AXContainerType": "0",
+        "AXContentSiblingAbove": null,
+        "AXContentSiblingBelow": null,
+        "AXCustomActions": null,
+        "AXCustomContent": null,
+        "AXCustomRotors": null,
+        "AXDescription": "Show Sidebar",
+        "AXDisclosing": "false",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "",
+        "AXLinkedUIElements": null,
+        "AXMaxValue": null,
+        "AXMinValue": null,
+        "AXNextContentSibling": null,
+        "AXParent": "element",
+        "AXPath": null,
+        "AXPosition": "960,460",
+        "AXPreviousContentSibling": null,
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSelected": "false",
+        "AXServesAsTitleForUIElements": null,
+        "AXSize": "48,52",
+        "AXSubrole": null,
+        "AXTitleUIElement": null,
+        "AXTopLevelUIElement": "element",
+        "AXURL": null,
+        "AXUserInputLabels": null,
+        "AXValue": null,
+        "AXValueDescription": null,
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Show Sidebar",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 48,
+        "x": 960,
+        "y": 460
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXIncrement",
+        "AXDecrement",
+        "AXDelete",
+        "AXShowMenu",
+        "AXCancel",
+        "AXPress",
+        "Name:Move previous\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXActivationPoint": "0,1117",
+        "AXAllowedValues": null,
+        "AXAttributedDescription": null,
+        "AXAttributedUserInputLabels": null,
+        "AXAudiograph": null,
+        "AXAutoInteractable": "false",
+        "AXContainerType": "0",
+        "AXContentSiblingAbove": null,
+        "AXContentSiblingBelow": null,
+        "AXCustomActions": null,
+        "AXCustomContent": null,
+        "AXCustomRotors": null,
+        "AXDescription": "Mode",
+        "AXDisclosing": "false",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "Mode: basic; unitConversion: false",
+        "AXLinkedUIElements": null,
+        "AXMaxValue": null,
+        "AXMinValue": null,
+        "AXNextContentSibling": null,
+        "AXParent": "element",
+        "AXPath": null,
+        "AXPosition": "1042,460",
+        "AXPreviousContentSibling": null,
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSelected": "false",
+        "AXServesAsTitleForUIElements": null,
+        "AXSize": "44,52",
+        "AXSubrole": null,
+        "AXTitleUIElement": null,
+        "AXTopLevelUIElement": "element",
+        "AXURL": null,
+        "AXUserInputLabels": null,
+        "AXValue": null,
+        "AXValueDescription": null,
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Mode",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 44,
+        "x": 1042,
+        "y": 460
+      },
+      "identifier": "Mode: basic; unitConversion: false",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "860,460",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "230,408",
+        "AXSubrole": "AXHostingView",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "main, SidebarNavigationSplitView",
+          "name": "main, SidebarNavigationSplitView",
+          "role": "AXSplitGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 408,
+        "w": 230,
+        "x": 860,
+        "y": 460
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "AXHostingView",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "main, SidebarNavigationSplitView",
+        "AXParent": "element",
+        "AXPosition": "860,460",
+        "AXRole": "AXSplitGroup",
+        "AXRoleDescription": "split group",
+        "AXSize": "230,408",
+        "AXSplitters": "elements:1",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 408,
+        "w": 230,
+        "x": 860,
+        "y": 460
+      },
+      "identifier": "main, SidebarNavigationSplitView",
+      "label": "",
+      "role": "AXSplitGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "860,460",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "230,408",
+        "AXSubrole": "AXHostingView",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "CalculatorKeypadView",
+          "name": "CalculatorKeypadView",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 408,
+        "w": 230,
+        "x": 860,
+        "y": 460
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "AXHostingView",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXActivationPoint": "975,690",
+        "AXAutoInteractable": "false",
+        "AXChildren": "elements:21",
+        "AXChildrenInNavigationOrder": "elements:21",
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXIdentifier": "CalculatorKeypadView",
+        "AXIsSoftwareMimicKeyboardAttribute": "true",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "860,513",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "230,354",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 21,
+      "children": [
+        {
+          "identifier": "StandardInputView",
+          "name": "Edit field",
+          "role": "AXScrollArea"
+        },
+        {
+          "identifier": "Delete",
+          "name": "Delete",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "AllClear",
+          "name": "All Clear",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Percent",
+          "name": "Percent",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Divide",
+          "name": "Divide",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Seven",
+          "name": "7",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Eight",
+          "name": "8",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Nine",
+          "name": "9",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Multiply",
+          "name": "Multiply",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Four",
+          "name": "4",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Five",
+          "name": "5",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Six",
+          "name": "6",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Subtract",
+          "name": "Subtract",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "One",
+          "name": "1",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Two",
+          "name": "2",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Three",
+          "name": "3",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Add",
+          "name": "Add",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Negate",
+          "name": "Change Sign",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Zero",
+          "name": "0",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Decimal",
+          "name": "Point",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "Equals",
+          "name": "Equals",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 354,
+        "w": 230,
+        "x": 860,
+        "y": 513
+      },
+      "identifier": "CalculatorKeypadView",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXScrollLeftByPage",
+        "AXScrollRightByPage",
+        "AXScrollUpByPage",
+        "AXScrollDownByPage",
+        "Name:Copy\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXAttributedDescription": "Edit field",
+        "AXAutoInteractable": "false",
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXContentSize": "210,42",
+        "AXContents": "elements:1",
+        "AXCustomActions": null,
+        "AXDescription": "Edit field",
+        "AXDirectTouchOptions": "0",
+        "AXDragSources": "",
+        "AXDropPoints": "",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXHorizontalScrollBar": null,
+        "AXIdentifier": "StandardInputView",
+        "AXIsElement": "true",
+        "AXLayoutDirection": "0",
+        "AXMakeScreenRectVisible": null,
+        "AXMathEquation": "",
+        "AXParent": "element",
+        "AXPosition": "870,546",
+        "AXRespondsToInteraction": "true",
+        "AXRole": "AXScrollArea",
+        "AXRoleDescription": "scroll area",
+        "AXShouldExpandMathEquation": "false",
+        "AXShouldSpeakMathEquationTrait": "false",
+        "AXSize": "210,42",
+        "AXSortPriority": "0",
+        "AXTextualContext": null,
+        "AXTopLevelUIElement": "element",
+        "AXTraits": "0",
+        "AXVerticalScrollBar": null,
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "Edit field",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 42,
+        "w": 210,
+        "x": 870,
+        "y": 546
+      },
+      "identifier": "StandardInputView",
+      "label": "",
+      "role": "AXScrollArea",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXActivationPoint": "1071,567",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "1061,549",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSize": "19,36",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXValue": "‎0",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": null,
+      "frame": {
+        "h": 36,
+        "w": 19,
+        "x": 1061,
+        "y": 549
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "‎0"
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "894,617",
+        "AXAttributedDescription": "Delete",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "Delete the last digit or operation entered (long press to delete all)",
+        "AXIdentifier": "Delete",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "870,593",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Delete",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 870,
+        "y": 593
+      },
+      "identifier": "Delete",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "948,617",
+        "AXAttributedDescription": "All Clear",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "AllClear",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "924,593",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "All Clear",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 924,
+        "y": 593
+      },
+      "identifier": "AllClear",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1002,617",
+        "AXAttributedDescription": "Percent",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Percent",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "978,593",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Percent",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 978,
+        "y": 593
+      },
+      "identifier": "Percent",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1056,617",
+        "AXAttributedDescription": "Divide",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Divide",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "1032,593",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Divide",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 1032,
+        "y": 593
+      },
+      "identifier": "Divide",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "894,671",
+        "AXAttributedDescription": "7",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Seven",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "870,647",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "7",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 870,
+        "y": 647
+      },
+      "identifier": "Seven",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "948,671",
+        "AXAttributedDescription": "8",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Eight",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "924,647",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "8",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 924,
+        "y": 647
+      },
+      "identifier": "Eight",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1002,671",
+        "AXAttributedDescription": "9",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Nine",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "978,647",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "9",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 978,
+        "y": 647
+      },
+      "identifier": "Nine",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1056,671",
+        "AXAttributedDescription": "Multiply",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Multiply",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "1032,647",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Multiply",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 1032,
+        "y": 647
+      },
+      "identifier": "Multiply",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "894,725",
+        "AXAttributedDescription": "4",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Four",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "870,701",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "4",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 870,
+        "y": 701
+      },
+      "identifier": "Four",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "948,725",
+        "AXAttributedDescription": "5",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Five",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "924,701",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "5",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 924,
+        "y": 701
+      },
+      "identifier": "Five",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1002,725",
+        "AXAttributedDescription": "6",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Six",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "978,701",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "6",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 978,
+        "y": 701
+      },
+      "identifier": "Six",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1056,725",
+        "AXAttributedDescription": "Subtract",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Subtract",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "1032,701",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Subtract",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 1032,
+        "y": 701
+      },
+      "identifier": "Subtract",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "894,779",
+        "AXAttributedDescription": "1",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "One",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "870,755",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "1",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 870,
+        "y": 755
+      },
+      "identifier": "One",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "948,779",
+        "AXAttributedDescription": "2",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Two",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "924,755",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "2",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 924,
+        "y": 755
+      },
+      "identifier": "Two",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1002,779",
+        "AXAttributedDescription": "3",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Three",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "978,755",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "3",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 978,
+        "y": 755
+      },
+      "identifier": "Three",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1056,779",
+        "AXAttributedDescription": "Add",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Add",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "1032,755",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Add",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 1032,
+        "y": 755
+      },
+      "identifier": "Add",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "894,833",
+        "AXAttributedDescription": "Change Sign",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "Change sign of a value",
+        "AXIdentifier": "Negate",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "870,809",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Change Sign",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 870,
+        "y": 809
+      },
+      "identifier": "Negate",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "948,833",
+        "AXAttributedDescription": "0",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Zero",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "924,809",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "0",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 924,
+        "y": 809
+      },
+      "identifier": "Zero",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1002,833",
+        "AXAttributedDescription": "Point",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Decimal",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "978,809",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Point",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 978,
+        "y": 809
+      },
+      "identifier": "Decimal",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXActivationPoint": "1056,833",
+        "AXAttributedDescription": "Equals",
+        "AXAutoInteractable": "false",
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "",
+        "AXIdentifier": "Equals",
+        "AXParent": "element",
+        "AXPath": "",
+        "AXPosition": "1032,809",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "48,48",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Equals",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 48,
+        "w": 48,
+        "x": 1032,
+        "y": 809
+      },
+      "identifier": "Equals",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    }
+  ],
+  "ok": true,
+  "os": "26.6.2",
+  "sampleCount": 40,
+  "samples": [
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXButton",
+      "x": 884,
+      "y": 484
+    },
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXButton",
+      "x": 932,
+      "y": 484
+    },
+    {
+      "identifier": "",
+      "name": "Show Sidebar",
+      "role": "AXButton",
+      "x": 980,
+      "y": 484
+    },
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXToolbar",
+      "x": 1028,
+      "y": 484
+    },
+    {
+      "identifier": "Mode: basic; unitConversion: false",
+      "name": "Mode",
+      "role": "AXButton",
+      "x": 1076,
+      "y": 484
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 884,
+      "y": 532
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 932,
+      "y": 532
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 980,
+      "y": 532
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 1028,
+      "y": 532
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 1076,
+      "y": 532
+    },
+    {
+      "identifier": "StandardInputView",
+      "name": "Edit field",
+      "role": "AXScrollArea",
+      "x": 884,
+      "y": 580
+    },
+    {
+      "identifier": "StandardInputView",
+      "name": "Edit field",
+      "role": "AXScrollArea",
+      "x": 932,
+      "y": 580
+    },
+    {
+      "identifier": "StandardInputView",
+      "name": "Edit field",
+      "role": "AXScrollArea",
+      "x": 980,
+      "y": 580
+    },
+    {
+      "identifier": "StandardInputView",
+      "name": "Edit field",
+      "role": "AXScrollArea",
+      "x": 1028,
+      "y": 580
+    },
+    {
+      "identifier": "StandardInputView",
+      "name": "Edit field",
+      "role": "AXScrollArea",
+      "x": 1076,
+      "y": 580
+    },
+    {
+      "identifier": "Delete",
+      "name": "Delete",
+      "role": "AXButton",
+      "x": 884,
+      "y": 628
+    },
+    {
+      "identifier": "AllClear",
+      "name": "All Clear",
+      "role": "AXButton",
+      "x": 932,
+      "y": 628
+    },
+    {
+      "identifier": "Percent",
+      "name": "Percent",
+      "role": "AXButton",
+      "x": 980,
+      "y": 628
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 1028,
+      "y": 628
+    },
+    {
+      "identifier": "Divide",
+      "name": "Divide",
+      "role": "AXButton",
+      "x": 1076,
+      "y": 628
+    },
+    {
+      "identifier": "Seven",
+      "name": "7",
+      "role": "AXButton",
+      "x": 884,
+      "y": 676
+    },
+    {
+      "identifier": "Eight",
+      "name": "8",
+      "role": "AXButton",
+      "x": 932,
+      "y": 676
+    },
+    {
+      "identifier": "Nine",
+      "name": "9",
+      "role": "AXButton",
+      "x": 980,
+      "y": 676
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 1028,
+      "y": 676
+    },
+    {
+      "identifier": "Multiply",
+      "name": "Multiply",
+      "role": "AXButton",
+      "x": 1076,
+      "y": 676
+    },
+    {
+      "identifier": "Four",
+      "name": "4",
+      "role": "AXButton",
+      "x": 884,
+      "y": 724
+    },
+    {
+      "identifier": "Five",
+      "name": "5",
+      "role": "AXButton",
+      "x": 932,
+      "y": 724
+    },
+    {
+      "identifier": "Six",
+      "name": "6",
+      "role": "AXButton",
+      "x": 980,
+      "y": 724
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 1028,
+      "y": 724
+    },
+    {
+      "identifier": "Subtract",
+      "name": "Subtract",
+      "role": "AXButton",
+      "x": 1076,
+      "y": 724
+    },
+    {
+      "identifier": "One",
+      "name": "1",
+      "role": "AXButton",
+      "x": 884,
+      "y": 772
+    },
+    {
+      "identifier": "Two",
+      "name": "2",
+      "role": "AXButton",
+      "x": 932,
+      "y": 772
+    },
+    {
+      "identifier": "Three",
+      "name": "3",
+      "role": "AXButton",
+      "x": 980,
+      "y": 772
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 1028,
+      "y": 772
+    },
+    {
+      "identifier": "Add",
+      "name": "Add",
+      "role": "AXButton",
+      "x": 1076,
+      "y": 772
+    },
+    {
+      "identifier": "Negate",
+      "name": "Change Sign",
+      "role": "AXButton",
+      "x": 884,
+      "y": 820
+    },
+    {
+      "identifier": "Zero",
+      "name": "0",
+      "role": "AXButton",
+      "x": 932,
+      "y": 820
+    },
+    {
+      "identifier": "Decimal",
+      "name": "Point",
+      "role": "AXButton",
+      "x": 980,
+      "y": 820
+    },
+    {
+      "identifier": "CalculatorKeypadView",
+      "name": "CalculatorKeypadView",
+      "role": "AXGroup",
+      "x": 1028,
+      "y": 820
+    },
+    {
+      "identifier": "Equals",
+      "name": "Equals",
+      "role": "AXButton",
+      "x": 1076,
+      "y": 820
+    }
+  ],
+  "titleFilter": "Calculator",
+  "truncated": false
+}

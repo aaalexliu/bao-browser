@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch3/jquery-todo",
+  "steps": [
+    {
+      "stepId": "jquery-todo-0",
+      "action": "type",
+      "target": "textbox#new-todo",
+      "postcondition": "value {{text}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "jquery-todo-1",
+      "action": "key",
+      "target": "page",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}

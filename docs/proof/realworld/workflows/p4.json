@@ -1,0 +1,508 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 3,
+  "id": "wf-1792700918495",
+  "name": "Captured workflow",
+  "startUrl": "https://clinicaltrials.gov/search",
+  "inputs": [
+    {
+      "name": "advcond",
+      "type": "text",
+      "required": true,
+      "label": "advcond",
+      "default": "type 1 diabetes"
+    },
+    {
+      "name": "text",
+      "type": "text",
+      "required": true,
+      "label": "text",
+      "default": "California"
+    },
+    {
+      "name": "text2",
+      "type": "date",
+      "required": true,
+      "label": "text2",
+      "default": "-2472d",
+      "format": "MM/DD/YYYY",
+      "relative": "-2472d",
+      "zone": "UTC"
+    },
+    {
+      "name": "text3",
+      "type": "date",
+      "required": true,
+      "label": "text3",
+      "default": "-660d",
+      "format": "MM/DD/YYYY",
+      "relative": "-660d",
+      "zone": "UTC"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792700918495-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://clinicaltrials.gov/search",
+      "surface": "dom",
+      "value": "https://clinicaltrials.gov/search",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "clinicaltrials.gov",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792700918495-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{advcond}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "advcond",
+        "nameAttr": "advcond",
+        "tag": "input",
+        "cssPath": "#advcond",
+        "name": "Condition/disease",
+        "label": "Condition/disease",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "combobox",
+          "name": "Condition/disease"
+        },
+        {
+          "kind": "text",
+          "value": "Condition/disease"
+        },
+        {
+          "kind": "css",
+          "value": "#advcond"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"advcond\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "advcond",
+      "value": "{{advcond}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{advcond}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700918495-2",
+      "index": 2,
+      "action": "key",
+      "label": "Press Enter",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "advcond",
+        "nameAttr": "advcond",
+        "tag": "input",
+        "cssPath": "#advcond",
+        "name": "Condition/disease",
+        "label": "Condition/disease",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "combobox",
+          "name": "Condition/disease"
+        },
+        {
+          "kind": "text",
+          "value": "Condition/disease"
+        },
+        {
+          "kind": "css",
+          "value": "#advcond"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"advcond\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "key": "Enter",
+      "postcondition": {
+        "kind": "url",
+        "match": "cond={{advcond}}",
+        "timeoutMs": 8000
+      },
+      "expect": {
+        "kind": "url",
+        "match": "cond={{advcond}}",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792700918495-3",
+      "index": 3,
+      "action": "type",
+      "label": "Type {{text}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "combobox",
+        "id": "location-input",
+        "nameAttr": "location-input",
+        "tag": "input",
+        "cssPath": "#location-input",
+        "name": "In country, state, or city",
+        "label": "In country, state, or city",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "combobox",
+          "name": "In country, state, or city"
+        },
+        {
+          "kind": "text",
+          "value": "In country, state, or city"
+        },
+        {
+          "kind": "css",
+          "value": "#location-input"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"location-input\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text",
+      "value": "{{text}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700918495-4",
+      "index": 4,
+      "action": "click",
+      "label": "Click {{text}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "option",
+        "id": "mat-option-35",
+        "tag": "mat-option",
+        "cssPath": "#mat-option-35",
+        "text": "California",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "option",
+          "name": "California"
+        },
+        {
+          "kind": "text",
+          "value": "California"
+        },
+        {
+          "kind": "css",
+          "value": "#mat-option-35"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"mat-option-35\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low",
+      "selection": {
+        "by": "text",
+        "input": "text"
+      }
+    },
+    {
+      "id": "wf-1792700918495-5",
+      "index": 5,
+      "action": "click",
+      "label": "Pick {{text2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "tag": "input",
+        "cssPath": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)",
+        "name": "Date Picker",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Date Picker"
+        },
+        {
+          "kind": "text",
+          "value": "Date Picker"
+        },
+        {
+          "kind": "css",
+          "value": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text2",
+      "value": "{{text2}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text2}}",
+        "timeoutMs": 4000
+      },
+      "datePicker": {
+        "input": "text2"
+      }
+    },
+    {
+      "id": "wf-1792700918495-6",
+      "index": 6,
+      "action": "click",
+      "label": "Pick {{text3}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "tag": "input",
+        "cssPath": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)",
+        "name": "Date Picker",
+        "label": "Date Picker",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Date Picker"
+        },
+        {
+          "kind": "text",
+          "value": "Date Picker"
+        },
+        {
+          "kind": "css",
+          "value": "#extended-form > div:nth-of-type(7) > div:nth-of-type(1) > ctg-date-range-filter:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > input:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "text3",
+      "value": "{{text3}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{text3}}",
+        "timeoutMs": 4000
+      },
+      "datePicker": {
+        "input": "text3"
+      }
+    },
+    {
+      "id": "wf-1792700918495-7",
+      "index": 7,
+      "action": "click",
+      "label": "Click \"Recruiting (425)\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#adv-check-status > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)",
+        "name": "Recruiting (425)",
+        "label": "Recruiting (425)",
+        "text": "Recruiting (425)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "Recruiting (425)"
+        },
+        {
+          "kind": "text",
+          "value": "Recruiting (425)"
+        },
+        {
+          "kind": "css",
+          "value": "#adv-check-status > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000
+    },
+    {
+      "id": "wf-1792700918495-8",
+      "index": 8,
+      "action": "click",
+      "label": "Click \"Apply Filters\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "apply-filters",
+        "tag": "button",
+        "cssPath": "#apply-filters",
+        "text": "Apply Filters",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Apply Filters"
+        },
+        {
+          "kind": "text",
+          "value": "Apply Filters"
+        },
+        {
+          "kind": "css",
+          "value": "#apply-filters"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"apply-filters\"]"
+        }
+      ],
+      "timeoutMs": 8000
+    },
+    {
+      "id": "wf-1792700918495-9",
+      "index": 9,
+      "action": "click",
+      "label": "Click \"download\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "id": "action-bar-download-btn",
+        "tag": "button",
+        "cssPath": "#action-bar-download-btn",
+        "name": "download",
+        "label": "download",
+        "text": "Download",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "download"
+        },
+        {
+          "kind": "text",
+          "value": "Download"
+        },
+        {
+          "kind": "css",
+          "value": "#action-bar-download-btn"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"action-bar-download-btn\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700918495-10",
+      "index": 10,
+      "action": "click",
+      "label": "Click \"CSV\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#download-modal-description > section:nth-of-type(1) > div:nth-of-type(2) > label:nth-of-type(1)",
+        "name": "CSV",
+        "label": "CSV",
+        "text": "CSV",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "CSV"
+        },
+        {
+          "kind": "text",
+          "value": "CSV"
+        },
+        {
+          "kind": "css",
+          "value": "#download-modal-description > section:nth-of-type(1) > div:nth-of-type(2) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700918495-11",
+      "index": 11,
+      "action": "download",
+      "label": "Download",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "tag": "button",
+        "cssPath": "#download-modal > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > ul:nth-of-type(1) > li:nth-of-type(1) > button:nth-of-type(1)",
+        "text": "Download",
+        "path": []
+      },
+      "timeoutMs": 30000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low",
+      "download": {
+        "output": "ctgstudies",
+        "name": "{{run.date}}-{{suggested}}"
+      }
+    }
+  ],
+  "createdAt": 1792700902433,
+  "filesDates": 1
+}

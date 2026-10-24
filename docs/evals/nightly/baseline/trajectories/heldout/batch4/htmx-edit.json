@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch4/htmx-edit",
+  "steps": [
+    {
+      "stepId": "htmx-edit-0",
+      "action": "click",
+      "target": "button:CLICK TO EDIT",
+      "postcondition": "text SUBMIT",
+      "timing": "lt1s"
+    }
+  ]
+}

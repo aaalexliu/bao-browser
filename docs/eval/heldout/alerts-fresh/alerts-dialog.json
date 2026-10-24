@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Click for JS Alert",
+      "path": []
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "afterUrl": "https://the-internet.herokuapp.com/javascript_alerts",
+    "dialog": "I am a JS Alert",
+    "dialogType": "alert",
+    "dialogDecision": "accept",
+    "subtreeBefore": "",
+    "subtreeAfter": "You successfully clicked an alert",
+    "id": "e0",
+    "ts": 1792659230332
+  }
+]

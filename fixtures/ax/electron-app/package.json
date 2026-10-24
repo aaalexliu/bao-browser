@@ -1,0 +1,8 @@
+{
+  "name": "bao-ax-electron",
+  "private": true,
+  "main": "main.js",
+  "dependencies": {
+    "electron": "33.4.11"
+  }
+}

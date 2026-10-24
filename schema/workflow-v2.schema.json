@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bao.workflow/v2",
+  "title": "Bao workflow v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "id", "name", "startUrl", "inputs", "steps", "createdAt"],
+  "properties": {
+    "schema": { "const": "bao.workflow/v2" },
+    "version": { "enum": [2, 3] },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "startUrl": { "type": "string" },
+    "createdAt": { "type": "number" },
+    "updatedAt": { "type": "number" },
+    "heal": { "enum": ["auto", "approve"] },
+    "replayed": { "type": "boolean" },
+    "readBack": { "$ref": "#/$defs/readBack" },
+    "precondition": { "$ref": "#/$defs/precondition" },
+    "summary": { "type": "string" },
+    "driver": {
+      "enum": ["playwright", "extension"],
+      "description": "Which browser runs this workflow. Absent means Playwright, Bao's own Chrome."
+    },
+    "inputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/input" }
+    },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workflowOutput" }
+    }
+  },
+  "$defs": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "type": { "enum": ["text", "secret", "number", "choice", "file", "table"] },
+        "label": { "type": "string" },
+        "required": { "type": "boolean" },
+        "default": { "type": "string" },
+        "choices": { "type": "array", "items": { "type": "string" } },
+        "multiple": { "type": "boolean" },
+        "accept": { "type": "string" }
+      }
+    },
+    "pathSeg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role"],
+      "properties": {
+        "role": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface", "role", "path"],
+      "properties": {
+        "surface": { "enum": ["dom", "ax", "atspi"] },
+        "role": { "type": "string" },
+        "subrole": { "type": "string" },
+        "identifier": { "type": "string" },
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "value": { "type": "string" },
+        "testId": { "type": "string" },
+        "id": { "type": "string" },
+        "nameAttr": { "type": "string" },
+        "tag": { "type": "string" },
+        "label": { "type": "string" },
+        "text": { "type": "string" },
+        "cssPath": { "type": "string" },
+        "xpath": { "type": "string" },
+        "href": { "type": "string" },
+        "windowTitle": { "type": "string" },
+        "bundleId": { "type": "string" },
+        "app": { "type": "string" },
+        "path": { "type": "array", "items": { "$ref": "#/$defs/pathSeg" } },
+        "siblingIndex": { "type": "number" }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "timeoutMs"],
+      "properties": {
+        "kind": { "enum": ["text", "url", "state", "settled"] },
+        "match": { "type": "string" },
+        "state": { "enum": ["checked", "unchecked", "enabled", "disabled", "visible"] },
+        "identity": { "$ref": "#/$defs/identity" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "relation"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/identity" },
+        "relation": { "enum": ["below", "above", "right", "left"] }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["role", "text", "testid", "css", "xpath", "anchor"] },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "relation": { "enum": ["below", "above", "right", "left"] },
+        "anchor": { "$ref": "#/$defs/identity" }
+      }
+    },
+    "postcondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "timeoutMs"],
+      "properties": {
+        "kind": { "enum": ["url", "text", "value", "element", "absent"] },
+        "match": { "type": "string" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "timeoutMs"],
+      "properties": {
+        "kind": { "enum": ["text", "url", "element", "value"] },
+        "match": { "type": "string" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "match", "phase"],
+      "properties": {
+        "kind": { "const": "url" },
+        "match": { "type": "string", "minLength": 1 },
+        "phase": { "const": "auth" }
+      }
+    },
+    "readBack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "match", "timeoutMs"],
+      "properties": {
+        "source": { "enum": ["value", "text", "url", "file"] },
+        "match": { "type": "string" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "fileInput": { "type": "string" },
+        "timeoutMs": { "type": "number" }
+      }
+    },
+    "elementVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "at", "source", "changed"],
+      "properties": {
+        "id": { "type": "string" },
+        "at": { "type": "number" },
+        "source": { "enum": ["recorded", "heal", "revert", "rollback"] },
+        "runId": { "type": "string" },
+        "score": { "type": "number" },
+        "changed": { "type": "array", "items": { "type": "string" } },
+        "identity": { "$ref": "#/$defs/identity" },
+        "locators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/locator" }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "action", "label", "surface", "timeoutMs"],
+      "properties": {
+        "id": { "type": "string" },
+        "index": { "type": "number" },
+        "action": { "enum": ["navigate", "click", "type", "key", "upload", "drop", "digits", "check", "select", "confirm", "login", "verify", "note", "extract", "for_each"] },
+        "label": { "type": "string" },
+        "surface": { "enum": ["dom", "os"] },
+        "identity": { "$ref": "#/$defs/identity" },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["by", "input"],
+          "properties": {
+            "by": { "enum": ["name", "title", "text", "value"] },
+            "input": { "type": "string" }
+          }
+        },
+        "value": { "type": "string" },
+        "input": { "type": "string" },
+        "key": { "type": "string" },
+        "checked": { "type": "boolean" },
+        "sensitive": { "type": "boolean" },
+        "human": { "type": "boolean" },
+        "intent": { "type": "string" },
+        "gate": { "enum": ["login", "confirm"] },
+        "postcondition": { "$ref": "#/$defs/postcondition" },
+        "expect": { "$ref": "#/$defs/expect" },
+        "confidence": { "enum": ["low"] },
+        "waitFor": { "$ref": "#/$defs/check" },
+        "gone": { "$ref": "#/$defs/check" },
+        "anchor": { "$ref": "#/$defs/anchor" },
+        "reveal": { "$ref": "#/$defs/locator" },
+        "readBack": { "$ref": "#/$defs/readBack" },
+        "locators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/locator" }
+        },
+        "extract": { "$ref": "#/$defs/extractSpec" },
+        "forEach": { "$ref": "#/$defs/forEachSpec" },
+        "when": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["input", "value"],
+              "properties": {
+                "input": { "type": "string" },
+                "value": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["present"],
+              "properties": {
+                "present": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        },
+        "timeoutMs": { "type": "number" },
+        "heal": { "enum": ["auto", "ask", "never"] },
+        "history": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/elementVersion" }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "space"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "space": { "enum": ["viewport", "image", "screen"] }
+          }
+        },
+        "unresolved": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": { "reason": { "type": "string" } }
+        }
+      }
+    },
+    "extractColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "read", "locators"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "label": { "type": "string" },
+        "type": { "enum": ["text", "number", "url"] },
+        "read": { "enum": ["text", "href", "src", "value", "title", "rating"] },
+        "locators": { "type": "array", "items": { "$ref": "#/$defs/locator" } },
+        "dropped": { "type": "boolean" }
+      }
+    },
+    "extractSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "locators", "columns", "as"],
+      "properties": {
+        "mode": { "enum": ["element", "list"] },
+        "locators": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/locator" } },
+        "columns": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/extractColumn" } },
+        "as": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "pagination": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["next", "maxPages"],
+          "properties": {
+            "next": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/locator" } },
+            "maxPages": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        }
+      }
+    },
+    "forEachSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["over", "steps"],
+      "properties": {
+        "over": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "name"],
+          "properties": {
+            "kind": { "enum": ["extract", "input"] },
+            "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
+          }
+        },
+        "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } }
+      }
+    },
+    "outputColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "type": { "enum": ["text", "number", "url"] }
+      }
+    },
+    "workflowOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "from"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "label": { "type": "string" },
+        "type": { "enum": ["table", "text", "number"] },
+        "from": { "type": "string" },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/outputColumn" } }
+      }
+    }
+  }
+}

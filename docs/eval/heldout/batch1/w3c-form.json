@@ -1,0 +1,259 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642599671,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642599712,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642599752,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642599793,
+    "kind": "act",
+    "op": "type",
+    "value": "nope",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "name": "Search",
+      "id": "header-search",
+      "nameAttr": "q",
+      "tag": "input",
+      "label": "Search:",
+      "cssPath": "#header-search",
+      "path": [
+        {
+          "role": "nav",
+          "name": "Meta & Search"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        },
+        {
+          "role": "search"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "label"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642599961,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642599962,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642599963,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792642599964,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792642599964,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792642600005,
+    "kind": "act",
+    "op": "type",
+    "value": "Adx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "firstname",
+      "nameAttr": "firstname",
+      "tag": "input",
+      "label": "First name:",
+      "cssPath": "#firstname",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e10",
+    "ts": 1792642600122,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e11",
+    "ts": 1792642600122,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "firstname",
+      "nameAttr": "firstname",
+      "tag": "input",
+      "label": "First name:",
+      "cssPath": "#firstname",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e12",
+    "ts": 1792642600234,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "subscribe",
+      "nameAttr": "subscribe",
+      "tag": "input",
+      "label": "Subscribe to newsletter",
+      "cssPath": "#subscribe",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "checked": true,
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e13",
+    "ts": 1792642600499,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "subscribe",
+      "nameAttr": "subscribe",
+      "tag": "input",
+      "label": "Subscribe to newsletter",
+      "cssPath": "#subscribe",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "aside"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "checked": false,
+    "beforeUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "afterUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+  },
+  {
+    "id": "e14",
+    "ts": 1792642600781,
+    "kind": "read",
+    "op": "screenshot"
+  }
+]

@@ -1,0 +1,217 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-calc",
+  "name": "Calculator",
+  "startUrl": "desktop://baocalc",
+  "inputs": [
+    {
+      "name": "a",
+      "type": "number",
+      "required": true,
+      "label": "a",
+      "default": "7"
+    },
+    {
+      "name": "b",
+      "type": "number",
+      "required": true,
+      "label": "b",
+      "default": "5"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-calc-0",
+      "index": 0,
+      "action": "digits",
+      "label": "Enter {{a}}",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "push button",
+        "app": "baocalc.py",
+        "path": [
+          {
+            "name": "baocalc.py",
+            "role": "application"
+          },
+          {
+            "name": "BaoCalc",
+            "role": "frame"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          }
+        ]
+      },
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 77,
+        "y": 84,
+        "space": "screen"
+      },
+      "postcondition": {
+        "kind": "element",
+        "timeoutMs": 4000
+      },
+      "input": "a",
+      "value": "{{a}}"
+    },
+    {
+      "id": "wf-calc-1",
+      "index": 1,
+      "action": "click",
+      "label": "Click \"+\"",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "push button",
+        "name": "+",
+        "app": "baocalc.py",
+        "path": [
+          {
+            "name": "baocalc.py",
+            "role": "application"
+          },
+          {
+            "name": "BaoCalc",
+            "role": "frame"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          }
+        ]
+      },
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 159,
+        "y": 84,
+        "space": "screen"
+      },
+      "postcondition": {
+        "kind": "element",
+        "identity": {
+          "surface": "atspi",
+          "role": "push button",
+          "name": "+",
+          "app": "baocalc.py",
+          "path": [
+            {
+              "name": "baocalc.py",
+              "role": "application"
+            },
+            {
+              "name": "BaoCalc",
+              "role": "frame"
+            },
+            {
+              "name": "",
+              "role": "filler"
+            },
+            {
+              "name": "",
+              "role": "filler"
+            }
+          ]
+        },
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-calc-2",
+      "index": 2,
+      "action": "digits",
+      "label": "Enter {{b}}",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "push button",
+        "app": "baocalc.py",
+        "path": [
+          {
+            "name": "baocalc.py",
+            "role": "application"
+          },
+          {
+            "name": "BaoCalc",
+            "role": "frame"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          }
+        ]
+      },
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 241,
+        "y": 84,
+        "space": "screen"
+      },
+      "postcondition": {
+        "kind": "element",
+        "timeoutMs": 4000
+      },
+      "input": "b",
+      "value": "{{b}}"
+    },
+    {
+      "id": "wf-calc-3",
+      "index": 3,
+      "action": "click",
+      "label": "Click \"=\"",
+      "surface": "os",
+      "identity": {
+        "surface": "atspi",
+        "role": "push button",
+        "name": "=",
+        "app": "baocalc.py",
+        "path": [
+          {
+            "name": "baocalc.py",
+            "role": "application"
+          },
+          {
+            "name": "BaoCalc",
+            "role": "frame"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          },
+          {
+            "name": "",
+            "role": "filler"
+          }
+        ]
+      },
+      "timeoutMs": 8000,
+      "provenance": {
+        "x": 323,
+        "y": 84,
+        "space": "screen"
+      },
+      "postcondition": {
+        "kind": "value",
+        "match": "{{a}}+{{b}}",
+        "timeoutMs": 4000
+      }
+    }
+  ],
+  "createdAt": 1
+}

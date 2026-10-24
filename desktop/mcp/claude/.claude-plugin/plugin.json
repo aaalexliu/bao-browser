@@ -1,0 +1,5 @@
+{
+  "name": "bao",
+  "description": "Log Claude Code computer-use tool calls into a local bao trail. Observer only: bao does not perform the action.",
+  "version": "0.1.0"
+}

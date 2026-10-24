@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch5/hn-search",
+  "steps": [
+    {
+      "stepId": "hn-search-0",
+      "action": "type",
+      "target": "textbox[name=q]",
+      "postcondition": "value {{q}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "hn-search-1",
+      "action": "key",
+      "target": "textbox[name=q]",
+      "postcondition": "url q={{q}}",
+      "timing": "lt1s"
+    }
+  ]
+}

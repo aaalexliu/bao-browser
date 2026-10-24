@@ -1,0 +1,128 @@
+{
+  "args": {},
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [],
+    "receipts": [],
+    "trajectory": [],
+    "trail": [
+      {
+        "kind": "handoff",
+        "stepId": "wf-1792701595283-0",
+        "phase": "start",
+        "ts": 1792701595619,
+        "text": "Handoff started Oct 22, 8:39 PM UTC"
+      }
+    ],
+    "pageClasses": [
+      {
+        "stepId": "wf-1792701595283-0",
+        "at": 1792701595615,
+        "class": "bot_wall",
+        "reason": "bot check",
+        "vendor": "Cloudflare",
+        "evidence": [
+          {
+            "source": "title",
+            "detail": "Just a moment..."
+          }
+        ],
+        "line": "Practicesoftwaretesting is showing a bot check. Finish it in the Bao window, then press Continue."
+      }
+    ],
+    "console": [
+      {
+        "stepId": "open",
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 403 ()",
+        "ts": 1792701595467
+      },
+      {
+        "stepId": "open",
+        "type": "warning",
+        "text": "No available adapters.",
+        "ts": 1792701595558
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://practicesoftwaretesting.com/",
+        "status": 307,
+        "ts": 1792701595430
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://practicesoftwaretesting.com/",
+        "status": 403,
+        "ts": 1792701595453
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://practicesoftwaretesting.com/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1",
+        "status": 200,
+        "ts": 1792701595497
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://challenges.cloudflare.com/turnstile/v0/b/d2d3316b729e/api.js",
+        "status": 200,
+        "ts": 1792701595558
+      }
+    ],
+    "runId": "run-mvk08rzz-mh1i",
+    "status": "paused",
+    "steps": [
+      {
+        "id": "wf-1792701595283-0",
+        "status": "paused",
+        "reason": "bot check",
+        "startedAt": 1792701595605,
+        "endedAt": 1792701595620
+      }
+    ],
+    "pausedStepId": "wf-1792701595283-0",
+    "pausedKind": "wall",
+    "ask": {
+      "kind": "wall",
+      "workflowId": "wf-1792701595283",
+      "workflowName": "Captured workflow",
+      "stepId": "wf-1792701595283-0",
+      "stepIndex": 1,
+      "stepCount": 1,
+      "label": "Open https://practicesoftwaretesting.com/",
+      "site": "practicesoftwaretesting.com",
+      "windowName": "Bao window",
+      "instruction": "Practicesoftwaretesting is showing a bot check. Finish it in the Bao window, then press Continue.",
+      "startedAt": 1792701595615,
+      "deadline": 1792708795615,
+      "timeoutMs": 7200000,
+      "runId": "run-mvk08rzz-mh1i"
+    },
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [],
+    "bounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "page": {
+    "url": "https://practicesoftwaretesting.com/",
+    "title": "Just a moment...",
+    "text": "Practicesoftwaretesting is showing a bot check. Finish it in the Bao window, then press Continue. Continue practicesoftwaretesting.com Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a4eb506b7a375ef5 Performance and Security by Cloudflare Privacy"
+  },
+  "downloaded": [],
+  "shot": {
+    "sha256": "284f70269e70d41e98785bb7d58b466182bc727f7c53d71cf6884edc9a57d0b7",
+    "samePixels": false,
+    "identity": ""
+  }
+}

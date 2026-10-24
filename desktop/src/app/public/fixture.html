@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Bao fixture</title>
+  <style>
+    :root { color-scheme: light; font-size: 16px; }
+    body { font-family: sans-serif; margin: 2rem; background: #f6f4ef; color: #1c1915; }
+    body.dark { background: #1c1915; color: #f6f4ef; }
+    body.big { font-size: 22px; }
+    form, section { display: grid; gap: 0.6rem; max-width: 28rem; margin-bottom: 1.4rem; }
+    label { display: grid; gap: 0.2rem; }
+    input, button { font: inherit; padding: 0.4rem 0.5rem; }
+    #drop {
+      border: 2px dashed #8a8175;
+      padding: 1.2rem;
+      min-height: 3rem;
+    }
+    #status { position: sticky; top: 0; z-index: 2; display: grid; gap: 0.35rem; background: #f6f4ef; padding-bottom: 0.6rem; }
+    #cookie-banner {
+      position: fixed; inset: 0; z-index: 50;
+      background: #1c1915; color: #f6f4ef;
+      display: grid; place-items: center; align-content: center; gap: 12px;
+      font-size: 1.4rem;
+    }
+    #cookie-banner button { font: inherit; padding: 0.55rem 1rem; }
+    #interstitial {
+      border: 2px solid #1c1915;
+      background: #fff4d6;
+      padding: 0.8rem;
+      display: grid;
+      gap: 0.5rem;
+    }
+    #interstitial button { font: inherit; padding: 0.55rem 0.8rem; }
+    #flash, #files, #dropped { font-weight: 700; font-size: 1.6rem; margin: 0; min-height: 2.4rem; background: #efe7d2; padding: 0.45rem 0.7rem; }
+    ul { padding-left: 1.2rem; }
+    li { padding: 0.2rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Bao fixture</h1>
+  <div id="status">
+    <p id="flash" data-testid="flash"></p>
+    <p id="dropped" data-testid="received-drop">Waiting for a drop</p>
+  </div>
+  <form id="login">
+    <label>Username <input id="username" name="username" autocomplete="username"></label>
+    <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+    <button id="login-btn" type="submit" data-testid="login">Log in</button>
+  </form>
+  <section>
+    <label>Upload <input id="file" name="file" type="file" data-testid="file"></label>
+    <p id="files" data-testid="received-file">Waiting for a file</p>
+    <div id="drop" data-testid="drop" data-bao-drop="1">Drop a file here</div>
+  </section>
+  <section id="apply-panel">
+    <p id="apply-status" data-testid="apply-status">Waiting to apply</p>
+    <button id="apply-btn" type="button" data-testid="apply">Apply</button>
+  </section>
+  <div id="drift"></div>
+  <form id="note-form">
+    <label>Note <input id="note-input" name="note" data-testid="note"></label>
+    <button id="save-note" type="submit" data-testid="save-note">Save note</button>
+  </form>
+  <p id="saved-note" data-testid="saved-note"></p>
+  <ul id="rows">
+    <li data-testid="row" data-name="Ada">Ada</li>
+    <li data-testid="row" data-name="Grace">Grace</li>
+  </ul>
+  <p id="picked" data-testid="picked"></p>
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get("signedin") === "1") {
+      document.getElementById("login").hidden = true;
+      document.getElementById("flash").textContent = "Already signed in";
+    }
+    if (params.get("interstitial") === "1") {
+      const apply = document.getElementById("apply-btn");
+      apply.hidden = true;
+      const panel = document.createElement("div");
+      panel.id = "interstitial";
+      panel.innerHTML = "<p id=\"interstitial-copy\">A new step is in the way</p><button id=\"interstitial-go\" type=\"button\" data-testid=\"interstitial-go\">Review notice</button>";
+      document.body.insertBefore(panel, document.body.firstChild);
+      panel.querySelector("button").addEventListener("click", () => {
+        panel.remove();
+        apply.hidden = false;
+      });
+    }
+    if (params.get("banner") === "1") {
+      const banner = document.createElement("div");
+      banner.id = "cookie-banner";
+      banner.setAttribute("role", "dialog");
+      banner.setAttribute("data-bao-overlay", "1");
+      banner.setAttribute("data-testid", "cookie-banner");
+      banner.innerHTML = "<p>We use cookies</p><button type=\"button\" data-testid=\"accept-cookies\">Accept</button>";
+      document.body.appendChild(banner);
+      banner.querySelector("button").addEventListener("click", () => banner.remove());
+    }
+    if (params.get("theme") === "dark") document.body.classList.add("dark");
+    if (params.get("font") === "big") document.body.classList.add("big");
+    if (params.get("order") === "flip") {
+      const rows = document.getElementById("rows");
+      [...rows.children].reverse().forEach((node) => rows.appendChild(node));
+    }
+    if (params.get("shift") === "1") document.body.style.marginTop = "220px";
+    document.getElementById("login").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const user = document.getElementById("username").value;
+      const pass = document.getElementById("password").value;
+      const flash = document.getElementById("flash");
+      if (!user || !pass) {
+        flash.textContent = "Missing credentials";
+        history.pushState({}, "", "/fixture?error=1");
+        return;
+      }
+      flash.textContent = "Welcome " + user;
+      history.pushState({}, "", "/secure");
+    });
+    const showFile = (file) => {
+      document.getElementById("files").textContent = file ? "Received file: " + file.name : "Waiting for a file";
+    };
+    const fileInput = document.getElementById("file");
+    fileInput.addEventListener("change", (event) => showFile(event.target.files && event.target.files[0]));
+    fileInput.addEventListener("input", (event) => showFile(event.target.files && event.target.files[0]));
+    const drop = document.getElementById("drop");
+    drop.addEventListener("dragover", (event) => event.preventDefault());
+    drop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const file = event.dataTransfer && event.dataTransfer.files[0];
+      document.getElementById("dropped").textContent = file ? "Dropped file: " + file.name : "";
+    });
+    document.getElementById("apply-btn").addEventListener("click", () => {
+      document.getElementById("apply-status").textContent = "Applied";
+    });
+    if (params.get("drift") === "1") {
+      document.getElementById("drift").innerHTML = '<button id="file-submit" type="button">Upload file</button> <button id="other-upload" type="button">Upload</button>';
+    }
+    document.getElementById("note-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      document.getElementById("saved-note").textContent = document.getElementById("note-input").value;
+    });
+    console.info("bao fixture ready");
+    document.getElementById("rows").addEventListener("click", (event) => {
+      const li = event.target.closest("li");
+      if (!li) return;
+      document.getElementById("picked").textContent = "Picked " + (li.dataset.name || li.textContent);
+    });
+  </script>
+</body>
+</html>

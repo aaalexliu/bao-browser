@@ -1,0 +1,384 @@
+[
+  {
+    "id": "selenium-greeting",
+    "name": "Submit the Selenium web form",
+    "startUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "keep": [
+      "e6",
+      "e12"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Paris"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Oslo"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "selenium-confirm",
+    "name": "Accept the Selenium confirm",
+    "startUrl": "https://www.selenium.dev/selenium/web/alerts.html",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "simpleTest"
+    }
+  },
+  {
+    "id": "selenium-agree",
+    "name": "Check the Selenium agreement box",
+    "startUrl": "https://www.selenium.dev/selenium/web/web-form.html",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "checked",
+      "selector": "#my-check-2"
+    }
+  },
+  {
+    "id": "hockey-search",
+    "name": "Search Scrape This Site for a team",
+    "startUrl": "https://www.scrapethissite.com/pages/forms/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Boston"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Chicago"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "caniuse-search",
+    "name": "Search Can I use",
+    "startUrl": "https://caniuse.com/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "grid"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "flex"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "sauce-username",
+    "name": "Fill the Swag Labs login",
+    "startUrl": "https://www.saucedemo.com/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [
+      "secret_sauce"
+    ],
+    "secretIds": [
+      "e7"
+    ],
+    "human": [
+      {
+        "id": "e7",
+        "gate": "login"
+      }
+    ],
+    "replays": [
+      {
+        "texts": [
+          "grace"
+        ],
+        "secret": "ReplayFourA!",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin"
+        ],
+        "secret": "ReplayFourB!",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "#user-name",
+      "equals": "{{0}}"
+    },
+    "secret": "secret_sauce"
+  },
+  {
+    "id": "globalsqa-search",
+    "name": "Search GlobalSQA",
+    "startUrl": "https://www.globalsqa.com/samplepagetest/",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "tooltip"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "datepicker"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "bulma-text",
+    "name": "Fill the Bulma text input",
+    "startUrl": "https://bulma.io/documentation/form/general/",
+    "keep": [
+      "e7"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Cascade"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Column"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "input.input[placeholder='Text input']",
+      "equals": "{{0}}"
+    }
+  },
+  {
+    "id": "parabank-username",
+    "name": "Fill the ParaBank login",
+    "startUrl": "https://parabank.parasoft.com/parabank/index.htm",
+    "keep": [
+      "e6",
+      "e7"
+    ],
+    "secrets": [
+      "BatchFourDemoSecret!"
+    ],
+    "secretIds": [
+      "e7"
+    ],
+    "human": [
+      {
+        "id": "e7",
+        "gate": "login"
+      }
+    ],
+    "replays": [
+      {
+        "texts": [
+          "grace"
+        ],
+        "secret": "ReplayFourC!",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin"
+        ],
+        "secret": "ReplayFourD!",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "input[name='username']",
+      "equals": "{{0}}"
+    },
+    "secret": "BatchFourDemoSecret!"
+  },
+  {
+    "id": "webscraper-laptop",
+    "name": "Open a Web Scraper laptop",
+    "startUrl": "https://webscraper.io/test-sites/e-commerce/allinone/computers/laptops",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/product/"
+    }
+  },
+  {
+    "id": "htmx-edit",
+    "name": "Open the htmx click-to-edit form",
+    "startUrl": "https://htmx.org/examples/click-to-edit/",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "#firstName",
+      "equals": "Joe"
+    }
+  },
+  {
+    "id": "playwright-locators",
+    "name": "Open the Playwright locators page",
+    "startUrl": "https://playwright.dev/docs/intro",
+    "keep": [
+      "e4"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/docs/locators"
+    }
+  }
+]

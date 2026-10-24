@@ -1,0 +1,178 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653696175,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653696216,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653696257,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653696297,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Hockey Teams: Forms, Searching and Pagination 25 items",
+      "cssPath": "#hockey > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Hockey Teams: Forms, Searching and Pagination 25 items",
+    "subtreeAfter": "Hockey Teams: Forms, Searching and Pagination 25 items",
+    "beforeUrl": "https://www.scrapethissite.com/pages/forms/",
+    "afterUrl": "https://www.scrapethissite.com/pages/forms/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653696650,
+    "kind": "act",
+    "op": "type",
+    "value": "Bostonn",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "q",
+      "nameAttr": "q",
+      "tag": "input",
+      "label": "Search for Teams:",
+      "cssPath": "#q",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.scrapethissite.com/pages/forms/",
+    "afterUrl": "https://www.scrapethissite.com/pages/forms/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653696795,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.scrapethissite.com/pages/forms/",
+    "afterUrl": "https://www.scrapethissite.com/pages/forms/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792653696796,
+    "kind": "act",
+    "op": "type",
+    "value": "Boston",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "q",
+      "nameAttr": "q",
+      "tag": "input",
+      "label": "Search for Teams:",
+      "cssPath": "#q",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.scrapethissite.com/pages/forms/",
+    "afterUrl": "https://www.scrapethissite.com/pages/forms/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792653696919,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "name": "Search",
+      "tag": "input",
+      "cssPath": "#hockey > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(2)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "Search",
+    "valueAfter": "Search",
+    "beforeUrl": "https://www.scrapethissite.com/pages/forms/",
+    "afterUrl": "https://www.scrapethissite.com/pages/forms/?q=Boston"
+  }
+]

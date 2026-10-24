@@ -1,0 +1,112 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wikipedia-search",
+  "name": "Wikipedia search",
+  "startUrl": "https://en.wikipedia.org/wiki/Main_Page",
+  "inputs": [
+    {
+      "name": "search",
+      "type": "text",
+      "required": true,
+      "label": "search",
+      "default": "Ada Lovelace"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-wikipedia-0",
+      "index": 0,
+      "action": "type",
+      "label": "Type {{search}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "input",
+        "name": "Search Wikipedia",
+        "id": "searchInput",
+        "nameAttr": "search",
+        "tag": "input",
+        "label": "Search Wikipedia",
+        "cssPath": "#searchInput",
+        "xpath": "//*[@id=\"searchInput\"]",
+        "path": [
+          {
+            "role": "search"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "form"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          }
+        ],
+        "value": "",
+        "siblingIndex": 0
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "input",
+          "name": "Search Wikipedia"
+        },
+        {
+          "kind": "text",
+          "value": "Search Wikipedia"
+        },
+        {
+          "kind": "css",
+          "value": "#searchInput"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"searchInput\"]"
+        },
+        {
+          "kind": "anchor",
+          "role": "input",
+          "relation": "above",
+          "anchor": {
+            "surface": "dom",
+            "role": "heading",
+            "text": "Welcome to Wikipedia",
+            "id": "Welcome_to_Wikipedia",
+            "path": []
+          }
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "search",
+      "value": "{{search}}",
+      "reveal": {
+        "kind": "role",
+        "role": "link",
+        "name": "Search"
+      }
+    },
+    {
+      "id": "wf-wikipedia-1",
+      "index": 1,
+      "action": "key",
+      "label": "Press Enter",
+      "surface": "dom",
+      "timeoutMs": 15000,
+      "key": "Enter",
+      "expect": {
+        "kind": "url",
+        "match": "Ada_Lovelace",
+        "timeoutMs": 15000
+      }
+    }
+  ],
+  "createdAt": 1
+}
