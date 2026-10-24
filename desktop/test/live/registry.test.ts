@@ -11,6 +11,7 @@ import path from "node:path";
 import test from "node:test";
 import { chromium, type Page } from "playwright";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
+import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import { startApp } from "../../src/app/server";
 import { migrate, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
@@ -401,16 +402,10 @@ async function agentExchange(home: string, origin: string, ownerCookie: string) 
   child.stdout.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
-      const headerEnd = buf.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-      const header = buf.slice(0, headerEnd).toString("utf8");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) return;
-      const length = Number(match[1]);
-      const start = headerEnd + 4;
-      if (buf.length < start + length) return;
-      messages.push(JSON.parse(buf.slice(start, start + length).toString("utf8")));
-      buf = buf.slice(start + length);
+      const next = takeRpcChunk(buf, null);
+      if (!next) return;
+      messages.push(JSON.parse(next.body));
+      buf = Buffer.from(next.rest);
     }
   });
   const send = (msg: unknown) => child.stdin.write(frame(msg));
@@ -520,8 +515,7 @@ async function waitHealth(origin: string, logs: string[]): Promise<void> {
 }
 
 function frame(msg: unknown): Buffer {
-  const json = JSON.stringify(msg);
-  return Buffer.from(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  return Buffer.from(frameRpc(msg, "json"));
 }
 
 async function clickTheme(page: Page): Promise<void> {

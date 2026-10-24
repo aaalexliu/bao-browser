@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { actor, answersFrom, fail, formPost, readBody, requireUser, session } from "./http";
 import { plainReplayReason } from "./review-gate";
+import { cursorMcpConfig, finishAgentJob, listAgentAudit, mintAgentToken, pollAgent, revokeAgentToken } from "./agent";
 import {
   activePairCode,
   catalog,
@@ -85,6 +86,38 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
         String(body.name || "device"),
         typeof body.secret === "string" ? body.secret : undefined,
       ));
+    }
+    if (parts[0] === "agent" && parts[1] === "tokens" && method === "POST" && !parts[2]) {
+      const principal = await requireUser(req);
+      if (principal.deviceId) throw new HttpError("sign in", 401);
+      const body = await readBody(req);
+      const minted = await mintAgentToken(principal.userId, String(body.deviceId || ""), String(body.label || "agent"));
+      const origin = new URL(req.url).origin;
+      return NextResponse.json({ ...minted, mcp: cursorMcpConfig(origin, minted.token) });
+    }
+    if (parts[0] === "agent" && parts[1] === "tokens" && parts[3] === "revoke" && method === "POST") {
+      const principal = await requireUser(req);
+      if (principal.deviceId) throw new HttpError("sign in", 401);
+      await revokeAgentToken(principal.userId, parts[2] || "");
+      return NextResponse.json({ ok: true });
+    }
+    if (parts[0] === "agent" && parts[1] === "audit" && method === "GET") {
+      const principal = await requireUser(req);
+      if (principal.deviceId) throw new HttpError("sign in", 401);
+      return NextResponse.json({ jobs: await listAgentAudit(principal.userId) });
+    }
+    if (parts[0] === "agent" && parts[1] === "poll" && method === "POST") {
+      const principal = await actor(req);
+      if (!principal?.deviceId) throw new HttpError("sign in", 401);
+      const body = await readBody(req);
+      const waitMs = typeof body.waitMs === "number" ? body.waitMs : 20000;
+      return NextResponse.json(await pollAgent(principal.deviceId, waitMs, body.heartbeat === true));
+    }
+    if (parts[0] === "agent" && parts[1] === "jobs" && parts[3] === "result" && method === "POST") {
+      const principal = await actor(req);
+      if (!principal?.deviceId) throw new HttpError("sign in", 401);
+      await finishAgentJob(principal.deviceId, parts[2] || "", await readBody(req));
+      return NextResponse.json({ ok: true });
     }
     if (parts[0] === "devices" && method === "GET") {
       const principal = await requireUser(req);
