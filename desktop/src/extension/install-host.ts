@@ -17,6 +17,7 @@ export function nativeMessagingDirs(home: string): string[] {
   return [
     path.join(config, "google-chrome", "NativeMessagingHosts"),
     path.join(config, "google-chrome-beta", "NativeMessagingHosts"),
+    path.join(config, "google-chrome-for-testing", "NativeMessagingHosts"),
     path.join(config, "chromium", "NativeMessagingHosts"),
   ];
 }
