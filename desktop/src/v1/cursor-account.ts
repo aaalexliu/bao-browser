@@ -116,11 +116,20 @@ export function parseAgentPrint(stdout: string): { text: string; model?: string;
   return { text, model, source };
 }
 
+/** Drop key material before the CLI sees the environment. Login is a stored `agent login`. */
+function cursorEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const next: NodeJS.ProcessEnv = { ...env };
+  for (const key of Object.keys(next)) {
+    if (/API_KEY|API_TOKEN/i.test(key)) delete next[key];
+  }
+  return next;
+}
+
 function run(bin: string, args: string[], env: NodeJS.ProcessEnv, timeoutMs: number, input?: string, cwd?: string): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       cwd: cwd || process.cwd(),
-      env,
+      env: cursorEnv(env),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -189,6 +198,42 @@ export function cursorAccountModelLabel(env: NodeJS.ProcessEnv = process.env): s
   return "cursor account";
 }
 
+export interface CursorAsk {
+  text: string;
+  model: string;
+  source: "login" | "env";
+}
+
+/** One prompt on stdin, billed to the logged-in Cursor account. No API key is read or passed. */
+export async function askCursorAgent(
+  prompt: string,
+  env: NodeJS.ProcessEnv = process.env,
+  agent: CursorAgentRun = realCursorAgent(),
+  timeoutMs = Number(env.BAO_HEAL_WAIT_MS || 180000),
+): Promise<CursorAsk | null> {
+  const status = await readCursorAccount(env, agent);
+  if (!status.authenticated) return null;
+  const bin = findAgentBin(env);
+  if (!bin || !existsSync(bin)) return null;
+  const workspace = mkdtempSync(path.join(tmpdir(), "bao-cursor-ask-"));
+  try {
+    const result = await agent.print(bin, prompt, cursorEnv(env), workspace, env.BAO_CURSOR_MODEL, timeoutMs);
+    if (result.code !== 0) return null;
+    if (result.args.includes("--api-key")) return null;
+    const printed = parseAgentPrint(result.stdout);
+    if (!printed || printed.source === "flag") return null;
+    return {
+      text: printed.text,
+      model: printed.model || "cursor-agent",
+      source: printed.source === "env" ? "env" : "login",
+    };
+  } catch {
+    return null;
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+}
+
 function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: CursorAgentRun): HealProvider {
   const bin = findAgentBin(env);
   return {
@@ -201,29 +246,16 @@ function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: Curso
         buildPrompt(failure, step, secrets),
         "Do not edit files. Do not call tools. Reply with the JSON object only.",
       ].join("\n");
-      const workspace = mkdtempSync(path.join(tmpdir(), "bao-cursor-heal-"));
-      const timeoutMs = Number(env.BAO_HEAL_WAIT_MS || 180000);
-      try {
-        const result = await agent.print(bin, prompt, env, workspace, env.BAO_CURSOR_MODEL, timeoutMs);
-        if (result.code !== 0) return null;
-        if (result.args.includes("--api-key")) return null;
-        const printed = parseAgentPrint(result.stdout);
-        if (!printed) return null;
-        if (printed.source === "flag") return null;
-        const patch = patchFromText(printed.text);
-        if (!patch.identity) return null;
-        const source = printed.source === "env" ? "env" : "login";
-        return {
-          patch,
-          model: { provider: "cursor", name: printed.model || "cursor-agent", version: source },
-          prompt,
-          rawResponse: printed.text,
-        } satisfies HealProposal;
-      } catch {
-        return null;
-      } finally {
-        rmSync(workspace, { recursive: true, force: true });
-      }
+      const asked = await askCursorAgent(prompt, env, agent);
+      if (!asked) return null;
+      const patch = patchFromText(asked.text);
+      if (!patch.identity) return null;
+      return {
+        patch,
+        model: { provider: "cursor", name: asked.model, version: asked.source },
+        prompt,
+        rawResponse: asked.text,
+      } satisfies HealProposal;
     },
   };
 }

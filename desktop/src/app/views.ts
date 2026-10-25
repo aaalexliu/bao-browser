@@ -29,6 +29,8 @@ export function fixtureStartValue(): string {
 export interface WorkflowSummary {
   id: string;
   name: string;
+  summary?: string;
+  intent?: string;
   steps: number;
   waits?: number;
   expects?: number;
@@ -160,6 +162,15 @@ export interface ShellState {
   guide?: GuideView | null;
   /** HTML for the capture column picker. Empty when nothing is picked. */
   extractPicker?: string;
+  saveSheet?: SaveSheet | null;
+}
+
+export interface SaveSheet {
+  id: string;
+  name: string;
+  summary?: string;
+  intent?: string;
+  poster?: boolean;
 }
 
 export interface CommandItem {
@@ -1025,14 +1036,14 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     }).join("");
     const waits = workflow.waits ? `<span class="chip">you · ${workflow.waits}</span>` : "";
     const expects = workflow.expects ? `<span class="badge expect">expect</span>` : "";
-    const poster = run
-      ? `/api/runs/${encodeURIComponent(run.id)}/poster`
-      : `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
+    const poster = `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
     const thumbLabel = workflow.firstStep?.label || workflow.name;
+    const line = workflow.summary ? `<p class="wf-summary">${esc(workflow.summary)}</p>` : "";
     return `<article class="wf-card" data-workflow="${esc(workflow.id)}">
       <h3 class="wf-title"><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
-      <div class="thumb" data-shot="${esc(poster)}" data-shot-fallback="/api/workflows/${encodeURIComponent(workflow.id)}/poster">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
+      <div class="thumb" data-shot="${esc(poster)}">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
       <div class="wf-mid">
+        ${line}
         <div class="chips">${inputs}${waits}${expects}</div>
       </div>
       <div class="wf-foot">
@@ -1307,7 +1318,7 @@ export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[
 }
 
 export function workflowDetail(
-  doc: { id: string; name: string; steps: StepCard[]; inputs?: TokenInput[] },
+  doc: { id: string; name: string; summary?: string; intent?: string; steps: StepCard[]; inputs?: TokenInput[] },
   meta: {
     lastRunId?: string;
     lastLabel?: string;
@@ -1366,6 +1377,8 @@ export function workflowDetail(
     <header class="wf-head">
       <div>
         <h2>${esc(doc.name)}</h2>
+        ${doc.summary ? `<p class="lede" id="workflow-summary">${esc(doc.summary)}</p>` : ""}
+        ${doc.intent ? `<p class="meta" id="workflow-intent">${esc(doc.intent)}</p>` : ""}
         <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
         <div class="chips">${headerChips}</div>
         ${routeHead}
@@ -1775,6 +1788,25 @@ export function teachHome(workflows: { id: string; name: string }[]): string {
       ${choices || `<p class="quiet">Save a workflow first.</p>`}
       <button type="button" id="teach-merge">Merge</button>
     </div>
+  </section>`;
+}
+
+export function saveSheetView(sheet: SaveSheet): string {
+  const poster = sheet.poster ? "/api/capture/poster" : "";
+  return `<section id="save-sheet" data-id="${esc(sheet.id)}" role="dialog" aria-labelledby="save-sheet-title">
+    <form id="save-sheet-form">
+      <h2 id="save-sheet-title">Save workflow</h2>
+      <p class="quiet">Edit the name before Bao stores it. The summary is one line. Intent is what you were trying to do.</p>
+      <label>Title <input id="save-title" name="title" value="${htmlEsc(sheet.name)}" required></label>
+      <label>Summary <input id="save-summary" name="summary" value="${htmlEsc(sheet.summary || "")}" placeholder="One line about what this does"></label>
+      <label>Intent <textarea id="save-intent" name="intent" rows="3">${htmlEsc(sheet.intent || "")}</textarea></label>
+      ${poster ? `<div class="thumb" data-shot="${poster}">${placeholder("navigate", sheet.name)}</div>` : ""}
+      <p id="save-error" class="quiet" hidden></p>
+      <div class="row">
+        <button class="primary" id="save-commit" type="submit">Save</button>
+        <button type="button" id="save-discard">Discard</button>
+      </div>
+    </form>
   </section>`;
 }
 

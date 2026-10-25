@@ -28,6 +28,7 @@ import {
   paletteView,
   rail,
   recordBar,
+  saveSheetView,
   runsList,
   runKind,
   reviewItems,
@@ -171,6 +172,7 @@ async function refresh(): Promise<void> {
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     guide: state.guide ? { status: state.guide.status, stepId: state.guide.stepId, actions: state.guide.actions } : null,
     extract: state.extractPicker || "",
+    saveSheet: state.saveSheet?.id || "",
     screen,
     healFilter,
     openHeal,
@@ -234,6 +236,7 @@ function render(): void {
   applySearch();
   paintPalette();
   paintLive();
+  paintSaveSheet();
   mountShots();
   paintToasts();
   if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
@@ -736,6 +739,56 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+}
+
+function paintSaveSheet(): void {
+  const host = document.getElementById("sheet");
+  if (!host) return;
+  const sheet = state.saveSheet;
+  if (!sheet) {
+    if (host.innerHTML) host.innerHTML = "";
+    return;
+  }
+  const existing = host.querySelector("#save-sheet");
+  if (existing && existing.getAttribute("data-id") === sheet.id) return;
+  host.innerHTML = saveSheetView(sheet);
+  const form = host.querySelector("#save-sheet-form") as HTMLFormElement | null;
+  if (form) form.onsubmit = (ev) => {
+    ev.preventDefault();
+    void commitSaveSheet();
+  };
+  const discard = host.querySelector("#save-discard");
+  if (discard) (discard as HTMLButtonElement).onclick = () => void discardSaveSheet();
+}
+
+async function commitSaveSheet(): Promise<void> {
+  const name = (document.getElementById("save-title") as HTMLInputElement | null)?.value || "";
+  const summary = (document.getElementById("save-summary") as HTMLInputElement | null)?.value || "";
+  const intent = (document.getElementById("save-intent") as HTMLTextAreaElement | null)?.value || "";
+  const res = await fetch("/api/sessions/commit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, summary, intent }),
+  });
+  const doc = await res.json() as { id?: string; error?: string };
+  if (!res.ok || !doc.id) {
+    const note = document.getElementById("save-error");
+    if (note) {
+      note.hidden = false;
+      note.textContent = doc.error || "Could not save";
+    }
+    return;
+  }
+  openWorkflow = doc.id;
+  screen = "workflow";
+  renderKey = "";
+  await refresh();
+}
+
+async function discardSaveSheet(): Promise<void> {
+  await fetch("/api/sessions/save/discard", { method: "POST" });
+  renderKey = "";
+  await refresh();
 }
 
 function bindTeachFix(root: ParentNode): void {

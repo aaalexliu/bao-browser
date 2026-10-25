@@ -30,6 +30,44 @@ export function isElementCrop(png: Buffer): boolean {
   return width >= 2 && height >= 2 && width <= 720 && height <= 480;
 }
 
+/** A page picture. An element crop and the 96×54 stripe are not one. */
+export function isFullPageShot(png: Buffer): boolean {
+  if (png.length < 24 || png.toString("ascii", 1, 4) !== "PNG" || png.toString("ascii", 12, 16) !== "IHDR") return false;
+  const width = png.readUInt32BE(16);
+  const height = png.readUInt32BE(20);
+  if (width < 2 || height < 2 || (width === 96 && height === 54)) return false;
+  return !isElementCrop(png);
+}
+
+/** A solid PNG of the given size. Tests use it to tell a page from a crop. */
+export function blankPng(width: number, height: number): Buffer {
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
+  const raw = Buffer.alloc((1 + w * 3) * h);
+  for (let y = 0; y < h; y++) {
+    const row = y * (1 + w * 3);
+    raw[row] = 0;
+    for (let x = 0; x < w; x++) {
+      const i = row + 1 + x * 3;
+      raw[i] = 244;
+      raw[i + 1] = 240;
+      raw[i + 2] = 232;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  return Buffer.concat([
+    sig,
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
 /** A small PNG that does not contain the source image. `seed` only picks a color. */
 export function redactedPng(seed: number): Buffer {
   const w = 96;
