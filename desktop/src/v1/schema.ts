@@ -254,6 +254,11 @@ export interface WorkflowV2 {
    * so a later open does not call the model again.
    */
   inference?: WorkflowInference;
+  /**
+   * Playwright is Bao's own Chrome. Extension is the person's installed Chrome.
+   * Absent means Playwright, so older workflows stay on the driver they were recorded with.
+   */
+  driver?: "playwright" | "extension";
   /** Set when the document uses files or dates. Absent on a data-steps-only version 3. */
   filesDates?: 1;
 }
@@ -295,6 +300,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   else if (doc.version === 3 && !documentUsesDataSteps(doc) && !usesFilesDates(doc)) errors.push("version");
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
+  if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension") errors.push("driver");
   const names = new Set<string>();
   for (const input of doc.inputs) {
     if (!NAME_RE.test(input.name)) errors.push(`input name ${input.name}`);

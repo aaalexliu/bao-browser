@@ -46,6 +46,7 @@ import {
   imageRef,
   versionsPanel,
   workflowDetail,
+  runDriverField,
   type CommandItem,
   type HealView,
   type ImportPending,
@@ -308,6 +309,7 @@ function replayForm(): string {
     ${prefill}
     ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
+    ${runDriverField(current?.driver)}
     <label>Healing for this workflow <select id="wf-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
       <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
@@ -524,6 +526,17 @@ function bind(): void {
     fromNote = "";
     renderKey = "";
     render();
+  };
+  const wfDriver = document.getElementById("wf-driver") as HTMLSelectElement | null;
+  if (wfDriver) wfDriver.onchange = async () => {
+    const id = (document.getElementById("wf") as HTMLSelectElement).value;
+    await fetch("/api/workflows/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ driver: wfDriver.value === "extension" ? "extension" : "playwright" }),
+    });
+    renderKey = "";
+    await refresh();
   };
   const wfHeal = document.getElementById("wf-heal") as HTMLSelectElement | null;
   if (wfHeal) wfHeal.onchange = async () => {
@@ -2154,5 +2167,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 void refresh();
-setInterval(() => { refresh().catch(() => undefined); }, 400);
+// The login bar has to be on screen within a second of replay. This poll is what paints it.
+let polling = false;
+setInterval(() => {
+  if (polling) return;
+  polling = true;
+  refresh().catch(() => undefined).finally(() => { polling = false; });
+}, 100);
 setInterval(tickClock, 250);

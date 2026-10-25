@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome, pidsForDataDir } from "../launch";
+import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
@@ -345,7 +345,8 @@ async function replayInBrowser(
   args: ReplayArgs,
   secrets: string[],
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
-  const profile = await mkdtemp(path.join(tmpdir(), "bao-replay-"));
+  const profile = path.join(library.root, "chrome-profile");
+  mkdirSync(profile, { recursive: true });
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const windowVideo = process.platform === "darwin" && process.env.BAO_HEADED === "1";
@@ -354,7 +355,7 @@ async function replayInBrowser(
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   const context = await launchOwnedChrome({
     userDataDir: profile,
-    headless: process.env.BAO_HEADED !== "1",
+    headless: productHeadless(),
     videoDir,
   });
   const page = context.pages()[0] || await context.newPage();
@@ -376,7 +377,7 @@ async function replayInBrowser(
     page.setDefaultNavigationTimeout(20000);
     page.setDefaultTimeout(15000);
     if (workflow.startUrl.startsWith("http")) {
-      await page.goto(workflow.startUrl, { waitUntil: "domcontentloaded" });
+      await navigateOwned(page, workflow.startUrl, { waitUntil: "domcontentloaded" });
     }
     const trail: RunTrailEvent[] = [];
     const driver = new BrowserDriver(page);
@@ -521,7 +522,8 @@ async function releaseBrowser(
       copyFileSync(src, dest);
     }
   }
-  await rm(open.profile, { recursive: true, force: true }).catch(() => undefined);
+  const persistent = path.resolve(open.profile) === path.resolve(path.join(library.root, "chrome-profile"));
+  if (!persistent) await rm(open.profile, { recursive: true, force: true }).catch(() => undefined);
 }
 
 function rememberRun(

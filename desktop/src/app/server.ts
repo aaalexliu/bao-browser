@@ -9,14 +9,14 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
-import { launchAccountChrome, launchOwnedChrome, pidsForDataDir } from "../launch";
+import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import { Capture, actNotice } from "./capture";
 import { resolveCaptureUrl } from "./capture-url";
 import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
-import { actAskLine, actDeadlineLine, actSurfaceText, type HumanAsk } from "../v1/human-ask";
+import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
@@ -105,6 +105,11 @@ import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
+import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
+import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
+import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
+import { workflowDriver, type Gesture } from "../extension/protocol";
+import { defaultConfigHome } from "../extension/install-host";
 import { keepMine, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -120,6 +125,8 @@ export interface Notice extends HealNotice {
 export interface App {
   library: Library;
   port: number;
+  /** Set when the native host is installed. Replay and tests drive the extension through it. */
+  extensionLink?: ExtensionLink;
   notices: Notice[];
   notifications: { title: string; body: string; tooltip: string }[];
   recording: boolean;
@@ -134,6 +141,8 @@ interface PendingCapture {
   poster: string;
   floor: string;
   secrets: string[];
+  /** Written on commit so a discard does not leave an orphan gesture file. */
+  gestures?: Gesture[];
 }
 
 const publicDir = process.env.BAO_PUBLIC || path.join(process.cwd(), "desktop/src/app/public");
@@ -169,6 +178,11 @@ export async function startApp(opts: {
   loginKeys?: KeySources | (() => KeySources | Promise<KeySources>);
   /** Preview copy only. Cookie decryption follows loginKeys.platform. */
   loginPlatform?: NodeJS.Platform;
+  /** Install the native host and accept a connection from the Chrome extension. */
+  extensionHost?: boolean;
+  /** Chrome config home for the host manifest. The socket still lives under home. */
+  extensionConfigHome?: string;
+  extensionHostDirs?: string[];
 }): Promise<App> {
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
@@ -179,6 +193,17 @@ export async function startApp(opts: {
   const notices: Notice[] = [];
   let boundPort = opts.port ?? 0;
   const capture = new Capture();
+  let captureVia: "playwright" | "extension" = "playwright";
+  const gestureById = new Map<string, Gesture>();
+  const extensionOn = opts.extensionHost === true || process.env.BAO_EXTENSION_HOST === "1";
+  const extensionLink: ExtensionLink | undefined = extensionOn
+    ? await startExtensionLink({
+      home: opts.home,
+      configHome: opts.extensionConfigHome || defaultConfigHome(),
+      hostScript: hostScriptPath(),
+      extraDirs: opts.extensionHostDirs,
+    })
+    : undefined;
   const bar = new CaptureBar();
   watchOsNotify((report) => {
     if (!bar.running) return;
@@ -974,11 +999,18 @@ export async function startApp(opts: {
         loginContinued = false;
         replaying = true;
         try {
+          await releaseSharedProfile({ keepReplays: true });
           if (body.guide) {
             const run = await runGuide(library, workflow, args, replays, prompts);
             return json(res, run);
           }
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
+          if (workflowDriver(workflow) === "extension") {
+            if (!extensionLink?.connected()) return json(res, { error: "extension is not connected" }, 409);
+            const run = await runRecorded(library, workflow, args, notices, replays, prompts, undefined, fromStep, extensionLink);
+            library.savePublicInputs(workflow.id, keptInputs(workflow, args));
+            return json(res, run);
+          }
           const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
             baoProfile,
             sites,
@@ -1224,6 +1256,7 @@ export async function startApp(opts: {
           intent?: string;
           workflow?: WorkflowV2;
           heal?: HealMode | null;
+          driver?: "playwright" | "extension" | null;
           stepHeal?: { stepId?: string; heal?: string | null };
           inputEdit?: { name?: string; label?: string; type?: string; default?: string; required?: boolean };
         };
@@ -1255,6 +1288,14 @@ export async function startApp(opts: {
         }
         if (body.workflow) {
           const next = { ...body.workflow, id, updatedAt: Date.now() };
+          draftVersion(library, next, "edit");
+          return json(res, next);
+        }
+        if (body.driver === "playwright" || body.driver === "extension" || body.driver === null) {
+          const doc = library.read(id);
+          const next: WorkflowV2 = { ...doc, updatedAt: Date.now() };
+          if (body.driver) next.driver = body.driver;
+          else delete next.driver;
           draftVersion(library, next, "edit");
           return json(res, next);
         }
@@ -1356,6 +1397,11 @@ export async function startApp(opts: {
       }
       json(res, { error: "not found" }, 404);
     } catch (err) {
+      if (hostGrantError(err)) {
+        const message = err instanceof Error ? err.message : String(err);
+        json(res, { status: "needs_human", message, reason: message });
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       const status = err instanceof ConsentRequired ? 403 : message.startsWith("The site") ? 400 : 500;
       json(res, { error: message }, status);
@@ -1413,9 +1459,30 @@ export async function startApp(opts: {
     }
   }
 
+  async function releaseSharedProfile(opts: { keepReplays: boolean }): Promise<void> {
+    if (context) await stopBrowser();
+    const replayContexts = new Set([...replays.values()].map((session) => session.context));
+    if (site && !replayContexts.has(site.context) && path.resolve(site.profile) === path.resolve(baoProfile)) {
+      await site.context.close().catch(() => undefined);
+      site = undefined;
+    }
+    if (watch && !replayContexts.has(watch.context) && path.resolve(watch.profile) === path.resolve(baoProfile)) {
+      await watch.context.close().catch(() => undefined);
+      watch = undefined;
+    }
+    if (opts.keepReplays) return;
+    for (const [id, session] of replays) {
+      if (path.resolve(session.profile) !== path.resolve(baoProfile)) continue;
+      await session.context.close().catch(() => undefined);
+      replays.delete(id);
+    }
+  }
+
   async function beginSession(startUrl: string): Promise<void> {
     startUrl = resolveCaptureUrl(startUrl, boundPort);
-    await stopBrowser();
+    await releaseSharedProfile({ keepReplays: false });
+    captureVia = "playwright";
+    gestureById.clear();
     capture.start();
     recordingSince = Date.now();
     captureShots.clear();
@@ -1424,8 +1491,9 @@ export async function startApp(opts: {
     capturePageTitle = "";
     posterTried = false;
     try {
-      profile = await mkdtemp(path.join(tmpdir(), "bao-profile-"));
-      context = await launchOwnedChrome({ userDataDir: profile, headless: process.env.BAO_HEADED !== "1" });
+      profile = baoProfile;
+      mkdirSync(profile, { recursive: true });
+      context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless() });
       await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
         await watchShot(recordCaptured(payload));
       });
@@ -1459,7 +1527,7 @@ export async function startApp(opts: {
         }));
       });
       captureOpenUrl = startUrl;
-      await page.goto(startUrl);
+      await navigateOwned(page, startUrl);
       // The init script does not observe this goto, and a later page.url() is not
       // the URL the capture began on. Record that opening navigation explicitly.
       if (sessionMode === "capture") capture.push({ kind: "act", op: "navigate", beforeUrl: startUrl, afterUrl: startUrl });
@@ -1625,6 +1693,10 @@ export async function startApp(opts: {
       groups: built.groups,
       secrets,
     }, await saveCompleter());
+    if (captureVia === "extension") drafted.driver = "extension";
+    const gestures = captureVia === "extension"
+      ? gestureQueue(drafted.steps, built.groups, gestureById)
+      : undefined;
     if (pendingSave) await rm(path.join(opts.home, "shots", "pending", pendingSave.workflow.id), { recursive: true, force: true }).catch(() => undefined);
     const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
     mkdirSync(shotDir, { recursive: true });
@@ -1663,6 +1735,7 @@ export async function startApp(opts: {
       poster,
       floor,
       secrets,
+      gestures,
     };
     capture.discard();
     captureShots.clear();
@@ -1670,6 +1743,8 @@ export async function startApp(opts: {
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
+    captureVia = "playwright";
+    gestureById.clear();
     await stopBrowser();
     publishCapture();
     return drafted;
@@ -1697,6 +1772,9 @@ export async function startApp(opts: {
     }
     library.save(workflow);
     library.saveTrail(workflow.id, pending.events);
+    if (workflow.driver === "extension" && pending.gestures) {
+      writeGestures(opts.home, workflow.id, pending.gestures);
+    }
     pendingSave = null;
     await rm(path.join(opts.home, "shots", "pending", workflow.id), { recursive: true, force: true }).catch(() => undefined);
     return workflow;
@@ -1717,9 +1795,32 @@ export async function startApp(opts: {
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
+    captureVia = "playwright";
+    gestureById.clear();
     await stopBrowser();
     publishCapture();
   }
+
+  extensionLink?.onTrail((event, gesture) => {
+    if (captureVia !== "extension" || !capture.recording) return;
+    if (!capture.push(event as Omit<TrailEvent, "id" | "ts">)) return;
+    const stored = capture.events[capture.events.length - 1];
+    if (stored && gesture) gestureById.set(stored.id, gesture);
+    publishCapture();
+  });
+  extensionLink?.onRecord((kind, url) => {
+    if (kind === "start") {
+      if (capture.recording) return;
+      captureVia = "extension";
+      gestureById.clear();
+      captureOpenUrl = url;
+      capture.start();
+      recordingSince = Date.now();
+      publishCapture();
+      return;
+    }
+    if (capture.recording && captureVia === "extension") void enqueue(() => saveSession());
+  });
 
   async function onBar(event: BarEvent): Promise<void> {
     if (event.event === "pause") {
@@ -1966,10 +2067,10 @@ export async function startApp(opts: {
     replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
     prompts?: PersonPrompts,
   ) {
-    const session = await openReplay(library, workflow.id, replays);
+    const session = await openReplay(library, workflow.id, replays, baoProfile);
     const page = session.page;
     const driver = new BrowserDriver(page, undefined, prompts);
-    if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
+    if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
     await driver.watchGuide();
     const runId = `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const first = workflow.steps[0];
@@ -2019,21 +2120,33 @@ export async function startApp(opts: {
     await context?.close().catch(() => undefined);
     context = undefined;
     page = undefined;
-    if (profile) await rm(profile, { recursive: true, force: true }).catch(() => undefined);
     profile = undefined;
   }
 
   async function sitePage(): Promise<Page> {
     if (site && !site.page.isClosed()) return site.page;
-    const profile = path.join(opts.home, "site-profile");
-    mkdirSync(profile, { recursive: true });
-    const context = await launchAccountChrome({
-      userDataDir: profile,
-      headless: process.env.BAO_HEADED !== "1",
+    if (page && !page.isClosed() && context) {
+      site = { context, page, profile: baoProfile };
+      return page;
+    }
+    for (const session of replays.values()) {
+      if (session.page.isClosed()) continue;
+      if (path.resolve(session.profile) !== path.resolve(baoProfile)) continue;
+      site = session;
+      return session.page;
+    }
+    if (watch && !watch.page.isClosed()) {
+      site = { context: watch.context, page: watch.page, profile: watch.profile };
+      return watch.page;
+    }
+    mkdirSync(baoProfile, { recursive: true });
+    const opened = await launchOwnedChrome({
+      userDataDir: baoProfile,
+      headless: productHeadless(),
     });
-    const page = context.pages()[0] || await context.newPage();
-    site = { context, page, profile };
-    return page;
+    const live = opened.pages()[0] || await opened.newPage();
+    site = { context: opened, page: live, profile: baoProfile };
+    return live;
   }
 
   async function settleImport(): Promise<void> {
@@ -2138,22 +2251,29 @@ export async function startApp(opts: {
     }
     if (watch && !watch.page.isClosed()) {
       if (startUrl.startsWith("http") && !sameTarget(watch.page.url(), startUrl)) {
-        await watch.page.goto(startUrl, { waitUntil: "domcontentloaded" });
+        await navigateOwned(watch.page, startUrl, { waitUntil: "domcontentloaded" });
       }
       return watch.page;
     }
-    const dir = await mkdtemp(path.join(tmpdir(), "bao-try-"));
-    const opened = await launchOwnedChrome({ userDataDir: dir, headless: process.env.BAO_HEADED !== "1" });
+    if (site && !site.page.isClosed()) {
+      if (startUrl.startsWith("http") && !sameTarget(site.page.url(), startUrl)) {
+        await navigateOwned(site.page, startUrl, { waitUntil: "domcontentloaded" });
+      }
+      watch = { context: site.context, page: site.page, profile: site.profile };
+      return site.page;
+    }
+    mkdirSync(baoProfile, { recursive: true });
+    const opened = await launchOwnedChrome({ userDataDir: baoProfile, headless: productHeadless() });
     const live = opened.pages()[0] || await opened.newPage();
-    await live.setViewportSize({ width: 1280, height: 800 }).catch(() => undefined);
-    if (startUrl.startsWith("http")) await live.goto(startUrl, { waitUntil: "domcontentloaded" });
-    watch = { context: opened, page: live, profile: dir };
+    if (startUrl.startsWith("http")) await navigateOwned(live, startUrl, { waitUntil: "domcontentloaded" });
+    watch = { context: opened, page: live, profile: baoProfile };
     return live;
   }
 
   return {
     library,
     port,
+    extensionLink,
     notices,
     notifications,
     get recording() { return capture.recording; },
@@ -2167,7 +2287,9 @@ export async function startApp(opts: {
       await site?.context.close().catch(() => undefined);
       site = undefined;
       await watch?.context.close().catch(() => undefined);
-      if (watch) await rm(watch.profile, { recursive: true, force: true }).catch(() => undefined);
+      if (watch && path.resolve(watch.profile) !== path.resolve(baoProfile)) {
+        await rm(watch.profile, { recursive: true, force: true }).catch(() => undefined);
+      }
       watch = undefined;
       for (const session of replays.values()) {
         await session.context.close().catch(() => undefined);
@@ -2177,6 +2299,7 @@ export async function startApp(opts: {
         }
       }
       replays.clear();
+      await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
   };
@@ -2226,7 +2349,7 @@ async function runWorkflow(
     const gated = await gateSavedLogin(library, workflow, args, notices, replays, prompts, gate, fromStep);
     if (gated) return gated;
   }
-  return runRecorded(library, workflow, args, notices, replays, prompts, undefined, fromStep);
+  return runRecorded(library, workflow, args, notices, replays, prompts, gate?.baoProfile, fromStep);
 }
 
 async function gateSavedLogin(
@@ -2323,6 +2446,156 @@ function persistedRun(
   }), extra.secretList)) as Parameters<Library["saveRun"]>[0];
 }
 
+function hostGrantError(err: unknown): boolean {
+  if (err instanceof HostGrantNeeded) return true;
+  return err instanceof Error && isHostGrantMessage(err.message);
+}
+
+function grantText(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  return "Allow Bao on the site in the Chrome window. Click Allow sites. The site was not granted in time.";
+}
+
+function rememberHostGrant(
+  library: Library,
+  workflow: WorkflowV2,
+  message: string,
+  prompts: PersonPrompts | undefined,
+  runId: string,
+) {
+  const step = workflow.steps[0];
+  const stepId = step?.id || "open";
+  const label = step?.label || "Open the site";
+  const ask: HumanAsk = {
+    kind: "wall",
+    workflowId: workflow.id,
+    workflowName: workflow.name,
+    stepId,
+    stepIndex: 1,
+    stepCount: Math.max(1, workflow.steps.length),
+    label,
+    site: siteHost(workflow.startUrl),
+    windowName: "Bao window",
+    instruction: message,
+    startedAt: Date.now(),
+    deadline: null,
+    timeoutMs: 0,
+    runId,
+  };
+  const saved = {
+    id: runId,
+    workflowId: workflow.id,
+    status: "needs_human",
+    at: Date.now(),
+    heals: [],
+    steps: [{ id: stepId, status: "paused", label, reason: message }],
+    failure: {
+      stepId,
+      index: step?.index ?? 0,
+      intent: step?.intent || label,
+      phase: "find",
+      reason: message,
+      snapshot: {},
+    },
+    modelCalls: 0,
+    envelope: {
+      status: "needs_human",
+      run_id: runId,
+      step: stepId,
+      reason: message,
+      ask: message,
+      deadline: "No timeout",
+    },
+  };
+  library.saveRun(saved);
+  prompts?.showAsk?.(ask);
+  return {
+    runId,
+    id: runId,
+    status: "needs_human" as const,
+    message,
+    reason: message,
+    steps: saved.steps,
+    heals: [] as unknown[],
+    modelCalls: 0,
+    envelope: saved.envelope,
+  };
+}
+
+async function runExtension(
+  library: Library,
+  workflow: WorkflowV2,
+  args: ReplayArgs,
+  notices: Notice[],
+  prompts: PersonPrompts | undefined,
+  link: ExtensionLink,
+  fromStep?: string,
+) {
+  const driver = new ExtensionDriver(link, readGestures(library.root, workflow.id), prompts, (notice) => {
+    notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
+  }, true);
+  const secretList = workflow.inputs.flatMap((input) => {
+    if (input.type !== "secret") return [];
+    const value = args[input.name];
+    return typeof value === "string" && value ? [value] : [];
+  });
+  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    if (workflow.startUrl.startsWith("http")) await driver.open(workflow.startUrl);
+  } catch (err) {
+    if (hostGrantError(err)) return rememberHostGrant(library, workflow, grantText(err), prompts, runId);
+    throw err;
+  }
+  const heal = await healProvider(secretList);
+  const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
+  const shotDir = path.join(library.root, "shots", "runs", runId);
+  const settings = library.settings();
+  const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
+  const reviewSteps = new Set(stepsNeedingReview(recent as Parameters<typeof stepsNeedingReview>[0]).map((item) => item.stepId));
+  let result: Awaited<ReturnType<typeof replay>>;
+  try {
+    result = await replay(workflow, args, driver, {
+      runId,
+      shotDir,
+      settings,
+      heal,
+      now: () => Date.now(),
+      receipts: receiptLog,
+      fromStepId: fromStep,
+      reviewSteps,
+      circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
+      siteTrust: trustMode(settings, originOf(workflow.startUrl)),
+      holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
+      onPause: (partial) => {
+        library.saveRun(persistedRun(partial, workflow, args, {
+          promotion: undefined,
+          recorded: { wrote: false },
+          videoStartedAt: Date.now(),
+          secretList,
+        }));
+      },
+    });
+  } finally {
+    await driver.end();
+  }
+  if (result.failure && isHostGrantMessage(result.failure.reason)) {
+    return rememberHostGrant(library, workflow, result.failure.reason, prompts, result.runId);
+  }
+  spillBinaryShots(result, shotDir);
+  for (const repair of result.repairs) library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
+  for (const receipt of result.receipts) library.appendTrail(workflow.id, receipt);
+  const promotion = recordProvisional(library, workflow, result.heals);
+  const saved = persistedRun(result, workflow, args, {
+    promotion,
+    recorded: { wrote: false },
+    videoStartedAt: Date.now(),
+    secretList,
+  });
+  library.saveRun(saved);
+  if (result.status !== "paused") clearPendingPrompt(library.root);
+  return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs };
+}
+
 async function runRecorded(
   library: Library,
   workflow: WorkflowV2,
@@ -2332,14 +2605,19 @@ async function runRecorded(
   prompts?: PersonPrompts,
   profileDir?: string,
   fromStep?: string,
+  link?: ExtensionLink,
 ) {
+  if (workflowDriver(workflow) === "extension") {
+    if (!link) throw new Error("extension is not connected");
+    return runExtension(library, workflow, args, notices, prompts, link, fromStep);
+  }
   const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
   const driver = new BrowserDriver(page, (notice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
   }, prompts);
   driver.markStep("open");
-  if (workflow.startUrl.startsWith("http")) await page.goto(workflow.startUrl);
+  if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
   const secretList = workflow.inputs.flatMap((input) => {
     if (input.type !== "secret") return [];
     const value = args[input.name];
@@ -2416,13 +2694,22 @@ async function openReplay(
     if (!sameDir) await rm(existing.profile, { recursive: true, force: true }).catch(() => undefined);
     replays.delete(id);
   }
+  if (fixedDir) {
+    for (const session of replays.values()) {
+      if (session.page.isClosed()) continue;
+      if (path.resolve(session.profile) !== path.resolve(fixedDir)) continue;
+      replays.set(id, session);
+      return session;
+    }
+  }
   const profile = fixedDir ?? await mkdtemp(path.join(tmpdir(), "bao-replay-"));
+  if (fixedDir) mkdirSync(profile, { recursive: true });
   const record = process.env.BAO_RUN_VIDEO === "1";
   const videoDir = record ? path.join(library.root, "videos", "incoming") : undefined;
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   const context = await launchOwnedChrome({
     userDataDir: profile,
-    headless: process.env.BAO_HEADED !== "1",
+    headless: productHeadless(),
     videoDir,
   });
   const page = context.pages()[0] || await context.newPage();
@@ -2770,6 +3057,7 @@ function summary(doc: WorkflowV2) {
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
     startUrl: doc.startUrl,
+    driver: workflowDriver(doc),
   };
 }
 

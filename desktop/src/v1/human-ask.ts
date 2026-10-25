@@ -62,7 +62,7 @@ export function siteHost(url: string | undefined): string {
 /** Bot check or a session that expired. The person finishes it in the Bao window. */
 export function wallInstruction(site: string, kind: "bot" | "login"): string {
   const name = siteName(site);
-  if (kind === "bot") return `${name} is showing a bot check. Finish it in the Bao window, then press Continue.`;
+  if (kind === "bot") return `${name} is showing a bot check. Complete the check in the Bao window, then press Continue.`;
   return "Sign in in the Bao window, then press Continue.";
 }
 

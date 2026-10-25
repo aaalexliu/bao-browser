@@ -5,7 +5,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, productHeadless } from "../launch";
 import { assertNotDailyChrome } from "../profile";
 import { imageMime, presentAvatar } from "./avatar";
 import { KEYCHAIN_PREVIEW, keyRingFromSources, keychainMessage, type KeySources } from "./keys";
@@ -229,7 +229,7 @@ export async function importInOwnedChrome(opts: {
   const origins = originsForSite(opts.click.site, opts.config.origins ?? []);
   const items = await readLocalStorage(profileDir, origins);
   const indexedDbOrigins = copyIndexedDb(profileDir, opts.baoProfile, origins);
-  const headless = opts.headless ?? process.env.BAO_HEADED !== "1";
+  const headless = opts.headless ?? productHeadless();
   const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
@@ -258,7 +258,7 @@ export async function probeOwnedProfile(opts: {
   headless?: boolean;
 }): Promise<{ signedIn: boolean; how: "selector" | "text" | "login-url" | "login-wall" }> {
   assertNotDailyChrome(opts.baoProfile);
-  const headless = opts.headless ?? process.env.BAO_HEADED !== "1";
+  const headless = opts.headless ?? productHeadless();
   const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();

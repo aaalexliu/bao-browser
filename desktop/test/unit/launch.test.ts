@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
+import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -55,9 +56,16 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   assert.equal(args.includes("--password-store=basic"), false);
   assert.equal(args.includes("--no-sandbox"), false);
   assert.equal(args.includes("--restore-last-session"), false);
-  assert.equal(ownedChromeLaunchArgs([], {}).includes("--no-sandbox"), false);
-  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }).includes("--no-sandbox"), true);
-  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }).includes("--disable-dev-shm-usage"), true);
+  assert.equal(ownedChromeLaunchArgs([], {}, "linux").includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }, "linux").includes("--no-sandbox"), true);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }, "linux").includes("--disable-dev-shm-usage"), true);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_CHROME_NO_SANDBOX: "1" }, "darwin").includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs([], { CI: "true" }, "linux").includes("--no-sandbox"), true);
+  assert.equal(ownedChromeLaunchArgs([], { CI: "true" }, "darwin").includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs(["--enable-automation", "--no-sandbox"], {}, "darwin").includes("--enable-automation"), false);
+  assert.equal(ownedChromeLaunchArgs(["--no-sandbox"], {}, "darwin").includes("--no-sandbox"), false);
+  assert.equal(ownedChromeLaunchArgs([], {}, "linux").includes("--restore-last-session"), false);
+  assert.equal(ownedChromeLaunchArgs(["--restore-last-session"], {}, "darwin").includes("--restore-last-session"), false);
   assert.throws(() => accountLaunchArgs(9222), /9222/);
   const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
   const bundled = "/tmp/Bao.app/Chromium";
@@ -78,6 +86,22 @@ test("remote debugging port 9222 is refused", () => {
 test("a mismatched user-data-dir is refused", () => {
   const verdict = assessOwnedCommand(fixture, "/tmp/someone-else");
   assert.equal(verdict.ok, false);
+});
+
+test("saved tabs are removed and the cookie store is left in place", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-tabs-"));
+  const base = path.join(dir, "Default");
+  mkdirSync(path.join(base, "Sessions"), { recursive: true });
+  mkdirSync(path.join(base, "Network"), { recursive: true });
+  writeFileSync(path.join(base, "Sessions", "Tabs_1"), "restored");
+  writeFileSync(path.join(base, "Current Session"), "restored");
+  writeFileSync(path.join(base, "Last Tabs"), "restored");
+  writeFileSync(path.join(base, "Network", "Cookies"), "keep");
+  discardRestoredTabs(dir);
+  assert.equal(existsSync(path.join(base, "Sessions")), false);
+  assert.equal(existsSync(path.join(base, "Current Session")), false);
+  assert.equal(existsSync(path.join(base, "Last Tabs")), false);
+  assert.equal(readFileSync(path.join(base, "Network", "Cookies"), "utf8"), "keep");
 });
 
 test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () => {

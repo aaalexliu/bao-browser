@@ -54,7 +54,10 @@
     "test:workflows": "node build.mjs && node test/workflows.mjs",
     "test:sidepanel": "node build.mjs && node test/sidepanel.mjs",
     "test:dashboard": "node build.mjs && node test/dashboard.mjs",
-    "proof:realworld": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/proof/realworld.js"
+    "proof:realworld": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/proof/realworld.js",
+    "proof:automation-markers": "tsc -p tsconfig.desktop.json && node desktop/dist/desktop/src/proof/automation-markers.js",
+    "build:extension": "node extension/build.mjs",
+    "proof:extension": "tsc -p tsconfig.desktop.json && node extension/build.mjs && node desktop/dist/desktop/src/proof/extension.js"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.2",
