@@ -10,6 +10,7 @@ import { clampGesture, fillPlan, gestureQueue } from "../../src/extension/gestur
 import { acceptAuth, originArg } from "../../src/extension/native-host";
 import { hostScriptPath, startExtensionLink } from "../../src/extension/link";
 import { EXTENSION_ID, EXTENSION_KEY, extensionOrigin, workflowDriver } from "../../src/extension/protocol";
+import { hostGrantMessage, isHostGrantMessage, specificHost } from "../../../extension/src/host-grant";
 import { diffSignals, hashCookieHeader, hashValue } from "../../src/extension/signals";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { createHash } from "node:crypto";
@@ -104,10 +105,16 @@ test("the host rejects a bad token and a foreign extension origin", () => {
 });
 
 test("the unpacked extension id is the Chrome hash of the public key", () => {
-  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "extension/manifest.json"), "utf8")) as { key: string; host_permissions?: string[]; content_scripts?: unknown };
+  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "extension/manifest.json"), "utf8")) as {
+    key: string;
+    host_permissions?: string[];
+    content_scripts?: unknown;
+    optional_host_permissions?: string[];
+  };
   assert.equal(manifest.key, EXTENSION_KEY);
   assert.equal(manifest.host_permissions, undefined);
   assert.equal(manifest.content_scripts, undefined);
+  assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
   const der = Buffer.from(EXTENSION_KEY, "base64");
   const hash = createHash("sha256").update(der).digest();
   let id = "";
@@ -116,6 +123,23 @@ test("the unpacked extension id is the Chrome hash of the public key", () => {
     id += String.fromCharCode(97 + (byte >> 4), 97 + (byte & 15));
   }
   assert.equal(id, EXTENSION_ID);
+});
+
+test("a missing host grant is needs-you copy for one origin", () => {
+  const pattern = "https://books.toscrape.com/*";
+  const timedOut = hostGrantMessage(pattern, "timeout");
+  const denied = hostGrantMessage(pattern, "denied");
+  assert.equal(isHostGrantMessage(timedOut), true);
+  assert.equal(isHostGrantMessage(denied), true);
+  assert.match(timedOut, /not granted in time/);
+  assert.match(denied, /did not grant the site/);
+  assert.equal(isHostGrantMessage(`site not allowed: ${pattern}`), false);
+  assert.equal(specificHost(pattern), true);
+  assert.equal(specificHost("http://127.0.0.1:8080/*"), true);
+  assert.equal(specificHost("https://*/*"), false);
+  assert.equal(specificHost("http://*/*"), false);
+  assert.equal(specificHost("https://*.example.com/*"), false);
+  assert.equal(specificHost("<all_urls>"), false);
 });
 
 test("the run form shows Playwright unless the workflow asks for the extension", () => {

@@ -16,7 +16,7 @@ import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
-import { actAskLine, actDeadlineLine, actSurfaceText, type HumanAsk } from "../v1/human-ask";
+import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
@@ -102,7 +102,7 @@ import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
-import { ExtensionDriver } from "../extension/driver";
+import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
 import { workflowDriver, type Gesture } from "../extension/protocol";
@@ -122,6 +122,8 @@ export interface Notice extends HealNotice {
 export interface App {
   library: Library;
   port: number;
+  /** Set when the native host is installed. Replay and tests drive the extension through it. */
+  extensionLink?: ExtensionLink;
   notices: Notice[];
   notifications: { title: string; body: string; tooltip: string }[];
   recording: boolean;
@@ -1350,6 +1352,11 @@ export async function startApp(opts: {
       }
       json(res, { error: "not found" }, 404);
     } catch (err) {
+      if (hostGrantError(err)) {
+        const message = err instanceof Error ? err.message : String(err);
+        json(res, { status: "needs_human", message, reason: message });
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       const status = err instanceof ConsentRequired ? 403 : message.startsWith("The site") ? 400 : 500;
       json(res, { error: message }, status);
@@ -2096,6 +2103,7 @@ export async function startApp(opts: {
   return {
     library,
     port,
+    extensionLink,
     notices,
     notifications,
     get recording() { return capture.recording; },
@@ -2268,6 +2276,82 @@ function persistedRun(
   }), extra.secretList)) as Parameters<Library["saveRun"]>[0];
 }
 
+function hostGrantError(err: unknown): boolean {
+  if (err instanceof HostGrantNeeded) return true;
+  return err instanceof Error && isHostGrantMessage(err.message);
+}
+
+function grantText(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  return "Allow Bao on the site in the Chrome window. Click Allow sites. The site was not granted in time.";
+}
+
+function rememberHostGrant(
+  library: Library,
+  workflow: WorkflowV2,
+  message: string,
+  prompts: PersonPrompts | undefined,
+  runId: string,
+) {
+  const step = workflow.steps[0];
+  const stepId = step?.id || "open";
+  const label = step?.label || "Open the site";
+  const ask: HumanAsk = {
+    kind: "wall",
+    workflowId: workflow.id,
+    workflowName: workflow.name,
+    stepId,
+    stepIndex: 1,
+    stepCount: Math.max(1, workflow.steps.length),
+    label,
+    site: siteHost(workflow.startUrl),
+    windowName: "Bao window",
+    instruction: message,
+    startedAt: Date.now(),
+    deadline: null,
+    timeoutMs: 0,
+    runId,
+  };
+  const saved = {
+    id: runId,
+    workflowId: workflow.id,
+    status: "needs_human",
+    at: Date.now(),
+    heals: [],
+    steps: [{ id: stepId, status: "paused", label, reason: message }],
+    failure: {
+      stepId,
+      index: step?.index ?? 0,
+      intent: step?.intent || label,
+      phase: "find",
+      reason: message,
+      snapshot: {},
+    },
+    modelCalls: 0,
+    envelope: {
+      status: "needs_human",
+      run_id: runId,
+      step: stepId,
+      reason: message,
+      ask: message,
+      deadline: "No timeout",
+    },
+  };
+  library.saveRun(saved);
+  prompts?.showAsk?.(ask);
+  return {
+    runId,
+    id: runId,
+    status: "needs_human" as const,
+    message,
+    reason: message,
+    steps: saved.steps,
+    heals: [] as unknown[],
+    modelCalls: 0,
+    envelope: saved.envelope,
+  };
+}
+
 async function runExtension(
   library: Library,
   workflow: WorkflowV2,
@@ -2280,15 +2364,20 @@ async function runExtension(
   const driver = new ExtensionDriver(link, readGestures(library.root, workflow.id), prompts, (notice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
   }, true);
-  if (workflow.startUrl.startsWith("http")) await driver.open(workflow.startUrl);
   const secretList = workflow.inputs.flatMap((input) => {
     if (input.type !== "secret") return [];
     const value = args[input.name];
     return typeof value === "string" && value ? [value] : [];
   });
+  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    if (workflow.startUrl.startsWith("http")) await driver.open(workflow.startUrl);
+  } catch (err) {
+    if (hostGrantError(err)) return rememberHostGrant(library, workflow, grantText(err), prompts, runId);
+    throw err;
+  }
   const heal = await healProvider(secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
-  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const settings = library.settings();
   const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
@@ -2318,6 +2407,9 @@ async function runExtension(
     });
   } finally {
     await driver.end();
+  }
+  if (result.failure && isHostGrantMessage(result.failure.reason)) {
+    return rememberHostGrant(library, workflow, result.failure.reason, prompts, result.runId);
   }
   spillBinaryShots(result, shotDir);
   for (const repair of result.repairs) library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });

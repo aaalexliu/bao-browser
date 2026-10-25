@@ -2,6 +2,8 @@
 // A command is stored before it runs. If the worker dies mid-command, the next
 // start reports that step as failed and does not run it again.
 
+import { hostGrantMessage, hostGrantWait, specificHost } from "./host-grant";
+
 const HOST = "com.bao.desktop";
 
 export {};
@@ -219,7 +221,6 @@ async function withTab(message: Record<string, unknown>, timeoutMs?: number): Pr
 }
 
 async function openOwned(url: string, dialogs: boolean, inject: boolean): Promise<Record<string, unknown>> {
-  await allowed(url);
   const origin = new URL(url).origin;
   let tabId = persist.tabId;
   let windowId = persist.windowId;
@@ -230,6 +231,8 @@ async function openOwned(url: string, dialogs: boolean, inject: boolean): Promis
     windowId = win?.id;
     if (!tabId || windowId == null) throw new Error("could not open a replay window");
   }
+  // The document request fires during tabs.update. Own the tab first so HAR sees it.
+  persist = { ...persist, tabId, windowId, dialogs, origin };
   if (inject) await registerScripts(origin, { recorder: persist.phase === "recording", dialogs });
   else await clearBaoScripts();
   const pending = waitComplete(tabId!, 30000);
@@ -697,20 +700,241 @@ const onFail: Parameters<typeof chrome.webRequest.onErrorOccurred.addListener>[0
   inflight.delete(details.requestId);
 };
 
-function watchNetwork(): void {
-  const filter: chrome.webRequest.RequestFilter = { urls: ["<all_urls>"] };
-  const send = () => chrome.webRequest.onBeforeSendHeaders.addListener(onSend, filter, ["requestHeaders", "extraHeaders"]);
-  const done = () => chrome.webRequest.onCompleted.addListener(onDone, filter, ["responseHeaders", "extraHeaders"]);
-  const fail = () => chrome.webRequest.onErrorOccurred.addListener(onFail, filter);
+// webRequest throws until a host permission is actually held. Never pass <all_urls>.
+// Listen only on origins contains() has confirmed, and drop them again on revoke.
+
+const WILDCARDS = ["http://*/*", "https://*/*"];
+let networkUrls: string[] | null = null;
+let networkChain: Promise<void> = Promise.resolve();
+const pinnedOrigins: string[] = [];
+let prompting: string | null = null;
+
+function listenPattern(origin: string): string | null {
+  if (specificHost(origin)) return origin;
+  if (WILDCARDS.includes(origin)) return origin;
   try {
-    send();
-    done();
-    fail();
+    const base = origin.endsWith("/*") ? origin.slice(0, -1) : origin;
+    const url = new URL(base);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname || url.hostname.includes("*")) return null;
+    return `${url.protocol}//${url.host}/*`;
   } catch {
-    chrome.webRequest.onBeforeSendHeaders.addListener(onSend, filter, ["requestHeaders"]);
-    chrome.webRequest.onCompleted.addListener(onDone, filter, ["responseHeaders"]);
-    chrome.webRequest.onErrorOccurred.addListener(onFail, filter);
+    return null;
   }
+}
+
+async function containsOrigin(origin: string): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains({ origins: [origin] });
+  } catch {
+    return false;
+  }
+}
+
+function pinOrigin(pattern: string): void {
+  if (!pinnedOrigins.includes(pattern)) pinnedOrigins.push(pattern);
+}
+
+async function grantedListenUrls(): Promise<string[] | null> {
+  const held: string[] = [];
+  for (const origin of WILDCARDS) {
+    if (await containsOrigin(origin)) held.push(origin);
+  }
+  let listed: string[] = [];
+  try {
+    const all = await chrome.permissions.getAll();
+    listed = all.origins || [];
+  } catch {
+    listed = [];
+  }
+  const candidates = [...new Set(
+    [...listed, ...pinnedOrigins].map((origin) => listenPattern(origin)).filter((origin): origin is string => !!origin),
+  )];
+  for (const origin of candidates) {
+    if (held.includes(origin)) continue;
+    if (WILDCARDS.includes(origin)) continue;
+    if (await containsOrigin(origin)) held.push(origin);
+  }
+  for (let i = pinnedOrigins.length - 1; i >= 0; i--) {
+    if (!held.includes(pinnedOrigins[i]!)) pinnedOrigins.splice(i, 1);
+  }
+  held.sort();
+  return held.length ? held : null;
+}
+
+function safeAdd(run: () => void): boolean {
+  try {
+    run();
+  } catch {
+    return false;
+  }
+  return !chrome.runtime.lastError?.message;
+}
+
+function detachNetwork(): void {
+  try { chrome.webRequest.onBeforeSendHeaders.removeListener(onSend); } catch { /* not registered */ }
+  try { chrome.webRequest.onCompleted.removeListener(onDone); } catch { /* not registered */ }
+  try { chrome.webRequest.onErrorOccurred.removeListener(onFail); } catch { /* not registered */ }
+  networkUrls = null;
+}
+
+function listenersAttached(): boolean {
+  return chrome.webRequest.onBeforeSendHeaders.hasListener(onSend)
+    && chrome.webRequest.onCompleted.hasListener(onDone)
+    && chrome.webRequest.onErrorOccurred.hasListener(onFail);
+}
+
+function sameUrls(left: string[] | null, right: string[]): boolean {
+  if (!left || left.length !== right.length) return false;
+  return left.every((item, index) => item === right[index]);
+}
+
+function tryListen(urls: string[], extra: boolean): boolean {
+  const filter: chrome.webRequest.RequestFilter = { urls };
+  const send: chrome.webRequest.OnBeforeSendHeadersOptions[] = extra
+    ? ["requestHeaders", "extraHeaders"]
+    : ["requestHeaders"];
+  const done: chrome.webRequest.OnCompletedOptions[] = extra
+    ? ["responseHeaders", "extraHeaders"]
+    : ["responseHeaders"];
+  if (!safeAdd(() => chrome.webRequest.onBeforeSendHeaders.addListener(onSend, filter, send))) return false;
+  if (!safeAdd(() => chrome.webRequest.onCompleted.addListener(onDone, filter, done))) return false;
+  if (!safeAdd(() => chrome.webRequest.onErrorOccurred.addListener(onFail, filter))) return false;
+  return listenersAttached();
+}
+
+function attachNetwork(urls: string[]): boolean {
+  const safe = urls.filter((url) => url !== "<all_urls>" && url !== "*://*/*");
+  if (!safe.length) {
+    detachNetwork();
+    return false;
+  }
+  detachNetwork();
+  if (tryListen(safe, true)) {
+    networkUrls = safe.slice();
+    return true;
+  }
+  detachNetwork();
+  if (tryListen(safe, false)) {
+    networkUrls = safe.slice();
+    return true;
+  }
+  detachNetwork();
+  return false;
+}
+
+async function reconcileNetwork(): Promise<void> {
+  try {
+    const urls = await grantedListenUrls();
+    if (!urls) {
+      detachNetwork();
+      return;
+    }
+    if (sameUrls(networkUrls, urls) && listenersAttached()) return;
+    attachNetwork(urls);
+  } catch {
+    detachNetwork();
+  }
+}
+
+function syncNetwork(): Promise<void> {
+  const run = networkChain.then(() => reconcileNetwork());
+  networkChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+type GrantOutcome = "yes" | "no" | "timeout";
+
+function waitForHost(pattern: string, grantMs: number): Promise<GrantOutcome> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let poll: ReturnType<typeof setInterval>;
+    const finish = (outcome: GrantOutcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearInterval(poll);
+      chrome.permissions.onAdded.removeListener(onAdded);
+      chrome.runtime.onMessage.removeListener(onAllow);
+      resolve(outcome);
+    };
+    const onAdded = (permissions: chrome.permissions.Permissions) => {
+      const origins = permissions.origins || [];
+      if (origins.includes(pattern)) {
+        finish("yes");
+        return;
+      }
+      void containsOrigin(pattern).then((ok) => { if (ok) finish("yes"); });
+    };
+    const onAllow = (message: { source?: string; granted?: boolean; origins?: string[] }) => {
+      if (!message || message.source !== "bao-allow") return;
+      const origins = Array.isArray(message.origins) ? message.origins : [];
+      if (origins.length && !origins.includes(pattern)) return;
+      finish(message.granted ? "yes" : "no");
+    };
+    chrome.permissions.onAdded.addListener(onAdded);
+    chrome.runtime.onMessage.addListener(onAllow);
+    poll = setInterval(() => {
+      void containsOrigin(pattern).then((ok) => { if (ok) finish("yes"); });
+    }, 250);
+    timer = setTimeout(() => finish("timeout"), grantMs);
+    void containsOrigin(pattern).then((ok) => { if (ok) finish("yes"); });
+  });
+}
+
+async function promptSpecificHost(
+  pattern: string,
+  grantMs: number,
+): Promise<{ ok: true } | { needsHuman: true; pattern: string; message: string }> {
+  if (grantMs <= 0) return { needsHuman: true, pattern, message: hostGrantMessage(pattern, "timeout") };
+  const page = `${chrome.runtime.getURL("allow.html")}?origins=${encodeURIComponent(pattern)}`;
+  prompting = page;
+  let windowId: number | undefined;
+  try {
+    try {
+      const win = await chrome.windows.create({ url: page, type: "popup", focused: true, width: 520, height: 420 });
+      windowId = win?.id;
+    } catch {
+      const win = await chrome.windows.create({ url: page, type: "normal", focused: true, width: 520, height: 420 });
+      windowId = win?.id;
+    }
+    const outcome = await waitForHost(pattern, grantMs);
+    if (outcome === "yes") {
+      pinOrigin(pattern);
+      await syncNetwork();
+      return { ok: true };
+    }
+    return {
+      needsHuman: true,
+      pattern,
+      message: hostGrantMessage(pattern, outcome === "no" ? "denied" : "timeout"),
+    };
+  } catch {
+    return { needsHuman: true, pattern, message: hostGrantMessage(pattern, "timeout") };
+  } finally {
+    prompting = null;
+    if (windowId != null) await chrome.windows.remove(windowId).catch(() => undefined);
+  }
+}
+
+async function ensureHost(
+  url: string,
+  grantMs: number,
+): Promise<{ ok: true } | { needsHuman: true; pattern: string; message: string }> {
+  const pattern = originPattern(url);
+  if (!specificHost(pattern)) throw new Error("refusing a broad host permission");
+  if (await containsOrigin(pattern)) {
+    pinOrigin(pattern);
+    await syncNetwork();
+    return { ok: true };
+  }
+  return promptSpecificHost(pattern, grantMs);
+}
+
+function grantWaitMs(cmd: Record<string, unknown>): number {
+  if (!Object.prototype.hasOwnProperty.call(cmd, "grantMs")) return hostGrantWait(undefined);
+  return hostGrantWait(cmd.grantMs);
 }
 
 async function perform(cmd: { id: string; op: string } & Record<string, unknown>): Promise<unknown> {
@@ -843,6 +1067,13 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
     har.length = 0;
     return { entries };
   }
+  if (op === "net-state") {
+    return {
+      listening: listenersAttached(),
+      urls: networkUrls ? networkUrls.slice() : [],
+      allowUrl: prompting || "",
+    };
+  }
   if (op === "flush-observed") {
     const events = observed.slice();
     return { events };
@@ -884,12 +1115,15 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
       await chrome.tabs.remove(persist.tabId).catch(() => undefined);
       persist = { ...persist, tabId: undefined, windowId: undefined };
     }
+    const gate = await ensureHost(String(cmd.url || ""), grantWaitMs(cmd));
+    if ("needsHuman" in gate) return gate;
     if (persist.phase !== "recording") persist.phase = "replaying";
     return openOwned(String(cmd.url || ""), cmd.dialogs === true, cmd.inject !== false);
   }
   if (op === "goto") {
     const url = String(cmd.url || "");
-    await allowed(url);
+    const gate = await ensureHost(url, grantWaitMs(cmd));
+    if ("needsHuman" in gate) return gate;
     const tabId = await ownedTab();
     if (cmd.gesture) await sendTab(tabId, { op: "gesture", gesture: cmd.gesture }).catch(() => undefined);
     const origin = new URL(url).origin;
@@ -1142,6 +1376,7 @@ async function boot(resumed: boolean): Promise<void> {
   if (booting || port) return;
   booting = true;
   try {
+    await syncNetwork();
     await loadPersist();
     const previous = await chrome.storage.local.get("bao-cmd");
     const interrupted = previous["bao-cmd"] as StoredCmd | undefined;
@@ -1212,5 +1447,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return;
 });
 
-watchNetwork();
+chrome.permissions.onAdded.addListener((permissions) => {
+  if (permissions.origins?.length) void syncNetwork();
+});
+chrome.permissions.onRemoved.addListener((permissions) => {
+  if (permissions.origins?.length) void syncNetwork();
+});
 void boot(false);

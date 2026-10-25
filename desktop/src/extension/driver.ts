@@ -10,9 +10,22 @@ import type { PageSignals } from "../v1/page-class";
 import type { Driver, GuideAct, HealNotice, LiveTree, ShotTarget } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import type { FileProof, PersonPrompts } from "../v1/browser-driver";
+import { hostGrantMessage, hostGrantWait, isHostGrantMessage } from "../../../extension/src/host-grant";
 import { clampGesture, emptyGesture, gestureCapFromEnv } from "./gestures";
 import type { ExtensionLink } from "./link";
 import type { Gesture } from "./protocol";
+
+export { isHostGrantMessage };
+
+/** Replay asked for one origin and Chrome did not grant it. The HTTP route turns this into needs_human. */
+export class HostGrantNeeded extends Error {
+  readonly pattern: string;
+  override readonly name = "HostGrantNeeded";
+  constructor(pattern: string, message: string) {
+    super(message);
+    this.pattern = pattern;
+  }
+}
 
 interface TraceLine {
   stepId?: string;
@@ -89,8 +102,18 @@ export class ExtensionDriver implements Driver {
     return { console: this.consoleLines.slice(), network: this.network.slice() };
   }
 
+  private async navigate(op: "open" | "goto", params: Record<string, unknown>): Promise<void> {
+    const grantMs = hostGrantWait(process.env.BAO_HOST_GRANT_MS);
+    const result = await this.cmd(op, { ...params, grantMs }, grantMs + 45_000);
+    if (result.needsHuman === true) {
+      const pattern = String(result.pattern || "");
+      const message = String(result.message || hostGrantMessage(pattern || "the site", "timeout"));
+      throw new HostGrantNeeded(pattern, message);
+    }
+  }
+
   async open(url: string): Promise<void> {
-    await this.cmd("open", { url, dialogs: this.dialogs, inject: true }, 45000);
+    await this.navigate("open", { url, dialogs: this.dialogs, inject: true });
   }
 
   async tree(): Promise<LiveTree> {
@@ -179,7 +202,7 @@ export class ExtensionDriver implements Driver {
 
   async goto(url: string): Promise<void> {
     const gesture = this.takeGesture();
-    await this.cmd("goto", { url, gesture }, 45000);
+    await this.navigate("goto", { url, gesture });
   }
 
   async focus(node: Identity): Promise<void> {
