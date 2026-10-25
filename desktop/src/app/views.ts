@@ -292,6 +292,16 @@ export function rail(state: ShellState): string {
     </div>`;
 }
 
+/** Settings control for the outbound long-poll. Unchecked until this Mac opts in. */
+export function remoteMcpSetting(on: boolean): string {
+  const checked = on ? " checked" : "";
+  return `<section id="remote-mcp-setting">
+    <h3>Remote agent</h3>
+    <label><input id="remote-mcp" type="checkbox"${checked}> Let a remote agent run workflows on this Mac</label>
+    <p class="quiet">Bao long-polls the registry only while this is checked, or while this Bao process has BAO_REMOTE_MCP=1. The registry needs that same variable. A run still waits for Allow on this Mac.</p>
+  </section>`;
+}
+
 /** Shown while a cloud agent is asking this Mac to run something. */
 export function remoteBanner(remote: RemoteView | undefined): string {
   if (!remote || remote.phase === "idle") return "";

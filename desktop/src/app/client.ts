@@ -11,6 +11,7 @@ import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
   remoteBanner,
+  remoteMcpSetting,
   commandItems,
   esc,
   healDetail,
@@ -71,7 +72,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; siteTrust?: Record<string, "ask" | "allow"> };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: Record<string, "ask" | "allow"> };
   sync?: {
     server?: string;
     deviceName?: string;
@@ -350,6 +351,7 @@ function settings(): string {
     <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
+    ${remoteMcpSetting(state.settings?.remoteMcp === true)}
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
@@ -624,6 +626,7 @@ function bind(): void {
         actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
         syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
+        remoteMcp: (document.getElementById("remote-mcp") as HTMLInputElement | null)?.checked === true,
         siteTrust: readSiteTrust(),
       }),
     });

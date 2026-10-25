@@ -3,7 +3,7 @@
 // Run after `tsc -p tsconfig.desktop.json`. Needs BAO_CHROME_NO_SANDBOX=1.
 
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
@@ -22,7 +22,52 @@ const SHOTS = "/opt/cursor/artifacts/screenshots";
 const ARTIFACTS = "/opt/cursor/artifacts";
 const CHROME = "/opt/google/chrome/chrome";
 
-test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => {
+let tail: Promise<unknown> = Promise.resolve();
+
+function oneAtATime<T>(run: () => Promise<T>): Promise<T> {
+  const result = tail.then(run, run);
+  tail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+test("remote MCP stays closed without BAO_REMOTE_MCP", { timeout: 720_000 }, async () => oneAtATime(async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-remote-off-"));
+  const logs: string[] = [];
+  const registry = await startRegistry(root, logs, false);
+  const origin = registry.origin;
+  let app: App | undefined;
+  try {
+    const health = await fetch(`${origin}/api/health`);
+    assert.equal(health.status, 200, await health.text());
+    await assertDisabled(origin, "POST", "/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" });
+    await assertDisabled(origin, "GET", "/mcp");
+    const cookie = await signIn(origin);
+    const authed = { cookie, "content-type": "application/json" };
+    await assertDisabled(origin, "POST", "/api/agent/tokens", { deviceId: "dev-x", label: "closed" }, authed);
+    await assertDisabled(origin, "POST", "/api/agent/tokens/atk-x/revoke", {}, authed);
+    await assertDisabled(origin, "GET", "/api/agent/audit", undefined, authed);
+    await assertDisabled(origin, "POST", "/api/agent/poll", { waitMs: 1000 }, { authorization: "Bearer not-a-device", "content-type": "application/json" });
+    await assertDisabled(origin, "POST", "/api/agent/jobs/job-x/result", { outcome: "ok" }, { authorization: "Bearer not-a-device", "content-type": "application/json" });
+
+    const home = path.join(root, "mac");
+    const library = new Library(home);
+    await pairDevice(library, { code: await pairCode(origin, cookie), server: origin, name: "Mac off", secret: "fixture-invite-secret" });
+    assert.notEqual(library.settings().remoteMcp, true);
+    app = await startApp({ home });
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const state = await uiState(app.port);
+    assert.equal(state.remote?.phase || "idle", "idle");
+    const page = await fetch(`http://127.0.0.1:${app.port}/`);
+    const html = await page.text();
+    assert.equal(html.includes("data-testid=\"remote-approval\""), false);
+    assert.equal(html.includes("Remote agent running"), false);
+  } finally {
+    await app?.close().catch(() => undefined);
+    await registry.stop();
+  }
+}));
+
+test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => oneAtATime(async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   mkdirSync(SHOTS, { recursive: true });
@@ -34,10 +79,13 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
   let appB: App | undefined;
   let browser: Browser | undefined;
   let page: Page | undefined;
+  let registry: { stop: () => Promise<void> } | undefined;
   try {
   fixture = await startFixture();
   const site = fixture;
-  const origin = await startRegistry(root, logs);
+  const started = await startRegistry(root, logs, true);
+  registry = started;
+  const origin = started.origin;
   const cookie = await signIn(origin);
   const homeA = path.join(root, "mac-a");
   const homeB = path.join(root, "mac-b");
@@ -46,8 +94,10 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
   saveWorkflows(libA, site.origin);
   const invite = "fixture-invite-secret";
   await pairDevice(libA, { code: await pairCode(origin, cookie), server: origin, name: "Mac A", secret: invite });
+  libA.updateSettings({ remoteMcp: true });
   const libB = new Library(homeB);
   await pairDevice(libB, { code: await pairCode(origin, cookie), server: origin, name: "Mac B", secret: invite });
+  libB.updateSettings({ remoteMcp: true });
   const libC = new Library(homeC);
   await pairDevice(libC, { code: await pairCode(origin, cookie), server: origin, name: "Mac C", secret: invite });
   const idA = deviceId(homeA);
@@ -80,6 +130,8 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     await page.goto(`http://127.0.0.1:${appA.port}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForSelector("#rail", { timeout: 20_000 });
 
+    const method = await fetch(`${origin}/mcp`);
+    assert.equal(method.status, 405, await method.text());
     const listed = await rpc(origin, tokenA.token, "tools/list");
     const names = ((listed.body as { result?: { tools?: { name: string }[] } }).result?.tools || []).map((tool) => tool.name);
     assert.deepEqual(names, ["search_workflows", "describe_workflow", "run_workflow", "resume_workflow"]);
@@ -237,9 +289,9 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     await appA?.close().catch(() => undefined);
     await appB?.close().catch(() => undefined);
     await fixture?.close();
-    await stop();
+    await registry?.stop();
   }
-});
+}));
 
 function saveWorkflows(library: Library, origin: string): void {
   library.save(workflow("hello-bao", "Hello Bao", `${origin}/hello`, [
@@ -432,50 +484,75 @@ async function pairCode(origin: string, cookie: string): Promise<string> {
   return body.code;
 }
 
-let registry: ChildProcess | undefined;
+let webBuild: Promise<void> | undefined;
 
-async function startRegistry(root: string, logs: string[]): Promise<string> {
+function ensureWebBuild(): Promise<void> {
+  if (!webBuild) {
+    const webDir = path.join(process.cwd(), "web");
+    webBuild = new Promise((resolve, reject) => {
+      execFile("npm", ["run", "build"], { cwd: webDir }, (err) => err ? reject(err) : resolve());
+    });
+  }
+  return webBuild;
+}
+
+async function startRegistry(root: string, logs: string[], enabled: boolean): Promise<{ origin: string; stop: () => Promise<void> }> {
+  await ensureWebBuild();
   const webDir = path.join(process.cwd(), "web");
-  const { execFileSync } = await import("node:child_process");
-  execFileSync("npm", ["run", "build"], { cwd: webDir, stdio: "pipe" });
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
-  registry = spawn("npm", ["run", "start", "--", "--port", String(port), "-H", "127.0.0.1"], {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    BAO_PG_DIR: path.join(root, "pglite"),
+    BAO_BLOB_DIR: path.join(root, "blobs"),
+    BAO_OWNER_EMAIL: "owner@bao.local",
+    BAO_INVITE_SECRET: "fixture-invite-secret",
+  };
+  if (enabled) env.BAO_REMOTE_MCP = "1";
+  else delete env.BAO_REMOTE_MCP;
+  const child = spawn("npm", ["run", "start", "--", "--port", String(port), "-H", "127.0.0.1"], {
     detached: true,
     cwd: webDir,
-    env: {
-      ...process.env,
-      BAO_PG_DIR: path.join(root, "pglite"),
-      BAO_BLOB_DIR: path.join(root, "blobs"),
-      BAO_OWNER_EMAIL: "owner@bao.local",
-      BAO_INVITE_SECRET: "fixture-invite-secret",
-    },
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  registry.stdout?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
-  registry.stderr?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
+  child.stdout?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
+  child.stderr?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
   const start = Date.now();
   let last = "";
   while (Date.now() - start < 180_000) {
     try {
       const res = await fetch(`${origin}/api/health`);
       last = await res.text();
-      if (res.ok) return origin;
+      if (res.ok) return { origin, stop: () => stopChild(child) };
     } catch (err) {
       last = err instanceof Error ? err.message : String(err);
     }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
+  await stopChild(child);
   throw new Error(`web did not start: ${last}\n${logs.join("").slice(-4000)}`);
 }
 
-async function stop(): Promise<void> {
-  const child = registry;
-  registry = undefined;
-  if (!child?.pid || child.exitCode !== null) return;
+async function stopChild(child: ChildProcess): Promise<void> {
+  if (!child.pid || child.exitCode !== null) return;
   try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
   await new Promise((resolve) => setTimeout(resolve, 500));
   try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
+}
+
+async function assertDisabled(origin: string, method: string, pathname: string, body?: unknown, headers?: Record<string, string>): Promise<void> {
+  const started = Date.now();
+  const res = await fetch(`${origin}${pathname}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const ms = Date.now() - started;
+  const text = await res.text();
+  assert.equal(res.status, 404, `${method} ${pathname} ${text}`);
+  assert.deepEqual(JSON.parse(text), { error: "remote_disabled" });
+  assert.ok(ms < 5_000, `${method} ${pathname} took ${ms}ms`);
 }
 
 function freePort(): Promise<number> {

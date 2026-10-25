@@ -10,6 +10,12 @@ import { policyAllowsRemoteRun } from "../../../web/src/lib/remote-policy";
 import { Library } from "./store";
 import { loadState } from "./sync";
 
+/** This Mac dials out only when its own setting is on, or BAO_REMOTE_MCP=1 is set for the process. */
+export function desktopRemoteEnabled(library: Library, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.BAO_REMOTE_MCP === "1") return true;
+  return library.settings().remoteMcp === true;
+}
+
 export interface RemoteView {
   phase: "idle" | "approval" | "running" | "confirm";
   workflowId?: string;
@@ -114,6 +120,10 @@ export function createRemoteAgent(opts: {
 
   async function loop(): Promise<void> {
     while (!stopped) {
+      if (!desktopRemoteEnabled(opts.library)) {
+        await sleep(1500);
+        continue;
+      }
       const state = loadState(opts.library.root);
       if (!state.server || !state.deviceToken) {
         await sleep(1500);

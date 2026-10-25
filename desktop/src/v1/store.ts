@@ -16,6 +16,12 @@ export interface Settings extends HealSettings {
   circuitLimit: number;
   circuitWindowMs: number;
   syncServer?: string;
+  /**
+   * Outbound long-poll for a remote agent. Absent or false means this Mac
+   * does not dial the registry and does not show remote prompts.
+   * This stays on this Mac. It is not part of synced settings.
+   */
+  remoteMcp?: boolean;
   /** Scheduled library export. Absent means off. */
   backupSchedule?: "off" | "daily" | "weekly";
   /**

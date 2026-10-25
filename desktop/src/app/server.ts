@@ -690,7 +690,7 @@ export async function startApp(opts: {
         return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; siteTrust?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: unknown };
         const patch: Partial<Settings> = {};
         if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
@@ -703,6 +703,7 @@ export async function startApp(opts: {
           patch.circuitLimit = Math.round(body.circuitLimit);
         }
         if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
+        if (typeof body.remoteMcp === "boolean") patch.remoteMcp = body.remoteMcp;
         if ("siteTrust" in body) {
           const siteTrust = cleanSiteTrust(body.siteTrust);
           if (siteTrust) patch.siteTrust = siteTrust;
