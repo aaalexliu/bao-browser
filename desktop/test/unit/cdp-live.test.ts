@@ -12,6 +12,7 @@ import {
 } from "../../src/cdp-live/consent";
 import { assertActivePortFile, parseDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { CDP_LIVE_SERVER_REFUSAL, refusesOwnedBrowser } from "../../src/cdp-live/launch-guard";
+import { TRUST_SOURCE } from "../../src/cdp-live/driver";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
 
 const ready = {
@@ -122,6 +123,13 @@ test("cdp-live is accepted and does not select Playwright's launcher or the exte
   assert.equal(refusesOwnedBrowser("extension"), false);
   assert.equal(refusesOwnedBrowser("cdp"), false);
   assert.match(CDP_LIVE_SERVER_REFUSAL, /live attach/);
+});
+
+test("click trust is recorded from the event and kept across navigations", () => {
+  assert.match(TRUST_SOURCE, /event\.isTrusted === true/);
+  assert.match(TRUST_SOURCE, /sessionStorage\.setItem\("__baoTrustLog"/);
+  assert.equal(TRUST_SOURCE.includes("isTrusted = true"), false);
+  assert.equal(TRUST_SOURCE.includes("navigator"), false);
 });
 
 test("the browser handshake has no Origin header", () => {

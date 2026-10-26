@@ -2,9 +2,26 @@
 
 Observed on alex-m1. Google Chrome **155.0.8059.86**, arm64, already running as a normal window (pid 1497). This path is Chrome's own local remote-debugging switch (`chrome://inspect/#remote-debugging`, Chrome 144+). It is separate from the extension driver in [extension.md](extension.md).
 
-The `cdp-live` driver, the books.toscrape.com allowlist, and the Allow-dialog click guard are in the tree. The p5 Mystery replay was **not** run. On 2026-10-26 the Mac session was locked (`CGSSessionScreenIsLocked`). BaoOSHelper could not see a Chrome window, so it did not type, did not press Allow, and did not open a WebSocket. `DevToolsActivePort` was not read.
+The `cdp-live` driver, the books.toscrape.com allowlist, and the Allow-dialog click guard are in the tree. On 2026-10-26, with the session unlocked and the display awake, the p5 Mystery replay passed twice on one browser socket: 32 rows each, `isTrusted` true, connect-to-Allow 20559 ms. The remote-debugging checkbox was already on and was left on. The runner read `DevToolsActivePort` and no other file in the Chrome profile.
 
-## What AX returned
+## Measured run
+
+BaoOSHelper (`dev.bao.oshelper`, launched with `open -a`, parent `launchd`) reported accessibility granted, screen capture not granted, and no prompt. The checkbox **Allow remote debugging for this browser instance** was already on (`AXCheckBox` value `1`). It was not pressed again. The Allow dialog was absent before the handshake. An `AXButton` named "Allow sites" was in the tree and was not pressed.
+
+The runner read only `DevToolsActivePort`, opened a browser WebSocket with no `Origin` header, and pressed `AXButton` "Allow" once the dialog was present. The button's window was the Inspect page. The socket completed after that press. Connect-to-Allow was **20559 ms**: about 10 s for the accessibility walk that found the dialog, then about 10 s for the press lookup. An earlier connection the same afternoon, before click trust was kept across navigation, measured **20544 ms** and also passed 32 rows twice (3030 ms and 2107 ms) with an empty trust log.
+
+Each replay opened its own window with `Target.createTarget` and closed only that target.
+
+| Run | Status | Rows | Time | isTrusted | webdriver |
+| --- | --- | --- | --- | --- | --- |
+| 1 | passed | 32 | 1932 ms (navigate 904, click 520, extract 319) | true on `A` "Mystery" and `A` "next" | false |
+| 2 | passed | 32 | 1678 ms (navigate 879, click 379, extract 417) | true on `A` "Mystery" and `A` "next" | false |
+
+Host was `books.toscrape.com`. No step paused for a person. Model calls were 0. Each run counted 9 child-frame navigations and did not follow them.
+
+While the socket was open, the accessibility tree contained **Chrome is being controlled by automated test software**. After the socket closed, that text was absent. Nothing was left connected to port 9222. The checkbox stayed on, and Chrome kept listening on `127.0.0.1:9222`.
+
+## What AX returned while the session was locked
 
 BaoOSHelper (`dev.bao.oshelper`, launched with `open -a` from `/Applications/Bao.app`) reported accessibility granted and screen capture not granted. It was not asked to prompt, and it was not asked to capture the screen.
 
@@ -29,7 +46,7 @@ The same shape came back after the display was woken in the earlier attempt. The
 
 One earlier `cg-key` of `cmd+t` was attempted while that tree was empty. The helper refused it (`app did not become frontmost; key was not posted`). No character was sent. The driver now stops before any key when the tree has no window.
 
-CoreGraphics still listed two on-screen Chrome windows, both 1728×1084. Chrome pid 1497 was listening on `127.0.0.1:9222`. That listen was checked with `lsof`. The port file's contents were not read, and nothing else under the Chrome profile directory was listed or read.
+CoreGraphics still listed two on-screen Chrome windows, both 1728×1084. Chrome pid 1497 was listening on `127.0.0.1:9222`. That listen was checked with `lsof`. During the locked attempt the port file's contents were not read, and nothing else under the Chrome profile directory was listed or read.
 
 ## What this machine showed before the checkbox
 
@@ -39,7 +56,7 @@ Checked on 2026-10-25, before the checkbox was pressed:
 - `~/Library/Application Support/Google/Chrome/DevToolsActivePort` was **absent**. Existence was tested with `test -f`. The file was not read, and nothing else under that directory was listed or read.
 - Nothing was listening on TCP 9222.
 
-After that, BaoOSHelper pressed the checkbox (value 0 to 1) on the inspect page. The port file is now present and Chrome is listening on `127.0.0.1:9222`. This later attempt did not read the file and did not connect.
+After that, BaoOSHelper pressed the checkbox (value 0 to 1) on the inspect page. The port file is now present and Chrome is listening on `127.0.0.1:9222`. The locked attempt did not read the file and did not connect. The unlocked run later read only that file.
 
 ## Where the toggle lives
 
@@ -94,7 +111,7 @@ On bind, `DevToolsHttpHandler` writes the user-data file (on this Mac, `~/Librar
 /devtools/browser/<uuid>
 ```
 
-The uuid is there because `IsBrowserTargetDiscoverable()` defaults to false, so `browser_guid_` is `/devtools/browser/` plus a random v4 uuid. The file is rewritten when the server starts. The 155 handler writes it and does not delete it on the stop path that was read, so a leftover file is not proof the server is still up. Absence means this Chrome has not published an endpoint. On this machine the file is present. Its contents were not read. `lsof` shows pid 1497 listening on `127.0.0.1:9222`, which is separate evidence that the server is up.
+The uuid is there because `IsBrowserTargetDiscoverable()` defaults to false, so `browser_guid_` is `/devtools/browser/` plus a random v4 uuid. The file is rewritten when the server starts. The 155 handler writes it and does not delete it on the stop path that was read, so a leftover file is not proof the server is still up. Absence means this Chrome has not published an endpoint. On this machine the file is present. The unlocked runner read only that file and connected to its browser path. The path is not copied here. `lsof` shows pid 1497 listening on `127.0.0.1:9222`.
 
 The inspect page's **Server running at:** line is the address Chrome itself is advertising.
 
@@ -106,7 +123,7 @@ Approval mode (`RemoteDebuggingServerMode::kWithApprovalOnly`) is WebSocket-only
 - The discovery HTML page and bundled frontend resources also return 404.
 - A WebSocket whose path starts with `/devtools/browser` is the browser target. The 155 handler comment is "If we require user approval, we do not require guid." The path in `DevToolsActivePort` works. A path of `/devtools/browser` with no uuid also matches `StartsWith`. Any other path, including `/devtools/page/<id>`, is rejected with 403 before the dialog.
 - After Allow, that one socket is the browser-level CDP session. Further targets are attached with CDP (`Target.createTarget`, `Target.attachToTarget`) on that socket. They are not separate HTTP upgrades.
-- The listen address is loopback. A client that sends an `Origin` header must be same-origin with that loopback address, or named in `--remote-allow-origins`. A local process that sends no `Origin` is not rejected by that check. This was not exercised here, because no WebSocket was opened.
+- The listen address is loopback. A client that sends an `Origin` header must be same-origin with that loopback address, or named in `--remote-allow-origins`. A local process that sends no `Origin` is not rejected by that check. The measured run sent no `Origin` and received the upgrade after Allow. A request that does send `Origin` was not tried.
 - The socket does not complete until Allow is clicked. A client that times out in a couple of seconds will miss the approval.
 
 `--browser-url=http://127.0.0.1:9222` is the wrong discovery path for this mode. Chrome's own auto-connect reads `DevToolsActivePort` and opens `ws://127.0.0.1:<port><path>` directly ([configuration guide](https://developer.chrome.com/docs/devtools/agents/get-started/configuration)).
@@ -115,7 +132,7 @@ Approval mode (`RemoteDebuggingServerMode::kWithApprovalOnly`) is WebSocket-only
 
 The checkbox was left **on**. Chrome is still listening on `127.0.0.1:9222`. No client is connected.
 
-To turn it off: unlock the Mac, open `chrome://inspect/#remote-debugging`, and clear **Allow remote debugging for this browser instance**. Chromium stops the server when that preference flips to false. The connection dialog's **Turn off in settings** button does the same navigation and denies the pending socket. Quitting Chrome also drops the socket. The checkbox preference itself survives a restart until it is cleared.
+To turn it off: open `chrome://inspect/#remote-debugging` and clear **Allow remote debugging for this browser instance**. Chromium stops the server when that preference flips to false. The connection dialog's **Turn off in settings** button does the same navigation and denies the pending socket. Quitting Chrome also drops the socket. The checkbox preference itself survives a restart until it is cleared.
 
 ## Driver
 
@@ -130,25 +147,25 @@ The driver:
 - Returns `needs_human` when the page classifier reports a bot wall or a login wall (`holdForPerson` is off for this runner). It does not solve a captcha.
 - Presses the Allow button only when `mayClickAllow` is true: this process opened the socket, the dialog was absent before the handshake, the dialog title is present, and exactly one `AXButton` is named "Allow". "Allow sites" does not count. A dialog that was already up is not clicked.
 
-The p5 runner is `desktop/src/cdp-live/run.ts`. It was started once against the locked session and stopped on the AX tree above.
+The p5 runner is `desktop/src/cdp-live/run.ts`. Click `isTrusted` is stored in `sessionStorage` so a navigation does not wipe it before the run is read. The runner stops before typing when the accessibility tree has no window.
 
 ## Extension and cdp-live
 
-Extension numbers are the earlier extension proof in [bao.md](bao.md) and [extension.md](extension.md), not a new Mystery run. Books rows there were 11 Travel and 26 Historical Fiction, not Mystery. cdp-live numbers that need a connected socket were not measured.
+Extension numbers are the earlier extension proof in [bao.md](bao.md) and [extension.md](extension.md), not a new Mystery run. Books rows there were 11 Travel and 26 Historical Fiction, not Mystery. cdp-live numbers are the unlocked Mystery pair above.
 
 | | Extension (earlier proof) | cdp-live (this spike) |
 | --- | --- | --- |
-| isTrusted | `true` for `Input.dispatchMouseEvent` / `Input.insertText` | Not measured. The driver sends those same CDP input events and does not spoof `isTrusted`. |
-| Mystery rows | Not this workflow. Prior books runs: 11 Travel, 26 Historical Fiction, 2/2 | Not measured. The replay did not start. |
-| Timing | Not recorded for Mystery | Not measured. |
-| Connect-to-Allow | No browser-socket approval. The debugger attaches per action and then detaches. | Not measured. No WebSocket was opened. |
-| Banner | Toolbar badge REC/RUN. Infobar may show while the debugger is attached. `navigator.webdriver` stayed false. | Not observed. Source says the infobar "Chrome is being controlled by automated test software" is up while an approved socket is open and leaves when the last socket closes. |
-| Visible UI | Per-origin allow page. Badge stays. | Checkbox and per-connection Allow dialog. This attempt saw neither through AX. |
+| isTrusted | `true` for `Input.dispatchMouseEvent` / `Input.insertText` | `true` for the Mystery link and the next link, both runs. `navigator.webdriver` was false. The driver does not spoof `isTrusted`. |
+| Mystery rows | Not this workflow. Prior books runs: 11 Travel, 26 Historical Fiction, 2/2 | 2/2 passed, 32 rows each. |
+| Timing | Not recorded for Mystery | 1932 ms and 1678 ms. |
+| Connect-to-Allow | No browser-socket approval. The debugger attaches per action and then detaches. | 20559 ms from the handshake to the Allow press finishing. The dialog was absent before the handshake. |
+| Banner | Toolbar badge REC/RUN. Infobar may show while the debugger is attached. `navigator.webdriver` stayed false. | "Chrome is being controlled by automated test software" was visible while the socket was open and absent after it closed. |
+| Visible UI | Per-origin allow page. Badge stays. | Checkbox was already on. One Allow press per connection, on the dialog this process opened. |
 | File chooser | `DOM.setFileInputFiles` | This driver throws. The protocol can set a file input; the spike does not. |
 | Downloads | Extension download capture | This driver does not arm downloads. |
-| Cross-origin iframes | Debugger can address the tab it is attached to | Subframes are counted and not navigated. The driver does not attach to other targets. |
+| Cross-origin iframes | Debugger can address the tab it is attached to | Each run counted 9 child-frame navigations and did not follow them. The driver does not attach to other targets. |
 | Shadow DOM | Open shadow is visible to the page script the extension already uses | Same page dump: open shadow is walked, closed shadow is not. |
 | Background tab / focus | The action attaches the debugger on that tab | Input is sent to the driver's own target. The target is brought to the front first. |
-| Other tabs | The extension is granted per origin, not the whole browser | The browser socket can list them. This driver does not. An AX walk of Chrome can see other windows when the session is unlocked; this walk saw no window. |
+| Other tabs | The extension is granted per origin, not the whole browser | The browser socket can list them. This driver does not call `Target.getTargets`. Each replay opens and closes only its own window. |
 | Survives Chrome restart | The extension stays installed. A debugger session does not. | The Allow decision does not. The checkbox preference does, until it is cleared. Not restarted here. |
-| Toggle off | The extension does not use this switch | Before the checkbox was pressed, the port file was absent and nothing listened on 9222. |
+| Toggle off | The extension does not use this switch | Before the checkbox was pressed, the port file was absent and nothing listened on 9222. It is on now, and 9222 is listening. |

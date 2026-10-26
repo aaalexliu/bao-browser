@@ -10,27 +10,39 @@ import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { navigationAllowed, openerAllowed, publicHost } from "./allowlist";
 import { CdpSocket } from "./socket";
 
-const TRUST_SOURCE = `(() => {
+/** Records click isTrusted. sessionStorage keeps the log across same-origin navigations. */
+export const TRUST_SOURCE = `(() => {
   const host = window;
-  if (host.__baoTrustInstalled) return;
-  host.__baoTrustInstalled = true;
-  host.__baoTrustLog = [];
-  document.addEventListener("click", (event) => {
-    const target = event.target;
-    const el = target instanceof Element ? target : null;
-    host.__baoTrustLog.push({
-      isTrusted: event.isTrusted === true,
-      tag: el ? el.tagName : "",
-      text: el ? (el.innerText || el.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 60) : "",
-      ts: Date.now(),
-    });
-  }, true);
+  const persist = () => {
+    try { sessionStorage.setItem("__baoTrustLog", JSON.stringify(host.__baoTrustLog.slice(-20))); } catch (e) {}
+  };
+  if (!host.__baoTrustInstalled) {
+    host.__baoTrustInstalled = true;
+    let prior = [];
+    try {
+      const raw = sessionStorage.getItem("__baoTrustLog");
+      if (raw) prior = JSON.parse(raw);
+    } catch (e) {}
+    host.__baoTrustLog = Array.isArray(prior) ? prior : [];
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      const el = target instanceof Element ? target : null;
+      host.__baoTrustLog.push({
+        isTrusted: event.isTrusted === true,
+        tag: el ? el.tagName : "",
+        text: el ? (el.innerText || el.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 60) : "",
+        ts: Date.now(),
+      });
+      persist();
+    }, true);
+  }
 })()`;
 
 export interface TrustEvent {
   isTrusted: boolean;
   tag: string;
   text: string;
+  ts?: number;
 }
 
 export interface PageObservation {
@@ -67,6 +79,7 @@ export class CdpLiveDriver implements Driver {
   private loadEpoch = 0;
   private offHost = "";
   private humanAsk: HumanAsk | undefined;
+  private trustEvents: TrustEvent[] = [];
   readonly subframesSeen = { count: 0 };
 
   constructor(
@@ -100,6 +113,9 @@ export class CdpLiveDriver implements Driver {
       return;
     }
     const url = frame.url || "";
+    if (!url || url === "about:blank" || navigationAllowed(url)) {
+      void this.evaluate(TRUST_SOURCE).catch(() => undefined);
+    }
     if (!url || openerAllowed(url) && url === "about:blank") return;
     if (!navigationAllowed(url)) {
       this.offHost = publicHost(url) || "off-allowlist";
@@ -303,18 +319,37 @@ export class CdpLiveDriver implements Driver {
   }
 
   async observe(): Promise<PageObservation> {
-    return this.evaluate<PageObservation>(`(() => {
+    await this.noteTrust();
+    const page = await this.evaluate<{ webdriver: boolean; host: string }>(`({
+      webdriver: navigator.webdriver === true,
+      host: location.hostname,
+    })`).catch(() => undefined);
+    return {
+      webdriver: page ? page.webdriver : false,
+      host: page?.host || "",
+      trust: this.trustEvents.slice(0, 20),
+    };
+  }
+
+  private rememberTrust(events: TrustEvent[]): void {
+    for (const event of events) {
+      const seen = this.trustEvents.some((prev) =>
+        prev.isTrusted === event.isTrusted && prev.tag === event.tag && prev.text === event.text && prev.ts === event.ts);
+      if (!seen) this.trustEvents.push(event);
+    }
+  }
+
+  private async noteTrust(): Promise<void> {
+    const events = await this.evaluate<TrustEvent[]>(`(() => {
       const log = Array.isArray(window.__baoTrustLog) ? window.__baoTrustLog : [];
-      return {
-        webdriver: navigator.webdriver === true,
-        host: location.hostname,
-        trust: log.slice(0, 20).map((event) => ({
-          isTrusted: event.isTrusted === true,
-          tag: String(event.tag || ""),
-          text: String(event.text || "").slice(0, 60),
-        })),
-      };
-    })()`);
+      return log.slice(0, 20).map((event) => ({
+        isTrusted: event.isTrusted === true,
+        tag: String(event.tag || ""),
+        text: String(event.text || "").slice(0, 60),
+        ts: typeof event.ts === "number" ? event.ts : 0,
+      }));
+    })()`).catch(() => [] as TrustEvent[]);
+    this.rememberTrust(events);
   }
 
   async end(): Promise<void> {
@@ -341,6 +376,7 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Input.dispatchMouseEvent", {
       type: "mouseReleased", x, y, button: "left", clickCount: 1,
     }, this.sessionId);
+    await this.noteTrust();
   }
 
   private async waitForLoad(epoch: number, timeoutMs: number): Promise<void> {
