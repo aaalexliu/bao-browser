@@ -249,9 +249,10 @@ export interface WorkflowV2 {
   summary?: string;
   /**
    * Playwright is Bao's own Chrome. Extension is the person's installed Chrome.
+   * cdp-live attaches to the already-running Chrome. The desktop does not launch a browser for it.
    * Absent means Playwright, so older workflows stay on the driver they were recorded with.
    */
-  driver?: "playwright" | "extension";
+  driver?: "playwright" | "extension" | "cdp-live";
   /** Set when the document uses files or dates. Absent on a data-steps-only version 3. */
   filesDates?: 1;
 }
@@ -286,7 +287,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   else if (doc.version === 3 && !documentUsesDataSteps(doc) && !usesFilesDates(doc)) errors.push("version");
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
-  if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension") errors.push("driver");
+  if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension" && doc.driver !== "cdp-live") errors.push("driver");
   const names = new Set<string>();
   for (const input of doc.inputs) {
     if (!NAME_RE.test(input.name)) errors.push(`input name ${input.name}`);

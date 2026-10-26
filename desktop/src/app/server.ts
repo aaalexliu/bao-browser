@@ -106,6 +106,7 @@ import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extensi
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
 import { workflowDriver, type Gesture } from "../extension/protocol";
+import { CDP_LIVE_SERVER_REFUSAL, refusesOwnedBrowser } from "../cdp-live/launch-guard";
 import { defaultConfigHome } from "../extension/install-host";
 import { keepMine, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
@@ -948,6 +949,7 @@ export async function startApp(opts: {
         const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
+        if (refusesOwnedBrowser(workflow.driver)) return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
         const args = await materializeFiles(body.args || {});
         if (body.fresh) {
           const existing = replays.get(saved.id);
@@ -1897,6 +1899,7 @@ export async function startApp(opts: {
     replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
     prompts?: PersonPrompts,
   ) {
+    if (refusesOwnedBrowser(workflow.driver)) throw new Error(CDP_LIVE_SERVER_REFUSAL);
     const session = await openReplay(library, workflow.id, replays, baoProfile);
     const page = session.page;
     const driver = new BrowserDriver(page, undefined, prompts);
@@ -2437,6 +2440,7 @@ async function runRecorded(
   fromStep?: string,
   link?: ExtensionLink,
 ) {
+  if (refusesOwnedBrowser(workflow.driver)) throw new Error(CDP_LIVE_SERVER_REFUSAL);
   if (workflowDriver(workflow) === "extension") {
     if (!link) throw new Error("extension is not connected");
     return runExtension(library, workflow, args, notices, prompts, link, fromStep);

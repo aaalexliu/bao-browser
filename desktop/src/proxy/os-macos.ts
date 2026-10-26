@@ -62,6 +62,7 @@ export interface AxHit {
   windowId?: number;
   width?: number;
   height?: number;
+  pid?: number;
   windows?: { id: number; layer: number; x: number; y: number; w: number; h: number }[];
 }
 
@@ -105,7 +106,7 @@ function sleep(ms: number): Promise<void> {
 
 /** LaunchServices launch so TCC attributes the prompt to the app bundle.
  * `open -W` can return before the helper finishes, so the result file is polled. */
-async function runApp(app: string, args: string[]): Promise<AxHit> {
+async function runApp(app: string, args: string[], timeoutMs = 45000): Promise<AxHit> {
   const dir = await mkdtemp(path.join(tmpdir(), "bao-os-"));
   const stdout = path.join(dir, "out.json");
   const stderr = path.join(dir, "err.txt");
@@ -121,7 +122,7 @@ async function runApp(app: string, args: string[]): Promise<AxHit> {
     child.on("error", () => { closed = -1; });
     child.on("close", (code) => { closed = code ?? -1; });
     let out = "";
-    while (Date.now() - started < 45000) {
+    while (Date.now() - started < timeoutMs) {
       out = await readFile(result, "utf8").catch(() => "");
       if (!out.trim()) out = await readFile(stdout, "utf8").catch(() => "");
       if (out.trim()) break;
@@ -136,8 +137,8 @@ async function runApp(app: string, args: string[]): Promise<AxHit> {
   }
 }
 
-function run(bin: string, args: string[]): Promise<AxHit> {
-  return bin.endsWith(".app") ? runApp(bin, args) : runBin(bin, args);
+function run(bin: string, args: string[], timeoutMs?: number): Promise<AxHit> {
+  return bin.endsWith(".app") ? runApp(bin, args, timeoutMs) : runBin(bin, args);
 }
 
 function identity(target: OsTarget): string[] {
@@ -154,9 +155,9 @@ export class MacOsHelper {
   readonly calls: string[][] = [];
   constructor(readonly bin: string) {}
 
-  private exec(args: string[]): Promise<AxHit> {
+  private exec(args: string[], timeoutMs?: number): Promise<AxHit> {
     this.calls.push(args);
-    return run(this.bin, args);
+    return run(this.bin, args, timeoutMs);
   }
 
   permissions(prompt: boolean): Promise<AxHit> {
@@ -164,7 +165,7 @@ export class MacOsHelper {
   }
 
   nodes(bundle: string): Promise<AxHit> {
-    return this.exec(["nodes", "--bundle", bundle]);
+    return this.exec(["nodes", "--bundle", bundle], 90_000);
   }
 
   hit(x: number, y: number, bundle: string): Promise<AxHit> {
@@ -178,7 +179,7 @@ export class MacOsHelper {
   press(target: OsTarget, pid?: number): Promise<AxHit> {
     const args = ["press", ...identity(target)];
     if (pid) args.push("--pid", String(pid));
-    return this.exec(args);
+    return this.exec(args, 90_000);
   }
 
   key(bundle: string, combo: string): Promise<AxHit> {
@@ -190,7 +191,19 @@ export class MacOsHelper {
   }
 
   read(target: OsTarget): Promise<AxHit> {
-    return this.exec(["read", ...identity(target)]);
+    return this.exec(["read", ...identity(target)], 90_000);
+  }
+
+  cgKey(bundle: string, combo: string): Promise<AxHit> {
+    return this.exec(["cg-key", "--bundle", bundle, "--combo", combo]);
+  }
+
+  cgType(bundle: string, text: string): Promise<AxHit> {
+    return this.exec(["cg-type", "--bundle", bundle, "--text", text]);
+  }
+
+  raiseWindow(bundle: string, title: string): Promise<AxHit> {
+    return this.exec(["raise-window", "--bundle", bundle, "--title", title]);
   }
 
   focusRole(bundle: string, role: string, name = ""): Promise<AxHit> {
