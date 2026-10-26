@@ -103,12 +103,21 @@ async function until(
   timeoutMs: number,
 ): Promise<InstacartSnap> {
   const deadline = Date.now() + timeoutMs;
-  let page = await snap(driver, want);
-  while (Date.now() < deadline && !page.blocked && !ready(page)) {
+  let last: InstacartSnap | undefined;
+  while (Date.now() < deadline) {
+    const page = await snap(driver, want).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/allowlist refused/.test(message)) throw err;
+      return undefined;
+    });
+    if (page) {
+      last = page;
+      if (page.blocked || ready(page)) return page;
+    }
     await sleep(500);
-    page = await snap(driver, want);
   }
-  return page;
+  if (!last) throw new NeedsHuman("page-lost");
+  return last;
 }
 
 async function wall(driver: CdpLiveDriver): Promise<string | null> {
@@ -251,15 +260,11 @@ async function main(): Promise<void> {
     if (prior?.phase === "added") {
       progress("resuming at remove; not adding another item");
     } else {
-      const landed = await until(driver, "", (page) => page.search && page.cartCount != null, 25_000);
+      const landed = await until(driver, "", (page) => page.search && !page.cartAmbiguous, 25_000);
       remember(landed);
       if (landed.blocked) throw new NeedsHuman(landed.blocked);
       if (landed.cartAmbiguous) throw new NeedsHuman("cart-ambiguous");
-      if (landed.cartCount == null) throw new NeedsHuman("cart-count");
       if (!landed.search || !searchLabelOk(landed.searchLabel)) throw new NeedsHuman("search-missing");
-      countBefore = landed.cartCount;
-      const counted: Saved = { phase: "counted", countBefore, product: "" };
-      await writeState(stateFile, counted);
 
       const searchStarted = Date.now();
       await clickMarked(driver, "[data-bao-search]", landed.searchLabel, searchLabelOk(landed.searchLabel), "search");
@@ -272,10 +277,14 @@ async function main(): Promise<void> {
       await driver.key("Enter");
       note("type-search", searchStarted, "passed");
 
-      const found = await until(driver, "", (page) => stapleNameOk(page.product) && addLabelOk(page.addLabel), 20_000);
+      const found = await until(driver, "", (page) => stapleNameOk(page.product) && addLabelOk(page.addLabel) && page.cartCount != null && !page.cartAmbiguous, 25_000);
       remember(found);
       if (found.blocked) throw new NeedsHuman(found.blocked);
+      if (found.cartAmbiguous) throw new NeedsHuman("cart-ambiguous");
       if (!stapleNameOk(found.product) || !addLabelOk(found.addLabel)) throw new NeedsHuman("staple-missing");
+      if (found.cartCount == null) throw new NeedsHuman("cart-count");
+      countBefore = found.cartCount;
+      await writeState(stateFile, { phase: "counted", countBefore, product: "" });
       product = found.product;
       price = found.price;
       await clickMarked(driver, "[data-bao-add]", found.addLabel, addLabelOk(found.addLabel), "add");

@@ -178,4 +178,6 @@ The runner searches for bananas, adds one item, and removes that one item. It wi
 
 Instacart's header cart says "View Cart. Items in cart: N" when the count is read from that phrase, and "Add $X to get $0 delivery fee N" once the cart has items. The count is that N, not the dollar amount. Add controls are "Add" or "Add 1 ct {name}" for a banana. At quantity 1 the line control is "Remove"; above that it is "Decrement" once. Open shadow roots are walked when the click target is marked. A closed shadow root is not.
 
-The first live attempt stopped at `cart-count` with 0 runner clicks. The page host was `www.instacart.com`, the cart was not changed, and the finder had required the label to start with "Cart".
+Per-store summaries labeled "Distinct items in cart" are not the header cart and are not clicked. The runner searches first, then reads the single header cart on the results page before the add. A second summary does not get a click.
+
+The first live attempt stopped at `cart-count` with 0 runner clicks because the finder required the label to start with "Cart". A second attempt found more than one per-store summary, clicked nothing, and stopped at `cart-ambiguous`.

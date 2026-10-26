@@ -39,7 +39,7 @@ export function addLabelOk(label: string): boolean {
 /** Header cart. Empty carts say "View Cart". A cart with items says "Add $X to get $0 delivery fee N". */
 export function cartLabelOk(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
-  if (!text || text.length > 80 || clickForbidden(text) || /add to cart|checkout/i.test(text)) return false;
+  if (!text || text.length > 80 || clickForbidden(text) || /add to cart|checkout|distinct items in cart/i.test(text)) return false;
   if (/^(cart|view cart)\b/i.test(text)) return true;
   if (/items in cart/i.test(text) && /\bcart\b/i.test(text)) return true;
   return /^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+\d+\s*$/i.test(text);
@@ -168,9 +168,10 @@ export function readInstacart(wantProduct: string): InstacartSnap {
   const hintOf = (label: string): string | null => {
     const text = norm(label).slice(0, 80);
     if (!text || /@|\bstreet\b|\bavenue\b|\broad\b|\bapt\b|\b\d{5}\b/i.test(text)) return null;
+    if (/distinct items in cart/i.test(text)) return "store-cart";
     if (/^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+\d+\s*$/i.test(text)) return "header-cart-with-fee";
-    if (/^(view cart|cart)\b/i.test(text) || /items in cart/i.test(text)) return text.replace(/\d+/g, "#").slice(0, 60);
-    if (/^search\b/i.test(text)) return text.replace(/\d+/g, "#").slice(0, 40);
+    if (/^(view cart|cart)\b/i.test(text) || /items in cart/i.test(text)) return "view-cart";
+    if (/^search\b/i.test(text)) return "search";
     if (/^add\s+1\s+(?:ct|item|pkg|ea|each)\b/i.test(text) || /^(add|add to cart|add item)$/i.test(text)) return "add";
     if (/^(decrement|decrease|increment|increase)\b/i.test(text)) return text.split(/\s+/).slice(0, 2).join(" ");
     if (/^remove\b/i.test(text)) return "remove";
