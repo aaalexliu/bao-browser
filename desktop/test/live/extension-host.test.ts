@@ -73,13 +73,13 @@ interface HostInfo {
   state?: string;
 }
 
-function workflow(id: string, name: string, steps: WorkflowV2["steps"]): WorkflowV2 {
+function workflow(id: string, name: string, steps: WorkflowV2["steps"], startUrl = BOOKS): WorkflowV2 {
   return {
     schema: "bao.workflow/v2",
     version: 2,
     id,
     name,
-    startUrl: BOOKS,
+    startUrl,
     createdAt: Date.now(),
     inputs: [],
     driver: "extension",
@@ -87,7 +87,7 @@ function workflow(id: string, name: string, steps: WorkflowV2["steps"]): Workflo
   };
 }
 
-test("extension replay asks for one origin and does not error with no host permission", { timeout: 180_000 }, async () => {
+test("extension replay asks for one origin and does not error with no host permission", { timeout: 300_000 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-ext-host-"));
   const home = path.join(root, "bao");
   const chromeHome = path.join(root, "home");
@@ -237,10 +237,99 @@ test("extension replay asks for one origin and does not error with no host permi
     await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: 20_000 });
     assertClean(await extensionInfo(page), "after debugger");
 
+    await closeAllowPages(browser);
+    const quotesOrigin = "https://quotes.toscrape.com/*";
+    const allPromise = link.command("open", {
+      url: "https://quotes.toscrape.com/",
+      inject: true,
+      grantMs: 25_000,
+    }, 50_000).then(
+      (value) => value as { needsHuman?: boolean; url?: string; error?: string },
+      (err) => ({ needsHuman: true, error: err instanceof Error ? err.message : String(err) }),
+    );
+    const allAllow = await waitForAllow(link, debugPort, hostsSeen, 12_000, quotesOrigin);
+    assert.equal(allAllow.origins, quotesOrigin);
+    assert.equal(/https?:\/\/\*\//.test(allAllow.origins), false);
+    const allShot = await shotAllow(browser, shotDir);
+    await grantHost(browser, debugPort, quotesOrigin, false, "#allow-all", "https://*/*");
+    const allOpened = await allPromise;
+    assert.notEqual(allOpened.needsHuman, true, JSON.stringify(allOpened));
+    assert.equal(await originGranted(browser, debugPort, undefined, "http://*/*"), true);
+    const wide = await link.command("net-state", {}, 10_000) as { listening?: boolean; urls?: string[] };
+    assert.equal(wide.listening, true, JSON.stringify(wide));
+    assert.ok((wide.urls || []).includes("https://*/*"), JSON.stringify(wide.urls));
+    assert.ok((wide.urls || []).includes("http://*/*"), JSON.stringify(wide.urls));
+    assert.equal((wide.urls || []).includes("<all_urls>"), false);
+
+    const onWorkflow = await link.command("secret-pin", { url: "https://quotes.toscrape.com/login" }, 8_000) as { ok?: boolean };
+    const offWorkflow = await link.command("secret-pin", { url: "https://books.toscrape.com/" }, 8_000) as { ok?: boolean };
+    assert.equal(onWorkflow.ok, true, JSON.stringify(onWorkflow));
+    assert.equal(offWorkflow.ok, false, JSON.stringify(offWorkflow));
+
+    app.library.save(workflow("wf-host-all", "Host all", [], "https://example.com/"));
+    process.env.BAO_HOST_GRANT_MS = "8000";
+    let promptedAgain = false;
+    const watchPrompt = (async () => {
+      const start = Date.now();
+      while (Date.now() - start < 10_000) {
+        const state = await link.command("net-state", {}, 3_000).catch(() => ({})) as { allowUrl?: string };
+        if (String(state.allowUrl || "").includes("allow.html")) {
+          promptedAgain = true;
+          return;
+        }
+        await sleep(150);
+      }
+    })();
+    const skipped = await postReplay(app.port, "wf-host-all");
+    await watchPrompt;
+    assert.equal(promptedAgain, false, "all-sites grant still opened allow.html");
+    assert.notEqual(skipped.body.status, "needs_human", JSON.stringify(skipped.body));
+    assert.equal(/Allow Bao on /.test(String(skipped.body.message || skipped.body.reason || "")), false);
+
+    const ui = browser.contexts()[0];
+    assert.ok(ui, "cdp context");
+    const settings = await ui.newPage();
+    await settings.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await settings.locator("nav button[data-screen='settings']").click();
+    await settings.locator("#host-access-status").waitFor({ timeout: 10_000 });
+    await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("all sites"), undefined, { timeout: 10_000 });
+    await settings.locator("#host-access").screenshot({ path: path.join(shotDir, "settings-host.png") });
+    await settings.screenshot({ path: path.join(shotDir, "settings.png") });
+    await settings.locator("#revoke-hosts").click();
+    await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("none"), undefined, { timeout: 10_000 });
+    const revokedAccess = await fetch(`http://127.0.0.1:${app.port}/api/extension/host-access`).then((res) => res.json()) as { hostAccess?: string };
+    assert.equal(revokedAccess.hostAccess, "none", JSON.stringify(revokedAccess));
+    const quietAgain = await link.command("net-state", {}, 10_000) as { listening?: boolean; urls?: string[] };
+    assert.equal(quietAgain.listening, false, JSON.stringify(quietAgain));
+    await settings.close().catch(() => undefined);
+
+    app.library.save(workflow("wf-host-again", "Host again", [], "https://example.org/"));
+    process.env.BAO_HOST_GRANT_MS = "3000";
+    const againPromise = postReplay(app.port, "wf-host-again");
+    const againAllow = await waitForAllow(link, debugPort, hostsSeen, 8_000, "https://example.org/*");
+    assert.equal(againAllow.origins, "https://example.org/*");
+    assert.equal(againAllow.origins.includes(","), false);
+    assert.equal(/https?:\/\/\*\//.test(againAllow.origins), false);
+    const again = await againPromise;
+    assert.equal(again.statusCode, 200, JSON.stringify(again.body));
+    assert.equal(again.body.status, "needs_human", JSON.stringify(again.body));
+    assert.match(String(again.body.message || ""), /example\.org/);
+    assert.match(String(again.body.message || ""), /not granted in time/);
+    assert.equal(hostsSeen.has("example.org"), false, `navigated before a grant: ${[...hostsSeen].join(" ")}`);
+
+    await page.goto("chrome://extensions/?errors=" + EXTENSION_ID, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.screenshot({ path: path.join(shotDir, "errors.png"), fullPage: true });
+    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: 20_000 });
+    assertClean(await extensionInfo(page), "after revoke");
+    await page.screenshot({ path: path.join(shotDir, "card.png"), fullPage: true });
+
     mkdirSync(ARTIFACTS, { recursive: true });
     copyFileSync(path.join(shotDir, "errors.png"), path.join(ARTIFACTS, "chrome_extensions_error_list.png"));
     copyFileSync(path.join(shotDir, "card.png"), path.join(ARTIFACTS, "chrome_extensions_no_errors.png"));
     if (allowShot) copyFileSync(allowShot, path.join(ARTIFACTS, "chrome_allow_one_origin.png"));
+    if (allShot) copyFileSync(allShot, path.join(ARTIFACTS, "chrome_allow_all_sites.png"));
+    copyFileSync(path.join(shotDir, "settings-host.png"), path.join(ARTIFACTS, "bao_settings_host_access.png"));
+    copyFileSync(path.join(shotDir, "settings.png"), path.join(ARTIFACTS, "bao_settings.png"));
   } catch (err) {
     const tail = readFileSync(logPath, "utf8").slice(-2000);
     const message = err instanceof Error ? err.message : String(err);
@@ -295,11 +384,26 @@ function originsOf(url: string): string {
   }
 }
 
+function wantedOrigin(origins: string, want?: string): boolean {
+  if (!origins) return false;
+  if (!want) return true;
+  return origins.split(",").map((item) => item.trim()).includes(want);
+}
+
+async function closeAllowPages(browser: Browser): Promise<void> {
+  for (const context of browser.contexts()) {
+    for (const page of [...context.pages()]) {
+      if (page.url().includes("/allow.html")) await page.close().catch(() => undefined);
+    }
+  }
+}
+
 async function waitForAllow(
   link: NonNullable<Awaited<ReturnType<typeof startApp>>["extensionLink"]>,
   debugPort: number,
   hostsSeen: Set<string>,
   timeoutMs: number,
+  want?: string,
 ): Promise<{ origins: string; url: string }> {
   const start = Date.now();
   let last = "";
@@ -311,13 +415,13 @@ async function waitForAllow(
       if (host && (url.startsWith("http://") || url.startsWith("https://"))) hostsSeen.add(host);
       if (url.includes("/allow.html")) {
         const origins = originsOf(url);
-        if (origins) return { origins, url };
+        if (wantedOrigin(origins, want)) return { origins, url };
       }
     }
     const state = await link.command("net-state", {}, 5000).catch(() => ({})) as { allowUrl?: string };
     last = state.allowUrl || last;
-    if (last.includes("allow.html")) {
-      const match = listed.find((item) => (item.url || "").includes("allow.html"));
+    if (wantedOrigin(originsOf(last), want) && last.includes("allow.html")) {
+      const match = listed.find((item) => (item.url || "").includes("allow.html") && wantedOrigin(originsOf(item.url || ""), want));
       if (match?.url) return { origins: originsOf(match.url), url: match.url };
     }
     await sleep(200);
@@ -448,10 +552,11 @@ function cdpCall(wsUrl: string, method: string, params: Record<string, unknown>)
   });
 }
 
-async function cdpClickAllow(wsUrl: string): Promise<void> {
+async function cdpClickAllow(wsUrl: string, button = "#allow"): Promise<void> {
+  const id = JSON.stringify(button.replace(/^#/, ""));
   const evaled = await cdpCall(wsUrl, "Runtime.evaluate", {
     expression: `(() => {
-      const el = document.getElementById("allow");
+      const el = document.getElementById(${id});
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -524,7 +629,14 @@ async function originGranted(browser: Browser, debugPort: number, allow: Page | 
   return (evaled?.result as { value?: boolean } | undefined)?.value === true;
 }
 
-async function grantHost(browser: Browser, debugPort: number, origin: string, pregrant: boolean): Promise<void> {
+async function grantHost(
+  browser: Browser,
+  debugPort: number,
+  origin: string,
+  pregrant: boolean,
+  button = "#allow",
+  check = origin,
+): Promise<void> {
   let page = findAllowPage(browser, origin);
   let socket = "";
   if (!page) {
@@ -537,16 +649,16 @@ async function grantHost(browser: Browser, debugPort: number, origin: string, pr
   }
   if (page) {
     await page.bringToFront().catch(() => undefined);
-    await page.click("#allow", { timeout: 8000 });
+    await page.click(button, { timeout: 8000 });
   } else {
-    await cdpClickAllow(socket);
+    await cdpClickAllow(socket, button);
   }
   await sleep(700);
   await pressAllow();
   const start = Date.now();
   let outcome: boolean | "denied" = false;
   while (Date.now() - start < 8000) {
-    outcome = await originGranted(browser, debugPort, page, origin);
+    outcome = await originGranted(browser, debugPort, page, check);
     if (outcome === true || outcome === "denied") break;
     await sleep(200);
   }

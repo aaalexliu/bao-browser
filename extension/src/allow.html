@@ -4,14 +4,28 @@
   <meta charset="utf-8">
   <title>Allow Bao</title>
   <style>
-    body { font: 16px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; }
-    button { position: fixed; left: 24px; top: 80px; width: 220px; height: 48px; font: inherit; outline: 3px solid #c00; }
-    p { margin: 150px 24px 0; max-width: 36em; }
+    body { font: 16px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; color: #1d1d1f; background: #fff; }
+    main { padding: 28px 24px 32px; max-width: 36em; }
+    h1 { font-size: 22px; font-weight: 650; margin: 0 0 12px; }
+    p { margin: 0 0 12px; }
+    #note { color: #3a3a3c; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    button { font: inherit; min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #d2d2d7; background: #fff; color: #1d1d1f; }
+    button.primary { background: #0071e3; color: #fff; border-color: #0071e3; }
+    button:focus { outline: 3px solid #c00; outline-offset: 2px; }
+    button:disabled { opacity: 0.45; }
   </style>
 </head>
 <body>
-  <button id="allow" type="button">Allow sites</button>
-  <p id="note">Bao asks for each site at runtime. Nothing is granted at install.</p>
+  <main>
+    <h1>Allow Bao</h1>
+    <p id="copy">Nothing is granted until you click. Allow all sites lets Bao read and act on any site in this Chrome profile. Bao only does that while a run or a recording is active. You can revoke it in Settings.</p>
+    <p id="note"></p>
+    <div class="actions">
+      <button id="allow-all" class="primary" type="button" autofocus>Allow all sites</button>
+      <button id="allow" type="button">Only this site</button>
+    </div>
+  </main>
   <script src="allow.js"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ Goal: You just want your personal agent to use your own computer, because all th
 
 A workflow can run on `driver: extension` or `driver: playwright`. Absent stays Playwright, so an old workflow is unchanged. `validateWorkflow` rejects any other driver string. How to load it is [extension.md](extension.md).
 
-The link is native messaging, host name `com.bao.desktop`. `bao serve` writes the per-user host manifest and a `0600` token. The extension id is the only `allowed_origins` entry. The extension never sees the token. Replay opens a new window and drives that tab. Record and replay request the site's origin at runtime. The manifest has optional host permissions and no install-time `<all_urls>`.
+The link is native messaging, host name `com.bao.desktop`. `bao serve` writes the per-user host manifest and a `0600` token. The extension id is the only `allowed_origins` entry. The extension never sees the token. Replay opens a new window and drives that tab. Record and replay ask at runtime. Allow all sites is the default and requests `http://*/*` and `https://*/*`. Only this site requests one origin. The manifest keeps those as optional host permissions and has no install-time `<all_urls>`. Settings shows all sites, per site, or none. Revoke removes the grant. A secret is typed only on the origin the workflow opened.
 
 The spike used a throwaway Chrome for Testing profile and public pages. It did not open a real Chrome profile.
 

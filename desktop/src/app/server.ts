@@ -102,6 +102,7 @@ import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { Library } from "../v1/store";
+import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
@@ -327,6 +328,20 @@ export async function startApp(opts: {
     } catch {
       return null;
     }
+  }
+
+  async function readExtensionHostAccess(): Promise<"all" | "site" | "none"> {
+    if (extensionLink?.connected()) {
+      try {
+        const value = await extensionLink.command("host-access", {}, 4_000) as { access?: string };
+        const hostAccess = hostAccessMode(value.access);
+        if (library.settings().hostAccess !== hostAccess) library.updateSettings({ hostAccess });
+        return hostAccess;
+      } catch {
+        /* the stored line is what Settings can show while the extension is busy */
+      }
+    }
+    return hostAccessMode(library.settings().hostAccess);
   }
 
   const server = createServer(async (req, res) => {
@@ -676,6 +691,16 @@ export async function startApp(opts: {
         }
         if (!Object.keys(patch).length) return json(res, { error: "settings" }, 400);
         return json(res, library.updateSettings(patch));
+      }
+      if (req.method === "GET" && url.pathname === "/api/extension/host-access") {
+        return json(res, { hostAccess: await readExtensionHostAccess() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extension/host-access/revoke") {
+        if (!extensionLink?.connected()) return json(res, { error: "extension is not connected" }, 409);
+        const value = await extensionLink.command("revoke-hosts", {}, 10_000) as { access?: string };
+        const hostAccess = hostAccessMode(value.access);
+        library.updateSettings({ hostAccess });
+        return json(res, { hostAccess });
       }
       if (req.method === "POST" && url.pathname === "/api/sync/pair") {
         const body = await readBody(req) as { code?: string; server?: string; name?: string; secret?: string };
@@ -1638,6 +1663,11 @@ export async function startApp(opts: {
     if (stored && gesture) gestureById.set(stored.id, gesture);
     publishCapture();
   });
+  extensionLink?.onHostAccess((access) => {
+    const hostAccess = hostAccessMode(access);
+    if (library.settings().hostAccess === hostAccess) return;
+    library.updateSettings({ hostAccess });
+  });
   extensionLink?.onRecord((kind, url) => {
     if (kind === "start") {
       if (capture.recording) return;
@@ -2283,7 +2313,7 @@ function hostGrantError(err: unknown): boolean {
 
 function grantText(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
-  return "Allow Bao on the site in the Chrome window. Click Allow sites. The site was not granted in time.";
+  return hostGrantMessage("the site", "timeout");
 }
 
 function rememberHostGrant(

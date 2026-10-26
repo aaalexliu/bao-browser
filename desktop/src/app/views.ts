@@ -13,6 +13,7 @@ import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
+import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { controlKey, visibleCopy } from "../v1/visible-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
@@ -1289,6 +1290,19 @@ export function tryResult(result: {
     ${lead}
     ${identityTable(result.identity)}
   </div>`;
+}
+
+/** Settings line for the extension host grant. Revoke calls chrome.permissions.remove in the extension. */
+export function hostAccessPanel(access: unknown): string {
+  const mode = hostAccessMode(access);
+  const label = hostAccessLabel(mode);
+  const revoke = mode === "none" ? " disabled" : "";
+  return `<section id="host-access">
+    <h3>Chrome sites</h3>
+    <p id="host-access-status" data-host-access="${mode}">Site access: ${label}</p>
+    <p class="quiet">Allow all sites lets Bao read and act on any site in this Chrome profile. Bao only does that while a run or a recording is active. Revoke takes that away.</p>
+    <button type="button" id="revoke-hosts"${revoke}>Revoke</button>
+  </section>`;
 }
 
 export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
