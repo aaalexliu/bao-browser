@@ -15,7 +15,7 @@ import { resolveCaptureUrl } from "./capture-url";
 import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
-import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
@@ -61,7 +61,10 @@ import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scr
 import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
 import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
-import { isElementCrop } from "../v1/redacted-png";
+import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
+import { isPageAct, selectCardPoster } from "../v1/poster";
+import { applySaveEdits, inferSavedWorkflow, saveCompleter, secretValues } from "../v1/save-intent";
+import { workflowFloorTitle } from "../v1/workflow-name";
 import {
   decide,
   decisionEvent,
@@ -108,6 +111,7 @@ import { gestureQueue, readGestures, writeGestures } from "../extension/gestures
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
 import { workflowDriver, type Gesture } from "../extension/protocol";
 import { defaultConfigHome } from "../extension/install-host";
+import { createRemoteAgent } from "../v1/remote-agent";
 import { keepMine, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -129,6 +133,18 @@ export interface App {
   notifications: { title: string; body: string; tooltip: string }[];
   recording: boolean;
   close(): Promise<void>;
+}
+
+interface PendingCapture {
+  workflow: WorkflowV2;
+  events: TrailEvent[];
+  shots: Map<string, string>;
+  guides: Map<string, string>;
+  poster: string;
+  floor: string;
+  secrets: string[];
+  /** Written on commit so a discard does not leave an orphan gesture file. */
+  gestures?: Gesture[];
 }
 
 const publicDir = process.env.BAO_PUBLIC || path.join(process.cwd(), "desktop/src/app/public");
@@ -216,6 +232,10 @@ export async function startApp(opts: {
   let recordingSince = 0;
   /** URL passed to beginSession. page.url() at stop is a later navigation. */
   let captureOpenUrl = "";
+  let capturePosterPath = "";
+  let capturePageTitle = "";
+  let posterTried = false;
+  let pendingSave: PendingCapture | null = null;
   let sessionMode: "capture" | "teach" = "capture";
   let teachPhase: "idle" | "live" | "review" = "idle";
   let teachDecisions: TeachDecision[] = [];
@@ -309,6 +329,12 @@ export async function startApp(opts: {
       capture.resume();
     },
   };
+  const remote = createRemoteAgent({
+    library,
+    prompts,
+    stop: () => { stopRun = true; },
+    clearStop: () => { stopRun = false; },
+  });
   const sessions = new Map<string, FreezeSession>();
   const pendings = new Map<string, { user: string; exp: number }>();
   let applyClicks = 0;
@@ -423,6 +449,8 @@ export async function startApp(opts: {
           promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
           opened,
+          saveSheet: saveSheetState(),
+          remote: remote.view(),
         });
       }
       if (req.method === "POST" && url.pathname === "/api/open") {
@@ -572,7 +600,7 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/poster")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const file = newestPng(path.join(library.root, "shots", "workflows", id));
+        const file = workflowPoster(path.join(library.root, "shots", "workflows", id));
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPng(res, file);
       }
@@ -621,6 +649,11 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
         return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
+      }
+      if (req.method === "GET" && url.pathname === "/api/capture/poster") {
+        const file = pendingSave?.poster;
+        if (!file || !existsSync(file) || !isFullPageShot(readFileSync(file))) return json(res, { error: "no picture" }, 404);
+        return sendPng(res, file);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/capture/shots/")) {
         const file = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
@@ -672,7 +705,7 @@ export async function startApp(opts: {
         return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; siteTrust?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: unknown };
         const patch: Partial<Settings> = {};
         if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
@@ -685,6 +718,7 @@ export async function startApp(opts: {
           patch.circuitLimit = Math.round(body.circuitLimit);
         }
         if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
+        if (typeof body.remoteMcp === "boolean") patch.remoteMcp = body.remoteMcp;
         if ("siteTrust" in body) {
           const siteTrust = cleanSiteTrust(body.siteTrust);
           if (siteTrust) patch.siteTrust = siteTrust;
@@ -969,6 +1003,20 @@ export async function startApp(opts: {
         const workflow = await enqueue(() => saveSession());
         return json(res, workflow);
       }
+      if (req.method === "POST" && url.pathname === "/api/sessions/commit") {
+        const body = await readBody(req) as { name?: string; summary?: string; intent?: string };
+        try {
+          const workflow = await enqueue(() => commitSave(body));
+          return json(res, workflow);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "save failed";
+          return json(res, { error: message }, message === "nothing to save" ? 409 : 400);
+        }
+      }
+      if (req.method === "POST" && url.pathname === "/api/sessions/save/discard") {
+        await enqueue(() => discardPending());
+        return json(res, { saved: false });
+      }
       if (req.method === "POST" && url.pathname === "/api/replay") {
         const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean };
         const saved = library.read(body.id);
@@ -1033,6 +1081,21 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
         loginContinued = true;
         return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/allow") {
+        remote.allow();
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/deny") {
+        remote.deny();
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/kill") {
+        remote.kill();
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/confirm") {
+        return json(res, await remote.approveConfirm());
       }
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
         stopRun = true;
@@ -1238,6 +1301,8 @@ export async function startApp(opts: {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
         const body = await readBody(req) as {
           name?: string;
+          summary?: string;
+          intent?: string;
           workflow?: WorkflowV2;
           heal?: HealMode | null;
           driver?: "playwright" | "extension" | null;
@@ -1292,7 +1357,11 @@ export async function startApp(opts: {
           return json(res, next);
         }
         const current = library.read(id);
-        const renamed = { ...current, name: body.name || current.name, updatedAt: Date.now() };
+        const renamed = applySaveEdits(current, {
+          name: typeof body.name === "string" ? body.name : current.name,
+          summary: typeof body.summary === "string" ? body.summary : current.summary,
+          intent: typeof body.intent === "string" ? body.intent : current.intent,
+        });
         draftVersion(library, renamed, "edit");
         return json(res, renamed);
       }
@@ -1427,6 +1496,7 @@ export async function startApp(opts: {
 
   syncPending();
   await new Promise<void>((resolve) => server.listen(opts.port ?? 0, "127.0.0.1", resolve));
+  remote.start();
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
   boundPort = port;
@@ -1467,6 +1537,9 @@ export async function startApp(opts: {
     recordingSince = Date.now();
     captureShots.clear();
     captureGuideShots.clear();
+    capturePosterPath = "";
+    capturePageTitle = "";
+    posterTried = false;
     try {
       profile = baoProfile;
       mkdirSync(profile, { recursive: true });
@@ -1516,6 +1589,9 @@ export async function startApp(opts: {
       capture.discard();
       recordingSince = 0;
       captureOpenUrl = "";
+      capturePosterPath = "";
+      capturePageTitle = "";
+      posterTried = false;
       await stopBrowser();
       publishCapture();
       throw err;
@@ -1539,6 +1615,10 @@ export async function startApp(opts: {
     if (sessionMode === "teach") stampTeachSeen();
     publishCapture();
     if (!stored || !page || page.isClosed()) return;
+    if (sessionMode === "capture" && !posterTried && isPageAct(stored.op)) {
+      posterTried = true;
+      await takeCardPoster();
+    }
     const dir = path.join(opts.home, "shots", "capture");
     mkdirSync(dir, { recursive: true });
     const dest = path.join(dir, `${stored.id}.png`);
@@ -1603,6 +1683,32 @@ export async function startApp(opts: {
     }
   }
 
+  function saveSheetState(): { id: string; name: string; summary: string; intent: string; poster: boolean } | null {
+    if (!pendingSave) return null;
+    return {
+      id: pendingSave.workflow.id,
+      name: pendingSave.workflow.name,
+      summary: pendingSave.workflow.summary || "",
+      intent: pendingSave.workflow.intent || "",
+      poster: !!pendingSave.poster,
+    };
+  }
+
+  async function takeCardPoster(): Promise<void> {
+    if (capturePosterPath || !page || page.isClosed()) return;
+    try {
+      const title = await page.title().catch(() => "");
+      if (title && !capturePageTitle) capturePageTitle = title.replace(/\s+/g, " ").trim().slice(0, 120);
+      const png = await pagePoster(page);
+      if (!png || !selectCardPoster([{ name: "poster.png", bytes: png }])) return;
+      const dir = path.join(opts.home, "shots", "capture");
+      mkdirSync(dir, { recursive: true });
+      const dest = path.join(dir, "poster.png");
+      writeFileSync(dest, png);
+      capturePosterPath = dest;
+    } catch { /* no poster is better than an element crop */ }
+  }
+
   async function saveSession(): Promise<WorkflowV2> {
     await settleShots();
     const raw = capture.stop();
@@ -1619,30 +1725,116 @@ export async function startApp(opts: {
     });
     const startUrl = captureStartUrl(clean, opened);
     extractProposal = undefined;
-    const built = explain(clean, { id, name: "Captured workflow", startUrl, secrets: [] });
-    const workflow = built.workflow;
-    if (captureVia === "extension") {
-      workflow.driver = "extension";
-      writeGestures(opts.home, workflow.id, gestureQueue(workflow.steps, built.groups, gestureById));
-    }
-    const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
-    mkdirSync(shotDest, { recursive: true });
-    for (let i = 0; i < workflow.steps.length; i++) {
+    const secrets = secretValues(raw);
+    const built = explain(clean, { id, name: "Untitled workflow", startUrl, secrets: [] });
+    const floor = workflowFloorTitle({
+      startUrl,
+      events: clean,
+      steps: built.workflow.steps,
+      pageTitle: capturePageTitle,
+      secrets,
+    });
+    const drafted = await inferSavedWorkflow(built.workflow, {
+      floorTitle: floor,
+      startUrl,
+      events: clean,
+      steps: built.workflow.steps,
+      pageTitle: capturePageTitle,
+      groups: built.groups,
+      secrets,
+    }, await saveCompleter());
+    if (captureVia === "extension") drafted.driver = "extension";
+    const gestures = captureVia === "extension"
+      ? gestureQueue(drafted.steps, built.groups, gestureById)
+      : undefined;
+    if (pendingSave) await rm(path.join(opts.home, "shots", "pending", pendingSave.workflow.id), { recursive: true, force: true }).catch(() => undefined);
+    const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
+    mkdirSync(shotDir, { recursive: true });
+    const shots = new Map<string, string>();
+    const guides = new Map<string, string>();
+    for (let i = 0; i < drafted.steps.length; i++) {
       const group = built.groups[i] || [];
       const event = group.find((item) => item.op !== "note") || group[0];
-      const step = workflow.steps[i];
+      const step = drafted.steps[i];
       const src = event ? captureShots.get(event.id) : undefined;
-      if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+      if (src && step && existsSync(src)) {
+        const dest = path.join(shotDir, workflowShotName(step.id));
+        copyFileSync(src, dest);
+        shots.set(step.id, dest);
+      }
       const guideSrc = event ? captureGuideShots.get(event.id) : undefined;
-      if (guideSrc && step && existsSync(guideSrc)) copyFileSync(guideSrc, path.join(shotDest, guideShotName(step.id)));
+      if (guideSrc && step && existsSync(guideSrc)) {
+        const dest = path.join(shotDir, guideShotName(step.id));
+        copyFileSync(guideSrc, dest);
+        guides.set(step.id, dest);
+      }
     }
-    library.save(workflow);
-    library.saveTrail(id, ensureTrailTimes(clean).events);
+    let poster = "";
+    if (capturePosterPath && existsSync(capturePosterPath)) {
+      const bytes = readFileSync(capturePosterPath);
+      if (selectCardPoster([{ name: "poster.png", bytes }])) {
+        poster = path.join(shotDir, "poster.png");
+        copyFileSync(capturePosterPath, poster);
+      }
+    }
+    pendingSave = {
+      workflow: drafted,
+      events: ensureTrailTimes(clean).events,
+      shots,
+      guides,
+      poster,
+      floor,
+      secrets,
+      gestures,
+    };
+    capture.discard();
+    captureShots.clear();
+    captureGuideShots.clear();
+    capturePosterPath = "";
+    capturePageTitle = "";
+    posterTried = false;
     captureVia = "playwright";
     gestureById.clear();
     await stopBrowser();
     publishCapture();
+    return drafted;
+  }
+
+  async function commitSave(edits: { name?: string; summary?: string; intent?: string }): Promise<WorkflowV2> {
+    const pending = pendingSave;
+    if (!pending) throw new Error("nothing to save");
+    const workflow = applySaveEdits(pending.workflow, {
+      name: edits.name,
+      summary: edits.summary,
+      intent: edits.intent,
+    }, pending.secrets, pending.floor);
+    const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
+    mkdirSync(shotDest, { recursive: true });
+    for (const [stepId, src] of pending.shots) {
+      if (existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(stepId)));
+    }
+    for (const [stepId, src] of pending.guides) {
+      if (existsSync(src)) copyFileSync(src, path.join(shotDest, guideShotName(stepId)));
+    }
+    if (pending.poster && existsSync(pending.poster)) {
+      const bytes = readFileSync(pending.poster);
+      if (selectCardPoster([{ name: "poster.png", bytes }])) copyFileSync(pending.poster, path.join(shotDest, "poster.png"));
+    }
+    library.save(workflow);
+    library.saveTrail(workflow.id, pending.events);
+    if (workflow.driver === "extension" && pending.gestures) {
+      writeGestures(opts.home, workflow.id, pending.gestures);
+    }
+    pendingSave = null;
+    await rm(path.join(opts.home, "shots", "pending", workflow.id), { recursive: true, force: true }).catch(() => undefined);
     return workflow;
+  }
+
+  async function discardPending(): Promise<void> {
+    const pending = pendingSave;
+    pendingSave = null;
+    if (!pending) return;
+    await rm(path.join(opts.home, "shots", "pending", pending.workflow.id), { recursive: true, force: true }).catch(() => undefined);
   }
 
   async function discardSession(): Promise<void> {
@@ -1650,6 +1842,9 @@ export async function startApp(opts: {
     recordingSince = 0;
     extractProposal = undefined;
     captureOpenUrl = "";
+    capturePosterPath = "";
+    capturePageTitle = "";
+    posterTried = false;
     captureVia = "playwright";
     gestureById.clear();
     await stopBrowser();
@@ -2159,6 +2354,7 @@ export async function startApp(opts: {
         }
       }
       replays.clear();
+      await remote.stop();
       await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
@@ -2906,6 +3102,8 @@ function summary(doc: WorkflowV2) {
   return {
     id: doc.id,
     name: doc.name,
+    summary: doc.summary,
+    intent: doc.intent,
     steps: doc.steps.length,
     inputs: doc.inputs,
     heal: doc.heal,
@@ -2999,9 +3197,18 @@ function newestPng(dir: string): string | undefined {
   return ranked[0]?.file;
 }
 
-/** A poster is an element crop. A stripe fixture and a full-page capture stay off the card. */
+/** A run poster may still be an element crop. The workflow card does not use this. */
 function croppedPng(file: string): boolean {
   return isElementCrop(readFileSync(file));
+}
+
+/** The card poster is the full-page file. An element crop is not a stand-in. */
+function workflowPoster(dir: string): string | undefined {
+  const file = path.join(dir, "poster.png");
+  if (!existsSync(file)) return;
+  const bytes = readFileSync(file);
+  if (!selectCardPoster([{ name: "poster.png", bytes }])) return;
+  return file;
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {
@@ -3079,7 +3286,7 @@ function modelStatus(): { label: string } {
   const account = cursorAccountModelLabel();
   if (account) return { label: account };
   if (process.env.BAO_HEAL_CURSOR === "1") return { label: "fixture model" };
-  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) return { label: "model ready" };
+  if (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) return { label: "model ready" };
   return { label: "no model" };
 }
 

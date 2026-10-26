@@ -245,8 +245,15 @@ export interface WorkflowV2 {
   readBack?: ReadBack;
   /** Checked against the live URL before locate. A login redirect is phase `auth`. */
   precondition?: Precondition;
-  /** One sentence written by the hybrid condenser. It is not replayed. */
+  /** One sentence written at save, or by the hybrid condenser. It is not replayed. */
   summary?: string;
+  /** What the person is trying to accomplish. Written once at save. It is not replayed. */
+  intent?: string;
+  /**
+   * The one save-time model pass. Present after that pass, including a skip,
+   * so a later open does not call the model again.
+   */
+  inference?: WorkflowInference;
   /**
    * Playwright is Bao's own Chrome. Extension is the person's installed Chrome.
    * Absent means Playwright, so older workflows stay on the driver they were recorded with.
@@ -254,6 +261,13 @@ export interface WorkflowV2 {
   driver?: "playwright" | "extension";
   /** Set when the document uses files or dates. Absent on a data-steps-only version 3. */
   filesDates?: 1;
+}
+
+export interface WorkflowInference {
+  at: number;
+  provider: string;
+  model: string;
+  status: "ok" | "skipped";
 }
 
 export interface ReplayArgs {

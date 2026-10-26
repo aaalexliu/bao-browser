@@ -8,7 +8,7 @@ interface Handle {
   query(text: string, params?: unknown[]): Promise<Row[]>;
 }
 
-const globalDb = globalThis as { baoDb?: Handle; baoReady?: Promise<void> };
+const globalDb = globalThis as { baoDb?: Handle; baoReady?: Promise<void>; baoQuery?: Promise<void> };
 
 export async function ready(): Promise<void> {
   if (!globalDb.baoReady) globalDb.baoReady = init();
@@ -16,9 +16,13 @@ export async function ready(): Promise<void> {
 }
 
 export async function query<T = Row>(text: string, params: unknown[] = []): Promise<T[]> {
-  await ready();
-  const rows = await db().query(text, params);
-  return rows as T[];
+  const previous = globalDb.baoQuery ?? Promise.resolve();
+  const run = previous.then(async () => {
+    await ready();
+    return await db().query(text, params) as T[];
+  });
+  globalDb.baoQuery = run.then(() => undefined, () => undefined);
+  return run;
 }
 
 function db(): Handle {
@@ -202,5 +206,31 @@ const SCHEMA = [
     user_id text PRIMARY KEY REFERENCES users(id),
     document jsonb NOT NULL,
     updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `ALTER TABLE devices ADD COLUMN IF NOT EXISTS agent_poll_at timestamptz`,
+  `CREATE TABLE IF NOT EXISTS agent_tokens (
+    id text PRIMARY KEY,
+    user_id text NOT NULL REFERENCES users(id),
+    device_id text NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    token_hash text UNIQUE NOT NULL,
+    label text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz
+  )`,
+  `CREATE TABLE IF NOT EXISTS agent_jobs (
+    id text PRIMARY KEY,
+    token_id text NOT NULL,
+    user_id text NOT NULL,
+    device_id text NOT NULL,
+    tool text NOT NULL,
+    workflow_id text,
+    status text NOT NULL,
+    outcome text,
+    policy jsonb NOT NULL,
+    args jsonb NOT NULL,
+    result jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    claimed_at timestamptz,
+    finished_at timestamptz
   )`,
 ];
