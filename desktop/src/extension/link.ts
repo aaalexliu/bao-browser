@@ -17,12 +17,17 @@ export interface RecordHandler {
   (kind: "start" | "stop", url: string): void;
 }
 
+export interface HostAccessHandler {
+  (access: string): void;
+}
+
 export interface ExtensionLink {
   socketPath: string;
   helloSerial: number;
   connected(): boolean;
   onTrail(handler: TrailHandler): void;
   onRecord(handler: RecordHandler): void;
+  onHostAccess(handler: HostAccessHandler): void;
   command(op: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
   waitForHello(afterSerial: number, timeoutMs?: number): Promise<HelloMessage>;
   close(): Promise<void>;
@@ -80,6 +85,7 @@ export async function startExtensionLink(opts: {
   const helloWaiters: { after: number; resolve: (hello: HelloMessage) => void; timer: NodeJS.Timeout }[] = [];
   let trail: TrailHandler = () => {};
   let record: RecordHandler = () => {};
+  let hostAccess: HostAccessHandler = () => {};
   let closed = false;
 
   const failPending = (message: string) => {
@@ -105,7 +111,7 @@ export async function startExtensionLink(opts: {
 
   const onFrame = (message: unknown) => {
     if (!message || typeof message !== "object") return;
-    const body = message as { type?: string; id?: string; ok?: boolean; value?: unknown; error?: string; event?: Record<string, unknown>; gesture?: Gesture; url?: string; resumed?: boolean; extensionId?: string; version?: string };
+    const body = message as { type?: string; id?: string; ok?: boolean; value?: unknown; error?: string; event?: Record<string, unknown>; gesture?: Gesture; url?: string; access?: string; resumed?: boolean; extensionId?: string; version?: string };
     if (body.type === "hello") {
       noteHello({
         type: "hello",
@@ -134,6 +140,10 @@ export async function startExtensionLink(opts: {
     }
     if (body.type === "record-stop") {
       record("stop", String(body.url || ""));
+      return;
+    }
+    if (body.type === "host-access") {
+      hostAccess(String(body.access || ""));
       return;
     }
   };
@@ -205,6 +215,9 @@ export async function startExtensionLink(opts: {
     },
     onRecord(handler) {
       record = handler;
+    },
+    onHostAccess(handler) {
+      hostAccess = handler;
     },
     command(op, params = {}, timeoutMs = 30000) {
       if (!active || active.destroyed) return Promise.reject(new Error("extension is not connected"));

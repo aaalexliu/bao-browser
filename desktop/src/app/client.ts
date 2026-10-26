@@ -37,6 +37,7 @@ import {
   runViewer,
   statusLabel,
   runField,
+  hostAccessPanel,
   siteTrustPanel,
   tryResult,
   fixtureStartValue,
@@ -72,7 +73,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: Record<string, "ask" | "allow"> };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none" };
   sync?: {
     server?: string;
     deviceName?: string;
@@ -130,6 +131,12 @@ try {
 const railEl = () => document.getElementById("rail")!;
 const actEl = () => document.getElementById("act")!;
 const mainEl = () => document.getElementById("main")!;
+
+async function loadHostAccess(): Promise<void> {
+  await fetch("/api/extension/host-access").catch(() => undefined);
+  renderKey = "";
+  await refresh();
+}
 
 async function refresh(): Promise<void> {
   try {
@@ -343,6 +350,7 @@ function settings(): string {
   const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
   return `<section><h2>Settings</h2>
+    ${hostAccessPanel(state.settings?.hostAccess)}
     <label>When a step misses <select id="heal">
       <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
       <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
@@ -406,6 +414,7 @@ function bind(): void {
       screen = (btn as HTMLButtonElement).dataset.screen as Screen;
       renderKey = "";
       if (screen === "logins") void loadSaved();
+      if (screen === "settings") void loadHostAccess();
       render();
     };
   });
@@ -615,6 +624,12 @@ function bind(): void {
   bindAsk();
   bindRemote();
   bindHeal();
+  const revokeHosts = document.getElementById("revoke-hosts");
+  if (revokeHosts) revokeHosts.onclick = async () => {
+    await fetch("/api/extension/host-access/revoke", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
   const save = document.getElementById("save-settings");
   if (save) save.onclick = async () => {
     await fetch("/api/settings", {

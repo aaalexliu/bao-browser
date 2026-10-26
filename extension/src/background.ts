@@ -2,7 +2,17 @@
 // A command is stored before it runs. If the worker dies mid-command, the next
 // start reports that step as failed and does not run it again.
 
-import { hostGrantMessage, hostGrantWait, specificHost } from "./host-grant";
+import {
+  ALL_SITE_ORIGINS,
+  grantedCovers,
+  hostAccessFromOrigins,
+  hostGrantMessage,
+  hostGrantPlan,
+  hostGrantWait,
+  secretStaysOnWorkflowOrigin,
+  specificHost,
+  type HostAccess,
+} from "./host-grant";
 
 const HOST = "com.bao.desktop";
 
@@ -14,6 +24,8 @@ interface Persist {
   windowId?: number;
   dialogs?: boolean;
   origin?: string;
+  /** Origin from open or record. Secret typing stays here even after a later navigation. */
+  workflowOrigin?: string;
 }
 
 interface StoredCmd {
@@ -90,11 +102,12 @@ function originPattern(url: string): string {
 
 async function allowed(url: string): Promise<void> {
   const pattern = originPattern(url);
-  const ok = await chrome.permissions.contains({ origins: [pattern] });
-  if (!ok) throw new Error(`site not allowed: ${pattern}`);
+  const plan = hostGrantPlan(pattern, await heldOrigins(), 1);
+  if (plan.action !== "skip") throw new Error(`site not allowed: ${pattern}`);
 }
 
 async function registerScripts(origin: string, opts: { recorder: boolean; dialogs: boolean }): Promise<void> {
+  // Matches stay on this origin. An all-sites grant does not inject every site.
   const matches = [`${origin}/*`];
   await registerMatches(matches, opts);
 }
@@ -232,7 +245,8 @@ async function openOwned(url: string, dialogs: boolean, inject: boolean): Promis
     if (!tabId || windowId == null) throw new Error("could not open a replay window");
   }
   // The document request fires during tabs.update. Own the tab first so HAR sees it.
-  persist = { ...persist, tabId, windowId, dialogs, origin };
+  // workflowOrigin is the page the workflow opened. Later navigations do not move it.
+  persist = { ...persist, tabId, windowId, dialogs, origin, workflowOrigin: origin };
   if (inject) await registerScripts(origin, { recorder: persist.phase === "recording", dialogs });
   else await clearBaoScripts();
   const pending = waitComplete(tabId!, 30000);
@@ -240,7 +254,7 @@ async function openOwned(url: string, dialogs: boolean, inject: boolean): Promis
   if (windowId != null) await chrome.windows.update(windowId, { focused: true }).catch(() => undefined);
   await pending;
   if (inject) await ensureInjected(tabId!);
-  persist = { phase: persist.phase === "recording" ? "recording" : "replaying", tabId, windowId, dialogs, origin };
+  persist = { phase: persist.phase === "recording" ? "recording" : "replaying", tabId, windowId, dialogs, origin, workflowOrigin: origin };
   if (dialogs) await ensureDialogs(tabId!);
   await savePersist();
   if (persist.phase === "replaying") await badge("RUN");
@@ -592,6 +606,12 @@ async function typeText(tabId: number, text: string, gaps: number[], maxMs: numb
 async function trustedFill(tabId: number, cmd: Record<string, unknown>, point: Record<string, unknown>): Promise<void> {
   const text = String(cmd.text ?? "");
   const secret = cmd.secret === true;
+  if (secret) {
+    const tab = await chrome.tabs.get(tabId);
+    if (!secretStaysOnWorkflowOrigin(tab.url || "", persist.workflowOrigin || "")) {
+      throw new Error("refusing to type a secret off the workflow origin");
+    }
+  }
   const { gaps, maxMs } = keyGapsOf(cmd);
   const target = targetOf(cmd);
   let landed = "";
@@ -702,8 +722,8 @@ const onFail: Parameters<typeof chrome.webRequest.onErrorOccurred.addListener>[0
 
 // webRequest throws until a host permission is actually held. Never pass <all_urls>.
 // Listen only on origins contains() has confirmed, and drop them again on revoke.
+// After Allow all sites, the filter is http://*/* and https://*/*.
 
-const WILDCARDS = ["http://*/*", "https://*/*"];
 let networkUrls: string[] | null = null;
 let networkChain: Promise<void> = Promise.resolve();
 const pinnedOrigins: string[] = [];
@@ -711,7 +731,7 @@ let prompting: string | null = null;
 
 function listenPattern(origin: string): string | null {
   if (specificHost(origin)) return origin;
-  if (WILDCARDS.includes(origin)) return origin;
+  if ((ALL_SITE_ORIGINS as readonly string[]).includes(origin)) return origin;
   try {
     const base = origin.endsWith("/*") ? origin.slice(0, -1) : origin;
     const url = new URL(base);
@@ -735,31 +755,52 @@ function pinOrigin(pattern: string): void {
   if (!pinnedOrigins.includes(pattern)) pinnedOrigins.push(pattern);
 }
 
-async function grantedListenUrls(): Promise<string[] | null> {
-  const held: string[] = [];
-  for (const origin of WILDCARDS) {
-    if (await containsOrigin(origin)) held.push(origin);
-  }
+async function heldOrigins(): Promise<string[]> {
+  const found: string[] = [];
+  const consider = async (origin: string) => {
+    const pattern = listenPattern(origin);
+    if (!pattern || found.includes(pattern)) return;
+    if (await containsOrigin(pattern)) found.push(pattern);
+  };
+  for (const origin of ALL_SITE_ORIGINS) await consider(origin);
   let listed: string[] = [];
   try {
-    const all = await chrome.permissions.getAll();
-    listed = all.origins || [];
+    listed = (await chrome.permissions.getAll()).origins || [];
   } catch {
     listed = [];
   }
-  const candidates = [...new Set(
-    [...listed, ...pinnedOrigins].map((origin) => listenPattern(origin)).filter((origin): origin is string => !!origin),
-  )];
-  for (const origin of candidates) {
-    if (held.includes(origin)) continue;
-    if (WILDCARDS.includes(origin)) continue;
-    if (await containsOrigin(origin)) held.push(origin);
-  }
+  for (const origin of [...listed, ...pinnedOrigins]) await consider(origin);
   for (let i = pinnedOrigins.length - 1; i >= 0; i--) {
-    if (!held.includes(pinnedOrigins[i]!)) pinnedOrigins.splice(i, 1);
+    if (!found.includes(pinnedOrigins[i]!)) pinnedOrigins.splice(i, 1);
   }
-  held.sort();
+  found.sort();
+  return found;
+}
+
+async function grantedListenUrls(): Promise<string[] | null> {
+  const held = await heldOrigins();
   return held.length ? held : null;
+}
+
+const HOST_ACCESS_KEY = "bao-host-access";
+
+async function publishHostAccess(choice?: HostAccess): Promise<{ access: HostAccess; origins: string[]; choice: HostAccess }> {
+  const origins = await heldOrigins();
+  const access = hostAccessFromOrigins(origins);
+  let picked = choice;
+  if (!picked) {
+    try {
+      const stored = await chrome.storage.local.get(HOST_ACCESS_KEY);
+      const prev = stored[HOST_ACCESS_KEY] as { choice?: string } | undefined;
+      if (prev?.choice === "all" || prev?.choice === "site" || prev?.choice === "none") picked = prev.choice;
+    } catch {
+      picked = undefined;
+    }
+  }
+  const record = { access, choice: picked || access, origins, at: Date.now() };
+  await chrome.storage.local.set({ [HOST_ACCESS_KEY]: record });
+  post({ type: "host-access", access, origins });
+  return { access, origins, choice: record.choice };
 }
 
 function safeAdd(run: () => void): boolean {
@@ -859,27 +900,32 @@ function waitForHost(pattern: string, grantMs: number): Promise<GrantOutcome> {
       chrome.runtime.onMessage.removeListener(onAllow);
       resolve(outcome);
     };
+    const covered = (origins: readonly string[]) => grantedCovers(pattern, origins);
     const onAdded = (permissions: chrome.permissions.Permissions) => {
       const origins = permissions.origins || [];
-      if (origins.includes(pattern)) {
+      if (covered(origins)) {
         finish("yes");
         return;
       }
-      void containsOrigin(pattern).then((ok) => { if (ok) finish("yes"); });
+      void heldOrigins().then((granted) => { if (covered(granted)) finish("yes"); });
     };
-    const onAllow = (message: { source?: string; granted?: boolean; origins?: string[] }) => {
+    const onAllow = (message: { source?: string; granted?: boolean; origins?: string[]; scope?: string }) => {
       if (!message || message.source !== "bao-allow") return;
+      if (message.scope === "all") {
+        finish(message.granted ? "yes" : "no");
+        return;
+      }
       const origins = Array.isArray(message.origins) ? message.origins : [];
-      if (origins.length && !origins.includes(pattern)) return;
+      if (origins.length && !covered(origins)) return;
       finish(message.granted ? "yes" : "no");
     };
     chrome.permissions.onAdded.addListener(onAdded);
     chrome.runtime.onMessage.addListener(onAllow);
     poll = setInterval(() => {
-      void containsOrigin(pattern).then((ok) => { if (ok) finish("yes"); });
+      void heldOrigins().then((granted) => { if (covered(granted)) finish("yes"); });
     }, 250);
     timer = setTimeout(() => finish("timeout"), grantMs);
-    void containsOrigin(pattern).then((ok) => { if (ok) finish("yes"); });
+    void heldOrigins().then((granted) => { if (covered(granted)) finish("yes"); });
   });
 }
 
@@ -893,16 +939,17 @@ async function promptSpecificHost(
   let windowId: number | undefined;
   try {
     try {
-      const win = await chrome.windows.create({ url: page, type: "popup", focused: true, width: 520, height: 420 });
+      const win = await chrome.windows.create({ url: page, type: "popup", focused: true, width: 560, height: 520 });
       windowId = win?.id;
     } catch {
-      const win = await chrome.windows.create({ url: page, type: "normal", focused: true, width: 520, height: 420 });
+      const win = await chrome.windows.create({ url: page, type: "normal", focused: true, width: 560, height: 520 });
       windowId = win?.id;
     }
     const outcome = await waitForHost(pattern, grantMs);
     if (outcome === "yes") {
       pinOrigin(pattern);
       await syncNetwork();
+      await publishHostAccess();
       return { ok: true };
     }
     return {
@@ -924,11 +971,13 @@ async function ensureHost(
 ): Promise<{ ok: true } | { needsHuman: true; pattern: string; message: string }> {
   const pattern = originPattern(url);
   if (!specificHost(pattern)) throw new Error("refusing a broad host permission");
-  if (await containsOrigin(pattern)) {
+  const plan = hostGrantPlan(pattern, await heldOrigins(), grantMs);
+  if (plan.action === "skip") {
     pinOrigin(pattern);
     await syncNetwork();
     return { ok: true };
   }
+  if (plan.action === "needs_human") return { needsHuman: true, pattern, message: plan.message };
   return promptSpecificHost(pattern, grantMs);
 }
 
@@ -1074,6 +1123,27 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
       allowUrl: prompting || "",
     };
   }
+  if (op === "host-access") return publishHostAccess();
+  if (op === "revoke-hosts") {
+    const all = await chrome.permissions.getAll();
+    const origins = [...new Set(all.origins || [])];
+    if (origins.length) {
+      try {
+        await chrome.permissions.remove({ origins });
+      } catch {
+        for (const origin of origins) await chrome.permissions.remove({ origins: [origin] }).catch(() => undefined);
+      }
+    }
+    pinnedOrigins.length = 0;
+    await syncNetwork();
+    return publishHostAccess("none");
+  }
+  if (op === "secret-pin") {
+    const tab = persist.tabId ? await chrome.tabs.get(persist.tabId).catch(() => undefined) : undefined;
+    const url = String(cmd.url || tab?.url || "");
+    const workflowOrigin = persist.workflowOrigin || "";
+    return { ok: secretStaysOnWorkflowOrigin(url, workflowOrigin), workflowOrigin, url };
+  }
   if (op === "flush-observed") {
     const events = observed.slice();
     return { events };
@@ -1103,7 +1173,7 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
     const url = String(cmd.url || "");
     await allowed(url);
     const origin = new URL(url).origin;
-    persist = { ...persist, phase: "recording", origin, dialogs: cmd.dialogs === true };
+    persist = { ...persist, phase: "recording", origin, workflowOrigin: origin, dialogs: cmd.dialogs === true };
     await savePersist();
     await registerScripts(origin, { recorder: true, dialogs: cmd.dialogs === true });
     await badge("REC");
@@ -1388,6 +1458,7 @@ async function boot(resumed: boolean): Promise<void> {
       if (port) break;
     }
     await resumeInterrupted(interruptedId);
+    if (port) await publishHostAccess().catch(() => undefined);
   } finally {
     booting = false;
   }
@@ -1399,7 +1470,14 @@ chrome.alarms.create("bao-link", { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener(() => { if (!port) void boot(true); });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const body = message as { source?: string; op?: string; event?: unknown; gesture?: unknown; url?: string };
+  const body = message as { source?: string; op?: string; event?: unknown; gesture?: unknown; url?: string; granted?: boolean; scope?: string };
+  if (body?.source === "bao-allow") {
+    if (body.granted) {
+      const choice: HostAccess | undefined = body.scope === "all" ? "all" : body.scope === "site" ? "site" : undefined;
+      void publishHostAccess(choice);
+    }
+    return;
+  }
   if (body?.source === "bao-trail") {
     post({ type: "trail", event: body.event, gesture: body.gesture });
     return;
@@ -1414,7 +1492,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id || !tab.url) throw new Error("no tab");
       await allowed(tab.url);
-      persist = { phase: "recording", tabId: tab.id, windowId: tab.windowId, origin: new URL(tab.url).origin, dialogs: false };
+      const origin = new URL(tab.url).origin;
+      persist = { phase: "recording", tabId: tab.id, windowId: tab.windowId, origin, workflowOrigin: origin, dialogs: false };
       await savePersist();
       await registerScripts(persist.origin!, { recorder: true, dialogs: false });
       await ensureInjected(tab.id);
@@ -1448,9 +1527,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.permissions.onAdded.addListener((permissions) => {
-  if (permissions.origins?.length) void syncNetwork();
+  if (!permissions.origins?.length) return;
+  void syncNetwork().then(() => publishHostAccess());
 });
 chrome.permissions.onRemoved.addListener((permissions) => {
-  if (permissions.origins?.length) void syncNetwork();
+  if (!permissions.origins?.length) return;
+  void syncNetwork().then(() => publishHostAccess());
 });
 void boot(false);

@@ -29,6 +29,12 @@ export interface Settings extends HealSettings {
    * Absent allows them. Confirm and login do not read this.
    */
   siteTrust?: Record<string, "ask" | "allow">;
+  /**
+   * Extension host grant on this machine.
+   * all: every site. site: one origin at a time. none: nothing granted.
+   * This is not synced. Another machine has its own Chrome grant.
+   */
+  hostAccess?: "all" | "site" | "none";
 }
 
 export interface StoredRun {
