@@ -169,3 +169,13 @@ Extension numbers are the earlier extension proof in [bao.md](bao.md) and [exten
 | Other tabs | The extension is granted per origin, not the whole browser | The browser socket can list them. This driver does not call `Target.getTargets`. Each replay opens and closes only its own window. |
 | Survives Chrome restart | The extension stays installed. A debugger session does not. | The Allow decision does not. The checkbox preference does, until it is cleared. Not restarted here. |
 | Toggle off | The extension does not use this switch | Before the checkbox was pressed, the port file was absent and nothing listened on 9222. It is on now, and 9222 is listening. |
+
+## Instacart, one add and one remove
+
+A separate runner, `desktop/src/cdp-live/instacart-run.ts`, opens one new window on `www.instacart.com`. The books allowlist is unchanged. This run allows only `instacart.com` and `www.instacart.com`. Checkout, login, account, payment, and address paths are refused before navigation. Image CDNs are subresources, not top-frame navigations, so they are not in the allowlist.
+
+The runner searches for bananas, adds one item, and removes that one item. It will not click checkout, place order, a trial, address, payment, delivery time, or a tip. A login wall, captcha, store picker, or any other dialog stops the run before a click. If the line quantity is greater than one, it presses decrease once and does not press Remove. The cart badge must return to the count from before the add.
+
+Instacart's header cart says "View Cart. Items in cart: N" when the count is read from that phrase, and "Add $X to get $0 delivery fee N" once the cart has items. The count is that N, not the dollar amount. Add controls are "Add" or "Add 1 ct {name}" for a banana. At quantity 1 the line control is "Remove"; above that it is "Decrement" once. Open shadow roots are walked when the click target is marked. A closed shadow root is not.
+
+The first live attempt stopped at `cart-count` with 0 runner clicks. The page host was `www.instacart.com`, the cart was not changed, and the finder had required the label to start with "Cart".

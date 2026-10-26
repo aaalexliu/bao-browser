@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
-import { navigationAllowed, openerAllowed } from "../../src/cdp-live/allowlist";
+import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
+import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
+import { PIERCE_QUERY } from "../../src/cdp-live/driver";
 import {
   checkboxReach,
   dialogFromNodes,
@@ -43,6 +45,60 @@ test("navigation allowlist is books.toscrape.com over http and https", () => {
   assert.equal(openerAllowed("about:blank"), true);
   assert.equal(openerAllowed("about:blank#x"), false);
   assert.equal(openerAllowed("https://books.toscrape.com/"), true);
+});
+
+test("instacart navigation stays on the site and off checkout", () => {
+  assert.equal(navigationAllowed("https://www.instacart.com/"), false);
+  assert.equal(navigationAllowed("https://www.instacart.com/store/s?k=bananas", INSTACART_HOSTS), true);
+  assert.equal(navigationAllowed("https://instacart.com/", INSTACART_HOSTS), true);
+  assert.equal(navigationAllowed("https://www.instacart.com/store/checkout", INSTACART_HOSTS), false);
+  assert.equal(navigationRefusal("https://www.instacart.com/login", INSTACART_HOSTS), "blocked-path");
+  assert.equal(navigationRefusal("https://www.instacart.com/account/settings", INSTACART_HOSTS), "blocked-path");
+  assert.equal(navigationAllowed("https://example.com/", INSTACART_HOSTS), false);
+  assert.equal(navigationAllowed("https://cdn.example.com/banana.jpg", INSTACART_HOSTS), false);
+  assert.equal(clickForbidden("Go to checkout"), true);
+  assert.equal(clickForbidden("Place order"), true);
+  assert.equal(clickForbidden("Start free trial"), true);
+  assert.equal(clickForbidden("Add"), false);
+  assert.equal(addLabelOk("Add"), true);
+  assert.equal(addLabelOk("Add to cart"), true);
+  assert.equal(addLabelOk("Checkout"), false);
+  assert.equal(searchLabelOk("Search products and stores"), true);
+  assert.equal(searchLabelOk("Enter your address"), false);
+  assert.equal(cartLabelOk("Cart, 2 items"), true);
+  assert.equal(cartLabelOk("View Cart. Items in cart: 0"), true);
+  assert.equal(cartLabelOk("Add $3.99 to get $0 delivery fee 1"), true);
+  assert.equal(cartLabelOk("Add $3.99 to get $0 delivery fee"), false);
+  assert.equal(cartLabelOk("Add to cart"), false);
+  assert.equal(cartLabelOk("Go to checkout"), false);
+  assert.equal(cartCountFromLabel("View Cart. Items in cart: 0", null), 0);
+  assert.equal(cartCountFromLabel("Cart, 2 items", null), 2);
+  assert.equal(cartCountFromLabel("Add $3.99 to get $0 delivery fee 2", null), 2);
+  assert.equal(cartCountFromLabel("View Cart", "4"), 4);
+  assert.equal(addLabelOk("Add"), true);
+  assert.equal(addLabelOk("Add 1 ct Organic Bananas"), true);
+  assert.equal(addLabelOk("Add 1 ct Banana bread"), false);
+  assert.equal(addLabelOk("Add 2 ct Organic Bananas"), false);
+  assert.equal(addLabelOk("Add $3.99 to get $0 delivery fee 1"), false);
+  assert.equal(addProductName("Add 1 ct Organic Bananas"), "Organic Bananas");
+  assert.equal(stapleNameOk("Organic Bananas"), true);
+  assert.equal(stapleNameOk("Banana bread"), false);
+  assert.equal(removeLabelOk("Decrease quantity", "decrease", 2), true);
+  assert.equal(removeLabelOk("Decrement quantity of Organic Bananas", "decrease", 1), true);
+  assert.equal(removeLabelOk("Remove", "remove", 1), true);
+  assert.equal(removeLabelOk("Remove Organic Bananas", "remove", 1), true);
+  assert.equal(removeLabelOk("Remove", "remove", 2), false);
+  assert.equal(removeLabelOk("Remove all", "remove", 1), false);
+  assert.equal(cartRestored(2, 3, 2), true);
+  assert.equal(cartRestored(2, 4, 2), false);
+  const page = readInstacart.toString();
+  assert.match(page, /cartLabelOk\(/);
+  assert.match(page, /shadowRoot/);
+  assert.doesNotMatch(page, /require\(/);
+  assert.doesNotMatch(page, /document\.cookie/);
+  assert.doesNotMatch(page, /\.click\s*\(/);
+  assert.match(PIERCE_QUERY, /shadowRoot/);
+  assert.doesNotMatch(PIERCE_QUERY, /cookie/);
 });
 
 test("Allow is clicked only for the dialog bao just opened", () => {

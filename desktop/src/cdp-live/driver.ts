@@ -7,8 +7,23 @@ import { assignSiblingIndex } from "../v1/identity";
 import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
-import { navigationAllowed, openerAllowed, publicHost } from "./allowlist";
+import { BOOKS_HOSTS, navigationAllowed, navigationRefusal, openerAllowed, publicHost } from "./allowlist";
 import { CdpSocket } from "./socket";
+
+/** Finds a marked element in the light DOM, then in open shadow roots. */
+export const PIERCE_QUERY = `
+  const pierce = (sel, root) => {
+    const found = root.querySelector(sel);
+    if (found) return found;
+    for (const node of root.querySelectorAll("*")) {
+      if (node.shadowRoot) {
+        const inner = pierce(sel, node.shadowRoot);
+        if (inner) return inner;
+      }
+    }
+    return null;
+  };
+`;
 
 /** Records click isTrusted. sessionStorage keeps the log across same-origin navigations. */
 export const TRUST_SOURCE = `(() => {
@@ -86,7 +101,16 @@ export class CdpLiveDriver implements Driver {
     private readonly cdp: CdpSocket,
     private readonly sessionId: string,
     readonly targetId: string,
+    private readonly hosts: readonly string[] = BOOKS_HOSTS,
   ) {}
+
+  private allows(url: string): boolean {
+    return navigationAllowed(url, this.hosts);
+  }
+
+  private refusal(url: string): string {
+    return navigationRefusal(url, this.hosts) || "that url";
+  }
 
   async start(): Promise<void> {
     await this.cdp.send("Page.enable", {}, this.sessionId);
@@ -113,12 +137,12 @@ export class CdpLiveDriver implements Driver {
       return;
     }
     const url = frame.url || "";
-    if (!url || url === "about:blank" || navigationAllowed(url)) {
+    if (!url || url === "about:blank" || this.allows(url)) {
       void this.evaluate(TRUST_SOURCE).catch(() => undefined);
     }
-    if (!url || openerAllowed(url) && url === "about:blank") return;
-    if (!navigationAllowed(url)) {
-      this.offHost = publicHost(url) || "off-allowlist";
+    if (!url || (url === "about:blank" && openerAllowed(url, this.hosts))) return;
+    if (!this.allows(url)) {
+      this.offHost = this.refusal(url);
       void this.cdp.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);
     }
   }
@@ -176,7 +200,7 @@ export class CdpLiveDriver implements Driver {
       const identity = nodes.find((node) => this.handles.get(node) === item.handle);
       return identity ? [{ identity, value: item.value }] : [];
     });
-    const url = dump.url && navigationAllowed(dump.url) ? dump.url : publicHost(dump.url || "");
+    const url = dump.url && this.allows(dump.url) ? dump.url : publicHost(dump.url || "");
     return {
       nodes,
       url,
@@ -205,7 +229,7 @@ export class CdpLiveDriver implements Driver {
 
   async pageSignals(): Promise<PageSignals> {
     const markers = await this.evaluate<Awaited<ReturnType<typeof readPageMarkers>>>(`(${readPageMarkers.toString()})()`);
-    const url = markers.url && navigationAllowed(markers.url) ? markers.url : publicHost(markers.url || "");
+    const url = markers.url && this.allows(markers.url) ? markers.url : publicHost(markers.url || "");
     return {
       url,
       title: markers.title,
@@ -219,19 +243,44 @@ export class CdpLiveDriver implements Driver {
     };
   }
 
-  async goto(url: string): Promise<void> {
-    if (!navigationAllowed(url)) throw new Error(`cdp-live allowlist refused ${publicHost(url) || "that url"}`);
+  async goto(url: string, timeoutMs = 20_000): Promise<void> {
+    if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.assertHost();
     const epoch = this.loadEpoch;
     const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
     if (nav.errorText) throw new Error(nav.errorText);
-    await this.waitForLoad(epoch, 20_000);
+    await this.waitForLoad(epoch, timeoutMs);
     const href = await this.evaluate<string>("location.href");
-    if (navigationAllowed(href)) return;
+    if (this.allows(href)) return;
     if (!href || href === "about:blank") throw new Error("navigation did not finish");
-    const host = publicHost(href) || "off-allowlist";
     await this.end().catch(() => undefined);
-    throw new Error(`cdp-live allowlist refused ${host}`);
+    throw new Error(`cdp-live allowlist refused ${this.refusal(href)}`);
+  }
+
+  /** Trusted click of a selector this process just marked. Does not call element.click(). */
+  async clickCss(selector: string): Promise<void> {
+    if (!selector.startsWith("[data-bao-")) throw new Error("cdp-live click refused");
+    await this.clickSelector(selector);
+  }
+
+  async evaluateFunction<T>(
+    fn: { toString(): string },
+    arg: unknown,
+    helpers: ReadonlyArray<{ name: string; toString(): string }> = [],
+  ): Promise<T> {
+    const prelude = helpers.map((helper) => {
+      if (!/^[A-Za-z_$][\w$]*$/.test(helper.name)) throw new Error("cdp-live refused a page helper");
+      return `const ${helper.name} = ${helper.toString()};`;
+    }).join("\n");
+    const call = `(${fn.toString()})(${JSON.stringify(arg)})`;
+    return this.evaluate<T>(prelude ? `(() => {\n${prelude}\nreturn ${call};\n})()` : call);
+  }
+
+  async insertText(text: string): Promise<void> {
+    if (text.length === 0 || text.length > 80) throw new Error("cdp-live refused that text");
+    if (/password|cvv|cvc|card number/i.test(text)) throw new Error("cdp-live does not type secrets");
+    if (/^\d[\d\s-]{11,}\d$/.test(text)) throw new Error("cdp-live does not type card numbers");
+    await this.cdp.send("Input.insertText", { text }, this.sessionId);
   }
 
   async click(node: Identity): Promise<void> {
@@ -276,6 +325,10 @@ export class CdpLiveDriver implements Driver {
   }
 
   async key(key: string): Promise<void> {
+    if (key === "cmd+a" || key === "Meta+a") {
+      await this.chord("a", "KeyA", 4, 65);
+      return;
+    }
     const enter = key === "Enter" || key === "Return";
     const name = enter ? "Enter" : key;
     await this.cdp.send("Input.dispatchKeyEvent", {
@@ -352,6 +405,15 @@ export class CdpLiveDriver implements Driver {
     this.rememberTrust(events);
   }
 
+  private async chord(key: string, code: string, modifiers: number, virtualKey: number): Promise<void> {
+    await this.cdp.send("Input.dispatchKeyEvent", {
+      type: "keyDown", key, code, modifiers, windowsVirtualKeyCode: virtualKey,
+    }, this.sessionId);
+    await this.cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp", key, code, modifiers, windowsVirtualKeyCode: virtualKey,
+    }, this.sessionId);
+  }
+
   async end(): Promise<void> {
     await this.cdp.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);
   }
@@ -360,7 +422,8 @@ export class CdpLiveDriver implements Driver {
     this.assertHost();
     await this.bringToFront();
     const point = await this.evaluate<{ x: number; y: number; w: number; h: number } | null>(`(() => {
-      const el = document.querySelector(${JSON.stringify(selector)});
+      ${PIERCE_QUERY}
+      const el = pierce(${JSON.stringify(selector)}, document);
       if (!el) return null;
       el.scrollIntoView({ block: "center", inline: "center" });
       const r = el.getBoundingClientRect();
@@ -386,7 +449,7 @@ export class CdpLiveDriver implements Driver {
       const state = await this.evaluate<{ href: string; ready: string }>(
         "({ href: location.href, ready: document.readyState })",
       ).catch(() => undefined);
-      const loaded = !!state && navigationAllowed(state.href) && (state.ready === "complete" || state.ready === "interactive");
+      const loaded = !!state && this.allows(state.href) && (state.ready === "complete" || state.ready === "interactive");
       if (loaded && (this.loadEpoch > epoch || state?.ready === "complete")) return;
       await sleep(100);
     }
@@ -411,7 +474,7 @@ export class CdpLiveDriver implements Driver {
   }
 }
 
-export async function openLiveWindow(cdp: CdpSocket): Promise<CdpLiveDriver> {
+export async function openLiveWindow(cdp: CdpSocket, hosts: readonly string[] = BOOKS_HOSTS): Promise<CdpLiveDriver> {
   const created = await cdp.send<{ targetId?: string }>("Target.createTarget", {
     url: "about:blank",
     newWindow: true,
@@ -421,7 +484,7 @@ export async function openLiveWindow(cdp: CdpSocket): Promise<CdpLiveDriver> {
   });
   const targetId = created.targetId;
   if (!targetId) throw new Error("cdp did not open a window");
-  if (!openerAllowed("about:blank")) throw new Error("cdp-live allowlist refused about:blank");
+  if (!openerAllowed("about:blank", hosts)) throw new Error("cdp-live allowlist refused about:blank");
   const sessionId = await new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("cdp did not attach")), 8000);
     cdp.on("Target.attachedToTarget", undefined, (params) => {
@@ -444,7 +507,7 @@ export async function openLiveWindow(cdp: CdpSocket): Promise<CdpLiveDriver> {
       reject(err instanceof Error ? err : new Error(String(err)));
     });
   });
-  const driver = new CdpLiveDriver(cdp, sessionId, targetId);
+  const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts);
   await driver.start();
   return driver;
 }
