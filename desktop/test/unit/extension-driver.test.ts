@@ -4,13 +4,24 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runDriverField } from "../../src/app/views";
+import { hostAccessPanel, runDriverField } from "../../src/app/views";
 import { FrameDecoder, encodeFrame } from "../../src/extension/frames";
 import { clampGesture, fillPlan, gestureQueue } from "../../src/extension/gestures";
 import { acceptAuth, originArg } from "../../src/extension/native-host";
 import { hostScriptPath, startExtensionLink } from "../../src/extension/link";
 import { EXTENSION_ID, EXTENSION_KEY, extensionOrigin, workflowDriver } from "../../src/extension/protocol";
-import { hostGrantMessage, isHostGrantMessage, specificHost } from "../../../extension/src/host-grant";
+import {
+  ALL_SITE_ORIGINS,
+  grantedCovers,
+  hostAccessFromOrigins,
+  hostAccessLabel,
+  hostGrantMessage,
+  hostGrantPlan,
+  isHostGrantMessage,
+  secretStaysOnWorkflowOrigin,
+  specificHost,
+  specificOrigins,
+} from "../../../extension/src/host-grant";
 import { diffSignals, hashCookieHeader, hashValue } from "../../src/extension/signals";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { createHash } from "node:crypto";
@@ -140,6 +151,72 @@ test("a missing host grant is needs-you copy for one origin", () => {
   assert.equal(specificHost("http://*/*"), false);
   assert.equal(specificHost("https://*.example.com/*"), false);
   assert.equal(specificHost("<all_urls>"), false);
+  assert.match(timedOut, /Allow all sites/);
+  assert.match(timedOut, /Only this site/);
+  assert.equal(isHostGrantMessage("Allow Bao on https://books.toscrape.com/*. Click Allow sites. The site was not granted in time."), true);
+});
+
+test("an all-sites grant skips prompts and revoke returns to per-site needs_human", () => {
+  const books = "https://books.toscrape.com/*";
+  const quotes = "https://quotes.toscrape.com/*";
+  const all = [...ALL_SITE_ORIGINS];
+  assert.deepEqual(all, ["http://*/*", "https://*/*"]);
+  assert.equal(hostGrantPlan(books, all, 90_000).action, "skip");
+  assert.equal(hostGrantPlan(quotes, all, 0).action, "skip");
+  assert.equal(grantedCovers(quotes, all), true);
+  assert.equal(hostAccessFromOrigins(all), "all");
+  assert.equal(hostAccessFromOrigins(["https://*/*"]), "all");
+  assert.equal(hostAccessFromOrigins(["http://*/*", books]), "all");
+  assert.equal(hostAccessLabel("all"), "all sites");
+
+  const revoked: string[] = [];
+  assert.equal(hostAccessFromOrigins(revoked), "none");
+  assert.equal(hostAccessLabel("none"), "none");
+  assert.equal(hostGrantPlan(quotes, revoked, 4_000).action, "prompt");
+  const timedOut = hostGrantPlan(quotes, revoked, 0);
+  assert.equal(timedOut.action, "needs_human");
+  if (timedOut.action === "needs_human") {
+    assert.match(timedOut.message, /quotes\.toscrape\.com/);
+    assert.match(timedOut.message, /not granted in time/);
+  }
+
+  assert.equal(hostAccessFromOrigins([books]), "site");
+  assert.equal(hostAccessLabel("site"), "per site");
+  assert.equal(hostGrantPlan(books, [books], 4_000).action, "skip");
+  assert.equal(hostGrantPlan(quotes, [books], 4_000).action, "prompt");
+  assert.equal(specificOrigins(`${quotes},https://*/*`).join(","), quotes);
+  assert.equal(specificOrigins("http://*/*").length, 0);
+
+  assert.equal(secretStaysOnWorkflowOrigin("https://books.toscrape.com/catalogue/a", "https://books.toscrape.com"), true);
+  assert.equal(secretStaysOnWorkflowOrigin("https://quotes.toscrape.com/login", "https://books.toscrape.com"), false);
+  assert.equal(secretStaysOnWorkflowOrigin("https://books.toscrape.com/", ""), false);
+
+  const background = readFileSync(path.join(process.cwd(), "extension/src/background.ts"), "utf8");
+  const allow = readFileSync(path.join(process.cwd(), "extension/src/allow.ts"), "utf8");
+  const page = readFileSync(path.join(process.cwd(), "extension/src/allow.html"), "utf8");
+  assert.match(background, /secretStaysOnWorkflowOrigin/);
+  assert.match(background, /chrome\.permissions\.remove/);
+  assert.match(background, /Matches stay on this origin/);
+  assert.equal(background.includes("<all_urls>"), true);
+  assert.equal(background.includes('urls: ["<all_urls>"]'), false);
+  assert.match(allow, /chrome\.permissions\.request\(\{ origins \}\)/);
+  assert.match(allow, /ALL_SITE_ORIGINS/);
+  assert.match(page, /Allow all sites/);
+  assert.match(page, /Only this site/);
+  assert.match(page, /read and act on any site in this Chrome profile/);
+  assert.match(page, /while a run or a recording is active/);
+  assert.match(page, /revoke it in Settings/);
+
+  for (const access of ["all", "site", "none"] as const) {
+    const html = hostAccessPanel(access);
+    assert.match(html, new RegExp(`Site access: ${hostAccessLabel(access)}`));
+    assert.match(html, /id="revoke-hosts"/);
+    assert.match(html, /id="host-access-status"/);
+  }
+  assert.match(hostAccessPanel("all"), /data-host-access="all"/);
+  assert.match(hostAccessPanel("none"), /disabled/);
+  assert.equal(/disabled/.test(hostAccessPanel("all")), false);
+  assert.match(hostAccessPanel(undefined), /Site access: none/);
 });
 
 test("the run form shows Playwright unless the workflow asks for the extension", () => {

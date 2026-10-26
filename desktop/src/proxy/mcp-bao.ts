@@ -30,7 +30,6 @@ const ownedPath = process.env.BAO_OWNED || "";
 const shotDir = process.env.BAO_SHOTS || "";
 let shots = 0;
 let buffer = Buffer.alloc(0);
-let lineFraming = true;
 const owned: Record<string, number> = {};
 const lastImage: Partial<Record<AppName, { w: number; h: number }>> = {};
 
@@ -57,14 +56,7 @@ function tool(name: string, description: string, properties: Record<string, unkn
 }
 
 function send(msg: unknown): void {
-  const body = Buffer.from(JSON.stringify(msg));
-  if (lineFraming) {
-    process.stdout.write(body);
-    process.stdout.write("\n");
-    return;
-  }
-  process.stdout.write(`Content-Length: ${body.length}\r\n\r\n`);
-  process.stdout.write(body);
+  process.stdout.write(`${JSON.stringify(msg)}\n`);
 }
 
 function log(line: string): void {
@@ -323,7 +315,6 @@ function drain(): void {
       void handle(JSON.parse(line) as { id?: unknown; method?: string; params?: { protocolVersion?: string; name?: string; arguments?: Record<string, unknown> } }).catch((err) => log(String(err)));
       continue;
     }
-    lineFraming = false;
     const sep = text.indexOf("\r\n\r\n");
     if (sep < 0) return;
     const match = /Content-Length:\s*(\d+)/i.exec(text.slice(0, sep));

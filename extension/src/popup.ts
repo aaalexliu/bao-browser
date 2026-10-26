@@ -1,4 +1,5 @@
 // The popup is the user gesture Chrome requires for a host-permission prompt.
+// permissions.request has to be the first await. An earlier await drops the gesture.
 
 export {};
 

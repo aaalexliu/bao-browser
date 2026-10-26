@@ -10,6 +10,8 @@ import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
+  remoteBanner,
+  remoteMcpSetting,
   commandItems,
   esc,
   healDetail,
@@ -28,12 +30,14 @@ import {
   paletteView,
   rail,
   recordBar,
+  saveSheetView,
   runsList,
   runKind,
   reviewItems,
   runViewer,
   statusLabel,
   runField,
+  hostAccessPanel,
   siteTrustPanel,
   tryResult,
   fixtureStartValue,
@@ -69,7 +73,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; siteTrust?: Record<string, "ask" | "allow"> };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none" };
   sync?: {
     server?: string;
     deviceName?: string;
@@ -128,6 +132,12 @@ const railEl = () => document.getElementById("rail")!;
 const actEl = () => document.getElementById("act")!;
 const mainEl = () => document.getElementById("main")!;
 
+async function loadHostAccess(): Promise<void> {
+  await fetch("/api/extension/host-access").catch(() => undefined);
+  renderKey = "";
+  await refresh();
+}
+
 async function refresh(): Promise<void> {
   try {
     const stored = localStorage.getItem("bao-theme");
@@ -171,6 +181,8 @@ async function refresh(): Promise<void> {
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
     guide: state.guide ? { status: state.guide.status, stepId: state.guide.stepId, actions: state.guide.actions } : null,
     extract: state.extractPicker || "",
+    saveSheet: state.saveSheet?.id || "",
+    remote: state.remote,
     screen,
     healFilter,
     openHeal,
@@ -196,7 +208,7 @@ function render(): void {
   const showCard = missing && !onboarded && screen === "library";
   railEl().innerHTML = rail({ ...state, permDot: missing && !showCard });
   const importAsk = screen === "logins" ? loginAct(login) : "";
-  actEl().innerHTML = (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
+  actEl().innerHTML = remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
@@ -234,6 +246,7 @@ function render(): void {
   applySearch();
   paintPalette();
   paintLive();
+  paintSaveSheet();
   mountShots();
   paintToasts();
   if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
@@ -337,6 +350,7 @@ function settings(): string {
   const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
   return `<section><h2>Settings</h2>
+    ${hostAccessPanel(state.settings?.hostAccess)}
     <label>When a step misses <select id="heal">
       <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
       <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
@@ -345,6 +359,7 @@ function settings(): string {
     <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
+    ${remoteMcpSetting(state.settings?.remoteMcp === true)}
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
@@ -399,6 +414,7 @@ function bind(): void {
       screen = (btn as HTMLButtonElement).dataset.screen as Screen;
       renderKey = "";
       if (screen === "logins") void loadSaved();
+      if (screen === "settings") void loadHostAccess();
       render();
     };
   });
@@ -606,7 +622,14 @@ function bind(): void {
   const reveal = document.getElementById("reveal-backup");
   if (reveal) reveal.onclick = () => void postSync("/api/sync/reveal", {});
   bindAsk();
+  bindRemote();
   bindHeal();
+  const revokeHosts = document.getElementById("revoke-hosts");
+  if (revokeHosts) revokeHosts.onclick = async () => {
+    await fetch("/api/extension/host-access/revoke", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
   const save = document.getElementById("save-settings");
   if (save) save.onclick = async () => {
     await fetch("/api/settings", {
@@ -618,6 +641,7 @@ function bind(): void {
         actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
         syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
+        remoteMcp: (document.getElementById("remote-mcp") as HTMLInputElement | null)?.checked === true,
         siteTrust: readSiteTrust(),
       }),
     });
@@ -738,6 +762,56 @@ function bind(): void {
   };
 }
 
+function paintSaveSheet(): void {
+  const host = document.getElementById("sheet");
+  if (!host) return;
+  const sheet = state.saveSheet;
+  if (!sheet) {
+    if (host.innerHTML) host.innerHTML = "";
+    return;
+  }
+  const existing = host.querySelector("#save-sheet");
+  if (existing && existing.getAttribute("data-id") === sheet.id) return;
+  host.innerHTML = saveSheetView(sheet);
+  const form = host.querySelector("#save-sheet-form") as HTMLFormElement | null;
+  if (form) form.onsubmit = (ev) => {
+    ev.preventDefault();
+    void commitSaveSheet();
+  };
+  const discard = host.querySelector("#save-discard");
+  if (discard) (discard as HTMLButtonElement).onclick = () => void discardSaveSheet();
+}
+
+async function commitSaveSheet(): Promise<void> {
+  const name = (document.getElementById("save-title") as HTMLInputElement | null)?.value || "";
+  const summary = (document.getElementById("save-summary") as HTMLInputElement | null)?.value || "";
+  const intent = (document.getElementById("save-intent") as HTMLTextAreaElement | null)?.value || "";
+  const res = await fetch("/api/sessions/commit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, summary, intent }),
+  });
+  const doc = await res.json() as { id?: string; error?: string };
+  if (!res.ok || !doc.id) {
+    const note = document.getElementById("save-error");
+    if (note) {
+      note.hidden = false;
+      note.textContent = doc.error || "Could not save";
+    }
+    return;
+  }
+  openWorkflow = doc.id;
+  screen = "workflow";
+  renderKey = "";
+  await refresh();
+}
+
+async function discardSaveSheet(): Promise<void> {
+  await fetch("/api/sessions/save/discard", { method: "POST" });
+  renderKey = "";
+  await refresh();
+}
+
 function bindTeachFix(root: ParentNode): void {
   const fix = root.querySelector("#teach-fix") as HTMLButtonElement | null;
   if (!fix) return;
@@ -754,6 +828,17 @@ function bindTeachFix(root: ParentNode): void {
     renderKey = "";
     await refresh();
   };
+}
+
+function bindRemote(): void {
+  const allow = document.getElementById("remote-allow");
+  if (allow) allow.onclick = () => void fetch("/api/remote/allow", { method: "POST" });
+  const deny = document.getElementById("remote-deny");
+  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" });
+  const kill = document.getElementById("remote-kill");
+  if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
+  const confirm = document.getElementById("remote-confirm-allow");
+  if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
 }
 
 function bindAsk(): void {

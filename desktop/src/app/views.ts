@@ -13,6 +13,7 @@ import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
+import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { controlKey, visibleCopy } from "../v1/visible-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
@@ -29,6 +30,8 @@ export function fixtureStartValue(): string {
 export interface WorkflowSummary {
   id: string;
   name: string;
+  summary?: string;
+  intent?: string;
   steps: number;
   waits?: number;
   expects?: number;
@@ -160,6 +163,24 @@ export interface ShellState {
   guide?: GuideView | null;
   /** HTML for the capture column picker. Empty when nothing is picked. */
   extractPicker?: string;
+  saveSheet?: SaveSheet | null;
+  remote?: RemoteView;
+}
+
+export interface SaveSheet {
+  id: string;
+  name: string;
+  summary?: string;
+  intent?: string;
+  poster?: boolean;
+}
+
+export interface RemoteView {
+  phase: "idle" | "approval" | "running" | "confirm";
+  workflowId?: string;
+  workflowName?: string;
+  stepLabel?: string;
+  jobId?: string;
 }
 
 export interface CommandItem {
@@ -270,6 +291,45 @@ export function rail(state: ShellState): string {
       <div class="channel" id="helper-status">${perm}${esc(helper)}</div>
       <div class="channel" id="model-status">${esc(model)}</div>
     </div>`;
+}
+
+/** Settings control for the outbound long-poll. Unchecked until this Mac opts in. */
+export function remoteMcpSetting(on: boolean): string {
+  const checked = on ? " checked" : "";
+  return `<section id="remote-mcp-setting">
+    <h3>Remote agent</h3>
+    <label><input id="remote-mcp" type="checkbox"${checked}> Let a remote agent run workflows on this Mac</label>
+    <p class="quiet">Bao long-polls the registry only while this is checked, or while this Bao process has BAO_REMOTE_MCP=1. The registry needs that same variable. A run still waits for Allow on this Mac.</p>
+  </section>`;
+}
+
+/** Shown while a cloud agent is asking this Mac to run something. */
+export function remoteBanner(remote: RemoteView | undefined): string {
+  if (!remote || remote.phase === "idle") return "";
+  const name = remote.workflowName || remote.workflowId || "a workflow";
+  if (remote.phase === "approval") {
+    return `<section id="remote-agent" data-testid="remote-approval" data-phase="approval">
+      <p class="kicker">Remote agent</p>
+      <p class="instruction">Allow ${esc(name)} on this Mac?</p>
+      <p class="timeout">Nothing runs until you choose. A confirm step still has to be approved here.</p>
+      <div class="row">
+        <button id="remote-allow" data-testid="remote-allow" type="button">Allow</button>
+        <button id="remote-deny" data-testid="remote-deny" type="button">Deny</button>
+      </div>
+    </section>`;
+  }
+  if (remote.phase === "running") {
+    return `<section id="remote-agent" data-testid="remote-running" data-phase="running">
+      <p class="kicker">Remote agent running</p>
+      <p class="instruction">${esc(name)} is running in a Bao window.</p>
+      <div class="row"><button id="remote-kill" data-testid="remote-kill" type="button">Kill</button></div>
+    </section>`;
+  }
+  return `<section id="remote-agent" data-testid="remote-confirm" data-phase="confirm">
+    <p class="kicker">Confirm on this Mac</p>
+    <p class="instruction">A remote agent cannot approve ${esc(remote.stepLabel || "this step")}. Approve it here.</p>
+    <div class="row"><button id="remote-confirm-allow" data-testid="remote-confirm-allow" type="button">Approve on this Mac</button></div>
+  </section>`;
 }
 
 export function actBar(state: ShellState, now = Date.now()): string {
@@ -1025,14 +1085,14 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     }).join("");
     const waits = workflow.waits ? `<span class="chip">you · ${workflow.waits}</span>` : "";
     const expects = workflow.expects ? `<span class="badge expect">expect</span>` : "";
-    const poster = run
-      ? `/api/runs/${encodeURIComponent(run.id)}/poster`
-      : `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
+    const poster = `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
     const thumbLabel = workflow.firstStep?.label || workflow.name;
+    const line = workflow.summary ? `<p class="wf-summary">${esc(workflow.summary)}</p>` : "";
     return `<article class="wf-card" data-workflow="${esc(workflow.id)}">
       <h3 class="wf-title"><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
-      <div class="thumb" data-shot="${esc(poster)}" data-shot-fallback="/api/workflows/${encodeURIComponent(workflow.id)}/poster">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
+      <div class="thumb" data-shot="${esc(poster)}">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
       <div class="wf-mid">
+        ${line}
         <div class="chips">${inputs}${waits}${expects}</div>
       </div>
       <div class="wf-foot">
@@ -1291,6 +1351,19 @@ export function tryResult(result: {
   </div>`;
 }
 
+/** Settings line for the extension host grant. Revoke calls chrome.permissions.remove in the extension. */
+export function hostAccessPanel(access: unknown): string {
+  const mode = hostAccessMode(access);
+  const label = hostAccessLabel(mode);
+  const revoke = mode === "none" ? " disabled" : "";
+  return `<section id="host-access">
+    <h3>Chrome sites</h3>
+    <p id="host-access-status" data-host-access="${mode}">Site access: ${label}</p>
+    <p class="quiet">Allow all sites lets Bao read and act on any site in this Chrome profile. Bao only does that while a run or a recording is active. Revoke takes that away.</p>
+    <button type="button" id="revoke-hosts"${revoke}>Revoke</button>
+  </section>`;
+}
+
 export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
   const rows = sites.map((site) => `<label>${esc(site.origin)}
       <select data-site-trust="${htmlEsc(controlKey(site.origin))}">
@@ -1307,7 +1380,7 @@ export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[
 }
 
 export function workflowDetail(
-  doc: { id: string; name: string; steps: StepCard[]; inputs?: TokenInput[] },
+  doc: { id: string; name: string; summary?: string; intent?: string; steps: StepCard[]; inputs?: TokenInput[] },
   meta: {
     lastRunId?: string;
     lastLabel?: string;
@@ -1366,6 +1439,8 @@ export function workflowDetail(
     <header class="wf-head">
       <div>
         <h2>${esc(doc.name)}</h2>
+        ${doc.summary ? `<p class="lede" id="workflow-summary">${esc(doc.summary)}</p>` : ""}
+        ${doc.intent ? `<p class="meta" id="workflow-intent">${esc(doc.intent)}</p>` : ""}
         <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
         <div class="chips">${headerChips}</div>
         ${routeHead}
@@ -1775,6 +1850,25 @@ export function teachHome(workflows: { id: string; name: string }[]): string {
       ${choices || `<p class="quiet">Save a workflow first.</p>`}
       <button type="button" id="teach-merge">Merge</button>
     </div>
+  </section>`;
+}
+
+export function saveSheetView(sheet: SaveSheet): string {
+  const poster = sheet.poster ? "/api/capture/poster" : "";
+  return `<section id="save-sheet" data-id="${esc(sheet.id)}" role="dialog" aria-labelledby="save-sheet-title">
+    <form id="save-sheet-form">
+      <h2 id="save-sheet-title">Save workflow</h2>
+      <p class="quiet">Edit the name before Bao stores it. The summary is one line. Intent is what you were trying to do.</p>
+      <label>Title <input id="save-title" name="title" value="${htmlEsc(sheet.name)}" required></label>
+      <label>Summary <input id="save-summary" name="summary" value="${htmlEsc(sheet.summary || "")}" placeholder="One line about what this does"></label>
+      <label>Intent <textarea id="save-intent" name="intent" rows="3">${htmlEsc(sheet.intent || "")}</textarea></label>
+      ${poster ? `<div class="thumb" data-shot="${poster}">${placeholder("navigate", sheet.name)}</div>` : ""}
+      <p id="save-error" class="quiet" hidden></p>
+      <div class="row">
+        <button class="primary" id="save-commit" type="submit">Save</button>
+        <button type="button" id="save-discard">Discard</button>
+      </div>
+    </form>
   </section>`;
 }
 

@@ -30,7 +30,7 @@ Branded Chrome ignores `--load-extension` (the command-line switch was removed).
 
 Nothing happens until Record or a run starts.
 
-Record asks for that tab's origin and injects the same recorder the Playwright driver uses. Replay asks for the workflow's origin, then opens a new window and drives that tab. It does not type into the tab the person is already using.
+Record asks for that tab's origin and injects the same recorder the Playwright driver uses. Replay opens a page with two choices. Allow all sites is the default: it asks Chrome for `http://*/*` and `https://*/*`, and later runs do not ask again. Only this site asks for the workflow's origin. Either way, replay opens a new window and drives that tab. It does not type into the tab the person is already using. A secret is typed only on the origin the workflow opened.
 
 The toolbar badge says REC or RUN while a session is active. A strip inside the page appears only for "needs you" (a confirm, a login, or a bot wall).
 
@@ -38,7 +38,8 @@ Steps, locators, the confirm gate, and the page classifier are the ones the Play
 
 ## What it does not touch
 
-- No `<all_urls>` at install. Host access is an optional permission, granted per origin from the popup or when a run starts.
+- No `<all_urls>` at install, and no install-time host permission. `optional_host_permissions` stays `http://*/*` and `https://*/*`. Allow all sites requests those from a click. Only this site requests one origin. Settings shows all sites, per site, or none, and Revoke calls `chrome.permissions.remove`.
+- Allow all sites lets Bao read and act on any site in this Chrome profile, only while a run or a recording is active. Content scripts are registered for the page the run is on. An all-sites grant does not inject them on every site. Network listeners attach after the grant and still drop events for tabs the run does not own.
 - Tabs the person did not pick are not read. Network and cookie listeners drop events for any other tab.
 - `navigator` is not patched. The extension does not invent a user agent, client hints, or a TLS fingerprint.
 - Captchas and challenge widgets are not solved and not clicked. The run pauses as needs you.

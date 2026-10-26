@@ -6,6 +6,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import path from "node:path";
+import { frameRpc, takeRpcChunk } from "./frame";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -126,23 +127,16 @@ function readFrames(child: ChildProcessWithoutNullStreams, onMessage: (msg: Rpc)
   child.stdout.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
-      const headerEnd = buf.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-      const header = buf.slice(0, headerEnd).toString("utf8");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) return;
-      const length = Number(match[1]);
-      const start = headerEnd + 4;
-      if (buf.length < start + length) return;
-      onMessage(JSON.parse(buf.slice(start, start + length).toString("utf8")) as Rpc);
-      buf = buf.slice(start + length);
+      const next = takeRpcChunk(buf, null);
+      if (!next) return;
+      onMessage(JSON.parse(next.body) as Rpc);
+      buf = Buffer.from(next.rest);
     }
   });
 }
 
 function writeFrame(child: ChildProcessWithoutNullStreams, msg: Rpc): void {
-  const json = JSON.stringify(msg);
-  child.stdin.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  child.stdin.write(frameRpc(msg, "json"));
 }
 
 main().catch((err) => {
