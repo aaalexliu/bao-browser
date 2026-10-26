@@ -10,6 +10,8 @@ import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
+  remoteBanner,
+  remoteMcpSetting,
   commandItems,
   esc,
   healDetail,
@@ -70,7 +72,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; siteTrust?: Record<string, "ask" | "allow"> };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: Record<string, "ask" | "allow"> };
   sync?: {
     server?: string;
     deviceName?: string;
@@ -173,6 +175,7 @@ async function refresh(): Promise<void> {
     guide: state.guide ? { status: state.guide.status, stepId: state.guide.stepId, actions: state.guide.actions } : null,
     extract: state.extractPicker || "",
     saveSheet: state.saveSheet?.id || "",
+    remote: state.remote,
     screen,
     healFilter,
     openHeal,
@@ -198,7 +201,7 @@ function render(): void {
   const showCard = missing && !onboarded && screen === "library";
   railEl().innerHTML = rail({ ...state, permDot: missing && !showCard });
   const importAsk = screen === "logins" ? loginAct(login) : "";
-  actEl().innerHTML = (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
+  actEl().innerHTML = remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
@@ -348,6 +351,7 @@ function settings(): string {
     <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
+    ${remoteMcpSetting(state.settings?.remoteMcp === true)}
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
@@ -609,6 +613,7 @@ function bind(): void {
   const reveal = document.getElementById("reveal-backup");
   if (reveal) reveal.onclick = () => void postSync("/api/sync/reveal", {});
   bindAsk();
+  bindRemote();
   bindHeal();
   const save = document.getElementById("save-settings");
   if (save) save.onclick = async () => {
@@ -621,6 +626,7 @@ function bind(): void {
         actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
         syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
+        remoteMcp: (document.getElementById("remote-mcp") as HTMLInputElement | null)?.checked === true,
         siteTrust: readSiteTrust(),
       }),
     });
@@ -807,6 +813,17 @@ function bindTeachFix(root: ParentNode): void {
     renderKey = "";
     await refresh();
   };
+}
+
+function bindRemote(): void {
+  const allow = document.getElementById("remote-allow");
+  if (allow) allow.onclick = () => void fetch("/api/remote/allow", { method: "POST" });
+  const deny = document.getElementById("remote-deny");
+  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" });
+  const kill = document.getElementById("remote-kill");
+  if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
+  const confirm = document.getElementById("remote-confirm-allow");
+  if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
 }
 
 function bindAsk(): void {
