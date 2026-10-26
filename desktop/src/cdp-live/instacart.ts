@@ -40,7 +40,7 @@ export function addLabelOk(label: string): boolean {
 export function cartLabelOk(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text || text.length > 80 || clickForbidden(text) || /add to cart|checkout|distinct items in cart/i.test(text)) return false;
-  if (/^(cart|view cart)\b/i.test(text)) return true;
+  if (/^(cart|view cart|open cart|your cart|shopping cart)\b/i.test(text)) return true;
   if (/items in cart/i.test(text) && /\bcart\b/i.test(text)) return true;
   return /^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+\d+\s*$/i.test(text);
 }
@@ -55,7 +55,9 @@ export function cartCountFromLabel(label: string, badge: string | null): number 
   if (items?.[1] && /cart/i.test(text)) return Number(items[1]);
   const fee = text.match(/^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+(\d+)\s*$/i);
   if (fee?.[1]) return Number(fee[1]);
-  if (badge && /^\d+$/.test(badge) && /^(cart|view cart)\b/i.test(text)) return Number(badge);
+  const trailing = text.match(/^(?:view cart|open cart|your cart|shopping cart|cart)\b\D*(\d+)\s*$/i);
+  if (trailing?.[1]) return Number(trailing[1]);
+  if (badge && /^\d+$/.test(badge) && /^(cart|view cart|open cart|your cart|shopping cart)\b/i.test(text)) return Number(badge);
   if (/^(view cart|cart)\.?$/i.test(text)) return 0;
   return null;
 }
@@ -134,7 +136,11 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     const aria = norm(el.getAttribute("aria-label"));
     if (aria) return aria.slice(0, 180);
     if (input) return norm(labelled || input.placeholder || el.getAttribute("title")).slice(0, 180);
-    return norm(labelled || el.getAttribute("title") || el.textContent).slice(0, 180);
+    const icon = el.querySelector("img[alt], svg[aria-label], [role='img'][aria-label]");
+    const iconText = norm(icon?.getAttribute("alt") || icon?.getAttribute("aria-label"));
+    const text = norm(labelled || el.getAttribute("title") || el.textContent).slice(0, 180);
+    if (iconText && /cart|bag|basket/i.test(iconText) && (text === "" || /^\d+$/.test(text))) return iconText.slice(0, 180);
+    return text || iconText.slice(0, 180);
   };
   const parentOf = (el: Element): Element | null => {
     if (el.parentElement) return el.parentElement;
@@ -170,7 +176,7 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     if (!text || /@|\bstreet\b|\bavenue\b|\broad\b|\bapt\b|\b\d{5}\b/i.test(text)) return null;
     if (/distinct items in cart/i.test(text)) return "store-cart";
     if (/^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+\d+\s*$/i.test(text)) return "header-cart-with-fee";
-    if (/^(view cart|cart)\b/i.test(text) || /items in cart/i.test(text)) return "view-cart";
+    if (/^(view cart|open cart|your cart|shopping cart|cart)\b/i.test(text) || /items in cart/i.test(text)) return "view-cart";
     if (/^search\b/i.test(text)) return "search";
     if (/^add\s+1\s+(?:ct|item|pkg|ea|each)\b/i.test(text) || /^(add|add to cart|add item)$/i.test(text)) return "add";
     if (/^(decrement|decrease|increment|increase)\b/i.test(text)) return text.split(/\s+/).slice(0, 2).join(" ");
@@ -240,6 +246,15 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     const hint = hintOf(labelOf(el));
     if (hint) hinted.add(hint);
   }
+  const topWord = /^(cart|view|open|bag|basket|items|delivery|search|add|menu|account|shop)$/i;
+  let tops = 0;
+  for (const el of buttons) {
+    if (tops >= 4 || el.getBoundingClientRect().top >= 180) continue;
+    const word = labelOf(el).split(" ")[0]?.toLowerCase() || "";
+    if (!topWord.test(word) || hinted.has(`top:${word}`)) continue;
+    hinted.add(`top:${word}`);
+    tops += 1;
+  }
   snap.hints = [`controls:b${buttons.length}:i${fields.length}:s${shadows}:d${dialogs.length}`, ...hinted].slice(0, 8);
   if (snap.blocked) return snap;
 
@@ -252,12 +267,20 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     const rect = el.getBoundingClientRect();
     return rect.top >= 0 && rect.top < 180;
   };
-  const carts = buttons.filter((el) => {
+  const cartCandidate = (el: Element): boolean => {
     const label = labelOf(el);
     return cartLabelOk(label) && cartCountFromLabel(label, badgeOf(el)) != null;
+  };
+  const carts = buttons.filter(cartCandidate);
+  const headerBits = carts.length ? [] : collect("div, span").filter((el) => {
+    const text = norm(el.textContent);
+    if (!text || text.length > 80) return false;
+    return shown(el) && inHeader(el) && cartCandidate(el);
   });
-  const headerCarts = carts.filter(inHeader);
-  const pool = headerCarts.length ? headerCarts : carts;
+  const headerCarts = (carts.length ? carts : headerBits).filter(inHeader);
+  const poolSource = carts.length ? carts : headerBits;
+  const chosen = headerCarts.length ? headerCarts : poolSource;
+  const pool = chosen.filter((el) => !chosen.some((other) => other !== el && el.contains(other)));
   snap.cartAmbiguous = pool.length > 1;
   const onlyCart = pool.length === 1 ? pool[0] : undefined;
   if (onlyCart) {

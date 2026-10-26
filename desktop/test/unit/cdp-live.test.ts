@@ -76,6 +76,9 @@ test("instacart navigation stays on the site and off checkout", () => {
   assert.equal(cartCountFromLabel("Cart, 2 items", null), 2);
   assert.equal(cartCountFromLabel("Add $3.99 to get $0 delivery fee 2", null), 2);
   assert.equal(cartCountFromLabel("View Cart", "4"), 4);
+  assert.equal(cartLabelOk("Open cart"), true);
+  assert.equal(cartCountFromLabel("Cart 0", null), 0);
+  assert.equal(cartCountFromLabel("Open cart 3", null), 3);
   assert.equal(addLabelOk("Add"), true);
   assert.equal(addLabelOk("Add 1 ct Organic Bananas"), true);
   assert.equal(addLabelOk("Add 1 ct Banana bread"), false);
