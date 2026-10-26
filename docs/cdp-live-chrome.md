@@ -180,4 +180,6 @@ Instacart's header cart says "View Cart. Items in cart: N" when the count is rea
 
 Per-store summaries labeled "Distinct items in cart" are not the header cart and are not clicked. The runner searches first, then reads the single header cart on the results page before the add. A second summary does not get a click.
 
-The first live attempt stopped at `cart-count` with 0 runner clicks because the finder required the label to start with "Cart". A second attempt found more than one per-store summary, clicked nothing, and stopped at `cart-ambiguous`.
+The live add did not happen. The home page exposed more than one per-store summary, so the first pass that understood those labels stopped at `cart-ambiguous` with 0 clicks. After the search was submitted, the results page showed an Add control and a header control whose first word was "view", and no control exposed a cart count. The runner stopped at `cart-count`. The only runner click was the search field. That click was trusted, and so was the button event from submitting the search. Add was not clicked. The before and after counts were never read, and the cart was not changed. `navigator.webdriver` was false. No dialog, captcha, or login wall appeared. One open shadow root was on the page. Connect-to-Allow on that attempt was 34624 ms. The automation banner was visible while the socket was open and absent after it closed.
+
+The gap is that results-page cart control. Its accessible name does not include a count, so the add stays refused.
