@@ -2,7 +2,30 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
-import { navigationAllowed, openerAllowed } from "../../src/cdp-live/allowlist";
+import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
+import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
+import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, openLiveWindow } from "../../src/cdp-live/driver";
+import {
+  attachPathMatches,
+  lockIsStale,
+  parseLockText,
+  pickExistingPage,
+  redactForShot,
+  workflowFromAudit,
+} from "../../src/cdp-live/attach";
+import {
+  clickAllowed,
+  dashboardNavigation,
+  defaultContextJoinId,
+  isolatedFromDashboard,
+  pathIsLogin,
+  pickDashboardPage,
+  publicPath,
+  readSurface,
+  redactText,
+  sameContext,
+  signedOutSurface,
+} from "../../src/cdp-live/session";
 import {
   checkboxReach,
   dialogFromNodes,
@@ -43,6 +66,64 @@ test("navigation allowlist is books.toscrape.com over http and https", () => {
   assert.equal(openerAllowed("about:blank"), true);
   assert.equal(openerAllowed("about:blank#x"), false);
   assert.equal(openerAllowed("https://books.toscrape.com/"), true);
+});
+
+test("instacart navigation stays on the site and off checkout", () => {
+  assert.equal(navigationAllowed("https://www.instacart.com/"), false);
+  assert.equal(navigationAllowed("https://www.instacart.com/store/s?k=bananas", INSTACART_HOSTS), true);
+  assert.equal(navigationAllowed("https://instacart.com/", INSTACART_HOSTS), true);
+  assert.equal(navigationAllowed("https://www.instacart.com/store/checkout", INSTACART_HOSTS), false);
+  assert.equal(navigationRefusal("https://www.instacart.com/login", INSTACART_HOSTS), "blocked-path");
+  assert.equal(navigationRefusal("https://www.instacart.com/account/settings", INSTACART_HOSTS), "blocked-path");
+  assert.equal(navigationAllowed("https://example.com/", INSTACART_HOSTS), false);
+  assert.equal(navigationAllowed("https://cdn.example.com/banana.jpg", INSTACART_HOSTS), false);
+  assert.equal(clickForbidden("Go to checkout"), true);
+  assert.equal(clickForbidden("Place order"), true);
+  assert.equal(clickForbidden("Start free trial"), true);
+  assert.equal(clickForbidden("Add"), false);
+  assert.equal(addLabelOk("Add"), true);
+  assert.equal(addLabelOk("Add to cart"), true);
+  assert.equal(addLabelOk("Checkout"), false);
+  assert.equal(searchLabelOk("Search products and stores"), true);
+  assert.equal(searchLabelOk("Enter your address"), false);
+  assert.equal(cartLabelOk("Cart, 2 items"), true);
+  assert.equal(cartLabelOk("View Cart. Items in cart: 0"), true);
+  assert.equal(cartLabelOk("Add $3.99 to get $0 delivery fee 1"), true);
+  assert.equal(cartLabelOk("Add $3.99 to get $0 delivery fee"), false);
+  assert.equal(cartLabelOk("Add to cart"), false);
+  assert.equal(cartLabelOk("Go to checkout"), false);
+  assert.equal(cartLabelOk("Distinct items in cart: 2"), false);
+  assert.equal(cartCountFromLabel("View Cart. Items in cart: 0", null), 0);
+  assert.equal(cartCountFromLabel("Cart, 2 items", null), 2);
+  assert.equal(cartCountFromLabel("Add $3.99 to get $0 delivery fee 2", null), 2);
+  assert.equal(cartCountFromLabel("View Cart", "4"), 4);
+  assert.equal(cartLabelOk("Open cart"), true);
+  assert.equal(cartCountFromLabel("Cart 0", null), 0);
+  assert.equal(cartCountFromLabel("Open cart 3", null), 3);
+  assert.equal(addLabelOk("Add"), true);
+  assert.equal(addLabelOk("Add 1 ct Organic Bananas"), true);
+  assert.equal(addLabelOk("Add 1 ct Banana bread"), false);
+  assert.equal(addLabelOk("Add 2 ct Organic Bananas"), false);
+  assert.equal(addLabelOk("Add $3.99 to get $0 delivery fee 1"), false);
+  assert.equal(addProductName("Add 1 ct Organic Bananas"), "Organic Bananas");
+  assert.equal(stapleNameOk("Organic Bananas"), true);
+  assert.equal(stapleNameOk("Banana bread"), false);
+  assert.equal(removeLabelOk("Decrease quantity", "decrease", 2), true);
+  assert.equal(removeLabelOk("Decrement quantity of Organic Bananas", "decrease", 1), true);
+  assert.equal(removeLabelOk("Remove", "remove", 1), true);
+  assert.equal(removeLabelOk("Remove Organic Bananas", "remove", 1), true);
+  assert.equal(removeLabelOk("Remove", "remove", 2), false);
+  assert.equal(removeLabelOk("Remove all", "remove", 1), false);
+  assert.equal(cartRestored(2, 3, 2), true);
+  assert.equal(cartRestored(2, 4, 2), false);
+  const page = readInstacart.toString();
+  assert.match(page, /cartLabelOk\(/);
+  assert.match(page, /shadowRoot/);
+  assert.doesNotMatch(page, /require\(/);
+  assert.doesNotMatch(page, /document\.cookie/);
+  assert.doesNotMatch(page, /\.click\s*\(/);
+  assert.match(PIERCE_QUERY, /shadowRoot/);
+  assert.doesNotMatch(PIERCE_QUERY, /cookie/);
 });
 
 test("Allow is clicked only for the dialog bao just opened", () => {
@@ -137,6 +218,110 @@ test("the browser handshake has no Origin header", () => {
   assert.equal(/\r\nOrigin:/i.test(raw), false);
   assert.match(raw, /^GET \/devtools\/browser\/example HTTP\/1\.1\r\nHost: 127\.0\.0\.1:9222\r\n/);
   assert.equal(scrubCdp("no /devtools/browser/abc-def"), "no /devtools/browser/<id>");
+});
+
+test("a new live window does not create a browser context", () => {
+  const source = openLiveWindow.toString();
+  assert.equal(source.includes("createBrowserContext"), false);
+  assert.match(source, /Target\.createTarget/);
+  assert.match(source, /newWindow: options\.newWindow !== false/);
+  assert.match(source, /createParams\.browserContextId = options\.browserContextId/);
+});
+
+test("sign-in pages stay in the default context or move to a new tab", () => {
+  assert.equal(pathIsLogin("/login/index"), true);
+  assert.equal(pathIsLogin("/member/overview"), false);
+  assert.equal(pathIsLogin("/freeze/confirm"), false);
+  assert.equal(signedOutSurface({ blocked: "stop-path", path: "/login/index", title: "Sign in" }), true);
+  assert.equal(signedOutSurface({ blocked: "", path: "/member", title: "Sign in to your account" }), true);
+  assert.equal(signedOutSurface({ blocked: "captcha", path: "/login/index", title: "Sign in" }), false);
+  assert.equal(signedOutSurface({ blocked: "", path: "/member/freeze", title: "Credit freeze", headings: ["Unfreeze your credit"] }), false);
+  const pages = [
+    { id: "login", login: true, path: "/login/index" },
+    { id: "root", login: false, path: "/" },
+    { id: "dash", login: false, path: "/member/overview" },
+  ];
+  assert.equal(pickDashboardPage(pages)?.id, "dash");
+  assert.equal(pickDashboardPage([{ id: "root", login: false, path: "/" }])?.id, "root");
+  assert.equal(sameContext("default", "default"), true);
+  assert.equal(sameContext("other", "default"), false);
+  assert.equal(sameContext("other", null), null);
+  assert.equal(isolatedFromDashboard("default", "default", ["default"]), false);
+  assert.equal(isolatedFromDashboard("other", "default", []), true);
+  assert.equal(isolatedFromDashboard("created", null, ["created"]), true);
+  assert.equal(defaultContextJoinId("default", []), "default");
+  assert.equal(defaultContextJoinId("created", ["created"]), "");
+  assert.equal(defaultContextJoinId("", []), "");
+  assert.equal(dashboardNavigation({ host: "usa.experian.com", path: "/member/overview" }, ["usa.experian.com"]), "https://usa.experian.com/member/overview");
+  assert.equal(dashboardNavigation({ host: "evil.test", path: "/member" }, ["usa.experian.com"]), "");
+  assert.equal(dashboardNavigation({ host: "usa.experian.com", path: "/member?token=1" }, ["usa.experian.com"]), "");
+});
+
+test("an intent session publishes a path and will not click a commit control", () => {
+  assert.equal(publicPath("https://example.com/member/security-freeze?token=1#x"), "/member/security-freeze");
+  assert.equal(publicPath("https://example.com/member/123456/item"), "/member/:id/item");
+  assert.equal(publicPath("https://example.com/a/00000000-0000-4000-8000-000000000000/b"), "/a/:id/b");
+  assert.equal(redactText("Welcome back, Alex"), "[greeting]");
+  assert.equal(redactText("user@example.com"), "");
+  assert.equal(clickAllowed("Manage freeze", "link", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), true);
+  assert.equal(clickAllowed("Unfreeze", "button", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), false);
+  assert.equal(clickAllowed("Confirm", "button", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), false);
+  assert.equal(clickAllowed("Confirm", "submit", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), false);
+  assert.equal(clickAllowed("Start free trial", "link", "free trial|purchase", "^(confirm|submit)\\b"), false);
+  assert.equal(clickAllowed("1 day", "radio", "", ""), false);
+  const page = readSurface.toString();
+  assert.match(page, /shadowRoot/);
+  assert.doesNotMatch(page, /document\.cookie/);
+  assert.doesNotMatch(page, /\.click\s*\(/);
+});
+
+test("an attach run picks one open page and does not create or close a target", () => {
+  const pages = [
+    { targetId: "other", host: "usa.experian.com", path: "/login/index" },
+    { targetId: "dash", host: "usa.experian.com", path: "/mfe/dashboard" },
+    { targetId: "books", host: "books.toscrape.com", path: "/mfe/dashboard" },
+  ];
+  const choice = pickExistingPage(pages, ["usa.experian.com"], "/mfe/dashboard/");
+  assert.equal(choice.matches, 1);
+  assert.equal(choice.page?.targetId, "dash");
+  const ambiguous = pickExistingPage([
+    { targetId: "a", host: "usa.experian.com", path: "/mfe/dashboard" },
+    { targetId: "b", host: "usa.experian.com", path: "/mfe/dashboard" },
+  ], ["usa.experian.com"], "/mfe/dashboard");
+  assert.equal(ambiguous.page, null);
+  assert.equal(ambiguous.matches, 2);
+  assert.equal(pickExistingPage(pages, ["usa.experian.com"], "/missing").matches, 0);
+  assert.equal(attachPathMatches("https://usa.experian.com/mfe/dashboard?x=1", "/mfe/dashboard"), true);
+  assert.equal(attachPathMatches("https://usa.experian.com/login/index", "/mfe/dashboard"), false);
+  const attach = attachLivePage.toString();
+  assert.equal(attach.includes("createTarget"), false);
+  assert.equal(attach.includes("closeTarget"), false);
+  assert.match(attach, /preserveTarget|true/);
+  const end = attachLivePage.toString() + "\n" + TRUST_CLEANUP;
+  assert.match(end, /sessionStorage\.removeItem\("__baoTrustLog"\)/);
+  assert.doesNotMatch(TRUST_CLEANUP, /sessionStorage\.getItem/);
+  assert.doesNotMatch(redactForShot.toString(), /document\.cookie|localStorage|sessionStorage|return text/);
+  const workflow = workflowFromAudit({
+    id: "wf-unfreeze-credit",
+    name: "Unfreeze credit",
+    intent: "Reach the Unfreeze credit screen and stop before confirming",
+    startUrl: "https://usa.experian.com/mfe/dashboard",
+    createdAt: 1,
+    steps: [{ name: "click", path: "/mfe/credit", label: "Credit freeze", kind: "link" }],
+    confirmLabel: "Confirm unfreeze",
+  });
+  assert.deepEqual(validateWorkflow(workflow), []);
+  assert.equal(workflow.driver, "cdp-live");
+  assert.equal(workflow.steps.at(-1)?.action, "confirm");
+  assert.equal(workflow.steps.at(-1)?.human, true);
+  assert.equal(workflow.steps[0]?.action, "click");
+  const parsed = parseLockText("agent=bc-test\nstartedAt=1000\n");
+  assert.equal(parsed?.agent, "bc-test");
+  const lines = parseLockText("bc-other\n1793154442761\n");
+  assert.equal(lines?.agent, "bc-other");
+  assert.equal(lines?.startedAt, 1793154442761);
+  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
+  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
 });
 
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {

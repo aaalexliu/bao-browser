@@ -32,5 +32,11 @@ desktop/os-helper/target/
 desktop/os-helper-macos/target/
 desktop/os-helper-macos/BaoOSHelper.app/
 
+# Live CDP frames stay on this Mac. Redacted audit JSON and the app video may be added by hand.
+.evidence/frames/
+.evidence/bao-home/
+.evidence/session-inbox.txt
+.evidence/cdp-live-ax.jsonl
+
 # Packaged binaries stay out of git. The build writes them under artifacts.
 *.AppImage
