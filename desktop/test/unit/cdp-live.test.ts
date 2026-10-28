@@ -5,6 +5,7 @@ import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
 import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
 import { PIERCE_QUERY } from "../../src/cdp-live/driver";
+import { clickAllowed, publicPath, readSurface, redactText } from "../../src/cdp-live/session";
 import {
   checkboxReach,
   dialogFromNodes,
@@ -197,6 +198,24 @@ test("the browser handshake has no Origin header", () => {
   assert.equal(/\r\nOrigin:/i.test(raw), false);
   assert.match(raw, /^GET \/devtools\/browser\/example HTTP\/1\.1\r\nHost: 127\.0\.0\.1:9222\r\n/);
   assert.equal(scrubCdp("no /devtools/browser/abc-def"), "no /devtools/browser/<id>");
+});
+
+test("an intent session publishes a path and will not click a commit control", () => {
+  assert.equal(publicPath("https://example.com/member/security-freeze?token=1#x"), "/member/security-freeze");
+  assert.equal(publicPath("https://example.com/member/123456/item"), "/member/:id/item");
+  assert.equal(publicPath("https://example.com/a/00000000-0000-4000-8000-000000000000/b"), "/a/:id/b");
+  assert.equal(redactText("Welcome back, Alex"), "[greeting]");
+  assert.equal(redactText("user@example.com"), "");
+  assert.equal(clickAllowed("Manage freeze", "link", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), true);
+  assert.equal(clickAllowed("Unfreeze", "button", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), false);
+  assert.equal(clickAllowed("Confirm", "button", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), false);
+  assert.equal(clickAllowed("Confirm", "submit", "free trial|purchase", "^(confirm|submit|unfreeze)\\b"), false);
+  assert.equal(clickAllowed("Start free trial", "link", "free trial|purchase", "^(confirm|submit)\\b"), false);
+  assert.equal(clickAllowed("1 day", "radio", "", ""), false);
+  const page = readSurface.toString();
+  assert.match(page, /shadowRoot/);
+  assert.doesNotMatch(page, /document\.cookie/);
+  assert.doesNotMatch(page, /\.click\s*\(/);
 });
 
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {

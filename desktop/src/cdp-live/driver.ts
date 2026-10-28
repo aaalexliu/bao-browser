@@ -156,6 +156,11 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Page.bringToFront", {}, this.sessionId).catch(() => undefined);
   }
 
+  /** Bring this driver's own target forward. Does not raise any other window. */
+  async show(): Promise<void> {
+    await this.bringToFront();
+  }
+
   private async evaluateOnce<T>(expression: string): Promise<T> {
     this.assertHost();
     const payload = await this.cdp.send<{
