@@ -3,9 +3,22 @@ import path from "node:path";
 import { navigationAllowed } from "./allowlist";
 import { ALLOW_CLICK_WINDOW_MS, checkboxReach, mayClickAllow } from "./consent";
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
-import { openLiveWindow, type CdpLiveDriver, type PageObservation } from "./driver";
+import { attachLivePage, openLiveWindow, type CdpLiveDriver, type PageObservation } from "./driver";
+import {
+  acquireLock,
+  attachPathMatches,
+  clearRedact,
+  keepAwake,
+  pickExistingPage,
+  redactForShot,
+  releaseAwake,
+  releaseLock,
+  workflowFromAudit,
+} from "./attach";
 import { readDevToolsActivePort } from "./endpoint";
 import { classifyPage } from "../v1/page-class";
+import { validateWorkflow } from "../v1/schema";
+import { Library } from "../v1/store";
 import { connectCdp, type CdpSocket } from "./socket";
 
 const PACE_MS = 2500;
@@ -269,6 +282,9 @@ interface StepNote {
   path: string;
   label: string;
   ms: number;
+  isTrusted: boolean | null;
+  kind: string;
+  shot: string;
 }
 
 interface Guard {
@@ -280,6 +296,9 @@ interface Guard {
   reached: string;
   intent: string;
   inbox: string;
+  attachPath: string;
+  agent: string;
+  lockFile: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -305,10 +324,19 @@ function parseGuard(root: string): Guard {
   const reached = arg("--reached");
   const intent = arg("--intent");
   const inbox = arg("--inbox", path.join(root, ".evidence", "session-inbox.txt"));
+  const attachPath = arg("--attach-path");
+  const agent = arg("--agent", "bao-cdp");
+  const lockFile = arg("--lock", "/tmp/bao-cdp-session.lock");
   if (hosts.length === 0 || hosts.some((host) => host.includes("*") || host.includes("/"))) {
     throw new Error("hosts must be exact names");
   }
   if (!start || !navigationAllowed(start, hosts)) throw new Error("start url is not on the host list");
+  if (attachPath && (!attachPath.startsWith("/") || attachPath.startsWith("//") || /[?#\\]/.test(attachPath))) {
+    throw new Error("attach path must be a pathname");
+  }
+  if (attachPath && !attachPathMatches(start, attachPath)) throw new Error("attach path does not match the start url");
+  if (!/^[\w.-]+$/.test(agent)) throw new Error("agent id is not a token");
+  if (path.basename(lockFile) !== "bao-cdp-session.lock") throw new Error("refusing a different lock file");
   if (!deny || !commit || !stopPath || !reached || !intent) {
     throw new Error("deny, commit, stop-path, reached, and intent are required");
   }
@@ -316,7 +344,7 @@ function parseGuard(root: string): Guard {
   new RegExp(commit, "i");
   new RegExp(stopPath, "i");
   new RegExp(reached, "i");
-  return { hosts, start, deny, commit, stopPath, reached, intent, inbox };
+  return { hosts, start, deny, commit, stopPath, reached, intent, inbox, attachPath, agent, lockFile };
 }
 
 function safeError(err: unknown): string {
@@ -419,7 +447,30 @@ async function main(): Promise<void> {
   const draftFile = path.join(evidence, "session-workflow.json");
   await mkdir(evidence, { recursive: true });
   await writeFile(guard.inbox, "");
+  progress("waiting for the cdp session lock");
+  let announced = false;
+  await acquireLock(guard.lockFile, guard.agent, (holder) => {
+    if (announced) return;
+    announced = true;
+    progress(`cdp lock is held (${holder})`);
+  });
+  const awake = keepAwake();
+  try {
+  await runGuarded(root, guard, evidence, axLog, outFile, draftFile);
+  } finally {
+    releaseAwake(awake);
+    await releaseLock(guard.lockFile, guard.agent);
+  }
+}
 
+async function runGuarded(
+  root: string,
+  guard: Guard,
+  evidence: string,
+  axLog: string,
+  outFile: string,
+  draftFile: string,
+): Promise<void> {
   const helper = chromeHelper();
   progress("helper permissions");
   const perms = await helper.permissions(false);
@@ -497,17 +548,36 @@ async function main(): Promise<void> {
     isolated: false,
     sameAsDashboard: null as boolean | null,
     reopenedDefault: false,
-    opened: "window" as "window" | "tab",
+    opened: "window" as "window" | "tab" | "attached",
     broughtDashboardForward: false,
     dashboardPath: "",
+    closedTarget: false,
+    hostPagesBefore: 0,
+    hostPagesAfter: 0,
+    attachedStillOpen: null as boolean | null,
   };
 
   const ask = (mode: "read" | "mark", index = -1, label = ""): SurfaceAsk => ({
     mode, index, label, stopPath: guard.stopPath, deny: guard.deny, commit: guard.commit,
   });
 
-  const note = (name: string, started: number, label: string, pagePath: string): void => {
-    steps.push({ name, path: publicPath(pagePath), label: redactText(label), ms: Date.now() - started });
+  const note = (
+    name: string,
+    started: number,
+    label: string,
+    pagePath: string,
+    isTrusted: boolean | null = null,
+    kind = "",
+  ): void => {
+    steps.push({
+      name,
+      path: publicPath(pagePath),
+      label: redactText(label),
+      ms: Date.now() - started,
+      isTrusted,
+      kind,
+      shot: "",
+    });
   };
 
   const remember = (page: Surface): Surface => {
@@ -534,8 +604,31 @@ async function main(): Promise<void> {
     return page;
   };
 
-  const emit = (page: Surface): void => {
+  const shots: string[] = [];
+  const saveShot = async (name: string): Promise<string> => {
+    if (!driver) return "";
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "step";
+    const base = `${String(shots.length + 1).padStart(2, "0")}-${slug}.png`;
+    const file = path.join(evidence, "frames", base);
+    await mkdir(path.dirname(file), { recursive: true });
+    const blurred = await driver.evaluateFunction<number>(redactForShot, null);
+    if (typeof blurred !== "number") throw new Error("redaction did not run");
+    const png = await driver.screenshotPng();
+    await writeFile(file, png);
+    await driver.evaluateFunction<number>(clearRedact, null).catch(() => undefined);
+    return base;
+  };
+  const emit = async (page: Surface, shotName: string): Promise<void> => {
     const shown = remember(page);
+    const file = await saveShot(shotName).catch((err) => {
+      progress(`screenshot skipped ${safeError(err)}`);
+      return "";
+    });
+    if (file) {
+      shots.push(file);
+      const last = steps[steps.length - 1];
+      if (last) last.shot = file;
+    }
     process.stdout.write(`${JSON.stringify({
       path: shown.path,
       title: shown.title,
@@ -543,6 +636,7 @@ async function main(): Promise<void> {
       commit: shown.commit,
       blocked: shown.blocked,
       reached,
+      shot: file,
       controls: shown.controls.map((control) => ({ index: control.index, kind: control.kind, label: control.label, y: control.y })),
     })}\n`);
   };
@@ -569,7 +663,7 @@ async function main(): Promise<void> {
     await sleep(PACE_MS);
     const page = await read();
     note(label, openStarted, "", page.path);
-    emit(page);
+    await emit(page, label);
     return page;
   };
 
@@ -580,6 +674,28 @@ async function main(): Promise<void> {
   };
 
   try {
+    if (guard.attachPath) {
+      const picture = await browserPicture(cdp, guard.hosts, "").catch((err) => {
+        progress(`target list failed ${safeError(err)}`);
+        return { createdContextIds: [] as string[], pages: [] as ContextPage[] };
+      });
+      contextReport.opened = "attached";
+      contextReport.createdBrowserContext = false;
+      contextReport.hostPagesBefore = picture.pages.length;
+      const choice = pickExistingPage(picture.pages, guard.hosts, guard.attachPath);
+      if (!choice.page) throw new NeedsHuman(choice.matches === 0 ? "dashboard-tab-missing" : "ambiguous-tab");
+      const attachedPath = publicPath(`https://${choice.page.host}${choice.page.path}`);
+      progress(`attaching to the open tab ${attachedPath}`);
+      driver = await attachLivePage(cdp, guard.hosts, choice.page.targetId);
+      const landed = await settle("attach");
+      contextReport.dashboardPath = attachedPath;
+      contextReport.sameAsDashboard = true;
+      contextReport.isolated = false;
+      contextReport.closedTarget = false;
+      stopForWall(landed);
+      if (signedOutSurface(landed)) throw new NeedsHuman(landed.blocked || "login");
+      if (landed.blocked && !reached) throw new NeedsHuman(landed.blocked);
+    } else {
     driver = await openLiveWindow(cdp, guard.hosts);
     await driver.goto(guard.start, 30_000);
     let landed = await settle("open");
@@ -598,6 +714,10 @@ async function main(): Promise<void> {
       opened: "window",
       broughtDashboardForward: false,
       dashboardPath: dashboard ? publicPath(`https://${dashboard.host}${dashboard.path}`) : "",
+      closedTarget: false,
+      hostPagesBefore: picture.pages.length,
+      hostPagesAfter: 0,
+      attachedStillOpen: null,
     };
     progress(`context created=false isolated=${contextReport.isolated} sameAsDashboard=${String(contextReport.sameAsDashboard)} dashboard=${contextReport.dashboardPath || "none"}`);
     stopForWall(landed);
@@ -660,6 +780,7 @@ async function main(): Promise<void> {
     }
 
     if (landed.blocked && !reached) throw new NeedsHuman(landed.blocked);
+    }
 
     let offset = 0;
     let finished = reached;
@@ -678,7 +799,7 @@ async function main(): Promise<void> {
           await driver.show();
           const page = await read();
           note("look", started, "", page.path);
-          emit(page);
+          await emit(page, "look");
           stopForWall(page);
           if (page.blocked && !reached) throw new NeedsHuman(page.blocked);
           if (reached) {
@@ -694,7 +815,7 @@ async function main(): Promise<void> {
           await sleep(PACE_MS);
           const page = await read();
           note("scroll", started, "", page.path);
-          emit(page);
+          await emit(page, "scroll");
           stopForWall(page);
           if (page.blocked && !reached) throw new NeedsHuman(page.blocked);
           if (reached) {
@@ -707,7 +828,7 @@ async function main(): Promise<void> {
           if (reached) throw new NeedsHuman("commit-visible");
           const index = Number(line.slice(6));
           const control = rawControls.find((item) => item.index === index);
-          if (!control || !clickAllowed(control.label, control.kind, guard.deny, guard.commit)) {
+          if (!control || !redactText(control.label) || !clickAllowed(control.label, control.kind, guard.deny, guard.commit)) {
             throw new NeedsHuman("refused-click");
           }
           if (clicks >= CLICK_CAP) throw new NeedsHuman("too-many-clicks");
@@ -719,8 +840,10 @@ async function main(): Promise<void> {
           clicks += 1;
           await sleep(PACE_MS);
           const page = await read();
-          note("click", started, control.label, page.path);
-          emit(page);
+          observed = await driver.observe().catch(() => observed);
+          const trusted = observed?.trust.length ? observed.trust[observed.trust.length - 1]?.isTrusted === true : null;
+          note("click", started, control.label, page.path, trusted, control.kind);
+          await emit(page, `click-${control.kind}`);
           stopForWall(page);
           if (page.blocked && !reached) throw new NeedsHuman(page.blocked);
           if (reached) {
@@ -728,6 +851,19 @@ async function main(): Promise<void> {
             break;
           }
           continue;
+        }
+        if (line === "stop") {
+          reached = true;
+          if (!confirmLabel) {
+            const commit = rawControls.find((item) => item.kind !== "link" && new RegExp(guard.commit, "i").test(item.label));
+            const named = rawControls.find((item) => item.kind === "button" && /confirm|submit|apply|unfreeze|continue|lift/i.test(item.label));
+            confirmLabel = commit?.label || named?.label || "";
+          }
+          const page = await read();
+          note("stop", Date.now(), confirmLabel, page.path);
+          await emit(page, "stop");
+          finished = true;
+          break;
         }
         if (line === "done") {
           finished = true;
@@ -737,18 +873,33 @@ async function main(): Promise<void> {
       }
     }
     observed = await driver.observe();
-    status = reached ? "passed" : "needs_human";
-    if (!reached) code = "not-reached";
+    if (reached && !confirmClicked) {
+      status = "needs_human";
+      code = code || "stopped-before-confirm";
+    } else if (reached) {
+      status = "passed";
+    } else {
+      status = "needs_human";
+      code = code || "not-reached";
+    }
     await finishHold();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (err instanceof NeedsHuman) {
       code = err.code;
-      status = code === "commit-visible" ? "passed" : "needs_human";
-      if (code === "commit-visible") reached = true;
+      if (code === "commit-visible") {
+        reached = true;
+        code = "stopped-before-confirm";
+      }
+      status = "needs_human";
     } else if (/allowlist refused/.test(message)) {
       code = /blocked-path/.test(message) ? "blocked-path" : "off-host";
       status = "needs_human";
+      if (guard.attachPath && driver) {
+        progress("leaving the allowlist; stepping back once and stopping");
+        await driver.returnToAllowlist().catch(() => undefined);
+        await sleep(PACE_MS);
+      }
     } else {
       code = safeError(err);
       status = "failed";
@@ -757,7 +908,16 @@ async function main(): Promise<void> {
     if (driver) observed = await driver.observe().catch(() => undefined);
     await finishHold().catch(() => undefined);
   } finally {
+    const attachedId = guard.attachPath && driver ? driver.targetId : "";
     await driver?.end().catch(() => undefined);
+    if (attachedId) {
+      const again = await browserPicture(cdp, guard.hosts, "").catch(() => null);
+      if (again) {
+        contextReport.hostPagesAfter = again.pages.length;
+        contextReport.attachedStillOpen = again.pages.some((page) => page.targetId === attachedId);
+        contextReport.closedTarget = contextReport.attachedStillOpen === false;
+      }
+    }
   }
 
   progress("reading the automation banner");
@@ -794,15 +954,79 @@ async function main(): Promise<void> {
     banner: { during: during.visible, afterClose: after.visible },
     checkboxOn: box.on,
     screenCapture: false,
+    shots,
+    audit: [
+      {
+        action: "ax-allow",
+        label: "Allow",
+        path: "",
+        isTrusted: null,
+        axAllow: clickedAt != null,
+        ms: connectToAllowMs,
+        kind: "ax",
+      },
+      ...steps.map((step) => ({
+        action: step.name,
+        label: step.label,
+        path: step.path,
+        isTrusted: step.isTrusted,
+        axAllow: false,
+        ms: step.ms,
+        kind: step.kind,
+        shot: step.shot,
+      })),
+    ],
   };
   const draft = {
     driver: "cdp-live",
     intent: guard.intent,
     hosts: guard.hosts,
-    steps: steps.map((step) => ({ action: step.name, path: step.path, label: step.label })),
+    steps: steps.map((step) => ({ action: step.name, path: step.path, label: step.label, kind: step.kind, ms: step.ms, isTrusted: step.isTrusted })),
     confirmLabel: body.confirmLabel,
     confirmClicked: false,
   };
+  if (guard.attachPath) {
+    const workflow = workflowFromAudit({
+      id: "wf-unfreeze-credit",
+      name: "Unfreeze credit",
+      intent: guard.intent,
+      startUrl: guard.start,
+      createdAt: Date.now(),
+      steps,
+      confirmLabel: body.confirmLabel,
+    });
+    const workflowErrors = validateWorkflow(workflow);
+    if (workflowErrors.length === 0) {
+      const library = new Library(path.join(evidence, "bao-home"));
+      library.save(workflow);
+      const confirm = workflow.steps.find((step) => step.action === "confirm");
+      library.saveRun({
+        id: "run-unfreeze-credit",
+        workflowId: workflow.id,
+        status: "needs_human",
+        at: Date.now(),
+        heals: [],
+        modelCalls: 0,
+        steps: workflow.steps.map((step) => ({
+          id: step.id,
+          status: step.action === "confirm" ? "paused" : "passed",
+          action: step.action,
+          label: step.label,
+          reason: step.action === "confirm" ? "stopped before confirm" : "",
+        })),
+        envelope: {
+          status: "needs_human",
+          run_id: "run-unfreeze-credit",
+          step: confirm?.id,
+          reason: "stopped before confirm",
+          ask: confirm?.label || "Stop before confirm",
+        },
+      });
+      await writeFile(path.join(evidence, "unfreeze-workflow.json"), `${JSON.stringify(workflow, null, 2)}\n`);
+    } else {
+      progress(`workflow draft invalid ${workflowErrors.join(",")}`);
+    }
+  }
   await writeFile(outFile, `${JSON.stringify(body, null, 2)}\n`);
   await writeFile(draftFile, `${JSON.stringify(draft, null, 2)}\n`);
   progress(`wrote ${path.basename(outFile)}`);

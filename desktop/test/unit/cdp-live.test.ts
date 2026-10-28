@@ -4,7 +4,15 @@ import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
 import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
-import { PIERCE_QUERY, openLiveWindow } from "../../src/cdp-live/driver";
+import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, openLiveWindow } from "../../src/cdp-live/driver";
+import {
+  attachPathMatches,
+  lockIsStale,
+  parseLockText,
+  pickExistingPage,
+  redactForShot,
+  workflowFromAudit,
+} from "../../src/cdp-live/attach";
 import {
   clickAllowed,
   dashboardNavigation,
@@ -265,6 +273,52 @@ test("an intent session publishes a path and will not click a commit control", (
   assert.match(page, /shadowRoot/);
   assert.doesNotMatch(page, /document\.cookie/);
   assert.doesNotMatch(page, /\.click\s*\(/);
+});
+
+test("an attach run picks one open page and does not create or close a target", () => {
+  const pages = [
+    { targetId: "other", host: "usa.experian.com", path: "/login/index" },
+    { targetId: "dash", host: "usa.experian.com", path: "/mfe/dashboard" },
+    { targetId: "books", host: "books.toscrape.com", path: "/mfe/dashboard" },
+  ];
+  const choice = pickExistingPage(pages, ["usa.experian.com"], "/mfe/dashboard/");
+  assert.equal(choice.matches, 1);
+  assert.equal(choice.page?.targetId, "dash");
+  const ambiguous = pickExistingPage([
+    { targetId: "a", host: "usa.experian.com", path: "/mfe/dashboard" },
+    { targetId: "b", host: "usa.experian.com", path: "/mfe/dashboard" },
+  ], ["usa.experian.com"], "/mfe/dashboard");
+  assert.equal(ambiguous.page, null);
+  assert.equal(ambiguous.matches, 2);
+  assert.equal(pickExistingPage(pages, ["usa.experian.com"], "/missing").matches, 0);
+  assert.equal(attachPathMatches("https://usa.experian.com/mfe/dashboard?x=1", "/mfe/dashboard"), true);
+  assert.equal(attachPathMatches("https://usa.experian.com/login/index", "/mfe/dashboard"), false);
+  const attach = attachLivePage.toString();
+  assert.equal(attach.includes("createTarget"), false);
+  assert.equal(attach.includes("closeTarget"), false);
+  assert.match(attach, /preserveTarget|true/);
+  const end = attachLivePage.toString() + "\n" + TRUST_CLEANUP;
+  assert.match(end, /sessionStorage\.removeItem\("__baoTrustLog"\)/);
+  assert.doesNotMatch(TRUST_CLEANUP, /sessionStorage\.getItem/);
+  assert.doesNotMatch(redactForShot.toString(), /document\.cookie|localStorage|sessionStorage|return text/);
+  const workflow = workflowFromAudit({
+    id: "wf-unfreeze-credit",
+    name: "Unfreeze credit",
+    intent: "Reach the Unfreeze credit screen and stop before confirming",
+    startUrl: "https://usa.experian.com/mfe/dashboard",
+    createdAt: 1,
+    steps: [{ name: "click", path: "/mfe/credit", label: "Credit freeze", kind: "link" }],
+    confirmLabel: "Confirm unfreeze",
+  });
+  assert.deepEqual(validateWorkflow(workflow), []);
+  assert.equal(workflow.driver, "cdp-live");
+  assert.equal(workflow.steps.at(-1)?.action, "confirm");
+  assert.equal(workflow.steps.at(-1)?.human, true);
+  assert.equal(workflow.steps[0]?.action, "click");
+  const parsed = parseLockText("agent=bc-test\nstartedAt=1000\n");
+  assert.equal(parsed?.agent, "bc-test");
+  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
+  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
 });
 
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {

@@ -140,7 +140,8 @@ To turn it off: open `chrome://inspect/#remote-debugging` and clear **Allow remo
 
 The driver:
 
-- Opens one new window with `Target.createTarget` `about:blank` and closes only that target. It does not call `Target.getTargets`.
+- A new-window run opens one window with `Target.createTarget` `about:blank` and closes only that target.
+- An attach run (`--attach-path`) calls `Target.getTargets` only to choose the one already-open page whose host and pathname match. It does not create a target, does not call `Page.navigate` on that tab, and detaches instead of closing it. Zero matches or two matches stop with `needs_human`.
 - Navigates only to `http` or `https` `books.toscrape.com`. `about:blank` is the empty opener, not a site. `javascript:`, `data:`, `file:`, `chrome:`, `chrome-extension:`, subdomains, and other hosts are refused before `Page.navigate`. A top-frame navigation off that host closes the driver's own target.
 - Clicks with `Input.dispatchMouseEvent` (`mouseMoved`, `mousePressed`, `mouseReleased`). It does not call `element.click()` and does not patch `navigator`.
 - Reads lists through the same page functions as the Playwright driver. Pagination uses the same trusted click.

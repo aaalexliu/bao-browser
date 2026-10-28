@@ -39,7 +39,7 @@ export const TRUST_SOURCE = `(() => {
       if (raw) prior = JSON.parse(raw);
     } catch (e) {}
     host.__baoTrustLog = Array.isArray(prior) ? prior : [];
-    document.addEventListener("click", (event) => {
+    const onClick = (event) => {
       const target = event.target;
       const el = target instanceof Element ? target : null;
       host.__baoTrustLog.push({
@@ -49,8 +49,28 @@ export const TRUST_SOURCE = `(() => {
         ts: Date.now(),
       });
       persist();
-    }, true);
+    };
+    host.__baoTrustHandler = onClick;
+    document.addEventListener("click", onClick, true);
   }
+})()`;
+
+/** Removes the trust listener this driver installed. Does not read other storage keys. */
+export const TRUST_CLEANUP = `(() => {
+  const host = window;
+  if (host.__baoTrustHandler) {
+    document.removeEventListener("click", host.__baoTrustHandler, true);
+    try { delete host.__baoTrustHandler; } catch (e) {}
+  }
+  try { delete host.__baoTrustInstalled; } catch (e) {}
+  try { delete host.__baoTrustLog; } catch (e) {}
+  try { sessionStorage.removeItem("__baoTrustLog"); } catch (e) {}
+  document.querySelectorAll("[data-bao-pick],[data-bao-redact]").forEach((el) => {
+    el.removeAttribute("data-bao-pick");
+    el.removeAttribute("data-bao-redact");
+  });
+  const style = document.getElementById("bao-redact-style");
+  if (style) style.remove();
 })()`;
 
 export interface TrustEvent {
@@ -97,11 +117,14 @@ export class CdpLiveDriver implements Driver {
   private trustEvents: TrustEvent[] = [];
   readonly subframesSeen = { count: 0 };
 
+  private scriptId = "";
+
   constructor(
     private readonly cdp: CdpSocket,
     private readonly sessionId: string,
     readonly targetId: string,
     private readonly hosts: readonly string[] = BOOKS_HOSTS,
+    private readonly preserveTarget = false,
   ) {}
 
   private allows(url: string): boolean {
@@ -117,14 +140,16 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Runtime.enable", {}, this.sessionId);
     this.cdp.on("Page.loadEventFired", this.sessionId, () => { this.loadEpoch += 1; });
     this.cdp.on("Page.frameNavigated", this.sessionId, (params) => this.onFrame(params));
+    let added: { identifier?: string } = {};
     try {
-      await this.cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      added = await this.cdp.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", {
         source: TRUST_SOURCE,
         runImmediately: true,
       }, this.sessionId);
     } catch {
-      await this.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: TRUST_SOURCE }, this.sessionId);
+      added = await this.cdp.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", { source: TRUST_SOURCE }, this.sessionId);
     }
+    this.scriptId = added.identifier || "";
     await this.evaluate(TRUST_SOURCE).catch(() => undefined);
     await this.bringToFront();
   }
@@ -137,12 +162,17 @@ export class CdpLiveDriver implements Driver {
       return;
     }
     const url = frame.url || "";
-    if (!url || url === "about:blank" || this.allows(url)) {
+    if (url && this.allows(url)) {
+      if (this.preserveTarget) this.offHost = "";
       void this.evaluate(TRUST_SOURCE).catch(() => undefined);
+      return;
     }
-    if (!url || (url === "about:blank" && openerAllowed(url, this.hosts))) return;
-    if (!this.allows(url)) {
-      this.offHost = this.refusal(url);
+    if (!url || (url === "about:blank" && openerAllowed(url, this.hosts))) {
+      void this.evaluate(TRUST_SOURCE).catch(() => undefined);
+      return;
+    }
+    this.offHost = this.refusal(url);
+    if (!this.preserveTarget) {
       void this.cdp.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);
     }
   }
@@ -249,6 +279,7 @@ export class CdpLiveDriver implements Driver {
   }
 
   async goto(url: string, timeoutMs = 20_000): Promise<void> {
+    if (this.preserveTarget) throw new Error("cdp-live will not navigate an attached tab");
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.assertHost();
     const epoch = this.loadEpoch;
@@ -419,7 +450,38 @@ export class CdpLiveDriver implements Driver {
     }, this.sessionId);
   }
 
+  async screenshotPng(): Promise<Buffer> {
+    this.assertHost();
+    const shot = await this.cdp.send<{ data?: string }>("Page.captureScreenshot", {
+      format: "png",
+      fromSurface: true,
+    }, this.sessionId);
+    if (!shot.data) throw new Error("cdp screenshot was empty");
+    return Buffer.from(shot.data, "base64");
+  }
+
+  /** One history step, only for a tab this driver did not open. */
+  async returnToAllowlist(): Promise<void> {
+    if (!this.preserveTarget) throw new Error("cdp-live will not move a window it does not own");
+    this.offHost = "";
+    await this.cdp.send("Runtime.evaluate", {
+      expression: "history.back()",
+      returnByValue: true,
+    }, this.sessionId);
+  }
+
   async end(): Promise<void> {
+    if (this.preserveTarget) {
+      this.offHost = "";
+      if (this.scriptId) {
+        await this.cdp.send("Page.removeScriptToEvaluateOnNewDocument", {
+          identifier: this.scriptId,
+        }, this.sessionId).catch(() => undefined);
+      }
+      await this.evaluate(TRUST_CLEANUP).catch(() => undefined);
+      await this.cdp.send("Target.detachFromTarget", { sessionId: this.sessionId }).catch(() => undefined);
+      return;
+    }
     await this.cdp.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);
   }
 
@@ -488,27 +550,8 @@ export interface LiveWindowOptions {
   url?: string;
 }
 
-export async function openLiveWindow(
-  cdp: CdpSocket,
-  hosts: readonly string[] = BOOKS_HOSTS,
-  options: LiveWindowOptions = {},
-): Promise<CdpLiveDriver> {
-  const url = options.url ?? "about:blank";
-  if (!openerAllowed(url, hosts)) throw new Error("cdp-live allowlist refused the new page");
-  const createParams: Record<string, unknown> = {
-    url,
-    newWindow: options.newWindow !== false,
-    background: false,
-  };
-  if (options.newWindow !== false) {
-    createParams.width = 1200;
-    createParams.height = 900;
-  }
-  if (options.browserContextId) createParams.browserContextId = options.browserContextId;
-  const created = await cdp.send<{ targetId?: string }>("Target.createTarget", createParams);
-  const targetId = created.targetId;
-  if (!targetId) throw new Error("cdp did not open a window");
-  const sessionId = await new Promise<string>((resolve, reject) => {
+async function flattenedSession(cdp: CdpSocket, targetId: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("cdp did not attach")), 8000);
     cdp.on("Target.attachedToTarget", undefined, (params) => {
       const info = params.targetInfo as { targetId?: string } | undefined;
@@ -530,7 +573,43 @@ export async function openLiveWindow(
       reject(err instanceof Error ? err : new Error(String(err)));
     });
   });
+}
+
+export async function openLiveWindow(
+  cdp: CdpSocket,
+  hosts: readonly string[] = BOOKS_HOSTS,
+  options: LiveWindowOptions = {},
+): Promise<CdpLiveDriver> {
+  const url = options.url ?? "about:blank";
+  if (!openerAllowed(url, hosts)) throw new Error("cdp-live allowlist refused the new page");
+  const createParams: Record<string, unknown> = {
+    url,
+    newWindow: options.newWindow !== false,
+    background: false,
+  };
+  if (options.newWindow !== false) {
+    createParams.width = 1200;
+    createParams.height = 900;
+  }
+  if (options.browserContextId) createParams.browserContextId = options.browserContextId;
+  const created = await cdp.send<{ targetId?: string }>("Target.createTarget", createParams);
+  const targetId = created.targetId;
+  if (!targetId) throw new Error("cdp did not open a window");
+  const sessionId = await flattenedSession(cdp, targetId);
   const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts);
+  await driver.start();
+  return driver;
+}
+
+/** Attach to a tab the person already opened. Does not create, navigate, or close it. */
+export async function attachLivePage(
+  cdp: CdpSocket,
+  hosts: readonly string[],
+  targetId: string,
+): Promise<CdpLiveDriver> {
+  if (!targetId) throw new Error("cdp did not name a page");
+  const sessionId = await flattenedSession(cdp, targetId);
+  const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts, true);
   await driver.start();
   return driver;
 }
