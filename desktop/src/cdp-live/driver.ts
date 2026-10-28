@@ -479,17 +479,35 @@ export class CdpLiveDriver implements Driver {
   }
 }
 
-export async function openLiveWindow(cdp: CdpSocket, hosts: readonly string[] = BOOKS_HOSTS): Promise<CdpLiveDriver> {
-  const created = await cdp.send<{ targetId?: string }>("Target.createTarget", {
-    url: "about:blank",
-    newWindow: true,
+export interface LiveWindowOptions {
+  /** False opens a tab. True opens a window. Default true. */
+  newWindow?: boolean;
+  /** Join an existing context. Omit this to use the default context. */
+  browserContextId?: string;
+  /** First URL for the new page. Default about:blank. */
+  url?: string;
+}
+
+export async function openLiveWindow(
+  cdp: CdpSocket,
+  hosts: readonly string[] = BOOKS_HOSTS,
+  options: LiveWindowOptions = {},
+): Promise<CdpLiveDriver> {
+  const url = options.url ?? "about:blank";
+  if (!openerAllowed(url, hosts)) throw new Error("cdp-live allowlist refused the new page");
+  const createParams: Record<string, unknown> = {
+    url,
+    newWindow: options.newWindow !== false,
     background: false,
-    width: 1200,
-    height: 900,
-  });
+  };
+  if (options.newWindow !== false) {
+    createParams.width = 1200;
+    createParams.height = 900;
+  }
+  if (options.browserContextId) createParams.browserContextId = options.browserContextId;
+  const created = await cdp.send<{ targetId?: string }>("Target.createTarget", createParams);
   const targetId = created.targetId;
   if (!targetId) throw new Error("cdp did not open a window");
-  if (!openerAllowed("about:blank", hosts)) throw new Error("cdp-live allowlist refused about:blank");
   const sessionId = await new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("cdp did not attach")), 8000);
     cdp.on("Target.attachedToTarget", undefined, (params) => {

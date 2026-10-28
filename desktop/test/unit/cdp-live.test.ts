@@ -4,8 +4,20 @@ import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
 import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
-import { PIERCE_QUERY } from "../../src/cdp-live/driver";
-import { clickAllowed, publicPath, readSurface, redactText } from "../../src/cdp-live/session";
+import { PIERCE_QUERY, openLiveWindow } from "../../src/cdp-live/driver";
+import {
+  clickAllowed,
+  dashboardNavigation,
+  defaultContextJoinId,
+  isolatedFromDashboard,
+  pathIsLogin,
+  pickDashboardPage,
+  publicPath,
+  readSurface,
+  redactText,
+  sameContext,
+  signedOutSurface,
+} from "../../src/cdp-live/session";
 import {
   checkboxReach,
   dialogFromNodes,
@@ -198,6 +210,43 @@ test("the browser handshake has no Origin header", () => {
   assert.equal(/\r\nOrigin:/i.test(raw), false);
   assert.match(raw, /^GET \/devtools\/browser\/example HTTP\/1\.1\r\nHost: 127\.0\.0\.1:9222\r\n/);
   assert.equal(scrubCdp("no /devtools/browser/abc-def"), "no /devtools/browser/<id>");
+});
+
+test("a new live window does not create a browser context", () => {
+  const source = openLiveWindow.toString();
+  assert.equal(source.includes("createBrowserContext"), false);
+  assert.match(source, /Target\.createTarget/);
+  assert.match(source, /newWindow: options\.newWindow !== false/);
+  assert.match(source, /createParams\.browserContextId = options\.browserContextId/);
+});
+
+test("sign-in pages stay in the default context or move to a new tab", () => {
+  assert.equal(pathIsLogin("/login/index"), true);
+  assert.equal(pathIsLogin("/member/overview"), false);
+  assert.equal(pathIsLogin("/freeze/confirm"), false);
+  assert.equal(signedOutSurface({ blocked: "stop-path", path: "/login/index", title: "Sign in" }), true);
+  assert.equal(signedOutSurface({ blocked: "", path: "/member", title: "Sign in to your account" }), true);
+  assert.equal(signedOutSurface({ blocked: "captcha", path: "/login/index", title: "Sign in" }), false);
+  assert.equal(signedOutSurface({ blocked: "", path: "/member/freeze", title: "Credit freeze", headings: ["Unfreeze your credit"] }), false);
+  const pages = [
+    { id: "login", login: true, path: "/login/index" },
+    { id: "root", login: false, path: "/" },
+    { id: "dash", login: false, path: "/member/overview" },
+  ];
+  assert.equal(pickDashboardPage(pages)?.id, "dash");
+  assert.equal(pickDashboardPage([{ id: "root", login: false, path: "/" }])?.id, "root");
+  assert.equal(sameContext("default", "default"), true);
+  assert.equal(sameContext("other", "default"), false);
+  assert.equal(sameContext("other", null), null);
+  assert.equal(isolatedFromDashboard("default", "default", ["default"]), false);
+  assert.equal(isolatedFromDashboard("other", "default", []), true);
+  assert.equal(isolatedFromDashboard("created", null, ["created"]), true);
+  assert.equal(defaultContextJoinId("default", []), "default");
+  assert.equal(defaultContextJoinId("created", ["created"]), "");
+  assert.equal(defaultContextJoinId("", []), "");
+  assert.equal(dashboardNavigation({ host: "usa.experian.com", path: "/member/overview" }, ["usa.experian.com"]), "https://usa.experian.com/member/overview");
+  assert.equal(dashboardNavigation({ host: "evil.test", path: "/member" }, ["usa.experian.com"]), "");
+  assert.equal(dashboardNavigation({ host: "usa.experian.com", path: "/member?token=1" }, ["usa.experian.com"]), "");
 });
 
 test("an intent session publishes a path and will not click a commit control", () => {

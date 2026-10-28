@@ -68,6 +68,59 @@ export function redactText(text: string): string {
   return clean.slice(0, 80);
 }
 
+export interface ContextPage {
+  targetId: string;
+  host: string;
+  browserContextId: string;
+  path: string;
+  login: boolean;
+}
+
+export function pathIsLogin(pathname: string): boolean {
+  return /(?:^|\/)(?:login|sign-?in|signin)(?:\/|$)/i.test(pathname);
+}
+
+export function signedOutSurface(page: { blocked: string; path: string; title?: string; headings?: string[] }): boolean {
+  if (page.blocked === "captcha" || page.blocked === "bot_wall" || page.blocked === "upsell") return false;
+  if (page.blocked === "login" || page.blocked === "login_wall") return true;
+  const blob = `${page.path}\n${page.title || ""}\n${(page.headings || []).join("\n")}`;
+  return pathIsLogin(page.path) || /sign in to your account/i.test(blob);
+}
+
+export function sameContext(ourId: string, dashboardId: string | null): boolean | null {
+  if (dashboardId == null) return null;
+  return ourId === dashboardId;
+}
+
+/** True when this page is not in the same browser context as the already-open page. */
+export function isolatedFromDashboard(ourId: string, dashboardId: string | null, createdIds: readonly string[]): boolean {
+  if (dashboardId == null) return ourId !== "" && createdIds.includes(ourId);
+  return ourId !== dashboardId;
+}
+
+/**
+ * Id to pass when joining the default context. Empty means omit the parameter.
+ * An id returned by Target.getBrowserContexts was created separately, so it is not the default.
+ */
+export function defaultContextJoinId(dashboardId: string | null, createdIds: readonly string[]): string {
+  if (!dashboardId) return "";
+  if (createdIds.includes(dashboardId)) return "";
+  return dashboardId;
+}
+
+export function pickDashboardPage<T extends { login: boolean; path: string }>(pages: readonly T[]): T | null {
+  const named = pages.filter((page) => !page.login && page.path !== "/" && page.path !== "/blank");
+  if (named.length > 0) return named[0] || null;
+  return pages.find((page) => !page.login) ?? null;
+}
+
+export function dashboardNavigation(page: { host: string; path: string }, hosts: readonly string[]): string {
+  if (!page.host || !page.path.startsWith("/") || page.path.startsWith("//")) return "";
+  if (/[?#\\]/.test(page.path)) return "";
+  const url = `https://${page.host}${page.path}`;
+  return navigationAllowed(url, hosts) ? url : "";
+}
+
 export function clickAllowed(label: string, kind: string, denySource: string, commitSource: string): boolean {
   if (kind === "submit" || kind === "radio" || kind === "check" || kind === "other") return false;
   if (kind !== "link" && kind !== "button") return false;
@@ -304,6 +357,59 @@ async function wall(driver: CdpLiveDriver, start: string): Promise<string | null
   return null;
 }
 
+interface ListedTarget {
+  targetId?: string;
+  type?: string;
+  url?: string;
+  browserContextId?: string;
+}
+
+async function browserPicture(cdp: CdpSocket, hosts: readonly string[], skipId: string): Promise<{
+  createdContextIds: string[];
+  pages: ContextPage[];
+}> {
+  const created = await cdp.send<{ browserContextIds?: string[] }>("Target.getBrowserContexts").catch(() => ({
+    browserContextIds: [] as string[],
+  }));
+  const listed = await cdp.send<{ targetInfos?: ListedTarget[] }>("Target.getTargets");
+  const pages: ContextPage[] = [];
+  for (const info of listed.targetInfos || []) {
+    if (info.type !== "page" || !info.targetId || info.targetId === skipId || !info.url) continue;
+    let host = "";
+    let pathname = "";
+    try {
+      const parsed = new URL(info.url);
+      host = parsed.hostname;
+      pathname = parsed.pathname || "/";
+    } catch {
+      continue;
+    }
+    if (!hosts.includes(host)) continue;
+    pages.push({
+      targetId: info.targetId,
+      host,
+      browserContextId: info.browserContextId || "",
+      path: pathname,
+      login: pathIsLogin(pathname),
+    });
+  }
+  return { createdContextIds: created.browserContextIds || [], pages };
+}
+
+async function ownContextId(cdp: CdpSocket, targetId: string): Promise<string> {
+  const info = await cdp.send<{ targetInfo?: { browserContextId?: string } }>("Target.getTargetInfo", { targetId });
+  return info.targetInfo?.browserContextId || "";
+}
+
+async function ownWindowId(cdp: CdpSocket, targetId: string): Promise<number | null> {
+  try {
+    const result = await cdp.send<{ windowId?: number }>("Browser.getWindowForTarget", { targetId });
+    return typeof result.windowId === "number" ? result.windowId : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const root = process.cwd();
   const guard = parseGuard(root);
@@ -386,6 +492,15 @@ async function main(): Promise<void> {
   let lastSurface: Surface | undefined;
   let rawControls: SurfaceControl[] = [];
   let driver: CdpLiveDriver | undefined;
+  let contextReport = {
+    createdBrowserContext: false,
+    isolated: false,
+    sameAsDashboard: null as boolean | null,
+    reopenedDefault: false,
+    opened: "window" as "window" | "tab",
+    broughtDashboardForward: false,
+    dashboardPath: "",
+  };
 
   const ask = (mode: "read" | "mark", index = -1, label = ""): SurfaceAsk => ({
     mode, index, label, stopPath: guard.stopPath, deny: guard.deny, commit: guard.commit,
@@ -437,19 +552,117 @@ async function main(): Promise<void> {
     await sleep(reached ? FINAL_HOLD_MS : PACE_MS);
   };
 
+  const settle = async (label: string): Promise<Surface> => {
+    const openStarted = Date.now();
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const signals = await driver!.pageSignals().catch(() => null);
+      const href = signals?.url || "";
+      try {
+        if (guard.hosts.includes(new URL(href).hostname)) break;
+      } catch {
+        /* the new page is still blank */
+      }
+      await sleep(200);
+    }
+    await driver!.show();
+    await sleep(PACE_MS);
+    const page = await read();
+    note(label, openStarted, "", page.path);
+    emit(page);
+    return page;
+  };
+
+  const stopForWall = (page: Surface): void => {
+    if (page.blocked === "captcha" || page.blocked === "bot_wall" || page.blocked === "upsell") {
+      throw new NeedsHuman(page.blocked);
+    }
+  };
+
   try {
     driver = await openLiveWindow(cdp, guard.hosts);
-    const openStarted = Date.now();
     await driver.goto(guard.start, 30_000);
-    await driver.show();
-    await sleep(PACE_MS);
-    const landed = await read();
-    note("open", openStarted, "", landed.path);
-    emit(landed);
-    if (landed.blocked) throw new NeedsHuman(landed.blocked);
+    let landed = await settle("open");
+    const picture = await browserPicture(cdp, guard.hosts, driver.targetId).catch((err) => {
+      progress(`context check failed ${safeError(err)}`);
+      return { createdContextIds: [] as string[], pages: [] as ContextPage[] };
+    });
+    const ours = await ownContextId(cdp, driver.targetId).catch(() => "");
+    const dashboard = pickDashboardPage(picture.pages);
+    const dashboardId = dashboard ? dashboard.browserContextId : null;
+    contextReport = {
+      createdBrowserContext: false,
+      isolated: isolatedFromDashboard(ours, dashboardId, picture.createdContextIds),
+      sameAsDashboard: sameContext(ours, dashboardId),
+      reopenedDefault: false,
+      opened: "window",
+      broughtDashboardForward: false,
+      dashboardPath: dashboard ? publicPath(`https://${dashboard.host}${dashboard.path}`) : "",
+    };
+    progress(`context created=false isolated=${contextReport.isolated} sameAsDashboard=${String(contextReport.sameAsDashboard)} dashboard=${contextReport.dashboardPath || "none"}`);
+    stopForWall(landed);
+
+    if (signedOutSurface(landed) && contextReport.isolated && dashboard) {
+      const join = defaultContextJoinId(dashboard.browserContextId, picture.createdContextIds);
+      progress("new window is outside the default browser context; opening one in the default context");
+      await driver.end();
+      driver = undefined;
+      await sleep(PACE_MS);
+      driver = await openLiveWindow(cdp, guard.hosts, join ? { browserContextId: join } : {});
+      await driver.goto(guard.start, 30_000);
+      landed = await settle("open-default");
+      const again = await ownContextId(cdp, driver.targetId).catch(() => "");
+      contextReport.reopenedDefault = true;
+      contextReport.isolated = isolatedFromDashboard(again, dashboard.browserContextId, picture.createdContextIds);
+      contextReport.sameAsDashboard = sameContext(again, dashboard.browserContextId);
+      stopForWall(landed);
+    }
+
+    if (signedOutSurface(landed)) {
+      if (!dashboard) throw new NeedsHuman(landed.blocked || "login");
+      progress("still signed out in the default context; opening a new tab in the dashboard window");
+      const join = defaultContextJoinId(dashboard.browserContextId, picture.createdContextIds);
+      const dashWindow = await ownWindowId(cdp, dashboard.targetId);
+      const initial = dashboardNavigation(dashboard, guard.hosts) || guard.start;
+      await driver.end();
+      driver = undefined;
+      await sleep(400);
+      const tabOptions = {
+        newWindow: false,
+        url: initial,
+        ...(join ? { browserContextId: join } : {}),
+      };
+      contextReport.opened = "tab";
+      driver = await openLiveWindow(cdp, guard.hosts, tabOptions);
+      const tabWindow = await ownWindowId(cdp, driver.targetId);
+      if (dashWindow != null && tabWindow != null && dashWindow !== tabWindow) {
+        progress("new tab opened in another window; opening it beside the dashboard");
+        await driver.end();
+        driver = undefined;
+        await cdp.send("Target.activateTarget", { targetId: dashboard.targetId });
+        contextReport.broughtDashboardForward = true;
+        await sleep(400);
+        driver = await openLiveWindow(cdp, guard.hosts, tabOptions);
+      }
+      landed = await settle("open-tab");
+      if (signedOutSurface(landed)) {
+        const next = dashboardNavigation(dashboard, guard.hosts) || guard.start;
+        progress("new tab is still on a sign-in screen; loading the open page path in that tab");
+        await driver.goto(next, 30_000);
+        landed = await settle("open-dashboard-path");
+      }
+      const tabContext = await ownContextId(cdp, driver.targetId).catch(() => "");
+      contextReport.opened = "tab";
+      contextReport.isolated = isolatedFromDashboard(tabContext, dashboard.browserContextId, picture.createdContextIds);
+      contextReport.sameAsDashboard = sameContext(tabContext, dashboard.browserContextId);
+      stopForWall(landed);
+      if (signedOutSurface(landed)) throw new NeedsHuman(landed.blocked || "login");
+    }
+
+    if (landed.blocked && !reached) throw new NeedsHuman(landed.blocked);
 
     let offset = 0;
-    let finished = false;
+    let finished = reached;
     while (!finished) {
       const raw = await readFile(guard.inbox, "utf8").catch(() => "");
       const chunk = raw.slice(offset);
@@ -466,7 +679,12 @@ async function main(): Promise<void> {
           const page = await read();
           note("look", started, "", page.path);
           emit(page);
-          if (page.blocked) throw new NeedsHuman(page.blocked);
+          stopForWall(page);
+          if (page.blocked && !reached) throw new NeedsHuman(page.blocked);
+          if (reached) {
+            finished = true;
+            break;
+          }
           continue;
         }
         if (line === "scroll") {
@@ -477,7 +695,12 @@ async function main(): Promise<void> {
           const page = await read();
           note("scroll", started, "", page.path);
           emit(page);
-          if (page.blocked) throw new NeedsHuman(page.blocked);
+          stopForWall(page);
+          if (page.blocked && !reached) throw new NeedsHuman(page.blocked);
+          if (reached) {
+            finished = true;
+            break;
+          }
           continue;
         }
         if (line.startsWith("click ")) {
@@ -498,7 +721,12 @@ async function main(): Promise<void> {
           const page = await read();
           note("click", started, control.label, page.path);
           emit(page);
-          if (page.blocked) throw new NeedsHuman(page.blocked);
+          stopForWall(page);
+          if (page.blocked && !reached) throw new NeedsHuman(page.blocked);
+          if (reached) {
+            finished = true;
+            break;
+          }
           continue;
         }
         if (line === "done") {
@@ -561,6 +789,7 @@ async function main(): Promise<void> {
     trusted: trust.length ? trust.every((event) => event.isTrusted) : null,
     trust,
     steps,
+    context: contextReport,
     botWall: code === "bot_wall",
     banner: { during: during.visible, afterClose: after.visible },
     checkboxOn: box.on,
