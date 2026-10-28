@@ -1,14 +1,22 @@
-import { open, readFile, rm } from "node:fs/promises";
+import { open, readFile, rm, stat } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 
 export const LOCK_STALE_MS = 20 * 60 * 1000;
 
 export function parseLockText(text: string): { agent: string; startedAt: number } | null {
-  const agent = text.match(/^agent=(.+)$/m)?.[1]?.trim() || "";
-  const startedAt = Number(text.match(/^startedAt=(\d+)$/m)?.[1] || "");
-  if (!agent || !Number.isFinite(startedAt) || startedAt <= 0) return null;
-  return { agent, startedAt };
+  const keyedAgent = text.match(/^agent=(.+)$/m)?.[1]?.trim() || "";
+  const keyedStart = Number(text.match(/^startedAt=(\d+)$/m)?.[1] || "");
+  if (keyedAgent && Number.isFinite(keyedStart) && keyedStart > 0) {
+    return { agent: keyedAgent, startedAt: keyedStart };
+  }
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const agent = lines[0] || "";
+  const startedAt = Number(lines[1] || "");
+  if (/^[\w.-]+$/.test(agent) && Number.isFinite(startedAt) && startedAt > 0) {
+    return { agent, startedAt };
+  }
+  return null;
 }
 
 export function lockIsStale(startedAt: number, now: number, staleMs = LOCK_STALE_MS): boolean {
@@ -38,11 +46,13 @@ export async function acquireLock(
       if (code !== "EEXIST") throw err;
       const text = await readFile(file, "utf8").catch(() => "");
       const parsed = parseLockText(text);
-      if (!parsed || lockIsStale(parsed.startedAt, now())) {
+      const info = await stat(file).catch(() => null);
+      const stamp = parsed?.startedAt || info?.mtimeMs || 0;
+      if (stamp > 0 && lockIsStale(stamp, now())) {
         await rm(file, { force: true });
         continue;
       }
-      onWait?.(parsed.agent);
+      onWait?.(parsed?.agent || "unknown");
       await sleep(1500);
     }
   }

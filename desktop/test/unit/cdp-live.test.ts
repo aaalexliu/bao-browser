@@ -317,6 +317,9 @@ test("an attach run picks one open page and does not create or close a target", 
   assert.equal(workflow.steps[0]?.action, "click");
   const parsed = parseLockText("agent=bc-test\nstartedAt=1000\n");
   assert.equal(parsed?.agent, "bc-test");
+  const lines = parseLockText("bc-other\n1793154442761\n");
+  assert.equal(lines?.agent, "bc-other");
+  assert.equal(lines?.startedAt, 1793154442761);
   assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
   assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
 });

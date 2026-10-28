@@ -683,7 +683,26 @@ async function runGuarded(
       contextReport.createdBrowserContext = false;
       contextReport.hostPagesBefore = picture.pages.length;
       const choice = pickExistingPage(picture.pages, guard.hosts, guard.attachPath);
-      if (!choice.page) throw new NeedsHuman(choice.matches === 0 ? "dashboard-tab-missing" : "ambiguous-tab");
+      if (!choice.page) {
+        const paths = picture.pages.map((page) => publicPath(`https://${page.host}${page.path}`));
+        const distinct = [...new Set(paths)];
+        progress(`no single attach match (${choice.matches}); open paths ${paths.join(" ") || "none"}`);
+        const sameUnexpected = choice.matches === 0 && picture.pages.length > 0 && distinct.length === 1;
+        if (!sameUnexpected) throw new NeedsHuman(choice.matches === 0 ? "dashboard-tab-missing" : "ambiguous-tab");
+        const sample = picture.pages[0];
+        if (!sample) throw new NeedsHuman("dashboard-tab-missing");
+        progress(`dashboard path missing; reading one open tab ${distinct[0]} without clicking`);
+        driver = await attachLivePage(cdp, guard.hosts, sample.targetId);
+        const landed = await settle("unexpected");
+        contextReport.dashboardPath = distinct[0] || "";
+        contextReport.closedTarget = false;
+        stopForWall(landed);
+        if (signedOutSurface(landed)) throw new NeedsHuman(landed.blocked || "login");
+        if (/\/myoffers|\/plus|\/premium|\/trial|\/subscribe/i.test(landed.path)) {
+          throw new NeedsHuman(landed.blocked || "upsell");
+        }
+        throw new NeedsHuman(landed.blocked || "unexpected-screen");
+      }
       const attachedPath = publicPath(`https://${choice.page.host}${choice.page.path}`);
       progress(`attaching to the open tab ${attachedPath}`);
       driver = await attachLivePage(cdp, guard.hosts, choice.page.targetId);
