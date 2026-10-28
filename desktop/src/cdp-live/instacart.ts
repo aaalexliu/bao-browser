@@ -269,7 +269,8 @@ export function readInstacart(wantProduct: string): InstacartSnap {
   };
   if (snap.dialog && !want && !snap.blocked && dialogClass === "other") {
     const openSearch = fields.some((el) => !dialogs.some((dialog) => covers(dialog, el)));
-    if (!openSearch) snap.blocked = "unexpected-dialog";
+    const coveredSearch = fields.some((el) => dialogs.some((dialog) => covers(dialog, el)));
+    if (coveredSearch && !openSearch) snap.blocked = "unexpected-dialog";
   }
 
   const hinted = new Set<string>();

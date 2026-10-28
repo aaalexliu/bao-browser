@@ -314,24 +314,27 @@ async function run(): Promise<void> {
     if (prior?.phase === "added") {
       progress("resuming at remove; not adding another item");
     } else {
-      const landed = await until(driver, "", (page) => page.search && !page.cartAmbiguous, 25_000);
+      const offering = (page: InstacartSnap): boolean =>
+        stapleNameOk(page.product) && addLabelOk(page.addLabel) && page.cartCount != null && !page.cartAmbiguous;
+      const landed = await until(driver, "", (page) => (page.search && !page.cartAmbiguous) || offering(page), 25_000);
       remember(landed);
       if (landed.blocked) throw new NeedsHuman(landed.blocked);
       if (landed.cartAmbiguous) throw new NeedsHuman("cart-ambiguous");
-      if (!landed.search || !searchLabelOk(landed.searchLabel)) throw new NeedsHuman("search-missing");
-
-      const searchStarted = Date.now();
-      await clickMarked(driver, "[data-bao-search]", landed.searchLabel, searchLabelOk(landed.searchLabel), "search");
-      const focused = await snap(driver, "");
-      remember(focused);
-      if (focused.blocked) throw new NeedsHuman(focused.blocked);
-      if (!focused.search || !searchLabelOk(focused.searchLabel)) throw new NeedsHuman("search-missing");
-      await driver.key("cmd+a");
-      await driver.insertText(STAPLE);
-      await driver.key("Enter");
-      note("type-search", searchStarted, "passed");
-
-      const found = await until(driver, "", (page) => stapleNameOk(page.product) && addLabelOk(page.addLabel) && page.cartCount != null && !page.cartAmbiguous, 25_000);
+      let found = landed;
+      if (!offering(landed)) {
+        if (!landed.search || !searchLabelOk(landed.searchLabel)) throw new NeedsHuman("search-missing");
+        const searchStarted = Date.now();
+        await clickMarked(driver, "[data-bao-search]", landed.searchLabel, searchLabelOk(landed.searchLabel), "search");
+        const focused = await snap(driver, "");
+        remember(focused);
+        if (focused.blocked) throw new NeedsHuman(focused.blocked);
+        if (!focused.search || !searchLabelOk(focused.searchLabel)) throw new NeedsHuman("search-missing");
+        await driver.key("cmd+a");
+        await driver.insertText(STAPLE);
+        await driver.key("Enter");
+        note("type-search", searchStarted, "passed");
+        found = await until(driver, "", offering, 25_000);
+      }
       remember(found);
       if (found.blocked) throw new NeedsHuman(found.blocked);
       if (found.cartAmbiguous) throw new NeedsHuman("cart-ambiguous");
