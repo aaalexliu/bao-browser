@@ -18,7 +18,7 @@ import {
 } from "../../src/cdp-live/attach";
 import { liveShotUrl, redactLabel, shotNameOk } from "../../src/cdp-live/audit";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
-import { loginDiffConclusion } from "../../src/cdp-live/login-diff";
+import { loginDiffConclusion, pageLooksSignedIn } from "../../src/cdp-live/login-diff";
 import { liveSessionView, screenFromQuery } from "../../src/app/live-view";
 import {
   clickAllowed,
@@ -404,6 +404,8 @@ test("the browser lock is exclusive and a stale lock can be taken", async () => 
 });
 
 test("login follows more than one open tab only when the measurements say so", () => {
+  assert.equal(pageLooksSignedIn("/myOffers/timeout", false), false);
+  assert.equal(pageLooksSignedIn("/mfe/dashboard", false), true);
   assert.match(loginDiffConclusion({
     existingLoggedIn: 2,
     duplicateLoggedIn: true,

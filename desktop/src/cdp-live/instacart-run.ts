@@ -98,9 +98,11 @@ async function snap(driver: CdpLiveDriver, want: string): Promise<InstacartSnap>
 function safeTrustText(text: string): string {
   const clean = text
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "")
+    .replace(/\$\d+(?:\.\d{2})?/g, "")
+    .replace(/\bexpires\b.*$/i, "")
     .replace(/\b\d{5}(?:-\d{4})?\b/g, "");
   if (/@|\bstreet\b|\bavenue\b|\broad\b|\bapt\b/i.test(clean)) return "";
-  return clean.slice(0, 60);
+  return clean.replace(/\s+/g, " ").trim().slice(0, 60);
 }
 
 async function until(

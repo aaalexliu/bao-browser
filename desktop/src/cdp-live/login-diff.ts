@@ -21,6 +21,12 @@ export interface LoginDiffInput {
   originalSurvived: boolean | null;
 }
 
+/** A timeout page is not a signed-in dashboard. */
+export function pageLooksSignedIn(pathname: string, password: boolean): boolean {
+  if (password) return false;
+  return !/login|sign-?in|signin|timeout|expired/i.test(pathname);
+}
+
 /** Which explanation the measurements support. Unknown stays unknown. */
 export function loginDiffConclusion(input: LoginDiffInput): string {
   if (input.existingLoggedIn >= 2) {
@@ -165,7 +171,7 @@ async function measure(cdp: CdpSocket, targetId: string): Promise<Probe> {
   }
   await cdp.send("Target.detachFromTarget", { sessionId }).catch(() => undefined);
   const pagePath = publicPath(String(value.path || "/"));
-  const loggedIn = !value.password && !/login|sign-in|signin/i.test(pagePath);
+  const loggedIn = pageLooksSignedIn(pagePath, value.password === true);
   return {
     targetId,
     path: pagePath,
