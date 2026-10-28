@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { actor, answersFrom, fail, formPost, readBody, requireUser, session } from "./http";
 import { plainReplayReason } from "./review-gate";
-import { cursorMcpConfig, finishAgentJob, listAgentAudit, mintAgentToken, pollAgent, revokeAgentToken } from "./agent";
+import { registryRelay } from "./relay";
 import { remoteDisabled, remoteMcpEnabled } from "./remote-flag";
 import {
   activePairCode,
@@ -18,7 +18,6 @@ import {
   installShare,
   issuePairCode,
   listDevices,
-  unpairDevice,
   listLibrary,
   listRuns,
   listVersions,
@@ -90,38 +89,8 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
     }
     if (parts[0] === "agent") {
       if (!remoteMcpEnabled()) return remoteDisabled();
-      if (parts[1] === "tokens" && method === "POST" && !parts[2]) {
-        const principal = await requireUser(req);
-        if (principal.deviceId) throw new HttpError("sign in", 401);
-        const body = await readBody(req);
-        const minted = await mintAgentToken(principal.userId, String(body.deviceId || ""), String(body.label || "agent"));
-        const origin = new URL(req.url).origin;
-        return NextResponse.json({ ...minted, mcp: cursorMcpConfig(origin, minted.token) });
-      }
-      if (parts[1] === "tokens" && parts[3] === "revoke" && method === "POST") {
-        const principal = await requireUser(req);
-        if (principal.deviceId) throw new HttpError("sign in", 401);
-        await revokeAgentToken(principal.userId, parts[2] || "");
-        return NextResponse.json({ ok: true });
-      }
-      if (parts[1] === "audit" && method === "GET") {
-        const principal = await requireUser(req);
-        if (principal.deviceId) throw new HttpError("sign in", 401);
-        return NextResponse.json({ jobs: await listAgentAudit(principal.userId) });
-      }
-      if (parts[1] === "poll" && method === "POST") {
-        const principal = await actor(req);
-        if (!principal?.deviceId) throw new HttpError("sign in", 401);
-        const body = await readBody(req);
-        const waitMs = typeof body.waitMs === "number" ? body.waitMs : 20000;
-        return NextResponse.json(await pollAgent(principal.deviceId, waitMs, body.heartbeat === true));
-      }
-      if (parts[1] === "jobs" && parts[3] === "result" && method === "POST") {
-        const principal = await actor(req);
-        if (!principal?.deviceId) throw new HttpError("sign in", 401);
-        await finishAgentJob(principal.deviceId, parts[2] || "", await readBody(req));
-        return NextResponse.json({ ok: true });
-      }
+      const principal = await actor(req);
+      return registryRelay().handle(req, principal);
     }
     if (parts[0] === "devices" && method === "GET") {
       const principal = await requireUser(req);
@@ -133,7 +102,8 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
     }
     if (parts[0] === "devices" && parts[2] === "unpair" && method === "POST") {
       const principal = await requireUser(req);
-      await unpairDevice(principal.userId, parts[1] || "");
+      const removed = await registryRelay().unpair(principal.userId, parts[1] || "");
+      if (!removed) throw new HttpError("not found", 404);
       return finish(req, { ok: true }, "/pair");
     }
     if (parts[0] === "sync" && parts[1] === "snapshot" && method === "GET") {

@@ -48,6 +48,11 @@ test("remote MCP stays closed without BAO_REMOTE_MCP", { timeout: 720_000 }, asy
     await assertDisabled(origin, "GET", "/api/agent/audit", undefined, authed);
     await assertDisabled(origin, "POST", "/api/agent/poll", { waitMs: 1000 }, { authorization: "Bearer not-a-device", "content-type": "application/json" });
     await assertDisabled(origin, "POST", "/api/agent/jobs/job-x/result", { outcome: "ok" }, { authorization: "Bearer not-a-device", "content-type": "application/json" });
+    await assertDisabled(origin, "POST", "/api/agent/pair", {}, authed);
+    await assertDisabled(origin, "POST", "/api/agent/pair/claim", { code: "ABCD2345" });
+    await assertDisabled(origin, "POST", "/api/agent/pair/revoke", {}, { authorization: "Bearer bao_rt_nope", "content-type": "application/json" });
+    await assertDisabled(origin, "GET", "/api/agent/relay");
+    await assertDisabled(origin, "GET", "/api/agent/jobs/job-x/stream", undefined, { authorization: "Bearer bao_at_nope" });
 
     const home = path.join(root, "mac");
     const library = new Library(home);
@@ -134,7 +139,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     assert.equal(method.status, 405, await method.text());
     const listed = await rpc(origin, tokenA.token, "tools/list");
     const names = ((listed.body as { result?: { tools?: { name: string }[] } }).result?.tools || []).map((tool) => tool.name);
-    assert.deepEqual(names, ["search_workflows", "describe_workflow", "run_workflow", "resume_workflow"]);
+    assert.deepEqual(names, ["search_workflows", "describe_workflow", "run_workflow", "resume_workflow", "get_run"]);
     await waitOnline(origin, tokenA.token);
     await waitOnline(origin, tokenB.token);
 

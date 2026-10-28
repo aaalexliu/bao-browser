@@ -233,4 +233,19 @@ const SCHEMA = [
     claimed_at timestamptz,
     finished_at timestamptz
   )`,
+  `ALTER TABLE agent_jobs ADD COLUMN IF NOT EXISTS events jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `CREATE TABLE IF NOT EXISTS relay_tokens (
+    id text PRIMARY KEY,
+    user_id text NOT NULL REFERENCES users(id),
+    device_id text NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    token_hash text UNIQUE NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz
+  )`,
+  `CREATE TABLE IF NOT EXISTS relay_pair_codes (
+    code text PRIMARY KEY,
+    user_id text NOT NULL REFERENCES users(id),
+    expires_at timestamptz NOT NULL,
+    used_at timestamptz
+  )`,
 ];

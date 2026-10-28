@@ -17,11 +17,16 @@ export interface Settings extends HealSettings {
   circuitWindowMs: number;
   syncServer?: string;
   /**
-   * Outbound long-poll for a remote agent. Absent or false means this Mac
-   * does not dial the registry and does not show remote prompts.
-   * This stays on this Mac. It is not part of synced settings.
+   * Outbound remote agent. Absent or false means this Mac does not dial the
+   * registry and does not show remote prompts. This stays on this Mac.
+   * It is not part of synced settings.
    */
   remoteMcp?: boolean;
+  /**
+   * Ask before a remote run, or deny every remote run. Absent means ask.
+   * The cloud client cannot set this. It is not synced.
+   */
+  remotePermission?: "ask" | "deny";
   /** Scheduled library export. Absent means off. */
   backupSchedule?: "off" | "daily" | "weekly";
   /**

@@ -113,7 +113,9 @@ import { workflowDriver, type Gesture } from "../extension/protocol";
 import { CDP_LIVE_SERVER_REFUSAL, refusesOwnedBrowser } from "../cdp-live/launch-guard";
 import { defaultConfigHome } from "../extension/install-host";
 import { createRemoteAgent } from "../v1/remote-agent";
-import { keepMine, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
+import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
+import { runCdpLiveWorkflow } from "../v1/remote-run";
+import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
@@ -335,6 +337,30 @@ export async function startApp(opts: {
     prompts,
     stop: () => { stopRun = true; },
     clearStop: () => { stopRun = false; },
+    runners: {
+      extension: async (id, inputs) => {
+        if (!extensionLink?.connected()) return { outcome: "failed", workflowId: id, reason: "extension is not connected" };
+        const workflow = library.read(id);
+        const result = await runExtension(library, workflow, inputs, notices, prompts, extensionLink) as {
+          status?: string;
+          runId?: string;
+          outputs?: unknown;
+          failure?: { reason?: string };
+          reason?: string;
+        };
+        const status = result.status || "failed";
+        const outcome = status === "passed" ? "ok" : status === "paused" ? "needs_human" : "failed";
+        return {
+          outcome,
+          status,
+          workflowId: id,
+          runId: result.runId,
+          outputs: result.outputs,
+          reason: result.failure?.reason || result.reason,
+        };
+      },
+      cdpLive: (id, inputs) => runCdpLiveWorkflow(library, id, inputs),
+    },
   });
   const sessions = new Map<string, FreezeSession>();
   const pendings = new Map<string, { user: string; exp: number }>();
@@ -452,6 +478,7 @@ export async function startApp(opts: {
           opened,
           saveSheet: saveSheetState(),
           remote: remote.view(),
+          relay: relayStatus(library.root),
         });
       }
       if (req.method === "POST" && url.pathname === "/api/open") {
@@ -706,7 +733,7 @@ export async function startApp(opts: {
         return json(res, timed.events);
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown };
         const patch: Partial<Settings> = {};
         if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
@@ -720,6 +747,7 @@ export async function startApp(opts: {
         }
         if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
         if (typeof body.remoteMcp === "boolean") patch.remoteMcp = body.remoteMcp;
+        if (body.remotePermission === "ask" || body.remotePermission === "deny") patch.remotePermission = body.remotePermission;
         if ("siteTrust" in body) {
           const siteTrust = cleanSiteTrust(body.siteTrust);
           if (siteTrust) patch.siteTrust = siteTrust;
@@ -1082,6 +1110,46 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
         loginContinued = true;
+        return json(res, { ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/pair") {
+        const body = await readBody(req) as { code?: string; server?: string };
+        const code = String(body.code || "").trim();
+        if (!code) return json(res, { error: "code" }, 400);
+        const sync = loadState(library.root);
+        const server = String(body.server || sync.server || "").replace(/\/$/, "");
+        if (!server) return json(res, { error: "no registry" }, 400);
+        if (!sync.deviceId) return json(res, { error: "pair the device first" }, 400);
+        const claimed = await fetch(`${server}/api/agent/pair/claim`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            code,
+            name: sync.deviceName || "Mac",
+            deviceId: sync.deviceId,
+          }),
+        });
+        const payload = await claimed.json().catch(() => ({ error: "pair failed" })) as { token?: string; tokenId?: string; deviceId?: string; error?: string };
+        if (!claimed.ok || !payload.token || !payload.deviceId) {
+          return json(res, { error: payload.error || "pair failed" }, claimed.status || 400);
+        }
+        saveRelay(library.root, {
+          server,
+          token: payload.token,
+          deviceId: payload.deviceId,
+          tokenId: payload.tokenId,
+        });
+        return json(res, { paired: true, deviceId: payload.deviceId });
+      }
+      if (req.method === "POST" && url.pathname === "/api/remote/revoke") {
+        const link = loadRelay(library.root);
+        if (link) {
+          await fetch(`${link.server}/api/agent/pair/revoke`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${link.token}` },
+          }).catch(() => undefined);
+        }
+        clearRelay(library.root);
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/remote/allow") {

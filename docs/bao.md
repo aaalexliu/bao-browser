@@ -4,15 +4,60 @@ Earlier desktop notes are in [v1.md](v1.md) and the fixture drift report is [dri
 
 Goal: You just want your personal agent to use your own computer, because all the bot-blocking on cloud VMs is so annoying. Cloud-VM agents get bot-walled and payment-blocked, so bao drives the user's real Chrome and real session (#117 installed-Chrome launch, #116 extension driver) instead of a streamed VM. See Riley Brown, [the VM is overrated](https://x.com/rileybrown/status/2113773696863064377).
 
+## 2026-10-27 — Outbound WebSocket relay
+
+A paired Mac dials out to the registry over a WebSocket. A cloud agent calls the same `/mcp` endpoint. The relay forwards workflow tools only (`search_workflows`, `describe_workflow`, `run_workflow`, `resume_workflow`, `get_run`) and streams status back. This is not deployed. `BAO_REMOTE_MCP` stays off, and `npm start` in `web/` is still `next start`.
+
+### Pairing and the flag
+
+Settings → Remote agent is still off until this Mac checks it, or this Bao process has `BAO_REMOTE_MCP=1`. The registry needs that same variable. Without it, `POST /mcp`, `GET /mcp`, `/api/agent/*` (including pair, claim, revoke, the relay URL, and the job stream), and the WebSocket upgrade all return 404 `{ "error": "remote_disabled" }`.
+
+Pairing is a separate token from the sync device token. A signed-in session calls `POST /api/agent/pair` and gets an 8-character code that lasts 2 minutes and works once. The Mac claims it from Settings (the code field, Pair, Revoke). The token is `bao_rt_…`, stored in `relay.json` mode `0600`, and is not copied into `/api/state` or synced settings. Revoke from Settings marks it revoked and drops the socket. The next call is `device_offline`. A Mac with no `relay.json` dials nothing. `POST /api/agent/poll` and `POST /api/agent/jobs/:id/result` return 404 even when the flag is on.
+
+The registry route uses the signed-in session. Tests stand in for that session outside `relay.ts`. Claim requires the Mac's existing sync device id. Desktop pair returns 400 when that id is missing and does not call claim. A code for one account cannot claim another account's device. That claim is rejected before the code is used, so the same code can still pair the right device.
+
+### What the relay is allowed to see
+
+The relay does not get a CDP socket, a cookie jar, or a client-chosen permission. `prepareCall` strips `permissionMode`, `permission_mode`, `autoApprove`, `skipPermissions`, `skip_all_permission_checks`, `remoteMayApproveConfirm`, and `policy`. A CDP method (`Runtime.evaluate`, `Network.*`, and the other DevTools domains) is rejected and no job is written. Keys named cookie, password, authorization, or secret are removed from the arguments before they are stored or sent. The device runs with what remains. If a workflow needs a secret, the cloud call does not carry it; the Mac asks locally (`needs_human`). Results are masked the same way. A screenshot may be returned to the MCP caller in that Node process. It is not written on the job row and it is not sent on the event stream.
+
+Permission is `ask` (the default) or `deny`, stored as `remotePermission` on this Mac only. Deny answers `run_workflow` with `denied` and does not start a browser. `resume_workflow` returns `needs_human` and does not click, including while a local confirm is still open. Search, describe, and `get_run` still run and do not prompt. A `run_workflow` that arrives during that confirm stays queued until this Mac sends ready. The Mac checks the fixed remote policy again before a run. A confirm still cannot be approved from the cloud.
+
+### Drivers
+
+`workflowDriver` is unchanged. Absent, unknown, and `cdp-live` still mean Playwright there. The remote path picks a driver with `remoteDriverKind`. Extension runs only when the workflow says `extension`, and a missing extension link returns "extension is not connected" instead of falling through. `cdp-live` runs only when the workflow says `cdp-live`. It attaches to an already-open Chrome and does not launch Bao's browser. The default remote run is still the Playwright catalog replay, on the library's throwaway `chrome-profile`.
+
+### Jobs
+
+`JobStore` is the small interface. `MemoryJobStore` is the in-process impl. `PgJobStore` is the durable impl on the registry database that already exists: PGlite when `DATABASE_URL` is unset, Postgres when it is set. No new service. Rows are `agent_jobs`, plus `relay_tokens` and `relay_pair_codes`. A redelivery uses `delivery: "again"`. If the Mac already wrote the result file, it sends that file and does not start the browser. If the process died before the file existed, the job runs again.
+
+The socket lives in the Node process that accepted the upgrade. `instrumentation.ts` patches `http.Server.prototype.emit` so `next start` can upgrade `/api/agent/relay` without a custom server. The pathname has to be exactly `/api/agent/relay`. A second instance does not see that socket. The process that holds it sends a job when the Mac says ready, or sends the same running job again. There is no poll pump. The MCP waiter that returns a screenshot is still memory in the process that took the HTTP call. Durable state is the row. `POST /api/agent/poll` does not claim jobs.
+
+### WebSocket and long-poll
+
+Measured on this machine, in one process, with no external service. The device answered `run_workflow` immediately. Five trials, medians:
+
+| path | delivery | round trip |
+| --- | --- | --- |
+| WebSocket, same process | 1 ms | 1 ms |
+| Long-poll already inside its 200 ms sleep | 187 ms | 188 ms |
+
+The poll number is the rest of that 200 ms sleep plus the result POST, measured before the long-poll was removed. A WebSocket on the same process skips the sleep. The long-poll routes now return 404. A Mac without `relay.json` does not dial.
+
+A throwaway library profile replayed `https://books.toscrape.com/` through the relay. The workflow driver was absent, so the run used Playwright. Round trip 1952 ms, outcome ok. A second pass set the workflow to `cdp-live` and pointed `BAO_CDP_PORT_FILE` at a copy of `DevToolsActivePort` under the temp directory, from a Chrome started with its own user-data dir. Round trip 522 ms, outcome ok. `workflowDriver` still reported Playwright for that document. The test did not read a profile under the home directory. No captcha solving and no fingerprint spoofing.
+
+Hermetic coverage is `desktop/test/unit/relay.test.ts` (pairing, revoke, cross-account isolation, reconnect resume, secret masking, flag-off 404, the latency line). The durable store check is `web/src/lib/relay-job.test.ts` (two `PgJobStore` objects, one PGlite directory). The books replay is `desktop/test/live/relay-books.test.ts` and is not part of `npm run test:v1`.
+
 ## 2026-10-24 — Remote MCP for a cloud agent
 
-A cloud agent runs a saved workflow in the user's local Chrome by calling the registry. Bao desktop dials out with its device token and long-polls `/api/agent/poll`. The Chrome extension stays behind the native-messaging bridge and never calls the registry.
+The long-poll in this section was removed. What follows is the record of that path.
 
-Remote MCP stays off unless the registry process has `BAO_REMOTE_MCP=1`. Without that, `POST /mcp`, `GET /mcp`, and `/api/agent/*` (mint, revoke, audit, poll, result) return 404 `{ "error": "remote_disabled" }`. This Mac has a matching switch, off by default: Settings → Remote agent, stored as `remoteMcp` in `settings.json`. `BAO_REMOTE_MCP=1` on the Bao process turns the long-poll on as well. The switch is not synced to other devices. While it is off, Bao does not dial the registry and does not show Allow, Deny, Kill, or the remote-running line. With the registry flag and the Mac switch both on, the behavior below is unchanged. Job arguments and the screenshot waiter live in memory in one Node process, so a production deploy needs a long-lived server before the flag is turned on.
+A cloud agent runs a saved workflow in the user's local Chrome by calling the registry. Bao desktop dialed out with its device token and long-polled `/api/agent/poll`. The 2026-10-27 section adds `get_run` and a WebSocket for a Mac that has paired a relay token. Without that token, the Mac long-polled. The Chrome extension stays behind the native-messaging bridge and never calls the registry.
 
-The registry serves `POST /mcp` (streamable HTTP, JSON responses). The only tools are `search_workflows`, `describe_workflow`, `run_workflow`, and `resume_workflow`. Auth is `Authorization: Bearer bao_at_…` or `X-Bao-Agent-Token`. Minting is `POST /api/agent/tokens` with a signed-in session and `{ deviceId, label }`. The token is shown once, stored as a sha256 hash, bound to that one device, and revoked with `POST /api/agent/tokens/:id/revoke`. A job is inserted for that device only. `deviceId` or `X-Bao-Device` for a different device is HTTP 403 and an audit row `forbidden`. It is not queued, so the other Mac's poll never sees it.
+Remote MCP stays off unless the registry process has `BAO_REMOTE_MCP=1`. Without that, `POST /mcp`, `GET /mcp`, and `/api/agent/*` (mint, revoke, audit, poll, result) return 404 `{ "error": "remote_disabled" }`. This Mac has a matching switch, off by default: Settings → Remote agent, stored as `remoteMcp` in `settings.json`. `BAO_REMOTE_MCP=1` on the Bao process turned the long-poll on as well. The switch is not synced to other devices. While it is off, Bao does not dial the registry and does not show Allow, Deny, Kill, or the remote-running line. With the registry flag and the Mac switch both on, the behavior below is unchanged. Job arguments and the screenshot waiter live in memory in one Node process, so a production deploy needs a long-lived server before the flag is turned on.
 
-A device counts as online only while `agent_poll_at` is inside the last 2 seconds. The poll loop and a heartbeat during a job keep that fresh. Anything else returns `{ outcome: "device_offline" }` immediately.
+The registry serves `POST /mcp` (streamable HTTP, JSON responses). The tools at this date were `search_workflows`, `describe_workflow`, `run_workflow`, and `resume_workflow`. `get_run` was added with the relay spike. Auth is `Authorization: Bearer bao_at_…` or `X-Bao-Agent-Token`. Minting is `POST /api/agent/tokens` with a signed-in session and `{ deviceId, label }`. The token is shown once, stored as a sha256 hash, bound to that one device, and revoked with `POST /api/agent/tokens/:id/revoke`. A job is inserted for that device only. `deviceId` or `X-Bao-Device` for a different device is HTTP 403 and an audit row `forbidden`. It is not queued, so the other Mac's poll never sees it.
+
+A device counted as online while `agent_poll_at` was inside the last 2 seconds. The poll loop and a heartbeat during a job keep that fresh. A paired WebSocket also counts as online. Anything else returns `{ outcome: "device_offline" }` immediately.
 
 The server attaches a fixed policy: local approval required, confirm steps local-only, the remote agent may not approve a confirm. The Mac checks that object again and refuses anything else before it runs. `run_workflow` shows Allow / Deny. Search and describe do not. Deny runs nothing. A confirm, payment, send, or Place Order pauses, and `resume_workflow` returns `needs_human` without clicking. The Mac's Approve button is the only way through. A bot wall or a login wall returns `needs_human`. Nothing solves a captcha or spoofs a fingerprint.
 

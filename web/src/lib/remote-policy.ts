@@ -19,3 +19,10 @@ export function policyAllowsRemoteRun(policy: unknown): boolean {
     && row.confirmLocalOnly === true
     && row.remoteMayApproveConfirm === false;
 }
+
+/** Stored on the Mac. Absent means ask. The cloud client cannot set this. */
+export type DevicePermission = "ask" | "deny";
+
+export function devicePermission(value: unknown): DevicePermission {
+  return value === "deny" ? "deny" : "ask";
+}
