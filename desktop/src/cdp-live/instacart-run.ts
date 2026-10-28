@@ -1,10 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { checkboxReach, mayClickAllow, ALLOW_CLICK_WINDOW_MS } from "./consent";
-import { INSTACART_HOSTS } from "./allowlist";
+import { INSTACART_HOSTS, navigationAllowed, navigationRefusal } from "./allowlist";
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
-import { openLiveWindow, type CdpLiveDriver, type PageObservation } from "./driver";
+import { liveSessionDir, SessionLog } from "./audit";
+import { attachLiveTarget, type CdpLiveDriver, type PageObservation } from "./driver";
 import { readDevToolsActivePort } from "./endpoint";
+import { acquireCdpLock, releaseCdpLock } from "./lock";
+import { publicPath } from "./session";
 import {
   STAPLE,
   addLabelOk,
@@ -132,7 +135,28 @@ async function wall(driver: CdpLiveDriver): Promise<string | null> {
   return null;
 }
 
-async function main(): Promise<void> {
+async function signedInTab(cdp: CdpSocket): Promise<{ targetId: string; url: string; path: string } | null> {
+  const listed = await cdp.send<{ targetInfos?: { type?: string; url?: string; targetId?: string }[] }>("Target.getTargets");
+  let home: { targetId: string; url: string; path: string } | null = null;
+  for (const info of listed.targetInfos || []) {
+    if (info.type !== "page" || !info.url || !info.targetId) continue;
+    let parsed: URL;
+    try {
+      parsed = new URL(info.url);
+    } catch {
+      continue;
+    }
+    if (!(INSTACART_HOSTS as readonly string[]).includes(parsed.hostname)) continue;
+    if (navigationRefusal(info.url, INSTACART_HOSTS)) continue;
+    if (/login|sign-?in|checkout/i.test(parsed.pathname)) continue;
+    const found = { targetId: info.targetId, url: info.url, path: publicPath(info.url) };
+    if (found.path !== "/") return found;
+    home = found;
+  }
+  return home;
+}
+
+async function run(): Promise<void> {
   const root = process.cwd();
   const evidence = path.join(root, ".evidence");
   const axLog = path.join(evidence, "cdp-live-ax.jsonl");
@@ -165,6 +189,7 @@ async function main(): Promise<void> {
   const perms = await helper.permissions(false);
   if (perms.prompted) throw new Error("helper asked for a permission prompt");
   if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
+  if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
   progress("reading the remote-debugging checkbox");
   const box = await checkboxState(helper);
   if (checkboxReach(box.summary) === "stop") {
@@ -221,12 +246,31 @@ async function main(): Promise<void> {
   progress(`socket open; connect-to-Allow ${connectToAllowMs == null ? "not clicked" : `${connectToAllowMs}ms`}`);
 
   const steps: StepNote[] = [];
+  const log = new SessionLog(liveSessionDir(), "Add one cheap Instacart item, then remove it.");
+  let returnUrl = "";
+  const record = async (
+    live: CdpLiveDriver | undefined,
+    action: string,
+    label: string,
+    isTrusted: boolean | null,
+    ms: number,
+    via: "ax" | "cdp" = "cdp",
+  ): Promise<void> => {
+    let png: Buffer | undefined;
+    let pagePath = "";
+    if (live) {
+      pagePath = publicPath(await live.locationHref().catch(() => ""));
+      png = await live.captureRedacted(`${action} ${pagePath}`).catch(() => undefined);
+    }
+    log.setSteps(steps.map((step) => ({ name: step.name, status: step.status, ms: step.ms })));
+    await log.add({ action, label, path: pagePath, isTrusted, ms, via, png });
+  };
+  await record(undefined, "allow", "Allow", null, connectToAllowMs ?? 0, "ax");
   let clicks = 0;
   let countBefore: number | null = prior?.phase === "added" ? prior.countBefore : null;
   let countAfterAdd: number | null = prior?.countAfterAdd ?? null;
   let countAfterRemove: number | null = null;
   let product = prior?.phase === "added" ? prior.product : "";
-  let price: number | null = null;
   let observed: PageObservation | undefined;
   let code = "";
   let status: "passed" | "needs_human" | "failed" = "failed";
@@ -245,17 +289,25 @@ async function main(): Promise<void> {
     const started = Date.now();
     await live.clickCss(selector);
     clicks += 1;
+    await sleep(800);
+    const seen = await live.observe().catch(() => undefined);
+    const trusted = seen && seen.trust.length ? seen.trust[seen.trust.length - 1]?.isTrusted === true : null;
+    if (seen) observed = seen;
     note(name, started, "passed");
+    await record(live, name, label, trusted, Date.now() - started);
   };
 
   let driver: CdpLiveDriver | undefined;
   try {
-    driver = await openLiveWindow(cdp, INSTACART_HOSTS);
     const openStarted = Date.now();
-    await driver.goto(HOME, 30_000);
+    const existing = await signedInTab(cdp);
+    if (!existing) throw new NeedsHuman("no-tab");
+    returnUrl = existing.url;
+    driver = await attachLiveTarget(cdp, existing.targetId, INSTACART_HOSTS);
     const blockedWall = await wall(driver).catch(() => null);
     if (blockedWall) throw new NeedsHuman(blockedWall);
-    note("open", openStarted, "passed");
+    note("attach", openStarted, "passed");
+    await record(driver, "attach", "existing tab", null, Date.now() - openStarted);
 
     if (prior?.phase === "added") {
       progress("resuming at remove; not adding another item");
@@ -286,7 +338,6 @@ async function main(): Promise<void> {
       countBefore = found.cartCount;
       await writeState(stateFile, { phase: "counted", countBefore, product: "" });
       product = found.product;
-      price = found.price;
       await clickMarked(driver, "[data-bao-add]", found.addLabel, addLabelOk(found.addLabel), "add");
       const added = await until(driver, product, (page) => page.cartCount === (countBefore as number) + 1, 12_000);
       remember(added);
@@ -327,8 +378,15 @@ async function main(): Promise<void> {
     if (countBefore == null || countAfterAdd == null || countAfterRemove == null || !cartRestored(countBefore, countAfterAdd, countAfterRemove)) {
       throw new NeedsHuman("cart-not-restored");
     }
+    if (returnUrl && navigationAllowed(returnUrl, INSTACART_HOSTS)) {
+      const here = await driver.locationHref().catch(() => "");
+      if (here && publicPath(here) !== publicPath(returnUrl)) {
+        await driver.goto(returnUrl, 20_000).catch(() => undefined);
+      }
+    }
     observed = await driver.observe();
     status = "passed";
+    await record(driver, "done", "cart restored", observed.trust.at(-1)?.isTrusted ?? null, 0);
     await writeState(stateFile, { phase: "done", countBefore, product, countAfterAdd });
     persisted = "done";
   } catch (err) {
@@ -344,10 +402,18 @@ async function main(): Promise<void> {
       status = "failed";
     }
     progress(`stopped ${status} ${code}`);
+    if (driver && steps.some((step) => step.name === "add") && !steps.some((step) => step.name === "remove")) {
+      const opening = await snap(driver, product).catch(() => undefined);
+      if (opening && removeLabelOk(opening.removeLabel, opening.removeHow, opening.removeQuantity)) {
+        await driver.clickCss("[data-bao-remove]").catch(() => undefined);
+        note("remove", Date.now(), "needs_human", "cleanup");
+      }
+    }
     if (driver) {
       const last = await snap(driver, product).catch(() => undefined);
       remember(last);
       observed = await driver.observe().catch(() => undefined);
+      await record(driver, "stop", code || status, observed?.trust.at(-1)?.isTrusted ?? null, 0).catch(() => undefined);
     }
     if (persisted !== "added" && persisted !== "done" && countBefore != null && stapleNameOk(product) && steps.some((step) => step.name === "add")) {
       await writeState(stateFile, { phase: "uncertain", countBefore, product, countAfterAdd: countAfterAdd ?? undefined });
@@ -375,7 +441,7 @@ async function main(): Promise<void> {
     restored: countBefore != null && countAfterAdd != null && countAfterRemove != null
       && cartRestored(countBefore, countAfterAdd, countAfterRemove),
     product: stapleNameOk(product) ? product : "",
-    price,
+    price: null,
     clicks,
     hints,
     connectToAllowMs,
@@ -389,10 +455,28 @@ async function main(): Promise<void> {
     checkboxOn: box.on,
     screenCapture: false,
   };
+  log.setSteps(steps.map((step) => ({ name: step.name, status: step.status, ms: step.ms })));
+  await log.flush(status, code, body.host);
   await writeFile(outFile, `${JSON.stringify(body, null, 2)}\n`);
   progress(`wrote ${path.basename(outFile)}`);
   process.stdout.write(`${JSON.stringify(body, null, 2)}\n`);
   if (status !== "passed") process.exitCode = 2;
+}
+
+async function main(): Promise<void> {
+  const agentId = process.env.BAO_AGENT_ID || "bc-7abc31f7-244f-5f8e-a046-bf7d60a33440";
+  const prior = await readState(path.join(process.cwd(), ".evidence", "instacart-once-state.json"));
+  if (prior?.phase === "done" || prior?.phase === "uncertain") {
+    await run();
+    return;
+  }
+  progress("waiting for the browser lock");
+  await acquireCdpLock(agentId);
+  try {
+    await run();
+  } finally {
+    releaseCdpLock(agentId);
+  }
 }
 
 if (require.main === module) {

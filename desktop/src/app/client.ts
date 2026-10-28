@@ -6,6 +6,8 @@ import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
+import { liveSessionView } from "./live-view";
+import type { LiveSessionRecord } from "../cdp-live/audit";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
@@ -58,7 +60,7 @@ import {
   type WorkflowSummary,
 } from "./views";
 
-type Screen = "library" | "capture" | "runs" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import" | "teach";
+type Screen = "library" | "capture" | "runs" | "live" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import" | "teach";
 
 interface OpenedState {
   kind: "workflow" | "import" | "run";
@@ -91,6 +93,7 @@ let state: ShellState & {
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
   opened?: OpenedState | null;
+  liveSession?: LiveSessionRecord | null;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
 let screen: Screen = "library";
@@ -177,6 +180,7 @@ async function refresh(): Promise<void> {
     paused: state.capturePaused,
     since: state.recordingSince,
     promotions: state.promotions,
+    live: state.liveSession ? { status: state.liveSession.status, updatedAt: state.liveSession.updatedAt, n: state.liveSession.audit.length } : null,
     sync: state.sync,
     // Step selection stays out of this key. The run viewer owns it, and a poll rebuild would drop the video seek.
     teach: state.teach ? { phase: state.teach.phase, decisions: (state.teach.decisions || []).length, paused: state.teach.paused, error: state.teach.error } : null,
@@ -223,6 +227,7 @@ function render(): void {
     const body = screen === "capture" ? capture()
       : screen === "teach" ? teachScreen()
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
+      : screen === "live" ? liveSessionView(state.liveSession)
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
       : screen === "settings" ? settings()

@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
 import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
-import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, openLiveWindow } from "../../src/cdp-live/driver";
+import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, attachLiveTarget, openLiveWindow, redactOverlay } from "../../src/cdp-live/driver";
 import {
   attachPathMatches,
-  lockIsStale,
+  lockIsStale as attachLockIsStale,
   parseLockText,
   pickExistingPage,
   redactForShot,
   workflowFromAudit,
 } from "../../src/cdp-live/attach";
+import { liveShotUrl, redactLabel, shotNameOk } from "../../src/cdp-live/audit";
+import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
+import { loginDiffConclusion } from "../../src/cdp-live/login-diff";
+import { liveSessionView } from "../../src/app/live-view";
 import {
   clickAllowed,
   dashboardNavigation,
@@ -320,8 +327,89 @@ test("an attach run picks one open page and does not create or close a target", 
   const lines = parseLockText("bc-other\n1793154442761\n");
   assert.equal(lines?.agent, "bc-other");
   assert.equal(lines?.startedAt, 1793154442761);
-  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
-  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
+  assert.equal(attachLockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
+  assert.equal(attachLockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
+});
+
+test("a live session view stays on this machine and blurs the page shot", () => {
+  assert.equal(shotNameOk("shot-001.png"), true);
+  assert.equal(shotNameOk("../session.json"), false);
+  assert.equal(liveShotUrl("shot-001.png"), "/api/live-session/shots/shot-001.png");
+  assert.equal(liveShotUrl("../x.png"), "");
+  assert.equal(redactLabel("bananas $1.29"), "bananas");
+  assert.equal(redactLabel("user@example.com"), "");
+  const html = liveSessionView({
+    id: "live",
+    intent: "Add one cheap item, then remove it.",
+    status: "passed",
+    host: "www.instacart.com",
+    updatedAt: 1,
+    steps: [{ name: "add", status: "passed", ms: 12 }],
+    audit: [{ action: "allow", label: "Allow", path: "", isTrusted: null, ms: 80, at: 1, shot: "", via: "ax" },
+      { action: "add", label: "Add", path: "/store/s", isTrusted: true, ms: 40, at: 2, shot: "shot-001.png", via: "cdp" }],
+    note: "",
+  });
+  assert.match(html, /id="live-steps"/);
+  assert.match(html, /id="live-audit"/);
+  assert.match(html, /AX press/);
+  assert.match(html, /\/api\/live-session\/shots\/shot-001\.png/);
+  assert.doesNotMatch(html, /https?:/);
+  const veil = redactOverlay.toString();
+  assert.match(veil, /backdrop-filter:blur\(18px\)/);
+  assert.doesNotMatch(veil, /document\.cookie/);
+  assert.match(attachLiveTarget.toString(), /attachLivePage/);
+  assert.doesNotMatch(attachLiveTarget.toString(), /closeTarget|createTarget/);
+});
+
+test("the browser lock is exclusive and a stale lock can be taken", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-lock-"));
+  const file = path.join(dir, "lock");
+  assert.equal(parseLock(lockText("agent-a", 10))?.agentId, "agent-a");
+  assert.equal(lockIsStale(1, 20 * 60 * 1000 + 2), true);
+  let now = 1_000;
+  let tries = 0;
+  await acquireCdpLock("agent-a", { file, now: () => now, timeoutMs: 1_000, sleep: async () => undefined });
+  await assert.rejects(acquireCdpLock("agent-b", {
+    file,
+    now: () => now + tries,
+    timeoutMs: 0,
+    sleep: async () => { tries += 1; },
+  }), /held/);
+  releaseCdpLock("agent-b", file);
+  assert.equal(parseLock(readFileSync(file, "utf8"))?.agentId, "agent-a");
+  now = 1_000 + 20 * 60 * 1000 + 5;
+  await acquireCdpLock("agent-b", { file, now: () => now, timeoutMs: 1_000, sleep: async () => undefined });
+  releaseCdpLock("agent-b", file);
+});
+
+test("login follows more than one open tab only when the measurements say so", () => {
+  assert.match(loginDiffConclusion({
+    existingLoggedIn: 2,
+    duplicateLoggedIn: true,
+    duplicateOpened: true,
+    cookieNamesMatch: true,
+    sessionKeysMatch: false,
+    webdriverOnDuplicate: false,
+    originalSurvived: true,
+  }), /not locked to one tab/);
+  assert.match(loginDiffConclusion({
+    existingLoggedIn: 1,
+    duplicateLoggedIn: false,
+    duplicateOpened: true,
+    cookieNamesMatch: true,
+    sessionKeysMatch: false,
+    webdriverOnDuplicate: false,
+    originalSurvived: true,
+  }), /session storage/);
+  assert.equal(loginDiffConclusion({
+    existingLoggedIn: 1,
+    duplicateLoggedIn: null,
+    duplicateOpened: false,
+    cookieNamesMatch: null,
+    sessionKeysMatch: null,
+    webdriverOnDuplicate: null,
+    originalSurvived: true,
+  }), "unknown");
 });
 
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {

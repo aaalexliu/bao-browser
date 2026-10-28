@@ -124,6 +124,7 @@ export class CdpLiveDriver implements Driver {
     private readonly sessionId: string,
     readonly targetId: string,
     private readonly hosts: readonly string[] = BOOKS_HOSTS,
+    /** True leaves an existing tab open. False closes a tab this driver opened. */
     private readonly preserveTarget = false,
   ) {}
 
@@ -276,6 +277,10 @@ export class CdpLiveDriver implements Driver {
       closes: markers.closes,
       cookies: [],
     };
+  }
+
+  async locationHref(): Promise<string> {
+    return this.evaluate<string>("location.href");
   }
 
   async goto(url: string, timeoutMs = 20_000): Promise<void> {
@@ -460,6 +465,18 @@ export class CdpLiveDriver implements Driver {
     return Buffer.from(shot.data, "base64");
   }
 
+  /** Page screenshot after a local blur veil. The PNG stays in this process until the caller writes it. */
+  async captureRedacted(caption: string): Promise<Buffer> {
+    this.assertHost();
+    const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
+    await this.evaluateFunction(redactOverlay, label);
+    try {
+      return await this.screenshotPng();
+    } finally {
+      await this.evaluate(`document.getElementById("bao-redact")?.remove()`).catch(() => undefined);
+    }
+  }
+
   /** One history step, only for a tab this driver did not open. */
   async returnToAllowlist(): Promise<void> {
     if (!this.preserveTarget) throw new Error("cdp-live will not move a window it does not own");
@@ -550,6 +567,20 @@ export interface LiveWindowOptions {
   url?: string;
 }
 
+/** Runs in the page. Covers the viewport so a CDP screenshot does not keep readable page text. */
+export function redactOverlay(caption: string): void {
+  document.getElementById("bao-redact")?.remove();
+  const veil = document.createElement("div");
+  veil.id = "bao-redact";
+  veil.setAttribute("data-bao-redact", "1");
+  veil.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(245,245,247,0.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)";
+  const cap = document.createElement("div");
+  cap.textContent = String(caption || "").slice(0, 80);
+  cap.style.cssText = "position:absolute;left:16px;bottom:16px;max-width:70%;background:#1d1d1f;color:#f5f5f7;padding:8px 12px;border-radius:8px;font:13px/1.3 -apple-system,sans-serif";
+  veil.appendChild(cap);
+  document.documentElement.appendChild(veil);
+}
+
 async function flattenedSession(cdp: CdpSocket, targetId: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("cdp did not attach")), 8000);
@@ -612,4 +643,13 @@ export async function attachLivePage(
   const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts, true);
   await driver.start();
   return driver;
+}
+
+/** Attach to a tab the person already opened. Closing the driver detaches and leaves the tab. */
+export async function attachLiveTarget(
+  cdp: CdpSocket,
+  targetId: string,
+  hosts: readonly string[] = BOOKS_HOSTS,
+): Promise<CdpLiveDriver> {
+  return attachLivePage(cdp, hosts, targetId);
 }
