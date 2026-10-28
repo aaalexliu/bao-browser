@@ -1,0 +1,27 @@
+{
+  "createdAt": 1793154705217,
+  "driver": "cdp-live",
+  "heal": "approve",
+  "id": "wf-unfreeze-credit",
+  "inputs": [],
+  "intent": "Reach the Unfreeze credit screen and stop before confirming",
+  "name": "Unfreeze credit",
+  "schema": "bao.workflow/v2",
+  "startUrl": "https://usa.experian.com/mfe/dashboard",
+  "steps": [
+    {
+      "action": "confirm",
+      "heal": "never",
+      "human": true,
+      "id": "wf-unfreeze-credit-confirm",
+      "index": 0,
+      "intent": "Do not click Apply. The open tabs were signed out on an offers page, which is not the Unfreeze screen.",
+      "label": "Stop before Apply",
+      "surface": "dom",
+      "timeoutMs": 0
+    }
+  ],
+  "summary": "Local unpublished draft. Both open Experian tabs were signed out at /myOffers/timeout. The heading was You have successfully signed out. Apply was visible and was not clicked. Clicks: 0.",
+  "updatedAt": 1793154705217,
+  "version": 2
+}
