@@ -177,15 +177,6 @@ export async function listDevices(userId: string) {
   );
 }
 
-export async function unpairDevice(userId: string, deviceId: string): Promise<void> {
-  if (!/^dev-[\w-]+$/.test(deviceId)) throw new HttpError("not found", 404);
-  const rows = await query<{ id: string }>(
-    `DELETE FROM devices WHERE id = $1 AND user_id = $2 RETURNING id`,
-    [deviceId, userId],
-  );
-  if (!rows.length) throw new HttpError("not found", 404);
-}
-
 async function noteDeviceSync(principal: Principal): Promise<void> {
   if (!principal.deviceId) return;
   const owned = await query<{ count: number }>(

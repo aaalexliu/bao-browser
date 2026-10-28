@@ -73,7 +73,8 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none" };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none" };
+  relay?: { paired?: boolean; deviceId?: string };
   sync?: {
     server?: string;
     deviceName?: string;
@@ -359,7 +360,10 @@ function settings(): string {
     <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
     <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
-    ${remoteMcpSetting(state.settings?.remoteMcp === true)}
+    ${remoteMcpSetting(state.settings?.remoteMcp === true, {
+      paired: state.relay?.paired === true,
+      permission: state.settings?.remotePermission,
+    })}
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
@@ -642,6 +646,7 @@ function bind(): void {
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
         syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
         remoteMcp: (document.getElementById("remote-mcp") as HTMLInputElement | null)?.checked === true,
+        remotePermission: (document.getElementById("remote-permission") as HTMLSelectElement | null)?.value === "deny" ? "deny" : "ask",
         siteTrust: readSiteTrust(),
       }),
     });
@@ -839,6 +844,23 @@ function bindRemote(): void {
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
   const confirm = document.getElementById("remote-confirm-allow");
   if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
+  const pair = document.getElementById("relay-pair");
+  if (pair) pair.onclick = async () => {
+    const code = (document.getElementById("relay-code") as HTMLInputElement | null)?.value || "";
+    await fetch("/api/remote/pair", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    renderKey = "";
+    await refresh();
+  };
+  const revoke = document.getElementById("relay-revoke");
+  if (revoke) revoke.onclick = async () => {
+    await fetch("/api/remote/revoke", { method: "POST" });
+    renderKey = "";
+    await refresh();
+  };
 }
 
 function bindAsk(): void {

@@ -9,6 +9,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { remoteBanner, remoteMcpSetting } from "../../src/app/views";
 import { createRemoteAgent, desktopRemoteEnabled } from "../../src/v1/remote-agent";
+import { saveRelay } from "../../src/v1/relay-link";
 import { Library } from "../../src/v1/store";
 import { remoteDisabled, remoteMcpEnabled } from "../../../web/src/lib/remote-flag";
 
@@ -31,14 +32,18 @@ test("the remote agent setting is unchecked and the banner stays empty while it 
   assert.equal(remoteBanner(undefined), "");
 });
 
-test("this Mac does not long-poll or raise a prompt until remote MCP is turned on", async () => {
+test("this Mac dials the websocket only when relay.json is present", async () => {
   const previous = process.env.BAO_REMOTE_MCP;
   delete process.env.BAO_REMOTE_MCP;
   const hits: { path: string; authorization: string }[] = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     hits.push({ path: req.url || "", authorization: String(req.headers.authorization || "") });
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ job: null }));
+    res.writeHead(404);
+    res.end();
+  });
+  server.on("upgrade", (req, socket) => {
+    hits.push({ path: req.url || "", authorization: String(req.headers.authorization || "") });
+    socket.destroy();
   });
   const port = await new Promise<number>((resolve) => {
     server.listen(0, "127.0.0.1", () => {
@@ -51,6 +56,7 @@ test("this Mac does not long-poll or raise a prompt until remote MCP is turned o
   writeFileSync(path.join(root, "sync.json"), JSON.stringify({
     server: `http://127.0.0.1:${port}`,
     deviceToken: "fixture-device-token",
+    deviceId: "dev-flag",
   }));
   const home = mkdtempSync(path.join(tmpdir(), "bao-remote-setting-"));
   const app = await startApp({ home });
@@ -82,13 +88,11 @@ test("this Mac does not long-poll or raise a prompt until remote MCP is turned o
     assert.equal(saved.status, 200, await saved.clone().text());
     library.updateSettings({ remoteMcp: true });
     assert.equal(desktopRemoteEnabled(library, {}), true);
-    await waitFor(() => hits.length > 0);
-    assert.equal(hits[0]?.path, "/api/agent/poll");
-    assert.equal(hits[0]?.authorization, "Bearer fixture-device-token");
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+    assert.equal(hits.length, 0);
     assert.equal(agent.view().phase, "idle");
     await agent.stop();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    hits.length = 0;
+
     const turnedOff = await fetch(`http://127.0.0.1:${app.port}/api/settings`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -105,6 +109,8 @@ test("this Mac does not long-poll or raise a prompt until remote MCP is turned o
       await new Promise((resolve) => setTimeout(resolve, 500));
       assert.equal(hits.length, 0);
       assert.equal(quiet.view().phase, "idle");
+      quiet.allow();
+      assert.equal(remoteBanner(quiet.view()), "");
     } finally {
       await quiet.stop();
     }
@@ -114,7 +120,17 @@ test("this Mac does not long-poll or raise a prompt until remote MCP is turned o
     const byEnv = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {} });
     byEnv.start();
     try {
-      await waitFor(() => hits.some((hit) => hit.path === "/api/agent/poll"));
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      assert.equal(hits.length, 0);
+      assert.equal(byEnv.view().phase, "idle");
+      saveRelay(root, {
+        server: `http://127.0.0.1:${port}`,
+        token: "bao_rt_fixture",
+        deviceId: "dev-flag",
+        tokenId: "rtk-flag",
+      });
+      await waitFor(() => hits.some((hit) => hit.path.startsWith("/api/agent/relay")));
+      assert.equal(hits.find((hit) => hit.path.startsWith("/api/agent/relay"))?.authorization, "Bearer bao_rt_fixture");
       assert.equal(byEnv.view().phase, "idle");
     } finally {
       await byEnv.stop();
@@ -137,7 +153,7 @@ function waitFor(ready: () => boolean): Promise<void> {
         resolve();
       } else if (Date.now() - start > 4000) {
         clearInterval(timer);
-        reject(new Error("timed out waiting for a poll"));
+        reject(new Error("timed out waiting for the websocket"));
       }
     }, 40);
   });
