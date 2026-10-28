@@ -74,7 +74,7 @@ export function cartLabelOk(label: string): boolean {
 export function cartCountFromLabel(label: string, badge: string | null): number | null {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text || text.length > 80) return null;
-  const inCart = text.match(/items in cart:\s*(\d+)/i);
+  const inCart = text.match(/items in cart:?\s*(\d+)/i);
   if (inCart?.[1]) return Number(inCart[1]);
   const items = text.match(/\b(\d+)\b(?:\s+\S+){0,3}\s+items?\b/i);
   if (items?.[1] && (/\b(?:cart|bag|basket)s?\b/i.test(text) || /\bin your\b/i.test(text))) return Number(items[1]);

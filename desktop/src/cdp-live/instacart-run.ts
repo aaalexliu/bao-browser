@@ -168,7 +168,7 @@ async function run(): Promise<void> {
   const outFile = path.join(evidence, "instacart-once.json");
   await mkdir(evidence, { recursive: true });
   const prior = await readState(stateFile);
-  if (prior?.phase === "done" || prior?.phase === "uncertain") {
+  if (prior?.phase === "done") {
     const finished = prior.phase === "done";
     const body = {
       status: finished ? "passed" : "needs_human",
@@ -272,15 +272,16 @@ async function run(): Promise<void> {
   };
   await record(undefined, "allow", "Allow", null, connectToAllowMs ?? 0, "ax");
   let clicks = 0;
-  let countBefore: number | null = prior?.phase === "added" ? prior.countBefore : null;
+  const resume = prior?.phase === "added" || prior?.phase === "uncertain";
+  let countBefore: number | null = resume ? prior.countBefore : null;
   let countAfterAdd: number | null = prior?.countAfterAdd ?? null;
   let countAfterRemove: number | null = null;
-  let product = prior?.phase === "added" ? prior.product : "";
+  let product = resume ? prior.product : "";
   let observed: PageObservation | undefined;
   let code = "";
   let status: "passed" | "needs_human" | "failed" = "failed";
   let hints: string[] = [];
-  let persisted: Saved["phase"] | "" = prior?.phase === "added" ? "added" : "";
+  let persisted: Saved["phase"] | "" = resume ? "added" : "";
   const remember = (page: InstacartSnap | undefined): void => {
     if (page?.hints?.length) hints = page.hints.slice(0, 8);
   };
@@ -314,8 +315,15 @@ async function run(): Promise<void> {
     note("attach", openStarted, "passed");
     await record(driver, "attach", "existing tab", null, Date.now() - openStarted);
 
-    if (prior?.phase === "added") {
+    if (prior?.phase === "added" || prior?.phase === "uncertain") {
       progress("resuming at remove; not adding another item");
+      const seen = await snap(driver, product);
+      remember(seen);
+      if (seen.blocked) throw new NeedsHuman(seen.blocked);
+      if (seen.cartCount != null && seen.cartCount > 0) {
+        countBefore = seen.cartCount - 1;
+        countAfterAdd = seen.cartCount;
+      }
     } else {
       const offering = (page: InstacartSnap): boolean =>
         stapleNameOk(page.product) && addLabelOk(page.addLabel) && page.cartCount != null && !page.cartAmbiguous;
@@ -474,7 +482,7 @@ async function run(): Promise<void> {
 async function main(): Promise<void> {
   const agentId = process.env.BAO_AGENT_ID || "bc-7abc31f7-244f-5f8e-a046-bf7d60a33440";
   const prior = await readState(path.join(process.cwd(), ".evidence", "instacart-once-state.json"));
-  if (prior?.phase === "done" || prior?.phase === "uncertain") {
+  if (prior?.phase === "done") {
     await run();
     return;
   }
