@@ -15,7 +15,7 @@ import { resolveCaptureUrl } from "./capture-url";
 import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
-import { publicLiveSession, shotNameOk } from "../cdp-live/audit";
+import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";

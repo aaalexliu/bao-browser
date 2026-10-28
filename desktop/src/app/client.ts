@@ -7,7 +7,7 @@ import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
 import { liveSessionView, screenFromQuery } from "./live-view";
-import type { LiveSessionRecord } from "../cdp-live/audit";
+import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {

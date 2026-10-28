@@ -16,7 +16,7 @@ import {
   redactForShot,
   workflowFromAudit,
 } from "../../src/cdp-live/attach";
-import { liveShotUrl, redactLabel, shotNameOk } from "../../src/cdp-live/audit";
+import { liveShotUrl, redactLabel, shotNameOk } from "../../src/cdp-live/live-record";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
 import { loginDiffConclusion, pageLooksSignedIn } from "../../src/cdp-live/login-diff";
 import { liveSessionView, screenFromQuery } from "../../src/app/live-view";

@@ -1,4 +1,4 @@
-import { liveShotUrl, type LiveSessionRecord } from "../cdp-live/audit";
+import { liveShotUrl, type LiveSessionRecord } from "../cdp-live/live-record";
 
 function esc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
