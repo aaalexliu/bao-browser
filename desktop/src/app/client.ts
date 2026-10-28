@@ -6,7 +6,7 @@ import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
-import { liveSessionView } from "./live-view";
+import { liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/audit";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
@@ -96,7 +96,7 @@ let state: ShellState & {
   liveSession?: LiveSessionRecord | null;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
-let screen: Screen = "library";
+let screen: Screen = screenFromQuery(location.search) || "library";
 let lastWf = "";
 let deeplinkInputs: Record<string, string> = {};
 let deeplinkPending = false;

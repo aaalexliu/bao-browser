@@ -15,6 +15,19 @@ export function stapleNameOk(name: string): boolean {
   return true;
 }
 
+/** A visible dialog the run may ignore, or a wall it must stop on. Empty is not a wall. */
+export function classifyDialog(text: string): "" | "captcha" | "login" | "trial" | "store" | "address" | "cart" | "other" {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  if (/captcha|not a robot|verify you are human|verify you are not a bot/i.test(clean)) return "captcha";
+  if (/password|log in|sign in|one-time code|verification code/i.test(clean)) return "login";
+  if (/free trial|instacart\s*\+|try plus|start your trial/i.test(clean)) return "trial";
+  if (/choose a store|select a store|which store|pick a store/i.test(clean)) return "store";
+  if (/enter your address|add your address|confirm your address|delivery address|what's your address|where should we deliver/i.test(clean)) return "address";
+  if (/your cart|cart is empty|subtotal|distinct items in cart|estimated total/i.test(clean)) return "cart";
+  return "other";
+}
+
 export function searchLabelOk(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text || text.length > 80 || clickForbidden(text)) return false;
@@ -216,12 +229,22 @@ export function readInstacart(wantProduct: string): InstacartSnap {
 
   const dialogs = collect("[role='dialog'], [role='alertdialog']").filter(shown);
   snap.dialog = dialogs.length > 0;
-  const dialogText = dialogs.map((el) => norm(el.textContent).slice(0, 800)).join("\n");
-  if (!snap.blocked && /captcha|not a robot|verify you are human|verify you are not a bot/i.test(dialogText)) snap.blocked = "captcha";
-  else if (!snap.blocked && /password|log in|sign in|one-time code|verification code/i.test(dialogText)) snap.blocked = "login";
-  else if (!snap.blocked && /free trial|instacart\s*\+|try plus|start your trial/i.test(dialogText)) snap.blocked = "trial";
-  else if (!snap.blocked && /choose a store|select a store|which store|pick a store/i.test(dialogText)) snap.blocked = "store";
-  else if (!snap.blocked && !want && /enter your address|add your address|confirm your address|delivery address|what's your address|where should we deliver/i.test(dialogText)) snap.blocked = "address";
+  const dialogBits = (dialog: Element): string => {
+    const bits: string[] = [];
+    const walk = (node: Node): void => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        bits.push(node.textContent || "");
+        return;
+      }
+      if (node instanceof Element && node.shadowRoot) walk(node.shadowRoot);
+      node.childNodes.forEach(walk);
+    };
+    walk(dialog);
+    return norm(bits.join(" ")).slice(0, 800);
+  };
+  const dialogText = dialogs.map(dialogBits).join("\n");
+  const dialogClass = classifyDialog(dialogText);
+  if (!snap.blocked && dialogClass && dialogClass !== "cart" && dialogClass !== "other") snap.blocked = dialogClass;
 
   const body = norm(document.body?.innerText || "").slice(0, 4000);
   if (!snap.blocked && /verify you are human|verify you are not a bot|i'm not a robot|captcha/i.test(body)) snap.blocked = "captcha";
@@ -236,7 +259,7 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     if (/address|email|zip|postal|password|phone|card/i.test(label)) return false;
     return searchLabelOk(label);
   });
-  if (snap.dialog && !want && !snap.blocked) {
+  if (snap.dialog && !want && !snap.blocked && dialogClass === "other") {
     const searchInside = fields.some((el) => dialogs.some((dialog) => dialog.contains(el)));
     if (!searchInside) snap.blocked = "unexpected-dialog";
   }
@@ -255,6 +278,7 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     hinted.add(`top:${word}`);
     tops += 1;
   }
+  if (snap.dialog) hinted.add(`dialog:${dialogClass || "empty"}`);
   snap.hints = [`controls:b${buttons.length}:i${fields.length}:s${shadows}:d${dialogs.length}`, ...hinted].slice(0, 8);
   if (snap.blocked) return snap;
 

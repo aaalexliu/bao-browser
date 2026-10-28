@@ -15,6 +15,7 @@ import {
   cartCountFromLabel,
   cartLabelOk,
   cartRestored,
+  classifyDialog,
   clickForbidden,
   removeLabelOk,
   searchLabelOk,
@@ -80,6 +81,7 @@ async function writeState(file: string, state: Saved): Promise<void> {
 
 async function snap(driver: CdpLiveDriver, want: string): Promise<InstacartSnap> {
   return driver.evaluateFunction<InstacartSnap>(readInstacart, want, [
+    classifyDialog,
     clickForbidden,
     stapleNameOk,
     searchLabelOk,

@@ -6,7 +6,7 @@ import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
-import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
+import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, classifyDialog, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
 import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, attachLiveTarget, openLiveWindow, redactOverlay } from "../../src/cdp-live/driver";
 import {
   attachPathMatches,
@@ -19,7 +19,7 @@ import {
 import { liveShotUrl, redactLabel, shotNameOk } from "../../src/cdp-live/audit";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
 import { loginDiffConclusion } from "../../src/cdp-live/login-diff";
-import { liveSessionView } from "../../src/app/live-view";
+import { liveSessionView, screenFromQuery } from "../../src/app/live-view";
 import {
   clickAllowed,
   dashboardNavigation,
@@ -121,11 +121,18 @@ test("instacart navigation stays on the site and off checkout", () => {
   assert.equal(removeLabelOk("Remove Organic Bananas", "remove", 1), true);
   assert.equal(removeLabelOk("Remove", "remove", 2), false);
   assert.equal(removeLabelOk("Remove all", "remove", 1), false);
+  assert.equal(classifyDialog(""), "");
+  assert.equal(classifyDialog("Your cart is empty"), "cart");
+  assert.equal(classifyDialog("Start your free trial"), "trial");
+  assert.equal(classifyDialog("Enter your address"), "address");
+  assert.equal(classifyDialog("A note about pickup hours"), "other");
   assert.equal(cartRestored(2, 3, 2), true);
   assert.equal(cartRestored(2, 4, 2), false);
   const page = readInstacart.toString();
   assert.match(page, /cartLabelOk\(/);
   assert.match(page, /shadowRoot/);
+  assert.match(page, /classifyDialog\(/);
+  assert.match(page, /dialogClass === "other"/);
   assert.doesNotMatch(page, /require\(/);
   assert.doesNotMatch(page, /document\.cookie/);
   assert.doesNotMatch(page, /\.click\s*\(/);
@@ -332,6 +339,8 @@ test("an attach run picks one open page and does not create or close a target", 
 });
 
 test("a live session view stays on this machine and blurs the page shot", () => {
+  assert.equal(screenFromQuery("?screen=live"), "live");
+  assert.equal(screenFromQuery("?screen=library"), "");
   assert.equal(shotNameOk("shot-001.png"), true);
   assert.equal(shotNameOk("../session.json"), false);
   assert.equal(liveShotUrl("shot-001.png"), "/api/live-session/shots/shot-001.png");

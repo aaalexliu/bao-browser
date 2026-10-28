@@ -11,6 +11,11 @@ function trustedWord(value: boolean | null, via: string): string {
   return "—";
 }
 
+/** `?screen=live` opens the run view. Any other value stays on the library. */
+export function screenFromQuery(search: string): "live" | "" {
+  return new URLSearchParams(search).get("screen") === "live" ? "live" : "";
+}
+
 /** Local run view. Shot URLs point at this machine's app, never at a remote host. */
 export function liveSessionView(session: LiveSessionRecord | null | undefined): string {
   if (!session || session.status === "idle") {
