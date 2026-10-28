@@ -133,6 +133,7 @@ test("instacart navigation stays on the site and off checkout", () => {
   assert.match(page, /shadowRoot/);
   assert.match(page, /classifyDialog\(/);
   assert.match(page, /dialogClass === "other"/);
+  assert.match(page, /openSearch/);
   assert.doesNotMatch(page, /require\(/);
   assert.doesNotMatch(page, /document\.cookie/);
   assert.doesNotMatch(page, /\.click\s*\(/);

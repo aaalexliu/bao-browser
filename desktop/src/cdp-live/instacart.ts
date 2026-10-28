@@ -259,9 +259,17 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     if (/address|email|zip|postal|password|phone|card/i.test(label)) return false;
     return searchLabelOk(label);
   });
+  const covers = (dialog: Element, el: Element): boolean => {
+    const a = dialog.getBoundingClientRect();
+    const b = el.getBoundingClientRect();
+    if (a.width < 80 || a.height < 80) return false;
+    const overlapX = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+    const overlapY = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    return b.width > 0 && b.height > 0 && overlapX > b.width * 0.5 && overlapY > b.height * 0.5;
+  };
   if (snap.dialog && !want && !snap.blocked && dialogClass === "other") {
-    const searchInside = fields.some((el) => dialogs.some((dialog) => dialog.contains(el)));
-    if (!searchInside) snap.blocked = "unexpected-dialog";
+    const openSearch = fields.some((el) => !dialogs.some((dialog) => covers(dialog, el)));
+    if (!openSearch) snap.blocked = "unexpected-dialog";
   }
 
   const hinted = new Set<string>();
