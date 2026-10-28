@@ -5,7 +5,7 @@ import { INSTACART_HOSTS, navigationAllowed, navigationRefusal } from "./allowli
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
 import { liveSessionDir, SessionLog } from "./audit";
 import { attachLiveTarget, type CdpLiveDriver, type PageObservation } from "./driver";
-import { readDevToolsActivePort } from "./endpoint";
+import { listenPid, readDevToolsActivePort } from "./endpoint";
 import { acquireCdpLock, releaseCdpLock } from "./lock";
 import { publicPath } from "./session";
 import {
@@ -194,8 +194,12 @@ async function run(): Promise<void> {
   if (perms.prompted) throw new Error("helper asked for a permission prompt");
   if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
   if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
+  progress("reading DevToolsActivePort");
+  const endpoint = await readDevToolsActivePort();
+  const chromePid = await listenPid(endpoint.port);
+  progress(`browser socket on port ${endpoint.port} pid ${chromePid ?? "unknown"}`);
   progress("reading the remote-debugging checkbox");
-  const box = await checkboxState(helper);
+  const box = await checkboxState(helper, chromePid);
   if (checkboxReach(box.summary) === "stop") {
     throw new AxUnavailable("BaoOSHelper cannot see a Chrome window", box.summary);
   }
@@ -204,9 +208,6 @@ async function run(): Promise<void> {
   if (dialogPresentBeforeConnect) {
     throw new AxUnavailable("Allow dialog was already up; not connecting and not clicking", box.summary);
   }
-  progress("reading DevToolsActivePort");
-  const endpoint = await readDevToolsActivePort();
-  progress(`browser socket on port ${endpoint.port}`);
   const abort = new AbortController();
   const connectionStartedAt = Date.now();
   let opened = false;
@@ -222,7 +223,7 @@ async function run(): Promise<void> {
   const deadline = connectionStartedAt + ALLOW_CLICK_WINDOW_MS;
   while (Date.now() < deadline && !opened) {
     progress("reading AX for the Allow dialog");
-    const tree = await chromeTree(helper);
+    const tree = await chromeTree(helper, chromePid);
     last = tree.summary;
     if (opened) break;
     if (mayClickAllow({
@@ -234,7 +235,7 @@ async function run(): Promise<void> {
     })) {
       if (opened) break;
       progress("pressing Allow");
-      const pressed = await pressAllow(helper, box.pid, axLog);
+      const pressed = await pressAllow(helper, box.pid || chromePid, axLog);
       clickedAt = pressed.at;
       allowWindow = pressed.window;
       break;
@@ -430,10 +431,10 @@ async function run(): Promise<void> {
   }
 
   progress("reading the automation banner");
-  const during = (await chromeTree(helper)).summary.banner;
+  const during = (await chromeTree(helper, chromePid)).summary.banner;
   cdp.close();
   await sleep(500);
-  const after = (await chromeTree(helper)).summary.banner;
+  const after = (await chromeTree(helper, chromePid)).summary.banner;
   const trust = (observed?.trust || []).map((event) => ({
     isTrusted: event.isTrusted === true,
     tag: event.tag,

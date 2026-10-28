@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { checkboxReach, mayClickAllow, ALLOW_CLICK_WINDOW_MS } from "./consent";
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
-import { readDevToolsActivePort } from "./endpoint";
+import { listenPid, readDevToolsActivePort } from "./endpoint";
 import { acquireCdpLock, releaseCdpLock } from "./lock";
 import { publicPath, redactText } from "./session";
 import { connectCdp, type CdpSocket } from "./socket";
@@ -76,12 +76,13 @@ async function connect(): Promise<CdpSocket> {
   if (perms.prompted) throw new Error("helper asked for a permission prompt");
   if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
   if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
-  const box = await checkboxState(helper);
+  const endpoint = await readDevToolsActivePort();
+  const chromePid = await listenPid(endpoint.port);
+  const box = await checkboxState(helper, chromePid);
   if (checkboxReach(box.summary) === "stop") throw new AxUnavailable("BaoOSHelper cannot see a Chrome window", box.summary);
   if (box.summary.dialog.present || box.summary.dialog.buttonCount > 0) {
     throw new AxUnavailable("Allow dialog was already up; not connecting and not clicking", box.summary);
   }
-  const endpoint = await readDevToolsActivePort();
   const abort = new AbortController();
   const connectionStartedAt = Date.now();
   let opened = false;
@@ -93,7 +94,7 @@ async function connect(): Promise<CdpSocket> {
   pending.catch(() => undefined);
   const deadline = connectionStartedAt + Math.min(ALLOW_CLICK_WINDOW_MS, 90_000);
   while (Date.now() < deadline && !opened) {
-    const tree = await chromeTree(helper);
+    const tree = await chromeTree(helper, chromePid);
     if (opened) break;
     if (mayClickAllow({
       openedByBao: true,
@@ -103,7 +104,7 @@ async function connect(): Promise<CdpSocket> {
       dialog: tree.summary.dialog,
     })) {
       if (opened) break;
-      await pressAllow(helper, box.pid, path.join(process.cwd(), ".evidence", "cdp-live-ax.jsonl"));
+      await pressAllow(helper, box.pid || chromePid, path.join(process.cwd(), ".evidence", "cdp-live-ax.jsonl"));
       break;
     }
     await sleep(300);

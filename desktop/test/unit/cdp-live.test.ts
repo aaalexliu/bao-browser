@@ -40,7 +40,7 @@ import {
   summarizeAx,
   type AxLike,
 } from "../../src/cdp-live/consent";
-import { assertActivePortFile, parseDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { assertActivePortFile, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
 import { CDP_LIVE_SERVER_REFUSAL, refusesOwnedBrowser } from "../../src/cdp-live/launch-guard";
 import { TRUST_SOURCE } from "../../src/cdp-live/driver";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
@@ -434,6 +434,8 @@ test("login follows more than one open tab only when the measurements say so", (
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {
   assert.throws(() => assertActivePortFile("/tmp/Preferences"), /DevToolsActivePort/);
   const parsed = parseDevToolsActivePort("9222\n/devtools/browser/00000000-0000-4000-8000-000000000000\n");
+  assert.equal(parseListenPid("Google 92286 alexliu 198u IPv4 0x1 0t0 TCP 127.0.0.1:9222 (LISTEN)\n", 9222), 92286);
+  assert.equal(parseListenPid("Google 8920 alexliu 12u IPv4 0x1 0t0 TCP 127.0.0.1:25319 (LISTEN)\n", 9222), null);
   assert.equal(parsed.port, 9222);
   assert.equal(parsed.browserPath, "/devtools/browser/00000000-0000-4000-8000-000000000000");
   assert.throws(() => parseDevToolsActivePort("9222\n/devtools/page/abc\n"), /browser target/);

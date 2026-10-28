@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -40,4 +41,30 @@ export async function readDevToolsActivePort(file = DEVTOOLS_ACTIVE_PORT): Promi
   assertActivePortFile(file);
   const text = await readFile(file, "utf8");
   return parseDevToolsActivePort(text);
+}
+
+/** Pid of the Chrome listening on this loopback port. Other Chrome processes are ignored. */
+export function parseListenPid(text: string, port: number): number | null {
+  for (const line of text.split("\n")) {
+    if (!line.includes(`127.0.0.1:${port}`) || !line.includes("(LISTEN)")) continue;
+    const parts = line.trim().split(/\s+/);
+    const name = parts[0] || "";
+    if (!/^Google/i.test(name) && !/chrome/i.test(name)) continue;
+    const pid = Number(parts[1]);
+    if (Number.isInteger(pid) && pid > 0) return pid;
+  }
+  return null;
+}
+
+export function listenPid(port: number): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    execFile("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { timeout: 5000 }, (err, stdout) => {
+      if (err) {
+        resolve(undefined);
+        return;
+      }
+      const pid = parseListenPid(stdout, port);
+      resolve(pid ?? undefined);
+    });
+  });
 }
