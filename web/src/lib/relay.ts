@@ -785,23 +785,32 @@ export class PgDirectory implements Directory {
   }
 }
 
-let active: Relay | null = null;
-let bootFn: () => Promise<void> = async () => {};
+// Next compiles the upgrade hook and the /mcp route as two copies of this
+// module. A module-local variable would give each copy its own socket map.
+type RelaySlot = typeof globalThis & {
+  baoRelay?: Relay;
+  baoRelayBoot?: () => Promise<void>;
+};
+
+function relaySlot(): RelaySlot {
+  return globalThis as RelaySlot;
+}
 
 export function setRelayBoot(fn: () => Promise<void>): void {
-  bootFn = fn;
+  relaySlot().baoRelayBoot = fn;
 }
 
 export function registryRelay(): Relay {
-  if (!active) {
-    active = createRelay({
+  const slot = relaySlot();
+  if (!slot.baoRelay) {
+    slot.baoRelay = createRelay({
       store: new PgJobStore(),
       directory: new PgDirectory(),
       enabled: () => remoteMcpEnabled(),
-      boot: () => bootFn(),
+      boot: () => (slot.baoRelayBoot ?? (async () => {}))(),
     });
   }
-  return active;
+  return slot.baoRelay;
 }
 
 export function installRelayUpgrade(): void {
