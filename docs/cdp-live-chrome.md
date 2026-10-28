@@ -169,3 +169,17 @@ Extension numbers are the earlier extension proof in [bao.md](bao.md) and [exten
 | Other tabs | The extension is granted per origin, not the whole browser | The browser socket can list them. This driver does not call `Target.getTargets`. Each replay opens and closes only its own window. |
 | Survives Chrome restart | The extension stays installed. A debugger session does not. | The Allow decision does not. The checkbox preference does, until it is cleared. Not restarted here. |
 | Toggle off | The extension does not use this switch | Before the checkbox was pressed, the port file was absent and nothing listened on 9222. It is on now, and 9222 is listening. |
+
+## Instacart, one add and one remove
+
+A separate runner, `desktop/src/cdp-live/instacart-run.ts`, opens one new window on `www.instacart.com`. The books allowlist is unchanged. This run allows only `instacart.com` and `www.instacart.com`. Checkout, login, account, payment, and address paths are refused before navigation. Image CDNs are subresources, not top-frame navigations, so they are not in the allowlist.
+
+The runner searches for bananas, adds one item, and removes that one item. It will not click checkout, place order, a trial, address, payment, delivery time, or a tip. A login wall, captcha, store picker, or any other dialog stops the run before a click. If the line quantity is greater than one, it presses decrease once and does not press Remove. The cart badge must return to the count from before the add.
+
+Instacart's header cart says "View Cart. Items in cart: N" when the count is read from that phrase, and "Add $X to get $0 delivery fee N" once the cart has items. The count is that N, not the dollar amount. Add controls are "Add" or "Add 1 ct {name}" for a banana. At quantity 1 the line control is "Remove"; above that it is "Decrement" once. Open shadow roots are walked when the click target is marked. A closed shadow root is not.
+
+Per-store summaries labeled "Distinct items in cart" are not the header cart and are not clicked. The runner searches first, then reads the single header cart on the results page before the add. A second summary does not get a click.
+
+The live add did not happen. The home page exposed more than one per-store summary, so the first pass that understood those labels stopped at `cart-ambiguous` with 0 clicks. After the search was submitted, the results page showed an Add control and a header control whose first word was "view", and no control exposed a cart count. The runner stopped at `cart-count`. The only runner click was the search field. That click was trusted, and so was the button event from submitting the search. Add was not clicked. The before and after counts were never read, and the cart was not changed. `navigator.webdriver` was false. No dialog, captcha, or login wall appeared. One open shadow root was on the page. Connect-to-Allow on that attempt was 34624 ms. The automation banner was visible while the socket was open and absent after it closed.
+
+The gap is that results-page cart control. Its accessible name does not include a count, so the add stays refused.

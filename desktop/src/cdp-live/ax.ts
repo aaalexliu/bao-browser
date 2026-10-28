@@ -91,6 +91,13 @@ export async function openInspect(helper: MacOsHelper, logFile: string): Promise
   await sleep(900);
 }
 
+/** Read the checkbox. Does not type and does not press. */
+export async function checkboxState(helper: MacOsHelper): Promise<{ pid?: number; summary: AxSummary; on: boolean | null }> {
+  const tree = await chromeTree(helper);
+  if (!tree.summary.checkbox.found) return { pid: tree.pid, summary: tree.summary, on: null };
+  return { pid: tree.pid, summary: tree.summary, on: checkboxOn(tree.summary.checkbox.value) };
+}
+
 export async function ensureRemoteDebugging(helper: MacOsHelper, logFile: string): Promise<{ pid?: number; summary: AxSummary; pressed: boolean }> {
   let tree = await chromeTree(helper);
   const reach = checkboxReach(tree.summary);
