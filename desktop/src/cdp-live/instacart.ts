@@ -66,6 +66,7 @@ export function cartLabelOk(label: string): boolean {
   if (/^(cart|view cart|open cart|your cart|shopping cart)\b/i.test(text)) return true;
   if (/^view\b/i.test(text) && /\bitems?\b/i.test(text) && /\bcart\b/i.test(text)) return true;
   if (/items in cart/i.test(text) && /\bcart\b/i.test(text)) return true;
+  if (/\bitems?\b/i.test(text) && /\bin your\b/i.test(text) && /\b\d+\b/.test(text) && !/\$/.test(text)) return true;
   return /^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+\d+\s*$/i.test(text);
 }
 
@@ -75,8 +76,8 @@ export function cartCountFromLabel(label: string, badge: string | null): number 
   if (!text || text.length > 80) return null;
   const inCart = text.match(/items in cart:\s*(\d+)/i);
   if (inCart?.[1]) return Number(inCart[1]);
-  const items = text.match(/(\d+)\s+items?\b/i);
-  if (items?.[1] && /cart/i.test(text)) return Number(items[1]);
+  const items = text.match(/\b(\d+)\b(?:\s+\S+){0,3}\s+items?\b/i);
+  if (items?.[1] && (/\b(?:cart|bag|basket)s?\b/i.test(text) || /\bin your\b/i.test(text))) return Number(items[1]);
   const fee = text.match(/^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+(\d+)\s*$/i);
   if (fee?.[1]) return Number(fee[1]);
   const trailing = text.match(/^(?:view cart|open cart|your cart|shopping cart|cart)\b\D*(\d+)\s*$/i);

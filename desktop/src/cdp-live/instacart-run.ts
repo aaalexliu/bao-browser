@@ -362,7 +362,7 @@ async function run(): Promise<void> {
     if (opening.blocked) throw new NeedsHuman(opening.blocked);
     if (!removeLabelOk(opening.removeLabel, opening.removeHow, opening.removeQuantity)) {
       if (opening.cartAmbiguous || !cartLabelOk(opening.cartLabel)) throw new NeedsHuman("cart-missing");
-      await clickMarked(driver, "[data-bao-cart]", opening.cartLabel, cartLabelOk(opening.cartLabel), "open-cart");
+      await clickMarked(driver, "[data-bao-cart]", "Cart", cartLabelOk(opening.cartLabel), "open-cart");
     }
 
     const removable = await until(driver, product, (page) => removeLabelOk(page.removeLabel, page.removeHow, page.removeQuantity), 15_000);
