@@ -62,9 +62,9 @@ function windowOf(node: AxNode | undefined): string {
   return publishWindow(named);
 }
 
-export async function chromeTree(helper: MacOsHelper): Promise<{ pid?: number; summary: AxSummary }> {
-  const hit = await helper.nodes(CHROME_BUNDLE);
-  return { pid: hit.pid, summary: summarizeAx(hit.nodes || []) };
+export async function chromeTree(helper: MacOsHelper, pid?: number): Promise<{ pid?: number; summary: AxSummary }> {
+  const hit = await helper.nodes(CHROME_BUNDLE, pid);
+  return { pid: hit.pid || pid, summary: summarizeAx(hit.nodes || []) };
 }
 
 async function note(file: string, event: Omit<AxClick, "at" | "via">): Promise<void> {
@@ -92,8 +92,8 @@ export async function openInspect(helper: MacOsHelper, logFile: string): Promise
 }
 
 /** Read the checkbox. Does not type and does not press. */
-export async function checkboxState(helper: MacOsHelper): Promise<{ pid?: number; summary: AxSummary; on: boolean | null }> {
-  const tree = await chromeTree(helper);
+export async function checkboxState(helper: MacOsHelper, pid?: number): Promise<{ pid?: number; summary: AxSummary; on: boolean | null }> {
+  const tree = await chromeTree(helper, pid);
   if (!tree.summary.checkbox.found) return { pid: tree.pid, summary: tree.summary, on: null };
   return { pid: tree.pid, summary: tree.summary, on: checkboxOn(tree.summary.checkbox.value) };
 }

@@ -15,6 +15,19 @@ export function stapleNameOk(name: string): boolean {
   return true;
 }
 
+/** A visible dialog the run may ignore, or a wall it must stop on. Empty is not a wall. */
+export function classifyDialog(text: string): "" | "captcha" | "login" | "trial" | "store" | "address" | "cart" | "other" {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  if (/captcha|not a robot|verify you are human|verify you are not a bot/i.test(clean)) return "captcha";
+  if (/password|log in|sign in|one-time code|verification code/i.test(clean)) return "login";
+  if (/free trial|instacart\s*\+|try plus|start your trial/i.test(clean)) return "trial";
+  if (/choose a store|select a store|which store|pick a store/i.test(clean)) return "store";
+  if (/enter your address|add your address|confirm your address|delivery address|what's your address|where should we deliver/i.test(clean)) return "address";
+  if (/your cart|cart is empty|subtotal|distinct items in cart|estimated total/i.test(clean)) return "cart";
+  return "other";
+}
+
 export function searchLabelOk(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text || text.length > 80 || clickForbidden(text)) return false;
@@ -36,12 +49,24 @@ export function addLabelOk(label: string): boolean {
   return addProductName(text).length > 0;
 }
 
+/** Prefer the string that actually carries the cart count. */
+export function cartControlLabel(aria: string, text: string): string {
+  const clean = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 80);
+  const primary = clean(aria);
+  const visible = clean(text);
+  if (/\d/.test(primary) && /cart/i.test(primary)) return primary;
+  if (/cart/i.test(visible)) return visible;
+  return primary || visible;
+}
+
 /** Header cart. Empty carts say "View Cart". A cart with items says "Add $X to get $0 delivery fee N". */
 export function cartLabelOk(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text || text.length > 80 || clickForbidden(text) || /add to cart|checkout|distinct items in cart/i.test(text)) return false;
   if (/^(cart|view cart|open cart|your cart|shopping cart)\b/i.test(text)) return true;
+  if (/^view\b/i.test(text) && /\bitems?\b/i.test(text) && /\bcart\b/i.test(text)) return true;
   if (/items in cart/i.test(text) && /\bcart\b/i.test(text)) return true;
+  if (/\bitems?\b/i.test(text) && /\bin your\b/i.test(text) && /\b\d+\b/.test(text) && !/\$/.test(text)) return true;
   return /^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+\d+\s*$/i.test(text);
 }
 
@@ -49,10 +74,10 @@ export function cartLabelOk(label: string): boolean {
 export function cartCountFromLabel(label: string, badge: string | null): number | null {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text || text.length > 80) return null;
-  const inCart = text.match(/items in cart:\s*(\d+)/i);
+  const inCart = text.match(/items in cart:?\s*(\d+)/i);
   if (inCart?.[1]) return Number(inCart[1]);
-  const items = text.match(/(\d+)\s+items?\b/i);
-  if (items?.[1] && /cart/i.test(text)) return Number(items[1]);
+  const items = text.match(/\b(\d+)\b(?:\s+\S+){0,3}\s+items?\b/i);
+  if (items?.[1] && (/\b(?:cart|bag|basket)s?\b/i.test(text) || /\bin your\b/i.test(text))) return Number(items[1]);
   const fee = text.match(/^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+(\d+)\s*$/i);
   if (fee?.[1]) return Number(fee[1]);
   const trailing = text.match(/^(?:view cart|open cart|your cart|shopping cart|cart)\b\D*(\d+)\s*$/i);
@@ -216,12 +241,22 @@ export function readInstacart(wantProduct: string): InstacartSnap {
 
   const dialogs = collect("[role='dialog'], [role='alertdialog']").filter(shown);
   snap.dialog = dialogs.length > 0;
-  const dialogText = dialogs.map((el) => norm(el.textContent).slice(0, 800)).join("\n");
-  if (!snap.blocked && /captcha|not a robot|verify you are human|verify you are not a bot/i.test(dialogText)) snap.blocked = "captcha";
-  else if (!snap.blocked && /password|log in|sign in|one-time code|verification code/i.test(dialogText)) snap.blocked = "login";
-  else if (!snap.blocked && /free trial|instacart\s*\+|try plus|start your trial/i.test(dialogText)) snap.blocked = "trial";
-  else if (!snap.blocked && /choose a store|select a store|which store|pick a store/i.test(dialogText)) snap.blocked = "store";
-  else if (!snap.blocked && !want && /enter your address|add your address|confirm your address|delivery address|what's your address|where should we deliver/i.test(dialogText)) snap.blocked = "address";
+  const dialogBits = (dialog: Element): string => {
+    const bits: string[] = [];
+    const walk = (node: Node): void => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        bits.push(node.textContent || "");
+        return;
+      }
+      if (node instanceof Element && node.shadowRoot) walk(node.shadowRoot);
+      node.childNodes.forEach(walk);
+    };
+    walk(dialog);
+    return norm(bits.join(" ")).slice(0, 800);
+  };
+  const dialogText = dialogs.map(dialogBits).join("\n");
+  const dialogClass = classifyDialog(dialogText);
+  if (!snap.blocked && dialogClass && dialogClass !== "cart" && dialogClass !== "other") snap.blocked = dialogClass;
 
   const body = norm(document.body?.innerText || "").slice(0, 4000);
   if (!snap.blocked && /verify you are human|verify you are not a bot|i'm not a robot|captcha/i.test(body)) snap.blocked = "captcha";
@@ -236,9 +271,18 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     if (/address|email|zip|postal|password|phone|card/i.test(label)) return false;
     return searchLabelOk(label);
   });
-  if (snap.dialog && !want && !snap.blocked) {
-    const searchInside = fields.some((el) => dialogs.some((dialog) => dialog.contains(el)));
-    if (!searchInside) snap.blocked = "unexpected-dialog";
+  const covers = (dialog: Element, el: Element): boolean => {
+    const a = dialog.getBoundingClientRect();
+    const b = el.getBoundingClientRect();
+    if (a.width < 80 || a.height < 80) return false;
+    const overlapX = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+    const overlapY = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    return b.width > 0 && b.height > 0 && overlapX > b.width * 0.5 && overlapY > b.height * 0.5;
+  };
+  if (snap.dialog && !want && !snap.blocked && dialogClass === "other") {
+    const openSearch = fields.some((el) => !dialogs.some((dialog) => covers(dialog, el)));
+    const coveredSearch = fields.some((el) => dialogs.some((dialog) => covers(dialog, el)));
+    if (coveredSearch && !openSearch) snap.blocked = "unexpected-dialog";
   }
 
   const hinted = new Set<string>();
@@ -255,6 +299,7 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     hinted.add(`top:${word}`);
     tops += 1;
   }
+  if (snap.dialog) hinted.add(`dialog:${dialogClass || "empty"}`);
   snap.hints = [`controls:b${buttons.length}:i${fields.length}:s${shadows}:d${dialogs.length}`, ...hinted].slice(0, 8);
   if (snap.blocked) return snap;
 
@@ -268,7 +313,8 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     return rect.top >= 0 && rect.top < 180;
   };
   const cartCandidate = (el: Element): boolean => {
-    const label = labelOf(el);
+    const visible = "innerText" in el ? (el as HTMLElement).innerText || "" : "";
+    const label = cartControlLabel(el.getAttribute("aria-label") || "", visible);
     return cartLabelOk(label) && cartCountFromLabel(label, badgeOf(el)) != null;
   };
   const carts = buttons.filter(cartCandidate);
@@ -284,7 +330,8 @@ export function readInstacart(wantProduct: string): InstacartSnap {
   snap.cartAmbiguous = pool.length > 1;
   const onlyCart = pool.length === 1 ? pool[0] : undefined;
   if (onlyCart) {
-    const label = labelOf(onlyCart);
+    const visible = "innerText" in onlyCart ? (onlyCart as HTMLElement).innerText || "" : "";
+    const label = cartControlLabel(onlyCart.getAttribute("aria-label") || "", visible);
     snap.cartCount = cartCountFromLabel(label, badgeOf(onlyCart));
     snap.cartLabel = label.slice(0, 80);
     onlyCart.setAttribute("data-bao-cart", "1");

@@ -280,6 +280,7 @@ export function rail(state: ShellState): string {
       <button data-screen="capture">${icon("capture")} Capture</button>
       <button data-screen="teach">${icon("teach")} Teach</button>
       <button data-screen="runs">${icon("runs")} Runs</button>
+      <button data-screen="live">${icon("runs")} Live</button>
       <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
       <button data-screen="replay">${icon("replay")} Replay</button>
       <button data-screen="logins">${icon("logins")} Logins</button>
@@ -1650,6 +1651,7 @@ export function commandItems(workflows: { id: string; name: string }[]): Command
     { id: "capture", label: "Capture", kind: "screen", screen: "capture", hint: "Go" },
     { id: "teach", label: "Teach", kind: "screen", screen: "teach", hint: "Go" },
     { id: "runs", label: "Runs", kind: "screen", screen: "runs", hint: "Go" },
+    { id: "live", label: "Live", kind: "screen", screen: "live", hint: "Go" },
     { id: "heals", label: "Heals", kind: "screen", screen: "heals", hint: "Go" },
     { id: "settings", label: "Settings", kind: "screen", screen: "settings", hint: "Go" },
     { id: "theme", label: "Toggle appearance", kind: "theme", hint: "Light or dark" },

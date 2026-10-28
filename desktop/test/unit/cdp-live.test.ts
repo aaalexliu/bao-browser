@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
-import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
-import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, openLiveWindow } from "../../src/cdp-live/driver";
+import { addLabelOk, addProductName, cartControlLabel, cartCountFromLabel, cartLabelOk, cartRestored, classifyDialog, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
+import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, attachLiveTarget, openLiveWindow, redactOverlay } from "../../src/cdp-live/driver";
 import {
   attachPathMatches,
-  lockIsStale,
+  lockIsStale as attachLockIsStale,
   parseLockText,
   pickExistingPage,
   redactForShot,
   workflowFromAudit,
 } from "../../src/cdp-live/attach";
+import { liveShotUrl, redactLabel, shotNameOk } from "../../src/cdp-live/live-record";
+import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
+import { loginDiffConclusion, pageLooksSignedIn } from "../../src/cdp-live/login-diff";
+import { liveSessionView, screenFromQuery } from "../../src/app/live-view";
 import {
   clickAllowed,
   dashboardNavigation,
@@ -33,7 +40,7 @@ import {
   summarizeAx,
   type AxLike,
 } from "../../src/cdp-live/consent";
-import { assertActivePortFile, parseDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { assertActivePortFile, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
 import { CDP_LIVE_SERVER_REFUSAL, refusesOwnedBrowser } from "../../src/cdp-live/launch-guard";
 import { TRUST_SOURCE } from "../../src/cdp-live/driver";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
@@ -98,6 +105,17 @@ test("instacart navigation stays on the site and off checkout", () => {
   assert.equal(cartCountFromLabel("Add $3.99 to get $0 delivery fee 2", null), 2);
   assert.equal(cartCountFromLabel("View Cart", "4"), 4);
   assert.equal(cartLabelOk("Open cart"), true);
+  assert.equal(cartLabelOk("View 2 items in your cart"), true);
+  assert.equal(cartCountFromLabel("View 2 items in your cart", null), 2);
+  assert.equal(cartLabelOk("See the 2 fresh items in your bag"), true);
+  assert.equal(cartCountFromLabel("See the 2 fresh items in your bag", null), 2);
+  assert.equal(cartLabelOk("See the 2 fresh items in your tote"), true);
+  assert.equal(cartCountFromLabel("See the 2 fresh items in your tote", null), 2);
+  assert.equal(cartLabelOk("3 distinct items in cart"), false);
+  assert.equal(cartControlLabel("View cart", "View 2 items in your cart"), "View 2 items in your cart");
+  assert.equal(cartControlLabel("View 2 items in your cart", "2"), "View 2 items in your cart");
+  assert.equal(cartCountFromLabel("View cart Items in cart: 21 Add $3.99 to get $0 delivery fee 21", null), 21);
+  assert.equal(cartCountFromLabel("View cart Items in cart 4 Add $3.99 to get $0 delivery fee 4", null), 4);
   assert.equal(cartCountFromLabel("Cart 0", null), 0);
   assert.equal(cartCountFromLabel("Open cart 3", null), 3);
   assert.equal(addLabelOk("Add"), true);
@@ -114,11 +132,19 @@ test("instacart navigation stays on the site and off checkout", () => {
   assert.equal(removeLabelOk("Remove Organic Bananas", "remove", 1), true);
   assert.equal(removeLabelOk("Remove", "remove", 2), false);
   assert.equal(removeLabelOk("Remove all", "remove", 1), false);
+  assert.equal(classifyDialog(""), "");
+  assert.equal(classifyDialog("Your cart is empty"), "cart");
+  assert.equal(classifyDialog("Start your free trial"), "trial");
+  assert.equal(classifyDialog("Enter your address"), "address");
+  assert.equal(classifyDialog("A note about pickup hours"), "other");
   assert.equal(cartRestored(2, 3, 2), true);
   assert.equal(cartRestored(2, 4, 2), false);
   const page = readInstacart.toString();
   assert.match(page, /cartLabelOk\(/);
   assert.match(page, /shadowRoot/);
+  assert.match(page, /classifyDialog\(/);
+  assert.match(page, /dialogClass === "other"/);
+  assert.match(page, /openSearch/);
   assert.doesNotMatch(page, /require\(/);
   assert.doesNotMatch(page, /document\.cookie/);
   assert.doesNotMatch(page, /\.click\s*\(/);
@@ -320,13 +346,100 @@ test("an attach run picks one open page and does not create or close a target", 
   const lines = parseLockText("bc-other\n1793154442761\n");
   assert.equal(lines?.agent, "bc-other");
   assert.equal(lines?.startedAt, 1793154442761);
-  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
-  assert.equal(lockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
+  assert.equal(attachLockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
+  assert.equal(attachLockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
+});
+
+test("a live session view stays on this machine and blurs the page shot", () => {
+  assert.equal(screenFromQuery("?screen=live"), "live");
+  assert.equal(screenFromQuery("?screen=library"), "");
+  assert.equal(shotNameOk("shot-001.png"), true);
+  assert.equal(shotNameOk("../session.json"), false);
+  assert.equal(liveShotUrl("shot-001.png"), "/api/live-session/shots/shot-001.png");
+  assert.equal(liveShotUrl("../x.png"), "");
+  assert.equal(redactLabel("bananas $1.29"), "bananas");
+  assert.equal(redactLabel("user@example.com"), "");
+  const html = liveSessionView({
+    id: "live",
+    intent: "Add one cheap item, then remove it.",
+    status: "passed",
+    host: "www.instacart.com",
+    updatedAt: 1,
+    steps: [{ name: "add", status: "passed", ms: 12 }],
+    audit: [{ action: "allow", label: "Allow", path: "", isTrusted: null, ms: 80, at: 1, shot: "", via: "ax" },
+      { action: "add", label: "Add", path: "/store/s", isTrusted: true, ms: 40, at: 2, shot: "shot-001.png", via: "cdp" }],
+    note: "",
+  });
+  assert.match(html, /id="live-steps"/);
+  assert.match(html, /id="live-audit"/);
+  assert.match(html, /AX press/);
+  assert.match(html, /\/api\/live-session\/shots\/shot-001\.png/);
+  assert.doesNotMatch(html, /https?:/);
+  const veil = redactOverlay.toString();
+  assert.match(veil, /backdrop-filter:blur\(18px\)/);
+  assert.doesNotMatch(veil, /document\.cookie/);
+  assert.match(attachLiveTarget.toString(), /attachLivePage/);
+  assert.doesNotMatch(attachLiveTarget.toString(), /closeTarget|createTarget/);
+});
+
+test("the browser lock is exclusive and a stale lock can be taken", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-lock-"));
+  const file = path.join(dir, "lock");
+  assert.equal(parseLock(lockText("agent-a", 10))?.agentId, "agent-a");
+  assert.equal(lockIsStale(1, 20 * 60 * 1000 + 2), true);
+  let now = 1_000;
+  let tries = 0;
+  await acquireCdpLock("agent-a", { file, now: () => now, timeoutMs: 1_000, sleep: async () => undefined });
+  await assert.rejects(acquireCdpLock("agent-b", {
+    file,
+    now: () => now + tries,
+    timeoutMs: 0,
+    sleep: async () => { tries += 1; },
+  }), /held/);
+  releaseCdpLock("agent-b", file);
+  assert.equal(parseLock(readFileSync(file, "utf8"))?.agentId, "agent-a");
+  now = 1_000 + 20 * 60 * 1000 + 5;
+  await acquireCdpLock("agent-b", { file, now: () => now, timeoutMs: 1_000, sleep: async () => undefined });
+  releaseCdpLock("agent-b", file);
+});
+
+test("login follows more than one open tab only when the measurements say so", () => {
+  assert.equal(pageLooksSignedIn("/myOffers/timeout", false), false);
+  assert.equal(pageLooksSignedIn("/mfe/dashboard", false), true);
+  assert.match(loginDiffConclusion({
+    existingLoggedIn: 2,
+    duplicateLoggedIn: true,
+    duplicateOpened: true,
+    cookieNamesMatch: true,
+    sessionKeysMatch: false,
+    webdriverOnDuplicate: false,
+    originalSurvived: true,
+  }), /not locked to one tab/);
+  assert.match(loginDiffConclusion({
+    existingLoggedIn: 1,
+    duplicateLoggedIn: false,
+    duplicateOpened: true,
+    cookieNamesMatch: true,
+    sessionKeysMatch: false,
+    webdriverOnDuplicate: false,
+    originalSurvived: true,
+  }), /session storage/);
+  assert.equal(loginDiffConclusion({
+    existingLoggedIn: 1,
+    duplicateLoggedIn: null,
+    duplicateOpened: false,
+    cookieNamesMatch: null,
+    sessionKeysMatch: null,
+    webdriverOnDuplicate: null,
+    originalSurvived: true,
+  }), "unknown");
 });
 
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {
   assert.throws(() => assertActivePortFile("/tmp/Preferences"), /DevToolsActivePort/);
   const parsed = parseDevToolsActivePort("9222\n/devtools/browser/00000000-0000-4000-8000-000000000000\n");
+  assert.equal(parseListenPid("Google 92286 alexliu 198u IPv4 0x1 0t0 TCP 127.0.0.1:9222 (LISTEN)\n", 9222), 92286);
+  assert.equal(parseListenPid("Google 8920 alexliu 12u IPv4 0x1 0t0 TCP 127.0.0.1:25319 (LISTEN)\n", 9222), null);
   assert.equal(parsed.port, 9222);
   assert.equal(parsed.browserPath, "/devtools/browser/00000000-0000-4000-8000-000000000000");
   assert.throws(() => parseDevToolsActivePort("9222\n/devtools/page/abc\n"), /browser target/);

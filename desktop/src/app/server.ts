@@ -15,6 +15,7 @@ import { resolveCaptureUrl } from "./capture-url";
 import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
+import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
@@ -444,6 +445,11 @@ export async function startApp(opts: {
         }
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/live-session/shots/")) {
+        const name = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
+        if (!shotNameOk(name)) return json(res, { error: "no picture" }, 404);
+        return sendPng(res, path.join(library.root, "live-session", "shots", name));
+      }
       if (req.method === "GET" && url.pathname === "/api/state") {
         runScheduledBackup(library);
         syncPending();
@@ -479,6 +485,7 @@ export async function startApp(opts: {
           saveSheet: saveSheetState(),
           remote: remote.view(),
           relay: relayStatus(library.root),
+          liveSession: readLiveSessionFile(library.root),
         });
       }
       if (req.method === "POST" && url.pathname === "/api/open") {
@@ -3245,6 +3252,14 @@ function byteRange(header: string | string[] | undefined, size: number): { start
   const end = endRaw === "" ? size - 1 : Number(endRaw);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= size || end < start) return null;
   return { start, end: Math.min(end, size - 1) };
+}
+
+function readLiveSessionFile(root: string): ReturnType<typeof publicLiveSession> {
+  try {
+    return publicLiveSession(JSON.parse(readFileSync(path.join(root, "live-session", "session.json"), "utf8")));
+  } catch {
+    return null;
+  }
 }
 
 function sendPng(res: ServerResponse, file: string): void {

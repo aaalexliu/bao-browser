@@ -164,8 +164,10 @@ export class MacOsHelper {
     return this.exec(prompt ? ["permissions", "--prompt"] : ["permissions"]);
   }
 
-  nodes(bundle: string): Promise<AxHit> {
-    return this.exec(["nodes", "--bundle", bundle], 90_000);
+  nodes(bundle: string, pid?: number): Promise<AxHit> {
+    const args = ["nodes", "--bundle", bundle];
+    if (pid) args.push("--pid", String(pid));
+    return this.exec(args, 90_000);
   }
 
   hit(x: number, y: number, bundle: string): Promise<AxHit> {
