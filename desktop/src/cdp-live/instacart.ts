@@ -49,11 +49,22 @@ export function addLabelOk(label: string): boolean {
   return addProductName(text).length > 0;
 }
 
+/** Prefer the string that actually carries the cart count. */
+export function cartControlLabel(aria: string, text: string): string {
+  const clean = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 80);
+  const primary = clean(aria);
+  const visible = clean(text);
+  if (/\d/.test(primary) && /cart/i.test(primary)) return primary;
+  if (/cart/i.test(visible)) return visible;
+  return primary || visible;
+}
+
 /** Header cart. Empty carts say "View Cart". A cart with items says "Add $X to get $0 delivery fee N". */
 export function cartLabelOk(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text || text.length > 80 || clickForbidden(text) || /add to cart|checkout|distinct items in cart/i.test(text)) return false;
   if (/^(cart|view cart|open cart|your cart|shopping cart)\b/i.test(text)) return true;
+  if (/^view\b/i.test(text) && /\bitems?\b/i.test(text) && /\bcart\b/i.test(text)) return true;
   if (/items in cart/i.test(text) && /\bcart\b/i.test(text)) return true;
   return /^add \$[\d.]+ to get \$[\d.]+ delivery fee\s+\d+\s*$/i.test(text);
 }
@@ -301,7 +312,8 @@ export function readInstacart(wantProduct: string): InstacartSnap {
     return rect.top >= 0 && rect.top < 180;
   };
   const cartCandidate = (el: Element): boolean => {
-    const label = labelOf(el);
+    const visible = "innerText" in el ? (el as HTMLElement).innerText || "" : "";
+    const label = cartControlLabel(el.getAttribute("aria-label") || "", visible);
     return cartLabelOk(label) && cartCountFromLabel(label, badgeOf(el)) != null;
   };
   const carts = buttons.filter(cartCandidate);
@@ -317,7 +329,8 @@ export function readInstacart(wantProduct: string): InstacartSnap {
   snap.cartAmbiguous = pool.length > 1;
   const onlyCart = pool.length === 1 ? pool[0] : undefined;
   if (onlyCart) {
-    const label = labelOf(onlyCart);
+    const visible = "innerText" in onlyCart ? (onlyCart as HTMLElement).innerText || "" : "";
+    const label = cartControlLabel(onlyCart.getAttribute("aria-label") || "", visible);
     snap.cartCount = cartCountFromLabel(label, badgeOf(onlyCart));
     snap.cartLabel = label.slice(0, 80);
     onlyCart.setAttribute("data-bao-cart", "1");

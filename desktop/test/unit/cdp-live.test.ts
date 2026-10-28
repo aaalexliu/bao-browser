@@ -6,7 +6,7 @@ import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal, openerAllowed } from "../../src/cdp-live/allowlist";
-import { addLabelOk, addProductName, cartCountFromLabel, cartLabelOk, cartRestored, classifyDialog, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
+import { addLabelOk, addProductName, cartControlLabel, cartCountFromLabel, cartLabelOk, cartRestored, classifyDialog, clickForbidden, readInstacart, removeLabelOk, searchLabelOk, stapleNameOk } from "../../src/cdp-live/instacart";
 import { PIERCE_QUERY, TRUST_CLEANUP, attachLivePage, attachLiveTarget, openLiveWindow, redactOverlay } from "../../src/cdp-live/driver";
 import {
   attachPathMatches,
@@ -105,6 +105,11 @@ test("instacart navigation stays on the site and off checkout", () => {
   assert.equal(cartCountFromLabel("Add $3.99 to get $0 delivery fee 2", null), 2);
   assert.equal(cartCountFromLabel("View Cart", "4"), 4);
   assert.equal(cartLabelOk("Open cart"), true);
+  assert.equal(cartLabelOk("View 2 items in your cart"), true);
+  assert.equal(cartCountFromLabel("View 2 items in your cart", null), 2);
+  assert.equal(cartLabelOk("3 distinct items in cart"), false);
+  assert.equal(cartControlLabel("View cart", "View 2 items in your cart"), "View 2 items in your cart");
+  assert.equal(cartControlLabel("View 2 items in your cart", "2"), "View 2 items in your cart");
   assert.equal(cartCountFromLabel("Cart 0", null), 0);
   assert.equal(cartCountFromLabel("Open cart 3", null), 3);
   assert.equal(addLabelOk("Add"), true);
