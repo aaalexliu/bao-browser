@@ -20,7 +20,7 @@ node scripts/check-node.mjs
 
 | Step | Command |
 | --- | --- |
-| Prerequisites | `node scripts/check-node.mjs`, then `npx playwright install chromium`, `npm install`, and `npm --prefix web install`. |
+| Prerequisites | `node scripts/check-node.mjs`, then `npm install` and `npm --prefix web install`, then `npx playwright install chromium` before `npm test`. |
 | Desktop dev | `npm run build:desktop`, then `npm run bao`. |
 | Legacy extension dev | `npm run watch` |
 | Registry dev | `npm --prefix web run dev` |

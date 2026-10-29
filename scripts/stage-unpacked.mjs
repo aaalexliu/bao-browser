@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MARKER = ".bao-stage";
+const MARKER_TEXT = "bao-stage\n";
 
 function isFileRef(value) {
   if (value.includes("*") || value.includes(" ") || value.startsWith("<")) return false;
@@ -118,23 +119,49 @@ function sameOrInside(parent, child) {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
-function assertSafeStage(source, stage) {
+function pathsIn(dir) {
+  const out = [];
+  const walk = (current) => {
+    const entries = readdirSync(current);
+    if (current !== dir && entries.length === 0) {
+      out.push(path.relative(dir, current).split(path.sep).join("/"));
+      return;
+    }
+    for (const name of entries) {
+      const abs = path.join(current, name);
+      if (statSync(abs).isDirectory()) walk(abs);
+      else out.push(path.relative(dir, abs).split(path.sep).join("/"));
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+function assertSafeStage(source, stage, expectedFiles) {
   const sourceReal = resolvePath(source);
   const stageReal = resolvePath(stage);
   const homeReal = resolvePath(process.env.HOME || homedir());
   const repoReal = resolvePath(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
   if (stageReal === path.parse(stageReal).root) refuse(stageReal, "is the filesystem root");
   if (stageReal === homeReal) refuse(stageReal, "is the home directory");
-  if (stageReal === repoReal) refuse(stageReal, "is the repo");
+  if (sameOrInside(repoReal, stageReal)) refuse(stageReal, stageReal === repoReal ? "is the repo" : "is inside the repo");
   if (sameOrInside(stageReal, sourceReal)) refuse(stageReal, "contains the source tree");
   if (existsSync(stageReal)) {
     const info = statSync(stageReal);
     if (!info.isDirectory()) refuse(stageReal, "is not a directory");
-    const names = readdirSync(stageReal);
-    const previous = names.includes(MARKER);
-    if (names.length > 0 && !previous) {
+    const present = pathsIn(stageReal);
+    if (present.length > 0) {
+      let markerOk = false;
+      try {
+        markerOk = readFileSync(path.join(stageReal, MARKER), "utf8") === MARKER_TEXT;
+      } catch { markerOk = false; }
+      const allowed = new Set(expectedFiles);
+      allowed.add(MARKER);
+      const extra = present.filter((rel) => !allowed.has(rel));
       const force = process.env.BAO_STAGE_FORCE === "1" || process.argv.includes("--force");
-      if (!force) refuse(stageReal, "is not a previous Bao stage. Set BAO_STAGE_FORCE=1 to replace it");
+      if ((!markerOk || extra.length > 0) && !force) {
+        refuse(stageReal, "is not a previous Bao stage. Set BAO_STAGE_FORCE=1 to replace it");
+      }
     }
   }
   console.error(`Replacing ${stageReal}`);
@@ -142,7 +169,7 @@ function assertSafeStage(source, stage) {
 }
 
 function finish(stageReal) {
-  writeFileSync(path.join(stageReal, MARKER), "bao-stage\n");
+  writeFileSync(path.join(stageReal, MARKER), MARKER_TEXT);
 }
 
 const [mode, sourceOrDir, stage] = process.argv.slice(2);
@@ -157,7 +184,7 @@ if (mode === "copy") {
   const files = filesToStage(sourceOrDir);
   const gone = missing(sourceOrDir, files);
   if (gone.length) report("source", gone);
-  const stageReal = assertSafeStage(sourceOrDir, stage);
+  const stageReal = assertSafeStage(sourceOrDir, stage, files);
   rmSync(stageReal, { recursive: true, force: true });
   for (const file of files) {
     const dest = path.join(stageReal, file);
@@ -174,7 +201,7 @@ if (mode === "sync") {
   const files = filesToStage(sourceOrDir);
   const gone = missing(sourceOrDir, files);
   if (gone.length) report("source", gone);
-  const stageReal = assertSafeStage(sourceOrDir, stage);
+  const stageReal = assertSafeStage(sourceOrDir, stage, pathsIn(sourceOrDir));
   rmSync(stageReal, { recursive: true, force: true });
   cpSync(sourceOrDir, stageReal, { recursive: true });
   const staged = missing(stageReal, filesToStage(stageReal));

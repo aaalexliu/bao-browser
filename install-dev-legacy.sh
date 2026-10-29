@@ -24,8 +24,14 @@ done
 node "$ROOT/scripts/stage-unpacked.mjs" copy "$SOURCE" "$STAGE" "${FORCE[@]}"
 echo "Synced legacy extension → $STAGE"
 
-if [ "$LAUNCH" != "1" ] || [ "$(uname -s)" != "Darwin" ]; then
+if [ "$(uname -s)" != "Darwin" ]; then
   echo "Profile lookup is macOS-only. Stage succeeded: $STAGE" >&2
+  exit 0
+fi
+
+if [ "$LAUNCH" != "1" ]; then
+  echo "Stage succeeded: $STAGE" >&2
+  echo "Reload it at chrome://extensions, or rerun with --launch to open that page." >&2
   exit 0
 fi
 

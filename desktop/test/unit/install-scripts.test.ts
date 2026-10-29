@@ -204,12 +204,10 @@ test("stager refuses a populated directory that is not a previous stage", () => 
   assert.equal(existsSync(path.join(stage, "manifest.json")), true);
   assert.equal(existsSync(path.join(stage, ".bao-stage")), true);
 
-  writeFileSync(path.join(stage, "again.txt"), "x");
-  const again = stageCopy(source, stage);
-  assert.equal(again.status, 0, again.stderr);
-  assert.match(`${again.stderr}`, /Replacing /);
-  assert.equal(existsSync(path.join(stage, "again.txt")), false);
-  assert.equal(existsSync(path.join(stage, ".bao-stage")), true);
+  const restage = stageCopy(source, stage);
+  assert.equal(restage.status, 0, restage.stderr);
+  assert.match(`${restage.stderr}`, /Replacing /);
+  assert.equal(readFileSync(path.join(stage, ".bao-stage"), "utf8"), "bao-stage\n");
 });
 
 test("stager refuses the home directory even when force is set", () => {

@@ -68,6 +68,6 @@ Leave `BAO_MCP_LIVE` unset for the four workflow tools. The history of the evalu
 
 ## Checks
 
-`npm run typecheck` checks `src`, `desktop`, `extension`, and `web`. `npm run check` runs that typecheck and `npm run test:desktop:unit`. `npm test` remains the root extension suites. Install Playwright's Chromium with `npx playwright install chromium` before `npm test` or the desktop unit suite. `npm --prefix web test` runs the registry tests in `web/src/lib`.
+`npm run typecheck` checks `src`, `desktop`, `extension`, and `web`. `npm run check` runs that typecheck and `npm run test:desktop:unit`. Run `npm install` and `npm --prefix web install` before `npx playwright install chromium`. Run that browser install before `npm test` or the desktop unit suite. `npm test` remains the root extension suites. `npm --prefix web test` runs the registry tests in `web/src/lib`.
 
 `npm --prefix web run dev` rewrites the two import lines in `web/next-env.d.ts` so they point at `web/.next/dev/types/`. The committed file points at `web/.next/types/`. Leave that rewrite uncommitted.
