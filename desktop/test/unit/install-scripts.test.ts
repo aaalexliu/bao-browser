@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -315,6 +315,100 @@ test("stager --force replaces a foreign stage and prints the path", () => {
   assert.match(`${result.stderr}`, /Replacing /);
   assert.equal(existsSync(path.join(stage, "canary.txt")), false);
   assert.equal(existsSync(path.join(stage, ".bao-stage")), true);
+});
+
+test("quickstart installs packages before Playwright browsers", () => {
+  const readme = readFileSync(path.join(root, "README.md"), "utf8");
+  const guide = readFileSync(path.join(root, "docs/agent-quickstart.md"), "utf8");
+  for (const text of [readme, guide]) {
+    const packages = text.indexOf("npm install");
+    const browsers = text.indexOf("npx playwright install chromium");
+    const tests = text.indexOf("npm test");
+    assert.ok(packages >= 0 && browsers > packages && tests > browsers, text);
+  }
+});
+
+test("stager refuses a forged stage marker and keeps the canary", () => {
+  const source = tinySource();
+  const stage = mkdtempSync(path.join(tmpdir(), "bao-forged-"));
+  writeFileSync(path.join(stage, ".bao-stage"), "not-a-real-stage");
+  writeFileSync(path.join(stage, "canary.txt"), "keep");
+  const result = stageCopy(source, stage);
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.match(`${result.stderr}`, /refusing to replace/);
+  assert.equal(readFileSync(path.join(stage, "canary.txt"), "utf8"), "keep");
+  assert.equal(readFileSync(path.join(stage, ".bao-stage"), "utf8"), "not-a-real-stage");
+});
+
+test("stager refuses an extra file in a previous stage", () => {
+  const source = tinySource();
+  const stage = mkdtempSync(path.join(tmpdir(), "bao-extra-"));
+  const first = stageCopy(source, stage);
+  assert.equal(first.status, 0, first.stderr);
+  writeFileSync(path.join(stage, "canary.txt"), "keep");
+  const again = stageCopy(source, stage);
+  assert.notEqual(again.status, 0, again.stderr);
+  assert.equal(readFileSync(path.join(stage, "canary.txt"), "utf8"), "keep");
+});
+
+test("stager refuses an empty directory inside the checkout", () => {
+  const source = tinySource();
+  const stage = path.join(root, `.stage-probe-${process.pid}`);
+  mkdirSync(stage);
+  try {
+    const result = stageCopy(source, stage, { BAO_STAGE_FORCE: "1" });
+    assert.notEqual(result.status, 0, result.stderr);
+    assert.match(`${result.stderr}`, /inside the repo/);
+    assert.equal(readdirSync(stage).length, 0);
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
+});
+
+function unameStub(system: string): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-uname-"));
+  const file = path.join(dir, "uname");
+  writeFileSync(file, `#!/bin/sh\necho ${system}\n`);
+  chmodSync(file, 0o755);
+  return dir;
+}
+
+test("legacy installer splits the profile hint by uname and does not launch", () => {
+  const source = tinySource();
+  function run(system: string) {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-uname-home-"));
+    const local = path.join(home, "Library/Application Support/Google/Chrome");
+    mkdirSync(local, { recursive: true });
+    writeFileSync(path.join(local, "Local State"), JSON.stringify({
+      profile: { info_cache: { "Profile 1": { name: "dev" } } },
+    }));
+    const stage = mkdtempSync(path.join(tmpdir(), "bao-uname-stage-"));
+    return spawnSync("bash", [path.join(root, "install-dev-legacy.sh")], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${unameStub(system)}:${process.env.PATH}`,
+        BAO_SKIP_BUILD: "1",
+        BAO_LEGACY_SOURCE: source,
+        BAO_EXT_DIR: stage,
+      },
+    });
+  }
+  const linux = run("Linux");
+  const linuxOut = `${linux.stdout}${linux.stderr}`;
+  assert.equal(linux.status, 0, linuxOut);
+  assert.match(linuxOut, /macOS-only/);
+  assert.match(linuxOut, /Stage succeeded/);
+  assert.doesNotMatch(linuxOut, /Profile 1/);
+  const mac = run("Darwin");
+  const macOut = `${mac.stdout}${mac.stderr}`;
+  assert.equal(mac.status, 0, macOut);
+  assert.match(macOut, /Reload it at chrome:\/\/extensions/);
+  assert.doesNotMatch(macOut, /macOS-only/);
+  assert.doesNotMatch(macOut, /Profile 1/);
+  assert.doesNotMatch(macOut, /Could not find a Chrome profile/);
 });
 
 test("bao-mcp.sh exits before creating .bao-mcp when BAO_HOME is unset", () => {
