@@ -14,7 +14,7 @@ Set `BAO_HEAL_CURSOR_ACCOUNT` to `0` before a checkout `bao serve`, a replay, or
 
 **Expected.** The window title is **Bao**. There is no address bar. The second double-click focuses that window and does not start a second server. `desktop/packaging/macos/bao-main.c` calls `bao_focus_pid` when the instance lock is already held. Record `helper.accessibility` and `helper.screenCapture` from `/api/state`. Stop this pass only when `helper.accessibility` is false. Do not change the grant.
 
-On this checkout, before pull request 131, a live-session check needs Accessibility on and Screen Recording off. If the footer reads **helper ok**, both bits are true. Record the live-session checks as skipped. After pull request 131, a Screen Recording grant is not a reason to skip live Chrome. Live Chrome then needs Accessibility only.
+Record `helper.accessibility` and `helper.screenCapture` on every checkout. Skipping live-session checks because the footer reads **helper ok** applies only to a checkout without pull request 131. With pull request 131, Screen Recording is not a start blocker, and only `helper.accessibility` false stops the pass.
 
 **Evidence.** Save the body of this command next to your notes. It is not a file the app writes for you.
 
@@ -112,7 +112,7 @@ These are the files a run actually writes.
 - The Finder instance lock is `~/Library/Application Support/bao/instance.lock`. The file can remain after quit.
 - Product state is the body of `curl -s http://127.0.0.1:4787/api/state`.
 - The installed helper path is the body of `curl -s http://127.0.0.1:4787/api/pids`.
-- A replay video is `<server home>/videos/<runId>.webm` only when `encodeWebm` writes it. That needs darwin, `BAO_HEADED=1`, `BaoWindowVideo.app`, a capture probe that returns ok, and ffmpeg. `server.ts` does not write the bytes. Do not grant Screen Recording to produce the file. `BaoWindowVideo` is signed as `dev.bao.oshelper`. For a Finder launch the server home is `~/Library/Application Support/bao`.
+- A replay video is `<server home>/videos/<runId>.webm`. `keepReplayClip` in `desktop/src/app/server.ts` copies a Playwright clip there with `copyFileSync` when the clip has a `runId`. `openReplay` registers that clip when `BAO_RUN_VIDEO=1`. `close()` calls `keepReplayClip`. `encodeWebm` in `desktop/src/v1/replay-video.ts` is a second writer. It needs an ffmpeg from `FFMPEG`, `which ffmpeg`, `/opt/homebrew/bin/ffmpeg`, or `/usr/local/bin/ffmpeg`, and a file over 1000 bytes. `BaoWindowVideo` is signed as `dev.bao.oshelper`. For a Finder launch the server home is `~/Library/Application Support/bao`.
 - A live session record is `<liveSessionDir()>/session.json`.
 - A live session shot is `<liveSessionDir()>/shots/shot-NNN.png`.
 - The session script result is `.evidence/session-run.json` under the process working directory. It is not gitignored.
