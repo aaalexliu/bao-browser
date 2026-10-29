@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
@@ -116,6 +117,13 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   assert.match(main, /--app=/);
   assert.match(main, /--disable-infobars/);
   assert.match(script, /bao-launch\.c/);
+  assert.match(script, /stage-runtime\.sh/);
+  assert.match(script, /require\('\.\/src\/app\/server\.js'\)/);
+  assert.match(script, /helper-identity\.js/);
+  const stage = readFileSync(path.join(process.cwd(), "desktop/packaging/stage-runtime.sh"), "utf8");
+  assert.match(stage, /extension\/dist/);
+  assert.match(stage, /host-grant\.js/);
+  assert.match(stage, /classic-level/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);
   assert.match(main, /bao_discover_node/);
@@ -129,4 +137,17 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
     assert.equal(message.includes("127.0.0.1"), false, message);
     assert.equal(message.includes("4787"), false, message);
   }
+});
+
+test("package-app.sh stops before it builds an app when the helper is absent", () => {
+  const dist = mkdtempSync(path.join(tmpdir(), "bao-dist-"));
+  const result = spawnSync("bash", ["desktop/packaging/macos/package-app.sh"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: { ...process.env, BAO_DIST: dist, BAO_SIGN_IDENTITY: "bao dev signing" },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /helper is absent/);
+  assert.equal(existsSync(path.join(dist, "Bao.app")), false);
+  rmSync(dist, { recursive: true, force: true });
 });

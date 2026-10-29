@@ -7,40 +7,25 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
+export BAO_SIGN_IDENTITY="$IDENTITY"
 DIST="${BAO_DIST:-$ROOT/desktop/packaging/macos/dist}"
 APP="$DIST/Bao.app"
+
+node "$ROOT/desktop/packaging/helper-identity.js" "$ROOT/desktop/os-helper-macos/BaoOSHelper.app"
+
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bao"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp desktop/packaging/macos/Info.plist "$APP/Contents/Info.plist"
-npx tsc -p tsconfig.desktop.json
-cp -a desktop/dist/desktop/src "$APP/Contents/Resources/bao/src"
-cp -a desktop/src/app/public "$APP/Contents/Resources/bao/public"
-# interpret.js requires ../../../src/mask, which lands at Contents/Resources/src.
-mkdir -p "$APP/Contents/Resources/src"
-cp -a desktop/dist/src/. "$APP/Contents/Resources/src/"
-# sync.js and catalog.js require ../../../web/src/lib, which lands at Contents/Resources/web.
-mkdir -p "$APP/Contents/Resources/web"
-cp -a desktop/dist/web/src "$APP/Contents/Resources/web/src"
-# The window script is bundled from the TypeScript client. cwd is Resources/bao.
-# desktop/src/v1/time.ts imports ../../../web, which is Resources/bao/web from that cwd.
-mkdir -p "$APP/Contents/Resources/bao/desktop"
-cp -a desktop/src "$APP/Contents/Resources/bao/desktop/src"
-mkdir -p "$APP/Contents/Resources/bao/web"
-cp -a web/src "$APP/Contents/Resources/bao/web/src"
-# schema.ts imports ../../../src/mask. From this cwd that file is Resources/bao/src/mask.ts.
-# Without it the window's /app.js bundle fails and the sidebar never renders.
-mkdir -p "$APP/Contents/Resources/bao/src"
-cp -a src/mask.ts "$APP/Contents/Resources/bao/src/mask.ts"
-# The server requires playwright and esbuild. A copy of the app outside this repo cannot see node_modules.
-mkdir -p "$APP/Contents/Resources/bao/node_modules"
-cp -a node_modules/playwright node_modules/playwright-core node_modules/esbuild "$APP/Contents/Resources/bao/node_modules/"
-if [[ -d node_modules/@esbuild ]]; then
-  mkdir -p "$APP/Contents/Resources/bao/node_modules/@esbuild"
-  cp -a node_modules/@esbuild/. "$APP/Contents/Resources/bao/node_modules/@esbuild/"
-fi
-if [[ -d desktop/os-helper-macos/BaoOSHelper.app ]]; then
-  cp -a desktop/os-helper-macos/BaoOSHelper.app "$APP/Contents/Resources/BaoOSHelper.app"
-fi
+bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"
+cp -a "$ROOT/desktop/os-helper-macos/BaoOSHelper.app" "$APP/Contents/Resources/BaoOSHelper.app"
+
+# Missing modules fail here, before any codesign of this app.
+(
+  cd "$APP/Contents/Resources/bao"
+  node -e "require('./src/app/server.js')"
+  node -e "require('classic-level')"
+)
+
 bash desktop/packaging/macos/build-capture-bar.sh
 cp -a "$ROOT/desktop/packaging/macos/dist/BaoCaptureBar.app" "$APP/Contents/Resources/BaoCaptureBar.app"
 bash desktop/packaging/macos/build-window-video.sh

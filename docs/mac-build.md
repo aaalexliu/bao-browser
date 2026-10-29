@@ -73,7 +73,7 @@ Run `xcode-select --install` only when `xcode-select -p` fails. When the tools a
 
 ### Rust, for a helper rebuild
 
-`desktop/os-helper-macos/package-app.sh` runs cargo from `~/dev/bao-mac-toolchain/cargo` unless `CARGO_HOME` is already set. Skip the installer when `"$HOME/dev/bao-mac-toolchain/cargo/bin/cargo" --version` already prints `cargo 1.`. On a Mac that already has the helper grant, do not run this script. See Build.
+`desktop/os-helper-macos/package-app.sh` runs cargo from `~/dev/bao-mac-toolchain/cargo` unless `CARGO_HOME` is already set. Skip the installer when `"$HOME/dev/bao-mac-toolchain/cargo/bin/cargo" --version` already prints `cargo 1.`. A Mac that already has the helper grant uses [Rebuild with an existing grant](#rebuild-with-an-existing-grant) and does not run this script. A machine without that signed helper uses [Fresh setup](#fresh-setup).
 
 ```sh
 mkdir -p "$HOME/dev/bao-mac-toolchain"
@@ -116,18 +116,53 @@ rm -rf "$WORKDIR"
 
 ### This checkout
 
-Build from `v1/desktop`.
+Package the checkout you have. `v1/desktop` is the integration branch when that is the branch you mean to ship. Do not switch to it if you are already on the branch you are packaging.
+
+```sh
+git rev-parse --abbrev-ref HEAD
+git status -sb
+```
+
+`git rev-parse` prints the branch name. `git status -sb` prints that branch and a clean or dirty worktree.
+
+To clone for the first time, check out the branch you intend to package.
 
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
-git fetch origin v1/desktop
 git checkout v1/desktop
 ```
 
-## Build
+Replace `v1/desktop` with the branch you are packaging.
 
-On this Mac the helper is already signed with `bao dev signing` (CDHash `e2ad7477d8f989484c3d0ef8a2598561844127bf`). Skip the helper script. Run only the desktop script, so the nested helper keeps that CDHash and the grant stays. Do not pass `--deep` to `codesign`.
+## Fresh setup
+
+Use this when `desktop/os-helper-macos/BaoOSHelper.app` is missing, or when `codesign -dvvv` does not show identifier `dev.bao.oshelper` signed by `bao dev signing`. The helper is gitignored. Packaging stops if it is missing.
+
+The helper script signs bundle id `dev.bao.oshelper` with `BAO_SIGN_IDENTITY`. Do not pass `--deep` to `codesign`. Do not sign the helper ad-hoc, and do not drop a raw executable in place of the `.app`.
+
+```sh
+npm install
+export BAO_SIGN_IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
+bash desktop/os-helper-macos/package-app.sh
+bash desktop/packaging/macos/package-app.sh
+file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
+```
+
+`npm install` finishes before the desktop script runs `tsc`. The helper script prints a `codesign` verify. The desktop script then refuses to continue unless that helper is a bundle, identifier `dev.bao.oshelper`, with a designated requirement that names the certificate. It does not compare a CDHash. It copies the helper into `Bao.app` without signing it again.
+
+The desktop script stages Playwright and `classic-level` with npm, including the native binary for this Mac. It compiles `extension/src/host-grant.ts` to `Contents/Resources/extension/src/host-grant.js`. It builds the window script to `Contents/Resources/bao/src/app/app.js`, so launch does not need the TypeScript sources or esbuild. It copies the unpacked extension to `Contents/Resources/extension/dist`. From `Contents/Resources/bao` it runs `node -e "require('./src/app/server.js')"` and stops if a module is missing. That run is before `codesign`.
+
+It compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). It copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
+
+- `npm install` ends without `EBADENGINE`.
+- The desktop script prints `BUNDLED_BROWSER` and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
+- `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
+- `codesign -dvvv` on the nested helper prints `Identifier=dev.bao.oshelper` and `Authority=bao dev signing`.
+
+## Rebuild with an existing grant
+
+Use this when this Mac already has the helper grant. Do not run `desktop/os-helper-macos/package-app.sh`. Do not pass `--deep` to `codesign`. Do not replace the helper with an ad-hoc signature or a raw binary. A new certificate is a different app, and the grant does not follow it.
 
 ```sh
 npm install
@@ -136,14 +171,63 @@ bash desktop/packaging/macos/package-app.sh
 file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 ```
 
-`npm install` finishes before the desktop script runs `tsc`. The desktop script compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). It copies the helper that is already at `desktop/os-helper-macos/BaoOSHelper.app` to `Bao.app/Contents/Resources/BaoOSHelper.app`. It copies `src/mask.ts` to `Contents/Resources/bao/src/mask.ts` (without that file the window script fails and the sidebar never renders). It copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
+The desktop script reads `desktop/os-helper-macos/BaoOSHelper.app` and exits before it compiles or signs if any of these are true.
 
-- `npm install` ends without `EBADENGINE`.
-- The desktop script prints `BUNDLED_BROWSER` and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
-- `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
-- `codesign -dvvv` on the nested `BaoOSHelper.app` still shows CDHash `e2ad7477d8f989484c3d0ef8a2598561844127bf`.
+- The path is missing.
+- The path is not an app bundle with `Contents/MacOS/BaoOSHelper`.
+- `codesign --verify --strict` fails.
+- The identifier is not `dev.bao.oshelper`.
+- The signature is ad-hoc.
+- The first `Authority` line is not `$BAO_SIGN_IDENTITY`.
+- The designated requirement does not name `dev.bao.oshelper` and that certificate.
 
-Copy `Bao.app` to `/Applications/Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
+`codesign -dvvv` prints a CDHash. Rebuilding the helper changes it. The CDHash is not the acceptance check.
+
+Inspect the helper you are about to nest:
+
+```sh
+codesign --verify --strict --verbose=2 desktop/os-helper-macos/BaoOSHelper.app
+codesign -dvvv desktop/os-helper-macos/BaoOSHelper.app
+codesign -d -r- desktop/os-helper-macos/BaoOSHelper.app
+```
+
+`Identifier=dev.bao.oshelper`. The first `Authority=` line is `bao dev signing` unless you set `BAO_SIGN_IDENTITY`. The designated requirement line contains `identifier "dev.bao.oshelper"` and `certificate`.
+
+## Install or update
+
+Quit Bao from the Dock. Replacing the app does not remove the library.
+
+```sh
+rm -rf /Applications/Bao.app
+cp -a desktop/packaging/macos/dist/Bao.app /Applications/Bao.app
+codesign --verify --strict --verbose=2 /Applications/Bao.app
+codesign --verify --strict --verbose=2 /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
+codesign -dvvv /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
+open /Applications/Bao.app
+```
+
+Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
+
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With both privacy grants on, the footer reads **helper ok**.
+
+## Logs
+
+Bao does not write a launch log. Finder does not keep the server stdout. The server prints one line, `bao <port> home <home>`, when a terminal is attached.
+
+An import appends a line to `~/Library/Application Support/bao/audit/import-login.jsonl`. That directory is the library. Do not delete it to clear a log.
+
+## Roll back
+
+Keep the previous `Bao.app` or `Bao.dmg`. Quit Bao from the Dock. Replace `/Applications/Bao.app` with that copy. Leave `~/Library/Application Support/bao` in place. Open the restored app from Finder.
+
+```sh
+rm -rf /Applications/Bao.app
+cp -a /path/to/previous/Bao.app /Applications/Bao.app
+codesign --verify --strict --verbose=2 /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
+open /Applications/Bao.app
+```
+
+The nested helper in the restored app must still be the signed `dev.bao.oshelper` bundle. Do not copy an ad-hoc helper or a raw executable into it.
 
 ## Permissions
 

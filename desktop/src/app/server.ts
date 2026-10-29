@@ -7,7 +7,6 @@ import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, 
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import * as esbuild from "esbuild";
 import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import { Capture, actNotice } from "./capture";
@@ -3380,6 +3379,12 @@ function modelStatus(): { label: string } {
 let bundledClient = "";
 async function browserScript(): Promise<string> {
   if (bundledClient) return bundledClient;
+  const prebuilt = path.join(__dirname, "app.js");
+  if (existsSync(prebuilt)) {
+    bundledClient = readFileSync(prebuilt, "utf8");
+    return bundledClient;
+  }
+  const esbuild = await import("esbuild");
   const result = await esbuild.build({
     absWorkingDir: process.cwd(),
     entryPoints: ["desktop/src/app/client.ts"],
