@@ -10,10 +10,9 @@ import { readout, isTwelve } from "./spike-macos-calc";
 import { replayOsWorkflow, replayUsedCoordinates } from "./macos-replay";
 import { MacOsHelper, targetFrom } from "./os-macos";
 import {
-  artifactsDir, CALC_BUNDLE, EDIT_BUNDLE, HELPER, cleanupNewAutosave, ensureArtifacts, launchIfDown,
+  artifactsDir, CALC_BUNDLE, EDIT_BUNDLE, HELPER, cleanupNewAutosave, ensureArtifacts, ffmpegBin, launchIfDown,
   namesIn, quitOwned, sleep, TEXTEDIT_AUTOSAVE, workDir, writeJson,
 } from "./spike-macos-host";
-const FFMPEG = process.env.BAO_FFMPEG || "/etc/profiles/per-user/alexliu/bin/ffmpeg";
 
 interface TrailFile {
   source?: { agent?: string; vendor?: string; model?: string };
@@ -38,8 +37,9 @@ function operator(workflow: Workflow): string {
 async function encode(dir: string, out: string): Promise<string> {
   const frames = (await readdir(dir)).filter((name) => name.endsWith(".png")).sort();
   if (frames.length < 2) return "skipped";
+  const bin = ffmpegBin();
   await new Promise<void>((resolve, reject) => {
-    execFile(FFMPEG, [
+    execFile(bin, [
       "-y", "-framerate", "2", "-start_number", "1", "-i", path.join(dir, "frame-%02d.png"),
       "-c:v", "libx264", "-pix_fmt", "yuv420p", out,
     ], { timeout: 30000 }, (err) => err ? reject(err) : resolve());
@@ -87,8 +87,8 @@ async function main(): Promise<void> {
   if (!trailPath) throw new Error("usage: spike-macos-live.js calc|textedit <trail.json> <tag>");
   const raw = JSON.parse(await readFile(trailPath, "utf8")) as TrailFile;
   const interpreted = interpretOs(raw.events ?? [], kind);
-  await mkdir(workDir(), { recursive: true });
   await ensureArtifacts();
+  await mkdir(workDir(), { recursive: true });
   const helper = new MacOsHelper(HELPER);
   const runs = [];
   if (kind === "calc") {

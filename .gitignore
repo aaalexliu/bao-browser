@@ -39,6 +39,11 @@ desktop/os-helper-macos/BaoOSHelper.app/
 .evidence/cdp-live-ax.jsonl
 .evidence/session-workflow.json
 .evidence/unfreeze-workflow.json
+.evidence/session-run.json
+.evidence/cdp-live-run.json
+.evidence/instacart-once.json
+.evidence/instacart-once-state.json
+.evidence/login-diff.json
 
 # Packaged binaries stay out of git. The build writes them under artifacts.
 *.AppImage

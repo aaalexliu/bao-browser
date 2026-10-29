@@ -11,10 +11,8 @@ import {
 } from "./spike-macos-calc";
 import { runTextEdit } from "./spike-macos-edit";
 import {
-  artifactsDir, CALC_BUNDLE, HELPER, captureRegion, ensureArtifacts, quitOwned, sleep, workDir, writeJson,
+  artifactsDir, CALC_BUNDLE, HELPER, captureRegion, ensureArtifacts, ffmpegBin, quitOwned, sleep, workDir, writeJson,
 } from "./spike-macos-host";
-
-const FFMPEG = process.env.BAO_FFMPEG || "/etc/profiles/per-user/alexliu/bin/ffmpeg";
 
 async function gate(helper: MacOsHelper): Promise<Record<string, unknown>> {
   let perm = await helper.permissions(false);
@@ -39,8 +37,9 @@ async function gate(helper: MacOsHelper): Promise<Record<string, unknown>> {
 async function encode(dir: string, out: string): Promise<string> {
   const frames = (await readdir(dir)).filter((name) => name.endsWith(".png")).sort();
   if (frames.length < 2) return "skipped";
+  const bin = ffmpegBin();
   await new Promise<void>((resolve, reject) => {
-    execFile(FFMPEG, [
+    execFile(bin, [
       "-y", "-framerate", "2", "-start_number", "1", "-i", path.join(dir, "frame-%02d.png"),
       "-c:v", "libx264", "-pix_fmt", "yuv420p", out,
     ], { timeout: 30000 }, (err) => err ? reject(err) : resolve());
@@ -129,8 +128,8 @@ async function place(helper: MacOsHelper, win: { x: number; y: number; w: number
 }
 
 async function main(): Promise<void> {
-  await mkdir(workDir(), { recursive: true });
   await ensureArtifacts();
+  await mkdir(workDir(), { recursive: true });
   const helper = new MacOsHelper(HELPER);
   const permissions = await gate(helper);
   const report: Record<string, unknown> = { macos: "26.6.2 (25G83)", helper: HELPER, permissions };

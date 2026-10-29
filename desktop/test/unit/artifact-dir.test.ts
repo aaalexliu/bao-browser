@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { artifactsDir } from "../../src/proxy/spike-macos-host";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { artifactsDir, ffmpegBin } from "../../src/proxy/spike-macos-host";
 
 function withEnv(values: Record<string, string | undefined>, run: () => void): void {
   const previous: Record<string, string | undefined> = {};
@@ -56,4 +58,21 @@ test("artifactsDir keeps an absolute store and lets the explicit path win", () =
   withEnv({ BAO_SPIKE_ARTIFACTS: "/var/./bao-explicit/out", BAO_AGENT_STORE_DIR: undefined }, () => {
     assert.equal(artifactsDir(), "/var/bao-explicit/out");
   });
+});
+
+test("ffmpegBin uses BAO_FFMPEG, then FFMPEG, which, and Homebrew", () => {
+  withEnv({ BAO_FFMPEG: "/bin/true", FFMPEG: undefined }, () => {
+    assert.equal(ffmpegBin(), "/bin/true");
+  });
+  withEnv({ BAO_FFMPEG: "/no/such/ffmpeg", FFMPEG: undefined }, () => {
+    assert.throws(ffmpegBin, /BAO_FFMPEG does not exist/);
+  });
+  const empty = mkdtempSync(path.join(tmpdir(), "bao-ffmpeg-"));
+  try {
+    withEnv({ BAO_FFMPEG: undefined, FFMPEG: undefined, PATH: empty }, () => {
+      assert.throws(ffmpegBin, /Set BAO_FFMPEG or install ffmpeg/);
+    });
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
 });

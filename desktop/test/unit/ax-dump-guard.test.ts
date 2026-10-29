@@ -43,3 +43,37 @@ test("a failed ax dump leaves fixtures/ax/macos-26/files.json untouched", () => 
     rmSync(scratch, { recursive: true, force: true });
   }
 });
+
+test("a relative store aborts before the fixture write", () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), "bao-ax-dump-"));
+  const leaked = path.join(process.cwd(), "relative");
+  try {
+    const fixtures = path.join(scratch, "fixtures", "ax", "macos-26");
+    mkdirSync(fixtures, { recursive: true });
+    const original = "{\n  \"kept\": true\n}\n";
+    const fixture = path.join(fixtures, "files.json");
+    writeFileSync(fixture, original);
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: path.join(scratch, "home"),
+      TMPDIR: path.join(scratch, "tmp"),
+      BAO_AGENT_STORE_DIR: "relative/dir",
+      BAO_MAC_SPIKE_ROOT: scratch,
+    };
+    delete env.BAO_SPIKE_ARTIFACTS;
+    mkdirSync(env.HOME!);
+    mkdirSync(env.TMPDIR!);
+    const ran = spawnSync(process.execPath, ["desktop/src/proxy/spike-macos-ax.mjs"], {
+      cwd: process.cwd(),
+      env,
+      encoding: "utf8",
+    });
+    assert.equal(ran.status, 1, ran.stderr);
+    assert.match(ran.stderr, /absolute path/);
+    assert.equal(readFileSync(fixture, "utf8"), original);
+    assert.equal(existsSync(leaked), false);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+    rmSync(leaked, { recursive: true, force: true });
+  }
+});
