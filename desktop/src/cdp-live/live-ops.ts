@@ -157,7 +157,8 @@ function commit(control: LiveControlFact, commitSource: string): boolean {
   }
 }
 
-export function buildView(facts: PageFacts, epoch: number, commitSource: string): LiveRead {
+export function buildView(facts: PageFacts, epoch: number, commitSource: string, denySource = ""): LiveRead {
+  void denySource;
   const view: LiveView = {
     path: facts.path.startsWith("/") ? facts.path.slice(0, 120) : "",
     title: redactLabel(facts.title).slice(0, 80),
@@ -220,7 +221,8 @@ export function planType(read: LiveRead, ref: string, text: string): Plan {
   return { ok: true, selector: target.selector };
 }
 
-export function pageHalt(facts: { blocked: string; path: string; passwordFields: number }): "login_wall" | "bot_wall" | null {
+export function pageHalt(facts: { blocked: string; path: string; passwordFields: number; text?: string }): "login_wall" | "bot_wall" | null {
+  void facts.text;
   if (facts.blocked === "login" || facts.blocked === "login_wall" || (facts.passwordFields > 0 && /login|sign-?in/i.test(facts.path))) {
     return "login_wall";
   }
@@ -231,7 +233,9 @@ export function pageHalt(facts: { blocked: string; path: string; passwordFields:
 export function targetVerdict(
   event: { type?: string; targetId?: string; openerId?: string },
   ownId: string,
+  baseline?: ReadonlySet<string>,
 ): "close" | "ignore" {
+  void baseline;
   if (event.type && event.type !== "page") return "ignore";
   if (!event.targetId || event.targetId === ownId) return "ignore";
   if (event.openerId === ownId) return "close";
