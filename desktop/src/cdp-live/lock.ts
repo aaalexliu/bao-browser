@@ -9,6 +9,11 @@ export function lockText(agentId: string, startedAt: number): string {
 }
 
 export function parseLock(text: string): { agentId: string; startedAt: number } | null {
+  const keyedAgent = text.match(/^agent=(.+)$/m)?.[1]?.trim() || "";
+  const keyedStart = Number(text.match(/^startedAt=(\d+)$/m)?.[1] || "");
+  if (keyedAgent && Number.isFinite(keyedStart) && keyedStart > 0) {
+    return { agentId: keyedAgent, startedAt: keyedStart };
+  }
   const lines = text.split(/\n/).map((line) => line.trim()).filter(Boolean);
   const startedAt = Number(lines[1]);
   if (!lines[0] || !Number.isFinite(startedAt) || startedAt <= 0) return null;

@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { resolveBaoHome } from "../app/bao-home";
 import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep } from "./live-record";
 
 export {
@@ -14,7 +14,7 @@ export {
   type LiveStep,
 } from "./live-record";
 
-export function liveSessionDir(home = process.env.BAO_HOME || path.join(homedir(), ".local", "share", "bao")): string {
+export function liveSessionDir(home = resolveBaoHome()): string {
   return path.join(home, "live-session");
 }
 
@@ -43,14 +43,14 @@ export class SessionLog {
     ms: number;
     via?: "ax" | "cdp";
     png?: Buffer;
-  }): Promise<void> {
+  }): Promise<string> {
     let shot = "";
     if (row.png && row.png.length > 32) {
       this.shots += 1;
       shot = shotName(this.shots);
       const folder = path.join(this.dir, "shots");
       await mkdir(folder, { recursive: true });
-      await writeFile(path.join(folder, shot), row.png);
+      await writeAtomic(path.join(folder, shot), row.png);
     }
     const clean = publicLiveSession({
       ...this.record,
@@ -67,6 +67,7 @@ export class SessionLog {
     });
     if (clean) this.record = clean;
     await this.flush(this.record.status);
+    return shot;
   }
 
   setSteps(steps: LiveStep[]): void {
@@ -82,7 +83,7 @@ export class SessionLog {
     if (!clean) return;
     this.record = clean;
     await mkdir(this.dir, { recursive: true });
-    await writeFile(path.join(this.dir, "session.json"), `${JSON.stringify(this.record, null, 2)}\n`);
+    await writeAtomic(path.join(this.dir, "session.json"), `${JSON.stringify(this.record, null, 2)}\n`);
   }
 }
 
@@ -93,4 +94,10 @@ export async function readLiveSession(dir: string): Promise<LiveSessionRecord | 
   } catch {
     return null;
   }
+}
+
+async function writeAtomic(file: string, data: string | Buffer): Promise<void> {
+  const tmp = `${file}.${process.pid}.tmp`;
+  await writeFile(tmp, data);
+  await rename(tmp, file);
 }

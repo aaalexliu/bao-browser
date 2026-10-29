@@ -8,7 +8,15 @@ export const BOOKS_HOSTS = ["books.toscrape.com"] as const;
  */
 export const INSTACART_HOSTS = ["instacart.com", "www.instacart.com"] as const;
 
-const INSTACART_PATH_BLOCK = /checkout|checkouts|place-order|place_order|\/payments?(?:\/|$)|payment-method|instacart-?plus|start-trial|free-trial|(?:^|\/)login(?:\/|$)|sign-?in|(?:^|\/)account(?:\/|$)|\/settings(?:\/|$)|\/addresses?(?:\/|$)|\/payment(?:\/|$)/i;
+export const INSTACART_PATH_BLOCK = /checkout|checkouts|place-order|place_order|\/payments?(?:\/|$)|payment-method|instacart-?plus|start-trial|free-trial|(?:^|\/)login(?:\/|$)|sign-?in|(?:^|\/)account(?:\/|$)|\/settings(?:\/|$)|\/addresses?(?:\/|$)|\/payment(?:\/|$)/i;
+
+/** A typed string the live tools refuse before it reaches the page. */
+export function insertTextRefusal(text: string): string | null {
+  if (text.length === 0 || text.length > 80) return "cdp-live refused that text";
+  if (/password|cvv|cvc|card number/i.test(text)) return "cdp-live does not type secrets";
+  if (/^\d[\d\s-]{11,}\d$/.test(text)) return "cdp-live does not type card numbers";
+  return null;
+}
 
 export function navigationRefusal(url: string, hosts: readonly string[] = BOOKS_HOSTS): string | null {
   let parsed: URL;

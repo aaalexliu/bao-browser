@@ -16,6 +16,7 @@ import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
+import { createLiveHost } from "../cdp-live/live-host";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
@@ -192,6 +193,7 @@ export async function startApp(opts: {
 }): Promise<App> {
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
+  const live = createLiveHost({ home: library.root });
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
@@ -444,6 +446,14 @@ export async function startApp(opts: {
           return;
         }
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
+      }
+      if (req.method === "POST" && url.pathname === "/api/live") {
+        const origin = req.headers.origin;
+        if (typeof origin === "string" && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
+          return json(res, { error: "local clients only" }, 403);
+        }
+        const body = await readBody(req);
+        return json(res, await live.call(body));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/live-session/shots/")) {
         const name = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
@@ -2433,6 +2443,7 @@ export async function startApp(opts: {
       }
       replays.clear();
       await remote.stop();
+      await live.close();
       await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },

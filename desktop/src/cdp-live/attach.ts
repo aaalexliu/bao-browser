@@ -1,68 +1,17 @@
-import { open, readFile, rm, stat } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { lockIsStale as lockFileIsStale, parseLock } from "./lock";
 
 export const LOCK_STALE_MS = 20 * 60 * 1000;
 
 export function parseLockText(text: string): { agent: string; startedAt: number } | null {
-  const keyedAgent = text.match(/^agent=(.+)$/m)?.[1]?.trim() || "";
-  const keyedStart = Number(text.match(/^startedAt=(\d+)$/m)?.[1] || "");
-  if (keyedAgent && Number.isFinite(keyedStart) && keyedStart > 0) {
-    return { agent: keyedAgent, startedAt: keyedStart };
-  }
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const agent = lines[0] || "";
-  const startedAt = Number(lines[1] || "");
-  if (/^[\w.-]+$/.test(agent) && Number.isFinite(startedAt) && startedAt > 0) {
-    return { agent, startedAt };
-  }
-  return null;
+  const parsed = parseLock(text);
+  if (!parsed || !/^[\w.-]+$/.test(parsed.agentId)) return null;
+  return { agent: parsed.agentId, startedAt: parsed.startedAt };
 }
 
 export function lockIsStale(startedAt: number, now: number, staleMs = LOCK_STALE_MS): boolean {
-  return now - startedAt > staleMs;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Exclusive create. A lock older than 20 minutes is removed. A live lock is waited out. */
-export async function acquireLock(
-  file: string,
-  agent: string,
-  onWait?: (holder: string) => void,
-  now: () => number = Date.now,
-): Promise<void> {
-  const payload = `agent=${agent}\nstartedAt=${now()}\n`;
-  for (;;) {
-    try {
-      const handle = await open(file, "wx");
-      await handle.writeFile(payload);
-      await handle.close();
-      return;
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw err;
-      const text = await readFile(file, "utf8").catch(() => "");
-      const parsed = parseLockText(text);
-      const info = await stat(file).catch(() => null);
-      const stamp = parsed?.startedAt || info?.mtimeMs || 0;
-      if (stamp > 0 && lockIsStale(stamp, now())) {
-        await rm(file, { force: true });
-        continue;
-      }
-      onWait?.(parsed?.agent || "unknown");
-      await sleep(1500);
-    }
-  }
-}
-
-export async function releaseLock(file: string, agent: string): Promise<void> {
-  const text = await readFile(file, "utf8").catch(() => "");
-  const parsed = parseLockText(text);
-  if (parsed && parsed.agent !== agent) return;
-  await rm(file, { force: true });
+  return lockFileIsStale(startedAt, now, staleMs);
 }
 
 export function keepAwake(): ChildProcess {

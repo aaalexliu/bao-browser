@@ -7,7 +7,7 @@ import { assignSiblingIndex } from "../v1/identity";
 import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
-import { BOOKS_HOSTS, navigationAllowed, navigationRefusal, openerAllowed, publicHost } from "./allowlist";
+import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost } from "./allowlist";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -301,7 +301,9 @@ export class CdpLiveDriver implements Driver {
   /** Trusted click of a selector this process just marked. Does not call element.click(). */
   async clickCss(selector: string): Promise<void> {
     if (!selector.startsWith("[data-bao-")) throw new Error("cdp-live click refused");
+    const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.clickSelector(selector);
+    await this.waitAfterClick(before, 10_000);
   }
 
   async evaluateFunction<T>(
@@ -318,9 +320,8 @@ export class CdpLiveDriver implements Driver {
   }
 
   async insertText(text: string): Promise<void> {
-    if (text.length === 0 || text.length > 80) throw new Error("cdp-live refused that text");
-    if (/password|cvv|cvc|card number/i.test(text)) throw new Error("cdp-live does not type secrets");
-    if (/^\d[\d\s-]{11,}\d$/.test(text)) throw new Error("cdp-live does not type card numbers");
+    const refusal = insertTextRefusal(text);
+    if (refusal) throw new Error(refusal);
     await this.cdp.send("Input.insertText", { text }, this.sessionId);
   }
 
