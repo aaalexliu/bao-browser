@@ -86,29 +86,21 @@ export function productHeadless(env: NodeJS.ProcessEnv = process.env, platform: 
 export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
   const mac = platform === "darwin" ? ["--force-renderer-accessibility"] : [];
   const sandbox = needsLinuxNoSandbox(env, platform) ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
-  const mockKeychain = env.BAO_TEST_MOCK_KEYCHAIN === "1";
   const drop = new Set([
     "--enable-automation",
     "--disable-blink-features=AutomationControlled",
     "--disable-extensions",
+    "--use-mock-keychain",
+    "--password-store=basic",
     "--enable-unsafe-swiftshader",
     "--restore-last-session",
   ]);
-  if (!mockKeychain) {
-    drop.add("--use-mock-keychain");
-    drop.add("--password-store=basic");
-  }
   const cleaned = extra.filter((arg) => {
     if (drop.has(arg)) return false;
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  const args = [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned];
-  if (mockKeychain) {
-    if (!args.includes("--use-mock-keychain")) args.push("--use-mock-keychain");
-    if (!args.includes("--password-store=basic")) args.push("--password-store=basic");
-  }
-  return args;
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned];
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
@@ -123,15 +115,15 @@ const DAILY_DIR = [
   "/Google/Chrome/User Data",
 ];
 
-/** Never a PATH lookup. Wrappers can add automation flags. */
+/**
+ * Installed Google Chrome when it is present, otherwise BAO_BROWSER, otherwise
+ * Playwright's Chromium. Never a PATH lookup: wrappers can add automation flags.
+ */
 export function resolveNormalChrome(exists: (file: string) => boolean = existsSync, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
-  const requested = env.BAO_BROWSER;
-  if (requested) {
-    if (exists(requested)) return requested;
-    throw new Error(`BAO_BROWSER was not found: ${requested}`);
-  }
   if (platform === "darwin" && exists(ACCOUNT_CHROME_MAC)) return ACCOUNT_CHROME_MAC;
   if (platform === "linux" && exists(LINUX_CHROME)) return LINUX_CHROME;
+  const bundled = env.BAO_BROWSER;
+  if (bundled && exists(bundled)) return bundled;
   try {
     const fallback = chromium.executablePath();
     if (fallback && exists(fallback)) return fallback;
@@ -357,6 +349,8 @@ export async function launchOwnedChrome(opts: {
   videoDir?: string;
   headless?: boolean;
   args?: string[];
+  appendArgs?: string[];
+  executablePath?: string;
   deviceScaleFactor?: number;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
@@ -369,18 +363,21 @@ async function launchNormalChrome(opts: {
   userDataDir: string;
   headless?: boolean;
   args?: string[];
+  appendArgs?: string[];
+  executablePath?: string;
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   mkdirSync(opts.userDataDir, { recursive: true });
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
-  const exe = resolveNormalChrome();
+  const exe = opts.executablePath || resolveNormalChrome();
   const headless = opts.headless ?? true;
   const port = await ownedDebugPort();
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args),
+    ...(opts.appendArgs ?? []),
     `--remote-debugging-port=${port}`,
     ...(headless ? ["--headless=new"] : []),
   ];
@@ -497,12 +494,14 @@ async function launchOwnedChromeForVideo(opts: {
   videoDir?: string;
   headless?: boolean;
   args?: string[];
+  appendArgs?: string[];
+  executablePath?: string;
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
-  const exe = resolveNormalChrome();
+  const exe = opts.executablePath || resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,
     headless: opts.headless ?? true,
@@ -511,7 +510,7 @@ async function launchOwnedChromeForVideo(opts: {
     chromiumSandbox: true,
     ignoreDefaultArgs: AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: ownedLaunchArgs(opts.args),
+    args: [...ownedLaunchArgs(opts.args), ...(opts.appendArgs ?? [])],
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);

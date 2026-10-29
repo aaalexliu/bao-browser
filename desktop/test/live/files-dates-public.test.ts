@@ -11,7 +11,7 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { replay } from "../../src/v1/replay";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts, tryWriteEvidence } from "../artifacts";
-import { outageFromReason, probeSite, type SiteProbe } from "../runtime";
+import { liveSkip, probeSite, type SiteProbe } from "../runtime";
 
 const CLOCK = new Date("2026-10-22T15:00:00Z");
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
@@ -50,8 +50,9 @@ async function requireSite(t: TestContext, url: string): Promise<SiteProbe | und
   const dir = testArtifacts("files-dates-public");
   const name = createHash("sha256").update(url).digest("hex").slice(0, 12);
   await tryWriteEvidence(() => writeFileSync(path.join(dir, `probe-${name}.json`), `${JSON.stringify(probe)}\n`));
-  if (probe.result !== "reachable") {
-    t.skip(`infrastructure ${probe.result} http=${probe.status} ${url}`);
+  const outage = liveSkip(probe);
+  if (outage) {
+    t.skip(`infrastructure ${outage.result} http=${outage.status} ${url}`);
     return undefined;
   }
   return probe;
@@ -105,7 +106,7 @@ test("restful-booker selects the replayed check-in and check-out cells", { timeo
       heal: unavailableHeal(),
     });
     const selected = await page.evaluate(readCalendarSelection).catch(() => ({ isos: [] as string[], reserve: false }));
-    const outage = result.status === "passed" ? undefined : outageFromReason(result.failure?.reason);
+    const outage = result.status === "passed" ? undefined : liveSkip(probe, result.failure);
     if (outage) {
       console.log(`live ${start} http=${outage.status} result=${outage.result} phase=${result.failure?.phase || ""}`);
       await tryWriteEvidence(() => writeFileSync(path.join(shots, "booking-outage.json"), JSON.stringify({ probe, outage, failure: result.failure, selected }, null, 2)));
@@ -167,7 +168,7 @@ test("the IRS W-9 downloads twice to the same templated hash", { timeout: 120_00
           downloadDir: root,
           heal: unavailableHeal(),
         });
-        const outage = result.status === "passed" ? undefined : outageFromReason(result.failure?.reason);
+        const outage = result.status === "passed" ? undefined : liveSkip(probe, result.failure);
         if (outage) {
           console.log(`live ${url} http=${outage.status} result=${outage.result} phase=${result.failure?.phase || ""}`);
           t.skip(`infrastructure ${outage.result} http=${outage.status} ${url}`);
@@ -262,7 +263,7 @@ test("a downloaded file uploads to the-internet and the filename is shown", { ti
         downloadDir: root,
         heal: unavailableHeal(),
       });
-      const outage = result.status === "passed" ? undefined : outageFromReason(result.failure?.reason);
+      const outage = result.status === "passed" ? undefined : liveSkip(uploaded, result.failure);
       if (outage) {
         console.log(`live ${uploadUrl} http=${outage.status} result=${outage.result} phase=${result.failure?.phase || ""}`);
         t.skip(`infrastructure ${outage.result} http=${outage.status} ${uploadUrl}`);

@@ -17,6 +17,13 @@ const STRIP = [
   "BAO_CURSOR_AGENT",
   "BAO_CURSOR_MODEL",
   "BAO_HEADED",
+  "BAO_BROWSER",
+  "BAO_TEST_BROWSER",
+  "BAO_CAPTURE_BAR",
+  "BAO_CAPTURE_BAR_BIN",
+  "BAO_CHROME_NO_SANDBOX",
+  "BAO_CDP_PORT_FILE",
+  "BAO_LIVE_TESTS",
   "BAO_OS_HELPER",
   "BAO_EXTENSION_HOST",
   "BAO_HOME",
@@ -37,7 +44,7 @@ const STRIP = [
   "BAO_TEST_MOCK_KEYCHAIN",
 ];
 
-export type TestLane = "hermetic" | "live" | "installed-chrome";
+export type TestLane = "hermetic" | "live";
 export type CookieSource = "synthetic-linux" | "browser";
 export type SiteResult = "reachable" | "unavailable" | "bot-blocked";
 
@@ -60,14 +67,15 @@ export function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv, pinnedBrowser
   env.BAO_LANE = lane;
   env.BAO_REPLAY_VIDEO = "0";
   if (!env.BAO_TEST_RUN_ID) env.BAO_TEST_RUN_ID = `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
-  if (lane === "installed-chrome") {
-    delete env.BAO_BROWSER;
-    return env;
-  }
   env.BAO_HEADED = "0";
   if (lane === "live") env.BAO_LIVE_TESTS = "1";
-  if (!env.BAO_BROWSER && pinnedBrowser) env.BAO_BROWSER = pinnedBrowser;
+  if (pinnedBrowser) env.BAO_TEST_BROWSER = pinnedBrowser;
   return env;
+}
+
+export function mockKeychainArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (env.BAO_TEST_MOCK_KEYCHAIN !== "1") return [];
+  return ["--use-mock-keychain", "--password-store=basic"];
 }
 
 export function hermeticChildEnv(parent: NodeJS.ProcessEnv, pinnedBrowser?: string): NodeJS.ProcessEnv {
@@ -108,17 +116,18 @@ export function classifyStatus(status: number): SiteResult {
   return "unavailable";
 }
 
-export function outageFromReason(reason: string | undefined): { result: SiteResult; status: number } | undefined {
-  if (!reason) return undefined;
-  const named = reason.match(/\b5xx\s+(\d{3})\b/);
-  if (named) {
-    const status = Number(named[1]);
-    if (status >= 500) return { result: "unavailable", status };
+export function liveSkip(
+  probe: { status: number },
+  failure?: { phase?: string; reason?: string },
+): { result: SiteResult; status: number } | undefined {
+  if (probe.status === 403 || probe.status === 429) return { result: "bot-blocked", status: probe.status };
+  if (probe.status >= 500) return { result: "unavailable", status: probe.status };
+  if (probe.status === 404 || probe.status === 410) return { result: "unavailable", status: probe.status };
+  if (probe.status === 0) return { result: "unavailable", status: 0 };
+  if (!failure || failure.phase === "find" || failure.phase === "expect") return undefined;
+  if (/net::ERR_|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed/i.test(failure.reason || "")) {
+    return { result: "unavailable", status: 0 };
   }
-  if (/\b5xx\b/.test(reason)) return { result: "unavailable", status: 500 };
-  if (/\b429\b/.test(reason)) return { result: "bot-blocked", status: 429 };
-  if (/\b403\b/.test(reason)) return { result: "bot-blocked", status: 403 };
-  if (/net::ERR_|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed/i.test(reason)) return { result: "unavailable", status: 0 };
   return undefined;
 }
 
@@ -165,9 +174,6 @@ export function applyHermeticApp(name: string, env: NodeJS.ProcessEnv = process.
   delete env.BAO_OS_HELPER;
   delete env.BAO_EXTENSION_HOST;
   delete env.BAO_CURSOR_AGENT;
-  if (!env.BAO_BROWSER) {
-    const pinned = pinnedTestBrowser();
-    if (pinned) env.BAO_BROWSER = pinned;
-  }
+  delete env.BAO_BROWSER;
   return dirs;
 }

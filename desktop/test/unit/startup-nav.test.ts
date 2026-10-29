@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { launchOwnedChrome, navigateOwned } from "../../src/launch";
+import { mockKeychainArgs } from "../runtime";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,7 +47,12 @@ test("the first replay after a fresh launch is not interrupted by a restored tab
   const port = typeof address === "object" && address ? address.port : 0;
   const origin = `http://127.0.0.1:${port}`;
   try {
-    const first = await launchOwnedChrome({ userDataDir: dir, headless: true });
+      const first = await launchOwnedChrome({
+        userDataDir: dir,
+        headless: true,
+        executablePath: process.env.BAO_TEST_BROWSER?.trim() || undefined,
+        appendArgs: mockKeychainArgs(),
+      });
     try {
       const page = first.pages()[0] || await first.newPage();
       assert.equal(page.url(), "about:blank");
@@ -57,7 +63,12 @@ test("the first replay after a fresh launch is not interrupted by a restored tab
     } finally {
       await first.close();
     }
-    const second = await launchOwnedChrome({ userDataDir: dir, headless: true });
+      const second = await launchOwnedChrome({
+        userDataDir: dir,
+        headless: true,
+        executablePath: process.env.BAO_TEST_BROWSER?.trim() || undefined,
+        appendArgs: mockKeychainArgs(),
+      });
     try {
       const page = second.pages()[0] || await second.newPage();
       assert.equal(page.url(), "about:blank");

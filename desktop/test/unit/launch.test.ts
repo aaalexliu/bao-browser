@@ -76,23 +76,20 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   assert.throws(() => resolveAccountChrome(() => false, {}), /Chrome was not found/);
 });
 
-test("an explicit BAO_BROWSER wins over installed Chrome", () => {
+test("installed Chrome wins, and a missing BAO_BROWSER falls through", () => {
   const bundled = "/tmp/Bao.app/Chromium";
-  const exists = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME || file === bundled;
-  assert.equal(resolveNormalChrome(exists, { BAO_BROWSER: bundled }, "darwin"), bundled);
-  assert.equal(resolveNormalChrome(exists, { BAO_BROWSER: bundled }, "linux"), bundled);
-  assert.equal(resolveNormalChrome(exists, {}, "darwin"), ACCOUNT_CHROME_MAC);
-  assert.equal(resolveNormalChrome(exists, {}, "linux"), LINUX_CHROME);
-  assert.throws(() => resolveNormalChrome(exists, { BAO_BROWSER: "/missing/chrome" }, "linux"), /BAO_BROWSER was not found/);
+  const both = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME || file === bundled;
+  assert.equal(resolveNormalChrome(both, { BAO_BROWSER: bundled }, "darwin"), ACCOUNT_CHROME_MAC);
+  assert.equal(resolveNormalChrome(both, { BAO_BROWSER: bundled }, "linux"), LINUX_CHROME);
+  assert.equal(resolveNormalChrome(both, { BAO_BROWSER: "/missing/chrome" }, "linux"), LINUX_CHROME);
+  assert.equal(resolveNormalChrome((file) => file === bundled, { BAO_BROWSER: bundled }, "linux"), bundled);
+  assert.throws(() => resolveNormalChrome(() => false, { BAO_BROWSER: "/missing/chrome" }, "linux"), /Chrome was not found/);
 });
 
-test("a test launch keeps the mock keychain only when asked", () => {
-  assert.equal(ownedChromeLaunchArgs([], {}, "darwin").includes("--use-mock-keychain"), false);
-  assert.equal(ownedChromeLaunchArgs([], {}, "darwin").includes("--password-store=basic"), false);
-  const mocked = ownedChromeLaunchArgs([], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "darwin");
-  assert.equal(mocked.includes("--use-mock-keychain"), true);
-  assert.equal(mocked.includes("--password-store=basic"), true);
-  assert.equal(ownedChromeLaunchArgs([], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "linux").includes("--use-mock-keychain"), true);
+test("the product arg builder drops the mock keychain", () => {
+  const mocked = ownedChromeLaunchArgs(["--use-mock-keychain", "--password-store=basic"], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "darwin");
+  assert.equal(mocked.includes("--use-mock-keychain"), false);
+  assert.equal(mocked.includes("--password-store=basic"), false);
 });
 
 test("remote debugging port 9222 is refused", () => {

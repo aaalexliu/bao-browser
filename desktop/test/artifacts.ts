@@ -5,8 +5,10 @@ import path from "node:path";
 const printed = new Set<string>();
 
 export function artifactsRoot(env: NodeJS.ProcessEnv = process.env): string {
-  const chosen = env.BAO_ARTIFACTS_DIR || env.BAO_ARTIFACTS;
-  if (chosen && chosen.trim()) return path.resolve(chosen);
+  const chosen = [env.BAO_ARTIFACTS_DIR, env.BAO_ARTIFACTS]
+    .map((value) => value?.trim())
+    .find((value) => value);
+  if (chosen) return path.resolve(chosen);
   return path.resolve(process.cwd(), "out", "test-artifacts", runId(env));
 }
 

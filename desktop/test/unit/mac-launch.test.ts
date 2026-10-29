@@ -8,7 +8,6 @@ import { resolveCaptureUrl } from "../../src/app/capture-url";
 import { fixtureStartValue, productWindowTitle, teachHome } from "../../src/app/views";
 
 function macCompileSkip(): string | false {
-  if (process.platform !== "darwin") return `mac launch compile needs darwin, this host is ${process.platform}`;
   const cc = spawnSync("cc", ["--version"], { encoding: "utf8" });
   if (cc.error || cc.status !== 0) return "mac launch compile needs cc on PATH";
   return false;
