@@ -20,7 +20,7 @@ Load an applicable skill by its name through the harness. If that load fails, re
 
 `npm test` is the root suite. Its commands are in `docs/TESTING.md`.
 
-Build an installed Mac app from `docs/mac-build.md`. The short human pass is `docs/mac-test.md`. Do not lengthen that card. After pull request 131 that card says the footer reads **helper ok** when both grants are on. Live Chrome is ready with Accessibility alone. If the footer reads **helper needs permission**, the human allows the missing grant and opens Bao again. The engineering pass is `docs/agent-acceptance.md`. It stops only when `helper.accessibility` is false. Permission switches are in `docs/permissions.md`. Extension install is in `docs/extension.md`. Live Chrome notes are in `docs/cdp-live-chrome.md`.
+Build an installed Mac app from `docs/mac-build.md`. The short human pass is `docs/mac-test.md`. Do not lengthen that card. A Screen Recording grant stopping a live Chrome start was true as of tip `45e30f6`. `desktop/src/cdp-live/session.ts:479` enforces that stop. The engineering pass is `docs/agent-acceptance.md`. It records both helper bits and stops only when `helper.accessibility` is false. Permission switches are in `docs/permissions.md`. Extension install is in `docs/extension.md`. Live Chrome notes are in `docs/cdp-live-chrome.md`.
 
 `desktop/packaging/macos/package-app.sh` copies `desktop/os-helper-macos/BaoOSHelper.app` only when that directory exists. A missing directory still exits 0. A fresh worktree can build `Bao.app` with no helper and no error. Before packaging, copy the signed helper out of the installed app. Do not install that build until the nested helper matches the CDHash note in `docs/mac-build.md`. Pull request 134 checks the helper before signing. Until that lands, a missing helper still exits 0.
 
@@ -38,7 +38,7 @@ The helper is the signed app BaoOSHelper. Its bundle id is `dev.bao.oshelper`, f
 
 Do not rebuild BaoOSHelper. Do not re-sign it. Do not pass `--deep` to `codesign`. Do not reset its privacy permissions. Do not grant Accessibility or Screen Recording to see whether a different failure goes away.
 
-After pull request 131, Screen Recording is not a start blocker for live Chrome. A permission prompt still stops the run. `session.ts`, `run.ts`, `instacart-run.ts`, and `login-diff.ts` continue when that grant is on. Live Chrome needs Accessibility only. Window capture still needs Screen Recording. The MCP driver needs both. `helper ok` still means both grants. Before PR 131, a granted Screen Recording permission stops `session.ts`, `instacart-run.ts`, and `login-diff.ts`, and `run.ts` records the flag and continues.
+A granted Screen Recording permission stopping a live Chrome start was true as of tip `45e30f6`. `desktop/src/cdp-live/session.ts:479` enforces it. The same throw is at `desktop/src/cdp-live/instacart-run.ts:198` and `desktop/src/cdp-live/login-diff.ts:84`. `desktop/src/cdp-live/run.ts:114` records the flag and continues. A permission prompt still stops the run. `helper ok` means both grants in `desktop/src/app/server.ts:3364`.
 
 ## Do not bill a model from a test
 
@@ -46,6 +46,6 @@ Leave `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and 
 
 ## Show the running app
 
-A UI change needs before and after evidence from the running app. `keepReplayClip` in `desktop/src/app/server.ts` copies a Playwright clip to `videos/<runId>.webm` with `copyFileSync` when the clip has a `runId`. `openReplay` registers that clip when `BAO_RUN_VIDEO=1`. `close()` calls `keepReplayClip`. `encodeWebm` in `desktop/src/v1/replay-video.ts` is a second writer. It needs an ffmpeg from `FFMPEG`, `which ffmpeg`, `/opt/homebrew/bin/ffmpeg`, or `/usr/local/bin/ffmpeg`, and a file over 1000 bytes. `BaoWindowVideo` is signed as `dev.bao.oshelper`.
+A UI change needs before and after evidence from the running app. The Playwright recorder writes `<library.root>/videos/incoming` when `BAO_RUN_VIDEO=1` (`desktop/src/app/server.ts:2843`). `launchOwnedChrome` passes that directory as `recordVideo.dir` (`desktop/src/launch.ts:474`). `keepReplayClip` copies the clip to `<library.root>/videos/<runId>.webm` when it has a `runId` (`desktop/src/app/server.ts:2451`). `close()` calls it (`desktop/src/app/server.ts:2429`). `encodeWebm` is a second writer to the dest at `desktop/src/app/server.ts:2768`. It needs an ffmpeg from `FFMPEG`, `which ffmpeg`, `/opt/homebrew/bin/ffmpeg`, or `/usr/local/bin/ffmpeg`, and a file over 1000 bytes (`desktop/src/v1/replay-video.ts:127`). `BaoWindowVideo` is signed as `dev.bao.oshelper`.
 
 A test on a real site does not make a write that cannot be undone. `clickAllowed` in `desktop/src/cdp-live/session.ts` refuses kind `submit`, `radio`, `check`, and `other`. It refuses a button whose label matches `--commit`. A link is allowed unless `--deny` matches. An anchor is a link even when its role is `button`. Put commit words in `--deny` as well. Place order and Reserve pause on **needs you**. That pause is in `docs/mac-test.md`.
