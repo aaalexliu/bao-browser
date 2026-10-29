@@ -11,12 +11,20 @@ export const EDIT_BUNDLE = "com.apple.TextEdit";
 export const HELPER = process.env.BAO_OS_MACOS
   || path.resolve("desktop/os-helper-macos/BaoOSHelper.app");
 
-const STORE = path.join(
-  homedir(),
-  "Library/Application Support/Cursor/AgentStores/cursor_agent_stores/bc-3ac2c7e6-f62e-5a13-88c9-f776315e49c9/files",
-);
+function artifactDir(): string | undefined {
+  const explicit = process.env.BAO_SPIKE_ARTIFACTS?.trim();
+  if (explicit) return explicit;
+  const store = process.env.BAO_AGENT_STORE_DIR?.trim();
+  if (store) return path.join(store, "bao-mac-spike");
+  return undefined;
+}
 
-export const ARTIFACTS = process.env.BAO_SPIKE_ARTIFACTS || path.join(STORE, "bao-mac-spike");
+export const ARTIFACTS = artifactDir() ?? "";
+
+function requireArtifacts(): string {
+  if (!ARTIFACTS) throw new Error("Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR");
+  return ARTIFACTS;
+}
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -119,11 +127,11 @@ export async function cleanupNewAutosave(before: Set<string>): Promise<string[]>
 }
 
 export async function ensureArtifacts(): Promise<void> {
-  await mkdir(ARTIFACTS, { recursive: true });
+  await mkdir(requireArtifacts(), { recursive: true });
 }
 
 export async function writeJson(name: string, value: unknown): Promise<string> {
-  const file = path.join(ARTIFACTS, name);
+  const file = path.join(requireArtifacts(), name);
   await writeFile(file, JSON.stringify(value, null, 2));
   return file;
 }

@@ -10,7 +10,7 @@ import { readout, isTwelve } from "./spike-macos-calc";
 import { replayOsWorkflow, replayUsedCoordinates } from "./macos-replay";
 import { MacOsHelper, targetFrom } from "./os-macos";
 import {
-  ARTIFACTS, CALC_BUNDLE, EDIT_BUNDLE, HELPER, cleanupNewAutosave, launchIfDown,
+  ARTIFACTS, CALC_BUNDLE, EDIT_BUNDLE, HELPER, cleanupNewAutosave, ensureArtifacts, launchIfDown,
   namesIn, quitOwned, sleep, TEXTEDIT_AUTOSAVE, workDir, writeJson,
 } from "./spike-macos-host";
 const FFMPEG = process.env.BAO_FFMPEG || "/etc/profiles/per-user/alexliu/bin/ffmpeg";
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
   const raw = JSON.parse(await readFile(trailPath, "utf8")) as TrailFile;
   const interpreted = interpretOs(raw.events ?? [], kind);
   await mkdir(workDir(), { recursive: true });
-  await mkdir(ARTIFACTS, { recursive: true });
+  await ensureArtifacts();
   const helper = new MacOsHelper(HELPER);
   const runs = [];
   if (kind === "calc") {

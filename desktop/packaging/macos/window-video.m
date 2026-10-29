@@ -11,16 +11,24 @@
 static NSString *const kShareAPI = @"SCShareableContent getShareableContentExcludingDesktopWindows:onScreenWindowsOnly:completionHandler:";
 static NSString *const kCaptureAPI = @"SCScreenshotManager captureImageWithFilter:configuration:completionHandler:";
 
-static BOOL pathOk(NSString *file) {
-    if (file.length == 0 || [file containsString:@".."]) return NO;
-    NSArray<NSString *> *roots = @[
+static NSArray<NSString *> *outputRoots(void) {
+    NSMutableArray<NSString *> *roots = [NSMutableArray arrayWithObjects:
         @"/tmp/",
         @"/private/tmp/",
         @"/var/folders/",
         @"/private/var/folders/",
-        @"/Users/alexliu/Library/Application Support/Cursor/AgentStores/",
-    ];
-    for (NSString *root in roots) {
+        nil];
+    NSString *store = NSProcessInfo.processInfo.environment[@"BAO_AGENT_STORE_DIR"];
+    store = [store stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (store.length == 0 || ![store hasPrefix:@"/"]) return roots;
+    if (![store hasSuffix:@"/"]) store = [store stringByAppendingString:@"/"];
+    [roots addObject:store];
+    return roots;
+}
+
+static BOOL pathOk(NSString *file) {
+    if (file.length == 0 || [file containsString:@".."]) return NO;
+    for (NSString *root in outputRoots()) {
         if ([file hasPrefix:root]) return YES;
     }
     return NO;

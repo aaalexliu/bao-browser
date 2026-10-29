@@ -6,14 +6,19 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const ROOT = "/Users/alexliu/dev/bao-mac-spike";
+const ROOT = (process.env.BAO_MAC_SPIKE_ROOT || "").trim()
+  || path.resolve(import.meta.dirname, "../../..");
 const HELPER = path.join(ROOT, "desktop/os-helper-macos/BaoOSHelper.app");
 const FIXTURES = path.join(ROOT, "fixtures/ax/macos-26");
-const STORE = path.join(
-  process.env.HOME,
-  "Library/Application Support/Cursor/AgentStores/cursor_agent_stores/bc-3ac2c7e6-f62e-5a13-88c9-f776315e49c9/files",
-);
-const ARTIFACTS = process.env.BAO_SPIKE_ARTIFACTS || path.join(STORE, "bao-mac-spike");
+
+function artifactsDir() {
+  const explicit = (process.env.BAO_SPIKE_ARTIFACTS || "").trim();
+  if (explicit) return explicit;
+  const store = (process.env.BAO_AGENT_STORE_DIR || "").trim();
+  if (store) return path.join(store, "bao-mac-spike");
+  throw new Error("Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR");
+}
+
 const BIN = {
   pgrep: "/usr/bin/pgrep",
   open: "/usr/bin/open",
@@ -262,8 +267,9 @@ async function ensureUntitled(ownedPid) {
 async function main() {
   const report = { permissions: null, apps: {}, openPanel: null, drag: null };
   const owned = { Calculator: null, TextEdit: null, Safari: null, Electron: null };
+  const artifacts = artifactsDir();
   await mkdir(FIXTURES, { recursive: true });
-  await mkdir(ARTIFACTS, { recursive: true });
+  await mkdir(artifacts, { recursive: true });
   try {
     const perms = await helper(["permissions"]);
     report.permissions = {
@@ -449,7 +455,7 @@ async function main() {
     };
     dropPaths(safe);
     await writeFile(path.join(FIXTURES, "files.json"), JSON.stringify(safe, null, 2) + "\n");
-    await writeFile(path.join(ARTIFACTS, "ax-macos-26-report.json"), JSON.stringify(safe, null, 2) + "\n");
+    await writeFile(path.join(artifacts, "ax-macos-26-report.json"), JSON.stringify(safe, null, 2) + "\n");
   }
 }
 
