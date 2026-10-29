@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #define _DARWIN_C_SOURCE
 
 #include "bao-launch.h"
@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -404,6 +405,163 @@ static int build_escape_helper(const char *home, char *bin, size_t n) {
   return 0;
 }
 
+static int build_flood_helper(const char *home, char *bin, size_t n) {
+  char src[512];
+  snprintf(src, sizeof src, "%s/bin/flood.c", home);
+  snprintf(bin, n, "%s/bin/flood", home);
+  if (write_script(src,
+                   "#define _GNU_SOURCE\n"
+                   "#include <errno.h>\n"
+                   "#include <fcntl.h>\n"
+                   "#include <string.h>\n"
+                   "#include <time.h>\n"
+                   "#include <unistd.h>\n"
+                   "int main(void) {\n"
+                   "#ifdef F_SETPIPE_SZ\n"
+                   "  fcntl(1, F_SETPIPE_SZ, 1 << 20);\n"
+                   "#endif\n"
+                   "  int flags = fcntl(1, F_GETFL, 0);\n"
+                   "  if (flags >= 0) fcntl(1, F_SETFL, flags | O_NONBLOCK);\n"
+                   "  char block[65536];\n"
+                   "  memset(block, 'x', sizeof block);\n"
+                   "  struct timespec start;\n"
+                   "  clock_gettime(CLOCK_MONOTONIC, &start);\n"
+                   "  for (;;) {\n"
+                   "    struct timespec now;\n"
+                   "    clock_gettime(CLOCK_MONOTONIC, &now);\n"
+                   "    long ms = (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;\n"
+                   "    if (ms >= 6000) _exit(0);\n"
+                   "    ssize_t wrote = write(1, block, sizeof block);\n"
+                   "    if (wrote < 0 && errno == EPIPE) _exit(0);\n"
+                   "  }\n"
+                   "}\n") != 0) return -1;
+  pid_t cc = fork();
+  if (cc < 0) return -1;
+  if (cc == 0) {
+    execlp("cc", "cc", "-std=c11", src, "-o", bin, (char *)0);
+    _exit(127);
+  }
+  int status = 0;
+  if (waitpid(cc, &status, 0) != cc) return -1;
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return -1;
+  return 0;
+}
+
+static void test_flood_deadline(const char *home) {
+  char bin[512];
+  check(build_flood_helper(home, bin, sizeof bin) == 0, "flood helper built");
+  char buf[128];
+  struct timespec start;
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  int rc = bao_real_shell(bin, buf, sizeof buf, NULL);
+  long took = elapsed_ms(start);
+  check(rc != 0, "flooding shell fails");
+  check(took > 1000 && took < 4000, "flooding shell stays inside the deadline");
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  int major = bao_real_major(bin, NULL);
+  took = elapsed_ms(start);
+  check(major < 0, "flooding version fails");
+  check(took > 500 && took < 2800, "flooding version stays inside the deadline");
+}
+
+static void test_pty_stty(const char *home) {
+  char script[512];
+  snprintf(script, sizeof script, "%s/bin/stty.sh", home);
+  check(write_script(script, "#!/bin/sh\nif stty -ixon < /dev/tty; then echo STTY_OK; else echo STTY_FAIL; fi\n") == 0,
+        "stty script written");
+  int master = posix_openpt(O_RDWR | O_NOCTTY);
+  check(master >= 0, "pty master opens");
+  if (master < 0) return;
+  check(grantpt(master) == 0, "pty grant");
+  check(unlockpt(master) == 0, "pty unlock");
+  char *name = ptsname(master);
+  check(name != NULL, "pty name");
+  if (!name) {
+    close(master);
+    return;
+  }
+  char slavename[128];
+  snprintf(slavename, sizeof slavename, "%s", name);
+  int result[2];
+  if (pipe(result) != 0) {
+    check(0, "pty result pipe");
+    close(master);
+    return;
+  }
+  pid_t child = fork();
+  if (child < 0) {
+    check(0, "pty child");
+    close(master);
+    close(result[0]);
+    close(result[1]);
+    return;
+  }
+  if (child == 0) {
+    close(master);
+    close(result[0]);
+    int slave = open(slavename, O_RDWR);
+    if (slave < 0 || setsid() < 0 || ioctl(slave, TIOCSCTTY, 0) < 0) {
+      dprintf(result[1], "setup\n");
+      _exit(0);
+    }
+    tcsetpgrp(slave, getpid());
+    dup2(slave, STDIN_FILENO);
+    dup2(slave, STDOUT_FILENO);
+    dup2(slave, STDERR_FILENO);
+    if (slave > 2) close(slave);
+    char out[160];
+    memset(out, 0, sizeof out);
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    int rc = bao_real_shell(script, out, sizeof out, NULL);
+    long took = elapsed_ms(start);
+    dprintf(result[1], "%d %ld %s\n", rc, took, out);
+    _exit(0);
+  }
+  close(result[1]);
+  int flags = fcntl(master, F_GETFL, 0);
+  if (flags >= 0) fcntl(master, F_SETFL, flags | O_NONBLOCK);
+  struct timespec wait_start;
+  clock_gettime(CLOCK_MONOTONIC, &wait_start);
+  int status = 0;
+  for (;;) {
+    char junk[256];
+    while (read(master, junk, sizeof junk) > 0) {
+    }
+    pid_t got = waitpid(child, &status, WNOHANG);
+    if (got == child) break;
+    if (elapsed_ms(wait_start) > 8000) {
+      kill(child, SIGKILL);
+      waitpid(child, &status, 0);
+      break;
+    }
+    struct timespec pause;
+    pause.tv_sec = 0;
+    pause.tv_nsec = 20L * 1000L * 1000L;
+    nanosleep(&pause, NULL);
+  }
+  close(master);
+  char line[256];
+  size_t used = 0;
+  while (used + 1 < sizeof line) {
+    ssize_t n = read(result[0], line + used, sizeof line - 1 - used);
+    if (n < 0 && errno == EINTR) continue;
+    if (n <= 0) break;
+    used += (size_t)n;
+  }
+  close(result[0]);
+  line[used] = 0;
+  int rc = 0;
+  long took = 0;
+  char out[160];
+  memset(out, 0, sizeof out);
+  int parsed = sscanf(line, "%d %ld %159s", &rc, &took, out);
+  check(parsed >= 2, "pty result");
+  check(rc == 0, "pty stty capture succeeds");
+  check(took > 0 && took < 1500, "pty stty returns inside the deadline");
+  check(strcmp(out, "STTY_OK") == 0, "pty stty prints");
+}
+
 static void test_real_exec(const char *home) {
   char versioned[512];
   snprintf(versioned, sizeof versioned, "%s/bin/version-node", home);
@@ -453,7 +611,7 @@ static void test_real_exec(const char *home) {
   clock_gettime(CLOCK_MONOTONIC, &start);
   check(bao_real_shell(holder, buf, sizeof buf, NULL) != 0, "stdout holder fails");
   took = elapsed_ms(start);
-  check(took < 5000, "stdout holder is killed");
+  check(took < 1500, "stdout holder returns before the deadline");
   long holder_pid = read_pid_file(holder_pid_path);
   check(holder_pid > 1, "stdout holder pid recorded");
   check(waited_until_gone(holder_pid), "stdout holder is dead");
@@ -513,11 +671,13 @@ static void test_real_exec(const char *home) {
   clock_gettime(CLOCK_MONOTONIC, &start);
   check(bao_real_shell(monitor, buf, sizeof buf, NULL) != 0, "monitor holder fails");
   took = elapsed_ms(start);
-  check(took < 5000, "monitor holder returns");
+  check(took < 1500, "monitor holder returns before the deadline");
   long monitor_pid = read_pid_file(monitor_pid_path);
   check(monitor_pid > 1, "monitor holder pid recorded");
-  check(kill((pid_t)monitor_pid, 0) == 0, "monitor holder stays alive");
+  check(waited_until_gone(monitor_pid), "monitor holder is dead");
   reap_test_pid(monitor_pid);
+  test_flood_deadline(home);
+  test_pty_stty(home);
 }
 
 static void test_instance(const char *home) {
