@@ -331,3 +331,20 @@ test("bao-mcp.sh exits before creating .bao-mcp when BAO_HOME is unset", () => {
   assert.match(output, /BAO_HOME/);
   assert.doesNotMatch(output, /EACCES/);
 });
+
+test("quickstart points MCP at the checkout serve home and names dist/forceopen.js", () => {
+  const readme = readFileSync(path.join(root, "README.md"), "utf8");
+  const quick = readFileSync(path.join(root, "docs/agent-quickstart.md"), "utf8");
+  const extensionDoc = readFileSync(path.join(root, "docs/extension.md"), "utf8");
+  const mcpRow = readme.split("\n").find((line) => line.startsWith("| MCP |"));
+  assert.equal(typeof mcpRow, "string");
+  assert.match(mcpRow || "", /BAO_HOME="\$HOME\/\.local\/share\/bao"/);
+  assert.match(quick, /"BAO_HOME": "\/ABS\/to\/the\/serve\/home"/);
+  assert.match(quick, /defaultHome/);
+  assert.match(quick, /\.bao-mcp/);
+  assert.match(quick, /dist\/forceopen\.js/);
+  assert.doesNotMatch(quick, /pull request 133/);
+  assert.doesNotMatch(quick, /Library\/Application Support\/bao/);
+  assert.doesNotMatch(extensionDoc, /pull request 133/);
+  assert.match(extensionDoc, /~\/\.local\/share\/bao\/extension-host/);
+});
