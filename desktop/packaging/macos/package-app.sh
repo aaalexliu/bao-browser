@@ -21,7 +21,8 @@ bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"
 cp -a "$HELPER" "$APP/Contents/Resources/BaoOSHelper.app"
 
 SMOKE="$(mktemp -d "${TMPDIR:-/tmp}/bao-require.XXXXXX")"
-cleanup_smoke() { rm -rf "$SMOKE"; }
+SMOKE_HOME="$(mktemp -d "${TMPDIR:-/tmp}/bao-home.XXXXXX")"
+cleanup_smoke() { rm -rf "$SMOKE" "$SMOKE_HOME"; }
 trap cleanup_smoke EXIT
 case "$SMOKE" in
   "$ROOT"|"$ROOT"/*)
@@ -34,7 +35,7 @@ cp -a "$APP/Contents/Resources/bao" "$SMOKE/bao"
 cp -a "$APP/Contents/Resources/extension" "$SMOKE/extension"
 cp -a "$APP/Contents/Resources/src" "$SMOKE/src"
 cp -a "$APP/Contents/Resources/web" "$SMOKE/web"
-env -u NODE_PATH node "$ROOT/desktop/packaging/require-staged.js" "$SMOKE/bao"
+env -u NODE_PATH -u NODE_OPTIONS HOME="$SMOKE_HOME" node "$ROOT/desktop/packaging/require-staged.js" "$SMOKE/bao"
 rm -rf "$SMOKE"
 
 bash desktop/packaging/macos/build-capture-bar.sh

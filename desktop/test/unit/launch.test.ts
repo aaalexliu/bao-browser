@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
@@ -125,7 +125,7 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   const stage = readFileSync(path.join(process.cwd(), "desktop/packaging/stage-runtime.sh"), "utf8");
   assert.match(stage, /extension\/dist/);
   assert.match(stage, /host-grant\.js/);
-  assert.match(stage, /--outDir/);
+  assert.match(stage, /require-staged\.js/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);
   assert.match(main, /bao_discover_node/);
@@ -167,5 +167,40 @@ test("package-app.sh stops before it builds an app when the helper is absent", (
     assert.equal(existsSync(path.join(dist, "Bao.app")), false);
   } finally {
     rmSync(dist, { recursive: true, force: true });
+  }
+});
+
+test("stage-runtime compiles into a temp dir and leaves extension/dist alone", { timeout: 180_000 }, () => {
+  const parent = mkdtempSync(path.join(tmpdir(), "bao-stage-"));
+  const dest = path.join(parent, "Resources");
+  mkdirSync(dest);
+  const manifest = path.join(process.cwd(), "extension/dist/manifest.json");
+  const compiled = path.join(process.cwd(), "desktop/dist/desktop/src/app/server.js");
+  const manifestBefore = existsSync(manifest) ? statSync(manifest).mtimeMs : null;
+  const compiledBefore = existsSync(compiled) ? statSync(compiled).mtimeMs : null;
+  try {
+    const result = spawnSync("bash", ["desktop/packaging/stage-runtime.sh", dest], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ""}`,
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
+      },
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const line = (result.stdout || "").split("\n").find((row) => row.startsWith("STAGED_TSC "));
+    assert.ok(line);
+    const out = line.slice("STAGED_TSC ".length).trim();
+    assert.equal(out.includes(`${path.sep}bao-tsc`), true, out);
+    assert.equal(out.startsWith(process.cwd() + path.sep), false, out);
+    assert.equal(existsSync(path.join(dest, "extension/src/host-grant.js")), true);
+    assert.equal(existsSync(path.join(dest, "extension/dist/manifest.json")), true);
+    if (manifestBefore == null) assert.equal(existsSync(manifest), false);
+    else assert.equal(statSync(manifest).mtimeMs, manifestBefore);
+    if (compiledBefore == null) assert.equal(existsSync(compiled), false);
+    else assert.equal(statSync(compiled).mtimeMs, compiledBefore);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
   }
 });
