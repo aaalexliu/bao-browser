@@ -86,21 +86,29 @@ export function productHeadless(env: NodeJS.ProcessEnv = process.env, platform: 
 export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
   const mac = platform === "darwin" ? ["--force-renderer-accessibility"] : [];
   const sandbox = needsLinuxNoSandbox(env, platform) ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
+  const mockKeychain = env.BAO_TEST_MOCK_KEYCHAIN === "1";
   const drop = new Set([
     "--enable-automation",
     "--disable-blink-features=AutomationControlled",
     "--disable-extensions",
-    "--use-mock-keychain",
-    "--password-store=basic",
     "--enable-unsafe-swiftshader",
     "--restore-last-session",
   ]);
+  if (!mockKeychain) {
+    drop.add("--use-mock-keychain");
+    drop.add("--password-store=basic");
+  }
   const cleaned = extra.filter((arg) => {
     if (drop.has(arg)) return false;
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned];
+  const args = [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned];
+  if (mockKeychain) {
+    if (!args.includes("--use-mock-keychain")) args.push("--use-mock-keychain");
+    if (!args.includes("--password-store=basic")) args.push("--password-store=basic");
+  }
+  return args;
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
@@ -115,15 +123,15 @@ const DAILY_DIR = [
   "/Google/Chrome/User Data",
 ];
 
-/**
- * Installed Google Chrome when it is present, otherwise BAO_BROWSER, otherwise
- * Playwright's Chromium. Never a PATH lookup: wrappers can add automation flags.
- */
+/** Never a PATH lookup. Wrappers can add automation flags. */
 export function resolveNormalChrome(exists: (file: string) => boolean = existsSync, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  const requested = env.BAO_BROWSER;
+  if (requested) {
+    if (exists(requested)) return requested;
+    throw new Error(`BAO_BROWSER was not found: ${requested}`);
+  }
   if (platform === "darwin" && exists(ACCOUNT_CHROME_MAC)) return ACCOUNT_CHROME_MAC;
   if (platform === "linux" && exists(LINUX_CHROME)) return LINUX_CHROME;
-  const bundled = env.BAO_BROWSER;
-  if (bundled && exists(bundled)) return bundled;
   try {
     const fallback = chromium.executablePath();
     if (fallback && exists(fallback)) return fallback;
@@ -131,7 +139,6 @@ export function resolveNormalChrome(exists: (file: string) => boolean = existsSy
   throw new Error("Chrome was not found");
 }
 
-/** Installed Google Chrome when it is present, otherwise the bundled browser. */
 export function resolveAccountChrome(exists: (file: string) => boolean = existsSync, env: NodeJS.ProcessEnv = process.env): string {
   return resolveNormalChrome(exists, env);
 }
@@ -402,15 +409,28 @@ async function launchNormalChrome(opts: {
     context.close = async () => {
       if (closed) return;
       closed = true;
-      const open = context.pages().find((page) => !page.isClosed());
-      if (open) {
+      const open = context.pages().filter((page) => !page.isClosed());
+      let browserClose: ShutdownTrace["browserClose"] = open.length === 0 ? "skipped" : "failed";
+      const page = open[0];
+      if (page) {
         try {
-          const session = await context.newCDPSession(open);
+          const session = await context.newCDPSession(page);
           await session.send("Browser.close");
-        } catch { /* The process may already be gone. */ }
+          browserClose = "sent";
+        } catch {
+          browserClose = "failed";
+        }
       }
-      await releaseProfileProcesses(opts.userDataDir, child);
+      const released = await releaseProfileProcesses(opts.userDataDir, child);
       await browser.close().catch(() => undefined);
+      console.error(formatShutdown({
+        browserClose,
+        openPages: open.length,
+        childExit: released.childExit,
+        signal: released.signal,
+        killedPids: released.killedPids,
+        profile: opts.userDataDir,
+      }));
     };
     return context;
   } catch (err) {
@@ -435,7 +455,21 @@ async function applyDeviceScale(context: BrowserContext, deviceScaleFactor: numb
   for (const page of context.pages()) await apply(page);
 }
 
-async function releaseProfileProcesses(userDataDir: string, child: ChildProcess): Promise<void> {
+export interface ShutdownTrace {
+  browserClose: "sent" | "skipped" | "failed";
+  openPages: number;
+  childExit: number | null;
+  signal: NodeJS.Signals | null;
+  killedPids: number[];
+  profile: string;
+}
+
+export function formatShutdown(trace: ShutdownTrace): string {
+  const killed = trace.killedPids.length ? trace.killedPids.join(",") : "none";
+  return `bao shutdown browserClose=${trace.browserClose} openPages=${trace.openPages} childExit=${trace.childExit ?? "none"} signal=${trace.signal ?? "none"} killedPids=${killed} profile=${trace.profile}`;
+}
+
+async function releaseProfileProcesses(userDataDir: string, child: ChildProcess): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
   const deadline = Date.now() + 4000;
   while (Date.now() < deadline && child.exitCode == null && child.signalCode == null) {
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -447,9 +481,14 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess)
   while (Date.now() < killAt && child.exitCode == null && child.signalCode == null) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+  const killedPids: number[] = [];
   for (const pid of pidsForDataDir(userDataDir)) {
-    try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    try {
+      process.kill(pid, "SIGKILL");
+      killedPids.push(pid);
+    } catch {}
   }
+  return { childExit: child.exitCode, signal: child.signalCode, killedPids };
 }
 
 /** Playwright video only. The pipe and default switches come back with it. */

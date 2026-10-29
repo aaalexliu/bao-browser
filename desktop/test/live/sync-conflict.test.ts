@@ -14,7 +14,9 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { loadState, pairDevice, syncAll } from "../../src/v1/sync";
 
-const shots = "/opt/cursor/artifacts/screenshots";
+import { testArtifacts } from "../artifacts";
+
+const shots = testArtifacts("sync-conflict");
 
 test("two Macs conflict on one workflow, and an offline edit pushes on reconnect", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";

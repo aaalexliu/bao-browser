@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,7 +7,14 @@ import test from "node:test";
 import { resolveCaptureUrl } from "../../src/app/capture-url";
 import { fixtureStartValue, productWindowTitle, teachHome } from "../../src/app/views";
 
-test("node discovery and the single-instance lock", () => {
+function macCompileSkip(): string | false {
+  if (process.platform !== "darwin") return `mac launch compile needs darwin, this host is ${process.platform}`;
+  const cc = spawnSync("cc", ["--version"], { encoding: "utf8" });
+  if (cc.error || cc.status !== 0) return "mac launch compile needs cc on PATH";
+  return false;
+}
+
+test("node discovery and the single-instance lock", { skip: macCompileSkip() }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), "bao-launch-"));
   const bin = path.join(dir, "bao-launch-test");
   execFileSync("cc", [

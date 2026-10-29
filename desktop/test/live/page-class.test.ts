@@ -21,12 +21,13 @@ import { BrowserDriver } from "../../src/v1/browser-driver";
 import { replay, type RunResult } from "../../src/v1/replay";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
+import { testArtifacts } from "../artifacts";
 
 process.env.BAO_CHROME_NO_SANDBOX = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 process.env.BAO_HEADED = "0";
 
-const ARTIFACTS = "/opt/cursor/artifacts";
+const ARTIFACTS = testArtifacts("page-class");
 const LINE = "Experian is showing a bot check. Complete the check in the Bao window, then press Continue.";
 const LOGIN_LINE = "Sign in in the Bao window, then press Continue.";
 

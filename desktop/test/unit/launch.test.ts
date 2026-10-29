@@ -86,6 +86,15 @@ test("an explicit BAO_BROWSER wins over installed Chrome", () => {
   assert.throws(() => resolveNormalChrome(exists, { BAO_BROWSER: "/missing/chrome" }, "linux"), /BAO_BROWSER was not found/);
 });
 
+test("a test launch keeps the mock keychain only when asked", () => {
+  assert.equal(ownedChromeLaunchArgs([], {}, "darwin").includes("--use-mock-keychain"), false);
+  assert.equal(ownedChromeLaunchArgs([], {}, "darwin").includes("--password-store=basic"), false);
+  const mocked = ownedChromeLaunchArgs([], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "darwin");
+  assert.equal(mocked.includes("--use-mock-keychain"), true);
+  assert.equal(mocked.includes("--password-store=basic"), true);
+  assert.equal(ownedChromeLaunchArgs([], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "linux").includes("--use-mock-keychain"), true);
+});
+
 test("remote debugging port 9222 is refused", () => {
   const cmd = `${fixture.trim()} --remote-debugging-port=9222`;
   const verdict = assessOwnedCommand(cmd, owned);

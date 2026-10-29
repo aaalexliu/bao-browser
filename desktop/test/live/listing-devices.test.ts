@@ -16,7 +16,9 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 
-const shots = "/opt/cursor/artifacts/screenshots";
+import { testArtifacts } from "../artifacts";
+
+const shots = testArtifacts("listing-devices");
 
 test("listing page and devices against local vercel dev", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";
