@@ -191,6 +191,93 @@ int bao_real_is_exec(const char *path, void *ctx) {
   return access(path, X_OK) == 0;
 }
 
+static int mono_now(struct timespec *out) {
+  return clock_gettime(CLOCK_MONOTONIC, out);
+}
+
+static void mono_add_ms(struct timespec *ts, int ms) {
+  if (ms < 0) ms = 0;
+  ts->tv_sec += ms / 1000;
+  long nsec = ts->tv_nsec + (long)(ms % 1000) * 1000000L;
+  ts->tv_sec += nsec / 1000000000L;
+  ts->tv_nsec = nsec % 1000000000L;
+}
+
+static int mono_reached(const struct timespec *deadline) {
+  struct timespec now;
+  if (mono_now(&now) != 0) return 1;
+  if (now.tv_sec != deadline->tv_sec) return now.tv_sec > deadline->tv_sec;
+  return now.tv_nsec >= deadline->tv_nsec;
+}
+
+static int mono_left_ms(const struct timespec *deadline) {
+  struct timespec now;
+  if (mono_now(&now) != 0) return 0;
+  long sec = (long)deadline->tv_sec - (long)now.tv_sec;
+  long nsec = deadline->tv_nsec - now.tv_nsec;
+  if (nsec < 0) {
+    sec--;
+    nsec += 1000000000L;
+  }
+  if (sec < 0) return 0;
+  long ms = sec * 1000L + nsec / 1000000L;
+  if (ms > 1000000L) return 1000000;
+  return (int)ms;
+}
+
+static void sleep_ms(int ms) {
+  if (ms <= 0) return;
+  struct timespec ts;
+  ts.tv_sec = ms / 1000;
+  ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+  while (nanosleep(&ts, &ts) != 0) {
+    if (errno != EINTR) return;
+  }
+}
+
+static int capture_writers_gone(int fd, char *buf, size_t n, size_t *used) {
+  for (;;) {
+    char tmp[512];
+    ssize_t got = read(fd, tmp, sizeof tmp);
+    if (got < 0 && errno == EINTR) continue;
+    if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
+    if (got <= 0) return 1;
+    size_t room = n - 1 - *used;
+    size_t take = (size_t)got < room ? (size_t)got : room;
+    if (take > 0) {
+      memcpy(buf + *used, tmp, take);
+      *used += take;
+      buf[*used] = 0;
+    }
+  }
+}
+
+static void kill_group(pid_t pid, int reaped) {
+  if (kill(-pid, SIGKILL) == 0) return;
+  if (!reaped) kill(pid, SIGKILL);
+}
+
+static int reap_bounded(pid_t pid, int fd, int *status, int reaped) {
+  kill_group(pid, reaped);
+  struct timespec cleanup;
+  if (mono_now(&cleanup) != 0) {
+    close(fd);
+    return -1;
+  }
+  mono_add_ms(&cleanup, 200);
+  while (!reaped && !mono_reached(&cleanup)) {
+    pid_t got = waitpid(pid, status, WNOHANG);
+    if (got == pid) reaped = 1;
+    else if (got < 0 && errno != EINTR) break;
+    else {
+      int left = mono_left_ms(&cleanup);
+      sleep_ms(left < 20 ? left : 20);
+    }
+  }
+  close(fd);
+  return -1;
+}
+
 static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) {
   if (!argv || !argv[0] || !buf || n == 0) return -1;
   int pipefd[2];
@@ -202,6 +289,7 @@ static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) 
     return -1;
   }
   if (pid == 0) {
+    setpgid(0, 0);
     if (dup2(pipefd[1], STDOUT_FILENO) < 0) _exit(127);
     int devnull = open("/dev/null", O_RDONLY);
     if (devnull >= 0) {
@@ -218,29 +306,22 @@ static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) 
     execv(argv[0], argv);
     _exit(127);
   }
+  setpgid(pid, pid);
   close(pipefd[1]);
+  int status = 0;
   int flags = fcntl(pipefd[0], F_GETFL, 0);
-  if (flags >= 0) fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
+  if (flags < 0 || fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK) < 0) {
+    return reap_bounded(pid, pipefd[0], &status, 0);
+  }
   size_t used = 0;
   buf[0] = 0;
-  int waited = 0;
-  int status = 0;
   int reaped = 0;
-  while (waited <= timeout_ms) {
-    for (;;) {
-      char tmp[512];
-      ssize_t got = read(pipefd[0], tmp, sizeof tmp);
-      if (got < 0 && errno == EINTR) continue;
-      if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
-      if (got <= 0) break;
-      size_t room = n - 1 - used;
-      size_t take = (size_t)got < room ? (size_t)got : room;
-      if (take > 0) {
-        memcpy(buf + used, tmp, take);
-        used += take;
-        buf[used] = 0;
-      }
-    }
+  int eof = 0;
+  struct timespec deadline;
+  if (mono_now(&deadline) != 0) return reap_bounded(pid, pipefd[0], &status, reaped);
+  mono_add_ms(&deadline, timeout_ms);
+  for (;;) {
+    if (!eof && capture_writers_gone(pipefd[0], buf, n, &used)) eof = 1;
     if (!reaped) {
       pid_t got = waitpid(pid, &status, WNOHANG);
       if (got == pid) reaped = 1;
@@ -249,37 +330,18 @@ static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) 
         return -1;
       }
     }
-    if (reaped) break;
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = 50L * 1000L * 1000L;
-    nanosleep(&ts, NULL);
-    waited += 50;
+    if (reaped && eof) break;
+    if (mono_reached(&deadline)) break;
+    int left = mono_left_ms(&deadline);
+    if (left <= 0) break;
+    sleep_ms(left < 50 ? left : 50);
   }
-  if (!reaped) {
-    kill(pid, SIGKILL);
-    waitpid(pid, &status, 0);
+  if (reaped && eof) {
     close(pipefd[0]);
-    return -1;
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return -1;
+    return 0;
   }
-  flags = fcntl(pipefd[0], F_GETFL, 0);
-  if (flags >= 0) fcntl(pipefd[0], F_SETFL, flags & ~O_NONBLOCK);
-  for (;;) {
-    char tmp[512];
-    ssize_t got = read(pipefd[0], tmp, sizeof tmp);
-    if (got < 0 && errno == EINTR) continue;
-    if (got <= 0) break;
-    size_t room = n - 1 - used;
-    size_t take = (size_t)got < room ? (size_t)got : room;
-    if (take > 0) {
-      memcpy(buf + used, tmp, take);
-      used += take;
-      buf[used] = 0;
-    }
-  }
-  close(pipefd[0]);
-  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return -1;
-  return 0;
+  return reap_bounded(pid, pipefd[0], &status, reaped);
 }
 
 int bao_real_major(const char *path, void *ctx) {
