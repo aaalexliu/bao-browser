@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -150,6 +150,104 @@ test("extension installer stages the unpacked directory and rejects a missing ma
   });
   assert.notEqual(bad.status, 0);
   assert.match(`${bad.stderr}`, /icons\/icon-16\.png/);
+});
+
+test("legacy installer stages dist/forceopen.js from the real build", () => {
+  const built = path.join(root, "dist/forceopen.js");
+  assert.equal(existsSync(built), true, built);
+  const stage = mkdtempSync(path.join(tmpdir(), "bao-forceopen-"));
+  const result = spawnSync("bash", [path.join(root, "install-dev-legacy.sh")], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      BAO_SKIP_BUILD: "1",
+      BAO_LEGACY_SOURCE: root,
+      BAO_EXT_DIR: stage,
+    },
+  });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.status, 0, output);
+  assert.equal(readFileSync(path.join(stage, "dist/forceopen.js"), "utf8"), readFileSync(built, "utf8"));
+  assert.match(output, /Stage succeeded/);
+  assert.match(output, /macOS-only/);
+  assert.doesNotMatch(output, /Could not find a Chrome profile/);
+});
+
+function stageCopy(source: string, stage: string, extra: NodeJS.ProcessEnv = {}) {
+  return spawnSync(process.execPath, [path.join(root, "scripts/stage-unpacked.mjs"), "copy", source, stage], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, ...extra },
+  });
+}
+
+function tinySource(): string {
+  const source = mkdtempSync(path.join(tmpdir(), "bao-stage-src-"));
+  writeFixture(source, { "manifest.json": "{ \"name\": \"Bao\" }\n" });
+  return source;
+}
+
+test("stager refuses a populated directory that is not a previous stage", () => {
+  const source = tinySource();
+  const stage = mkdtempSync(path.join(tmpdir(), "bao-foreign-"));
+  writeFileSync(path.join(stage, "canary.txt"), "keep");
+  const refused = stageCopy(source, stage);
+  assert.notEqual(refused.status, 0, refused.stderr);
+  assert.match(`${refused.stderr}`, /refusing to replace/);
+  assert.equal(readFileSync(path.join(stage, "canary.txt"), "utf8"), "keep");
+
+  const forced = stageCopy(source, stage, { BAO_STAGE_FORCE: "1" });
+  assert.equal(forced.status, 0, forced.stderr);
+  assert.match(`${forced.stderr}`, /Replacing /);
+  assert.equal(existsSync(path.join(stage, "canary.txt")), false);
+  assert.equal(existsSync(path.join(stage, "manifest.json")), true);
+  assert.equal(existsSync(path.join(stage, ".bao-stage")), true);
+
+  writeFileSync(path.join(stage, "again.txt"), "x");
+  const again = stageCopy(source, stage);
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(`${again.stderr}`, /Replacing /);
+  assert.equal(existsSync(path.join(stage, "again.txt")), false);
+  assert.equal(existsSync(path.join(stage, ".bao-stage")), true);
+});
+
+test("stager refuses the home directory even when force is set", () => {
+  const source = tinySource();
+  const home = mkdtempSync(path.join(tmpdir(), "bao-fake-home-"));
+  writeFileSync(path.join(home, "canary.txt"), "keep");
+  const result = stageCopy(source, home, { HOME: home, BAO_STAGE_FORCE: "1" });
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.match(`${result.stderr}`, /refusing to replace/);
+  assert.equal(readFileSync(path.join(home, "canary.txt"), "utf8"), "keep");
+});
+
+test("stager refuses the source tree and a parent of the source", () => {
+  const parent = mkdtempSync(path.join(tmpdir(), "bao-parent-"));
+  const source = path.join(parent, "src");
+  mkdirSync(source);
+  writeFixture(source, { "manifest.json": "{ \"name\": \"Bao\" }\n", "keep.txt": "src" });
+  writeFileSync(path.join(parent, "keep.txt"), "parent");
+  const self = stageCopy(source, source);
+  assert.notEqual(self.status, 0, self.stderr);
+  assert.equal(readFileSync(path.join(source, "keep.txt"), "utf8"), "src");
+  const up = stageCopy(source, parent);
+  assert.notEqual(up.status, 0, up.stderr);
+  assert.equal(readFileSync(path.join(parent, "keep.txt"), "utf8"), "parent");
+  assert.equal(readFileSync(path.join(source, "manifest.json"), "utf8").includes("Bao"), true);
+});
+
+test("stager resolves a symlink and refuses a foreign target", () => {
+  const source = tinySource();
+  const target = mkdtempSync(path.join(tmpdir(), "bao-link-target-"));
+  writeFileSync(path.join(target, "canary.txt"), "keep");
+  const linkDir = mkdtempSync(path.join(tmpdir(), "bao-link-dir-"));
+  const link = path.join(linkDir, "stage");
+  symlinkSync(target, link);
+  const result = stageCopy(source, link);
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.match(`${result.stderr}`, /refusing to replace/);
+  assert.equal(readFileSync(path.join(target, "canary.txt"), "utf8"), "keep");
 });
 
 test("bao runs the compiled cli and the aggregate scripts exist", () => {
