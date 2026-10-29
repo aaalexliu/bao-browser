@@ -37,6 +37,8 @@ desktop/os-helper-macos/BaoOSHelper.app/
 .evidence/bao-home/
 .evidence/session-inbox.txt
 .evidence/cdp-live-ax.jsonl
+.evidence/session-workflow.json
+.evidence/unfreeze-workflow.json
 
 # Packaged binaries stay out of git. The build writes them under artifacts.
 *.AppImage
