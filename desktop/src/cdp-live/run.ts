@@ -7,6 +7,7 @@ import { replay, type RunResult } from "../v1/replay";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
 import { ALLOW_CLICK_WINDOW_MS, mayClickAllow, type AxSummary } from "./consent";
 import { readDevToolsActivePort } from "./endpoint";
+import { liveChromeBlock } from "../helper-capabilities";
 import { AxUnavailable, chromeHelper, chromeTree, ensureRemoteDebugging, pressAllow } from "./ax";
 import { CdpLiveDriver, openLiveWindow, type PageObservation } from "./driver";
 import { connectCdp, type CdpSocket } from "./socket";
@@ -107,8 +108,8 @@ async function main(): Promise<void> {
   const helper = chromeHelper();
   progress("helper permissions");
   const perms = await helper.permissions(false);
-  if (perms.prompted) throw new Error("helper asked for a permission prompt");
-  if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
+  const block = liveChromeBlock(perms);
+  if (block) throw new Error(block);
   const permissions = {
     accessibility: perms.accessibility === true,
     screenCapture: perms.screenCapture === true,

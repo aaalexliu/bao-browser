@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { checkboxReach, mayClickAllow, ALLOW_CLICK_WINDOW_MS } from "./consent";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal } from "./allowlist";
+import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
 import { liveSessionDir, SessionLog } from "./audit";
 import { attachLiveTarget, type CdpLiveDriver, type PageObservation } from "./driver";
@@ -193,9 +194,8 @@ async function run(): Promise<void> {
   const helper = chromeHelper();
   progress("helper permissions");
   const perms = await helper.permissions(false);
-  if (perms.prompted) throw new Error("helper asked for a permission prompt");
-  if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
-  if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
+  const block = liveChromeBlock(perms);
+  if (block) throw new Error(block);
   progress("reading DevToolsActivePort");
   const endpoint = await readDevToolsActivePort();
   const chromePid = await listenPid(endpoint.port);
@@ -471,7 +471,7 @@ async function run(): Promise<void> {
     steps,
     banner: { during: during.visible, duringText: during.text, afterClose: after.visible },
     checkboxOn: box.on,
-    screenCapture: false,
+    screenCapture: usesScreenRecording(helper.calls),
   };
   log.setSteps(steps.map((step) => ({ name: step.name, status: step.status, ms: step.ms })));
   await log.flush(status, code, body.host);

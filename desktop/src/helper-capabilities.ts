@@ -1,4 +1,3 @@
-/** Mac grants a Bao job can require. Screen Recording is window capture, not live Chrome. */
 export type HelperGrant = "accessibility" | "screen-recording";
 
 export interface Capability {
@@ -61,12 +60,19 @@ export function capabilityReport(input: {
   }
   const accessibility = input.accessibility === true;
   const screenCapture = input.screenCapture === true;
+  const held: Record<HelperGrant, boolean> = {
+    accessibility,
+    "screen-recording": screenCapture,
+  };
   return {
     label: accessibility && screenCapture ? "helper ok" : "helper needs permission",
     platform,
     accessibility,
     screenCapture,
-    capabilities: [],
+    capabilities: CAPABILITIES.map((cap) => ({
+      id: cap.id,
+      status: cap.grant === undefined || held[cap.grant] ? cap.ready : cap.blocked,
+    })),
   };
 }
 
@@ -76,8 +82,13 @@ export function liveChromeBlock(perms: {
   screenCapture?: boolean;
 }): string | undefined {
   if (perms.prompted) return "helper asked for a permission prompt";
-  if (perms.accessibility !== true) return "BaoOSHelper accessibility is not granted";
-  if (perms.screenCapture) return "BaoOSHelper screen recording is granted; not starting";
+  const live = CAPABILITIES.find((cap) => cap.id === "live-chrome");
+  if (live?.grant === "accessibility" && perms.accessibility !== true) {
+    return "BaoOSHelper accessibility is not granted";
+  }
+  if (live?.usesScreenRecording && perms.screenCapture !== true) {
+    return "BaoOSHelper screen recording is not granted";
+  }
   return undefined;
 }
 
@@ -86,5 +97,8 @@ export function usesScreenRecording(calls: readonly (readonly string[])[]): bool
 }
 
 export function forbidScreenRecording<T extends { shot(...args: never[]): Promise<unknown> }>(helper: T): T {
+  const live = CAPABILITIES.find((cap) => cap.id === "live-chrome");
+  if (live?.usesScreenRecording) return helper;
+  helper.shot = () => Promise.reject(new Error("live Chrome does not use screen recording"));
   return helper;
 }

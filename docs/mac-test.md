@@ -6,9 +6,9 @@ Bao is already installed. For a rebuild, see [Build Bao on a Mac](mac-build.md).
 
 Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
 
-The window title is **Bao**. There is no address bar. Library is the first screen. The sidebar lists Library, Capture, Teach, Runs, Heals, Replay, Logins, and Settings. The footer reads **helper ok**.
+The window title is **Bao**. There is no address bar. Library is the first screen. The sidebar lists Library, Capture, Teach, Runs, Heals, Replay, Logins, and Settings. The footer reads **helper ok** when both grants are on. It also reads **live Chrome ready** and **window capture ready**.
 
-If the footer reads **helper needs permission**, allow Accessibility and Screen Recording for BaoOSHelper. Open Bao again. The footer then reads **helper ok**.
+**live Chrome ready** needs Accessibility only. **window capture ready** needs Screen Recording. If the footer reads **helper needs permission**, allow the missing grant and open Bao again. Leave Screen Recording off when you only want live Chrome.
 
 ## Record
 

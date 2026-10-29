@@ -12,7 +12,20 @@ Each new debugging connection raises **Allow remote debugging?** Chrome does not
 
 ## BaoOSHelper Accessibility
 
-macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the product window. macOS enforces it. The helper uses it to see the Allow button and press it. It does not read the web page. Screen Recording is a separate macOS grant. The live Chrome path does not ask for it, and a run stops if that grant is already on for the helper. The first prompt is once per signed helper. After that, each Allow press is one short accessibility walk, which is most of the time in the paragraph above.
+macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the product window. macOS enforces it. The helper uses it to see the Allow button and press it. It does not read the web page. The first prompt is once per signed helper. After that, each Allow press is one short accessibility walk, which is most of the time in the paragraph above.
+
+## Which grant each job needs
+
+Four jobs can run on this Mac. A grant for one job does not turn another job off.
+
+- **Native automation** reads and presses a control by its name. It needs Accessibility.
+- **Window capture** saves one window. It needs Screen Recording.
+- **Live Chrome** reads Chrome's controls through Accessibility. It needs Accessibility. It does not capture the window. Leave Screen Recording on when window capture needs it. That grant does not stop live Chrome.
+- **Extension replay** uses the extension's site grant. It does not need Accessibility or Screen Recording.
+
+The helper status names each job. `live Chrome ready` means Accessibility is on. `window capture ready` means Screen Recording is on. `native automation ready` follows Accessibility. `extension replay ready` does not read those two grants. `helper.label` stays `helper ok` when both grants are on, and `helper needs permission` when either grant is off.
+
+Use both grants when you want window capture and live Chrome. Do not turn Screen Recording off to start live Chrome.
 
 ## Extension host grants
 

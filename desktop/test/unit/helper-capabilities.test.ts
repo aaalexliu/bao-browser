@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { helperStatusText, rail } from "../../src/app/views";
+import { chromeHelper } from "../../src/cdp-live/ax";
 import {
   capabilityReport,
   forbidScreenRecording,
@@ -42,6 +43,12 @@ test("live Chrome rejects window capture without calling it", async () => {
   assert.equal(captured, false);
   assert.equal(usesScreenRecording([["permissions"], ["nodes", "--bundle", "com.google.Chrome"], ["press"]]), false);
   assert.equal(usesScreenRecording([["shot", "--bundle", "com.google.Chrome", "--out", "/tmp/bao-live.png"]]), true);
+  const live = chromeHelper();
+  await assert.rejects(
+    () => live.shot("com.google.Chrome", "/tmp/bao-live.png"),
+    /live Chrome does not use screen recording/,
+  );
+  assert.deepEqual(live.calls, []);
 });
 
 test("helper status names each job and keeps the old label", () => {
