@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { frameRpc } from "../../src/mcp/frame";
@@ -73,15 +73,6 @@ function workflowJson(id: string): string {
 function plantWorkflow(dir: string, id: string): void {
   mkdirSync(path.join(dir, "workflows"), { recursive: true });
   writeFileSync(path.join(dir, "workflows", `${id}.json`), workflowJson(id));
-}
-
-function hasWorkflowFile(dir: string): boolean {
-  const folder = path.join(dir, "workflows");
-  try {
-    return readdirSync(folder).some((name) => name.endsWith(".json") && statSync(path.join(folder, name)).isFile());
-  } catch {
-    return false;
-  }
 }
 
 interface ToolReply {
@@ -191,8 +182,13 @@ test("status keeps a legacy workflow directory and does not copy it", async () =
 
   const warned = await runStatus(["--home", dirs.flagged], childEnv(dirs.user), dirs.cwdA);
   assert.equal(warned.code, 0);
-  assert.deepEqual(JSON.parse(warned.stdout), { home: legacy });
-  assert.equal(warned.stderr.trim(), `bao: no workflows in ${dirs.flagged}; using ${legacy}`);
+  const warnedBody = JSON.parse(warned.stdout) as { home: string; notices?: string[] };
+  assert.equal(warnedBody.home, legacy);
+  assert.deepEqual(warnedBody.notices, [
+    `bao: no workflows in ${dirs.flagged}; using ${legacy}`,
+    `bao: library data is at ${old}; using ${legacy}`,
+  ]);
+  assert.equal(warned.stderr.trim(), warnedBody.notices.join("\n"));
   assert.equal(readFileSync(path.join(legacy, "workflows", "keep.json"), "utf8"), "{\"id\":\"keep\"}\n");
   assert.equal(readFileSync(path.join(old, "runs", "run-1.json"), "utf8"), "{}\n");
   assert.equal(existsSync(path.join(dirs.flagged, "workflows")), false);
@@ -408,7 +404,10 @@ test("darwin status keeps ~/.local/share/bao/workflows/keep.json and warns", asy
   const fresh = path.join(dirs.user, "Library", "Application Support", "bao");
   const status = await runStatus([], childEnv(dirs.user), dirs.cwdA, true);
   assert.equal(status.code, 0);
-  assert.deepEqual(JSON.parse(status.stdout), { home: legacy });
+  assert.deepEqual(JSON.parse(status.stdout), {
+    home: legacy,
+    notices: [`bao: no workflows in ${fresh}; using ${legacy}`],
+  });
   assert.equal(status.stderr.trim(), `bao: no workflows in ${fresh}; using ${legacy}`);
   assert.equal(existsSync(path.join(fresh, "workflows")), false);
   assert.equal(existsSync(path.join(fresh, "runs")), false);
@@ -458,7 +457,7 @@ test("darwin bao open finds server.json that exists only under the legacy direct
     const opened = await runCli(["open", "bao://workflow/keep"], childEnv(dirs.user), dirs.cwdA, true);
     assert.equal(opened.code, 0, opened.stderr);
     assert.equal(opened.stderr.includes("start Bao first"), false);
-    assert.equal(opened.stderr.includes("library data"), false);
+    assert.equal(opened.stderr.includes(`using ${legacy}`), true);
     assert.deepEqual(JSON.parse(opened.stdout), { ok: true });
     assert.equal(hits.n, 1);
   } finally {
@@ -562,7 +561,7 @@ test("the window names both libraries when each holds workflows", async () => {
   }
 });
 
-test("--home= accepts a directory, rejects a missing value, and resolves a relative path", async () => {
+test("--home= accepts a directory, rejects a missing value, and rejects a relative path", async () => {
   const dirs = layout();
   const env = childEnv(dirs.user);
   const equals = await runStatus(["--home=/x"], env, dirs.cwdA);
@@ -570,15 +569,17 @@ test("--home= accepts a directory, rejects a missing value, and resolves a relat
   assert.deepEqual(JSON.parse(equals.stdout), { home: "/x" });
 
   const relative = await runStatus(["--home", "rel-lib"], env, dirs.cwdA);
-  assert.equal(relative.code, 0);
-  assert.deepEqual(JSON.parse(relative.stdout), { home: path.resolve(dirs.cwdA, "rel-lib") });
+  assert.equal(relative.code, 1);
+  assert.match(relative.stderr, /absolute/);
+  assert.equal(existsSync(path.join(dirs.cwdA, "rel-lib")), false);
 
   const tilde = await runStatus(["--home=~/box"], env, dirs.cwdA);
   assert.equal(tilde.code, 0);
   assert.deepEqual(JSON.parse(tilde.stdout), { home: path.join(dirs.user, "box") });
 
   const fromEnv = await runStatus([], childEnv(dirs.user, { BAO_HOME: "rel-lib" }), dirs.cwdB);
-  assert.deepEqual(JSON.parse(fromEnv.stdout), { home: path.resolve(dirs.cwdB, "rel-lib") });
+  assert.equal(fromEnv.code, 1);
+  assert.match(fromEnv.stderr, /BAO_HOME/);
 
   const missing = await runStatus(["--home"], env, dirs.cwdA);
   assert.equal(missing.code, 1);
@@ -601,14 +602,15 @@ test("resolveHome rejects a null byte before touching the filesystem", () => {
   );
 });
 
-test("an empty HOME uses /tmp, matching the macOS launcher", () => {
-  const home = resolveHome({ env: { HOME: "" }, platform: "darwin", cwd: "/tmp", warn: () => {} });
-  const real = homedir();
-  if (real !== "/tmp") assert.equal(home.startsWith(`${real}${path.sep}`), false);
-  assert.equal(home.startsWith("/tmp/"), true);
-  const legacy = path.join("/tmp", ".local", "share", "bao");
-  const fallback = path.join("/tmp", "Library", "Application Support", "bao");
-  assert.equal(home, hasWorkflowFile(legacy) && !hasWorkflowFile(fallback) ? legacy : fallback);
+test("an empty HOME is refused by the resolver", () => {
+  assert.throws(
+    () => resolveHome({ env: { HOME: "" }, platform: "darwin", cwd: "/tmp", warn: () => {} }),
+    /absolute/,
+  );
+  assert.throws(
+    () => resolveHome({ env: { HOME: "rel-lib" }, platform: "linux", cwd: "/tmp", warn: () => {} }),
+    /absolute/,
+  );
 });
 
 test("liveSessionDir follows the home bao serve binds", async () => {
@@ -828,6 +830,47 @@ test("the window names the library directory it is using", async () => {
   } finally {
     await app.close();
   }
+});
+
+function runScript(args: string[], env: NodeJS.ProcessEnv, cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, { cwd, env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("error", reject);
+    child.on("exit", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+  });
+}
+
+test("print-home reports one absolute library on stdout", async () => {
+  const script = path.join(process.cwd(), "desktop/src/print-home.cjs");
+  for (const platform of ["linux", "darwin"] as const) {
+    const dirs = layout();
+    const legacy = path.join(dirs.user, ".local", "share", "bao");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(path.join(legacy, "server.json"), "{\"port\":39999}\n");
+    const result = await runScript(["--require", platform === "darwin" ? darwinPreload : linuxPreload, script], childEnv(dirs.user), dirs.cwdA);
+    assert.equal(result.code, 0, result.stderr + result.stdout);
+    const lines = result.stdout.trim().split("\n");
+    assert.equal(lines[0], "ok");
+    assert.equal(lines[1], legacy);
+    assert.equal(path.isAbsolute(lines[1] || ""), true);
+    if (platform === "darwin") {
+      assert.equal(result.stdout.includes(`no library data in ${platformDefault(dirs.user, "darwin")}`), true);
+      assert.equal(existsSync(platformDefault(dirs.user, "darwin")), false);
+    }
+    assert.equal(readFileSync(path.join(legacy, "server.json"), "utf8"), "{\"port\":39999}\n");
+  }
+  const dirs = layout();
+  const empty = await runScript([script], childEnv(dirs.user, { HOME: "" }), dirs.cwdA);
+  assert.equal(empty.code, 2);
+  assert.match(empty.stdout, /^error\n/);
+  assert.match(empty.stdout, /absolute/);
+  assert.equal(empty.stdout.includes("/tmp/"), false);
+  assert.equal(existsSync(path.join(dirs.cwdA, "Library")), false);
+  assert.equal(existsSync(path.join(dirs.cwdA, ".local")), false);
 });
 
 test("the Mac launcher asks the shared resolver and does not use /tmp", () => {

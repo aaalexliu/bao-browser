@@ -190,12 +190,16 @@ export async function startApp(opts: {
   /** Chrome config home for the host manifest. The socket still lives under home. */
   extensionConfigHome?: string;
   extensionHostDirs?: string[];
+  libraryNotices?: string[];
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
   process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
-  const librarySplits = otherLibraries(opts.home).map((other) => librarySplitLine(other, opts.home));
+  const librarySplits = [...new Set([
+    ...(opts.libraryNotices || []).map((line) => line.startsWith("bao: ") ? line.slice("bao: ".length) : line),
+    ...otherLibraries(opts.home).map((other) => librarySplitLine(other, opts.home)),
+  ])];
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
@@ -465,6 +469,7 @@ export async function startApp(opts: {
             steps: capture.steps.map(captureStepLabel),
           },
           notices,
+          home: opts.home,
           librarySplits,
           settings: library.settings(),
           workflows: library.list().map(summary),

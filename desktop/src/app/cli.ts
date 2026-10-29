@@ -24,13 +24,18 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "status") {
-    console.log(JSON.stringify({ home: resolveHome(rest) }));
+    const notices: string[] = [];
+    const home = resolveHome({ args: rest, warn: (line) => notices.push(line) });
+    for (const line of notices) console.error(line);
+    console.log(JSON.stringify(notices.length ? { home, notices } : { home }));
     return;
   }
   if (cmd === "serve" || !cmd) {
-    const home = resolveHome(rest);
+    const notices: string[] = [];
+    const home = resolveHome({ args: rest, warn: (line) => notices.push(line) });
+    for (const line of notices) console.error(line);
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || 4787);
-    const app = await startApp({ home, port, extensionHost: true });
+    const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true });
     console.log(`bao ${app.port} home ${home}`);
     await new Promise(() => {});
     return;
