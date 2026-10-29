@@ -13,7 +13,22 @@ import { resolveHome } from "../../src/home";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 const darwinPreload = path.join(process.cwd(), "desktop/test/unit/force-darwin.cjs");
+const linuxPreload = path.join(process.cwd(), "desktop/test/unit/force-linux.cjs");
 const observeHook = path.join(process.cwd(), "desktop/mcp/claude/hooks/observe.mjs");
+const launcherMain = path.join(process.cwd(), "desktop/packaging/macos/bao-main.c");
+
+type PlatformForce = boolean | "linux" | "darwin";
+
+function nodeArgsFor(force: PlatformForce = false): string[] {
+  if (force === true || force === "darwin") return ["--require", darwinPreload];
+  if (force === "linux") return ["--require", linuxPreload];
+  return [];
+}
+
+function platformDefault(userHome: string, platform: "linux" | "darwin"): string {
+  if (platform === "darwin") return path.join(userHome, "Library", "Application Support", "bao");
+  return path.join(userHome, ".local", "share", "bao");
+}
 
 function childEnv(userHome: string, extra: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: userHome };
@@ -25,8 +40,8 @@ function childEnv(userHome: string, extra: Record<string, string | undefined> = 
   return env;
 }
 
-function runCli(args: string[], env: NodeJS.ProcessEnv, cwd: string, forceDarwin = false): Promise<{ code: number; stdout: string; stderr: string }> {
-  const nodeArgs = forceDarwin ? ["--require", darwinPreload] : [];
+function runCli(args: string[], env: NodeJS.ProcessEnv, cwd: string, forceDarwin: PlatformForce = false): Promise<{ code: number; stdout: string; stderr: string }> {
+  const nodeArgs = nodeArgsFor(forceDarwin);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [...nodeArgs, cli, ...args], { cwd, env });
     let stdout = "";
@@ -38,7 +53,7 @@ function runCli(args: string[], env: NodeJS.ProcessEnv, cwd: string, forceDarwin
   });
 }
 
-function runStatus(args: string[], env: NodeJS.ProcessEnv, cwd: string, forceDarwin = false): Promise<{ code: number; stdout: string; stderr: string }> {
+function runStatus(args: string[], env: NodeJS.ProcessEnv, cwd: string, forceDarwin: PlatformForce = false): Promise<{ code: number; stdout: string; stderr: string }> {
   return runCli(["status", ...args], env, cwd, forceDarwin);
 }
 
@@ -80,9 +95,9 @@ function mcpCall(
   env: NodeJS.ProcessEnv,
   tool: string,
   toolArgs: Record<string, unknown>,
-  forceDarwin = false,
+  forceDarwin: PlatformForce = false,
 ): Promise<{ payload: Record<string, unknown>; stderr: string }> {
-  const nodeArgs = forceDarwin ? ["--require", darwinPreload] : [];
+  const nodeArgs = nodeArgsFor(forceDarwin);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [...nodeArgs, cli, "mcp", ...args], { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
@@ -151,15 +166,18 @@ test("status resolves --home, then BAO_HOME, then the platform default", async (
   assert.equal(fromEnv.code, 0);
   assert.deepEqual(JSON.parse(fromEnv.stdout), { home: dirs.fromEnv });
 
-  const emptyEnv = await runStatus([], childEnv(dirs.user, { BAO_HOME: "" }), dirs.cwdA);
-  assert.deepEqual(JSON.parse(emptyEnv.stdout), { home: path.join(dirs.user, ".local", "share", "bao") });
-
-  const left = await runStatus([], childEnv(dirs.user), dirs.cwdA);
-  const right = await runStatus([], childEnv(dirs.user), dirs.cwdB);
-  const expected = path.join(dirs.user, ".local", "share", "bao");
-  assert.deepEqual(JSON.parse(left.stdout), { home: expected });
-  assert.equal(left.stdout, right.stdout);
-  assert.equal(existsSync(expected), false);
+  for (const platform of ["linux", "darwin"] as const) {
+    const homeDirs = layout();
+    const expected = platformDefault(homeDirs.user, platform);
+    const emptyEnv = await runStatus([], childEnv(homeDirs.user, { BAO_HOME: "" }), homeDirs.cwdA, platform);
+    assert.equal(emptyEnv.code, 0, emptyEnv.stderr);
+    assert.deepEqual(JSON.parse(emptyEnv.stdout), { home: expected });
+    const left = await runStatus([], childEnv(homeDirs.user), homeDirs.cwdA, platform);
+    const right = await runStatus([], childEnv(homeDirs.user), homeDirs.cwdB, platform);
+    assert.deepEqual(JSON.parse(left.stdout), { home: expected });
+    assert.equal(left.stdout, right.stdout);
+    assert.equal(existsSync(expected), false);
+  }
 });
 
 test("status keeps a legacy workflow directory and does not copy it", async () => {
@@ -182,13 +200,15 @@ test("status keeps a legacy workflow directory and does not copy it", async () =
 });
 
 test("status stays quiet when the resolved home is the only library", async () => {
-  const dirs = layout();
-  const home = path.join(dirs.user, ".local", "share", "bao");
-  mkdirSync(path.join(home, "workflows"), { recursive: true });
-  writeFileSync(path.join(home, "workflows", "mine.json"), "{}\n");
-  const quiet = await runStatus([], childEnv(dirs.user), dirs.cwdA);
-  assert.equal(quiet.stderr, "");
-  assert.deepEqual(JSON.parse(quiet.stdout), { home });
+  for (const platform of ["linux", "darwin"] as const) {
+    const dirs = layout();
+    const home = platformDefault(dirs.user, platform);
+    mkdirSync(path.join(home, "workflows"), { recursive: true });
+    writeFileSync(path.join(home, "workflows", "mine.json"), "{}\n");
+    const quiet = await runStatus([], childEnv(dirs.user), dirs.cwdA, platform);
+    assert.equal(quiet.stderr, "");
+    assert.deepEqual(JSON.parse(quiet.stdout), { home });
+  }
 });
 
 test("bao mcp passes --home through without putting the directory on the tool result", async () => {
@@ -200,14 +220,17 @@ test("bao mcp passes --home through without putting the directory on the tool re
   assert.equal(existsSync(path.join(dirs.fromEnv, "workflows")), false);
   assert.equal(existsSync(path.join(dirs.flagged, "workflows")), true);
 
-  const left = await mcpCall(dirs.cwdA, [], childEnv(dirs.user), "run_workflow", {});
-  const right = await mcpCall(dirs.cwdB, [], childEnv(dirs.user), "run_workflow", {});
-  const expected = path.join(dirs.user, ".local", "share", "bao");
-  assert.equal("home" in left.payload, false);
-  assert.equal("home" in right.payload, false);
-  assert.equal(existsSync(path.join(expected, "workflows")), true);
-  assert.equal(existsSync(path.join(dirs.cwdA, ".bao-mcp")), false);
-  assert.equal(existsSync(path.join(dirs.cwdB, ".bao-mcp")), false);
+  for (const platform of ["linux", "darwin"] as const) {
+    const homeDirs = layout();
+    const expected = platformDefault(homeDirs.user, platform);
+    const left = await mcpCall(homeDirs.cwdA, [], childEnv(homeDirs.user), "run_workflow", {}, platform);
+    const right = await mcpCall(homeDirs.cwdB, [], childEnv(homeDirs.user), "run_workflow", {}, platform);
+    assert.equal("home" in left.payload, false);
+    assert.equal("home" in right.payload, false);
+    assert.equal(existsSync(path.join(expected, "workflows")), true);
+    assert.equal(existsSync(path.join(homeDirs.cwdA, ".bao-mcp")), false);
+    assert.equal(existsSync(path.join(homeDirs.cwdB, ".bao-mcp")), false);
+  }
 });
 
 test("get_run returns the stored run without a home path", async () => {
@@ -271,27 +294,34 @@ test("live audit writes the session under the resolved home", async () => {
   }
 });
 
-test("live audit uses one default home from different working directories", () => {
-  const dirs = layout();
-  const previousHome = process.env.HOME;
-  const previousBao = process.env.BAO_HOME;
-  const previousCwd = process.cwd();
-  process.env.HOME = dirs.user;
-  delete process.env.BAO_HOME;
-  try {
-    process.chdir(dirs.cwdA);
-    const left = liveSessionDir();
-    process.chdir(dirs.cwdB);
-    const right = liveSessionDir();
-    assert.equal(left, right);
-    assert.equal(left, path.join(dirs.user, ".local", "share", "bao", "live-session"));
+function runLiveHome(platform: "linux" | "darwin", env: NodeJS.ProcessEnv, cwd: string): Promise<string> {
+  const audit = path.join(process.cwd(), "desktop/dist/desktop/src/cdp-live/audit.js");
+  const code = `process.stdout.write(require(${JSON.stringify(audit)}).liveSessionDir())`;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [...nodeArgsFor(platform), "-e", code], { cwd, env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code !== 0) reject(new Error(stderr || `live home exited ${code}`));
+      else resolve(stdout);
+    });
+  });
+}
+
+test("live audit uses one default home from different working directories", async () => {
+  for (const platform of ["linux", "darwin"] as const) {
+    const dirs = layout();
+    const env = childEnv(dirs.user);
+    const left = await runLiveHome(platform, env, dirs.cwdA);
+    const right = await runLiveHome(platform, env, dirs.cwdB);
+    const expected = path.join(platformDefault(dirs.user, platform), "live-session");
+    assert.equal(left, expected);
+    assert.equal(right, expected);
     assert.equal(left.startsWith(dirs.cwdA), false);
     assert.equal(right.startsWith(dirs.cwdB), false);
-  } finally {
-    process.chdir(previousCwd);
-    process.env.HOME = previousHome;
-    if (previousBao === undefined) delete process.env.BAO_HOME;
-    else process.env.BAO_HOME = previousBao;
   }
 });
 
@@ -628,4 +658,181 @@ test("the observer hook writes under the macOS library", async () => {
   const trail = path.join(dirs.user, "Library", "Application Support", "bao", "observer", "trail.jsonl");
   assert.equal(existsSync(trail), true);
   assert.equal(existsSync(path.join(dirs.user, ".local", "share", "bao", "observer", "trail.jsonl")), false);
+});
+
+function runObserver(env: NodeJS.ProcessEnv, cwd: string): Promise<{ code: number; stderr: string }> {
+  const child = spawn(process.execPath, ["--require", darwinPreload, observeHook], {
+    cwd,
+    env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  return new Promise((resolve, reject) => {
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("error", reject);
+    child.on("exit", (code) => resolve({ code: code ?? 1, stderr }));
+    child.stdin.end("{}\n");
+  });
+}
+
+test("darwin status keeps a legacy library that has server.json and no workflows", async () => {
+  const dirs = layout();
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  const fresh = platformDefault(dirs.user, "darwin");
+  mkdirSync(legacy, { recursive: true });
+  writeFileSync(path.join(legacy, "server.json"), "{\"port\":39999}\n");
+  const status = await runStatus([], childEnv(dirs.user), dirs.cwdA, "darwin");
+  assert.equal(status.code, 0, status.stderr);
+  const body = JSON.parse(status.stdout) as { home: string; notices?: string[] };
+  assert.equal(body.home, legacy);
+  assert.deepEqual(body.notices, [`bao: no library data in ${fresh}; using ${legacy}`]);
+  assert.equal(existsSync(fresh), false);
+  assert.equal(readFileSync(path.join(legacy, "server.json"), "utf8"), "{\"port\":39999}\n");
+});
+
+test("darwin status keeps a legacy library that has runs and no workflows", async () => {
+  const dirs = layout();
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  const fresh = platformDefault(dirs.user, "darwin");
+  mkdirSync(path.join(legacy, "runs"), { recursive: true });
+  writeFileSync(path.join(legacy, "runs", "run-1.json"), "{}\n");
+  const status = await runStatus([], childEnv(dirs.user), dirs.cwdA, "darwin");
+  assert.equal(status.code, 0, status.stderr);
+  assert.equal(JSON.parse(status.stdout).home, legacy);
+  assert.equal(existsSync(path.join(fresh, "runs")), false);
+  assert.equal(readFileSync(path.join(legacy, "runs", "run-1.json"), "utf8"), "{}\n");
+});
+
+test("darwin bao open reads a legacy server.json and does not ask to start Bao", async () => {
+  const dirs = layout();
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  mkdirSync(legacy, { recursive: true });
+  const hits = { n: 0 };
+  const server = createServer((_req, res) => {
+    hits.n += 1;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const port = (server.address() as AddressInfo).port;
+  writeFileSync(path.join(legacy, "server.json"), `${JSON.stringify({ port })}\n`);
+  try {
+    const opened = await runCli(["open", "bao://workflow/abc"], childEnv(dirs.user), dirs.cwdA, "darwin");
+    assert.equal(opened.stderr.includes("start Bao first"), false, opened.stderr);
+    assert.equal(opened.code, 0, opened.stderr);
+    assert.equal(hits.n, 1);
+    const status = await runStatus([], childEnv(dirs.user), dirs.cwdA, "darwin");
+    assert.equal(JSON.parse(status.stdout).home, legacy);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  }
+});
+
+test("import-login uses the port in the legacy server.json", async () => {
+  const dirs = layout();
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  mkdirSync(legacy, { recursive: true });
+  const hits: string[] = [];
+  const server = createServer((req, res) => {
+    hits.push(req.url || "");
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "no" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const port = (server.address() as AddressInfo).port;
+  writeFileSync(path.join(legacy, "server.json"), `${JSON.stringify({ port })}\n`);
+  try {
+    const result = await runCli(
+      ["import-login", "--from", "chrome", "--domain", "example.com"],
+      childEnv(dirs.user),
+      dirs.cwdA,
+      "darwin",
+    );
+    assert.deepEqual(hits, ["/api/import-login"]);
+    assert.equal(result.stderr.includes("4787"), false, result.stderr);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  }
+});
+
+test("the observer hook writes into a legacy library that has only server.json", async () => {
+  const dirs = layout();
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  const fresh = path.join(dirs.user, "Library", "Application Support", "bao", "observer", "trail.jsonl");
+  mkdirSync(legacy, { recursive: true });
+  writeFileSync(path.join(legacy, "server.json"), "{\"port\":39999}\n");
+  const result = await runObserver(childEnv(dirs.user), dirs.cwdA);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(existsSync(path.join(legacy, "observer", "trail.jsonl")), true);
+  assert.equal(existsSync(fresh), false);
+  assert.equal(readFileSync(path.join(legacy, "server.json"), "utf8"), "{\"port\":39999}\n");
+  assert.equal(readFileSync(observeHook, "utf8").includes(".local/share/bao"), false);
+});
+
+test("an empty HOME is refused and does not create a library", async () => {
+  const dirs = layout();
+  const env = childEnv(dirs.user, { HOME: "" });
+  const status = await runStatus([], env, dirs.cwdA, "darwin");
+  assert.equal(status.code, 1);
+  assert.match(status.stderr, /absolute/);
+  assert.equal(status.stdout.includes("\"home\""), false);
+  assert.equal(existsSync(path.join(dirs.cwdA, "Library")), false);
+  assert.equal(existsSync(path.join(dirs.cwdA, ".local")), false);
+  await assert.rejects(
+    () => mcpCall(dirs.cwdA, [], env, "run_workflow", {}, "darwin"),
+    /absolute/,
+  );
+  assert.equal(existsSync(path.join(dirs.cwdA, "Library")), false);
+  assert.equal(existsSync(path.join(dirs.cwdA, ".local")), false);
+  assert.equal(status.stdout.includes("/tmp/"), false);
+});
+
+test("a relative --home is refused and ~/ is one absolute library", async () => {
+  const dirs = layout();
+  const env = childEnv(dirs.user);
+  const relative = await runStatus(["--home", "rel-lib"], env, dirs.cwdA);
+  assert.equal(relative.code, 1);
+  assert.match(relative.stderr, /absolute/);
+  assert.equal(existsSync(path.join(dirs.cwdA, "rel-lib")), false);
+  const other = await runStatus(["--home", "rel-lib"], env, dirs.cwdB);
+  assert.equal(other.code, 1);
+  assert.equal(existsSync(path.join(dirs.cwdB, "rel-lib")), false);
+  const fromEnv = await runStatus([], childEnv(dirs.user, { BAO_HOME: "rel-lib" }), dirs.cwdB);
+  assert.equal(fromEnv.code, 1);
+  assert.match(fromEnv.stderr, /BAO_HOME/);
+  await assert.rejects(
+    () => mcpCall(dirs.cwdA, ["--home", "rel-lib"], env, "run_workflow", {}),
+    /absolute/,
+  );
+  assert.equal(existsSync(path.join(dirs.cwdA, "rel-lib")), false);
+  const left = await runStatus(["--home", "~/box"], env, dirs.cwdA);
+  const right = await runStatus(["--home", "~/box"], env, dirs.cwdB);
+  assert.equal(left.code, 0, left.stderr);
+  assert.equal(right.code, 0, right.stderr);
+  const box = path.join(dirs.user, "box");
+  assert.deepEqual(JSON.parse(left.stdout), { home: box });
+  assert.equal(left.stdout, right.stdout);
+});
+
+test("the window names the library directory it is using", async () => {
+  const dirs = layout();
+  const home = path.join(dirs.root, "library");
+  plantWorkflow(home, "keep");
+  const app = await startApp({ home, port: 0 });
+  try {
+    const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { home?: string; workflows?: { id: string }[] };
+    assert.equal(state.home, home);
+    assert.ok(state.workflows?.some((item) => item.id === "keep"));
+    const js = await (await fetch(`http://127.0.0.1:${app.port}/app.js`)).text();
+    assert.match(js, /library-home/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the Mac launcher asks the shared resolver and does not use /tmp", () => {
+  const source = readFileSync(launcherMain, "utf8");
+  assert.equal(source.includes(".local/share/bao"), false);
+  assert.equal(source.includes('user_home = "/tmp"'), false);
+  assert.match(source, /print-home\.cjs/);
 });
