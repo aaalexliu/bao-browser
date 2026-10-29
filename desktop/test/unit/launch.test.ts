@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome, resolveNormalChrome } from "../../src/launch";
@@ -90,6 +90,50 @@ test("the product arg builder drops the mock keychain", () => {
   const mocked = ownedChromeLaunchArgs(["--use-mock-keychain", "--password-store=basic"], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "darwin");
   assert.equal(mocked.includes("--use-mock-keychain"), false);
   assert.equal(mocked.includes("--password-store=basic"), false);
+});
+
+test("a product command line rejects mock keychain flags in every form", () => {
+  const flags = [
+    "--use-mock-keychain",
+    "--use-mock-keychain=1",
+    "--use-mock-keychain ",
+    "--password-store=basic",
+    "--password-store=gnome",
+    "--password-store ",
+  ];
+  for (const flag of flags) {
+    const verdict = assessOwnedCommand(`${fixture.trim()} ${flag}`, owned);
+    assert.equal(verdict.ok, false, flag);
+    assert.match(verdict.reason || "", /mock keychain/);
+  }
+  const cleaned = ownedChromeLaunchArgs([
+    "--use-mock-keychain",
+    "--use-mock-keychain=1",
+    "--use-mock-keychain ",
+    "--password-store=basic",
+    "--password-store=gnome",
+    "--password-store ",
+  ], {}, "darwin");
+  assert.equal(cleaned.some((arg) => /use-mock-keychain|password-store/.test(arg)), false);
+  const source = readFileSync(path.join(process.cwd(), "desktop/src/launch.ts"), "utf8");
+  assert.equal(source.includes("...(opts.appendArgs ?? [])"), false);
+});
+
+test("BAO_BROWSER and the Playwright path must be executable files", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-chrome-bin-"));
+  const dir = path.join(root, "dir");
+  mkdirSync(dir);
+  const plain = path.join(root, "plain");
+  writeFileSync(plain, "");
+  const exe = path.join(root, "chrome");
+  writeFileSync(exe, "");
+  chmodSync(exe, 0o755);
+  const system = (file: string) => file === LINUX_CHROME || file === ACCOUNT_CHROME_MAC ? false : existsSync(file);
+  assert.throws(() => resolveNormalChrome(system, { BAO_BROWSER: dir }, "linux", () => plain), /Chrome was not found/);
+  assert.throws(() => resolveNormalChrome(system, { BAO_BROWSER: plain }, "linux", () => dir), /Chrome was not found/);
+  assert.equal(resolveNormalChrome(system, { BAO_BROWSER: exe }, "linux", () => plain), exe);
+  assert.throws(() => resolveNormalChrome(system, {}, "linux", () => dir), /Chrome was not found/);
+  assert.equal(resolveNormalChrome(system, {}, "linux", () => exe), exe);
 });
 
 test("remote debugging port 9222 is refused", () => {

@@ -119,13 +119,18 @@ const DAILY_DIR = [
  * Installed Google Chrome when it is present, otherwise BAO_BROWSER, otherwise
  * Playwright's Chromium. Never a PATH lookup: wrappers can add automation flags.
  */
-export function resolveNormalChrome(exists: (file: string) => boolean = existsSync, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+export function resolveNormalChrome(
+  exists: (file: string) => boolean = existsSync,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  playwrightPath: () => string = () => chromium.executablePath(),
+): string {
   if (platform === "darwin" && exists(ACCOUNT_CHROME_MAC)) return ACCOUNT_CHROME_MAC;
   if (platform === "linux" && exists(LINUX_CHROME)) return LINUX_CHROME;
   const bundled = env.BAO_BROWSER;
   if (bundled && exists(bundled)) return bundled;
   try {
-    const fallback = chromium.executablePath();
+    const fallback = playwrightPath();
     if (fallback && exists(fallback)) return fallback;
   } catch { /* Playwright has not downloaded a browser. */ }
   throw new Error("Chrome was not found");

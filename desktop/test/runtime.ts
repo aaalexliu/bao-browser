@@ -117,8 +117,8 @@ export function classifyStatus(status: number): SiteResult {
 }
 
 export function liveSkip(
-  probe: { status: number },
-  failure?: { phase?: string; reason?: string },
+  probe: { status: number; url?: string },
+  failure?: { phase?: string; reason?: string; url?: string },
 ): { result: SiteResult; status: number } | undefined {
   if (probe.status === 403 || probe.status === 429) return { result: "bot-blocked", status: probe.status };
   if (probe.status >= 500) return { result: "unavailable", status: probe.status };
@@ -128,6 +128,14 @@ export function liveSkip(
   if (/net::ERR_|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed/i.test(failure.reason || "")) {
     return { result: "unavailable", status: 0 };
   }
+  return undefined;
+}
+
+export function ownApiOutage(
+  _pageUrl: string,
+  _failure: { phase?: string; reason?: string } | undefined,
+  _requests: readonly { url: string; status?: number }[] | undefined,
+): { result: "unavailable"; status: number } | undefined {
   return undefined;
 }
 
