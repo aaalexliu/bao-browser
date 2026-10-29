@@ -435,7 +435,10 @@ The dev server uses PGlite under `web/.data/pglite` and files under `web/.data/b
 
 Pair a Mac from Devices. The page shows a code. Type it in the Mac app under Settings → Sync. The command line is the other way:
 
+`npm run bao` does not compile. Run `npm run build:desktop` first.
+
 ```bash
+npm run build:desktop
 npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/share/bao
 npm run bao -- sync --home ~/.local/share/bao
 ```

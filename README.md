@@ -9,11 +9,18 @@ This branch has four deliverables.
 3. **Legacy root extension.** Source is `src/`, built to `dist/`.
 4. **Optional registry.** Source is `web/`.
 
-Run the commands from the repo root. Node is 24 or newer (`node -v`, `mise.toml`, `.nvmrc`). MCP setup, the extension load, and `cdp-live` are in [docs/agent-quickstart.md](docs/agent-quickstart.md).
+Run the commands from the repo root. Node is the major version in `.nvmrc` and `mise.toml`. `nvm use` can print that version while an older `node` stays first on PATH. Prepend the bin directory from `nvm which node`.
+
+```sh
+export PATH="$(dirname "$(nvm which node)"):$PATH"
+node scripts/check-node.mjs
+```
+
+`node scripts/check-node.mjs` exits 1 when the running Node is older than `.nvmrc`. MCP setup, the extension load, and `cdp-live` are in [docs/agent-quickstart.md](docs/agent-quickstart.md).
 
 | Step | Command |
 | --- | --- |
-| Prerequisites | `node -v` prints v24 or newer. Then `npm install` and `npm --prefix web install`. |
+| Prerequisites | `node scripts/check-node.mjs`, then `npx playwright install chromium`, `npm install`, and `npm --prefix web install`. |
 | Desktop dev | `npm run build:desktop`, then `npm run bao`. |
 | Legacy extension dev | `npm run watch` |
 | Registry dev | `npm --prefix web run dev` |
@@ -63,7 +70,7 @@ the packaged build from the [latest release](https://github.com/aaalexliu/bao-br
 > This is a beta distribution mode: Developer-mode unpacked load is fine for early users
 > but is not the intended path for non-technical users (see the thesis in
 > [blocker #5](#blockers-in-priority-order)) - the Chrome Web Store listing is. Building
-> from source instead? See **[Quickstart](#quickstart)** below.
+> from source instead? See the **[Agent quickstart](#agent-quickstart)**.
 
 ---
 
@@ -408,7 +415,7 @@ is still the source of truth for the extension.
 
 ---
 
-## Quickstart
+## Legacy extension load
 
 ```sh
 npm install && npm run build   # TypeScript in src/ → esbuild bundles to dist/ (npm run watch to iterate)

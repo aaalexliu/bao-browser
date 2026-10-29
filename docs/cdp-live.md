@@ -5,7 +5,7 @@
 1. In that Chrome, open `chrome://inspect/#remote-debugging` and allow remote debugging for this browser.
 2. From the repo root, run `npm run build:desktop`.
 3. Replay uses the live attach. `refusesOwnedBrowser` in `desktop/src/cdp-live/launch-guard.ts` is true for `cdp-live`, so Bao's own Chrome stays closed.
-4. `node desktop/dist/desktop/src/cdp-live/run.js` is the books runner. It reads `DevToolsActivePort`.
+4. `node desktop/dist/desktop/src/cdp-live/run.js` is the books runner. It is Mac-only. It creates `.evidence`, then checks the BaoOSHelper grant, and it exits 1 on a non-Mac host before it reads `DevToolsActivePort`.
 5. `node desktop/dist/desktop/src/cdp-live/session.js` is the generic session. Pass `--hosts`, `--start`, `--intent`, `--deny`, `--commit`, `--stop-path`, and `--reached`. Add `--attach-path` to use one already-open page.
 
 ## Driver

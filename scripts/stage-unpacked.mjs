@@ -1,5 +1,9 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, copyFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, copyFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const MARKER = ".bao-stage";
 
 function isFileRef(value) {
   if (value.includes("*") || value.includes(" ") || value.startsWith("<")) return false;
@@ -59,6 +63,25 @@ function requiredFiles(root) {
       if (next.endsWith(".html")) pending.push(next);
     }
   }
+  return files;
+}
+
+function addDist(root, files) {
+  const dist = path.join(root, "dist");
+  if (!existsSync(dist) || !statSync(dist).isDirectory()) return;
+  const walkDir = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const abs = path.join(dir, name);
+      if (statSync(abs).isDirectory()) walkDir(abs);
+      else files.add(path.relative(root, abs).split(path.sep).join("/"));
+    }
+  };
+  walkDir(dist);
+}
+
+function filesToStage(root) {
+  const files = requiredFiles(root);
+  addDist(root, files);
   return [...files].sort();
 }
 
@@ -71,39 +94,94 @@ function report(kind, files) {
   process.exit(1);
 }
 
+function refuse(stageReal, reason) {
+  console.error(`refusing to replace ${stageReal} because it ${reason}`);
+  process.exit(1);
+}
+
+function resolvePath(target) {
+  const abs = path.resolve(target);
+  try {
+    return realpathSync(abs);
+  } catch {
+    const parent = path.dirname(abs);
+    try {
+      return path.join(realpathSync(parent), path.basename(abs));
+    } catch {
+      return abs;
+    }
+  }
+}
+
+function sameOrInside(parent, child) {
+  const rel = path.relative(parent, child);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+}
+
+function assertSafeStage(source, stage) {
+  const sourceReal = resolvePath(source);
+  const stageReal = resolvePath(stage);
+  const homeReal = resolvePath(process.env.HOME || homedir());
+  const repoReal = resolvePath(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
+  if (stageReal === path.parse(stageReal).root) refuse(stageReal, "is the filesystem root");
+  if (stageReal === homeReal) refuse(stageReal, "is the home directory");
+  if (stageReal === repoReal) refuse(stageReal, "is the repo");
+  if (sameOrInside(stageReal, sourceReal)) refuse(stageReal, "contains the source tree");
+  if (existsSync(stageReal)) {
+    const info = statSync(stageReal);
+    if (!info.isDirectory()) refuse(stageReal, "is not a directory");
+    const names = readdirSync(stageReal);
+    const previous = names.includes(MARKER);
+    if (names.length > 0 && !previous) {
+      const force = process.env.BAO_STAGE_FORCE === "1" || process.argv.includes("--force");
+      if (!force) refuse(stageReal, "is not a previous Bao stage. Set BAO_STAGE_FORCE=1 to replace it");
+    }
+  }
+  console.error(`Replacing ${stageReal}`);
+  return stageReal;
+}
+
+function finish(stageReal) {
+  writeFileSync(path.join(stageReal, MARKER), "bao-stage\n");
+}
+
 const [mode, sourceOrDir, stage] = process.argv.slice(2);
 
 if (mode === "check") {
-  const gone = missing(sourceOrDir, requiredFiles(sourceOrDir));
+  const gone = missing(sourceOrDir, filesToStage(sourceOrDir));
   if (gone.length) report("unpacked", gone);
   process.exit(0);
 }
 
 if (mode === "copy") {
-  const files = requiredFiles(sourceOrDir);
+  const files = filesToStage(sourceOrDir);
   const gone = missing(sourceOrDir, files);
   if (gone.length) report("source", gone);
-  rmSync(stage, { recursive: true, force: true });
+  const stageReal = assertSafeStage(sourceOrDir, stage);
+  rmSync(stageReal, { recursive: true, force: true });
   for (const file of files) {
-    const dest = path.join(stage, file);
+    const dest = path.join(stageReal, file);
     mkdirSync(path.dirname(dest), { recursive: true });
     copyFileSync(path.join(sourceOrDir, file), dest);
   }
-  const staged = missing(stage, requiredFiles(stage));
+  const staged = missing(stageReal, filesToStage(stageReal));
   if (staged.length) report("staged", staged);
+  finish(stageReal);
   process.exit(0);
 }
 
 if (mode === "sync") {
-  const files = requiredFiles(sourceOrDir);
+  const files = filesToStage(sourceOrDir);
   const gone = missing(sourceOrDir, files);
   if (gone.length) report("source", gone);
-  rmSync(stage, { recursive: true, force: true });
-  cpSync(sourceOrDir, stage, { recursive: true });
-  const staged = missing(stage, requiredFiles(stage));
+  const stageReal = assertSafeStage(sourceOrDir, stage);
+  rmSync(stageReal, { recursive: true, force: true });
+  cpSync(sourceOrDir, stageReal, { recursive: true });
+  const staged = missing(stageReal, filesToStage(stageReal));
   if (staged.length) report("staged", staged);
+  finish(stageReal);
   process.exit(0);
 }
 
-console.error("usage: stage-unpacked.mjs copy <source> <stage> | sync <source> <stage> | check <dir>");
+console.error("usage: stage-unpacked.mjs copy <source> <stage> [--force] | sync <source> <stage> [--force] | check <dir>");
 process.exit(2);

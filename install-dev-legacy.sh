@@ -12,8 +12,22 @@ if [ -z "${BAO_SKIP_BUILD:-}" ]; then
   ( cd "$ROOT" && npm run --silent build )
 fi
 
-node "$ROOT/scripts/stage-unpacked.mjs" copy "$SOURCE" "$STAGE"
+FORCE=()
+LAUNCH=0
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE+=(--force) ;;
+    --launch) LAUNCH=1 ;;
+  esac
+done
+
+node "$ROOT/scripts/stage-unpacked.mjs" copy "$SOURCE" "$STAGE" "${FORCE[@]}"
 echo "Synced legacy extension → $STAGE"
+
+if [ "$LAUNCH" != "1" ] || [ "$(uname -s)" != "Darwin" ]; then
+  echo "Profile lookup is macOS-only. Stage succeeded: $STAGE" >&2
+  exit 0
+fi
 
 PROFILE_DIR="$(
   python3 - "$PROFILE_NAME" <<'PY' 2>/dev/null || true
@@ -33,10 +47,5 @@ if [ -z "$PROFILE_DIR" ]; then
   exit 0
 fi
 echo "Dev profile: \"$PROFILE_NAME\" → $PROFILE_DIR"
-
-if [ "${1:-}" = "--launch" ]; then
-  echo "Opening chrome://extensions in the \"$PROFILE_NAME\" profile…"
-  "$CHROME" --profile-directory="$PROFILE_DIR" "chrome://extensions" >/dev/null 2>&1 &
-else
-  echo "Reload it at chrome://extensions, or rerun with --launch to open that page."
-fi
+echo "Opening chrome://extensions in the \"$PROFILE_NAME\" profile…"
+"$CHROME" --profile-directory="$PROFILE_DIR" "chrome://extensions" >/dev/null 2>&1 &

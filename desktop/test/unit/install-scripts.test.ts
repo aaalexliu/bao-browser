@@ -277,3 +277,57 @@ test("bao runs the compiled cli and the aggregate scripts exist", () => {
   assert.match(output, /usage: bao/);
   assert.doesNotMatch(output, /tsconfig\.desktop\.json/);
 });
+
+test("stager refuses the repo and the filesystem root", () => {
+  const source = tinySource();
+  const repo = stageCopy(source, root, { BAO_STAGE_FORCE: "1" });
+  assert.notEqual(repo.status, 0, repo.stderr);
+  assert.match(`${repo.stderr}`, /is the repo/);
+  assert.equal(existsSync(path.join(root, "package.json")), true);
+  const slash = stageCopy(source, "/", { BAO_STAGE_FORCE: "1" });
+  assert.notEqual(slash.status, 0, slash.stderr);
+  assert.match(`${slash.stderr}`, /filesystem root/);
+});
+
+test("sync refuses a foreign stage", () => {
+  const source = tinySource();
+  const stage = mkdtempSync(path.join(tmpdir(), "bao-sync-foreign-"));
+  writeFileSync(path.join(stage, "canary.txt"), "keep");
+  const result = spawnSync(process.execPath, [path.join(root, "scripts/stage-unpacked.mjs"), "sync", source, stage], {
+    cwd: root,
+    encoding: "utf8",
+    env: process.env,
+  });
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.equal(readFileSync(path.join(stage, "canary.txt"), "utf8"), "keep");
+});
+
+test("stager --force replaces a foreign stage and prints the path", () => {
+  const source = tinySource();
+  const stage = mkdtempSync(path.join(tmpdir(), "bao-flag-force-"));
+  writeFileSync(path.join(stage, "canary.txt"), "keep");
+  const result = spawnSync(process.execPath, [path.join(root, "scripts/stage-unpacked.mjs"), "copy", source, stage, "--force"], {
+    cwd: root,
+    encoding: "utf8",
+    env: process.env,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(`${result.stderr}`, /Replacing /);
+  assert.equal(existsSync(path.join(stage, "canary.txt")), false);
+  assert.equal(existsSync(path.join(stage, ".bao-stage")), true);
+});
+
+test("bao-mcp.sh exits before creating .bao-mcp when BAO_HOME is unset", () => {
+  const env = { ...process.env };
+  delete env.BAO_HOME;
+  const result = spawnSync("sh", [path.join(root, "scripts/bao-mcp.sh")], {
+    cwd: "/",
+    encoding: "utf8",
+    env,
+    timeout: 5000,
+  });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.status, 1, output);
+  assert.match(output, /BAO_HOME/);
+  assert.doesNotMatch(output, /EACCES/);
+});

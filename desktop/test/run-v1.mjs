@@ -37,6 +37,7 @@ for (const key of [
   "BAO_HEAL_CURSOR_RESPONSE",
   "BAO_HEAL_FIXTURE",
   "BAO_CURSOR_AGENT",
+  "BAO_PORT",
 ]) {
   delete env[key];
 }

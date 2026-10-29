@@ -12,6 +12,7 @@ out/
 
 # Local Chrome profile used for automation
 .chrome-profile/
+.bao-mcp/
 
 # OS files
 .DS_Store

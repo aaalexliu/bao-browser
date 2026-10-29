@@ -33,7 +33,7 @@ The extension is not in the Chrome Web Store. Load the unpacked build.
 
 After `./install-extension.sh`, click Reload on the Bao card at `chrome://extensions`. A page that already ran the content script needs its own reload.
 
-`npm run bao` is `bao serve`. Each start rewrites the native-host manifest and `bao-native-host.sh`. The socket lives under `$BAO_HOME/extension-host` (the CLI default is `~/.local/share/bao`). The token file stays when it is already there. The open port drops because the socket is replaced.
+`npm run bao` is `bao serve`. Each start rewrites the native-host manifest and `bao-native-host.sh`. The socket lives under `$BAO_HOME/extension-host`. In this checkout the CLI default is `~/.local/share/bao`, and `bao mcp` does not use it until pull request 133 lands. After 133 the shared default is `~/Library/Application Support/bao` on macOS and `~/.local/share/bao` on Linux. The token file stays when it is already there. The open port drops because the socket is replaced.
 
 Chrome reads `com.bao.desktop.json` when the browser starts. On macOS that file is `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.bao.desktop.json`. On Linux it is `~/.config/google-chrome/NativeMessagingHosts/com.bao.desktop.json`. `allowed_origins` is `chrome-extension://jcjcpblcjaakcmbgljdjkfgmmdfdbnfj/`. The same manifest is written for Chromium.
 
