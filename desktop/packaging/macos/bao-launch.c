@@ -220,26 +220,42 @@ static int mono_left_ms(const struct timespec *deadline) {
     nsec += 1000000000L;
   }
   if (sec < 0) return 0;
+  if (sec > 1000L) return 1000000;
   long ms = sec * 1000L + nsec / 1000000L;
   if (ms > 1000000L) return 1000000;
   return (int)ms;
 }
 
-static void sleep_ms(int ms) {
-  if (ms <= 0) return;
-  struct timespec ts;
-  ts.tv_sec = ms / 1000;
-  ts.tv_nsec = (long)(ms % 1000) * 1000000L;
-  while (nanosleep(&ts, &ts) != 0) {
-    if (errno != EINTR) return;
+static void sleep_once(const struct timespec *deadline, int cap_ms) {
+  struct timespec now;
+  if (mono_now(&now) != 0) return;
+  struct timespec wake = now;
+  mono_add_ms(&wake, cap_ms);
+  if (wake.tv_sec > deadline->tv_sec || (wake.tv_sec == deadline->tv_sec && wake.tv_nsec > deadline->tv_nsec)) {
+    wake = *deadline;
   }
+#if defined(TIMER_ABSTIME)
+  clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &wake, NULL);
+#else
+  long sec = (long)wake.tv_sec - (long)now.tv_sec;
+  long nsec = wake.tv_nsec - now.tv_nsec;
+  if (nsec < 0) {
+    sec--;
+    nsec += 1000000000L;
+  }
+  if (sec < 0) return;
+  struct timespec ts;
+  ts.tv_sec = sec;
+  ts.tv_nsec = nsec;
+  nanosleep(&ts, NULL);
+#endif
 }
 
 static int capture_writers_gone(int fd, char *buf, size_t n, size_t *used) {
   for (;;) {
     char tmp[512];
     ssize_t got = read(fd, tmp, sizeof tmp);
-    if (got < 0 && errno == EINTR) continue;
+    if (got < 0 && errno == EINTR) return 0;
     if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
     if (got <= 0) return 1;
     size_t room = n - 1 - *used;
@@ -253,7 +269,7 @@ static int capture_writers_gone(int fd, char *buf, size_t n, size_t *used) {
 }
 
 static void kill_group(pid_t pid, int reaped) {
-  if (kill(-pid, SIGKILL) == 0) return;
+  kill(-pid, SIGKILL);
   if (!reaped) kill(pid, SIGKILL);
 }
 
@@ -270,14 +286,16 @@ static int reap_bounded(pid_t pid, int fd, int *status, int reaped) {
     if (got == pid) reaped = 1;
     else if (got < 0 && errno != EINTR) break;
     else {
-      int left = mono_left_ms(&cleanup);
-      sleep_ms(left < 20 ? left : 20);
+      sleep_once(&cleanup, 20);
     }
   }
   close(fd);
   return -1;
 }
 
+/* A child that calls setsid, or a shell in monitor mode (set -m), leaves this
+   process group and survives the deadline. Do not walk the descendant tree.
+   A profile may have started a daemon on purpose. */
 static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) {
   if (!argv || !argv[0] || !buf || n == 0) return -1;
   int pipefd[2];
@@ -326,15 +344,14 @@ static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) 
       pid_t got = waitpid(pid, &status, WNOHANG);
       if (got == pid) reaped = 1;
       else if (got < 0 && errno != EINTR) {
-        close(pipefd[0]);
-        return -1;
+        reaped = 1;
+        return reap_bounded(pid, pipefd[0], &status, reaped);
       }
     }
     if (reaped && eof) break;
     if (mono_reached(&deadline)) break;
-    int left = mono_left_ms(&deadline);
-    if (left <= 0) break;
-    sleep_ms(left < 50 ? left : 50);
+    if (mono_left_ms(&deadline) <= 0) break;
+    sleep_once(&deadline, 50);
   }
   if (reaped && eof) {
     close(pipefd[0]);

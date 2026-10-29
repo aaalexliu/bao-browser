@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,7 +58,7 @@ static void touch_x(const char *path) {
   chmod(path, 0755);
 }
 
-static void write_script(const char *path, const char *body) {
+static int write_script(const char *path, const char *body) {
   char dir[4096];
   snprintf(dir, sizeof dir, "%s", path);
   char *slash = strrchr(dir, '/');
@@ -66,10 +67,14 @@ static void write_script(const char *path, const char *body) {
     mkdir_p(dir);
   }
   FILE *file = fopen(path, "w");
-  if (!file) return;
-  fputs(body, file);
-  fclose(file);
-  chmod(path, 0755);
+  if (!file) return -1;
+  if (fputs(body, file) < 0) {
+    fclose(file);
+    return -1;
+  }
+  if (fclose(file) != 0) return -1;
+  if (chmod(path, 0755) != 0) return -1;
+  return 0;
 }
 
 static void rm_rf(const char *path) {
@@ -262,9 +267,9 @@ static void test_discover(const char *home) {
   char nvm_home[512];
   snprintf(nvm_home, sizeof nvm_home, "%s/nvm-only", home);
   mkdir_p(nvm_home);
-  char only_nvm[512];
+  char only_nvm[1024];
   snprintf(only_nvm, sizeof only_nvm, "%s/.nvm/versions/node/v24.0.1/bin/node", nvm_home);
-  char old_nvm[512];
+  char old_nvm[1024];
   snprintf(old_nvm, sizeof old_nvm, "%s/.nvm/versions/node/v22.16.0/bin/node", nvm_home);
   touch_x(only_nvm);
   touch_x(old_nvm);
@@ -274,9 +279,9 @@ static void test_discover(const char *home) {
 
   char volta_home[512];
   snprintf(volta_home, sizeof volta_home, "%s/volta-only", home);
-  char volta_new[512];
+  char volta_new[1024];
   snprintf(volta_new, sizeof volta_new, "%s/.volta/tools/image/node/24.4.0/bin/node", volta_home);
-  char volta_old[512];
+  char volta_old[1024];
   snprintf(volta_old, sizeof volta_old, "%s/.volta/tools/image/node/20.11.0/bin/node", volta_home);
   touch_x(volta_new);
   touch_x(volta_old);
@@ -286,9 +291,9 @@ static void test_discover(const char *home) {
 
   char shim_home[512];
   snprintf(shim_home, sizeof shim_home, "%s/volta-shim", home);
-  char shim[512];
+  char shim[1024];
   snprintf(shim, sizeof shim, "%s/.volta/bin/node", shim_home);
-  char shim_old[512];
+  char shim_old[1024];
   snprintf(shim_old, sizeof shim_old, "%s/.volta/tools/image/node/20.0.0/bin/node", shim_home);
   touch_x(shim_old);
   memset(&world, 0, sizeof world);
@@ -302,20 +307,117 @@ static void test_discover(const char *home) {
   check(strcmp(bao_login_shell("zsh", world_exec, &world), "/bin/zsh") == 0, "relative SHELL falls through");
 }
 
+static long read_pid_file(const char *path) {
+  FILE *file = fopen(path, "r");
+  if (!file) return -1;
+  long pid = -1;
+  if (fscanf(file, "%ld", &pid) != 1) pid = -1;
+  fclose(file);
+  if (pid <= 1) return -1;
+  return pid;
+}
+
+static int waited_until_gone(long pid) {
+  if (pid <= 1) return 0;
+  for (int i = 0; i < 50; i++) {
+    if (kill((pid_t)pid, 0) != 0) return errno == ESRCH;
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = 10L * 1000L * 1000L;
+    nanosleep(&ts, NULL);
+  }
+  return 0;
+}
+
+static void reap_test_pid(long pid) {
+  if (pid <= 1) return;
+  if (kill((pid_t)pid, 0) == 0) kill((pid_t)pid, SIGKILL);
+}
+
+static void ignore_usr1(int sig) { (void)sig; }
+
+static pid_t start_signal_storm(void) {
+  struct sigaction sa;
+  memset(&sa, 0, sizeof sa);
+  sa.sa_handler = ignore_usr1;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0;
+  if (sigaction(SIGUSR1, &sa, NULL) != 0) return -1;
+  pid_t child = fork();
+  if (child == 0) {
+    pid_t target = getppid();
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (;;) {
+      struct timespec now;
+      clock_gettime(CLOCK_MONOTONIC, &now);
+      long ms = (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;
+      if (ms > 8000) _exit(0);
+      if (kill(target, SIGUSR1) != 0) _exit(0);
+    }
+  }
+  return child;
+}
+
+static void stop_signal_storm(pid_t child) {
+  if (child > 0) {
+    kill(child, SIGKILL);
+    waitpid(child, NULL, 0);
+  }
+  struct sigaction sa;
+  memset(&sa, 0, sizeof sa);
+  sa.sa_handler = SIG_DFL;
+  sigemptyset(&sa.sa_mask);
+  sigaction(SIGUSR1, &sa, NULL);
+}
+
+static int build_escape_helper(const char *home, char *bin, size_t n) {
+  char src[512];
+  snprintf(src, sizeof src, "%s/bin/escape.c", home);
+  snprintf(bin, n, "%s/bin/escape", home);
+  if (write_script(src,
+                   "#define _POSIX_C_SOURCE 200809L\n"
+                   "#include <stdio.h>\n"
+                   "#include <unistd.h>\n"
+                   "#include <signal.h>\n"
+                   "int main(int argc, char **argv) {\n"
+                   "  (void)argc;\n"
+                   "  if (fork() == 0) { for (;;) pause(); }\n"
+                   "  char path[4096];\n"
+                   "  snprintf(path, sizeof path, \"%s.pid\", argv[0]);\n"
+                   "  if (setpgid(0, getpgid(getppid())) != 0) _exit(1);\n"
+                   "  FILE *out = fopen(path, \"w\");\n"
+                   "  if (!out) _exit(1);\n"
+                   "  fprintf(out, \"%ld\\n\", (long)getpid());\n"
+                   "  if (fclose(out) != 0) _exit(1);\n"
+                   "  for (;;) pause();\n"
+                   "}\n") != 0) return -1;
+  pid_t cc = fork();
+  if (cc < 0) return -1;
+  if (cc == 0) {
+    execlp("cc", "cc", "-std=c11", src, "-o", bin, (char *)0);
+    _exit(127);
+  }
+  int status = 0;
+  if (waitpid(cc, &status, 0) != cc) return -1;
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return -1;
+  return 0;
+}
+
 static void test_real_exec(const char *home) {
   char versioned[512];
   snprintf(versioned, sizeof versioned, "%s/bin/version-node", home);
-  write_script(versioned, "#!/bin/sh\necho v24.19.0\n");
+  check(write_script(versioned, "#!/bin/sh\necho v24.19.0\n") == 0, "version script written");
   check(bao_real_major(versioned, NULL) == 24, "node -v major");
 
   char old[512];
   snprintf(old, sizeof old, "%s/bin/old-node", home);
-  write_script(old, "#!/bin/sh\necho v22.1.0\n");
+  check(write_script(old, "#!/bin/sh\necho v22.1.0\n") == 0, "old node script written");
   check(bao_real_major(old, NULL) == 22, "node 22 major");
 
   char shell[512];
   snprintf(shell, sizeof shell, "%s/bin/fake-shell", home);
-  write_script(shell, "#!/bin/sh\nprintf '%s\\n' welcome /opt/homebrew/bin/node\n");
+  check(write_script(shell, "#!/bin/sh\nprintf '%s\\n' welcome /opt/homebrew/bin/node\n") == 0, "fake shell written");
   char buf[256];
   check(bao_real_shell(shell, buf, sizeof buf, NULL) == 0, "fake shell runs");
   char accepted[256];
@@ -324,26 +426,98 @@ static void test_real_exec(const char *home) {
 
   char alias_shell[512];
   snprintf(alias_shell, sizeof alias_shell, "%s/bin/alias-shell", home);
-  write_script(alias_shell, "#!/bin/sh\nprintf '%s\\n' \"alias node='nope'\"\n");
+  check(write_script(alias_shell, "#!/bin/sh\nprintf '%s\\n' \"alias node='nope'\"\n") == 0, "alias script written");
   check(bao_real_shell(alias_shell, buf, sizeof buf, NULL) == 0, "alias shell exits 0");
   check(bao_accept_shell_output(buf, accepted, sizeof accepted) == 0, "real alias output rejected");
 
   char sleeper[512];
+  char sleeper_pid_path[1024];
   snprintf(sleeper, sizeof sleeper, "%s/bin/sleep-shell", home);
-  write_script(sleeper, "#!/bin/sh\nsleep 30\n");
+  snprintf(sleeper_pid_path, sizeof sleeper_pid_path, "%s.pid", sleeper);
+  check(write_script(sleeper, "#!/bin/sh\nsleep 30 &\necho $! > \"$0.pid\"\nwait\n") == 0, "hung script written");
   struct timespec start;
   clock_gettime(CLOCK_MONOTONIC, &start);
   check(bao_real_shell(sleeper, buf, sizeof buf, NULL) != 0, "hung shell fails");
   long took = elapsed_ms(start);
   check(took < 5000, "hung shell is killed");
+  long sleeper_pid = read_pid_file(sleeper_pid_path);
+  check(sleeper_pid > 1, "hung sleeper pid recorded");
+  check(waited_until_gone(sleeper_pid), "hung sleeper is dead");
+  reap_test_pid(sleeper_pid);
 
   char holder[512];
+  char holder_pid_path[1024];
   snprintf(holder, sizeof holder, "%s/bin/hold-stdout", home);
-  write_script(holder, "#!/bin/sh\n(trap '' HUP; exec sleep 30) &\nexit 0\n");
+  snprintf(holder_pid_path, sizeof holder_pid_path, "%s.pid", holder);
+  check(write_script(holder, "#!/bin/sh\n(trap '' HUP; exec sleep 30) &\necho $! > \"$0.pid\"\nexit 0\n") == 0, "holder script written");
   clock_gettime(CLOCK_MONOTONIC, &start);
   check(bao_real_shell(holder, buf, sizeof buf, NULL) != 0, "stdout holder fails");
   took = elapsed_ms(start);
   check(took < 5000, "stdout holder is killed");
+  long holder_pid = read_pid_file(holder_pid_path);
+  check(holder_pid > 1, "stdout holder pid recorded");
+  check(waited_until_gone(holder_pid), "stdout holder is dead");
+  reap_test_pid(holder_pid);
+
+  char storm_shell[512];
+  char storm_pid_path[1024];
+  snprintf(storm_shell, sizeof storm_shell, "%s/bin/storm-shell", home);
+  snprintf(storm_pid_path, sizeof storm_pid_path, "%s.pid", storm_shell);
+  check(write_script(storm_shell, "#!/bin/sh\nsleep 30 &\necho $! > \"$0.pid\"\nwait\n") == 0, "storm script written");
+  pid_t storm = start_signal_storm();
+  check(storm > 0, "signal storm started");
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  check(bao_real_shell(storm_shell, buf, sizeof buf, NULL) != 0, "signal storm capture fails");
+  took = elapsed_ms(start);
+  stop_signal_storm(storm);
+  check(took < 5000, "signal storm stays inside the deadline");
+  long storm_pid = read_pid_file(storm_pid_path);
+  check(storm_pid > 1, "signal storm sleeper pid recorded");
+  check(waited_until_gone(storm_pid), "signal storm sleeper is dead");
+  reap_test_pid(storm_pid);
+
+  struct sigaction ignore_child;
+  struct sigaction previous_child;
+  memset(&ignore_child, 0, sizeof ignore_child);
+  ignore_child.sa_handler = SIG_IGN;
+  sigemptyset(&ignore_child.sa_mask);
+  check(sigaction(SIGCHLD, &ignore_child, &previous_child) == 0, "SIGCHLD ignored");
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  check(bao_real_shell(holder, buf, sizeof buf, NULL) != 0, "reaped child capture fails");
+  took = elapsed_ms(start);
+  sigaction(SIGCHLD, &previous_child, NULL);
+  check(took < 5000, "reaped child returns");
+  long reaped_pid = read_pid_file(holder_pid_path);
+  check(reaped_pid > 1, "reaped child pid recorded");
+  check(waited_until_gone(reaped_pid), "reaped child group is dead");
+  reap_test_pid(reaped_pid);
+
+  char escape_bin[512];
+  check(build_escape_helper(home, escape_bin, sizeof escape_bin) == 0, "escape helper built");
+  char escape_pid_path[1024];
+  snprintf(escape_pid_path, sizeof escape_pid_path, "%s.pid", escape_bin);
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  check(bao_real_shell(escape_bin, buf, sizeof buf, NULL) != 0, "escaped child capture fails");
+  took = elapsed_ms(start);
+  check(took < 5000, "escaped child returns");
+  long escape_pid = read_pid_file(escape_pid_path);
+  check(escape_pid > 1, "escaped child pid recorded");
+  check(waited_until_gone(escape_pid), "escaped child is dead");
+  reap_test_pid(escape_pid);
+
+  char monitor[512];
+  char monitor_pid_path[1024];
+  snprintf(monitor, sizeof monitor, "%s/bin/monitor-shell", home);
+  snprintf(monitor_pid_path, sizeof monitor_pid_path, "%s.pid", monitor);
+  check(write_script(monitor, "#!/bin/bash\nset -m\n(trap '' HUP; exec sleep 30) &\necho $! > \"$0.pid\"\nexit 0\n") == 0, "monitor script written");
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  check(bao_real_shell(monitor, buf, sizeof buf, NULL) != 0, "monitor holder fails");
+  took = elapsed_ms(start);
+  check(took < 5000, "monitor holder returns");
+  long monitor_pid = read_pid_file(monitor_pid_path);
+  check(monitor_pid > 1, "monitor holder pid recorded");
+  check(kill((pid_t)monitor_pid, 0) == 0, "monitor holder stays alive");
+  reap_test_pid(monitor_pid);
 }
 
 static void test_instance(const char *home) {
