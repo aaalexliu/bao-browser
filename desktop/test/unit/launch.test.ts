@@ -3,7 +3,7 @@ import test from "node:test";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome, resolveNormalChrome } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -74,6 +74,16 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   }
   assert.equal(resolveAccountChrome((file) => file === bundled, { BAO_BROWSER: bundled }), bundled);
   assert.throws(() => resolveAccountChrome(() => false, {}), /Chrome was not found/);
+});
+
+test("an explicit BAO_BROWSER wins over installed Chrome", () => {
+  const bundled = "/tmp/Bao.app/Chromium";
+  const exists = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME || file === bundled;
+  assert.equal(resolveNormalChrome(exists, { BAO_BROWSER: bundled }, "darwin"), bundled);
+  assert.equal(resolveNormalChrome(exists, { BAO_BROWSER: bundled }, "linux"), bundled);
+  assert.equal(resolveNormalChrome(exists, {}, "darwin"), ACCOUNT_CHROME_MAC);
+  assert.equal(resolveNormalChrome(exists, {}, "linux"), LINUX_CHROME);
+  assert.throws(() => resolveNormalChrome(exists, { BAO_BROWSER: "/missing/chrome" }, "linux"), /BAO_BROWSER was not found/);
 });
 
 test("remote debugging port 9222 is refused", () => {
