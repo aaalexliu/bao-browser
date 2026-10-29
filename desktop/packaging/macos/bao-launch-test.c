@@ -336,6 +336,14 @@ static void test_real_exec(const char *home) {
   check(bao_real_shell(sleeper, buf, sizeof buf, NULL) != 0, "hung shell fails");
   long took = elapsed_ms(start);
   check(took < 5000, "hung shell is killed");
+
+  char holder[512];
+  snprintf(holder, sizeof holder, "%s/bin/hold-stdout", home);
+  write_script(holder, "#!/bin/sh\n(trap '' HUP; exec sleep 30) &\nexit 0\n");
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  check(bao_real_shell(holder, buf, sizeof buf, NULL) != 0, "stdout holder fails");
+  took = elapsed_ms(start);
+  check(took < 5000, "stdout holder is killed");
 }
 
 static void test_instance(const char *home) {

@@ -10,21 +10,24 @@ import { fixtureStartValue, productWindowTitle, teachHome } from "../../src/app/
 test("node discovery and the single-instance lock", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "bao-launch-"));
   const bin = path.join(dir, "bao-launch-test");
-  execFileSync("cc", [
-    "-std=c11",
-    "-Wall",
-    "-Wextra",
-    "-Werror",
-    path.join(process.cwd(), "desktop/packaging/macos/bao-launch.c"),
-    path.join(process.cwd(), "desktop/packaging/macos/bao-launch-test.c"),
-    "-o",
-    bin,
-  ], { stdio: "inherit" });
-  const out = execFileSync(bin, { encoding: "utf8" });
-  assert.match(out, /^ok \d+\n$/);
-  const count = Number(out.match(/^ok (\d+)/)?.[1]);
-  assert.ok(count >= 40, out);
-  rmSync(dir, { recursive: true, force: true });
+  try {
+    execFileSync("cc", [
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      path.join(process.cwd(), "desktop/packaging/macos/bao-launch.c"),
+      path.join(process.cwd(), "desktop/packaging/macos/bao-launch-test.c"),
+      "-o",
+      bin,
+    ], { stdio: "inherit", timeout: 60_000 });
+    const out = execFileSync(bin, { encoding: "utf8", timeout: 20_000 });
+    assert.match(out, /^ok \d+\n$/);
+    const count = Number(out.match(/^ok (\d+)/)?.[1]);
+    assert.ok(count >= 40, out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("the product window title is Bao and the capture field hides the listen address", () => {
