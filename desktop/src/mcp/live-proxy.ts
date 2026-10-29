@@ -22,6 +22,7 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
       url: flag(args, "--url") || "",
       portFile: flag(args, "--port-file") || "",
       preset: flag(args, "--preset") || "generic",
+      workflowId: flag(args, "--workflow-id") || "",
     };
   }
   if (cmd === "live_click") return { op: cmd, ref: flag(args, "--ref") || "" };
@@ -83,7 +84,10 @@ export async function liveProxyMain(args: string[] = []): Promise<void> {
         send({
           jsonrpc: "2.0",
           id: msg.id,
-          result: { content: [{ type: "text", text: JSON.stringify(result) }], isError: outcome === "rejected" },
+          result: {
+            content: [{ type: "text", text: JSON.stringify(result) }],
+            isError: outcome === "rejected" || outcome === "refused" || outcome === "halted",
+          },
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "live call failed";

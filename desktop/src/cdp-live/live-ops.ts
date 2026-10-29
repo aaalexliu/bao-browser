@@ -19,7 +19,7 @@ export function isLiveOp(value: string): value is LiveOpName {
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: "Open a local live session on one http(s) page in the running Chrome. Pass an intent and a url. A preset (generic, instacart, books) supplies the guard patterns. The reply lists controls and the buttons that will not be clicked. It does not return cookies or storage.",
+    description: "Open a local live session on one http(s) page in the running Chrome. Pass an intent, a url, and an absolute DevToolsActivePort path. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage.",
     inputSchema: {
       type: "object",
       properties: {
@@ -27,23 +27,24 @@ export const LIVE_TOOLS = [
         url: { type: "string" },
         portFile: { type: "string" },
         preset: { type: "string", enum: ["generic", "instacart", "books"] },
+        workflowId: { type: "string" },
       },
       required: ["intent", "url", "portFile"],
     },
   },
   {
     name: "live_snapshot",
-    description: "Read the open live page. Confirm buttons are named and not given a ref. Credential fields are counted and not given a ref.",
+    description: "Read the open live page. Confirm buttons and denied labels are named and not given a ref. Credential fields, including security code, PIN, verification code, and one-time code, are counted and not given a ref.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "live_click",
-    description: "Click one ref from the latest snapshot. A confirm button is refused and not clicked.",
+    description: "Click one ref from the latest snapshot. A confirm button or a denied label is refused and not clicked. A control covered by another element is refused and not clicked.",
     inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
   },
   {
     name: "live_type",
-    description: "Type into one non-credential field from the latest snapshot. Passwords, card numbers, and secret-looking text are refused.",
+    description: "Type into one non-credential field from the latest snapshot. Passwords, security codes, card numbers, SSNs, and secret-looking text are refused. Typing stops if focus is no longer that field.",
     inputSchema: { type: "object", properties: { ref: { type: "string" }, text: { type: "string" } }, required: ["ref", "text"] },
   },
   {
@@ -53,7 +54,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_stop",
-    description: "Close the live session and leave the page where it is.",
+    description: "Close the live session and write its workflow in this Mac's library. A confirm step is saved before each typed field. Replay of that file uses the open Chrome and does not call a model.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;
@@ -86,6 +87,7 @@ export interface LiveControlFact {
   label: string;
   kind: string;
   form?: string;
+  href?: string;
   field?: { type: string; name: string; autocomplete: string };
 }
 
@@ -94,6 +96,7 @@ export interface PageFacts {
   title: string;
   headings: string[];
   blocked: string;
+  text?: string;
   controls: LiveControlFact[];
 }
 
@@ -113,12 +116,12 @@ export interface LiveView {
   epoch: number;
 }
 
-type TargetKind = "click" | "field" | "commit" | "credential";
+type TargetKind = "click" | "field" | "commit" | "credential" | "deny";
 
 export interface LiveRead {
   view: LiveView;
   targets: {
-    byRef: Map<string, { index: number; kind: TargetKind; selector: string }>;
+    byRef: Map<string, { index: number; kind: TargetKind; selector: string; href: string }>;
     passwordRef?: string;
   };
 }
@@ -135,30 +138,41 @@ function selectorFor(index: number): string {
   return `[data-bao-live="${index}"]`;
 }
 
+const CREDENTIAL_WORD = /\b(password|passcode|otp|cvv|cvc|ssn|social security|card number|security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor)\b/;
+
 function credential(control: LiveControlFact): boolean {
   const type = (control.field?.type || "").toLowerCase();
   const auto = (control.field?.autocomplete || "").toLowerCase();
   const name = `${control.field?.name || ""} ${control.label}`.toLowerCase();
   if (type === "password") return true;
   if (/password|username|one-time-code|cc-number|cc-csc|cc-exp/.test(auto)) return true;
-  if (/\b(password|passcode|otp|cvv|cvc|ssn|social security|card number)\b/.test(name)) return true;
+  if (CREDENTIAL_WORD.test(name)) return true;
   return false;
 }
 
-function commit(control: LiveControlFact, commitSource: string): boolean {
-  if (control.kind === "field") return false;
-  if (control.form === "search") return false;
-  if (control.kind === "submit") return true;
-  if (!commitSource) return false;
+function pattern(source: string, label: string): boolean {
+  if (!source || !label) return false;
   try {
-    return new RegExp(commitSource, "i").test(control.label);
+    return new RegExp(source, "i").test(label);
   } catch {
     return false;
   }
 }
 
+function commit(control: LiveControlFact, commitSource: string): boolean {
+  if (control.kind === "field") return false;
+  if (pattern(commitSource, control.label)) return true;
+  if (control.form === "search") return false;
+  if (control.kind === "submit") return true;
+  return false;
+}
+
+function denied(control: LiveControlFact, denySource: string): boolean {
+  if (control.kind === "field") return false;
+  return pattern(denySource, control.label);
+}
+
 export function buildView(facts: PageFacts, epoch: number, commitSource: string, denySource = ""): LiveRead {
-  void denySource;
   const view: LiveView = {
     path: facts.path.startsWith("/") ? facts.path.slice(0, 120) : "",
     title: redactLabel(facts.title).slice(0, 80),
@@ -168,26 +182,32 @@ export function buildView(facts: PageFacts, epoch: number, commitSource: string,
     credentialFields: 0,
     epoch,
   };
-  const byRef = new Map<string, { index: number; kind: TargetKind; selector: string }>();
+  const byRef = new Map<string, { index: number; kind: TargetKind; selector: string; href: string }>();
   let passwordRef: string | undefined;
   for (const control of facts.controls) {
     const ref = refFor(epoch, control.index);
     const selector = selectorFor(control.index);
+    const href = control.href || "";
     if (credential(control)) {
       view.credentialFields += 1;
-      byRef.set(ref, { index: control.index, kind: "credential", selector });
+      byRef.set(ref, { index: control.index, kind: "credential", selector, href });
       passwordRef = passwordRef || ref;
       continue;
     }
     const label = redactLabel(control.label);
     if (!label) continue;
+    if (denied(control, denySource)) {
+      view.stopBeforeConfirm.push({ label });
+      byRef.set(ref, { index: control.index, kind: "deny", selector, href });
+      continue;
+    }
     if (commit(control, commitSource)) {
       view.stopBeforeConfirm.push({ label });
-      byRef.set(ref, { index: control.index, kind: "commit", selector });
+      byRef.set(ref, { index: control.index, kind: "commit", selector, href });
       continue;
     }
     const kind: TargetKind = control.kind === "field" ? "field" : "click";
-    byRef.set(ref, { index: control.index, kind, selector });
+    byRef.set(ref, { index: control.index, kind, selector, href });
     view.controls.push({ ref, label, kind: control.kind });
   }
   return { view, targets: { byRef, passwordRef } };
@@ -205,24 +225,29 @@ export function planClick(read: LiveRead, ref: string): Plan {
   const target = read.targets.byRef.get(ref);
   if (!target) return { ok: false, refusal: "unknown_ref" };
   if (target.kind === "commit") return { ok: false, refusal: "stop_before_confirm" };
+  if (target.kind === "deny") return { ok: false, refusal: "denied" };
   if (target.kind === "credential") return { ok: false, refusal: "credential_field" };
   return { ok: true, selector: target.selector };
 }
 
-export function planType(read: LiveRead, ref: string, text: string): Plan {
+export function planType(read: LiveRead, ref: string, text: string, prior = ""): Plan {
   const parsed = parsedRef(ref);
   if (!parsed || parsed.epoch !== read.view.epoch) return { ok: false, refusal: "stale_ref" };
   const target = read.targets.byRef.get(ref);
   if (!target) return { ok: false, refusal: "unknown_ref" };
   if (target.kind === "credential") return { ok: false, refusal: "credential_field" };
   if (target.kind !== "field") return { ok: false, refusal: "not_a_field" };
-  const refusal = insertTextRefusal(text);
+  const refusal = insertTextRefusal(text, prior);
   if (refusal) return { ok: false, refusal };
   return { ok: true, selector: target.selector };
 }
 
 export function pageHalt(facts: { blocked: string; path: string; passwordFields: number; text?: string }): "login_wall" | "bot_wall" | null {
-  void facts.text;
+  const text = (facts.text || "").toLowerCase();
+  if (/request unsuccessful|powered by imperva|incapsula incident/.test(text)) return "bot_wall";
+  if (/verify you are human|i'm not a robot|i’m not a robot|recaptcha challenge/.test(text)) return "bot_wall";
+  if (/continue with google|sign in with google|sign in with apple|continue with apple|single sign-on|\bsso\b/.test(text)) return "login_wall";
+  if (/verification code|one-time code|one time code|two-factor|two factor|\b2fa\b|security code|\bpin\b/.test(text)) return "login_wall";
   if (facts.blocked === "login" || facts.blocked === "login_wall" || (facts.passwordFields > 0 && /login|sign-?in/i.test(facts.path))) {
     return "login_wall";
   }
@@ -235,10 +260,10 @@ export function targetVerdict(
   ownId: string,
   baseline?: ReadonlySet<string>,
 ): "close" | "ignore" {
-  void baseline;
   if (event.type && event.type !== "page") return "ignore";
   if (!event.targetId || event.targetId === ownId) return "ignore";
   if (event.openerId === ownId) return "close";
+  if (baseline && !baseline.has(event.targetId)) return "close";
   return "ignore";
 }
 
@@ -273,11 +298,44 @@ export function focusLiveMark(ask: { markIndex: number }): void {
   if (el instanceof HTMLElement) el.focus();
 }
 
-/** Page function. It lists controls and never reads cookies or storage. */
+/** Page function. The value already in the marked field. It is not returned to the caller of the tool. */
+export function markedFieldValue(ask: { markIndex: number }): string {
+  const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return String(el.value || "").slice(0, 80);
+  return "";
+}
+
+/** Page function. True only when focus is still the marked control, including through an open shadow root. */
+export function focusStillMarked(ask: { markIndex: number }): { ok: boolean; credential: boolean } {
+  const marked = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
+  let node: Element | null = document.activeElement;
+  while (node && node.shadowRoot) {
+    const inner = node.shadowRoot.activeElement;
+    if (!inner || inner === node) break;
+    node = inner;
+  }
+  const focused = node;
+  const password = focused instanceof HTMLInputElement && (focused.getAttribute("type") || "").toLowerCase() === "password";
+  const auto = focused instanceof HTMLInputElement ? (focused.getAttribute("autocomplete") || "").toLowerCase() : "";
+  const name = focused instanceof HTMLElement
+    ? `${focused.getAttribute("name") || ""} ${focused.getAttribute("aria-label") || ""}`.toLowerCase()
+    : "";
+  const credential = password || /password|one-time-code|cc-number|cc-csc/.test(auto)
+    || /\b(password|passcode|otp|cvv|cvc|ssn|social security|card number|security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor)\b/.test(name);
+  if (!(marked instanceof HTMLElement) || !focused) return { ok: false, credential };
+  const same = focused === marked || marked.contains(focused);
+  return { ok: same && !credential, credential };
+}
+
+/** Page function. It lists visible controls and never reads cookies or storage. */
 export function readLivePage(ask: { markIndex: number }): PageFacts {
   const mark = typeof ask?.markIndex === "number" ? ask.markIndex : -1;
+  if (mark >= 0) {
+    document.querySelectorAll("[data-bao-live]").forEach((el) => el.removeAttribute("data-bao-live"));
+  }
   const controls: LiveControlFact[] = [];
   let index = 0;
+  let credentialHalt = false;
   const textOf = (el: Element): string => (
     el.getAttribute("aria-label")
     || el.getAttribute("placeholder")
@@ -285,13 +343,29 @@ export function readLivePage(ask: { markIndex: number }): PageFacts {
     || el.textContent
     || ""
   ).replace(/\s+/g, " ").trim().slice(0, 80);
+  const concealed = (el: Element): boolean => {
+    if (!(el instanceof HTMLElement)) return true;
+    if (el.hidden || el.getAttribute("aria-hidden") === "true") return true;
+    const owner = el.closest("form");
+    if (owner instanceof HTMLElement && (owner.hidden || owner.getAttribute("aria-hidden") === "true")) return true;
+    const style = getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return true;
+    const box = el.getBoundingClientRect();
+    return box.width < 1 || box.height < 1;
+  };
   const visit = (el: Element, kind: string, field?: { type: string; name: string; autocomplete: string }): void => {
+    if (concealed(el)) return;
     const label = textOf(el);
     if (!label) return;
     if (mark === index) el.setAttribute("data-bao-live", String(index));
     const form = el.closest("form");
     const search = !!form && (!!form.querySelector("input[type=search]") || form.getAttribute("role") === "search");
-    controls.push({ index, label, kind, form: search ? "search" : "", field });
+    const href = el instanceof HTMLAnchorElement ? el.href : "";
+    const blob = `${field?.type || ""} ${field?.name || ""} ${field?.autocomplete || ""} ${label}`.toLowerCase();
+    if (field && /\b(security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor|otp)\b/.test(blob)) {
+      credentialHalt = true;
+    }
+    controls.push({ index, label, kind, form: search ? "search" : "", href, field });
     index += 1;
   };
   for (const el of document.querySelectorAll("a[href], button, input[type=submit]")) {
@@ -310,12 +384,12 @@ export function readLivePage(ask: { markIndex: number }): PageFacts {
     });
   }
   const headings = [...document.querySelectorAll("h1, h2")].slice(0, 8).map((el) => (el.textContent || "").replace(/\s+/g, " ").trim());
-  const password = !!document.querySelector("input[type=password]");
   return {
-    path: location.pathname || "/",
+    path: `${location.pathname || "/"}${location.hash || ""}`,
     title: document.title || "",
     headings,
-    blocked: password ? "login" : "",
+    blocked: credentialHalt ? "login" : "",
+    text: (document.body?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1500),
     controls,
   };
 }

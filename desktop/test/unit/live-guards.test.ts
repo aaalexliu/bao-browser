@@ -8,7 +8,10 @@ import { insertTextRefusal, navigationRefusal, INSTACART_HOSTS } from "../../src
 import { buildView, pageHalt, planClick, targetVerdict, type PageFacts } from "../../src/cdp-live/live-ops";
 import { liveCliBody } from "../../src/mcp/live-proxy";
 import { acquireCdpLock, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
+import { createLiveHost } from "../../src/cdp-live/live-host";
+import { workflowFromLive } from "../../src/cdp-live/attach";
 import { guardPreset } from "../../src/cdp-live/presets";
+import { validateWorkflow } from "../../src/v1/schema";
 import type { LiveSessionRecord } from "../../src/cdp-live/live-record";
 
 const generic = guardPreset("generic");
@@ -144,6 +147,58 @@ test("a dead lock holder is stale and the lock records a pid", async () => {
     },
   });
   releaseCdpLock("next", file);
+});
+
+test("the live entry refuses a stop path before navigation and keeps a blocked path distinct from a host miss", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-live-guard-"));
+  const host = createLiveHost({ home, lockFile: path.join(home, "lock") });
+  const portFile = path.join(home, "DevToolsActivePort");
+  const checkout = await host.call({
+    op: "live_session_start",
+    intent: "Shop",
+    url: "http://127.0.0.1:9/checkout",
+    portFile,
+    preset: "generic",
+    workflowId: "wf-from-the-flag",
+  }) as { outcome?: { kind?: string; reason?: string }; session?: string };
+  assert.equal(checkout.outcome?.reason, "stop-path");
+  assert.equal(checkout.session, "");
+  const hash = await host.call({
+    op: "live_session_start",
+    intent: "Shop",
+    url: "https://www.instacart.com/#/checkout",
+    portFile,
+    preset: "instacart",
+  }) as { outcome?: { reason?: string } };
+  assert.equal(hash.outcome?.reason, "blocked-path");
+  const account = await host.call({
+    op: "live_session_start",
+    intent: "Shop",
+    url: "https://www.instacart.com/account-settings",
+    portFile,
+    preset: "instacart",
+  }) as { outcome?: { reason?: string } };
+  assert.equal(account.outcome?.reason, "blocked-path");
+  await host.close();
+});
+
+test("a saved live workflow confirms before each typed field", () => {
+  const doc = workflowFromLive({
+    id: "wf-shop",
+    name: "Shop",
+    intent: "Shop",
+    startUrl: "http://127.0.0.1/shop",
+    createdAt: 1,
+    actions: [
+      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
+      { name: "type", label: "Instructions", path: "/shop", kind: "field", value: "milk" },
+    ],
+  });
+  assert.equal(doc.driver, "cdp-live");
+  assert.deepEqual(doc.steps.map((step) => step.action), ["click", "confirm", "type"]);
+  assert.equal(doc.steps[1]?.human, true);
+  assert.equal(doc.steps[2]?.value, "milk");
+  assert.deepEqual(validateWorkflow(doc), []);
 });
 
 test("live Chrome stays allowed when Screen Recording is granted", () => {

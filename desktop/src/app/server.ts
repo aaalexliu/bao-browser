@@ -1067,7 +1067,14 @@ export async function startApp(opts: {
         const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
-        if (refusesOwnedBrowser(workflow.driver)) return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
+        if (refusesOwnedBrowser(workflow.driver)) {
+          try {
+            return json(res, await live.replay(workflow));
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "live replay failed";
+            return json(res, { error: message, modelCalls: 0 }, 409);
+          }
+        }
         const args = await materializeFiles(body.args || {});
         if (body.fresh) {
           const existing = replays.get(saved.id);

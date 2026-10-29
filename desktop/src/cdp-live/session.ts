@@ -19,6 +19,7 @@ import { clearInbox, connectAndAllow } from "./connect";
 import { readDevToolsActivePort } from "./endpoint";
 import { acquireCdpLock, releaseCdpLock } from "./lock";
 import { workflowIdsFromIntent } from "./live-ops";
+import { liveChromeBlock } from "../helper-capabilities";
 import { resolveGuardFlags } from "./presets";
 import { classifyPage } from "../v1/page-class";
 import { validateWorkflow } from "../v1/schema";
@@ -484,9 +485,8 @@ async function runGuarded(
   const helper = chromeHelper();
   progress("helper permissions");
   const perms = await helper.permissions(false);
-  if (perms.prompted) throw new Error("helper asked for a permission prompt");
-  if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
-  if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
+  const block = liveChromeBlock(perms);
+  if (block) throw new Error(block);
   progress("reading the remote-debugging checkbox");
   const box = await checkboxState(helper);
   if (checkboxReach(box.summary) === "stop") {

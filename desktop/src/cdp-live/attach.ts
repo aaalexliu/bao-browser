@@ -65,6 +65,74 @@ export interface AuditClick {
   kind: string;
 }
 
+export interface LiveAction {
+  name: "click" | "type";
+  label: string;
+  path: string;
+  kind: string;
+  value?: string;
+}
+
+/** A saved live run. Each typed field is preceded by a human confirm, which replay does not type. */
+export function workflowFromLive(input: {
+  id: string;
+  name: string;
+  intent: string;
+  startUrl: string;
+  createdAt: number;
+  actions: readonly LiveAction[];
+}): WorkflowV2 {
+  const steps: WorkflowStep[] = [];
+  for (const action of input.actions) {
+    if (!action.label) continue;
+    if (action.name === "type") {
+      steps.push({
+        id: `${input.id}-confirm-${steps.length}`,
+        index: steps.length,
+        action: "confirm",
+        label: `Confirm before typing into ${action.label}`.slice(0, 120),
+        surface: "dom",
+        human: true,
+        heal: "never",
+        timeoutMs: 0,
+        intent: "A person confirms this write",
+      });
+    }
+    const role = action.kind === "link" ? "link" : action.name === "type" ? "textbox" : "button";
+    const index = steps.length;
+    const step: WorkflowStep = {
+      id: `${input.id}-${index}`,
+      index,
+      action: action.name === "type" ? "type" : "click",
+      label: action.name === "type" ? `Type into ${action.label}` : `Click ${action.label}`,
+      surface: "dom",
+      timeoutMs: 8000,
+      heal: "never",
+      identity: { surface: "dom", role, name: action.label, path: [] },
+      locators: [{ kind: "role", role, name: action.label }],
+    };
+    if (action.name === "type" && action.value && !action.value.startsWith("/") && !action.value.startsWith("~/")) {
+      step.value = action.value.slice(0, 80);
+    }
+    steps.push(step);
+  }
+  return {
+    schema: WORKFLOW_SCHEMA_ID,
+    version: 2,
+    id: input.id,
+    name: input.name,
+    startUrl: input.startUrl,
+    inputs: [],
+    steps,
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+    heal: "approve",
+    driver: "cdp-live",
+    intent: input.intent,
+    summary: "Local draft. Recorded in the open Chrome. A person confirms each typed field.",
+  };
+}
+
 /** A local v2 draft. The last step is a human confirm, which replay does not click. */
 export function workflowFromAudit(input: {
   id: string;

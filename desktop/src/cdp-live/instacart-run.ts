@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { liveChromeBlock } from "../helper-capabilities";
 import { checkboxReach } from "./consent";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal } from "./allowlist";
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree } from "./ax";
@@ -194,9 +195,8 @@ async function run(): Promise<void> {
   const helper = chromeHelper();
   progress("helper permissions");
   const perms = await helper.permissions(false);
-  if (perms.prompted) throw new Error("helper asked for a permission prompt");
-  if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
-  if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
+  const block = liveChromeBlock(perms);
+  if (block) throw new Error(block);
   progress("reading DevToolsActivePort");
   const endpoint = await readDevToolsActivePort();
   const chromePid = await listenPid(endpoint.port);

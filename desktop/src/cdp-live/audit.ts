@@ -74,6 +74,13 @@ export class SessionLog {
     this.record.steps = steps;
   }
 
+  async patchLast(isTrusted: boolean | null): Promise<void> {
+    const last = this.record.audit[this.record.audit.length - 1];
+    if (!last) return;
+    last.isTrusted = isTrusted;
+    await this.flush(this.record.status);
+  }
+
   async flush(status: LiveSessionRecord["status"], note = "", host = ""): Promise<void> {
     this.record.status = status;
     if (note) this.record.note = note;

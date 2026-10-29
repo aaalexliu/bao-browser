@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { liveChromeBlock } from "../helper-capabilities";
 import { checkboxReach } from "./consent";
 import { AxUnavailable, checkboxState, chromeHelper } from "./ax";
 import { listenPid, readDevToolsActivePort } from "./endpoint";
@@ -80,9 +81,8 @@ interface Probe {
 async function connect(): Promise<CdpSocket> {
   const helper = chromeHelper();
   const perms = await helper.permissions(false);
-  if (perms.prompted) throw new Error("helper asked for a permission prompt");
-  if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
-  if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
+  const block = liveChromeBlock(perms);
+  if (block) throw new Error(block);
   const endpoint = await readDevToolsActivePort();
   const chromePid = await listenPid(endpoint.port);
   const box = await checkboxState(helper, chromePid);

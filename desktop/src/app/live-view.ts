@@ -1,4 +1,4 @@
-import { auditPage, liveShotUrl, type LiveSessionRecord } from "../cdp-live/live-record";
+import { AUDIT_PAGE_SIZE, auditPage, liveShotUrl, type LiveSessionRecord } from "../cdp-live/live-record";
 
 function esc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
@@ -16,6 +16,14 @@ export function screenFromQuery(search: string): "live" | "" {
   return new URLSearchParams(search).get("screen") === "live" ? "live" : "";
 }
 
+/** `?screen=live&page=0` selects an audit window. An absent page lets the view choose. */
+export function livePageFromQuery(search: string): number | undefined {
+  const raw = new URLSearchParams(search).get("page");
+  if (raw == null || raw === "") return undefined;
+  const page = Number(raw);
+  return Number.isFinite(page) ? Math.floor(page) : undefined;
+}
+
 /** The capture trail paints #live-steps only on the capture screen. The live screen owns that list. */
 export function captureTrailOwnsSteps(screen: string): boolean {
   return screen === "capture";
@@ -26,8 +34,10 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
   if (!session || session.status === "idle") {
     return `<section id="live-session" data-status="idle"><h2>Live session</h2><p class="quiet">No live session yet. A run on this Mac shows its steps, audit, and blurred page shots here.</p></section>`;
   }
-  const stepPage = auditPage(session.steps, page);
-  const audit = auditPage(session.audit, page);
+  const shotAt = session.audit.findIndex((row) => row.shot);
+  const chosen = page == null ? (shotAt < 0 ? 0 : Math.floor(shotAt / AUDIT_PAGE_SIZE)) : page;
+  const stepPage = auditPage(session.steps, chosen);
+  const audit = auditPage(session.audit, chosen);
   const steps = stepPage.rows.map((step) =>
     `<li data-status="${esc(step.status)}"><strong>${esc(step.name)}</strong> <span class="quiet">${esc(step.status)} · ${step.ms} ms</span></li>`).join("");
   const rows = audit.rows.map((row) =>
@@ -47,6 +57,7 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
     <ol id="live-steps">${steps || `<li class="quiet">No steps yet.</li>`}</ol>
     <h3 class="section">Audit</h3>
     <p id="live-audit-page" class="quiet" data-total="${audit.total}" data-page="${audit.page + 1}">Audit page ${audit.page + 1} of ${audit.pages}. ${audit.total} rows.</p>
+    <nav id="live-pager"><a href="?screen=live&amp;page=${Math.max(0, audit.page - 1)}">Previous</a> <a href="?screen=live&amp;page=${Math.min(audit.pages - 1, audit.page + 1)}">Next</a></nav>
     <table id="live-audit">
       <thead><tr><th>Action</th><th>Target</th><th>Path</th><th>Trusted</th><th>Time</th></tr></thead>
       <tbody>${rows}</tbody>

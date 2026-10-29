@@ -6,7 +6,7 @@ import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
-import { captureTrailOwnsSteps, liveSessionView, screenFromQuery } from "./live-view";
+import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
@@ -227,7 +227,7 @@ function render(): void {
     const body = screen === "capture" ? capture()
       : screen === "teach" ? teachScreen()
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
-      : screen === "live" ? liveSessionView(state.liveSession)
+      : screen === "live" ? liveSessionView(state.liveSession, livePageFromQuery(location.search))
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
       : screen === "settings" ? settings()

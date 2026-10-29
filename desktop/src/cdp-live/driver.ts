@@ -113,8 +113,11 @@ export class CdpLiveDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
   private loadEpoch = 0;
   private offHost = "";
+  private blockedNav = "";
+  private origins: readonly string[] = [];
   private humanAsk: HumanAsk | undefined;
   private trustEvents: TrustEvent[] = [];
+  private trustCursor = 0;
   readonly subframesSeen = { count: 0 };
 
   private scriptId = "";
@@ -128,12 +131,23 @@ export class CdpLiveDriver implements Driver {
     private readonly preserveTarget = false,
   ) {}
 
+  setOrigins(origins: readonly string[]): void {
+    this.origins = origins;
+  }
+
   private allows(url: string): boolean {
+    if (!url || url === "about:blank" || url.startsWith("about:") || url.startsWith("chrome:") || url.startsWith("devtools:") || url.startsWith("chrome-error:")) {
+      return true;
+    }
+    if (this.origins.length) return navigationRefusal(url, this.hosts, this.origins) == null;
     return navigationAllowed(url, this.hosts);
   }
 
   private refusal(url: string): string {
-    return navigationRefusal(url, this.hosts) || "that url";
+    const reason = this.origins.length
+      ? navigationRefusal(url, this.hosts, this.origins)
+      : navigationRefusal(url, this.hosts);
+    return reason || "that url";
   }
 
   async start(): Promise<void> {
@@ -141,6 +155,10 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Runtime.enable", {}, this.sessionId);
     this.cdp.on("Page.loadEventFired", this.sessionId, () => { this.loadEpoch += 1; });
     this.cdp.on("Page.frameNavigated", this.sessionId, (params) => this.onFrame(params));
+    this.cdp.on("Fetch.requestPaused", this.sessionId, (params) => this.onPaused(params));
+    await this.cdp.send("Fetch.enable", {
+      patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }],
+    }, this.sessionId);
     let added: { identifier?: string } = {};
     try {
       added = await this.cdp.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", {
@@ -153,6 +171,38 @@ export class CdpLiveDriver implements Driver {
     this.scriptId = added.identifier || "";
     await this.evaluate(TRUST_SOURCE).catch(() => undefined);
     await this.bringToFront();
+  }
+
+  private onPaused(params: Record<string, unknown>): void {
+    const requestId = typeof params.requestId === "string" ? params.requestId : "";
+    if (!requestId) return;
+    const request = params.request as { url?: string } | undefined;
+    const url = request?.url || "";
+    if (this.allows(url)) {
+      void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
+      return;
+    }
+    this.blockedNav = this.refusal(url);
+    void this.cdp.send("Fetch.failRequest", {
+      requestId,
+      errorReason: "BlockedByClient",
+    }, this.sessionId).catch(() => undefined);
+  }
+
+  takeBlockedNav(): string {
+    const reason = this.blockedNav;
+    this.blockedNav = "";
+    return reason;
+  }
+
+  markTrust(): void {
+    this.trustCursor = this.trustEvents.length;
+  }
+
+  lastTrusted(): boolean | null {
+    if (this.trustEvents.length <= this.trustCursor) return null;
+    const last = this.trustEvents[this.trustEvents.length - 1];
+    return last ? last.isTrusted : null;
   }
 
   private onFrame(params: Record<string, unknown>): void {
@@ -319,9 +369,31 @@ export class CdpLiveDriver implements Driver {
     return this.evaluate<T>(prelude ? `(() => {\n${prelude}\nreturn ${call};\n})()` : call);
   }
 
-  async insertText(text: string): Promise<void> {
-    const refusal = insertTextRefusal(text);
+  async insertText(text: string, prior = "", markIndex = -1): Promise<void> {
+    const refusal = insertTextRefusal(text, prior);
     if (refusal) throw new Error(refusal);
+    const check = await this.evaluate<{ ok: boolean; credential: boolean }>(`(() => {
+      const marked = ${markIndex >= 0 ? `document.querySelector('[data-bao-live="${markIndex}"]')` : "null"};
+      const requireMark = ${markIndex >= 0 ? "true" : "false"};
+      let node = document.activeElement;
+      while (node && node.shadowRoot) {
+        const inner = node.shadowRoot.activeElement;
+        if (!inner || inner === node) break;
+        node = inner;
+      }
+      const focused = node;
+      const password = focused instanceof HTMLInputElement && (focused.getAttribute("type") || "").toLowerCase() === "password";
+      const auto = focused instanceof HTMLInputElement ? (focused.getAttribute("autocomplete") || "").toLowerCase() : "";
+      const name = focused instanceof HTMLElement
+        ? ((focused.getAttribute("name") || "") + " " + (focused.getAttribute("aria-label") || "")).toLowerCase()
+        : "";
+      const credential = password || /password|one-time-code|cc-number|cc-csc/.test(auto)
+        || /\\b(password|passcode|otp|cvv|cvc|ssn|security code|pin|verification code|one-time code|2fa|two-factor)\\b/.test(name);
+      if (!marked) return { ok: !requireMark && !credential, credential };
+      const same = focused === marked || (!!focused && marked.contains(focused));
+      return { ok: same && !credential, credential };
+    })()`);
+    if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
     await this.cdp.send("Input.insertText", { text }, this.sessionId);
   }
 
@@ -506,15 +578,35 @@ export class CdpLiveDriver implements Driver {
   private async clickSelector(selector: string): Promise<void> {
     this.assertHost();
     await this.bringToFront();
-    const point = await this.evaluate<{ x: number; y: number; w: number; h: number } | null>(`(() => {
+    const point = await this.evaluate<{ x: number; y: number; w: number; h: number; covered: boolean } | null>(`(() => {
       ${PIERCE_QUERY}
       const el = pierce(${JSON.stringify(selector)}, document);
       if (!el) return null;
       el.scrollIntoView({ block: "center", inline: "center" });
       const r = el.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width, h: r.height };
+      const x = r.x + r.width / 2;
+      const y = r.y + r.height / 2;
+      let hit = document.elementFromPoint(x, y);
+      while (hit && hit.shadowRoot) {
+        const inner = hit.shadowRoot.elementFromPoint(x, y);
+        if (!inner || inner === hit) break;
+        hit = inner;
+      }
+      const hosts = (node) => {
+        let current = node;
+        while (current) {
+          if (current === el) return true;
+          const root = current.getRootNode();
+          if (!(root instanceof ShadowRoot)) return el.contains(current);
+          if (root.host === el || el.contains(root.host)) return true;
+          current = root.host;
+        }
+        return false;
+      };
+      return { x, y, w: r.width, h: r.height, covered: !hit || !hosts(hit) };
     })()`);
     if (!point || point.w < 1 || point.h < 1) throw new Error("element has no box");
+    if (point.covered) throw new Error("element is covered");
     const x = point.x;
     const y = point.y;
     await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, this.sessionId);
