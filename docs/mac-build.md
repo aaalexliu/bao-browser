@@ -149,9 +149,9 @@ bash desktop/packaging/macos/package-app.sh
 file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 ```
 
-`npm install` finishes before the desktop script runs `tsc`. The helper script prints a `codesign` verify. The desktop script then refuses to continue unless that helper is a bundle, identifier `dev.bao.oshelper`, with a designated requirement that names the certificate. It does not compare a CDHash. It copies the helper into `Bao.app` without signing it again.
+`npm install` finishes before the desktop script runs `tsc`. The helper script prints a `codesign` verify. The desktop script then refuses to continue unless that helper is a bundle, identifier `dev.bao.oshelper`, not ad-hoc, and the first `Authority` line equals `BAO_SIGN_IDENTITY`. The designated requirement must be exactly `identifier "dev.bao.oshelper" and certificate leaf = H"a522e15d431a2f36ace451dd575a02e9e877fbd1"`. Set `BAO_HELPER_CERT_HASH` to the new certificate SHA-1 when the certificate changes. Use 40 hex digits. Colons are optional. The script does not accept a different hash on its own. It does not compare a binary CDHash. It copies the helper into `Bao.app` without signing it again.
 
-The desktop script stages Playwright and `classic-level` with npm, including the native binary for this Mac. It compiles `extension/src/host-grant.ts` to `Contents/Resources/extension/src/host-grant.js`. It builds the window script to `Contents/Resources/bao/src/app/app.js`, so launch does not need the TypeScript sources or esbuild. It copies the unpacked extension to `Contents/Resources/extension/dist`. From `Contents/Resources/bao` it runs `node -e "require('./src/app/server.js')"` and stops if a module is missing. That run is before `codesign`.
+The desktop script stages Playwright and `classic-level` by reading those two versions from `package-lock.json` and running `npm install`. That install resolves transitive versions from the registry. It is not `npm ci`. A version match on the day of the build is not a lockfile install of the transitive tree. The staged tree includes the native binary for this Mac. The script compiles `extension/src/host-grant.ts` to `Contents/Resources/extension/src/host-grant.js`. It builds the window script to `Contents/Resources/bao/src/app/app.js`, so launch does not need the TypeScript sources or esbuild. It copies the unpacked extension to `Contents/Resources/extension/dist`. Before `codesign`, it copies `bao`, `extension`, `src`, and `web` to a temp directory outside the checkout, unsets `NODE_PATH`, and requires `./src/app/server.js`, `playwright`, and `classic-level`. `playwright` and `classic-level` must resolve inside that copy's `node_modules`. A module that exists only in the repo, or only on `NODE_PATH`, does not pass. The `extension`, `src`, and `web` copies are there so the server require can see `host-grant` and the other relative modules.
 
 It compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). It copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
 
@@ -179,7 +179,7 @@ The desktop script reads `desktop/os-helper-macos/BaoOSHelper.app` and exits bef
 - The identifier is not `dev.bao.oshelper`.
 - The signature is ad-hoc.
 - The first `Authority` line is not `$BAO_SIGN_IDENTITY`.
-- The designated requirement does not name `dev.bao.oshelper` and that certificate.
+- The designated requirement is not exactly `identifier "dev.bao.oshelper" and certificate leaf = H"a522e15d431a2f36ace451dd575a02e9e877fbd1"`. A new certificate passes only when `BAO_HELPER_CERT_HASH` is set to that certificate's SHA-1.
 
 `codesign -dvvv` prints a CDHash. Rebuilding the helper changes it. The CDHash is not the acceptance check.
 
@@ -191,7 +191,7 @@ codesign -dvvv desktop/os-helper-macos/BaoOSHelper.app
 codesign -d -r- desktop/os-helper-macos/BaoOSHelper.app
 ```
 
-`Identifier=dev.bao.oshelper`. The first `Authority=` line is `bao dev signing` unless you set `BAO_SIGN_IDENTITY`. The designated requirement line contains `identifier "dev.bao.oshelper"` and `certificate`.
+`Identifier=dev.bao.oshelper`. The first `Authority=` line is `bao dev signing` unless you set `BAO_SIGN_IDENTITY`. The designated requirement line is `identifier "dev.bao.oshelper" and certificate leaf = H"a522e15d431a2f36ace451dd575a02e9e877fbd1"` unless you set `BAO_HELPER_CERT_HASH`.
 
 ## Install or update
 

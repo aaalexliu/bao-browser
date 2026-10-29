@@ -36,5 +36,8 @@ const npm = spawnSync("npm", ["install", "--omit=dev", "--no-audit", "--no-fund"
   stdio: "inherit",
 });
 if (npm.status !== 0) process.exit(npm.status || 1);
-cpSync(path.join(stage, "node_modules"), path.join(destBao, "node_modules"), { recursive: true });
+cpSync(path.join(stage, "node_modules"), path.join(destBao, "node_modules"), {
+  recursive: true,
+  verbatimSymlinks: true,
+});
 rmSync(stage, { recursive: true, force: true });

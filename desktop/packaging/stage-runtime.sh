@@ -6,21 +6,24 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEST="${1:?usage: stage-runtime.sh DEST}"
 cd "$ROOT"
 
-"$ROOT/node_modules/.bin/tsc" -p tsconfig.desktop.json
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/bao-tsc.XXXXXX")"
+cleanup_out() { rm -rf "$OUT"; }
+trap cleanup_out EXIT
+"$ROOT/node_modules/.bin/tsc" -p tsconfig.desktop.json --outDir "$OUT"
 node extension/build.mjs
 
-test -s desktop/dist/extension/src/host-grant.js
+test -s "$OUT/extension/src/host-grant.js"
 test -s extension/dist/manifest.json
-test -d desktop/dist/web/src
-test -d desktop/dist/src
+test -d "$OUT/web/src"
+test -d "$OUT/src"
 
 rm -rf "$DEST/bao" "$DEST/extension" "$DEST/src" "$DEST/web"
 mkdir -p "$DEST/bao" "$DEST/extension/src" "$DEST/src" "$DEST/web"
-cp -a desktop/dist/desktop/src "$DEST/bao/src"
+cp -a "$OUT/desktop/src" "$DEST/bao/src"
 cp -a desktop/src/app/public "$DEST/bao/public"
-cp -a desktop/dist/extension/src/host-grant.js "$DEST/extension/src/host-grant.js"
-cp -a desktop/dist/src/. "$DEST/src/"
-cp -a desktop/dist/web/src "$DEST/web/src"
+cp -a "$OUT/extension/src/host-grant.js" "$DEST/extension/src/host-grant.js"
+cp -a "$OUT/src/." "$DEST/src/"
+cp -a "$OUT/web/src" "$DEST/web/src"
 mkdir -p "$DEST/extension/dist"
 cp -a extension/dist/. "$DEST/extension/dist/"
 

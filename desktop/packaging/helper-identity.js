@@ -5,20 +5,35 @@ const { existsSync, statSync } = require("node:fs");
 const path = require("node:path");
 
 const BUNDLE_ID = "dev.bao.oshelper";
+const PINNED_CERT_HASH = "a522e15d431a2f36ace451dd575a02e9e877fbd1";
 
-function acceptHelper(report, identity) {
+function normalizeCertHash(raw) {
+  const hex = String(raw || "").replace(/:/g, "").toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(hex)) return "";
+  return hex;
+}
+
+function helperCertHash(env = process.env) {
+  const raw = env.BAO_HELPER_CERT_HASH;
+  if (raw == null || raw === "") return PINNED_CERT_HASH;
+  return normalizeCertHash(raw);
+}
+
+function expectedRequirement(certHash) {
+  return `identifier "${BUNDLE_ID}" and certificate leaf = H"${certHash}"`;
+}
+
+function acceptHelper(report, identity, certHash) {
   if (!report.exists) return { ok: false, reason: "helper is absent" };
   if (!report.isBundle) return { ok: false, reason: "helper must be the signed BaoOSHelper.app bundle" };
   if (report.adhoc) return { ok: false, reason: "helper signature is ad-hoc" };
   if (report.identifier !== BUNDLE_ID) return { ok: false, reason: "helper bundle id is not dev.bao.oshelper" };
   const leaf = report.authorities[0] || "";
   if (leaf !== identity) return { ok: false, reason: `helper certificate is not ${identity}` };
-  const designated = report.designated || "";
-  if (!designated.includes(`identifier "${BUNDLE_ID}"`)) {
-    return { ok: false, reason: "designated requirement does not name dev.bao.oshelper" };
-  }
-  if (!designated.includes("certificate") || !designated.includes(identity)) {
-    return { ok: false, reason: "designated requirement does not name the signing certificate" };
+  const hash = normalizeCertHash(certHash);
+  if (!hash) return { ok: false, reason: "helper certificate hash is not 40 hex digits" };
+  if (report.designated !== expectedRequirement(hash)) {
+    return { ok: false, reason: "designated requirement is not the pinned helper certificate" };
   }
   return { ok: true, reason: "" };
 }
@@ -49,6 +64,11 @@ function readBundle(app) {
 function main() {
   const app = process.argv[2];
   const identity = process.env.BAO_SIGN_IDENTITY || "bao dev signing";
+  const certHash = helperCertHash();
+  if (!certHash) {
+    process.stderr.write("package-app.sh: BAO_HELPER_CERT_HASH must be 40 hex digits\n");
+    process.exit(1);
+  }
   if (!app) {
     process.stderr.write("usage: helper-identity.js <BaoOSHelper.app>\n");
     process.exit(2);
@@ -74,7 +94,7 @@ function main() {
     process.exit(1);
   }
   const parsed = parseCodesign(`${listed.stdout}\n${listed.stderr}`, `${requirement.stdout}\n${requirement.stderr}`);
-  const verdict = acceptHelper({ ...bundle, ...parsed }, identity);
+  const verdict = acceptHelper({ ...bundle, ...parsed }, identity, certHash);
   if (!verdict.ok) {
     process.stderr.write(`package-app.sh: ${verdict.reason}\n`);
     process.exit(1);
@@ -83,4 +103,12 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { acceptHelper, parseCodesign, readBundle, BUNDLE_ID };
+module.exports = {
+  acceptHelper,
+  parseCodesign,
+  readBundle,
+  helperCertHash,
+  expectedRequirement,
+  BUNDLE_ID,
+  PINNED_CERT_HASH,
+};

@@ -118,12 +118,14 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   assert.match(main, /--disable-infobars/);
   assert.match(script, /bao-launch\.c/);
   assert.match(script, /stage-runtime\.sh/);
-  assert.match(script, /require\('\.\/src\/app\/server\.js'\)/);
+  assert.match(script, /require-staged\.js/);
+  assert.match(script, /env -u NODE_PATH/);
+  assert.match(script, /BAO_HELPER_APP/);
   assert.match(script, /helper-identity\.js/);
   const stage = readFileSync(path.join(process.cwd(), "desktop/packaging/stage-runtime.sh"), "utf8");
   assert.match(stage, /extension\/dist/);
   assert.match(stage, /host-grant\.js/);
-  assert.match(stage, /classic-level/);
+  assert.match(stage, /--outDir/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);
   assert.match(main, /bao_discover_node/);
@@ -141,13 +143,29 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
 
 test("package-app.sh stops before it builds an app when the helper is absent", () => {
   const dist = mkdtempSync(path.join(tmpdir(), "bao-dist-"));
-  const result = spawnSync("bash", ["desktop/packaging/macos/package-app.sh"], {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: { ...process.env, BAO_DIST: dist, BAO_SIGN_IDENTITY: "bao dev signing" },
-  });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /helper is absent/);
-  assert.equal(existsSync(path.join(dist, "Bao.app")), false);
-  rmSync(dist, { recursive: true, force: true });
+  const helper = path.join(dist, "fixture", "BaoOSHelper.app");
+  try {
+    const script = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/package-app.sh"), "utf8");
+    const helperAt = script.indexOf("helper-identity.js");
+    const stageAt = script.indexOf("stage-runtime.sh");
+    assert.ok(helperAt >= 0 && stageAt > helperAt);
+    const result = spawnSync("bash", ["desktop/packaging/macos/package-app.sh"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        BAO_DIST: dist,
+        BAO_HELPER_APP: helper,
+        BAO_SIGN_IDENTITY: "bao dev signing",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /helper is absent/);
+    assert.match(result.stderr, /fixture\/BaoOSHelper\.app/);
+    assert.equal((result.stderr || "").includes("desktop/os-helper-macos/BaoOSHelper.app"), false);
+    assert.equal((result.stderr || "").includes("codesign"), false);
+    assert.equal(existsSync(path.join(dist, "Bao.app")), false);
+  } finally {
+    rmSync(dist, { recursive: true, force: true });
+  }
 });

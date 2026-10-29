@@ -2,13 +2,11 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import test from "node:test";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { appHostScript, installNativeHost } from "../../src/extension/install-host";
-
 const localRequire = createRequire(__filename);
-const { acceptHelper, parseCodesign } = localRequire(path.join(process.cwd(), "desktop/packaging/helper-identity.js")) as {
+const { acceptHelper, parseCodesign, helperCertHash, PINNED_CERT_HASH } = localRequire(path.join(process.cwd(), "desktop/packaging/helper-identity.js")) as {
   acceptHelper: (report: {
     exists: boolean;
     isBundle: boolean;
@@ -24,6 +22,8 @@ const { acceptHelper, parseCodesign } = localRequire(path.join(process.cwd(), "d
     cdhash: string;
     designated: string;
   };
+  helperCertHash: (env?: Record<string, string | undefined>) => string;
+  PINNED_CERT_HASH: string;
 };
 
 const identity = "bao dev signing";
@@ -60,28 +60,54 @@ test("the recorded helper requirement passes and a different certificate hash fa
   assert.match(acceptHelper({ ...recorded, adhoc: true }, identity, pinnedHash).reason, /ad-hoc/);
   const adhocText = fromCodesign(`${verify}Signature=adhoc\n`, `${recordedRequirement}\n`);
   assert.match(acceptHelper(adhocText, identity, pinnedHash).reason, /ad-hoc/);
+  assert.equal(pinnedHash, PINNED_CERT_HASH);
+  assert.equal(helperCertHash({}), PINNED_CERT_HASH);
+  assert.equal(helperCertHash({ BAO_HELPER_CERT_HASH: "A5:22:E1:5D:43:1A:2F:36:AC:E4:51:DD:57:5A:02:E9:E8:77:FB:D1" }), pinnedHash);
+  assert.equal(helperCertHash({ BAO_HELPER_CERT_HASH: "not-a-hash" }), "");
+  assert.equal(acceptHelper(other, identity, helperCertHash({ BAO_HELPER_CERT_HASH: otherHash })).ok, true);
 });
 
-test("the native host wrapper points at the script inside Resources", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "bao-resources-"));
-  const ext = path.join(root, "Resources", "bao", "src", "extension");
-  mkdirSync(ext, { recursive: true });
-  const script = path.join(ext, "native-host.js");
-  writeFileSync(script, "/* host */\n");
-  assert.equal(appHostScript(ext), script);
-  assert.equal(appHostScript(root), undefined);
-  const home = mkdtempSync(path.join(tmpdir(), "bao-host-home-"));
-  const installed = installNativeHost({
-    home,
-    socketPath: path.join(home, "extension-host", "bridge.sock"),
-    tokenPath: path.join(home, "extension-host", "token"),
-    hostScript: script,
-  });
-  const wrapper = readFileSync(installed.wrapper, "utf8");
-  assert.match(wrapper, new RegExp(script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.equal(wrapper.includes("/checkout/desktop"), false);
-  rmSync(root, { recursive: true, force: true });
-  rmSync(home, { recursive: true, force: true });
+test("a staged require fails when the module is found outside the copy", () => {
+  const outside = mkdtempSync(path.join(tmpdir(), "bao-staged-"));
+  const walked = mkdtempSync(path.join(process.cwd(), ".probe-staged-"));
+  const bare = mkdtempSync(path.join(tmpdir(), "bao-bare-"));
+  try {
+    for (const dir of [outside, walked, bare]) {
+      mkdirSync(path.join(dir, "src/app"), { recursive: true });
+      writeFileSync(path.join(dir, "src/app/server.js"), "module.exports = {};\n");
+    }
+    for (const name of ["playwright", "classic-level"]) {
+      const pkg = path.join(outside, "node_modules", name);
+      mkdirSync(pkg, { recursive: true });
+      writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name, main: "index.js" }));
+      writeFileSync(path.join(pkg, "index.js"), "module.exports = {};\n");
+    }
+    const env = { ...process.env, NODE_PATH: path.join(process.cwd(), "node_modules") };
+    const good = spawnSync(process.execPath, ["desktop/packaging/require-staged.js", outside], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env,
+    });
+    assert.equal(good.status, 0, good.stderr);
+    const fromParent = spawnSync(process.execPath, ["desktop/packaging/require-staged.js", walked], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, NODE_PATH: "" },
+    });
+    assert.notEqual(fromParent.status, 0);
+    assert.match(fromParent.stderr, /outside the staged copy/);
+    const fromNodePath = spawnSync(process.execPath, ["desktop/packaging/require-staged.js", bare], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env,
+    });
+    assert.notEqual(fromNodePath.status, 0);
+    assert.match(fromNodePath.stderr, /outside the staged copy/);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+    rmSync(walked, { recursive: true, force: true });
+    rmSync(bare, { recursive: true, force: true });
+  }
 });
 
 test("an installed bundle serves extension settings and imports synthetic localStorage", { timeout: 180_000 }, async () => {
@@ -105,6 +131,18 @@ test("an installed bundle serves extension settings and imports synthetic localS
   assert.equal(existsSync(path.join(dest, "bao/node_modules/classic-level/prebuilds/linux-x64/classic-level.node")), true);
   assert.equal(existsSync(path.join(dest, "bao/node_modules/classic-level/prebuilds/darwin-x64+arm64/classic-level.node")), true);
   const bao = path.join(dest, "bao");
+  const bin = path.join(bao, "node_modules/.bin");
+  assert.equal(existsSync(bin), true);
+  for (const name of readdirSync(bin)) {
+    const link = path.join(bin, name);
+    const target = readlinkSync(link);
+    assert.equal(existsSync(path.resolve(path.dirname(link), target)), true, `${name} -> ${target}`);
+  }
+  const isolated = spawnSync(process.execPath, [path.join(process.cwd(), "desktop/packaging/require-staged.js"), bao], {
+    encoding: "utf8",
+    env: { ...process.env, NODE_PATH: path.join(process.cwd(), "node_modules") },
+  });
+  assert.equal(isolated.status, 0, isolated.stderr);
   const ext = path.join(bao, "src/extension");
   const homeForHost = mkdtempSync(path.join(tmpdir(), "bao-host-home-"));
   const wrapped = spawnSync(process.execPath, ["-e", `

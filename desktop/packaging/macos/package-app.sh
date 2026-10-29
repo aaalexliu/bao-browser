@@ -11,20 +11,31 @@ export BAO_SIGN_IDENTITY="$IDENTITY"
 DIST="${BAO_DIST:-$ROOT/desktop/packaging/macos/dist}"
 APP="$DIST/Bao.app"
 
-node "$ROOT/desktop/packaging/helper-identity.js" "$ROOT/desktop/os-helper-macos/BaoOSHelper.app"
+HELPER="${BAO_HELPER_APP:-$ROOT/desktop/os-helper-macos/BaoOSHelper.app}"
+node "$ROOT/desktop/packaging/helper-identity.js" "$HELPER"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp desktop/packaging/macos/Info.plist "$APP/Contents/Info.plist"
 bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"
-cp -a "$ROOT/desktop/os-helper-macos/BaoOSHelper.app" "$APP/Contents/Resources/BaoOSHelper.app"
+cp -a "$HELPER" "$APP/Contents/Resources/BaoOSHelper.app"
 
-# Missing modules fail here, before any codesign of this app.
-(
-  cd "$APP/Contents/Resources/bao"
-  node -e "require('./src/app/server.js')"
-  node -e "require('classic-level')"
-)
+SMOKE="$(mktemp -d "${TMPDIR:-/tmp}/bao-require.XXXXXX")"
+cleanup_smoke() { rm -rf "$SMOKE"; }
+trap cleanup_smoke EXIT
+case "$SMOKE" in
+  "$ROOT"|"$ROOT"/*)
+    echo "package-app.sh: smoke directory is inside the checkout" >&2
+    exit 1
+    ;;
+esac
+mkdir -p "$SMOKE"
+cp -a "$APP/Contents/Resources/bao" "$SMOKE/bao"
+cp -a "$APP/Contents/Resources/extension" "$SMOKE/extension"
+cp -a "$APP/Contents/Resources/src" "$SMOKE/src"
+cp -a "$APP/Contents/Resources/web" "$SMOKE/web"
+env -u NODE_PATH node "$ROOT/desktop/packaging/require-staged.js" "$SMOKE/bao"
+rm -rf "$SMOKE"
 
 bash desktop/packaging/macos/build-capture-bar.sh
 cp -a "$ROOT/desktop/packaging/macos/dist/BaoCaptureBar.app" "$APP/Contents/Resources/BaoCaptureBar.app"
