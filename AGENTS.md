@@ -16,32 +16,36 @@ Load an applicable skill by its name through the harness. If that load fails, re
 
 `npm run typecheck` runs `tsc --noEmit`.
 
-`npm run test:v1` is the desktop unit suite. `desktop/test/run-v1.mjs` runs it after `tsc -p tsconfig.desktop.json`. The runner removes vendor model keys and sets `BAO_HEAL_CURSOR_ACCOUNT` to `0`.
+`npm run test:v1` is the desktop unit suite. `desktop/test/run-v1.mjs` runs it after `tsc -p tsconfig.desktop.json`. A non-zero exit fails this pass. The runner sets `BAO_HEAL_CURSOR_ACCOUNT` to `0` and deletes vendor model keys. This checkout's suite requests `automationintesting.online`, `www.irs.gov`, and `the-internet.herokuapp.com`. After pull request 132, those hosts leave `test:v1`.
 
 `npm test` is the root suite. Its commands are in `docs/TESTING.md`.
 
-Build an installed Mac app from `docs/mac-build.md`. The short human pass is `docs/mac-test.md`. Do not lengthen that card. The engineering pass is `docs/agent-acceptance.md`. Permission switches are in `docs/permissions.md`. Extension install is in `docs/extension.md`. Live Chrome notes are in `docs/cdp-live-chrome.md`.
+Build an installed Mac app from `docs/mac-build.md`. The short human pass is `docs/mac-test.md`. Do not lengthen that card. The grant sentence on that card is a human step. If you are following that card and the footer reads **helper needs permission**, record it and stop. Do not grant Accessibility or Screen Recording. The engineering pass is `docs/agent-acceptance.md`. It stops only when `helper.accessibility` is false. Permission switches are in `docs/permissions.md`. Extension install is in `docs/extension.md`. Live Chrome notes are in `docs/cdp-live-chrome.md`.
+
+`desktop/packaging/macos/package-app.sh` copies `desktop/os-helper-macos/BaoOSHelper.app` only when that directory exists. A missing directory still exits 0. A fresh worktree can build `Bao.app` with no helper and no error. Before packaging, copy the signed helper out of the installed app. Do not install that build until the nested helper matches the CDHash note in `docs/mac-build.md`. Pull request 134 checks the helper before signing. Until that lands, a missing helper still exits 0.
 
 ## Keep tests off a daily profile
 
-A test uses a throwaway Bao home, a throwaway Chrome profile, and a throwaway native-host config. Unit tests create that home with `mkdtemp`. `desktop/src/launch.ts` refuses a browser whose user-data directory is the daily Chrome profile.
+A test uses a throwaway Bao home, a throwaway Chrome profile, and a throwaway native-host config. Unit tests create that home with `mkdtemp`. `desktop/src/launch.ts` refuses a browser whose user-data directory is the daily Chrome profile. `assertNotDailyChrome` in `desktop/src/profile.ts` compares `path.resolve` and does not follow symlinks. Do not pass a link to the daily profile directory.
 
 Attaching to a Chrome that is already open needs an explicit authorization. Name the exact host list and the start URL in that authorization. `desktop/src/cdp-live/session.ts` rejects a host that contains `*` or `/`.
 
+`bao serve` writes `com.bao.desktop.json` under the real home's Chrome NativeMessagingHosts directories. `defaultConfigHome` in `desktop/src/extension/install-host.ts` returns `homedir()`. `BAO_HOME` does not move that write. The write replaces the installed app's manifest. On a Mac with Bao.app installed, run a checkout `bao serve` only when asked. Then quit it and reopen Bao from Finder.
+
 ## Use the signed helper
 
-The helper is the signed app BaoOSHelper. Its bundle id is `dev.bao.oshelper`, from `desktop/os-helper-macos/Info.plist`. The installed copy is `/Applications/Bao.app/Contents/Resources/BaoOSHelper.app`, from `desktop/src/cdp-live/ax.ts`. `chromeHelper` in that file refuses a path that is not an `.app` bundle. The signer for the grant is `bao dev signing`, from `docs/mac-build.md`.
+The helper is the signed app BaoOSHelper. Its bundle id is `dev.bao.oshelper`, from `desktop/os-helper-macos/Info.plist`. The installed copy is `/Applications/Bao.app/Contents/Resources/BaoOSHelper.app`. `helperBin` in `desktop/src/cdp-live/ax.ts` ignores a missing `BAO_OS_HELPER` and a value that is not an `.app`. It then uses the installed helper. An existing `.app` path is used with no signature check. `chromeHelper` refuses a path that is not an `.app` bundle. The signer for the grant is `bao dev signing`, from `docs/mac-build.md`.
 
 Do not rebuild BaoOSHelper. Do not re-sign it. Do not pass `--deep` to `codesign`. Do not reset its privacy permissions. Do not grant Accessibility or Screen Recording to see whether a different failure goes away.
 
-A live Chrome run stops if the helper raises a permission prompt. The same run stops if Screen Recording is already granted for the helper. Both stops are in `desktop/src/cdp-live/session.ts`.
+A live Chrome run stops if the helper raises a permission prompt. On this checkout, a granted Screen Recording permission also stops `desktop/src/cdp-live/session.ts`, `desktop/src/cdp-live/instacart-run.ts`, and `desktop/src/cdp-live/login-diff.ts`. `desktop/src/cdp-live/run.ts` records the flag and continues. The permission prompt still throws there. After pull request 131, Screen Recording is not a start blocker for live Chrome. Live Chrome then needs Accessibility only. Window capture and the MCP driver still need Screen Recording.
 
 ## Do not bill a model from a test
 
-Leave `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `CURSOR_API_KEY` unset. Leave `BAO_HEAL_CURSOR` unset. `docs/v1.md` describes the heal that bills a vendor key or a logged-in Cursor account. The desktop unit runner deletes those variables before it starts.
+Leave `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `CURSOR_API_KEY` unset. Set `BAO_HEAL_CURSOR_ACCOUNT` to `0` before `bao serve`, before a replay, and before any test the unit runner does not spawn. `desktop/test/run-v1.mjs` sets that variable for the suite it spawns. Leaving `BAO_HEAL_CURSOR` unset is not enough. With a logged-in `agent` on `PATH`, `readCursorAccount` returns authenticated, and a replay miss can run `agent --print`. That call bills the account. A Finder launch cannot take the variable. Do not cause a replay miss while `model.label` is `cursor account`.
 
 ## Show the running app
 
-A UI change needs before and after evidence from the running app. A headed replay writes `videos/<runId>.webm` under the Bao home. `desktop/src/app/server.ts` writes that file.
+A UI change needs before and after evidence from the running app. A headed replay writes `videos/<runId>.webm` only when `encodeWebm` in `desktop/src/v1/replay-video.ts` runs. That write needs darwin, `BAO_HEADED=1`, `BaoWindowVideo.app` on disk, a capture probe that returns ok, and an ffmpeg file. `desktop/src/app/server.ts` calls `openReplayVideo` and does not write the bytes. Do not grant Screen Recording to produce the video. `BaoWindowVideo` is signed as `dev.bao.oshelper`.
 
-A test on a real site does not make a write that cannot be undone. The live session refuses a commit control through `clickAllowed` in `desktop/src/cdp-live/session.ts`. Place order and Reserve pause on **needs you**. That pause is in `docs/mac-test.md`.
+A test on a real site does not make a write that cannot be undone. `clickAllowed` in `desktop/src/cdp-live/session.ts` refuses kind `submit`, `radio`, `check`, and `other`. It refuses a button whose label matches `--commit`. A link is allowed unless `--deny` matches. An anchor is a link even when its role is `button`. Put commit words in `--deny` as well. Place order and Reserve pause on **needs you**. That pause is in `docs/mac-test.md`.
