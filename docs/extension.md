@@ -1,17 +1,22 @@
 # Chrome extension driver
 
-A workflow can run in the Chrome already on this machine. The page sees that profile's cookies and fingerprint. Bao's own Chromium stays the default.
+A workflow can run in the Chrome already on this machine. The page sees that profile's cookies and fingerprint. Playwright stays the default driver.
 
 The extension is not in the Chrome Web Store. Load the unpacked build.
 
 ## Install on a Mac
 
 1. `npm install`
-2. `npm run build:extension`
+2. `npm run build:desktop`
+3. `npm run build:extension`
 
    This writes `extension/dist`. The private key is not in the repo. The unpacked id is `jcjcpblcjaakcmbgljdjkfgmmdfdbnfj`, from the public key in `extension/manifest.json`.
 
-3. `npm run bao`
+4. `./install-extension.sh`
+
+   The script copies `extension/dist` to `~/.bao-browser/extension`. `BAO_EXTENSION_DIR` overrides that path. Load the staged directory. It stays put when you rebuild.
+
+5. `npm run bao`
 
    `bao serve` installs the native host `com.bao.desktop` for the current user:
 
@@ -20,9 +25,21 @@ The extension is not in the Chrome Web Store. Load the unpacked build.
 
    Linux uses `~/.config/google-chrome/NativeMessagingHosts/` and the Chromium equivalent. The host is a small stdio bridge. It checks a token in a `0600` file under the Bao home and then forwards frames to the app. The extension never reads that token. Chrome's `allowed_origins` is this extension id, so a web page cannot open the pipe.
 
-4. In Chrome, open `chrome://extensions`, turn on Developer mode, and Load unpacked `extension/dist`.
-5. Open the site, click the Bao icon, choose Allow this site, then Record. Stop saves the workflow.
-6. On the run form, Driver chooses Extension or Playwright. An old workflow with no driver stays on Playwright.
+6. In Chrome, open `chrome://extensions`, turn on Developer mode, and Load unpacked `~/.bao-browser/extension`.
+7. Open the site, click the Bao icon, choose Allow this site, then Record. Stop saves the workflow.
+8. On the run form, Driver chooses Extension, Playwright, or CDP live. An old workflow with no driver stays on Playwright.
+
+## Reload and the native host
+
+After `./install-extension.sh`, click Reload on the Bao card at `chrome://extensions`. A page that already ran the content script needs its own reload.
+
+`npm run bao` is `bao serve`. Each start rewrites the native-host manifest and `bao-native-host.sh`. The socket lives under `$BAO_HOME/extension-host` (the CLI default is `~/.local/share/bao`). The token file stays when it is already there. The open port drops because the socket is replaced.
+
+Chrome reads `com.bao.desktop.json` when the browser starts. On macOS that file is `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.bao.desktop.json`. On Linux it is `~/.config/google-chrome/NativeMessagingHosts/com.bao.desktop.json`. `allowed_origins` is `chrome-extension://jcjcpblcjaakcmbgljdjkfgmmdfdbnfj/`. The same manifest is written for Chromium.
+
+The wrapper path inside that file is `$BAO_HOME/extension-host/bao-native-host.sh`. While that path is unchanged, the next `connectNative` runs the new wrapper. A different `BAO_HOME` changes the path. Quit Chrome and open it again so Chrome picks up the new path.
+
+The extension connects on install, on Chrome startup, and on the `bao-link` alarm about once a minute. Reload the extension to connect again immediately. Click the Bao icon. The popup says `linked to Bao` when the native port is open, and `Bao isn't running` when it is closed. A replay that needed the extension and found no port returns `extension is not connected`.
 
 Branded Chrome ignores `--load-extension` (the command-line switch was removed). Load unpacked is how a person installs this build. The throwaway proof uses Chrome for Testing, which still accepts `--load-extension`.
 
@@ -48,4 +65,6 @@ Steps, locators, the confirm gate, and the page classifier are the ones the Play
 
 ## Select the driver
 
-`driver` on a workflow is `extension` or `playwright`. Anything else fails validation. Omit it and replay uses Playwright, which is Bao's own Chrome.
+`driver` on a workflow is `playwright`, `extension`, or `cdp-live`. Any other string fails validation in `validateWorkflow` (`desktop/src/v1/schema.ts`). Omit `driver` and replay uses Playwright.
+
+`playwright` launches installed Google Chrome when that binary is present, then `BAO_BROWSER`, then Playwright's Chromium. That order is `resolveNormalChrome` in `desktop/src/launch.ts`. `extension` uses this native-messaging extension. `cdp-live` attaches to Chrome that is already running, and the desktop refuses to launch its own browser for that workflow. The contract is [cdp-live.md](cdp-live.md).

@@ -12,11 +12,18 @@ function isolationArg() {
   return "--experimental-test-isolation=process";
 }
 
-const dir = "desktop/dist/desktop/test/unit";
+const live = process.argv[2] === "live";
+const filters = live ? process.argv.slice(3) : [];
+const dir = live ? "desktop/dist/desktop/test/live" : "desktop/dist/desktop/test/unit";
 const files = readdirSync(dir)
   .filter((name) => name.endsWith(".test.js"))
+  .filter((name) => filters.length === 0 || filters.some((part) => name.includes(part)))
   .sort()
   .map((name) => path.join(dir, name));
+if (files.length === 0) {
+  console.error(`no tests in ${dir}`);
+  process.exit(1);
+}
 
 const env = { ...process.env, BAO_HEAL_CURSOR_ACCOUNT: "0" };
 for (const key of [

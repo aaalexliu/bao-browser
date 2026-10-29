@@ -168,7 +168,7 @@ test("bao runs the compiled cli and the aggregate scripts exist", () => {
   assert.equal(typeof web.scripts.test, "string");
   assert.equal(web.engines.node, ">=24");
   const cli = path.join(root, "desktop/dist/desktop/src/app/cli.js");
-  if (!existsSync(cli)) return;
+  assert.equal(existsSync(cli), true, cli);
   const result = spawnSync("npm", ["run", "bao", "--", "nope"], {
     cwd: root,
     encoding: "utf8",

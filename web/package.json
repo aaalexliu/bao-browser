@@ -4,13 +4,14 @@
   "private": true,
   "description": "Bao workflow registry, library, and marketplace. Local PGlite or Postgres, deployable to Vercel.",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "cd .. && node --experimental-transform-types --import ./web/test/register.mjs --test web/src/lib/relay.boundary.test.ts web/src/lib/relay-job.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.11",
