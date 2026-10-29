@@ -40,3 +40,4 @@ desktop/os-helper-macos/BaoOSHelper.app/
 
 # Packaged binaries stay out of git. The build writes them under artifacts.
 *.AppImage
+.toolchain/
