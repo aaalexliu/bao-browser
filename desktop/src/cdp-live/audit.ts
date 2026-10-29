@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
+import { resolveHome } from "../home";
 import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep } from "./live-record";
 
 export {
@@ -14,7 +14,7 @@ export {
   type LiveStep,
 } from "./live-record";
 
-export function liveSessionDir(home = process.env.BAO_HOME || path.join(homedir(), ".local", "share", "bao")): string {
+export function liveSessionDir(home = resolveHome()): string {
   return path.join(home, "live-session");
 }
 

@@ -209,8 +209,10 @@ test("mcp warns about a legacy library and does not merge it", async () => {
 test("live audit writes the session under the resolved home", async () => {
   const dirs = layout();
   const previousHome = process.env.BAO_HOME;
+  const previousUser = process.env.HOME;
   const previousCwd = process.cwd();
   process.env.BAO_HOME = dirs.flagged;
+  process.env.HOME = dirs.user;
   process.chdir(dirs.cwdA);
   try {
     const dir = liveSessionDir();
@@ -224,6 +226,7 @@ test("live audit writes the session under the resolved home", async () => {
     assert.equal(liveSessionDir(), dir);
   } finally {
     process.chdir(previousCwd);
+    process.env.HOME = previousUser;
     if (previousHome === undefined) delete process.env.BAO_HOME;
     else process.env.BAO_HOME = previousHome;
   }
@@ -282,11 +285,12 @@ test("resolver precedence matches the installed macOS home", () => {
 test("resolver warns once and does not copy a legacy library", () => {
   const dirs = layout();
   const legacy = path.join(dirs.cwdA, ".bao-mcp");
+  const chosen = path.join(dirs.root, "chosen");
   mkdirSync(legacy);
   writeFileSync(path.join(legacy, "settings.json"), "{}\n");
   const lines: string[] = [];
   const home = resolveHome({
-    args: ["--home", dirs.flagged],
+    args: ["--home", chosen],
     env: {},
     platform: "linux",
     userHome: dirs.user,
@@ -294,15 +298,15 @@ test("resolver warns once and does not copy a legacy library", () => {
     warn: (line) => lines.push(line),
   });
   resolveHome({
-    args: ["--home", dirs.flagged],
+    args: ["--home", chosen],
     env: {},
     platform: "linux",
     userHome: dirs.user,
     cwd: dirs.cwdA,
     warn: (line) => lines.push(line),
   });
-  assert.equal(home, dirs.flagged);
-  assert.deepEqual(lines, [`bao: library data is at ${legacy}; using ${dirs.flagged}`]);
+  assert.equal(home, chosen);
+  assert.deepEqual(lines, [`bao: library data is at ${legacy}; using ${chosen}`]);
   assert.equal(readFileSync(path.join(legacy, "settings.json"), "utf8"), "{}\n");
-  assert.equal(existsSync(dirs.flagged), false);
+  assert.equal(existsSync(chosen), false);
 });

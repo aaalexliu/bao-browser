@@ -1,8 +1,6 @@
-// bao serve | bao mcp | bao import-login | bao sync | bao open bao://workflow/<id>
-
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
+import { resolveHome } from "../home";
 import { reviewWorkflow } from "../mcp/catalog";
 import { mcpMain } from "../mcp/server";
 import { mcpBaoMain } from "../proxy/mcp-bao";
@@ -14,7 +12,7 @@ import { pairDevice, syncAll } from "../v1/sync";
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (cmd === "mcp") {
-    await mcpMain();
+    await mcpMain(rest);
     return;
   }
   if (cmd === "mcp-ax") {
@@ -25,8 +23,12 @@ async function main(): Promise<void> {
     await importLogin(rest);
     return;
   }
+  if (cmd === "status") {
+    console.log(JSON.stringify({ home: resolveHome(rest) }));
+    return;
+  }
   if (cmd === "serve" || !cmd) {
-    const home = flag(rest, "--home") || process.env.BAO_HOME || defaultHome();
+    const home = resolveHome(rest);
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || 4787);
     const app = await startApp({ home, port, extensionHost: true });
     console.log(`bao ${app.port} home ${home}`);
@@ -34,7 +36,7 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "sync") {
-    const home = flag(rest, "--home") || process.env.BAO_HOME || defaultHome();
+    const home = resolveHome(rest);
     const library = new Library(home);
     const sub = positional(rest)[0];
     if (sub === "pair") {
@@ -63,7 +65,7 @@ async function main(): Promise<void> {
     if (!parseBaoLink(link)) {
       throw new Error(link.trim().startsWith("bao://run/") ? "inputs must be JSON" : "usage: bao open bao://workflow/<id>");
     }
-    const port = Number(flag(rest, "--port") || process.env.BAO_PORT || readServerPort(flag(rest, "--home")) || 0);
+    const port = Number(flag(rest, "--port") || process.env.BAO_PORT || readServerPort(resolveHome(rest)) || 0);
     if (!port) {
       console.error("start Bao first");
       process.exit(1);
@@ -146,7 +148,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao mcp | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao serve [--home dir] [--port n] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 
@@ -158,7 +160,7 @@ async function importLogin(args: string[]): Promise<void> {
     console.error("usage: bao import-login --from chrome --domain <host> [--profile <name>]");
     process.exit(1);
   }
-  const port = Number(flag(args, "--port") || process.env.BAO_PORT || readServerPort(flag(args, "--home")) || 4787);
+  const port = Number(flag(args, "--port") || process.env.BAO_PORT || readServerPort(resolveHome(args)) || 4787);
   const base = `http://127.0.0.1:${port}`;
   let created: { id?: string; message?: string; phase?: string; error?: string };
   try {
@@ -208,24 +210,15 @@ async function importLogin(args: string[]): Promise<void> {
   process.exit(1);
 }
 
-function readServerPort(homeFlag: string | undefined): number | undefined {
-  const homes = [
-    homeFlag,
-    process.env.BAO_HOME,
-    process.platform === "darwin" ? path.join(homedir(), "Library", "Application Support", "bao") : undefined,
-    path.join(homedir(), ".local", "share", "bao"),
-  ].filter((home): home is string => !!home);
-  for (const home of homes) {
-    const file = path.join(home, "server.json");
-    if (!existsSync(file)) continue;
-    try {
-      const port = Number((JSON.parse(readFileSync(file, "utf8")) as { port?: number }).port);
-      if (port > 0) return port;
-    } catch {
-      continue;
-    }
+function readServerPort(home: string): number | undefined {
+  const file = path.join(home, "server.json");
+  if (!existsSync(file)) return undefined;
+  try {
+    const port = Number((JSON.parse(readFileSync(file, "utf8")) as { port?: number }).port);
+    return port > 0 ? port : undefined;
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 function flag(args: string[], name: string): string | undefined {
@@ -243,12 +236,6 @@ function positional(args: string[]): string[] {
     if (args[i]) out.push(args[i] as string);
   }
   return out;
-}
-
-function defaultHome(): string {
-  const { homedir } = require("node:os") as typeof import("node:os");
-  const path = require("node:path") as typeof import("node:path");
-  return path.join(homedir(), ".local", "share", "bao");
 }
 
 main().catch((err) => {

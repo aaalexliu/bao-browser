@@ -1,7 +1,4 @@
-// MCP stdio server. Four tools, however many workflows are on disk.
-// search_workflows, describe_workflow, run_workflow, get_run.
-
-import path from "node:path";
+import { resolveHome } from "../home";
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
@@ -56,13 +53,14 @@ export const TOOLS = [
 
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
-export async function mcpMain(): Promise<void> {
+export async function mcpMain(args: readonly string[] = []): Promise<void> {
+  const home = resolveHome(args);
   if (process.env.BAO_MCP_LIVE === "1") {
+    process.env.BAO_HOME = home;
     const { liveMcpMain } = await import("../eval/live-mcp");
     await liveMcpMain();
     return;
   }
-  const home = process.env.BAO_HOME || path.join(process.cwd(), ".bao-mcp");
   const library = new Library(home);
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
@@ -129,15 +127,16 @@ async function callTool(library: Library, name: string, args: Record<string, unk
   }
   if (name === "describe_workflow") return describeWorkflow(library, String(args.id || ""));
   if (name === "run_workflow") {
-    return runWorkflow(library, {
+    const result = await runWorkflow(library, {
       id: args.id ? String(args.id) : undefined,
       inputs: args.inputs && typeof args.inputs === "object" ? args.inputs as Record<string, string | number> : {},
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
     });
+    return { ...result, home: library.root };
   }
-  if (name === "get_run") return getRun(library, String(args.run_id || ""));
+  if (name === "get_run") return { ...getRun(library, String(args.run_id || "")), home: library.root };
   throw new Error("unknown tool");
 }
 
