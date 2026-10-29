@@ -10,7 +10,11 @@ export PATH="$(dirname "$(nvm which node)"):$PATH"
 
 `npm run build:desktop` compiles `desktop/` to `desktop/dist`. `npm run bao` then runs `node desktop/dist/desktop/src/app/cli.js` and skips `tsc`. A second `npm run build:desktop` picks up TypeScript edits.
 
-`bao serve` listens on port 4787 unless `BAO_PORT` is set. Set `BAO_HOME` to the directory `bao serve` printed. In this checkout, `bao serve` defaults to `~/.local/share/bao` and `bao mcp` does not. `bao mcp` uses `BAO_HOME` when it is set, and otherwise creates `.bao-mcp` in the current directory. Those two homes disagree until pull request 133 lands. After that pull request, the shared default is `~/Library/Application Support/bao` on macOS and `~/.local/share/bao` on Linux.
+`bao serve` listens on port 4787 unless `BAO_PORT` is set. It prints `bao <port> home <path>`. The checkout CLI checks `--home`, then `BAO_HOME`, then `~/.local/share/bao`. `defaultHome` in `desktop/src/app/cli.ts` returns `~/.local/share/bao` on Linux and on macOS.
+
+`bao mcp` reads `BAO_HOME`, then `.bao-mcp` in the current directory. With `BAO_HOME` unset, `search_workflows` returns `hits: []` for a workflow saved under the serve home. Set `BAO_HOME` to the path `bao serve` printed.
+
+The installed app chooses its own home before the server starts. That path is in [Build Bao on a Mac](mac-build.md). Commands on this page use `~/.local/share/bao`.
 
 `bao serve` writes `com.bao.desktop.json` under the real user home from `homedir()` in `defaultConfigHome`. On Linux that directory is `~/.config/google-chrome/NativeMessagingHosts`. `--home` does not move it.
 
@@ -26,7 +30,7 @@ node desktop/dist/desktop/src/app/cli.js mcp
 ./scripts/bao-mcp.sh
 ```
 
-On macOS, after pull request 133, set `BAO_HOME` to the path `bao serve` printed. That default is `~/Library/Application Support/bao`, not the Linux path above.
+That `BAO_HOME` value is the checkout default from `defaultHome`. If `bao serve` printed a different path, use the printed path.
 
 `./scripts/bao-mcp.sh` execs that file. If `desktop/dist` is missing it writes one line to stderr and exits 1. If `BAO_HOME` is unset it exits 1 before the CLI creates `.bao-mcp`.
 
@@ -56,7 +60,7 @@ Leave `BAO_MCP_LIVE` unset for the four workflow tools. The history of the evalu
 
 `./install-extension.sh` builds `extension/dist` and copies it to `~/.bao-browser/extension`. The extension id is `jcjcpblcjaakcmbgljdjkfgmmdfdbnfj`. Reload, the native-host manifest, and the popup check are in [extension.md](extension.md).
 
-`./install-dev-legacy.sh` stages the root extension, including every file the manifest and its HTML reference. `./install-dev.sh` only prints those two names and exits 2.
+`./install-dev-legacy.sh` stages the root extension. The stage includes every file under `dist/`, including `dist/forceopen.js`, and every file the manifest and its HTML name. `./install-dev.sh` only prints those two names and exits 2.
 
 ## CDP live
 
