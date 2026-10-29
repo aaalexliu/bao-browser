@@ -11,19 +11,12 @@ export const EDIT_BUNDLE = "com.apple.TextEdit";
 export const HELPER = process.env.BAO_OS_MACOS
   || path.resolve("desktop/os-helper-macos/BaoOSHelper.app");
 
-function artifactDir(): string | undefined {
+export function artifactsDir(): string {
   const explicit = process.env.BAO_SPIKE_ARTIFACTS?.trim();
   if (explicit) return explicit;
   const store = process.env.BAO_AGENT_STORE_DIR?.trim();
   if (store) return path.join(store, "bao-mac-spike");
-  return undefined;
-}
-
-export const ARTIFACTS = artifactDir() ?? "";
-
-function requireArtifacts(): string {
-  if (!ARTIFACTS) throw new Error("Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR");
-  return ARTIFACTS;
+  throw new Error("Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR");
 }
 
 export function sleep(ms: number): Promise<void> {
@@ -127,11 +120,11 @@ export async function cleanupNewAutosave(before: Set<string>): Promise<string[]>
 }
 
 export async function ensureArtifacts(): Promise<void> {
-  await mkdir(requireArtifacts(), { recursive: true });
+  await mkdir(artifactsDir(), { recursive: true });
 }
 
 export async function writeJson(name: string, value: unknown): Promise<string> {
-  const file = path.join(requireArtifacts(), name);
+  const file = path.join(artifactsDir(), name);
   await writeFile(file, JSON.stringify(value, null, 2));
   return file;
 }
