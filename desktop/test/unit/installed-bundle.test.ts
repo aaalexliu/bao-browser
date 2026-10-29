@@ -16,7 +16,7 @@ const { acceptHelper, parseCodesign } = localRequire(path.join(process.cwd(), "d
     identifier: string;
     authorities: string[];
     designated: string;
-  }, identity: string) => { ok: boolean; reason: string };
+  }, identity: string, certHash: string) => { ok: boolean; reason: string };
   parseCodesign: (verifyText: string, requirementText: string) => {
     identifier: string;
     authorities: string[];
@@ -27,49 +27,39 @@ const { acceptHelper, parseCodesign } = localRequire(path.join(process.cwd(), "d
 };
 
 const identity = "bao dev signing";
+const pinnedHash = "a522e15d431a2f36ace451dd575a02e9e877fbd1";
+const recordedRequirement = `designated => identifier "dev.bao.oshelper" and certificate leaf = H"${pinnedHash}"`;
 
-function signed(cdhash: string) {
-  return {
-    exists: true,
-    isBundle: true,
-    adhoc: false,
-    identifier: "dev.bao.oshelper",
-    authorities: [identity],
-    designated: `identifier "dev.bao.oshelper" and certificate leaf[subject.CN] = "${identity}"`,
-    cdhash,
-  };
+function fromCodesign(verifyText: string, requirementText: string) {
+  return { exists: true, isBundle: true, ...parseCodesign(verifyText, requirementText) };
 }
 
-test("a helper is accepted from the certificate, not from one CDHash", () => {
-  const first = acceptHelper(signed("14898d92021b268d5090437140e45e252d656e50"), identity);
-  const second = acceptHelper(signed("e2ad7477d8f989484c3d0ef8a2598561844127bf"), identity);
-  assert.equal(first.ok, true, first.reason);
-  assert.equal(second.ok, true, second.reason);
-  assert.equal(acceptHelper({ ...signed("abc"), exists: false }, identity).reason, "helper is absent");
-  assert.equal(acceptHelper({ ...signed("abc"), isBundle: false }, identity).reason, "helper must be the signed BaoOSHelper.app bundle");
-  assert.match(acceptHelper({ ...signed("abc"), adhoc: true }, identity).reason, /ad-hoc/);
-  assert.match(acceptHelper({ ...signed("abc"), identifier: "dev.bao.other" }, identity).reason, /dev.bao.oshelper/);
-  assert.match(acceptHelper({ ...signed("abc"), authorities: ["other"] }, identity).reason, /certificate/);
-  assert.match(acceptHelper({
-    ...signed("abc"),
-    designated: 'identifier "dev.bao.oshelper" and cdhash H"abc"',
-  }, identity).reason, /certificate/);
-});
-
-test("codesign text keeps the certificate and ignores the printed CDHash", () => {
-  const older = parseCodesign(
-    "Identifier=dev.bao.oshelper\nAuthority=bao dev signing\nCDHash=e2ad7477d8f989484c3d0ef8a2598561844127bf\n",
+test("the recorded helper requirement passes and a different certificate hash fails", () => {
+  const verify = "Identifier=dev.bao.oshelper\nAuthority=bao dev signing\n";
+  const recorded = fromCodesign(
+    `${verify}CDHash=bac5c56ac584bc325e0961999e028fdb87d74edd\n`,
+    `${recordedRequirement}\n`,
+  );
+  const laterBinary = fromCodesign(
+    `${verify}CDHash=14898d92021b268d5090437140e45e252d656e50\n`,
+    `${recordedRequirement}\n`,
+  );
+  assert.equal(acceptHelper(recorded, identity, pinnedHash).ok, true, acceptHelper(recorded, identity, pinnedHash).reason);
+  assert.equal(acceptHelper(laterBinary, identity, pinnedHash).ok, true);
+  const otherHash = "0123456789abcdef0123456789abcdef01234567";
+  const other = fromCodesign(verify, `designated => identifier "dev.bao.oshelper" and certificate leaf = H"${otherHash}"\n`);
+  assert.equal(acceptHelper(other, identity, pinnedHash).ok, false);
+  assert.equal(acceptHelper(recorded, identity, otherHash).ok, false);
+  const subjectForm = fromCodesign(
+    verify,
     'designated => identifier "dev.bao.oshelper" and certificate leaf[subject.CN] = "bao dev signing"\n',
   );
-  const current = parseCodesign(
-    "Identifier=dev.bao.oshelper\nAuthority=bao dev signing\nSignature=adhoc\nCDHash=14898d92021b268d5090437140e45e252d656e50\n",
-    'designated => identifier "dev.bao.oshelper" and certificate leaf[subject.CN] = "bao dev signing"\n',
-  );
-  assert.equal(older.cdhash, "e2ad7477d8f989484c3d0ef8a2598561844127bf");
-  assert.equal(current.cdhash, "14898d92021b268d5090437140e45e252d656e50");
-  assert.equal(acceptHelper({ exists: true, isBundle: true, ...older }, identity).ok, true);
-  assert.equal(current.adhoc, true);
-  assert.match(acceptHelper({ exists: true, isBundle: true, ...current }, identity).reason, /ad-hoc/);
+  assert.equal(acceptHelper(subjectForm, identity, pinnedHash).ok, false);
+  assert.equal(acceptHelper({ ...recorded, exists: false }, identity, pinnedHash).reason, "helper is absent");
+  assert.match(acceptHelper({ ...recorded, isBundle: false }, identity, pinnedHash).reason, /bundle/);
+  assert.match(acceptHelper({ ...recorded, adhoc: true }, identity, pinnedHash).reason, /ad-hoc/);
+  const adhocText = fromCodesign(`${verify}Signature=adhoc\n`, `${recordedRequirement}\n`);
+  assert.match(acceptHelper(adhocText, identity, pinnedHash).reason, /ad-hoc/);
 });
 
 test("the native host wrapper points at the script inside Resources", () => {
