@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import test from "node:test";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 const localRequire = createRequire(__filename);
@@ -107,6 +107,78 @@ test("a staged require fails when the module is found outside the copy", () => {
     rmSync(outside, { recursive: true, force: true });
     rmSync(walked, { recursive: true, force: true });
     rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+function stubServer(dir: string) {
+  mkdirSync(path.join(dir, "src/app"), { recursive: true });
+  writeFileSync(path.join(dir, "src/app/server.js"), "module.exports = {};\n");
+}
+
+function stubPackage(dir: string, name: string, body = "module.exports = {};\n") {
+  const pkg = path.join(dir, "node_modules", name);
+  mkdirSync(pkg, { recursive: true });
+  writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name, main: "index.js" }));
+  writeFileSync(path.join(pkg, "index.js"), body);
+}
+
+test("a correct staged tree behind a directory symlink is accepted", () => {
+  const parent = mkdtempSync(path.join(tmpdir(), "bao-var-"));
+  const privateVar = path.join(parent, "private-var");
+  mkdirSync(privateVar);
+  symlinkSync(privateVar, path.join(parent, "var"));
+  const staged = path.join(parent, "var", "folders");
+  mkdirSync(staged);
+  try {
+    stubServer(staged);
+    stubPackage(staged, "playwright");
+    stubPackage(staged, "classic-level");
+    const result = spawnSync(process.execPath, ["desktop/packaging/require-staged.js", staged], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, NODE_PATH: "", NODE_OPTIONS: "" },
+    });
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test("a staged package that loads from HOME or a symlink is rejected", () => {
+  const parent = mkdtempSync(path.join(tmpdir(), "bao-escape-"));
+  const staged = path.join(parent, "staged");
+  const home = path.join(parent, "home");
+  const outside = path.join(parent, "outside", "playwright");
+  try {
+    stubServer(staged);
+    stubPackage(staged, "classic-level");
+    stubPackage(staged, "playwright", "require('playwright-core');\n");
+    const core = path.join(home, ".node_modules", "playwright-core");
+    mkdirSync(core, { recursive: true });
+    writeFileSync(path.join(core, "package.json"), JSON.stringify({ name: "playwright-core", main: "index.js" }));
+    writeFileSync(path.join(core, "index.js"), "module.exports = {};\n");
+    const fromHome = spawnSync(process.execPath, ["desktop/packaging/require-staged.js", staged], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, NODE_PATH: "", NODE_OPTIONS: "", HOME: home },
+    });
+    assert.notEqual(fromHome.status, 0);
+    assert.match(fromHome.stderr, /outside the staged copy/);
+
+    rmSync(path.join(staged, "node_modules", "playwright"), { recursive: true, force: true });
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(path.join(outside, "package.json"), JSON.stringify({ name: "playwright", main: "index.js" }));
+    writeFileSync(path.join(outside, "index.js"), "module.exports = {};\n");
+    symlinkSync(outside, path.join(staged, "node_modules", "playwright"));
+    const fromLink = spawnSync(process.execPath, ["desktop/packaging/require-staged.js", staged], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, NODE_PATH: "", NODE_OPTIONS: "--preserve-symlinks", HOME: home },
+    });
+    assert.notEqual(fromLink.status, 0);
+    assert.match(fromLink.stderr, /outside the staged copy/);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
   }
 });
 
