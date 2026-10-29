@@ -16,6 +16,7 @@ import {
   type StepFailure,
 } from "./heal";
 import type { WorkflowStep } from "./schema";
+import { resolveHome } from "../home";
 
 export interface AgentStatus {
   authenticated: boolean;
@@ -285,7 +286,7 @@ export async function cursorAccountHeal(
   await readCursorAccount(env, agent);
   const providers: HealProvider[] = [cursorPrintHeal(env, secrets, agent)];
   if (env.BAO_HEAL_CURSOR === "1") {
-    const dir = env.BAO_HEAL_DIR || env.BAO_HOME || path.join(tmpdir(), "bao-heal");
+    const dir = env.BAO_HEAL_DIR || resolveHome({ env });
     providers.push(cursorHeal(dir, env, secrets));
   }
   providers.push(llmHealFromEnv(env, fetch, secrets));

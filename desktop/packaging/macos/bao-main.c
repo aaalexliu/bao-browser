@@ -6,6 +6,7 @@
  * be a second binary to sign, and codesign --deep on this bundle would change
  * the helper CDHash. See bao-launch.h. */
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <mach-o/dyld.h>
@@ -31,6 +32,7 @@ static const char kOpenBody[] =
 static const char kAlreadyTitle[] = "Bao is already open";
 static const char kAlreadyBody[] = "Switch to the Bao window.";
 static const char kBrowserBody[] = "This copy of Bao is missing its browser. Install Bao again.";
+static const char kSplitTitle[] = "Two libraries";
 
 static void dirname_inplace(char *path) {
   char *slash = strrchr(path, '/');
@@ -117,6 +119,104 @@ static void stop_pid(pid_t pid) {
   waitpid(pid, &status, 0);
 }
 
+static int path_ok(int wrote, size_t cap) {
+  return wrote >= 0 && (size_t)wrote < cap;
+}
+
+/* Expand a leading ~/ and make the path absolute against the launch directory. */
+static int expand_abs(char *out, size_t n, const char *raw, const char *user_home) {
+  char expanded[4096];
+  const char *src = raw;
+  if (raw[0] == '~' && (raw[1] == '\0' || raw[1] == '/')) {
+    int wrote = snprintf(expanded, sizeof expanded, "%s%s", user_home, raw + 1);
+    if (!path_ok(wrote, sizeof expanded)) return -1;
+    src = expanded;
+  }
+  if (src[0] == '/') {
+    int wrote = snprintf(out, n, "%s", src);
+    return path_ok(wrote, n) ? 0 : -1;
+  }
+  char cwd[4096];
+  if (!getcwd(cwd, sizeof cwd)) return -1;
+  int wrote = snprintf(out, n, "%s/%s", cwd, src);
+  return path_ok(wrote, n) ? 0 : -1;
+}
+
+static int has_workflows(const char *dir) {
+  char folder[4096];
+  int wrote = snprintf(folder, sizeof folder, "%s/workflows", dir);
+  if (!path_ok(wrote, sizeof folder)) return 0;
+  DIR *handle = opendir(folder);
+  if (!handle) return 0;
+  int found = 0;
+  struct dirent *ent;
+  while ((ent = readdir(handle)) != NULL) {
+    const char *name = ent->d_name;
+    size_t len = strlen(name);
+    if (len < 6 || strcmp(name + len - 5, ".json") != 0) continue;
+    char file[8192];
+    int n = snprintf(file, sizeof file, "%s/%s", folder, name);
+    if (!path_ok(n, sizeof file)) continue;
+    struct stat st;
+    if (stat(file, &st) == 0 && S_ISREG(st.st_mode)) {
+      found = 1;
+      break;
+    }
+  }
+  closedir(handle);
+  return found;
+}
+
+/* Pick the library before mkdir and before the child chdir. split_body is the
+ * same sentence the window shows when two directories both hold workflows. */
+static int resolve_bao_home(char *bao_home, size_t n, const char *user_home, char *split_body, size_t split_n) {
+  if (split_body && split_n) split_body[0] = '\0';
+  const char *override = getenv("BAO_HOME");
+  char requested[4096];
+  if (override && override[0]) {
+    int wrote = snprintf(requested, sizeof requested, "%s", override);
+    if (!path_ok(wrote, sizeof requested)) return -1;
+  } else {
+    int wrote = snprintf(requested, sizeof requested, "%s/Library/Application Support/bao", user_home);
+    if (!path_ok(wrote, sizeof requested)) return -1;
+  }
+  if (expand_abs(bao_home, n, requested, user_home) != 0) return -1;
+
+  char legacy_local[4096];
+  char legacy_mcp[4096];
+  int local_wrote = snprintf(legacy_local, sizeof legacy_local, "%s/.local/share/bao", user_home);
+  if (!path_ok(local_wrote, sizeof legacy_local)) return -1;
+  char cwd[4096];
+  int mcp_ok = 0;
+  if (getcwd(cwd, sizeof cwd)) {
+    int mcp_wrote = snprintf(legacy_mcp, sizeof legacy_mcp, "%s/.bao-mcp", cwd);
+    mcp_ok = path_ok(mcp_wrote, sizeof legacy_mcp);
+  }
+  int chosen_has = has_workflows(bao_home);
+  int local_has = strcmp(legacy_local, bao_home) != 0 && has_workflows(legacy_local);
+  int mcp_has = mcp_ok && strcmp(legacy_mcp, bao_home) != 0 && has_workflows(legacy_mcp);
+  if (!chosen_has && (local_has || mcp_has)) {
+    const char *keep = local_has ? legacy_local : legacy_mcp;
+    int wrote = snprintf(bao_home, n, "%s", keep);
+    if (!path_ok(wrote, n)) return -1;
+    if (local_has && mcp_has && split_body && split_n) {
+      int body = snprintf(split_body, split_n, "library data is at %s; using %s", legacy_mcp, bao_home);
+      if (!path_ok(body, split_n)) split_body[0] = '\0';
+    }
+    return 0;
+  }
+  if (!chosen_has || !split_body || !split_n) return 0;
+  if (local_has && mcp_has) {
+    int body = snprintf(split_body, split_n, "library data is at %s; using %s\nlibrary data is at %s; using %s", legacy_local, bao_home, legacy_mcp, bao_home);
+    if (!path_ok(body, split_n)) split_body[0] = '\0';
+  } else if (local_has || mcp_has) {
+    const char *other = local_has ? legacy_local : legacy_mcp;
+    int body = snprintf(split_body, split_n, "library data is at %s; using %s", other, bao_home);
+    if (!path_ok(body, split_n)) split_body[0] = '\0';
+  }
+  return 0;
+}
+
 int main(void) {
   char exe[4096];
   uint32_t size = sizeof exe;
@@ -154,9 +254,12 @@ int main(void) {
   const char *user_home = getenv("HOME");
   if (!user_home || !user_home[0]) user_home = "/tmp";
   char bao_home[4096];
-  const char *override = getenv("BAO_HOME");
-  if (override && override[0]) snprintf(bao_home, sizeof bao_home, "%s", override);
-  else snprintf(bao_home, sizeof bao_home, "%s/Library/Application Support/bao", user_home);
+  char split_body[8192];
+  split_body[0] = '\0';
+  if (resolve_bao_home(bao_home, sizeof bao_home, user_home, split_body, sizeof split_body) != 0) {
+    bao_show_alert(kOpenTitle, kOpenBody);
+    return 1;
+  }
 
   const char *port = getenv("BAO_PORT");
   if (!port || !port[0]) port = "4787";
@@ -210,13 +313,16 @@ int main(void) {
   }
   /* The capture browser stays hidden unless this is set. The documented test types into it. */
   if (!getenv("BAO_HEADED")) setenv("BAO_HEADED", "1", 0);
+  if (split_body[0]) bao_show_alert(kSplitTitle, split_body);
 
   pid_t node = fork();
   if (node < 0) {
     bao_show_alert(kOpenTitle, kOpenBody);
     return 1;
   }
+
   if (node == 0) {
+    setenv("BAO_HOME", bao_home, 1);
     setenv("BAO_PUBLIC", public_dir, 1);
     if (chdir(root) != 0) _exit(127);
     execl(node_bin, "node", "src/app/cli.js", "serve", "--home", bao_home, "--port", port, (char *)NULL);

@@ -105,6 +105,7 @@ import {
 import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
+import { librarySplitLine, otherLibraries } from "../home";
 import { Library } from "../v1/store";
 import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
@@ -190,8 +191,11 @@ export async function startApp(opts: {
   extensionConfigHome?: string;
   extensionHostDirs?: string[];
 }): Promise<App> {
+  opts = { ...opts, home: path.resolve(opts.home) };
+  process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
+  const librarySplits = otherLibraries(opts.home).map((other) => librarySplitLine(other, opts.home));
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
@@ -461,6 +465,7 @@ export async function startApp(opts: {
             steps: capture.steps.map(captureStepLabel),
           },
           notices,
+          librarySplits,
           settings: library.settings(),
           workflows: library.list().map(summary),
           trails: library.listTrails(),

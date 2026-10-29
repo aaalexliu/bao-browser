@@ -177,7 +177,8 @@ test("status keeps a legacy workflow directory and does not copy it", async () =
   assert.equal(warned.stderr.trim(), `bao: no workflows in ${dirs.flagged}; using ${legacy}`);
   assert.equal(readFileSync(path.join(legacy, "workflows", "keep.json"), "utf8"), "{\"id\":\"keep\"}\n");
   assert.equal(readFileSync(path.join(old, "runs", "run-1.json"), "utf8"), "{}\n");
-  assert.equal(existsSync(dirs.flagged), false);
+  assert.equal(existsSync(path.join(dirs.flagged, "workflows")), false);
+  assert.equal(existsSync(path.join(dirs.flagged, "runs")), false);
 });
 
 test("status stays quiet when the resolved home is the only library", async () => {
@@ -238,7 +239,9 @@ test("mcp keeps a legacy workflow directory and does not merge it into --home", 
   assert.equal("home" in called.payload, false);
   assert.equal(called.stderr.trim(), `bao: no workflows in ${dirs.flagged}; using ${legacy}`);
   assert.equal(readFileSync(path.join(legacy, "workflows", "keep.json"), "utf8"), "{\"id\":\"keep\"}\n");
-  assert.equal(existsSync(dirs.flagged), false);
+  assert.equal(existsSync(path.join(dirs.flagged, "workflows")), false);
+  assert.equal(existsSync(path.join(dirs.flagged, "runs")), false);
+  assert.equal(existsSync(path.join(dirs.flagged, "shots")), false);
   assert.equal(existsSync(path.join(legacy, "workflows", "keep.json")), true);
 });
 

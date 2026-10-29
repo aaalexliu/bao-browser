@@ -1,4 +1,4 @@
-import { resolveHome } from "../home";
+import { baoUserHome, otherLibraries, resolveHome, tildePath } from "../home";
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
@@ -55,13 +55,14 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const home = resolveHome(args);
+  process.env.BAO_HOME = home;
   if (process.env.BAO_MCP_LIVE === "1") {
-    process.env.BAO_HOME = home;
     const { liveMcpMain } = await import("../eval/live-mcp");
     await liveMcpMain();
     return;
   }
   const library = new Library(home);
+  const libraries = publishedLibraries(home);
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -70,7 +71,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       const next = takeRpcChunk(buf, null);
       if (!next) return;
       buf = Buffer.from(next.rest);
-      chain = chain.then(() => handle(next.body, library)).catch((err: unknown) => {
+      chain = chain.then(() => handle(next.body, library, libraries)).catch((err: unknown) => {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       });
     }
@@ -78,7 +79,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   await new Promise(() => {});
 }
 
-async function handle(body: string, library: Library): Promise<void> {
+async function handle(body: string, library: Library, libraries: string[] | undefined): Promise<void> {
   const msg = JSON.parse(body) as Rpc;
   if (msg.method === "initialize") {
     send({
@@ -99,7 +100,7 @@ async function handle(body: string, library: Library): Promise<void> {
   }
   if (msg.method === "tools/call") {
     try {
-      const text = JSON.stringify(await callTool(library, msg.params?.name || "", msg.params?.arguments || {}));
+      const text = JSON.stringify(await callTool(library, libraries, msg.params?.name || "", msg.params?.arguments || {}));
       send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], isError: false } });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -114,16 +115,16 @@ async function handle(body: string, library: Library): Promise<void> {
   if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
 }
 
-async function callTool(library: Library, name: string, args: Record<string, unknown>): Promise<unknown> {
+async function callTool(library: Library, libraries: string[] | undefined, name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === "search_workflows") {
     const filters = args.filters && typeof args.filters === "object" ? args.filters as Record<string, unknown> : args;
-    return {
+    return withLibraries({
       hits: await searchWorkflows(library, String(args.query || ""), {
         source: stringArg(filters.source),
         site: stringArg(filters.site),
         category: stringArg(filters.category),
       }),
-    };
+    }, libraries);
   }
   if (name === "describe_workflow") return describeWorkflow(library, String(args.id || ""));
   if (name === "run_workflow") {
@@ -134,10 +135,22 @@ async function callTool(library: Library, name: string, args: Record<string, unk
       rerun: args.rerun === true,
       cancel: args.cancel === true,
     });
-    return { ...result, home: library.root };
+    return withLibraries(result, libraries);
   }
-  if (name === "get_run") return { ...getRun(library, String(args.run_id || "")), home: library.root };
+  if (name === "get_run") return withLibraries(getRun(library, String(args.run_id || "")), libraries);
   throw new Error("unknown tool");
+}
+
+function publishedLibraries(root: string): string[] | undefined {
+  const also = otherLibraries(root);
+  if (!also.length) return undefined;
+  const prefix = baoUserHome();
+  return [root, ...also].map((dir) => tildePath(dir, prefix));
+}
+
+function withLibraries(result: object, libraries: string[] | undefined): object {
+  if (!libraries) return result;
+  return { ...result, libraries };
 }
 
 function stringArg(value: unknown): string | undefined {
