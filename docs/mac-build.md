@@ -127,7 +127,7 @@ git checkout v1/desktop
 
 ## Build
 
-On this Mac the helper is already signed with `bao dev signing` (CDHash `e2ad7477d8f989484c3d0ef8a2598561844127bf`). Skip the helper script. Run only the desktop script, so the nested helper keeps that CDHash and the grant stays. Do not pass `--deep` to `codesign`.
+On this Mac the helper is already signed with `bao dev signing` (CDHash `14898d92021b268d5090437140e45e252d656e50`). Skip the helper script. Run only the desktop script, so the nested helper keeps that CDHash and the grant stays. Do not pass `--deep` to `codesign`.
 
 ```sh
 npm install
@@ -141,7 +141,7 @@ file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 - `npm install` ends without `EBADENGINE`.
 - The desktop script prints `BUNDLED_BROWSER` and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
 - `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
-- `codesign -dvvv` on the nested `BaoOSHelper.app` still shows CDHash `e2ad7477d8f989484c3d0ef8a2598561844127bf`.
+- `codesign -dvvv` on the nested `BaoOSHelper.app` still shows CDHash `14898d92021b268d5090437140e45e252d656e50`.
 
 Copy `Bao.app` to `/Applications/Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 

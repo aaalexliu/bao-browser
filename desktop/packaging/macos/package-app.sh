@@ -31,6 +31,11 @@ cp -a web/src "$APP/Contents/Resources/bao/web/src"
 # Without it the window's /app.js bundle fails and the sidebar never renders.
 mkdir -p "$APP/Contents/Resources/bao/src"
 cp -a src/mask.ts "$APP/Contents/Resources/bao/src/mask.ts"
+# server.js requires ../../../extension/src/host-grant, which lands at Contents/Resources/extension.
+# views.ts, bundled from bao/desktop, resolves the same module under bao/extension.
+mkdir -p "$APP/Contents/Resources/extension/src" "$APP/Contents/Resources/bao/extension/src"
+cp desktop/dist/extension/src/host-grant.js "$APP/Contents/Resources/extension/src/host-grant.js"
+cp extension/src/host-grant.ts "$APP/Contents/Resources/bao/extension/src/host-grant.ts"
 # The server requires playwright and esbuild. A copy of the app outside this repo cannot see node_modules.
 mkdir -p "$APP/Contents/Resources/bao/node_modules"
 cp -a node_modules/playwright node_modules/playwright-core node_modules/esbuild "$APP/Contents/Resources/bao/node_modules/"

@@ -116,6 +116,8 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   assert.match(main, /--app=/);
   assert.match(main, /--disable-infobars/);
   assert.match(script, /bao-launch\.c/);
+  assert.match(script, /extension\/src\/host-grant\.js/);
+  assert.match(script, /extension\/src\/host-grant\.ts/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);
   assert.match(main, /bao_discover_node/);
