@@ -1,42 +1,38 @@
+import { HELPER_SHOT_COMMAND, LIVE_CHROME_SHOT_ERROR, MacOsHelper } from "./proxy/os-macos";
+
 export type HelperGrant = "accessibility" | "screen-recording";
 
 export interface Capability {
-  id: "native-ax" | "window-capture" | "live-chrome" | "extension-replay";
+  id: "ax-press" | "window-capture" | "live-chrome" | "mcp-ax";
   ready: string;
   blocked: string;
-  grant?: HelperGrant;
-  usesScreenRecording: boolean;
+  grants: readonly HelperGrant[];
 }
-
-export const WINDOW_CAPTURE_COMMAND = "shot";
 
 export const CAPABILITIES: readonly Capability[] = [
   {
-    id: "native-ax",
-    ready: "native automation ready",
-    blocked: "native automation needs Accessibility",
-    grant: "accessibility",
-    usesScreenRecording: false,
+    id: "ax-press",
+    ready: "AX press ready",
+    blocked: "AX press needs Accessibility",
+    grants: ["accessibility"],
   },
   {
     id: "window-capture",
     ready: "window capture ready",
     blocked: "window capture needs Screen Recording",
-    grant: "screen-recording",
-    usesScreenRecording: true,
+    grants: ["screen-recording"],
   },
   {
     id: "live-chrome",
     ready: "live Chrome ready",
     blocked: "live Chrome needs Accessibility",
-    grant: "accessibility",
-    usesScreenRecording: false,
+    grants: ["accessibility"],
   },
   {
-    id: "extension-replay",
-    ready: "extension replay ready",
-    blocked: "extension replay ready",
-    usesScreenRecording: false,
+    id: "mcp-ax",
+    ready: "MCP driver ready",
+    blocked: "MCP driver needs Accessibility and Screen Recording",
+    grants: ["accessibility", "screen-recording"],
   },
 ];
 
@@ -71,7 +67,7 @@ export function capabilityReport(input: {
     screenCapture,
     capabilities: CAPABILITIES.map((cap) => ({
       id: cap.id,
-      status: cap.grant === undefined || held[cap.grant] ? cap.ready : cap.blocked,
+      status: cap.grants.every((grant) => held[grant]) ? cap.ready : cap.blocked,
     })),
   };
 }
@@ -83,22 +79,18 @@ export function liveChromeBlock(perms: {
 }): string | undefined {
   if (perms.prompted) return "helper asked for a permission prompt";
   const live = CAPABILITIES.find((cap) => cap.id === "live-chrome");
-  if (live?.grant === "accessibility" && perms.accessibility !== true) {
+  if (live?.grants.includes("accessibility") && perms.accessibility !== true) {
     return "BaoOSHelper accessibility is not granted";
-  }
-  if (live?.usesScreenRecording && perms.screenCapture !== true) {
-    return "BaoOSHelper screen recording is not granted";
   }
   return undefined;
 }
 
 export function usesScreenRecording(calls: readonly (readonly string[])[]): boolean {
-  return calls.some((call) => call[0] === WINDOW_CAPTURE_COMMAND);
+  return calls.some((call) => call[0] === HELPER_SHOT_COMMAND);
 }
 
-export function forbidScreenRecording<T extends { shot(...args: never[]): Promise<unknown> }>(helper: T): T {
-  const live = CAPABILITIES.find((cap) => cap.id === "live-chrome");
-  if (live?.usesScreenRecording) return helper;
-  helper.shot = () => Promise.reject(new Error("live Chrome does not use screen recording"));
+export function forbidScreenRecording(helper: MacOsHelper): MacOsHelper {
+  helper.refuseWindowShot = true;
+  helper.shot = () => Promise.reject(new Error(LIVE_CHROME_SHOT_ERROR));
   return helper;
 }

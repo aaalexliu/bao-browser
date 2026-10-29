@@ -471,7 +471,8 @@ async function run(): Promise<void> {
     steps,
     banner: { during: during.visible, duringText: during.text, afterClose: after.visible },
     checkboxOn: box.on,
-    screenCapture: usesScreenRecording(helper.calls),
+    screenCapture: perms.screenCapture === true,
+    osWindowShot: usesScreenRecording(helper.calls),
   };
   log.setSteps(steps.map((step) => ({ name: step.name, status: step.status, ms: step.ms })));
   await log.flush(status, code, body.host);

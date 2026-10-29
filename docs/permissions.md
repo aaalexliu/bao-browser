@@ -18,14 +18,17 @@ macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the p
 
 Four jobs can run on this Mac. A grant for one job does not turn another job off.
 
-- **Native automation** reads and presses a control by its name. It needs Accessibility.
-- **Window capture** saves one window. It needs Screen Recording.
-- **Live Chrome** reads Chrome's controls through Accessibility. It needs Accessibility. It does not capture the window. Leave Screen Recording on when window capture needs it. That grant does not stop live Chrome.
-- **Extension replay** uses the extension's site grant. It does not need Accessibility or Screen Recording.
+- **AX press** reads and presses a control by its name. It needs Accessibility. The footer reads **AX press ready**.
+- **Window capture** saves one window. It needs Screen Recording. The footer reads **window capture ready**.
+- **Live Chrome** reads Chrome's controls through Accessibility. It needs Accessibility. It does not capture the window. The Screen Recording grant is no longer a start blocker for live Chrome. The footer reads **live Chrome ready**.
+- **MCP driver** (`bao mcp-ax`) takes a picture before it observes, clicks, types, or presses a key. It needs Accessibility and Screen Recording. The footer reads **MCP driver ready** only when both are on.
+- **Extension replay** uses the extension's site grant. The helper status does not report it.
 
-The helper status names each job. `live Chrome ready` means Accessibility is on. `window capture ready` means Screen Recording is on. `native automation ready` follows Accessibility. `extension replay ready` does not read those two grants. `helper.label` stays `helper ok` when both grants are on, and `helper needs permission` when either grant is off.
+`helper.label` stays `helper ok` when both grants are on, and `helper needs permission` when either grant is off.
 
-Use both grants when you want window capture and live Chrome. Do not turn Screen Recording off to start live Chrome.
+Leave Screen Recording on for window capture and the MCP driver. Live Chrome stays ready with Accessibility alone. If the footer reads **helper needs permission**, allow the missing grant and open Bao again.
+
+A second BaoOSHelper, or `open -a BaoOSHelper --args shot`, can still capture a window during a live Chrome session while Screen Recording is granted. The live session's own helper does not send `shot`.
 
 ## Extension host grants
 

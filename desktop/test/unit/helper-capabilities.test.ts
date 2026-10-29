@@ -1,17 +1,33 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { helperStatusText, rail } from "../../src/app/views";
 import { chromeHelper } from "../../src/cdp-live/ax";
 import {
   capabilityReport,
-  forbidScreenRecording,
   liveChromeBlock,
   usesScreenRecording,
 } from "../../src/helper-capabilities";
+import { MacOsHelper } from "../../src/proxy/os-macos";
+
+const LIVE_ENTRIES = ["session.ts", "instacart-run.ts", "login-diff.ts", "run.ts"];
+
+function liveEntryProblem(src: string): string | undefined {
+  if (src.includes("screen recording is granted; not starting")) return "old throw";
+  if (src.includes("new MacOsHelper")) return "raw helper";
+  if (!src.includes("chromeHelper(")) return "missing chromeHelper";
+  if (!src.includes("liveChromeBlock(")) return "missing liveChromeBlock";
+  return undefined;
+}
 
 test("live Chrome starts when Screen Recording is already granted", () => {
   assert.equal(
     liveChromeBlock({ accessibility: true, screenCapture: true, prompted: false }),
+    undefined,
+  );
+  assert.equal(
+    liveChromeBlock({ accessibility: true, screenCapture: false, prompted: false }),
     undefined,
   );
 });
@@ -28,27 +44,37 @@ test("live Chrome still requires Accessibility and still refuses a permission pr
 });
 
 test("live Chrome rejects window capture without calling it", async () => {
-  let captured = false;
-  const helper = {
-    shot: async (_bundle: string, _out: string) => {
-      captured = true;
-      return { ok: true };
-    },
-  };
-  forbidScreenRecording(helper);
-  await assert.rejects(
-    () => helper.shot("com.google.Chrome", "/tmp/bao-live.png"),
-    /live Chrome does not use screen recording/,
-  );
-  assert.equal(captured, false);
   assert.equal(usesScreenRecording([["permissions"], ["nodes", "--bundle", "com.google.Chrome"], ["press"]]), false);
   assert.equal(usesScreenRecording([["shot", "--bundle", "com.google.Chrome", "--out", "/tmp/bao-live.png"]]), true);
   const live = chromeHelper();
   await assert.rejects(
+    () => MacOsHelper.prototype.shot.call(live, "com.google.Chrome", "/tmp/bao-live.png"),
+    /live Chrome does not use screen recording/,
+  );
+  await assert.rejects(
+    () => live.exec(["shot", "--bundle", "com.google.Chrome", "--out", "/tmp/bao-live.png"]),
+    /live Chrome does not use screen recording/,
+  );
+  const wiped = live as Omit<MacOsHelper, "shot"> & { shot?: MacOsHelper["shot"] };
+  delete wiped.shot;
+  await assert.rejects(
     () => live.shot("com.google.Chrome", "/tmp/bao-live.png"),
     /live Chrome does not use screen recording/,
   );
-  assert.deepEqual(live.calls, []);
+  assert.equal(live.calls.some((call) => call[0] === "shot"), false);
+  const other = new MacOsHelper(live.bin);
+  assert.equal(other.refuseWindowShot, false);
+});
+
+test("live entries keep the shared gate", () => {
+  for (const name of LIVE_ENTRIES) {
+    const src = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live", name), "utf8");
+    assert.equal(liveEntryProblem(src), undefined, name);
+    const thrown = `${src}\nthrow new Error("BaoOSHelper screen recording is granted; not starting");\n`;
+    assert.equal(liveEntryProblem(thrown), "old throw", name);
+    const raw = `${src}\nconst other = new MacOsHelper(bin);\n`;
+    assert.equal(liveEntryProblem(raw), "raw helper", name);
+  }
 });
 
 test("helper status names each job and keeps the old label", () => {
@@ -63,10 +89,10 @@ test("helper status names each job and keeps the old label", () => {
   assert.equal(axOnly.screenCapture, false);
   const axStatus = axOnly.capabilities.map((row) => row.status);
   assert.deepEqual(axStatus, [
-    "native automation ready",
+    "AX press ready",
     "window capture needs Screen Recording",
     "live Chrome ready",
-    "extension replay ready",
+    "MCP driver needs Accessibility and Screen Recording",
   ]);
 
   const both = capabilityReport({
@@ -77,10 +103,10 @@ test("helper status names each job and keeps the old label", () => {
   });
   assert.equal(both.label, "helper ok");
   assert.deepEqual(both.capabilities.map((row) => row.status), [
-    "native automation ready",
+    "AX press ready",
     "window capture ready",
     "live Chrome ready",
-    "extension replay ready",
+    "MCP driver ready",
   ]);
 
   const screenOnly = capabilityReport({
@@ -123,8 +149,10 @@ test("the footer shows each job and still says helper ok", () => {
   });
   const text = helperStatusText(both);
   assert.match(text, /helper ok/);
+  assert.match(text, /AX press ready/);
   assert.match(text, /live Chrome ready/);
   assert.match(text, /window capture ready/);
+  assert.match(text, /MCP driver ready/);
   const html = rail({ helper: both });
   assert.match(html, /id="helper-status"/);
   assert.match(html, /helper ok/);

@@ -7,7 +7,7 @@ import { replay, type RunResult } from "../v1/replay";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
 import { ALLOW_CLICK_WINDOW_MS, mayClickAllow, type AxSummary } from "./consent";
 import { readDevToolsActivePort } from "./endpoint";
-import { liveChromeBlock } from "../helper-capabilities";
+import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
 import { AxUnavailable, chromeHelper, chromeTree, ensureRemoteDebugging, pressAllow } from "./ax";
 import { CdpLiveDriver, openLiveWindow, type PageObservation } from "./driver";
 import { connectCdp, type CdpSocket } from "./socket";
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
     progress("reading the banner after the socket closed");
     const after = (await chromeTree(helper)).summary.banner;
     const body = {
-      permissions,
+      permissions: { ...permissions, osWindowShot: usesScreenRecording(helper.calls) },
       checkbox: { value: enabled.summary.checkbox.value, pressed: enabled.pressed },
       port: endpoint.port,
       dialogPresentBeforeConnect,

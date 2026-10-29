@@ -972,7 +972,8 @@ async function runGuarded(
     botWall: code === "bot_wall",
     banner: { during: during.visible, afterClose: after.visible },
     checkboxOn: box.on,
-    screenCapture: usesScreenRecording(helper.calls),
+    screenCapture: perms.screenCapture === true,
+    osWindowShot: usesScreenRecording(helper.calls),
     shots,
     audit: [
       {
