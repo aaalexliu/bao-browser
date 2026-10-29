@@ -225,7 +225,18 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
   const pid = child.pid;
   try {
     if (!pid) throw new Error("Chrome pid was missing");
-    const raw = readFileSync(`/proc/${pid}/environ`).toString("utf8");
+    let raw = "";
+    const started = Date.now();
+    let last = "missing";
+    while (Date.now() - started < 2000) {
+      try {
+        raw = readFileSync(`/proc/${pid}/environ`).toString("utf8");
+        break;
+      } catch (err) {
+        last = err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (!raw) throw new Error(`Chrome environ was not readable: ${last}`);
     const got = raw.split("\0").filter(Boolean).map((row) => row.slice(0, row.indexOf("="))).filter((key) => /^bao/i.test(key)).sort();
     assert.deepEqual(got, [
       "BAO_HEADED",

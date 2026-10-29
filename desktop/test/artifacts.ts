@@ -13,6 +13,9 @@ export function artifactsRoot(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function testArtifacts(name: string, env: NodeJS.ProcessEnv = process.env): string {
+  if (name.trim() === "" || name.includes("..") || name.includes("/") || name.includes("\\")) {
+    throw new Error(`artifact leaf is not a single path segment: ${JSON.stringify(name)}`);
+  }
   const safe = name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "test";
   const dir = path.join(artifactsRoot(env), safe);
   mkdirSync(dir, { recursive: true });

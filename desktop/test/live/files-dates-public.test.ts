@@ -11,7 +11,7 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { replay } from "../../src/v1/replay";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts, tryWriteEvidence } from "../artifacts";
-import { liveSkip, probeSite, type SiteProbe } from "../runtime";
+import { liveSkip, offOriginFailureUrl, ownApiOutage, probeSite, type SiteProbe } from "../runtime";
 
 const CLOCK = new Date("2026-10-22T15:00:00Z");
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
@@ -56,6 +56,16 @@ async function requireSite(t: TestContext, url: string): Promise<SiteProbe | und
     return undefined;
   }
   return probe;
+}
+
+function failureForSkip(
+  probe: SiteProbe,
+  failure: { phase?: string; reason?: string } | undefined,
+  network: { url: string; status?: number }[] | undefined,
+): { phase?: string; reason?: string; url?: string } | undefined {
+  if (!failure) return undefined;
+  const url = offOriginFailureUrl(probe.url, network);
+  return url ? { ...failure, url } : failure;
 }
 
 test("restful-booker selects the replayed check-in and check-out cells", { timeout: 120_000, skip: liveOnly }, async (t) => {
@@ -106,7 +116,10 @@ test("restful-booker selects the replayed check-in and check-out cells", { timeo
       heal: unavailableHeal(),
     });
     const selected = await page.evaluate(readCalendarSelection).catch(() => ({ isos: [] as string[], reserve: false }));
-    const outage = result.status === "passed" ? undefined : liveSkip(probe, result.failure);
+    const outage = result.status === "passed"
+      ? undefined
+      : (liveSkip(probe, failureForSkip(probe, result.failure, result.network))
+        ?? ownApiOutage(start, result.failure, result.network));
     if (outage) {
       console.log(`live ${start} http=${outage.status} result=${outage.result} phase=${result.failure?.phase || ""}`);
       await tryWriteEvidence(() => writeFileSync(path.join(shots, "booking-outage.json"), JSON.stringify({ probe, outage, failure: result.failure, selected }, null, 2)));
@@ -168,7 +181,7 @@ test("the IRS W-9 downloads twice to the same templated hash", { timeout: 120_00
           downloadDir: root,
           heal: unavailableHeal(),
         });
-        const outage = result.status === "passed" ? undefined : liveSkip(probe, result.failure);
+        const outage = result.status === "passed" ? undefined : liveSkip(probe, failureForSkip(probe, result.failure, result.network));
         if (outage) {
           console.log(`live ${url} http=${outage.status} result=${outage.result} phase=${result.failure?.phase || ""}`);
           t.skip(`infrastructure ${outage.result} http=${outage.status} ${url}`);
@@ -263,7 +276,7 @@ test("a downloaded file uploads to the-internet and the filename is shown", { ti
         downloadDir: root,
         heal: unavailableHeal(),
       });
-      const outage = result.status === "passed" ? undefined : liveSkip(uploaded, result.failure);
+      const outage = result.status === "passed" ? undefined : liveSkip(uploaded, failureForSkip(uploaded, result.failure, result.network));
       if (outage) {
         console.log(`live ${uploadUrl} http=${outage.status} result=${outage.result} phase=${result.failure?.phase || ""}`);
         t.skip(`infrastructure ${outage.result} http=${outage.status} ${uploadUrl}`);

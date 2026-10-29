@@ -4,44 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
 
-const STRIP = [
+const SECRET_KEYS = [
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "GROQ_API_KEY",
   "XAI_API_KEY",
-  "BAO_XAI_MODEL",
   "CURSOR_API_KEY",
-  "BAO_HEAL_CURSOR",
-  "BAO_HEAL_CURSOR_RESPONSE",
-  "BAO_HEAL_FIXTURE",
-  "BAO_CURSOR_AGENT",
-  "BAO_CURSOR_MODEL",
-  "BAO_HEADED",
-  "BAO_BROWSER",
-  "BAO_TEST_BROWSER",
-  "BAO_CAPTURE_BAR",
-  "BAO_CAPTURE_BAR_BIN",
-  "BAO_CHROME_NO_SANDBOX",
-  "BAO_CDP_PORT_FILE",
-  "BAO_LIVE_TESTS",
-  "BAO_OS_HELPER",
-  "BAO_EXTENSION_HOST",
-  "BAO_HOME",
-  "BAO_CHROME_USER_DATA",
-  "BAO_PORT",
-  "BAO_PROFILE_DIR",
-  "BAO_WINDOW_VIDEO",
-  "BAO_RUN_VIDEO",
-  "BAO_REPLAY_VIDEO",
-  "BAO_NOTIFY_SOCK",
-  "BAO_MCP_LIVE",
-  "BAO_DRIVE",
-  "BAO_PROOF_PAGE",
-  "BAO_SIGNIN_HEADLESS",
-  "BAO_SIGNIN_SHOT",
-  "BAO_DEMO_HOLD_MS",
-  "BAO_FIND_DEBUG",
-  "BAO_TEST_MOCK_KEYCHAIN",
 ];
 
 export type TestLane = "hermetic" | "live";
@@ -62,12 +30,16 @@ export interface CompiledPlan {
 
 export function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv, pinnedBrowser?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...parent };
-  for (const key of STRIP) delete env[key];
+  for (const key of Object.keys(env)) {
+    if (/^bao/i.test(key)) delete env[key];
+  }
+  for (const key of SECRET_KEYS) delete env[key];
+  delete env.CI;
   env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   env.BAO_LANE = lane;
   env.BAO_REPLAY_VIDEO = "0";
-  if (!env.BAO_TEST_RUN_ID) env.BAO_TEST_RUN_ID = `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   env.BAO_HEADED = "0";
+  env.BAO_TEST_RUN_ID = `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   if (lane === "live") env.BAO_LIVE_TESTS = "1";
   if (pinnedBrowser) env.BAO_TEST_BROWSER = pinnedBrowser;
   return env;
@@ -125,18 +97,86 @@ export function liveSkip(
   if (probe.status === 404 || probe.status === 410) return { result: "unavailable", status: probe.status };
   if (probe.status === 0) return { result: "unavailable", status: 0 };
   if (!failure || failure.phase === "find" || failure.phase === "expect") return undefined;
-  if (/net::ERR_|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed/i.test(failure.reason || "")) {
-    return { result: "unavailable", status: 0 };
+  if (!/net::ERR_|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed/i.test(failure.reason || "")) return undefined;
+  if (probe.status >= 200 && probe.status < 400) {
+    if (leftOrigin(probe.url, failure.url)) return { result: "unavailable", status: 0 };
+    return undefined;
+  }
+  return { result: "unavailable", status: 0 };
+}
+
+export interface RecordedRequest {
+  url: string;
+  status?: number;
+}
+
+export function offOriginFailureUrl(pageUrl: string, requests: readonly RecordedRequest[] | undefined): string | undefined {
+  const origin = urlOrigin(pageUrl);
+  if (!origin) return undefined;
+  for (const request of requests || []) {
+    const status = request.status ?? 0;
+    if (status >= 200 && status < 400) continue;
+    const target = urlOrigin(request.url);
+    if (target && target !== origin) return request.url;
   }
   return undefined;
 }
 
 export function ownApiOutage(
-  _pageUrl: string,
-  _failure: { phase?: string; reason?: string } | undefined,
-  _requests: readonly { url: string; status?: number }[] | undefined,
+  pageUrl: string,
+  failure: { phase?: string; reason?: string } | undefined,
+  requests: readonly RecordedRequest[] | undefined,
 ): { result: "unavailable"; status: number } | undefined {
+  if (!failure || failure.phase !== "action") return undefined;
+  const wanted = serverFailureStatus(failure.reason);
+  if (wanted == null) return undefined;
+  const status = ownApiStatus(pageUrl, requests, wanted);
+  if (status == null) return undefined;
+  return { result: "unavailable", status };
+}
+
+function serverFailureStatus(reason: string | undefined): number | undefined {
+  const match = /^5xx(?:\s+(\d+))?$/.exec(reason || "");
+  if (!match) return undefined;
+  if (!match[1]) return 0;
+  const status = Number(match[1]);
+  if (status < 500 || status > 599) return undefined;
+  return status;
+}
+
+function ownApiStatus(pageUrl: string, requests: readonly RecordedRequest[] | undefined, wanted: number): number | undefined {
+  const origin = urlOrigin(pageUrl);
+  if (!origin) return undefined;
+  for (const request of requests || []) {
+    const status = request.status ?? 0;
+    if (status < 500 || status > 599) continue;
+    if (wanted !== 0 && status !== wanted) continue;
+    if (urlOrigin(request.url) !== origin) continue;
+    let pathname = "";
+    try {
+      pathname = new URL(request.url).pathname;
+    } catch {
+      continue;
+    }
+    if (pathname !== "/api" && !pathname.startsWith("/api/")) continue;
+    return status;
+  }
   return undefined;
+}
+
+function leftOrigin(pageUrl: string | undefined, failedUrl: string | undefined): boolean {
+  const page = urlOrigin(pageUrl);
+  const failed = urlOrigin(failedUrl);
+  return !!page && !!failed && page !== failed;
+}
+
+function urlOrigin(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function probeSite(url: string): Promise<SiteProbe> {

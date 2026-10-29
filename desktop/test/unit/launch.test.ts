@@ -68,12 +68,14 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   assert.equal(ownedChromeLaunchArgs(["--restore-last-session"], {}, "darwin").includes("--restore-last-session"), false);
   assert.throws(() => accountLaunchArgs(9222), /9222/);
   const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  const bundled = "/tmp/Bao.app/Chromium";
   if (process.platform === "darwin") {
     assert.equal(resolveAccountChrome((file) => file === chrome, {}), chrome);
   }
-  assert.equal(resolveAccountChrome((file) => file === bundled, { BAO_BROWSER: bundled }), bundled);
-  assert.throws(() => resolveAccountChrome(() => false, {}), /Chrome was not found/);
+  const accountExe = path.join(mkdtempSync(path.join(tmpdir(), "bao-account-bin-")), "chrome");
+  writeFileSync(accountExe, "");
+  chmodSync(accountExe, 0o755);
+  assert.equal(resolveAccountChrome(() => false, { BAO_BROWSER: accountExe }, () => "/missing/playwright"), accountExe);
+  assert.throws(() => resolveAccountChrome(() => false, {}, () => "/missing/playwright"), /Chrome was not found/);
 });
 
 test("installed Chrome wins, and a missing BAO_BROWSER falls through", () => {
@@ -82,8 +84,11 @@ test("installed Chrome wins, and a missing BAO_BROWSER falls through", () => {
   assert.equal(resolveNormalChrome(both, { BAO_BROWSER: bundled }, "darwin"), ACCOUNT_CHROME_MAC);
   assert.equal(resolveNormalChrome(both, { BAO_BROWSER: bundled }, "linux"), LINUX_CHROME);
   assert.equal(resolveNormalChrome(both, { BAO_BROWSER: "/missing/chrome" }, "linux"), LINUX_CHROME);
-  assert.equal(resolveNormalChrome((file) => file === bundled, { BAO_BROWSER: bundled }, "linux"), bundled);
-  assert.throws(() => resolveNormalChrome(() => false, { BAO_BROWSER: "/missing/chrome" }, "linux"), /Chrome was not found/);
+  const exe = path.join(mkdtempSync(path.join(tmpdir(), "bao-bundled-")), "chrome");
+  writeFileSync(exe, "");
+  chmodSync(exe, 0o755);
+  assert.equal(resolveNormalChrome(() => false, { BAO_BROWSER: exe }, "linux", () => "/missing/playwright"), exe);
+  assert.throws(() => resolveNormalChrome(() => false, { BAO_BROWSER: "/missing/chrome" }, "linux", () => "/missing/playwright"), /Chrome was not found/);
 });
 
 test("the product arg builder drops the mock keychain", () => {
