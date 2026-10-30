@@ -1,25 +1,30 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { navigationAllowed } from "./allowlist";
-import { ALLOW_CLICK_WINDOW_MS, checkboxReach, mayClickAllow } from "./consent";
-import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
+import { checkboxReach } from "./consent";
+import { resolveHome } from "../home";
+import { AxUnavailable, checkboxState, chromeHelper, chromeTree } from "./ax";
+import { liveSessionDir, SessionLog } from "./audit";
 import { attachLivePage, openLiveWindow, type CdpLiveDriver, type PageObservation } from "./driver";
 import {
-  acquireLock,
   attachPathMatches,
   clearRedact,
   keepAwake,
   pickExistingPage,
   redactForShot,
   releaseAwake,
-  releaseLock,
   workflowFromAudit,
 } from "./attach";
+import { clearInbox, connectAndAllow } from "./connect";
 import { readDevToolsActivePort } from "./endpoint";
+import { acquireCdpLock, releaseCdpLock } from "./lock";
+import { workflowIdsFromIntent } from "./live-ops";
+import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
+import { resolveGuardFlags } from "./presets";
 import { classifyPage } from "../v1/page-class";
 import { validateWorkflow } from "../v1/schema";
 import { Library } from "../v1/store";
-import { connectCdp, type CdpSocket } from "./socket";
+import type { CdpSocket } from "./socket";
 
 const PACE_MS = 2500;
 const FINAL_HOLD_MS = 8000;
@@ -316,12 +321,23 @@ function arg(name: string, fallback = ""): string {
 }
 
 function parseGuard(root: string): Guard {
-  const hosts = arg("--hosts").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean);
-  const start = arg("--start");
-  const deny = arg("--deny");
-  const commit = arg("--commit");
-  const stopPath = arg("--stop-path");
-  const reached = arg("--reached");
+  const preset = arg("--preset");
+  const hostsArg = arg("--hosts");
+  const flags = resolveGuardFlags({
+    preset: preset || undefined,
+    hosts: hostsArg ? hostsArg.split(",").map((host) => host.trim().toLowerCase()).filter(Boolean) : undefined,
+    start: arg("--start") || undefined,
+    deny: arg("--deny") || undefined,
+    commit: arg("--commit") || undefined,
+    stopPath: arg("--stop-path") || undefined,
+    reached: arg("--reached") || undefined,
+  });
+  const hosts = flags.hosts;
+  const start = flags.start;
+  const deny = flags.deny;
+  const commit = flags.commit;
+  const stopPath = flags.stopPath;
+  const reached = flags.reached;
   const intent = arg("--intent");
   const inbox = arg("--inbox", path.join(root, ".evidence", "session-inbox.txt"));
   const attachPath = arg("--attach-path");
@@ -446,20 +462,15 @@ async function main(): Promise<void> {
   const outFile = path.join(evidence, "session-run.json");
   const draftFile = path.join(evidence, "session-workflow.json");
   await mkdir(evidence, { recursive: true });
-  await writeFile(guard.inbox, "");
   progress("waiting for the cdp session lock");
-  let announced = false;
-  await acquireLock(guard.lockFile, guard.agent, (holder) => {
-    if (announced) return;
-    announced = true;
-    progress(`cdp lock is held (${holder})`);
-  });
+  await acquireCdpLock(guard.agent, { file: guard.lockFile });
+  await clearInbox(guard.inbox, true);
   const awake = keepAwake();
   try {
   await runGuarded(root, guard, evidence, axLog, outFile, draftFile);
   } finally {
     releaseAwake(awake);
-    await releaseLock(guard.lockFile, guard.agent);
+    releaseCdpLock(guard.agent, guard.lockFile);
   }
 }
 
@@ -474,9 +485,8 @@ async function runGuarded(
   const helper = chromeHelper();
   progress("helper permissions");
   const perms = await helper.permissions(false);
-  if (perms.prompted) throw new Error("helper asked for a permission prompt");
-  if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
-  if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
+  const block = liveChromeBlock(perms);
+  if (block) throw new Error(block);
   progress("reading the remote-debugging checkbox");
   const box = await checkboxState(helper);
   if (checkboxReach(box.summary) === "stop") {
@@ -490,47 +500,26 @@ async function runGuarded(
   progress("reading DevToolsActivePort");
   const endpoint = await readDevToolsActivePort();
   progress(`browser socket on port ${endpoint.port}`);
-  const abort = new AbortController();
-  const connectionStartedAt = Date.now();
-  let opened = false;
-  const pending = connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 200_000, signal: abort.signal })
-    .then((socket) => {
-      opened = true;
-      return socket;
-    });
-  pending.catch(() => undefined);
-  let last = box.summary;
-  let clickedAt: number | undefined;
-  let allowWindow = "";
-  const deadline = connectionStartedAt + ALLOW_CLICK_WINDOW_MS;
-  while (Date.now() < deadline && !opened) {
-    progress("reading AX for the Allow dialog");
-    const tree = await chromeTree(helper);
-    last = tree.summary;
-    if (opened) break;
-    if (mayClickAllow({
-      openedByBao: true,
-      connectionStartedAt,
-      now: Date.now(),
-      dialogPresentBeforeConnect,
-      dialog: tree.summary.dialog,
-    })) {
-      if (opened) break;
-      progress("pressing Allow");
-      const pressed = await pressAllow(helper, box.pid, axLog);
-      clickedAt = pressed.at;
-      allowWindow = pressed.window;
-      break;
-    }
-  }
-  if (clickedAt == null && !opened) {
-    abort.abort();
-    await pending.catch(() => undefined);
-    throw new AxUnavailable("BaoOSHelper cannot see the Allow remote debugging dialog", last);
-  }
-  const cdp: CdpSocket = await pending;
-  const connectToAllowMs = clickedAt == null ? null : clickedAt - connectionStartedAt;
+  const opened = await connectAndAllow({
+    helper,
+    endpoint,
+    dialogPresentBeforeConnect,
+    axLog,
+    pid: box.pid,
+    log: progress,
+  });
+  const cdp: CdpSocket = opened.cdp;
+  const clickedAt = opened.clickedAt;
+  const allowWindow = opened.allowWindow;
+  const connectToAllowMs = opened.connectToAllowMs;
   progress(`socket open; connect-to-Allow ${connectToAllowMs == null ? "not clicked" : `${connectToAllowMs}ms`}`);
+  const ids = workflowIdsFromIntent(guard.intent, arg("--workflow-id") || undefined);
+  const liveLog = new SessionLog(
+    liveSessionDir(resolveHome(process.argv.slice(2))),
+    guard.intent,
+    ids.workflowId.slice(0, 40),
+  );
+  await liveLog.flush("running", "", guard.hosts[0] || "");
 
   const steps: StepNote[] = [];
   let clicks = 0;
@@ -605,8 +594,8 @@ async function runGuarded(
   };
 
   const shots: string[] = [];
-  const saveShot = async (name: string): Promise<string> => {
-    if (!driver) return "";
+  const saveShot = async (name: string): Promise<{ file: string; png?: Buffer }> => {
+    if (!driver) return { file: "" };
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "step";
     const base = `${String(shots.length + 1).padStart(2, "0")}-${slug}.png`;
     const file = path.join(evidence, "frames", base);
@@ -616,19 +605,29 @@ async function runGuarded(
     const png = await driver.screenshotPng();
     await writeFile(file, png);
     await driver.evaluateFunction<number>(clearRedact, null).catch(() => undefined);
-    return base;
+    return { file: base, png };
   };
   const emit = async (page: Surface, shotName: string): Promise<void> => {
     const shown = remember(page);
-    const file = await saveShot(shotName).catch((err) => {
+    const saved = await saveShot(shotName).catch((err) => {
       progress(`screenshot skipped ${safeError(err)}`);
-      return "";
+      return { file: "" };
     });
-    if (file) {
-      shots.push(file);
+    if (saved.file) {
+      shots.push(saved.file);
       const last = steps[steps.length - 1];
-      if (last) last.shot = file;
+      if (last) last.shot = saved.file;
     }
+    const last = steps[steps.length - 1];
+    liveLog.setSteps(steps.map((step) => ({ name: step.name, status: step.name, ms: step.ms })));
+    await liveLog.add({
+      action: shotName,
+      label: shown.title || shotName,
+      path: shown.path,
+      isTrusted: last?.isTrusted ?? null,
+      ms: last?.ms || 0,
+      png: "png" in saved ? saved.png : undefined,
+    });
     process.stdout.write(`${JSON.stringify({
       path: shown.path,
       title: shown.title,
@@ -636,7 +635,7 @@ async function runGuarded(
       commit: shown.commit,
       blocked: shown.blocked,
       reached,
-      shot: file,
+      shot: saved.file,
       controls: shown.controls.map((control) => ({ index: control.index, kind: control.kind, label: control.label, y: control.y })),
     })}\n`);
   };
@@ -972,7 +971,8 @@ async function runGuarded(
     botWall: code === "bot_wall",
     banner: { during: during.visible, afterClose: after.visible },
     checkboxOn: box.on,
-    screenCapture: false,
+    screenCapture: perms.screenCapture === true,
+    osWindowShot: usesScreenRecording(helper.calls),
     shots,
     audit: [
       {
@@ -1006,8 +1006,8 @@ async function runGuarded(
   };
   if (guard.attachPath) {
     const workflow = workflowFromAudit({
-      id: "wf-unfreeze-credit",
-      name: "Unfreeze credit",
+      id: ids.workflowId,
+      name: guard.intent.slice(0, 80),
       intent: guard.intent,
       startUrl: guard.start,
       createdAt: Date.now(),
@@ -1016,11 +1016,11 @@ async function runGuarded(
     });
     const workflowErrors = validateWorkflow(workflow);
     if (workflowErrors.length === 0) {
-      const library = new Library(path.join(evidence, "bao-home"));
+      const library = new Library(resolveHome(process.argv.slice(2)));
       library.save(workflow);
       const confirm = workflow.steps.find((step) => step.action === "confirm");
       library.saveRun({
-        id: "run-unfreeze-credit",
+        id: ids.runId,
         workflowId: workflow.id,
         status: "needs_human",
         at: Date.now(),
@@ -1035,7 +1035,7 @@ async function runGuarded(
         })),
         envelope: {
           status: "needs_human",
-          run_id: "run-unfreeze-credit",
+          run_id: ids.runId,
           step: confirm?.id,
           reason: "stopped before confirm",
           ask: confirm?.label || "Stop before confirm",
@@ -1046,6 +1046,8 @@ async function runGuarded(
       progress(`workflow draft invalid ${workflowErrors.join(",")}`);
     }
   }
+  await liveLog.setSteps(steps.map((step) => ({ name: step.name, status: step.name, ms: step.ms })));
+  await liveLog.flush(status, code || "", body.host);
   await writeFile(outFile, `${JSON.stringify(body, null, 2)}\n`);
   await writeFile(draftFile, `${JSON.stringify(draft, null, 2)}\n`);
   progress(`wrote ${path.basename(outFile)}`);

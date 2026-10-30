@@ -1,6 +1,9 @@
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+/** A split names a second library with data. A fallback names the empty directory Bao skipped. */
+export type NoticeKind = "split" | "fallback";
 
 export interface HomeOptions {
   args?: readonly string[];
@@ -8,7 +11,7 @@ export interface HomeOptions {
   platform?: NodeJS.Platform;
   cwd?: string;
   userHome?: string;
-  warn?: (line: string) => void;
+  warn?: (line: string, kind: NoticeKind) => void;
 }
 
 export class HomeError extends Error {
@@ -22,7 +25,7 @@ interface LibraryHomeModule {
   resolveLibraryHome(argsOrOptions?: readonly string[] | HomeOptions, env?: NodeJS.ProcessEnv): string;
   otherLibraries(root: string, argsOrOptions?: readonly string[] | HomeOptions, env?: NodeJS.ProcessEnv): string[];
   serverHomes(args?: readonly string[], env?: NodeJS.ProcessEnv): string[];
-  librarySplitLine(other: string, root: string): string;
+  showOnce(home: string, lines: readonly string[]): string[];
   tildePath(file: string, userHome: string): string;
   baoUserHome(env?: NodeJS.ProcessEnv, platform?: NodeJS.Platform): string;
 }
@@ -30,9 +33,9 @@ interface LibraryHomeModule {
 const load = createRequire(__filename);
 
 function loadLibraryHome(): LibraryHomeModule {
+  // Staged app: stage-runtime.sh copies it next to home.js. Checkout: desktop/dist/desktop/src -> desktop/src.
   const candidates = [
     path.join(__dirname, "library-home.cjs"),
-    path.join(__dirname, "../desktop/src/library-home.cjs"),
     path.resolve(__dirname, "../../../src/library-home.cjs"),
   ];
   for (const file of candidates) {
@@ -68,8 +71,24 @@ export function serverHomes(args: readonly string[] = [], env?: NodeJS.ProcessEn
   return call(() => lib.serverHomes(args, env));
 }
 
-export function librarySplitLine(other: string, root: string): string {
-  return lib.librarySplitLine(other, root);
+/** Port of the running app, from server.json in the first of serverHomes that has one. */
+export function serverPort(args: readonly string[] = [], env?: NodeJS.ProcessEnv): number | undefined {
+  for (const home of serverHomes(args, env)) {
+    const file = path.join(home, "server.json");
+    if (!existsSync(file)) continue;
+    try {
+      const port = Number((JSON.parse(readFileSync(file, "utf8")) as { port?: number }).port);
+      if (port > 0) return port;
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
+/** Returns the lines not yet shown from this library and records them in it. */
+export function showOnce(home: string, lines: readonly string[]): string[] {
+  return lib.showOnce(home, lines);
 }
 
 export function tildePath(file: string, userHome: string): string {

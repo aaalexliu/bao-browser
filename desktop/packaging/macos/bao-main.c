@@ -168,7 +168,9 @@ static void append_text(char *out, size_t n, const char *line) {
   memcpy(out + used, line, add + 1);
 }
 
-/* Runs print-home.cjs in the caller's cwd. 0 writes the home. -1 writes an error. */
+/* Runs print-home.cjs in the caller's cwd. 0 writes the home. -1 writes an error.
+ * Lines after the home are messages to show now. print-home records them in the
+ * library, so each one shows once. */
 static int run_print_home(const char *node, const char *script, char *home, size_t home_n, char *split_body, size_t split_n, char *error, size_t error_n) {
   if (split_body && split_n) split_body[0] = '\0';
   if (error && error_n) error[0] = '\0';
@@ -201,9 +203,7 @@ static int run_print_home(const char *node, const char *script, char *home, size
     if (strlen(line) + 1 > home_n) failed = -1;
     else memcpy(home, line, strlen(line) + 1);
     while (failed == 0 && read_line(pipefd[0], line, sizeof line) == 0) {
-      const char *text = line;
-      if (strncmp(text, "bao: ", 5) == 0) text += 5;
-      if (strstr(text, "library data is at") && split_body && split_n) append_text(split_body, split_n, text);
+      if (line[0] && split_body && split_n) append_text(split_body, split_n, line);
     }
   } else if (failed == 0 && error && error_n) {
     snprintf(error, error_n, "%s", line);
@@ -265,7 +265,7 @@ int main(void) {
   }
 
   char script[4096];
-  int script_wrote = snprintf(script, sizeof script, "%s/desktop/src/print-home.cjs", root);
+  int script_wrote = snprintf(script, sizeof script, "%s/src/print-home.cjs", root);
   char bao_home[4096];
   char split_body[8192];
   char home_error[1024];
@@ -278,6 +278,8 @@ int main(void) {
     bao_show_alert(kHomeTitle, home_error[0] ? home_error : kOpenBody);
     return 1;
   }
+  /* Right away: print-home already recorded these lines as shown. */
+  if (split_body[0]) bao_show_alert(kSplitTitle, split_body);
 
   const char *port = getenv("BAO_PORT");
   if (!port || !port[0]) port = "4787";
@@ -321,7 +323,6 @@ int main(void) {
 
   /* The capture browser stays hidden unless this is set. The documented test types into it. */
   if (!getenv("BAO_HEADED")) setenv("BAO_HEADED", "1", 0);
-  if (split_body[0]) bao_show_alert(kSplitTitle, split_body);
 
   pid_t node = fork();
   if (node < 0) {

@@ -150,7 +150,13 @@ export interface ShellState {
   recording?: boolean;
   capturePaused?: boolean;
   recordingSince?: number;
-  helper?: { label: string; platform?: string; accessibility?: boolean; screenCapture?: boolean };
+  helper?: {
+    label: string;
+    platform?: string;
+    accessibility?: boolean;
+    screenCapture?: boolean;
+    capabilities?: { id: string; status: string }[];
+  };
   /** Sidebar dot after the Library card has been dismissed, or on any other screen. */
   permDot?: boolean;
   model?: { label: string };
@@ -260,6 +266,12 @@ function icon(name: string): string {
   return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
 }
 
+export function helperStatusText(helper?: { label?: string; capabilities?: { status: string }[] }): string {
+  const label = helper?.label || "helper off";
+  const extra = (helper?.capabilities ?? []).map((row) => row.status).filter((status) => status.length > 0);
+  return extra.length ? `${label} ${extra.join(" ")}` : label;
+}
+
 export function rail(state: ShellState): string {
   const heals = pendingHealCount(state.runs || []);
   const reviews = reviewItems(state.runs);
@@ -270,7 +282,7 @@ export function rail(state: ShellState): string {
     reviews: reviews.length,
   });
   const rec = state.recording ? "on" : "";
-  const helper = state.helper?.label || "helper off";
+  const helper = helperStatusText(state.helper);
   const model = state.model?.label || "no model";
   const healBadge = heals > 0 ? `<span class="count" id="heal-count">${heals}</span>` : "";
   const perm = state.permDot ? permissionDot(state.helper) : "";

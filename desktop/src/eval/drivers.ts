@@ -10,6 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Page } from "playwright";
+import { artifactsRoot, tryWriteEvidence } from "../../test/artifacts";
 import { launchOwnedChrome } from "../launch";
 import { BrowserDriver } from "../v1/browser-driver";
 import { canonical } from "../v1/canonical";
@@ -119,13 +120,13 @@ export async function evalDrivers(args: string[] = []): Promise<{ markdown: stri
   mkdirSync(path.dirname(out), { recursive: true });
   writeFileSync(out, markdown);
   const video = videos.values().next().value as string | undefined;
+  const artifacts = artifactsRoot();
+  console.log(`artifacts ${artifacts}`);
   for (const file of videos.values()) {
-    try {
-      mkdirSync("/opt/cursor/artifacts", { recursive: true });
-      copyFileSync(file, path.join("/opt/cursor/artifacts", path.basename(file)));
-    } catch {
-      // The artifact directory is not writable on every machine. The docs copy remains.
-    }
+    await tryWriteEvidence(() => {
+      mkdirSync(artifacts, { recursive: true });
+      copyFileSync(file, path.join(artifacts, path.basename(file)));
+    });
   }
   return { markdown, cells, video };
 }

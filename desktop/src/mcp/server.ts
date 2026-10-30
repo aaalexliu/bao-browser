@@ -55,6 +55,7 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const home = resolveHome(args);
+  const libraries = publishedLibraries(home, otherLibraries(home, args));
   process.env.BAO_HOME = home;
   if (process.env.BAO_MCP_LIVE === "1") {
     const { liveMcpMain } = await import("../eval/live-mcp");
@@ -62,7 +63,6 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     return;
   }
   const library = new Library(home);
-  const libraries = publishedLibraries(home);
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -141,8 +141,7 @@ async function callTool(library: Library, libraries: string[] | undefined, name:
   throw new Error("unknown tool");
 }
 
-function publishedLibraries(root: string): string[] | undefined {
-  const also = otherLibraries(root);
+function publishedLibraries(root: string, also: string[]): string[] | undefined {
   if (!also.length) return undefined;
   const prefix = baoUserHome();
   return [root, ...also].map((dir) => tildePath(dir, prefix));

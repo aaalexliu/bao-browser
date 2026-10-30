@@ -11,16 +11,46 @@
 static NSString *const kShareAPI = @"SCShareableContent getShareableContentExcludingDesktopWindows:onScreenWindowsOnly:completionHandler:";
 static NSString *const kCaptureAPI = @"SCScreenshotManager captureImageWithFilter:configuration:completionHandler:";
 
-static BOOL pathOk(NSString *file) {
-    if (file.length == 0 || [file containsString:@".."]) return NO;
-    NSArray<NSString *> *roots = @[
+static NSString *normalizedStorePrefix(NSString **errorOut) {
+    if (errorOut) *errorOut = nil;
+    NSString *store = NSProcessInfo.processInfo.environment[@"BAO_AGENT_STORE_DIR"];
+    store = [store stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (store.length == 0) return nil;
+    if (![store hasPrefix:@"/"]) {
+        if (errorOut) *errorOut = @"BAO_AGENT_STORE_DIR must be an absolute path";
+        return nil;
+    }
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    for (NSString *part in [store pathComponents]) {
+        if (part.length == 0 || [part isEqualToString:@"/"] || [part isEqualToString:@"."]) continue;
+        if ([part isEqualToString:@".."]) {
+            if (errorOut) *errorOut = @"BAO_AGENT_STORE_DIR must not contain ..";
+            return nil;
+        }
+        [parts addObject:part];
+    }
+    if (parts.count < 2) {
+        if (errorOut) *errorOut = @"BAO_AGENT_STORE_DIR must include two path components";
+        return nil;
+    }
+    return [NSString stringWithFormat:@"/%@/", [parts componentsJoinedByString:@"/"]];
+}
+
+static NSArray<NSString *> *outputRoots(void) {
+    NSMutableArray<NSString *> *roots = [NSMutableArray arrayWithObjects:
         @"/tmp/",
         @"/private/tmp/",
         @"/var/folders/",
         @"/private/var/folders/",
-        @"/Users/alexliu/Library/Application Support/Cursor/AgentStores/",
-    ];
-    for (NSString *root in roots) {
+        nil];
+    NSString *store = normalizedStorePrefix(nil);
+    if (store) [roots addObject:store];
+    return roots;
+}
+
+static BOOL pathOk(NSString *file) {
+    if (file.length == 0 || [file containsString:@".."]) return NO;
+    for (NSString *root in outputRoots()) {
         if ([file hasPrefix:root]) return YES;
     }
     return NO;
@@ -188,6 +218,14 @@ int main(int argc, char **argv) {
         }
         NSString *cmd = args.firstObject ?: @"probe";
         NSMutableDictionary *obj = [NSMutableDictionary dictionary];
+        NSString *storeError = nil;
+        normalizedStorePrefix(&storeError);
+        if (storeError) {
+            obj[@"ok"] = @NO;
+            obj[@"error"] = storeError;
+            writeJSON(obj, resultPath);
+            return 1;
+        }
         if (preflightDenied(obj)) {
             writeJSON(obj, resultPath);
             return 1;

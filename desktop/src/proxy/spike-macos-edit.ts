@@ -9,7 +9,7 @@ import { replayOsWorkflow, replayUsedCoordinates } from "./macos-replay";
 import { handleComputerCall } from "./openai";
 import { targetFrom, type MacOsHelper, type AxNode } from "./os-macos";
 import {
-  ARTIFACTS, EDIT_BUNDLE, TEXTEDIT_AUTOSAVE, cleanupNewAutosave, launchIfDown,
+  artifactsDir, EDIT_BUNDLE, TEXTEDIT_AUTOSAVE, cleanupNewAutosave, launchIfDown,
   namesIn, quitOwned, sleep, workDir,
 } from "./spike-macos-host";
 
@@ -53,7 +53,7 @@ export async function runTextEdit(helper: MacOsHelper): Promise<Record<string, u
   let pid = owned;
   try {
     const nodes = await waitUntitled(helper);
-    await helper.shot(EDIT_BUNDLE, path.join(ARTIFACTS, "textedit-before.png"));
+    await helper.shot(EDIT_BUNDLE, path.join(artifactsDir(), "textedit-before.png"));
     await helper.focusRole(EDIT_BUNDLE, "AXTextArea");
     const trail = new AuditTrail();
     const executor = new MacOsExecutor(trail, helper, EDIT_BUNDLE, workDir());
@@ -64,7 +64,7 @@ export async function runTextEdit(helper: MacOsHelper): Promise<Record<string, u
       status: "completed",
     }, executor);
     const recorded = textValue((await helper.nodes(EDIT_BUNDLE)).nodes ?? []);
-    await helper.shot(EDIT_BUNDLE, path.join(ARTIFACTS, "textedit-recorded.png"));
+    await helper.shot(EDIT_BUNDLE, path.join(artifactsDir(), "textedit-recorded.png"));
     const workflow: Workflow = executor.workflow(`os://${EDIT_BUNDLE}`);
     await quitOwned(pid, "TextEdit");
     pid = 0;
@@ -78,7 +78,7 @@ export async function runTextEdit(helper: MacOsHelper): Promise<Record<string, u
     const mark = helper.calls.length;
     const replay = await replayOsWorkflow(helper, workflow);
     const replayed = textValue((await helper.nodes(EDIT_BUNDLE)).nodes ?? []);
-    await helper.shot(EDIT_BUNDLE, path.join(ARTIFACTS, "textedit-replay.png"));
+    await helper.shot(EDIT_BUNDLE, path.join(artifactsDir(), "textedit-replay.png"));
     return {
       recorded,
       replayed,

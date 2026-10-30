@@ -12,5 +12,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["desktop/src/**/*.ts", "desktop/test/**/*.ts", "src/types.ts", "src/mask.ts"]
+  "include": ["desktop/src/**/*.ts", "desktop/test/**/*.ts", "src/types.ts", "src/mask.ts", "extension/src/host-grant.ts"]
 }
