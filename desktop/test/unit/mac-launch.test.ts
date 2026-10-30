@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,24 +7,33 @@ import test from "node:test";
 import { resolveCaptureUrl } from "../../src/app/capture-url";
 import { fixtureStartValue, productWindowTitle, teachHome } from "../../src/app/views";
 
-test("node discovery and the single-instance lock", () => {
+function macCompileSkip(): string | false {
+  const cc = spawnSync("cc", ["--version"], { encoding: "utf8" });
+  if (cc.error || cc.status !== 0) return "mac launch compile needs cc on PATH";
+  return false;
+}
+
+test("node discovery and the single-instance lock", { skip: macCompileSkip() }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), "bao-launch-"));
   const bin = path.join(dir, "bao-launch-test");
-  execFileSync("cc", [
-    "-std=c11",
-    "-Wall",
-    "-Wextra",
-    "-Werror",
-    path.join(process.cwd(), "desktop/packaging/macos/bao-launch.c"),
-    path.join(process.cwd(), "desktop/packaging/macos/bao-launch-test.c"),
-    "-o",
-    bin,
-  ], { stdio: "inherit" });
-  const out = execFileSync(bin, { encoding: "utf8" });
-  assert.match(out, /^ok \d+\n$/);
-  const count = Number(out.match(/^ok (\d+)/)?.[1]);
-  assert.ok(count >= 40, out);
-  rmSync(dir, { recursive: true, force: true });
+  try {
+    execFileSync("cc", [
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      path.join(process.cwd(), "desktop/packaging/macos/bao-launch.c"),
+      path.join(process.cwd(), "desktop/packaging/macos/bao-launch-test.c"),
+      "-o",
+      bin,
+    ], { stdio: "inherit", timeout: 60_000 });
+    const out = execFileSync(bin, { encoding: "utf8", timeout: 20_000 });
+    assert.match(out, /^ok \d+\n$/);
+    const count = Number(out.match(/^ok (\d+)/)?.[1]);
+    assert.ok(count >= 40, out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("the product window title is Bao and the capture field hides the listen address", () => {
@@ -61,6 +70,9 @@ test("the Mac test card does not send anyone to the listen address", () => {
   assert.equal(card.includes("CDP"), false);
   assert.match(card, /mac-build\.md/);
   assert.match(card, /helper ok/);
+  assert.match(card, /live Chrome ready/);
+  assert.match(card, /window capture ready/);
+  assert.equal(card.includes("allow Accessibility and Screen Recording"), false);
   const guide = readFileSync(path.join(process.cwd(), "docs/v1.md"), "utf8");
   assert.equal(guide.includes("Open `http://127.0.0.1:4787`"), false);
 });

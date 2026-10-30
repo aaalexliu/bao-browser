@@ -12,7 +12,23 @@ Each new debugging connection raises **Allow remote debugging?** Chrome does not
 
 ## BaoOSHelper Accessibility
 
-macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the product window. macOS enforces it. The helper uses it to see the Allow button and press it. It does not read the web page. Screen Recording is a separate macOS grant. The live Chrome path does not ask for it. On this checkout, before pull request 131, `desktop/src/cdp-live/session.ts`, `desktop/src/cdp-live/instacart-run.ts`, and `desktop/src/cdp-live/login-diff.ts` throw when that grant is already on. `desktop/src/cdp-live/run.ts` records the flag and continues. A permission prompt still throws in each of those files. After pull request 131, Screen Recording is not a start blocker for live Chrome. Live Chrome then needs Accessibility only. Window capture and the MCP driver still need Screen Recording. The first prompt is once per signed helper. After that, each Allow press is one short accessibility walk, which is most of the time in the paragraph above.
+macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the product window. macOS enforces it. The helper uses it to see the Allow button and press it. It does not read the web page. The first prompt is once per signed helper. After that, each Allow press is one short accessibility walk, which is most of the time in the paragraph above.
+
+## Which grant each job needs
+
+Four jobs can run on this Mac. A grant for one job does not turn another job off.
+
+- **AX press** reads and presses a control by its name. It needs Accessibility. The footer reads **AX press ready**.
+- **Window capture** saves one window. It needs Screen Recording. The footer reads **window capture ready**.
+- **Live Chrome** reads Chrome's controls through Accessibility. It needs Accessibility. It does not capture the window. The Screen Recording grant is no longer a start blocker for live Chrome. The footer reads **live Chrome ready**.
+- **MCP driver** (`bao mcp-ax`) takes a picture before it observes, clicks, types, or presses a key. It needs Accessibility and Screen Recording. The footer reads **MCP driver ready** only when both are on.
+- **Extension replay** uses the extension's site grant. The helper status does not report it.
+
+`helper.label` stays `helper ok` when both grants are on, and `helper needs permission` when either grant is off.
+
+Leave Screen Recording on for window capture and the MCP driver. Live Chrome stays ready with Accessibility alone. If the footer reads **helper needs permission**, allow the missing grant and open Bao again.
+
+A second BaoOSHelper, or `open -a BaoOSHelper --args shot`, can still capture a window during a live Chrome session while Screen Recording is granted. The live session's own helper does not send `shot`.
 
 ## Extension host grants
 
@@ -24,7 +40,7 @@ A live run is given an exact host list. Bao refuses a navigation whose host is n
 
 ## What stays on this Mac
 
-The live run view, its step list, and its audit log are files in Bao's home directory on this machine. Screenshots are taken with Chrome's `Page.captureScreenshot` of the page, not with macOS screen recording. `redactForShot` blurs only the nodes it matches, such as an email or a price. A count of 0 still writes the PNG. A plain name and a Place order button stay readable. The full-page veil is `redactOverlay`, applied by `captureRedacted`. `desktop/src/cdp-live/instacart-run.ts` uses that veil. The app serves those files only on `127.0.0.1`, with caching off. They are not uploaded.
+The live run view, its step list, and its audit log are files in Bao's home directory on this machine. Screenshots are taken with Chrome's `Page.captureScreenshot` of the page, not with macOS screen recording. A live session started with `bao live_session_start` or `bao mcp-live`, and the Instacart runner, cover the whole page with a blur before each shot, so names, prices, and cart lines are not readable in the picture. That veil is `redactOverlay`, applied by `captureRedacted` in `desktop/src/cdp-live/driver.ts`. The session script `desktop/src/cdp-live/session.ts` uses `redactForShot` instead. It blurs only the nodes it matches, such as an email or a price. A count of 0 still writes the PNG. A plain name and a Place order button stay readable in those shots. The app serves those files only on `127.0.0.1`, with caching off. They are not uploaded.
 
 ## What each one costs in speed
 

@@ -346,7 +346,7 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
       assert.match(String(ext.json.reason), /extension is not connected/);
       const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
       assert.equal(live.json.outcome, "failed");
-      assert.match(String(live.json.reason), /live attach/);
+      assert.match(String(live.json.reason), /Bao app that recorded it, after live_stop/);
     } finally {
       await missing.stop();
     }

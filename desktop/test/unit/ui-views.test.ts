@@ -268,6 +268,9 @@ test("library cards show a sparkline, inputs, and search", () => {
   const footAt = html.indexOf("wf-foot");
   assert.ok(titleAt > 0 && titleAt < footAt);
   assert.match(libraryTable([], []), /No workflows yet/);
+  const split = libraryTable([], [], [], ["library data is at /legacy; using /fresh"]);
+  assert.match(split, /id="library-split"/);
+  assert.match(split, /library data is at \/legacy; using \/fresh/);
 });
 
 test("workflow steps are cards with identity, inputs, expect, and human styling", () => {

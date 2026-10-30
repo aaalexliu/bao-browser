@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <mach-o/dyld.h>
 #include <signal.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,8 @@ static const char kOpenBody[] =
 static const char kAlreadyTitle[] = "Bao is already open";
 static const char kAlreadyBody[] = "Switch to the Bao window.";
 static const char kBrowserBody[] = "This copy of Bao is missing its browser. Install Bao again.";
+static const char kSplitTitle[] = "Two libraries";
+static const char kHomeTitle[] = "Bao needs a home directory";
 
 static void dirname_inplace(char *path) {
   char *slash = strrchr(path, '/');
@@ -117,6 +120,103 @@ static void stop_pid(pid_t pid) {
   waitpid(pid, &status, 0);
 }
 
+/* Node lookup only. An empty HOME must not become /tmp for the library.
+ * The passwd directory is copied because getpwuid reuses one buffer. */
+static void node_lookup_home(char *out, size_t n) {
+  if (!out || n == 0) return;
+  out[0] = '\0';
+  const char *env = getenv("HOME");
+  const char *dir = (env && env[0] == '/') ? env : NULL;
+  if (!dir) {
+    struct passwd *pw = getpwuid(getuid());
+    if (pw && pw->pw_dir && pw->pw_dir[0] == '/') dir = pw->pw_dir;
+  }
+  if (!dir) return;
+  size_t len = strlen(dir);
+  if (len + 1 > n) return;
+  memcpy(out, dir, len + 1);
+}
+
+static int read_line(int fd, char *out, size_t n) {
+  if (!out || n < 2) return -1;
+  size_t i = 0;
+  for (;;) {
+    char ch = 0;
+    ssize_t got = read(fd, &ch, 1);
+    if (got < 0 && errno == EINTR) continue;
+    if (got < 0) return -1;
+    if (got == 0) {
+      if (i == 0) return -1;
+      out[i] = 0;
+      return 0;
+    }
+    if (ch == '\n') {
+      out[i] = 0;
+      return 0;
+    }
+    if (i + 1 >= n) return -1;
+    out[i++] = ch;
+  }
+}
+
+static void append_text(char *out, size_t n, const char *line) {
+  size_t used = strlen(out);
+  size_t add = strlen(line);
+  int gap = used > 0 ? 1 : 0;
+  if (used + (size_t)gap + add + 1 > n) return;
+  if (gap) out[used++] = '\n';
+  memcpy(out + used, line, add + 1);
+}
+
+/* Runs print-home.cjs in the caller's cwd. 0 writes the home. -1 writes an error.
+ * Lines after the home are messages to show now. print-home records them in the
+ * library, so each one shows once. */
+static int run_print_home(const char *node, const char *script, char *home, size_t home_n, char *split_body, size_t split_n, char *error, size_t error_n) {
+  if (split_body && split_n) split_body[0] = '\0';
+  if (error && error_n) error[0] = '\0';
+  int pipefd[2];
+  if (pipe(pipefd) != 0) return -1;
+  pid_t pid = fork();
+  if (pid < 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return -1;
+  }
+  if (pid == 0) {
+    if (dup2(pipefd[1], STDOUT_FILENO) < 0) _exit(127);
+    int devnull = open("/dev/null", O_WRONLY);
+    if (devnull >= 0) {
+      dup2(devnull, STDERR_FILENO);
+      close(devnull);
+    }
+    close(pipefd[0]);
+    close(pipefd[1]);
+    execl(node, "node", script, (char *)NULL);
+    _exit(127);
+  }
+  close(pipefd[1]);
+  char status[32];
+  char line[8192];
+  int failed = read_line(pipefd[0], status, sizeof status);
+  if (failed == 0) failed = read_line(pipefd[0], line, sizeof line);
+  if (failed == 0 && strcmp(status, "ok") == 0) {
+    if (strlen(line) + 1 > home_n) failed = -1;
+    else memcpy(home, line, strlen(line) + 1);
+    while (failed == 0 && read_line(pipefd[0], line, sizeof line) == 0) {
+      if (line[0] && split_body && split_n) append_text(split_body, split_n, line);
+    }
+  } else if (failed == 0 && error && error_n) {
+    snprintf(error, error_n, "%s", line);
+    failed = -1;
+  } else {
+    failed = -1;
+  }
+  close(pipefd[0]);
+  int wait_status = 0;
+  waitpid(pid, &wait_status, 0);
+  return failed == 0 ? 0 : -1;
+}
+
 int main(void) {
   char exe[4096];
   uint32_t size = sizeof exe;
@@ -151,12 +251,35 @@ int main(void) {
     setenv("BAO_CAPTURE_BAR_BIN", bar, 1);
   }
 
-  const char *user_home = getenv("HOME");
-  if (!user_home || !user_home[0]) user_home = "/tmp";
+  char user_home[4096];
+  node_lookup_home(user_home, sizeof user_home);
+  char node_bin[4096];
+  BaoDiscoverHooks hooks;
+  hooks.is_exec = bao_real_is_exec;
+  hooks.major = bao_real_major;
+  hooks.shell = bao_real_shell;
+  hooks.ctx = NULL;
+  if (bao_discover_node(getenv("BAO_NODE"), user_home, getenv("SHELL"), &hooks, node_bin, sizeof node_bin) != 0) {
+    bao_show_alert(kNeedNodeTitle, kNeedNodeBody);
+    return 1;
+  }
+
+  char script[4096];
+  int script_wrote = snprintf(script, sizeof script, "%s/src/print-home.cjs", root);
   char bao_home[4096];
-  const char *override = getenv("BAO_HOME");
-  if (override && override[0]) snprintf(bao_home, sizeof bao_home, "%s", override);
-  else snprintf(bao_home, sizeof bao_home, "%s/Library/Application Support/bao", user_home);
+  char split_body[8192];
+  char home_error[1024];
+  bao_home[0] = '\0';
+  split_body[0] = '\0';
+  home_error[0] = '\0';
+  if (script_wrote < 0 || (size_t)script_wrote >= sizeof script ||
+      run_print_home(node_bin, script, bao_home, sizeof bao_home, split_body, sizeof split_body, home_error, sizeof home_error) != 0 ||
+      !bao_home[0]) {
+    bao_show_alert(kHomeTitle, home_error[0] ? home_error : kOpenBody);
+    return 1;
+  }
+  /* Right away: print-home already recorded these lines as shown. */
+  if (split_body[0]) bao_show_alert(kSplitTitle, split_body);
 
   const char *port = getenv("BAO_PORT");
   if (!port || !port[0]) port = "4787";
@@ -198,16 +321,6 @@ int main(void) {
   if (bao_notify_prepare(notify_sock) == 0) setenv("BAO_NOTIFY_SOCK", notify_sock, 1);
   else fprintf(stderr, "bao notify socket was not created\n");
 
-  char node_bin[4096];
-  BaoDiscoverHooks hooks;
-  hooks.is_exec = bao_real_is_exec;
-  hooks.major = bao_real_major;
-  hooks.shell = bao_real_shell;
-  hooks.ctx = NULL;
-  if (bao_discover_node(getenv("BAO_NODE"), user_home, getenv("SHELL"), &hooks, node_bin, sizeof node_bin) != 0) {
-    bao_show_alert(kNeedNodeTitle, kNeedNodeBody);
-    return 1;
-  }
   /* The capture browser stays hidden unless this is set. The documented test types into it. */
   if (!getenv("BAO_HEADED")) setenv("BAO_HEADED", "1", 0);
 
@@ -216,7 +329,9 @@ int main(void) {
     bao_show_alert(kOpenTitle, kOpenBody);
     return 1;
   }
+
   if (node == 0) {
+    setenv("BAO_HOME", bao_home, 1);
     setenv("BAO_PUBLIC", public_dir, 1);
     if (chdir(root) != 0) _exit(127);
     execl(node_bin, "node", "src/app/cli.js", "serve", "--home", bao_home, "--port", port, (char *)NULL);

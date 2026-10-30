@@ -1,6 +1,6 @@
 // Per-user native host manifest. Chrome pins allowed_origins to this extension, so a page cannot open the pipe.
 
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import path from "node:path";
 import { EXTENSION_ID, NATIVE_HOST_NAME, extensionOrigin } from "./protocol";
@@ -26,6 +26,21 @@ export function defaultConfigHome(): string {
   return homedir();
 }
 
+/** The packaged host script lives at Contents/Resources/bao/src/extension/native-host.js. */
+export function appHostScript(fromDir: string): string | undefined {
+  let dir = path.resolve(fromDir);
+  for (let i = 0; i < 10; i += 1) {
+    if (path.basename(dir) === "Resources") {
+      const script = path.join(dir, "bao", "src", "extension", "native-host.js");
+      if (existsSync(script)) return script;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  return undefined;
+}
+
 /**
  * Chrome looks up the host under the user config dir, not under an arbitrary
  * --user-data-dir. A proof that sets HOME also passes that home here, and
@@ -41,11 +56,12 @@ export function installNativeHost(opts: {
   extraDirs?: string[];
 }): { dirs: string[]; wrapper: string } {
   const nodePath = opts.nodePath || process.execPath;
+  const hostScript = appHostScript(__dirname) || appHostScript(path.dirname(opts.hostScript)) || opts.hostScript;
   const extensionId = opts.extensionId || EXTENSION_ID;
   const dir = path.dirname(opts.socketPath);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const wrapper = path.join(dir, "bao-native-host.sh");
-  const body = `#!/bin/sh\nexec ${shellQuote(nodePath)} ${shellQuote(opts.hostScript)} --socket ${shellQuote(opts.socketPath)} --token ${shellQuote(opts.tokenPath)} --extension-id ${shellQuote(extensionId)}\n`;
+  const body = `#!/bin/sh\nexec ${shellQuote(nodePath)} ${shellQuote(hostScript)} --socket ${shellQuote(opts.socketPath)} --token ${shellQuote(opts.tokenPath)} --extension-id ${shellQuote(extensionId)}\n`;
   writeFileSync(wrapper, body, { mode: 0o755 });
   chmodSync(wrapper, 0o755);
   const manifest = {

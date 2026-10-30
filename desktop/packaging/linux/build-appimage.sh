@@ -10,6 +10,8 @@ APP="$STAGE/Bao.AppDir"
 mkdir -p "$APP/usr/bin" "$APP/usr/share/bao/public" "$APP/usr/lib"
 cp "$(command -v node)" "$APP/usr/bin/node"
 cp -a desktop/dist/desktop/src "$APP/usr/share/bao/src"
+# tsc does not copy .cjs. home.js loads library-home.cjs from beside it.
+cp -a desktop/src/library-home.cjs desktop/src/print-home.cjs "$APP/usr/share/bao/src/"
 mkdir -p "$APP/usr/share/src"
 cp -a desktop/dist/src/. "$APP/usr/share/src/"
 cp desktop/dist/desktop/src/app/cli.js "$APP/usr/share/bao/cli.js"
