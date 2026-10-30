@@ -297,33 +297,36 @@ export interface AgentAuth {
 /**
  * Claude Code with a temp CLAUDE_CONFIG_DIR, so no user setting, CLAUDE.md, hook, plugin, or MCP
  * entry of this Mac reaches the run, and the run writes nothing to ~/.claude. A temp config dir
- * has no login, so the run takes CLAUDE_CODE_OAUTH_TOKEN, else the access token of the login in
- * the macOS keychain. The refresh token is never passed, so the run cannot rotate that login.
+ * has no login, so the run takes the access token of the login in the macOS keychain, and no
+ * Claude or Anthropic credential from this shell. The refresh token is never passed, so the run
+ * cannot rotate that login.
  */
-export function claudeAgentAuth(configDir: string, base: NodeJS.ProcessEnv = process.env, now = Date.now()): AgentAuth {
+export function claudeAgentAuth(configDir: string, base: NodeJS.ProcessEnv = process.env, now = Date.now(), readLogin: () => string = keychainLogin): AgentAuth {
   const env = agentBaseEnv(base);
   env.CLAUDE_CONFIG_DIR = configDir;
   // No update check, telemetry, or error report from an eval run.
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
   mkdirSync(configDir, { recursive: true });
-  if (base.CLAUDE_CODE_OAUTH_TOKEN) return { env };
-  const read = process.platform === "darwin"
-    ? spawnSync("security", ["find-generic-password", "-a", userInfo().username, "-s", "Claude Code-credentials", "-w"], { encoding: "utf8", timeout: 20_000 })
-    : undefined;
   let oauth: { accessToken?: unknown; expiresAt?: unknown } | undefined;
   try {
-    oauth = (JSON.parse(read?.stdout || "") as { claudeAiOauth?: typeof oauth }).claudeAiOauth;
+    oauth = (JSON.parse(readLogin()) as { claudeAiOauth?: typeof oauth }).claudeAiOauth;
   } catch {
     oauth = undefined;
   }
   if (typeof oauth?.accessToken !== "string" || !oauth.accessToken) {
-    return { env, missing: "not run: no Claude Code login in the keychain and no CLAUDE_CODE_OAUTH_TOKEN" };
+    return { env, missing: "not run: no Claude Code login in the keychain" };
   }
   if (typeof oauth.expiresAt === "number" && oauth.expiresAt < now + 20 * 60_000) {
     return { env, missing: "not run: the Claude Code login expires within 20 minutes. Run claude once to refresh it" };
   }
   env.CLAUDE_CODE_OAUTH_TOKEN = oauth.accessToken;
   return { env };
+}
+
+/** The Claude Code login in the macOS keychain, as the JSON Claude Code stores. Empty when there is none. */
+function keychainLogin(): string {
+  if (process.platform !== "darwin") return "";
+  return spawnSync("security", ["find-generic-password", "-a", userInfo().username, "-s", "Claude Code-credentials", "-w"], { encoding: "utf8", timeout: 20_000 }).stdout || "";
 }
 
 /**
@@ -363,7 +366,6 @@ function agentBaseEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   }
   delete env.CI;
   delete env.CLAUDECODE;
-  if (base.CLAUDE_CODE_OAUTH_TOKEN) env.CLAUDE_CODE_OAUTH_TOKEN = base.CLAUDE_CODE_OAUTH_TOKEN;
   return env;
 }
 
