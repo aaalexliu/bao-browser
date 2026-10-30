@@ -307,10 +307,6 @@ export function claudeAgentAuth(configDir: string, base: NodeJS.ProcessEnv = pro
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
   mkdirSync(configDir, { recursive: true });
   if (base.CLAUDE_CODE_OAUTH_TOKEN) return { env };
-  if (base.ANTHROPIC_API_KEY) {
-    env.ANTHROPIC_API_KEY = base.ANTHROPIC_API_KEY;
-    return { env };
-  }
   const read = process.platform === "darwin"
     ? spawnSync("security", ["find-generic-password", "-a", userInfo().username, "-s", "Claude Code-credentials", "-w"], { encoding: "utf8", timeout: 20_000 })
     : undefined;
