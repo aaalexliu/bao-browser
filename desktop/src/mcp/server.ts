@@ -82,7 +82,7 @@ interface Context {
   live: LiveReplayer;
   /** Set once this process sends a live call, so a disconnect is sent only then. */
   liveUsed: boolean;
-  /** Resolves when the client goes away. From then on each live call gets 15 s. */
+  /** Resolves when the client goes away. From then on each live_* call and the disconnect post get 15 s. */
   gone: Promise<void>;
 }
 
@@ -114,7 +114,8 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     }
   });
   // The client closed stdin or stopped this process: finish queued calls, then save its live session.
-  // A live call stuck in the app must not keep this process alive. The app's idle timeout still saves.
+  // A live_* call or the disconnect stuck in the app must not keep this process alive. The app's idle timeout still saves.
+  // Catalog work, a run_workflow live replay included, finishes and saves with no cap.
   const end = (): void => {
     if (ending) return;
     ending = true;
@@ -180,7 +181,7 @@ function liveCall(body: Record<string, unknown>, ctx: Context): Promise<unknown>
   return limited(postLive(body, ctx.args, ctx.env), ctx.gone);
 }
 
-/** Live work in the app gets 15 s from when it starts or the client goes away, whichever is later. */
+/** A live_* call or the disconnect gets 15 s from when it starts or the client goes away, whichever is later. */
 function limited<T>(work: Promise<T>, gone: Promise<void>): Promise<T> {
   const deadline = gone.then(() => new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error("The Bao app did not answer.")), 15_000).unref();
