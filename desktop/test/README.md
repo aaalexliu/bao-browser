@@ -34,10 +34,30 @@ The second command is the required-suite test, run against installed Chrome. It 
 
 `desktop/test/instacart/` stands in for `www.instacart.com`, so a live-path test never reaches the real site.
 
-- `startInstacartFixture()` serves HTTPS on `127.0.0.1` with a fresh self-signed certificate for `www.instacart.com` and `instacart.com`. It serves the store list, the Costco storefront, Costco search, the product page at `TARGET_PATH`, a Safeway decoy, and trap pages under `/checkout`, `/login`, `/account` and `/instacart-plus`. Carts live in memory. `state()` returns the carts, each cart write with an `at` time, each trap hit, and every request. `reset(seed)` clears them and can seed cart lines without logging a write. `setVariant("drift")` renames every class and test id and moves blocks. Labels stay the same.
+- `startInstacartFixture()` serves HTTPS on `127.0.0.1` with a fresh self-signed certificate for `www.instacart.com` and `instacart.com`. It serves the store list, the Costco storefront, Costco search, the product page at `TARGET_PATH`, a Safeway decoy, and trap pages under `/checkout`, `/login`, `/account` and `/instacart-plus`. Carts live in memory. `state()` returns the carts, each cart write with an `at` time, each trap hit, and every request with its User-Agent. `reset(seed)` clears them and can seed cart lines without logging a write. `setVariant("drift")` renames every class and test id and moves blocks. Labels stay the same.
 - `launchFixtureBrowser(fixture)` starts the pinned Playwright Chromium with a temp `--user-data-dir`, `--remote-debugging-port=0` and the mock keychain flags. `--host-resolver-rules` maps both hosts to the fixture and every other host to `~NOTFOUND`. `--ignore-certificate-errors-spki-list` trusts the fixture's key. The result names the `DevToolsActivePort` file that bao's live host reads, and the CDP URL. `close()` stops Chrome and deletes the profile.
 - `desktop/test/unit/instacart-fixture.test.ts` checks the fixture and runs in `npm run test:v1`.
 - `desktop/test/unit/live-recording.test.ts` records a live session on the fixture, then replays the saved workflow with no model, once with the item already in the cart and once without.
 - `desktop/test/unit/live-replay.test.ts` records the same task through the app's `/api/live`, then replays it through `/api/replay` and through `bao mcp`'s `run_workflow` with new search text. It checks the skipped Add, the refused checkout, and zero model calls.
 
 The SPKI flag works with a temp `--user-data-dir` on Playwright's Chrome for Testing 149. Without the flag the same pages fail with `ERR_CERT_AUTHORITY_INVALID`. `MAP * ~NOTFOUND` also fails IP literals and `localhost`, so a page cannot reach `127.0.0.1` by address.
+
+## Instacart acceptance lane (L1)
+
+`desktop/test/unit/instacart-acceptance.test.ts` is lane L1 of the plan for "put costco blueberries into the cart at instacart". `npm run test:v1` runs it.
+
+It takes about 20 seconds and calls no model. It starts the fixture and the test browser, then spawns `bao serve --home <tmp> --port 0 --live-target throwaway:<DevToolsActivePort> --live-lock <tmp>/live.lock`. Every spawned `bao serve` and `bao mcp` gets a temp `HOME`, so the native host manifest and the app's homes stay in the temp dir, and the private lock keeps it from waiting on, or blocking, a Bao on the same Mac. A scripted client (`desktop/src/eval/mcp-client.ts`) plays the agent on `bao mcp`:
+
+1. It starts a session at the Costco storefront, types `blueberries`, and presses Enter.
+2. It tries the Checkout and Log in links by the refs bao withheld. Both come back `refused`, `denied`.
+3. It opens "Kirkland Signature Organic Blueberries, 3 lbs" and clicks Add to cart.
+4. It opens the cart and tries its Go to checkout link, which is refused too.
+5. It closes stdin without `live_stop`. The app saves the workflow and frees the lock.
+
+A new client then replays the workflow through `run_workflow` twice, on an empty cart each time. The test checks:
+
+- A: after recording, the cart is one Costco line, the Kirkland Organic Blueberries 3 lb, qty 1.
+- B: the cart write comes right after the audit row of the trusted Add to cart click in `<home>/live-session/session.json`. Every fixture request has the host `www.instacart.com` and the test browser's User-Agent.
+- C: no trap page loads, and each trap's refusal has an audit row.
+- D: the saved workflow validates against the schema, has `driver: "cdp-live"`, starts on `www.instacart.com`, has the input `query` with the default `blueberries`, types it, presses Enter, opens the product, and clicks Add to cart. It has no cookie or storage key and no step label the preset refuses. The cart click from step 4 is its last step.
+- E: both replays pass with `modelCalls` 0 and no heal, and each leaves the same cart line.

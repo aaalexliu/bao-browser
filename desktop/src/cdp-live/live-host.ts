@@ -261,6 +261,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const host = new URL(url).hostname;
     const blocked = navigationGuard(url, hosts, origins, stopPath);
     if (blocked) throw new Error(blocked);
+    if (lockFile !== CDP_LOCK_PATH && target !== defaultTarget) throw new Error("this app has its own live lock, so it drives only its configured Chrome");
     const prepared = await prepareTarget(target, opts.helper);
     await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
     let cdp: CdpSocket | undefined;

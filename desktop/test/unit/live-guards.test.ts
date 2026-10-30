@@ -224,6 +224,35 @@ test("the live entry refuses a stop path before navigation and keeps a blocked p
   await host.close();
 });
 
+test("a host with its own live lock drives only its configured Chrome, whatever port file a call names", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-live-own-lock-"));
+  const lockFile = path.join(home, "lock");
+  const configured = path.join(home, "own", "DevToolsActivePort");
+  const host = createLiveHost({
+    home,
+    lockFile,
+    target: { kind: "throwaway", portFile: configured },
+    helper: () => {
+      throw new Error("no helper call");
+    },
+  });
+  const start = (portFile: string) => host.call({
+    op: "live_session_start",
+    intent: "Shop",
+    url: "https://www.instacart.com/store/costco/storefront",
+    portFile,
+  }) as Promise<{ outcome?: { kind?: string; reason?: string } }>;
+  try {
+    const other = await start(path.join(home, "other", "DevToolsActivePort"));
+    assert.deepEqual(other.outcome, { kind: "rejected", reason: "this app has its own live lock, so it drives only its configured Chrome" });
+    const own = await start(configured);
+    assert.deepEqual(own.outcome, { kind: "rejected", reason: "the live target has no DevToolsActivePort" });
+    assert.equal(existsSync(lockFile), false);
+  } finally {
+    await host.close();
+  }
+});
+
 interface FakeControl {
   label: string;
   kind: "button" | "link" | "field" | "submit";

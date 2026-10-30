@@ -56,6 +56,8 @@ export interface Hit {
   path: string;
   /** Sec-Purpose, set on prefetch and prerender requests. */
   purpose: string;
+  /** User-Agent, so a test can tell the test browser's requests from any other client's. */
+  agent: string;
 }
 
 export interface FixtureState {
@@ -180,7 +182,8 @@ export async function startInstacartFixture(opts: { variant?: Variant; seed?: Se
     const host = (req.headers.host || "").replace(/:\d+$/, "").toLowerCase();
     const url = new URL(req.url || "/", FIXTURE_ORIGIN);
     const purpose = String(req.headers["sec-purpose"] || req.headers.purpose || "");
-    const hit: Hit = { at: Date.now(), method, host, path: `${url.pathname}${url.search}`, purpose };
+    const agent = String(req.headers["user-agent"] || "");
+    const hit: Hit = { at: Date.now(), method, host, path: `${url.pathname}${url.search}`, purpose, agent };
     requests.push(hit);
     if (!(FIXTURE_HOSTS as readonly string[]).includes(host)) return send(res, 421, "text/plain", "misdirected request");
     if (host === "instacart.com") return send(res, 301, "text/plain", "moved", { location: `${FIXTURE_ORIGIN}${hit.path}` });

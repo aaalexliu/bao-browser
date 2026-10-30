@@ -42,7 +42,10 @@ async function main(): Promise<void> {
     for (const line of notices) console.error(line);
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || 4787);
     const liveTarget = flag(rest, "--live-target") || process.env.BAO_LIVE_TARGET;
-    const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true, liveTarget });
+    // Every Bao shares one live lock, so two apps never drive the same Chrome. Only a throwaway Chrome, which no other Bao drives, may take its own.
+    const liveLockFile = flag(rest, "--live-lock");
+    if (liveLockFile && !liveTarget?.startsWith("throwaway:")) throw new Error("--live-lock needs --live-target throwaway:<DevToolsActivePort>");
+    const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true, liveTarget, liveLockFile });
     console.log(`bao ${app.port} home ${home}`);
     await new Promise(() => {});
     return;
@@ -160,7 +163,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort>] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 
