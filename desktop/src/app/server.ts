@@ -112,7 +112,7 @@ import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extensi
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
 import { workflowDriver, type Gesture } from "../extension/protocol";
-import { CDP_LIVE_SERVER_REFUSAL, refusesOwnedBrowser } from "../cdp-live/launch-guard";
+import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../cdp-live/launch-guard";
 import { defaultConfigHome } from "../extension/install-host";
 import { createRemoteAgent } from "../v1/remote-agent";
 import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
@@ -342,7 +342,7 @@ export async function startApp(opts: {
     clearStop: () => { stopRun = false; },
     runners: {
       extension: async (id, inputs) => {
-        if (!extensionLink?.connected()) return { outcome: "failed", workflowId: id, reason: "extension is not connected" };
+        if (!extensionLink?.connected()) return { outcome: "failed", workflowId: id, reason: EXTENSION_NOT_CONNECTED };
         const workflow = library.read(id);
         const result = await runExtension(library, workflow, inputs, notices, prompts, extensionLink) as {
           status?: string;
@@ -1094,7 +1094,7 @@ export async function startApp(opts: {
           }
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
           if (workflowDriver(workflow) === "extension") {
-            if (!extensionLink?.connected()) return json(res, { error: "extension is not connected" }, 409);
+            if (!extensionLink?.connected()) return json(res, { error: EXTENSION_NOT_CONNECTED }, 409);
             const run = await runRecorded(library, workflow, args, notices, replays, prompts, undefined, fromStep, extensionLink);
             library.savePublicInputs(workflow.id, keptInputs(workflow, args));
             return json(res, run);
@@ -2759,11 +2759,9 @@ async function runRecorded(
   fromStep?: string,
   link?: ExtensionLink,
 ) {
-  if (refusesOwnedBrowser(workflow.driver)) throw new Error(CDP_LIVE_SERVER_REFUSAL);
-  if (workflowDriver(workflow) === "extension") {
-    if (!link) throw new Error("extension is not connected");
-    return runExtension(library, workflow, args, notices, prompts, link, fromStep);
-  }
+  const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(link) });
+  if (refusal) throw new Error(refusal);
+  if (link && workflowDriver(workflow) === "extension") return runExtension(library, workflow, args, notices, prompts, link, fromStep);
   const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
   const driver = new BrowserDriver(page, (notice) => {
