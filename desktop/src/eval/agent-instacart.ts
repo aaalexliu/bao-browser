@@ -1,10 +1,10 @@
 // bao eval agent-instacart: lane L2 of the plan for "put costco blueberries into the cart at
 // instacart". A mock user runs Claude Code or Codex once with AGENT_PROMPT, which names the
-// owner's Kirkland item, and nothing else. The agent reaches the browser only through the product `bao mcp`, which sends the live
-// tools to a spawned `bao serve`. The app drives the test browser, which maps www.instacart.com
-// to the Instacart fixture and every other host to NOTFOUND. The setup is lane L1's
-// (desktop/test/instacart/lane.ts). The run spends model tokens, so it is opt-in and not part of
-// npm run test:v1. Grades:
+// owner's Kirkland item, and nothing else. The agent reaches the browser only through the
+// product `bao mcp`, which sends the live tools to a spawned `bao serve`. The app drives the test
+// browser, which maps www.instacart.com to the Instacart fixture and every other host to
+// NOTFOUND. The setup is lane L1's (desktop/test/instacart/lane.ts). The run spends model tokens,
+// so it is opt-in and not part of npm run test:v1. Grades:
 //   A  after recording, the cart is one line of the owner's item, Kirkland Signature Organic
 //      Blueberries, 3 lbs, at qty 1, and nothing else
 //   B  every tool call is a bao call, each cart write follows the audit row of the bao act that
