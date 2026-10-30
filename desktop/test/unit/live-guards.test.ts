@@ -224,9 +224,10 @@ test("the live entry refuses a stop path before navigation and keeps a blocked p
   await host.close();
 });
 
-function replayTarget(pages: PageFacts[], marked?: PageFacts): { target: ReplayTarget; clicks: string[] } {
+function replayTarget(pages: PageFacts[], marked?: PageFacts, blockOnClick = ""): { target: ReplayTarget; clicks: string[] } {
   const clicks: string[] = [];
   let at = 0;
+  let blockedNav = "stale-block";
   const driver = {
     setOrigins: () => undefined,
     goto: async () => undefined,
@@ -236,7 +237,13 @@ function replayTarget(pages: PageFacts[], marked?: PageFacts): { target: ReplayT
     },
     clickCss: async (selector: string) => {
       clicks.push(selector);
-      at += 1;
+      blockedNav = blockOnClick;
+      if (!blockOnClick) at += 1;
+    },
+    takeBlockedNav: () => {
+      const reason = blockedNav;
+      blockedNav = "";
+      return reason;
     },
   } as unknown as ReplayTarget["driver"];
   return { target: { driver, commit: generic.commit, deny: generic.deny, stopPath: generic.stopPath, hosts: ["127.0.0.1"], origins: ["http://127.0.0.1"] }, clicks };
@@ -291,6 +298,20 @@ test("live replay stops for a person on a halt page and releases the lock", asyn
   assert.equal(stopped.status, "needs_human");
   assert.equal(stopped.reason, "stop-path");
   assert.equal(checkout.clicks.length, 1);
+});
+
+test("live replay fails the step whose click navigation the guard blocked", async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
+  const shop = facts([{ index: 0, label: "Add to cart", kind: "button" }]);
+  const workflow = addTwice();
+  const blocked = replayTarget([shop], undefined, "off-origin");
+  const result = await replayLive(blocked.target, workflow, file);
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "off-origin");
+  assert.equal(result.stoppedAt, workflow.steps[0]?.id);
+  assert.deepEqual(result.steps.map((step) => step.status), ["failed", "skipped"]);
+  assert.equal(blocked.clicks.length, 1);
+  assert.equal(existsSync(file), false);
 });
 
 test("live replay refuses a control that moved before the click, and names the step it stopped on", async () => {

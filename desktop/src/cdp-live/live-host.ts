@@ -58,7 +58,7 @@ interface OpenState {
 }
 
 export interface ReplayTarget {
-  driver: Pick<CdpLiveDriver, "setOrigins" | "goto" | "evaluateFunction" | "clickCss">;
+  driver: Pick<CdpLiveDriver, "setOrigins" | "goto" | "evaluateFunction" | "clickCss" | "takeBlockedNav">;
   commit: string;
   deny: string;
   stopPath: string;
@@ -538,7 +538,13 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
         stopAt(step.id, "failed", "stale_ref");
         break;
       }
+      driver.takeBlockedNav();
       await driver.clickCss(plan.selector);
+      const blockedNav = driver.takeBlockedNav();
+      if (blockedNav) {
+        stopAt(step.id, "failed", blockedNav);
+        break;
+      }
     }
     const last = workflow.steps[workflow.steps.length - 1];
     if (!stoppedAt && last) {
