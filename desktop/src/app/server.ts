@@ -15,6 +15,7 @@ import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
+import { createLiveHost } from "../cdp-live/live-host";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
@@ -192,6 +193,7 @@ export async function startApp(opts: {
 }): Promise<App> {
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
+  const live = createLiveHost({ home: library.root });
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
@@ -444,6 +446,14 @@ export async function startApp(opts: {
           return;
         }
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
+      }
+      if (req.method === "POST" && url.pathname === "/api/live") {
+        const origin = req.headers.origin;
+        if (typeof origin === "string" && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
+          return json(res, { error: "local clients only" }, 403);
+        }
+        const body = await readBody(req);
+        return json(res, await live.call(body));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/live-session/shots/")) {
         const name = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
@@ -1057,7 +1067,14 @@ export async function startApp(opts: {
         const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
-        if (refusesOwnedBrowser(workflow.driver)) return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
+        if (refusesOwnedBrowser(workflow.driver)) {
+          try {
+            return json(res, await live.replay(workflow));
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "live replay failed";
+            return json(res, { error: message, modelCalls: 0 }, 409);
+          }
+        }
         const args = await materializeFiles(body.args || {});
         if (body.fresh) {
           const existing = replays.get(saved.id);
@@ -2433,6 +2450,7 @@ export async function startApp(opts: {
       }
       replays.clear();
       await remote.stop();
+      await live.close();
       await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
