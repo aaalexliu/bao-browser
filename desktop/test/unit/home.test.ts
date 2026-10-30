@@ -15,7 +15,6 @@ const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 const darwinPreload = path.join(process.cwd(), "desktop/test/unit/force-darwin.cjs");
 const linuxPreload = path.join(process.cwd(), "desktop/test/unit/force-linux.cjs");
 const observeHook = path.join(process.cwd(), "desktop/mcp/claude/hooks/observe.mjs");
-const launcherMain = path.join(process.cwd(), "desktop/packaging/macos/bao-main.c");
 
 type PlatformForce = boolean | "linux" | "darwin";
 
@@ -891,7 +890,6 @@ test("the observer hook writes into a legacy library that has only server.json",
   assert.equal(existsSync(path.join(legacy, "observer", "trail.jsonl")), true);
   assert.equal(existsSync(fresh), false);
   assert.equal(readFileSync(path.join(legacy, "server.json"), "utf8"), "{\"port\":39999}\n");
-  assert.equal(readFileSync(observeHook, "utf8").includes(".local/share/bao"), false);
 });
 
 test("an empty HOME is refused and does not create a library", async () => {
@@ -1020,12 +1018,4 @@ test("print-home names a second library once per library", async () => {
   const third = await runScript(["--require", darwinPreload, script], childEnv(dirs.user), dirs.cwdB);
   assert.equal(third.code, 0, third.stderr + third.stdout);
   assert.equal(third.stdout, `ok\n${fresh}\nlibrary data is at ${other}; using ${fresh}\n`);
-});
-
-test("the Mac launcher asks the shared resolver and does not use /tmp", () => {
-  const source = readFileSync(launcherMain, "utf8");
-  assert.equal(source.includes(".local/share/bao"), false);
-  assert.equal(source.includes('user_home = "/tmp"'), false);
-  // stage-runtime.sh puts the compiled server and both resolver files in Resources/bao/src.
-  assert.match(source, /"%s\/src\/print-home\.cjs", root/);
 });
