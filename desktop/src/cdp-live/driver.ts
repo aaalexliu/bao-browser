@@ -7,7 +7,8 @@ import { assignSiblingIndex } from "../v1/identity";
 import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
-import { BOOKS_HOSTS, navigationAllowed, navigationRefusal, openerAllowed, publicHost } from "./allowlist";
+import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
+import { focusLiveMark, focusStillMarked } from "./live-ops";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -90,6 +91,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Chrome runs a key's default action only when the event carries its virtual key code. */
+const KEY_EVENTS: Record<string, { code: string; keyCode: number; text: string }> = {
+  Enter: { code: "Enter", keyCode: 13, text: "\r" },
+  Tab: { code: "Tab", keyCode: 9, text: "" },
+  Escape: { code: "Escape", keyCode: 27, text: "" },
+};
+
 function toIdentity(node: DomDump): Identity {
   return {
     surface: "dom",
@@ -113,8 +121,14 @@ export class CdpLiveDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
   private loadEpoch = 0;
   private offHost = "";
+  private blockedNav = "";
+  /** The last top-frame URL that committed on an allowed host and off any stop path. */
+  private lastAllowed = "";
+  private origins: readonly string[] = [];
+  private stopPath = "";
   private humanAsk: HumanAsk | undefined;
   private trustEvents: TrustEvent[] = [];
+  private trustCursor = 0;
   readonly subframesSeen = { count: 0 };
 
   private scriptId = "";
@@ -128,12 +142,28 @@ export class CdpLiveDriver implements Driver {
     private readonly preserveTarget = false,
   ) {}
 
+  setOrigins(origins: readonly string[]): void {
+    this.origins = origins;
+  }
+
+  /** A page load on a stop path is failed before the request leaves Chrome. */
+  setStopPath(stopPath: string): void {
+    this.stopPath = stopPath;
+  }
+
   private allows(url: string): boolean {
+    if (!url || url === "about:blank" || url.startsWith("about:") || url.startsWith("chrome:") || url.startsWith("devtools:") || url.startsWith("chrome-error:")) {
+      return true;
+    }
+    if (this.origins.length) return navigationRefusal(url, this.hosts, this.origins) == null;
     return navigationAllowed(url, this.hosts);
   }
 
   private refusal(url: string): string {
-    return navigationRefusal(url, this.hosts) || "that url";
+    const reason = this.origins.length
+      ? navigationRefusal(url, this.hosts, this.origins)
+      : navigationRefusal(url, this.hosts);
+    return reason || "that url";
   }
 
   async start(): Promise<void> {
@@ -141,6 +171,12 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Runtime.enable", {}, this.sessionId);
     this.cdp.on("Page.loadEventFired", this.sessionId, () => { this.loadEpoch += 1; });
     this.cdp.on("Page.frameNavigated", this.sessionId, (params) => this.onFrame(params));
+    this.cdp.on("Fetch.requestPaused", this.sessionId, (params) => this.onPaused(params));
+    if (!this.preserveTarget) {
+      await this.cdp.send("Fetch.enable", {
+        patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }],
+      }, this.sessionId);
+    }
     let added: { identifier?: string } = {};
     try {
       added = await this.cdp.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", {
@@ -155,14 +191,84 @@ export class CdpLiveDriver implements Driver {
     await this.bringToFront();
   }
 
+  private onPaused(params: Record<string, unknown>): void {
+    const requestId = typeof params.requestId === "string" ? params.requestId : "";
+    if (!requestId) return;
+    const request = params.request as { url?: string } | undefined;
+    const url = request?.url || "";
+    const allowed = this.allows(url);
+    if (params.frameId !== this.targetId || (allowed && !stopPathHit(url, this.stopPath))) {
+      void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
+      return;
+    }
+    this.blockedNav = allowed ? "stop-path" : this.refusal(url);
+    void this.cdp.send("Fetch.failRequest", {
+      requestId,
+      errorReason: "BlockedByClient",
+    }, this.sessionId).catch(() => undefined);
+  }
+
+  takeBlockedNav(): string {
+    const reason = this.blockedNav;
+    this.blockedNav = "";
+    return reason;
+  }
+
+  /**
+   * After a load failed on a stop path, takes the tab off Chrome's error page and back to the
+   * last allowed page: one history step when that lands on it, otherwise a load of that URL.
+   */
+  async returnFromBlock(timeoutMs = 10_000): Promise<void> {
+    const target = this.lastAllowed;
+    if (this.preserveTarget || !target) return;
+    type History = { currentIndex: number; entries: { id: number; url: string }[] };
+    const history = () => this.cdp.send<History>("Page.getNavigationHistory", {}, this.sessionId);
+    let now = await history();
+    const settle = Date.now() + 2_000;
+    while (now.entries[now.currentIndex]?.url === target && Date.now() < settle) {
+      await sleep(100);
+      now = await history();
+    }
+    if (now.entries[now.currentIndex]?.url === target) return;
+    const prior = now.entries[now.currentIndex - 1];
+    if (prior?.url === target) {
+      await this.cdp.send("Page.navigateToHistoryEntry", { entryId: prior.id }, this.sessionId);
+    } else {
+      const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url: target }, this.sessionId);
+      if (nav.errorText) throw new Error(nav.errorText);
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const state = await this.evaluate<{ href: string; ready: string }>(
+        "({ href: location.href, ready: document.readyState })",
+      ).catch(() => undefined);
+      if (state && /^https?:/.test(state.href) && this.allows(state.href) && !stopPathHit(state.href, this.stopPath) && state.ready === "complete") return;
+      await sleep(100);
+    }
+    throw new Error("could not return to the last allowed page");
+  }
+
+  markTrust(): void {
+    this.trustCursor = this.trustEvents.length;
+  }
+
+  lastTrusted(): boolean | null {
+    if (this.trustEvents.length <= this.trustCursor) return null;
+    const last = this.trustEvents[this.trustEvents.length - 1];
+    return last ? last.isTrusted : null;
+  }
+
   private onFrame(params: Record<string, unknown>): void {
-    const frame = params.frame as { parentId?: string; url?: string } | undefined;
+    const frame = params.frame as { parentId?: string; url?: string; unreachableUrl?: string } | undefined;
     if (!frame) return;
     if (frame.parentId) {
       this.subframesSeen.count += 1;
       return;
     }
     const url = frame.url || "";
+    if (/^https?:/.test(url) && !frame.unreachableUrl && this.allows(url) && !stopPathHit(url, this.stopPath)) {
+      this.lastAllowed = url;
+    }
     if (url && this.allows(url)) {
       if (this.preserveTarget) this.offHost = "";
       void this.evaluate(TRUST_SOURCE).catch(() => undefined);
@@ -301,7 +407,9 @@ export class CdpLiveDriver implements Driver {
   /** Trusted click of a selector this process just marked. Does not call element.click(). */
   async clickCss(selector: string): Promise<void> {
     if (!selector.startsWith("[data-bao-")) throw new Error("cdp-live click refused");
+    const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.clickSelector(selector);
+    await this.waitAfterClick(before, 10_000);
   }
 
   async evaluateFunction<T>(
@@ -317,10 +425,11 @@ export class CdpLiveDriver implements Driver {
     return this.evaluate<T>(prelude ? `(() => {\n${prelude}\nreturn ${call};\n})()` : call);
   }
 
-  async insertText(text: string): Promise<void> {
-    if (text.length === 0 || text.length > 80) throw new Error("cdp-live refused that text");
-    if (/password|cvv|cvc|card number/i.test(text)) throw new Error("cdp-live does not type secrets");
-    if (/^\d[\d\s-]{11,}\d$/.test(text)) throw new Error("cdp-live does not type card numbers");
+  async insertText(text: string, prior = "", markIndex = -1): Promise<void> {
+    const refusal = insertTextRefusal(text, prior);
+    if (refusal) throw new Error(refusal);
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
     await this.cdp.send("Input.insertText", { text }, this.sessionId);
   }
 
@@ -370,16 +479,36 @@ export class CdpLiveDriver implements Driver {
       await this.chord("a", "KeyA", 4, 65);
       return;
     }
-    const enter = key === "Enter" || key === "Return";
-    const name = enter ? "Enter" : key;
+    const name = key === "Return" ? "Enter" : key;
+    const known = KEY_EVENTS[name];
     await this.cdp.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key: name,
-      code: name,
-      windowsVirtualKeyCode: enter ? 13 : 0,
-      text: enter ? "\r" : name.length === 1 ? name : "",
+      code: known?.code || name,
+      windowsVirtualKeyCode: known?.keyCode || 0,
+      text: known ? known.text : name.length === 1 ? name : "",
     }, this.sessionId);
-    await this.cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name }, this.sessionId);
+    await this.cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: name,
+      code: known?.code || name,
+      windowsVirtualKeyCode: known?.keyCode || 0,
+    }, this.sessionId);
+  }
+
+  /**
+   * Presses one key where focus is. With a mark, focus must still be that control.
+   * Focus in a credential field stops the key either way.
+   */
+  async pressMarked(key: string, markIndex: number): Promise<void> {
+    this.assertHost();
+    await this.bringToFront();
+    if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
+    const before = await this.evaluate<string>("location.href").catch(() => "");
+    await this.key(key);
+    await this.waitAfterClick(before, 10_000);
   }
 
   async upload(_node: Identity, _files: FileArg[]): Promise<void> {
@@ -505,15 +634,35 @@ export class CdpLiveDriver implements Driver {
   private async clickSelector(selector: string): Promise<void> {
     this.assertHost();
     await this.bringToFront();
-    const point = await this.evaluate<{ x: number; y: number; w: number; h: number } | null>(`(() => {
+    const point = await this.evaluate<{ x: number; y: number; w: number; h: number; covered: boolean } | null>(`(() => {
       ${PIERCE_QUERY}
       const el = pierce(${JSON.stringify(selector)}, document);
       if (!el) return null;
       el.scrollIntoView({ block: "center", inline: "center" });
       const r = el.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width, h: r.height };
+      const x = r.x + r.width / 2;
+      const y = r.y + r.height / 2;
+      let hit = document.elementFromPoint(x, y);
+      while (hit && hit.shadowRoot) {
+        const inner = hit.shadowRoot.elementFromPoint(x, y);
+        if (!inner || inner === hit) break;
+        hit = inner;
+      }
+      const hosts = (node) => {
+        let current = node;
+        while (current) {
+          if (current === el) return true;
+          const root = current.getRootNode();
+          if (!(root instanceof ShadowRoot)) return el.contains(current);
+          if (root.host === el || el.contains(root.host)) return true;
+          current = root.host;
+        }
+        return false;
+      };
+      return { x, y, w: r.width, h: r.height, covered: !hit || !hosts(hit) };
     })()`);
     if (!point || point.w < 1 || point.h < 1) throw new Error("element has no box");
+    if (point.covered) throw new Error("element is covered");
     const x = point.x;
     const y = point.y;
     await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, this.sessionId);

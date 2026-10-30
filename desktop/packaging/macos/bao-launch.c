@@ -19,6 +19,13 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+extern long syscall(long number, ...);
+#endif
+#if defined(__APPLE__)
+#include <libproc.h>
+#endif
 
 /* sys/types.h's major() macro would rewrite hooks->major(...). */
 #undef major
@@ -191,17 +198,331 @@ int bao_real_is_exec(const char *path, void *ctx) {
   return access(path, X_OK) == 0;
 }
 
-static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) {
+static int mono_now(struct timespec *out) {
+  /* A pending signal makes glibc retry clock_gettime and never return, so the
+     deadline would be anchored after the storm. Block signals for the read. */
+  sigset_t block, old;
+  sigfillset(&block);
+  if (sigprocmask(SIG_BLOCK, &block, &old) != 0) return clock_gettime(CLOCK_MONOTONIC, out);
+  int rc = clock_gettime(CLOCK_MONOTONIC, out);
+  sigprocmask(SIG_SETMASK, &old, NULL);
+  return rc;
+}
+
+static void mono_add_ms(struct timespec *ts, int ms) {
+  if (ms < 0) ms = 0;
+  ts->tv_sec += ms / 1000;
+  long nsec = ts->tv_nsec + (long)(ms % 1000) * 1000000L;
+  ts->tv_sec += nsec / 1000000000L;
+  ts->tv_nsec = nsec % 1000000000L;
+}
+
+static int mono_reached(const struct timespec *deadline) {
+  struct timespec now;
+  if (mono_now(&now) != 0) return 1;
+  if (now.tv_sec != deadline->tv_sec) return now.tv_sec > deadline->tv_sec;
+  return now.tv_nsec >= deadline->tv_nsec;
+}
+
+static int mono_left_ms(const struct timespec *deadline) {
+  struct timespec now;
+  if (mono_now(&now) != 0) return 0;
+  long sec = (long)deadline->tv_sec - (long)now.tv_sec;
+  long nsec = deadline->tv_nsec - now.tv_nsec;
+  if (nsec < 0) {
+    sec--;
+    nsec += 1000000000L;
+  }
+  if (sec < 0) return 0;
+  if (sec > 1000L) return 1000000;
+  long ms = sec * 1000L + nsec / 1000000L;
+  if (ms > 1000000L) return 1000000;
+  return (int)ms;
+}
+
+static void sleep_once(const struct timespec *deadline, int cap_ms) {
+  struct timespec now;
+  if (mono_now(&now) != 0) return;
+  struct timespec wake = now;
+  mono_add_ms(&wake, cap_ms);
+  if (wake.tv_sec > deadline->tv_sec || (wake.tv_sec == deadline->tv_sec && wake.tv_nsec > deadline->tv_nsec)) {
+    wake = *deadline;
+  }
+  sigset_t block, old;
+  sigfillset(&block);
+  int masked = sigprocmask(SIG_BLOCK, &block, &old) == 0;
+#if defined(__linux__)
+  syscall(SYS_clock_nanosleep, CLOCK_MONOTONIC, TIMER_ABSTIME, &wake, NULL);
+#elif defined(TIMER_ABSTIME)
+  clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &wake, NULL);
+#else
+  long sec = (long)wake.tv_sec - (long)now.tv_sec;
+  long nsec = wake.tv_nsec - now.tv_nsec;
+  if (nsec < 0) {
+    sec--;
+    nsec += 1000000000L;
+  }
+  if (sec >= 0) {
+    struct timespec ts;
+    ts.tv_sec = sec;
+    ts.tv_nsec = nsec;
+    nanosleep(&ts, NULL);
+  }
+#endif
+  if (masked) sigprocmask(SIG_SETMASK, &old, NULL);
+}
+
+enum capture_drain {
+  drain_interrupt = -1,
+  drain_writers_remain = 0,
+  drain_writers_gone = 1
+};
+
+/* 1 when every writer has closed, 0 when a writer still holds the pipe or the
+   deadline has arrived, -1 when a signal interrupted the read. */
+static int capture_drain(int fd, char *buf, size_t n, size_t *used, const struct timespec *deadline) {
+  for (;;) {
+    if (mono_reached(deadline)) return drain_writers_remain;
+    char tmp[512];
+    ssize_t got = read(fd, tmp, sizeof tmp);
+    if (got < 0 && errno == EINTR) return drain_interrupt;
+    if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return drain_writers_remain;
+    if (got <= 0) return drain_writers_gone;
+    size_t room = n - 1 - *used;
+    size_t take = (size_t)got < room ? (size_t)got : room;
+    if (take > 0) {
+      memcpy(buf + *used, tmp, take);
+      *used += take;
+      buf[*used] = 0;
+    }
+  }
+}
+
+static void kill_group(pid_t pid, int reaped) {
+  kill(-pid, SIGKILL);
+  if (!reaped) kill(pid, SIGKILL);
+}
+
+#if defined(__linux__)
+static int pipe_link_matches(const char *linkpath, const char *mine) {
+  char target[64];
+  ssize_t n = readlink(linkpath, target, sizeof target - 1);
+  if (n < 0 || (size_t)n >= sizeof target - 1) return 0;
+  target[n] = 0;
+  return strcmp(target, mine) == 0;
+}
+
+static void kill_pipe_writers(int fd) {
+  char selfpath[64];
+  char mine[64];
+  snprintf(selfpath, sizeof selfpath, "/proc/self/fd/%d", fd);
+  ssize_t n = readlink(selfpath, mine, sizeof mine - 1);
+  if (n < 0 || (size_t)n >= sizeof mine - 1) return;
+  mine[n] = 0;
+  if (strncmp(mine, "pipe:", 5) != 0) return;
+  pid_t self = getpid();
+  DIR *proc = opendir("/proc");
+  if (!proc) return;
+  struct dirent *ent;
+  while ((ent = readdir(proc)) != NULL) {
+    if (ent->d_name[0] < '1' || ent->d_name[0] > '9') continue;
+    char *end = NULL;
+    long pid = strtol(ent->d_name, &end, 10);
+    if (!end || *end != '\0' || pid <= 1 || pid == (long)self) continue;
+    char fdpath[64];
+    snprintf(fdpath, sizeof fdpath, "/proc/%ld/fd", pid);
+    DIR *fds = opendir(fdpath);
+    if (!fds) continue;
+    int matched = 0;
+    struct dirent *fdent;
+    while ((fdent = readdir(fds)) != NULL) {
+      if (fdent->d_name[0] == '.') continue;
+      char link[96];
+      int wrote = snprintf(link, sizeof link, "%s/%s", fdpath, fdent->d_name);
+      if (wrote < 0 || (size_t)wrote >= sizeof link) continue;
+      if (pipe_link_matches(link, mine)) {
+        matched = 1;
+        break;
+      }
+    }
+    closedir(fds);
+    if (matched) kill((pid_t)pid, SIGKILL);
+  }
+  closedir(proc);
+}
+#elif defined(__APPLE__)
+#ifndef PROC_FDTYPE_PIPE
+#ifdef PROX_FDTYPE_PIPE
+#define PROC_FDTYPE_PIPE PROX_FDTYPE_PIPE
+#else
+#define PROC_FDTYPE_PIPE 6
+#endif
+#endif
+
+static void kill_pipe_writers(int fd) {
+  struct pipe_fdinfo mine;
+  int got = proc_pidfdinfo(getpid(), fd, PROC_PIDFDPIPEINFO, &mine, (int)sizeof mine);
+  if (got != (int)sizeof mine || mine.pipeinfo.pipe_peerhandle == 0) return;
+  uint64_t peer = mine.pipeinfo.pipe_peerhandle;
+  pid_t self = getpid();
+  int need = proc_listallpids(NULL, 0);
+  if (need <= 0) return;
+  need += 32;
+  pid_t *pids = calloc((size_t)need, sizeof *pids);
+  if (!pids) return;
+  int count = proc_listallpids(pids, need * (int)sizeof *pids);
+  if (count < 0) count = 0;
+  if (count > need) count = need;
+  for (int i = 0; i < count; i++) {
+    pid_t pid = pids[i];
+    if (pid <= 1 || pid == self) continue;
+    int bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, NULL, 0);
+    if (bytes <= 0) continue;
+    struct proc_fdinfo *fds = malloc((size_t)bytes);
+    if (!fds) continue;
+    int filled = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds, bytes);
+    if (filled > bytes) filled = bytes;
+    if (filled > 0) {
+      int nfd = filled / (int)sizeof *fds;
+      for (int j = 0; j < nfd; j++) {
+        if (fds[j].proc_fdtype != PROC_FDTYPE_PIPE) continue;
+        struct pipe_fdinfo info;
+        int ninfo = proc_pidfdinfo(pid, fds[j].proc_fd, PROC_PIDFDPIPEINFO, &info, (int)sizeof info);
+        if (ninfo == (int)sizeof info && info.pipeinfo.pipe_handle == peer) kill(pid, SIGKILL);
+      }
+    }
+    free(fds);
+  }
+  free(pids);
+}
+#else
+static void kill_pipe_writers(int fd) { (void)fd; }
+#endif
+
+static pid_t wait_child(pid_t pid, int *status) {
+#if defined(__linux__)
+  /* glibc waitpid retries after EINTR, so a signal storm never reaches the deadline. */
+  return (pid_t)syscall(SYS_wait4, pid, status, WNOHANG, NULL);
+#else
+  return waitpid(pid, status, WNOHANG);
+#endif
+}
+
+static int reap_bounded(pid_t pid, int fd, int *status, int reaped) {
+  kill_group(pid, reaped);
+  kill_pipe_writers(fd);
+  struct timespec cleanup;
+  if (mono_now(&cleanup) != 0) {
+    close(fd);
+    return -1;
+  }
+  mono_add_ms(&cleanup, 200);
+  while (!reaped && !mono_reached(&cleanup)) {
+    pid_t got = wait_child(pid, status);
+    if (got == pid) reaped = 1;
+    else if (got < 0 && errno != EINTR) break;
+    else {
+      sleep_once(&cleanup, 20);
+    }
+  }
+  close(fd);
+  return -1;
+}
+
+static void restore_mask(int masked, const sigset_t *saved) {
+  if (masked) sigprocmask(SIG_SETMASK, saved, NULL);
+}
+
+/* The child sits in its own group so the deadline can signal that group
+   without signaling the caller. A job that leaves the group can still hold
+   the pipe. Those writers are the ones that have to stop. A daemon that
+   closed the pipe is not part of the capture. */
+static int capture_parent(pid_t pid, int fd, char *buf, size_t n, int timeout_ms) {
+  setpgid(pid, pid);
+  int status = 0;
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    return reap_bounded(pid, fd, &status, 0);
+  }
+  size_t used = 0;
+  buf[0] = 0;
+  int reaped = 0;
+  int eof = 0;
+  struct timespec deadline;
+  if (mono_now(&deadline) != 0) return reap_bounded(pid, fd, &status, reaped);
+  mono_add_ms(&deadline, timeout_ms);
+  int step = drain_writers_remain;
+  for (;;) {
+    if (!eof) step = capture_drain(fd, buf, n, &used, &deadline);
+    if (step == drain_writers_gone) eof = 1;
+    if (!reaped) {
+      pid_t got = wait_child(pid, &status);
+      if (got == pid) reaped = 1;
+      else if (got < 0 && errno != EINTR) {
+        reaped = 1;
+        return reap_bounded(pid, fd, &status, reaped);
+      }
+    }
+    if (reaped && !eof) {
+      step = capture_drain(fd, buf, n, &used, &deadline);
+      if (step == drain_writers_gone) eof = 1;
+    }
+    if (reaped && eof) break;
+    if (reaped && step == drain_writers_remain) return reap_bounded(pid, fd, &status, reaped);
+    if (mono_reached(&deadline) || mono_left_ms(&deadline) <= 0) break;
+    if (step == drain_interrupt) continue;
+    sleep_once(&deadline, 50);
+  }
+  if (reaped && eof) {
+    close(fd);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return -1;
+    return 0;
+  }
+  return reap_bounded(pid, fd, &status, reaped);
+}
+
+int bao_run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) {
   if (!argv || !argv[0] || !buf || n == 0) return -1;
+  /* A tight signal storm runs the handler between every syscall, so the
+     deadline is never read. Block signals for the whole parent capture.
+     The child must not inherit that mask. */
+  sigset_t saved_mask;
+  sigset_t block;
+  sigfillset(&block);
+  int masked = sigprocmask(SIG_BLOCK, &block, &saved_mask) == 0;
   int pipefd[2];
-  if (pipe(pipefd) != 0) return -1;
+  if (pipe(pipefd) != 0) {
+    restore_mask(masked, &saved_mask);
+    return -1;
+  }
   pid_t pid = fork();
   if (pid < 0) {
     close(pipefd[0]);
     close(pipefd[1]);
+    restore_mask(masked, &saved_mask);
     return -1;
   }
   if (pid == 0) {
+    restore_mask(masked, &saved_mask);
+    setpgid(0, 0);
+    /* This group is not the terminal's foreground group, so a profile that
+       runs `stty` or reads the tty gets SIGTTOU or SIGTTIN and stops until
+       the deadline. Ignoring them is not enough: bash 3.2 (macOS /bin/sh)
+       and zsh reset both to the default in every command they start. They
+       keep the signal mask, and the tty treats a blocked SIGTTIN or SIGTTOU
+       like an ignored one. dash clears the mask but keeps the ignore, so do
+       both. */
+    struct sigaction ignore_stop;
+    memset(&ignore_stop, 0, sizeof ignore_stop);
+    ignore_stop.sa_handler = SIG_IGN;
+    sigemptyset(&ignore_stop.sa_mask);
+    sigaction(SIGTTIN, &ignore_stop, NULL);
+    sigaction(SIGTTOU, &ignore_stop, NULL);
+    sigset_t tty_stop;
+    sigemptyset(&tty_stop);
+    sigaddset(&tty_stop, SIGTTIN);
+    sigaddset(&tty_stop, SIGTTOU);
+    sigprocmask(SIG_BLOCK, &tty_stop, NULL);
     if (dup2(pipefd[1], STDOUT_FILENO) < 0) _exit(127);
     int devnull = open("/dev/null", O_RDONLY);
     if (devnull >= 0) {
@@ -219,67 +540,9 @@ static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) 
     _exit(127);
   }
   close(pipefd[1]);
-  int flags = fcntl(pipefd[0], F_GETFL, 0);
-  if (flags >= 0) fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
-  size_t used = 0;
-  buf[0] = 0;
-  int waited = 0;
-  int status = 0;
-  int reaped = 0;
-  while (waited <= timeout_ms) {
-    for (;;) {
-      char tmp[512];
-      ssize_t got = read(pipefd[0], tmp, sizeof tmp);
-      if (got < 0 && errno == EINTR) continue;
-      if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
-      if (got <= 0) break;
-      size_t room = n - 1 - used;
-      size_t take = (size_t)got < room ? (size_t)got : room;
-      if (take > 0) {
-        memcpy(buf + used, tmp, take);
-        used += take;
-        buf[used] = 0;
-      }
-    }
-    if (!reaped) {
-      pid_t got = waitpid(pid, &status, WNOHANG);
-      if (got == pid) reaped = 1;
-      else if (got < 0 && errno != EINTR) {
-        close(pipefd[0]);
-        return -1;
-      }
-    }
-    if (reaped) break;
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = 50L * 1000L * 1000L;
-    nanosleep(&ts, NULL);
-    waited += 50;
-  }
-  if (!reaped) {
-    kill(pid, SIGKILL);
-    waitpid(pid, &status, 0);
-    close(pipefd[0]);
-    return -1;
-  }
-  flags = fcntl(pipefd[0], F_GETFL, 0);
-  if (flags >= 0) fcntl(pipefd[0], F_SETFL, flags & ~O_NONBLOCK);
-  for (;;) {
-    char tmp[512];
-    ssize_t got = read(pipefd[0], tmp, sizeof tmp);
-    if (got < 0 && errno == EINTR) continue;
-    if (got <= 0) break;
-    size_t room = n - 1 - used;
-    size_t take = (size_t)got < room ? (size_t)got : room;
-    if (take > 0) {
-      memcpy(buf + used, tmp, take);
-      used += take;
-      buf[used] = 0;
-    }
-  }
-  close(pipefd[0]);
-  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return -1;
-  return 0;
+  int rc = capture_parent(pid, pipefd[0], buf, n, timeout_ms);
+  restore_mask(masked, &saved_mask);
+  return rc;
 }
 
 int bao_real_major(const char *path, void *ctx) {
@@ -287,7 +550,7 @@ int bao_real_major(const char *path, void *ctx) {
   if (!path || path[0] != '/') return -1;
   char *argv[] = {(char *)path, "-v", NULL};
   char buf[128];
-  if (run_capture(argv, buf, sizeof buf, 2000) != 0) return -1;
+  if (bao_run_capture(argv, buf, sizeof buf, 2000) != 0) return -1;
   BaoVer ver;
   if (!bao_parse_version(buf, &ver) || !ver.ok) return -1;
   return ver.major;
@@ -297,7 +560,7 @@ int bao_real_shell(const char *shell_path, char *buf, size_t n, void *ctx) {
   (void)ctx;
   if (!shell_path || shell_path[0] != '/' || !buf || n == 0) return -1;
   char *argv[] = {(char *)shell_path, "-lc", "command -v node", NULL};
-  return run_capture(argv, buf, n, 3000);
+  return bao_run_capture(argv, buf, n, 3000);
 }
 
 static int pid_path(const char *home, char *out, size_t n) {

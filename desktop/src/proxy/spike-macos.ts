@@ -11,10 +11,8 @@ import {
 } from "./spike-macos-calc";
 import { runTextEdit } from "./spike-macos-edit";
 import {
-  ARTIFACTS, CALC_BUNDLE, HELPER, captureRegion, ensureArtifacts, quitOwned, sleep, workDir, writeJson,
+  artifactsDir, CALC_BUNDLE, HELPER, captureRegion, ensureArtifacts, ffmpegBin, quitOwned, sleep, workDir, writeJson,
 } from "./spike-macos-host";
-
-const FFMPEG = process.env.BAO_FFMPEG || "/etc/profiles/per-user/alexliu/bin/ffmpeg";
 
 async function gate(helper: MacOsHelper): Promise<Record<string, unknown>> {
   let perm = await helper.permissions(false);
@@ -39,8 +37,9 @@ async function gate(helper: MacOsHelper): Promise<Record<string, unknown>> {
 async function encode(dir: string, out: string): Promise<string> {
   const frames = (await readdir(dir)).filter((name) => name.endsWith(".png")).sort();
   if (frames.length < 2) return "skipped";
+  const bin = ffmpegBin();
   await new Promise<void>((resolve, reject) => {
-    execFile(FFMPEG, [
+    execFile(bin, [
       "-y", "-framerate", "2", "-start_number", "1", "-i", path.join(dir, "frame-%02d.png"),
       "-c:v", "libx264", "-pix_fmt", "yuv420p", out,
     ], { timeout: 30000 }, (err) => err ? reject(err) : resolve());
@@ -61,28 +60,28 @@ async function calculator(helper: MacOsHelper): Promise<Record<string, unknown>>
     const win = wins.windows?.[0];
     if (!win) throw new Error("Calculator has no window");
     const blank = outsidePoint(win);
-    await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, "calc-before.png"));
-    await captureRegion(blank.x - 60, blank.y + 16, 160, 110, path.join(ARTIFACTS, "calc-unresolved.png"));
+    await helper.shot(CALC_BUNDLE, path.join(artifactsDir(), "calc-before.png"));
+    await captureRegion(blank.x - 60, blank.y + 16, 160, 110, path.join(artifactsDir(), "calc-unresolved.png"));
     const openai = await recordCalc(helper, "openai", keys, blank);
     const openaiShown = readout((await helper.nodes(CALC_BUNDLE)).nodes ?? []);
-    await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, "calc-openai-recorded.png"));
+    await helper.shot(CALC_BUNDLE, path.join(artifactsDir(), "calc-openai-recorded.png"));
     pid = await relaunchCalc(pid);
     await place(helper, win);
     await clearDisplay(helper, (await helper.nodes(CALC_BUNDLE)).nodes ?? []);
-    const openaiReplay = await replayCalc(helper, openai.workflow, path.join(ARTIFACTS, "frames-openai"));
+    const openaiReplay = await replayCalc(helper, openai.workflow, path.join(artifactsDir(), "frames-openai"));
     const openaiAfter = readout((await helper.nodes(CALC_BUNDLE)).nodes ?? []);
-    await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, "calc-openai-replay.png"));
+    await helper.shot(CALC_BUNDLE, path.join(artifactsDir(), "calc-openai-replay.png"));
     await clearDisplay(helper, (await helper.nodes(CALC_BUNDLE)).nodes ?? []);
     const movedKeys = await measureKeys((await helper.nodes(CALC_BUNDLE)).nodes ?? []);
     const claude = await recordCalc(helper, "claude", movedKeys, null);
     const claudeShown = readout((await helper.nodes(CALC_BUNDLE)).nodes ?? []);
-    await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, "calc-claude-recorded.png"));
+    await helper.shot(CALC_BUNDLE, path.join(artifactsDir(), "calc-claude-recorded.png"));
     pid = await relaunchCalc(pid);
     await place(helper, win);
     await clearDisplay(helper, (await helper.nodes(CALC_BUNDLE)).nodes ?? []);
-    const claudeReplay = await replayCalc(helper, claude.workflow, path.join(ARTIFACTS, "frames-claude"));
+    const claudeReplay = await replayCalc(helper, claude.workflow, path.join(artifactsDir(), "frames-claude"));
     const claudeAfter = readout((await helper.nodes(CALC_BUNDLE)).nodes ?? []);
-    await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, "calc-claude-replay.png"));
+    await helper.shot(CALC_BUNDLE, path.join(artifactsDir(), "calc-claude-replay.png"));
     return {
       cleared, blank, keys: keys.map((k) => ({ label: k.label, x: k.x, y: k.y, role: k.node.role, name: k.node.name })),
       openai: { shown: openaiShown, replayed: openaiAfter, ...openaiReplay, unresolved: openai.workflow.steps.filter((s) => s.unresolved).length, workflow: openai.workflow, trail: openai.trail },
@@ -129,8 +128,8 @@ async function place(helper: MacOsHelper, win: { x: number; y: number; w: number
 }
 
 async function main(): Promise<void> {
-  await mkdir(workDir(), { recursive: true });
   await ensureArtifacts();
+  await mkdir(workDir(), { recursive: true });
   const helper = new MacOsHelper(HELPER);
   const permissions = await gate(helper);
   const report: Record<string, unknown> = { macos: "26.6.2 (25G83)", helper: HELPER, permissions };
@@ -143,8 +142,8 @@ async function main(): Promise<void> {
   try {
     report.calculator = await calculator(helper);
     report.textedit = await runTextEdit(helper);
-    report.videoOpenai = await encode(path.join(ARTIFACTS, "frames-openai"), path.join(ARTIFACTS, "calc-openai-replay.mp4"));
-    report.videoClaude = await encode(path.join(ARTIFACTS, "frames-claude"), path.join(ARTIFACTS, "calc-claude-replay.mp4"));
+    report.videoOpenai = await encode(path.join(artifactsDir(), "frames-openai"), path.join(artifactsDir(), "calc-openai-replay.mp4"));
+    report.videoClaude = await encode(path.join(artifactsDir(), "frames-claude"), path.join(artifactsDir(), "calc-claude-replay.mp4"));
     const calc = report.calculator as { pass?: boolean } | undefined;
     const edit = report.textedit as { pass?: boolean } | undefined;
     if (!calc?.pass || !edit?.pass) process.exitCode = 1;

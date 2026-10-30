@@ -17,6 +17,7 @@ import { migrate, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 import { SEED_WORKFLOWS } from "../../../web/src/lib/seeds";
+import { testArtifacts } from "../artifacts";
 
 process.env.TZ = "America/New_York";
 
@@ -102,7 +103,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     assert.equal(wikiRun.outcome, "ok", JSON.stringify(wikiRun));
     const webm = readdirSync(path.join(homeB, "videos")).find((name) => name.endsWith(".webm"));
     assert.ok(webm, "replay video was not saved");
-    const frame = "/opt/cursor/artifacts/screenshots/wikipedia-replay-frame.png";
+    const frame = path.join(testArtifacts("registry"), "wikipedia-replay-frame.png");
     mkdirSync(path.dirname(frame), { recursive: true });
     const videoFile = path.join(homeB, "videos", webm);
     try {
@@ -216,7 +217,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     });
     assert.equal(noteReview.reviewed, true, JSON.stringify(noteReview));
 
-    const shots = "/opt/cursor/artifacts/screenshots";
+    const shots = testArtifacts("registry");
     mkdirSync(shots, { recursive: true });
     const browser = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
     try {
@@ -301,7 +302,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     }
 
     const transcript = await agentExchange(path.join(root, "agent"), origin, owner);
-    const transcriptPath = "/opt/cursor/artifacts/agent-transcript.json";
+    const transcriptPath = path.join(testArtifacts("registry"), "agent-transcript.json");
     mkdirSync(path.dirname(transcriptPath), { recursive: true });
     writeFileSync(transcriptPath, JSON.stringify(transcript, null, 2));
     assert.equal(JSON.stringify(transcript).includes(fixturePassword), false);

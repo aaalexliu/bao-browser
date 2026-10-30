@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { checkboxReach, mayClickAllow, ALLOW_CLICK_WINDOW_MS } from "./consent";
-import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
+import { liveChromeBlock } from "../helper-capabilities";
+import { checkboxReach } from "./consent";
+import { AxUnavailable, checkboxState, chromeHelper } from "./ax";
 import { listenPid, readDevToolsActivePort } from "./endpoint";
 import { acquireCdpLock, releaseCdpLock } from "./lock";
 import { publicPath, redactText } from "./session";
-import { connectCdp, type CdpSocket } from "./socket";
+import { connectAndAllow } from "./connect";
+import type { CdpSocket } from "./socket";
 
 const HOSTS = new Set(["experian.com", "www.experian.com", "usa.experian.com"]);
 const AGENT = process.env.BAO_AGENT_ID || "bc-7abc31f7-244f-5f8e-a046-bf7d60a33440";
@@ -79,9 +81,8 @@ interface Probe {
 async function connect(): Promise<CdpSocket> {
   const helper = chromeHelper();
   const perms = await helper.permissions(false);
-  if (perms.prompted) throw new Error("helper asked for a permission prompt");
-  if (!perms.accessibility) throw new Error("BaoOSHelper accessibility is not granted");
-  if (perms.screenCapture) throw new Error("BaoOSHelper screen recording is granted; not starting");
+  const block = liveChromeBlock(perms);
+  if (block) throw new Error(block);
   const endpoint = await readDevToolsActivePort();
   const chromePid = await listenPid(endpoint.port);
   const box = await checkboxState(helper, chromePid);
@@ -89,38 +90,15 @@ async function connect(): Promise<CdpSocket> {
   if (box.summary.dialog.present || box.summary.dialog.buttonCount > 0) {
     throw new AxUnavailable("Allow dialog was already up; not connecting and not clicking", box.summary);
   }
-  const abort = new AbortController();
-  const connectionStartedAt = Date.now();
-  let opened = false;
-  const pending = connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 90_000, signal: abort.signal })
-    .then((socket) => {
-      opened = true;
-      return socket;
-    });
-  pending.catch(() => undefined);
-  const deadline = connectionStartedAt + Math.min(ALLOW_CLICK_WINDOW_MS, 90_000);
-  while (Date.now() < deadline && !opened) {
-    const tree = await chromeTree(helper, chromePid);
-    if (opened) break;
-    if (mayClickAllow({
-      openedByBao: true,
-      connectionStartedAt,
-      now: Date.now(),
-      dialogPresentBeforeConnect: false,
-      dialog: tree.summary.dialog,
-    })) {
-      if (opened) break;
-      await pressAllow(helper, box.pid || chromePid, path.join(process.cwd(), ".evidence", "cdp-live-ax.jsonl"));
-      break;
-    }
-    await sleep(300);
-  }
-  if (!opened) {
-    abort.abort();
-    await pending.catch(() => undefined);
-    throw new Error("Allow dialog was not pressed");
-  }
-  return pending;
+  const opened = await connectAndAllow({
+    helper,
+    endpoint,
+    dialogPresentBeforeConnect: false,
+    axLog: path.join(process.cwd(), ".evidence", "cdp-live-ax.jsonl"),
+    pid: box.pid || chromePid,
+    timeoutMs: 90_000,
+  });
+  return opened.cdp;
 }
 
 async function measure(cdp: CdpSocket, targetId: string): Promise<Probe> {

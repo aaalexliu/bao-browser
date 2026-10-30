@@ -12,6 +12,7 @@ import type { Identity } from "../v1/schema";
 import { frameRpc, takeRpcChunk, type RpcFraming } from "../mcp/frame";
 import { launchOwnedChrome } from "../launch";
 import { pageApi, type PageRequest } from "./page";
+import { resolveHome } from "../home";
 
 export { frameRpc, takeRpcChunk, type RpcFraming };
 
@@ -50,7 +51,7 @@ const tools = [
 ];
 
 export async function liveMcpMain(): Promise<void> {
-  const home = process.env.BAO_HOME || path.join(process.cwd(), ".bao-mcp");
+  const home = resolveHome();
   const url = process.env.BAO_FIXTURE_URL;
   if (!url) throw new Error("BAO_FIXTURE_URL is required when BAO_MCP_LIVE=1");
   mkdirSync(path.join(home, "shots"), { recursive: true });

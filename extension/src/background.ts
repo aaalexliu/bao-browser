@@ -832,12 +832,12 @@ function sameUrls(left: string[] | null, right: string[]): boolean {
 
 function tryListen(urls: string[], extra: boolean): boolean {
   const filter: chrome.webRequest.RequestFilter = { urls };
-  const send: chrome.webRequest.OnBeforeSendHeadersOptions[] = extra
-    ? ["requestHeaders", "extraHeaders"]
-    : ["requestHeaders"];
-  const done: chrome.webRequest.OnCompletedOptions[] = extra
-    ? ["responseHeaders", "extraHeaders"]
-    : ["responseHeaders"];
+  const send = extra
+    ? [chrome.webRequest.OnBeforeSendHeadersOptions.REQUEST_HEADERS, chrome.webRequest.OnBeforeSendHeadersOptions.EXTRA_HEADERS]
+    : [chrome.webRequest.OnBeforeSendHeadersOptions.REQUEST_HEADERS];
+  const done = extra
+    ? [chrome.webRequest.OnCompletedOptions.RESPONSE_HEADERS, chrome.webRequest.OnCompletedOptions.EXTRA_HEADERS]
+    : [chrome.webRequest.OnCompletedOptions.RESPONSE_HEADERS];
   if (!safeAdd(() => chrome.webRequest.onBeforeSendHeaders.addListener(onSend, filter, send))) return false;
   if (!safeAdd(() => chrome.webRequest.onCompleted.addListener(onDone, filter, done))) return false;
   if (!safeAdd(() => chrome.webRequest.onErrorOccurred.addListener(onFail, filter))) return false;

@@ -45,12 +45,11 @@ no screenshot or replay.
 
 The missing row is Screen Recording for this exact binary:
 
-`/Users/alexliu/dev/bao-mac-spike/desktop/os-helper-macos/target/release/bao-os-macos`
+`<checkout>/desktop/os-helper-macos/target/release/bao-os-macos`
 
 The preflight runs in the helper, not in its parent. A Screen Recording grant
 on Node or on Cursor does not satisfy this check. When the spike spawns the
-helper, the parent is
-`/Users/alexliu/.local/share/mise/installs/node/24.19.0/bin/node`.
+helper, the parent is the `node` binary from that launch.
 The worker above that is `cursor-agent`. Those are separate rows. A later
 window capture also runs `/usr/sbin/screencapture` as a child of the helper.
 
@@ -88,7 +87,7 @@ so the bundle is ad-hoc. Nothing was added to the keychain.
 
 | Field | Value |
 | --- | --- |
-| Path | `/Users/alexliu/dev/bao-mac-spike/desktop/os-helper-macos/BaoOSHelper.app` |
+| Path | `<checkout>/desktop/os-helper-macos/BaoOSHelper.app` |
 | Bundle id | `dev.bao.oshelper` |
 | Designated requirement | `identifier "dev.bao.oshelper"` |
 | cdhash | `d8083cd84abd98ad99c2bad6b39d1c4dcb8f97a5` |
@@ -140,7 +139,7 @@ Recording were both true. System Settings was already open on Screen & System
 Audio Recording; no new dialog was observed. The demo was not run. If the
 Privacy lists still show the old ad-hoc BaoOSHelper row, remove it and add:
 
-`/Users/alexliu/dev/bao-mac-spike/desktop/os-helper-macos/BaoOSHelper.app`
+`<checkout>/desktop/os-helper-macos/BaoOSHelper.app`
 
 ## 2026-10-20, grant is on, keypad is hit-test only
 
@@ -166,11 +165,9 @@ already sees. That is a Rust change, so this app was not rebuilt.
 The helper's parent chain on this machine ends at launchd, not at Cursor.app.
 
 1. `bao-os-macos` (this binary).
-2. `/bin/zsh`, or Node at
-   `/Users/alexliu/.local/share/mise/installs/node/24.19.0/bin/node`
-   when the spike spawns it.
-3. pid 58964, argv0 `cursor-agent`, parent pid 1. The executable is
-   `/Users/alexliu/Library/Application Support/Cursor/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/share/cursor-agent/versions/2026.10.01-e373342/node`.
+2. `/bin/zsh`, or the `node` binary that spawned the spike.
+3. pid 58964, argv0 `cursor-agent`, parent pid 1. The executable is the
+   `node` binary shipped next to that `cursor-agent` version.
    codesign identifier `node`, Team ID `HX7739G8FX`, no Info.plist, no bundle id.
    The `cursor-agent` path next to it is an unsigned bash script.
 4. `/sbin/launchd`.

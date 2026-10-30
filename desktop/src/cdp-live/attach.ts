@@ -1,68 +1,17 @@
-import { open, readFile, rm, stat } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { lockIsStale as lockFileIsStale, parseLock } from "./lock";
 
 export const LOCK_STALE_MS = 20 * 60 * 1000;
 
 export function parseLockText(text: string): { agent: string; startedAt: number } | null {
-  const keyedAgent = text.match(/^agent=(.+)$/m)?.[1]?.trim() || "";
-  const keyedStart = Number(text.match(/^startedAt=(\d+)$/m)?.[1] || "");
-  if (keyedAgent && Number.isFinite(keyedStart) && keyedStart > 0) {
-    return { agent: keyedAgent, startedAt: keyedStart };
-  }
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const agent = lines[0] || "";
-  const startedAt = Number(lines[1] || "");
-  if (/^[\w.-]+$/.test(agent) && Number.isFinite(startedAt) && startedAt > 0) {
-    return { agent, startedAt };
-  }
-  return null;
+  const parsed = parseLock(text);
+  if (!parsed || !/^[\w.-]+$/.test(parsed.agentId)) return null;
+  return { agent: parsed.agentId, startedAt: parsed.startedAt };
 }
 
 export function lockIsStale(startedAt: number, now: number, staleMs = LOCK_STALE_MS): boolean {
-  return now - startedAt > staleMs;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Exclusive create. A lock older than 20 minutes is removed. A live lock is waited out. */
-export async function acquireLock(
-  file: string,
-  agent: string,
-  onWait?: (holder: string) => void,
-  now: () => number = Date.now,
-): Promise<void> {
-  const payload = `agent=${agent}\nstartedAt=${now()}\n`;
-  for (;;) {
-    try {
-      const handle = await open(file, "wx");
-      await handle.writeFile(payload);
-      await handle.close();
-      return;
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST") throw err;
-      const text = await readFile(file, "utf8").catch(() => "");
-      const parsed = parseLockText(text);
-      const info = await stat(file).catch(() => null);
-      const stamp = parsed?.startedAt || info?.mtimeMs || 0;
-      if (stamp > 0 && lockIsStale(stamp, now())) {
-        await rm(file, { force: true });
-        continue;
-      }
-      onWait?.(parsed?.agent || "unknown");
-      await sleep(1500);
-    }
-  }
-}
-
-export async function releaseLock(file: string, agent: string): Promise<void> {
-  const text = await readFile(file, "utf8").catch(() => "");
-  const parsed = parseLockText(text);
-  if (parsed && parsed.agent !== agent) return;
-  await rm(file, { force: true });
+  return lockFileIsStale(startedAt, now, staleMs);
 }
 
 export function keepAwake(): ChildProcess {
@@ -114,6 +63,100 @@ export interface AuditClick {
   path: string;
   label: string;
   kind: string;
+}
+
+export interface LiveAction {
+  name: "click" | "type" | "key";
+  /** Empty for a key pressed wherever focus was. */
+  label: string;
+  path: string;
+  kind: string;
+  value?: string;
+  key?: string;
+}
+
+function keyStep(id: string, index: number, action: LiveAction): WorkflowStep {
+  const key = action.key || "Enter";
+  const step: WorkflowStep = {
+    id: `${id}-${index}`,
+    index,
+    action: "key",
+    key,
+    label: action.label ? `Press ${key} in ${action.label}`.slice(0, 120) : `Press ${key}`,
+    surface: "dom",
+    timeoutMs: 8000,
+    heal: "never",
+  };
+  if (action.label) {
+    const role = action.kind === "link" ? "link" : action.kind === "field" ? "textbox" : "button";
+    step.identity = { surface: "dom", role, name: action.label, path: [] };
+    step.locators = [{ kind: "role", role, name: action.label }];
+  }
+  return step;
+}
+
+/** A saved live run. Each typed field is preceded by a human confirm, which replay does not type. */
+export function workflowFromLive(input: {
+  id: string;
+  name: string;
+  intent: string;
+  startUrl: string;
+  createdAt: number;
+  actions: readonly LiveAction[];
+}): WorkflowV2 {
+  const steps: WorkflowStep[] = [];
+  for (const action of input.actions) {
+    if (action.name === "key") {
+      steps.push(keyStep(input.id, steps.length, action));
+      continue;
+    }
+    if (!action.label) continue;
+    if (action.name === "type") {
+      steps.push({
+        id: `${input.id}-confirm-${steps.length}`,
+        index: steps.length,
+        action: "confirm",
+        label: `Confirm before typing into ${action.label}`.slice(0, 120),
+        surface: "dom",
+        human: true,
+        heal: "never",
+        timeoutMs: 0,
+        intent: "A person confirms this write",
+      });
+    }
+    const role = action.kind === "link" ? "link" : action.name === "type" ? "textbox" : "button";
+    const index = steps.length;
+    const step: WorkflowStep = {
+      id: `${input.id}-${index}`,
+      index,
+      action: action.name === "type" ? "type" : "click",
+      label: action.name === "type" ? `Type into ${action.label}` : `Click ${action.label}`,
+      surface: "dom",
+      timeoutMs: 8000,
+      heal: "never",
+      identity: { surface: "dom", role, name: action.label, path: [] },
+      locators: [{ kind: "role", role, name: action.label }],
+    };
+    if (action.name === "type" && action.value && !action.value.startsWith("/") && !action.value.startsWith("~/")) {
+      step.value = action.value.slice(0, 80);
+    }
+    steps.push(step);
+  }
+  return {
+    schema: WORKFLOW_SCHEMA_ID,
+    version: 2,
+    id: input.id,
+    name: input.name,
+    startUrl: input.startUrl,
+    inputs: [],
+    steps,
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+    heal: "approve",
+    driver: "cdp-live",
+    intent: input.intent,
+    summary: "Local draft. Recorded in the open Chrome. A person confirms each typed field.",
+  };
 }
 
 /** A local v2 draft. The last step is a human confirm, which replay does not click. */
