@@ -210,6 +210,8 @@ The live names are also CLI verbs, for example `bao live_session_start --intent 
 
 A caller can still pass `portFile`. The configured target's own file keeps that target, profile included. The daily Chrome's file keeps the Allow press, and any other file is a throwaway target. For a target with no dialog, the host connects with no helper call, so neither the Accessibility grant nor the checkbox is read.
 
+Every Bao takes the same live lock, `/tmp/bao-cdp-session.lock`, so two apps never drive one Chrome at once. `bao serve --live-lock <file>` gives the app its own lock, and serve refuses it unless the target is `throwaway:`, a Chrome no other Bao drives. A test uses it so it never waits on, or blocks, a Bao on the same Mac.
+
 `Target.createTarget` opens a window in whichever profile Chrome used last, and CDP cannot pick another one. So for the daily Chrome the host runs the binary of the Chrome that owns the DevTools port with `--user-data-dir=<the port file's folder> --profile-directory=<profile> --new-window` and a `data:` marker page. Chrome hands that command line to the running browser and exits. The browser opens the window in that profile, and the session drives only the page that shows its own marker. A headless Chrome does not take the hand-off, so the live lane checks it on a headed test browser (`desktop/test/live/live-profile.test.ts`). Chrome quietly makes a new, empty profile for a name it does not know, so the host first refuses a profile with no folder in that user-data dir. The error names the profile and lists the `Default` and `Profile <n>` folders that do exist.
 
 The start url's host picks the preset. `instacart.com` and `www.instacart.com` always use `instacart`, and `books.toscrape.com` always uses `books`, whatever `preset` says. Other hosts use the `preset` given, else `generic`.
@@ -228,6 +230,8 @@ One runner replays a `cdp-live` workflow: `replayLiveWorkflow` in `desktop/src/c
 - The replay closes its window and socket and frees the lock when it ends.
 
 `desktop/test/unit/live-replay.test.ts` records the blueberries task on the fixture through the app, then replays it through `/api/replay` and `run_workflow` with new search text, skips the Add when the item is in the cart, and refuses checkout.
+
+`desktop/test/unit/instacart-acceptance.test.ts` is the acceptance lane L1. A scripted MCP client records the task through `bao mcp` and a spawned `bao serve`, tries the checkout and login traps, disconnects without `live_stop`, and replays the saved workflow twice through `run_workflow`. `desktop/test/README.md` says how to run it and what it checks.
 
 The live tools, as `desktop/src/cdp-live/live-ops.ts` defines them:
 

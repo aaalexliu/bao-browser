@@ -18,7 +18,16 @@ if (plan.missing.length) {
   process.exit(1);
 }
 
-const files = plan.run.map((name) => path.join(distDir, name));
+const named = process.argv.slice(2);
+const unknown = named.filter((name) => !plan.run.includes(name));
+if (unknown.length) {
+  console.error(`no compiled unit test named: ${unknown.join(", ")}`);
+  process.exit(1);
+}
+
+const files = plan.run
+  .filter((name) => named.length === 0 || named.includes(name))
+  .map((name) => path.join(distDir, name));
 const env = hermeticChildEnv(process.env, pinnedTestBrowser());
 const child = spawn(process.execPath, ["--test", isolationArg(), ...files], {
   env,
