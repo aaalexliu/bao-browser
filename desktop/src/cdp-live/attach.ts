@@ -66,11 +66,33 @@ export interface AuditClick {
 }
 
 export interface LiveAction {
-  name: "click" | "type";
+  name: "click" | "type" | "key";
+  /** Empty for a key pressed wherever focus was. */
   label: string;
   path: string;
   kind: string;
   value?: string;
+  key?: string;
+}
+
+function keyStep(id: string, index: number, action: LiveAction): WorkflowStep {
+  const key = action.key || "Enter";
+  const step: WorkflowStep = {
+    id: `${id}-${index}`,
+    index,
+    action: "key",
+    key,
+    label: action.label ? `Press ${key} in ${action.label}`.slice(0, 120) : `Press ${key}`,
+    surface: "dom",
+    timeoutMs: 8000,
+    heal: "never",
+  };
+  if (action.label) {
+    const role = action.kind === "link" ? "link" : action.kind === "field" ? "textbox" : "button";
+    step.identity = { surface: "dom", role, name: action.label, path: [] };
+    step.locators = [{ kind: "role", role, name: action.label }];
+  }
+  return step;
 }
 
 /** A saved live run. Each typed field is preceded by a human confirm, which replay does not type. */
@@ -84,6 +106,10 @@ export function workflowFromLive(input: {
 }): WorkflowV2 {
   const steps: WorkflowStep[] = [];
   for (const action of input.actions) {
+    if (action.name === "key") {
+      steps.push(keyStep(input.id, steps.length, action));
+      continue;
+    }
     if (!action.label) continue;
     if (action.name === "type") {
       steps.push({

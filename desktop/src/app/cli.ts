@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { isLiveOp } from "../cdp-live/live-ops";
 import { resolveHome, serverPort } from "../home";
 import { reviewWorkflow } from "../mcp/catalog";
 import { mcpMain } from "../mcp/server";
@@ -23,7 +24,7 @@ async function main(): Promise<void> {
     await liveProxyMain(rest);
     return;
   }
-  if (cmd === "live_session_start" || cmd === "live_snapshot" || cmd === "live_click" || cmd === "live_type" || cmd === "live_screenshot" || cmd === "live_stop") {
+  if (cmd && isLiveOp(cmd)) {
     const { runLiveCli } = await import("../mcp/live-proxy");
     await runLiveCli(cmd, rest);
     return;

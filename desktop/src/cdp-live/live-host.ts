@@ -17,15 +17,22 @@ import {
   markedFieldValue,
   pageHalt,
   planClick,
+  planKey,
+  planScroll,
   planType,
   publicLiveResult,
   readLivePage,
   sameTarget,
+  scrollLivePage,
   targetVerdict,
+  viewPage,
   workflowIdsFromIntent,
+  type LabelGuard,
+  type LiveOpName,
   type LiveRead,
-  type LiveView,
+  type LiveViewPage,
   type PageFacts,
+  type ScrollFacts,
   type SlotState,
 } from "./live-ops";
 import { guardPreset, presetName } from "./presets";
@@ -42,8 +49,7 @@ interface OpenState {
   driver: CdpLiveDriver;
   cdp: CdpSocket;
   log: SessionLog;
-  commit: string;
-  deny: string;
+  guard: LabelGuard;
   stopPath: string;
   hosts: string[];
   origins: string[];
@@ -59,11 +65,92 @@ interface OpenState {
 
 export interface ReplayTarget {
   driver: Pick<CdpLiveDriver, "setOrigins" | "goto" | "evaluateFunction" | "clickCss" | "takeBlockedNav">;
-  commit: string;
-  deny: string;
+  guard: LabelGuard;
   stopPath: string;
   hosts: string[];
   origins: string[];
+}
+
+/** The open page a key press or a scroll acts on. */
+export interface LiveActTarget {
+  driver: Pick<CdpLiveDriver, "evaluateFunction" | "pressMarked" | "takeBlockedNav" | "sleep">;
+  read: LiveRead;
+  guard: LabelGuard;
+  stopPath: string;
+  hosts: readonly string[];
+  origins: readonly string[];
+  /** Writes the audit row. It runs after every check and before the page is touched. */
+  before(action: string, label: string): Promise<void>;
+}
+
+export type LiveActOutcome =
+  | { kind: "refused" | "halted"; reason: string }
+  | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
+
+const LOOK_OPS: Record<string, LiveOpName> = {
+  start: "live_session_start",
+  snapshot: "live_snapshot",
+  click: "live_click",
+  type: "live_type",
+  key: "live_key",
+  scroll: "live_scroll",
+  screenshot: "live_screenshot",
+};
+
+function shown(read: LiveRead | null | undefined): LiveViewPage | null {
+  return read ? viewPage(read.view) : null;
+}
+
+/** Marks the control again and keeps the plan only if the mark is still the control the plan named. */
+async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guard">, ref: string, index: number): Promise<boolean> {
+  const marked = await target.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: index });
+  return sameTarget(target.read, buildView(marked, target.read.view.epoch, target.guard), ref);
+}
+
+/** Enter, Tab, or Escape, on the same guards as a click. */
+export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
+  const plan = planKey(target.read, key, ref);
+  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
+  const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
+  const control = ref ? target.read.view.controls.find((item) => item.ref === ref) : undefined;
+  if (key === "Enter" && entry?.href) {
+    const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
+    if (why) return { kind: "refused", reason: why };
+  }
+  const index = entry?.index ?? -1;
+  if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
+  const label = control?.label || "";
+  await target.before("key", `${key} ${label}`.trim());
+  target.driver.takeBlockedNav();
+  try {
+    await target.driver.pressMarked(key, index);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "focus_moved";
+    if (reason === "credential_field" || reason === "focus_moved") return { kind: "halted", reason };
+    throw err;
+  }
+  const blockedNav = target.driver.takeBlockedNav();
+  if (blockedNav) return { kind: "refused", reason: blockedNav };
+  return { kind: "applied", label, control: control?.kind || "" };
+}
+
+/** Scrolls the page, or the box around one listed control, so more of a long page loads. */
+export async function scrollLive(target: LiveActTarget, direction: string, ref: string): Promise<LiveActOutcome> {
+  const plan = planScroll(target.read, direction, ref);
+  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
+  const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
+  const control = ref ? target.read.view.controls.find((item) => item.ref === ref) : undefined;
+  const index = entry?.index ?? -1;
+  if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
+  const label = control?.label || "";
+  await target.before("scroll", `${direction} ${label}`.trim());
+  target.driver.takeBlockedNav();
+  const scroll = await target.driver.evaluateFunction<ScrollFacts>(scrollLivePage, { markIndex: index, direction });
+  if (scroll.target === "none") return { kind: "refused", reason: "stale_ref" };
+  await target.driver.sleep(500);
+  const blockedNav = target.driver.takeBlockedNav();
+  if (blockedNav) return { kind: "refused", reason: blockedNav };
+  return { kind: "applied", label, control: control?.kind || "", scroll };
 }
 
 interface Parked extends ReplayTarget {
@@ -122,11 +209,23 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       if (op === "live_stop") return await stop();
       if (!open) return reply({ op, session, outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
       if (open.halted) {
-        return reply({ op, session: open.id, outcome: { kind: "halted", reason: open.halted }, view: open.read?.view || null, shot: "" });
+        return reply({ op, session: open.id, outcome: { kind: "halted", reason: open.halted }, view: shown(open.read), shot: "" });
       }
-      if (op === "live_snapshot") return await look("snapshot");
+      if (op === "live_snapshot") {
+        if (body.page !== undefined && open.read) {
+          return reply({ op, session: open.id, outcome: { kind: "applied" }, view: viewPage(open.read.view, Number(body.page)), shot: "" });
+        }
+        return await look("snapshot");
+      }
       if (op === "live_click") return await click(String(body.ref || ""));
       if (op === "live_type") return await typeInto(String(body.ref || ""), String(body.text || ""));
+      if (op === "live_key") {
+        const key = String(body.key || "");
+        return await act("key", (target) => pressLiveKey(target, key, String(body.ref || "")), key);
+      }
+      if (op === "live_scroll") {
+        return await act("scroll", (target) => scrollLive(target, String(body.direction || ""), String(body.ref || "")));
+      }
       return await look("screenshot");
     } catch (err) {
       const reason = err instanceof Error ? err.message : "live call failed";
@@ -134,7 +233,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
         open.refused = true;
         await note(op, reason, "failed", null);
       }
-      return reply({ op, session: open?.id || session, outcome: { kind: "rejected", reason: reason.slice(0, 180) }, view: open?.read?.view || null, shot: "" });
+      return reply({ op, session: open?.id || session, outcome: { kind: "rejected", reason: reason.slice(0, 180) }, view: shown(open?.read), shot: "" });
     }
   }
 
@@ -202,6 +301,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       cdp = opened.cdp;
       driver = await openLiveWindow(cdp, hosts);
       driver.setOrigins(origins);
+      driver.setStopPath(flags.stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
       const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40));
       open = {
@@ -211,8 +311,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
         driver,
         cdp,
         log,
-        commit: flags.commit,
-        deny: flags.deny,
+        guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit },
         stopPath: flags.stopPath,
         hosts,
         origins,
@@ -268,12 +367,12 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     await cdp.send("Target.setDiscoverTargets", { discover: true }).catch(() => undefined);
   }
 
-  async function look(action: string): Promise<unknown> {
+  async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
     if (!open) throw new Error("no live session");
     const started = Date.now();
     open.epoch += 1;
     const facts = await open.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
-    open.read = buildView(facts, open.epoch, open.commit, open.deny);
+    open.read = buildView(facts, open.epoch, open.guard);
     const halt = pageHalt({
       blocked: facts.blocked,
       path: facts.path,
@@ -286,18 +385,40 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       open.refused = true;
     }
     const shot = await record(action, open.read.view.title || action, Date.now() - started, halt ? "needs_human" : "passed", null);
-    const op = action === "start" ? "live_session_start"
-      : action === "snapshot" ? "live_snapshot"
-        : action === "click" ? "live_click"
-          : action === "type" ? "live_type"
-            : "live_screenshot";
     return reply({
-      op,
+      op: LOOK_OPS[action] || "live_screenshot",
       session: open.id,
       outcome: halt ? { kind: "halted", reason: halt } : { kind: "applied" },
-      view: open.read.view,
+      view: shown(open.read),
       shot,
+      ...extra,
     });
+  }
+
+  async function act(action: "key" | "scroll", run: (target: LiveActTarget) => Promise<LiveActOutcome>, key = ""): Promise<unknown> {
+    if (!open?.read) throw new Error("no live page");
+    const state = open;
+    const read = open.read;
+    const op = LOOK_OPS[action];
+    const outcome = await run({
+      driver: state.driver,
+      read,
+      guard: state.guard,
+      stopPath: state.stopPath,
+      hosts: state.hosts,
+      origins: state.origins,
+      before: (name, label) => note(name, label, "running", null),
+    });
+    if (outcome.kind !== "applied") {
+      state.refused = true;
+      if (outcome.kind === "halted") state.halted = outcome.reason;
+      await note(action, outcome.reason, "failed", null);
+      return reply({ op, session: state.id, outcome, view: shown(read), shot: "" });
+    }
+    if (action === "key") {
+      state.actions.push({ name: "key", key, label: outcome.label, path: read.view.path, kind: outcome.control });
+    }
+    return look(action, outcome.scroll ? { scroll: outcome.scroll } : {});
   }
 
   async function click(ref: string): Promise<unknown> {
@@ -307,7 +428,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     if (!plan.ok) {
       open.refused = true;
       await note("click", plan.refusal, "failed", null);
-      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: plan.refusal }, view: open.read.view, shot: "" });
+      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: plan.refusal }, view: shown(open.read), shot: "" });
     }
     const href = target?.href || "";
     if (href) {
@@ -315,18 +436,17 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       if (why) {
         open.refused = true;
         await note("click", why, "failed", null);
-        return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: why }, view: open.read.view, shot: "" });
+        return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: why }, view: shown(open.read), shot: "" });
       }
     }
     const index = target?.index ?? -1;
     const label = open.read.view.controls.find((control) => control.ref === ref)?.label || ref;
     const kind = open.read.view.controls.find((control) => control.ref === ref)?.kind || "button";
     open.driver.takeBlockedNav();
-    const marked = await open.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: index });
-    if (!sameTarget(open.read, buildView(marked, open.read.view.epoch, open.commit, open.deny), ref)) {
+    if (!await stillMarked({ driver: open.driver, read: open.read, guard: open.guard }, ref, index)) {
       open.refused = true;
       await note("click", "stale_ref", "failed", null);
-      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: "stale_ref" }, view: open.read.view, shot: "" });
+      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: "stale_ref" }, view: shown(open.read), shot: "" });
     }
     await note("click", label, "running", null);
     open.driver.markTrust();
@@ -336,7 +456,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       const reason = err instanceof Error ? err.message : "click failed";
       open.refused = true;
       if (reason === "element is covered") {
-        return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason }, view: open.read.view, shot: "" });
+        return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason }, view: shown(open.read), shot: "" });
       }
       throw err;
     }
@@ -344,7 +464,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     const blockedNav = open.driver.takeBlockedNav();
     if (blockedNav) {
       open.refused = true;
-      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: blockedNav }, view: open.read.view, shot: "" });
+      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: blockedNav }, view: shown(open.read), shot: "" });
     }
     open.actions.push({ name: "click", label, path: open.read.view.path, kind });
     return look("click");
@@ -356,22 +476,21 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     if (!early.ok) {
       open.refused = true;
       await note("type", early.refusal, "failed", null);
-      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: early.refusal }, view: open.read.view, shot: "" });
+      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: early.refusal }, view: shown(open.read), shot: "" });
     }
     const index = open.read.targets.byRef.get(ref)?.index ?? -1;
     const label = open.read.view.controls.find((control) => control.ref === ref)?.label || ref;
-    const marked = await open.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: index });
-    if (!sameTarget(open.read, buildView(marked, open.read.view.epoch, open.commit, open.deny), ref)) {
+    if (!await stillMarked({ driver: open.driver, read: open.read, guard: open.guard }, ref, index)) {
       open.refused = true;
       await note("type", "stale_ref", "failed", null);
-      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: "stale_ref" }, view: open.read.view, shot: "" });
+      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: "stale_ref" }, view: shown(open.read), shot: "" });
     }
     const prior = await open.driver.evaluateFunction<string>(markedFieldValue, { markIndex: index });
     const plan = planType(open.read, ref, text, prior);
     if (!plan.ok) {
       open.refused = true;
       await note("type", plan.refusal, "failed", null);
-      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: plan.refusal }, view: open.read.view, shot: "" });
+      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: plan.refusal }, view: shown(open.read), shot: "" });
     }
     await note("type", label, "running", null);
     await open.driver.evaluateFunction(focusLiveMark, { markIndex: index });
@@ -382,7 +501,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       open.refused = true;
       if (reason === "credential_field" || reason === "focus_moved") {
         open.halted = reason;
-        return reply({ op: "live_type", session: open.id, outcome: { kind: "halted", reason }, view: open.read.view, shot: "" });
+        return reply({ op: "live_type", session: open.id, outcome: { kind: "halted", reason }, view: shown(open.read), shot: "" });
       }
       throw err;
     }
@@ -425,7 +544,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       return reply({ op: "live_stop", session: "", outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
     }
     const id = open.id;
-    const view: LiveView | null = open.read?.view || null;
+    const view = shown(open.read);
     const noteText = open.halted ? open.halted : open.refused ? "Refused." : "Stopped.";
     const status = open.halted ? "needs_human" : open.refused ? "failed" : "passed";
     let saveError = "";
@@ -437,8 +556,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     parked = {
       driver: open.driver,
       cdp: open.cdp,
-      commit: open.commit,
-      deny: open.deny,
+      guard: open.guard,
       stopPath: open.stopPath,
       hosts: open.hosts,
       origins: open.origins,
@@ -488,7 +606,7 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
     await driver.goto(workflow.startUrl);
     const look = async (markIndex = -1): Promise<{ read: LiveRead; halt: string | null }> => {
       const facts = await driver.evaluateFunction<PageFacts>(readLivePage, { markIndex });
-      const read = buildView(facts, 1, target.commit, target.deny);
+      const read = buildView(facts, 1, target.guard);
       const halt = pageHalt({
         blocked: facts.blocked,
         path: facts.path,

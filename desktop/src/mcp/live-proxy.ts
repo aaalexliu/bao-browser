@@ -25,8 +25,14 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
       workflowId: flag(args, "--workflow-id") || "",
     };
   }
+  if (cmd === "live_snapshot") {
+    const page = flag(args, "--page");
+    return page ? { op: cmd, page: Number(page) } : { op: cmd };
+  }
   if (cmd === "live_click") return { op: cmd, ref: flag(args, "--ref") || "" };
   if (cmd === "live_type") return { op: cmd, ref: flag(args, "--ref") || "", text: flag(args, "--text") || "" };
+  if (cmd === "live_key") return { op: cmd, key: flag(args, "--key") || "", ref: flag(args, "--ref") || "" };
+  if (cmd === "live_scroll") return { op: cmd, direction: flag(args, "--direction") || "", ref: flag(args, "--ref") || "" };
   return { op: cmd };
 }
 

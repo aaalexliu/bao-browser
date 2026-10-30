@@ -7,8 +7,8 @@ import { assignSiblingIndex } from "../v1/identity";
 import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
-import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost } from "./allowlist";
-import { focusStillMarked } from "./live-ops";
+import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
+import { focusLiveMark, focusStillMarked } from "./live-ops";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -91,6 +91,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Chrome runs a key's default action only when the event carries its virtual key code. */
+const KEY_EVENTS: Record<string, { code: string; keyCode: number; text: string }> = {
+  Enter: { code: "Enter", keyCode: 13, text: "\r" },
+  Tab: { code: "Tab", keyCode: 9, text: "" },
+  Escape: { code: "Escape", keyCode: 27, text: "" },
+};
+
 function toIdentity(node: DomDump): Identity {
   return {
     surface: "dom",
@@ -116,6 +123,7 @@ export class CdpLiveDriver implements Driver {
   private offHost = "";
   private blockedNav = "";
   private origins: readonly string[] = [];
+  private stopPath = "";
   private humanAsk: HumanAsk | undefined;
   private trustEvents: TrustEvent[] = [];
   private trustCursor = 0;
@@ -134,6 +142,11 @@ export class CdpLiveDriver implements Driver {
 
   setOrigins(origins: readonly string[]): void {
     this.origins = origins;
+  }
+
+  /** A page load on a stop path is failed before the request leaves Chrome. */
+  setStopPath(stopPath: string): void {
+    this.stopPath = stopPath;
   }
 
   private allows(url: string): boolean {
@@ -181,11 +194,12 @@ export class CdpLiveDriver implements Driver {
     if (!requestId) return;
     const request = params.request as { url?: string } | undefined;
     const url = request?.url || "";
-    if (params.frameId !== this.targetId || this.allows(url)) {
+    const allowed = this.allows(url);
+    if (params.frameId !== this.targetId || (allowed && !stopPathHit(url, this.stopPath))) {
       void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
       return;
     }
-    this.blockedNav = this.refusal(url);
+    this.blockedNav = allowed ? "stop-path" : this.refusal(url);
     void this.cdp.send("Fetch.failRequest", {
       requestId,
       errorReason: "BlockedByClient",
@@ -426,16 +440,36 @@ export class CdpLiveDriver implements Driver {
       await this.chord("a", "KeyA", 4, 65);
       return;
     }
-    const enter = key === "Enter" || key === "Return";
-    const name = enter ? "Enter" : key;
+    const name = key === "Return" ? "Enter" : key;
+    const known = KEY_EVENTS[name];
     await this.cdp.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key: name,
-      code: name,
-      windowsVirtualKeyCode: enter ? 13 : 0,
-      text: enter ? "\r" : name.length === 1 ? name : "",
+      code: known?.code || name,
+      windowsVirtualKeyCode: known?.keyCode || 0,
+      text: known ? known.text : name.length === 1 ? name : "",
     }, this.sessionId);
-    await this.cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name }, this.sessionId);
+    await this.cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: name,
+      code: known?.code || name,
+      windowsVirtualKeyCode: known?.keyCode || 0,
+    }, this.sessionId);
+  }
+
+  /**
+   * Presses one key where focus is. With a mark, focus must still be that control.
+   * Focus in a credential field stops the key either way.
+   */
+  async pressMarked(key: string, markIndex: number): Promise<void> {
+    this.assertHost();
+    await this.bringToFront();
+    if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
+    const before = await this.evaluate<string>("location.href").catch(() => "");
+    await this.key(key);
+    await this.waitAfterClick(before, 10_000);
   }
 
   async upload(_node: Identity, _files: FileArg[]): Promise<void> {

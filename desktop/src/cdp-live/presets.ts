@@ -8,9 +8,14 @@ export interface GuardPreset {
   start: string;
   deny: string;
   commit: string;
+  /** Submit-button labels this site uses for actions that buy nothing. Every other form submit is a commit. */
+  submit: string;
   stopPath: string;
   reached: string;
 }
+
+/** Labels that are a commit under every preset and every explicit flag. */
+export const COMMIT_FLOOR = "\\bcheck\\s?outs?\\b|place(?:\\s+\\w+){0,3}\\s+order|pay now|confirm purchase|submit order|complete (?:purchase|order)|buy now";
 
 /** Shared with clickForbidden so the Instacart preset and the page guard match. */
 export const INSTACART_DENY = "checkout|place order|review order|free trial|instacart\\s*\\+|start trial|try plus|add address|change address|edit address|delivery address|confirm address|payment|credit card|\\bcvv\\b|\\bcvc\\b|delivery time|delivery window|schedule delivery|\\btip\\b|settings|log in|sign in|sign up|password|one[- ]time code|verification code|authenticator";
@@ -21,6 +26,7 @@ export const GUARD_PRESETS: Record<PresetName, GuardPreset> = {
     start: "",
     deny: "password|sign in|log in|create account|subscribe|delete account",
     commit: "place(?:\\s+\\w+){0,3}\\s+order|pay now|confirm purchase|submit order|buy now",
+    submit: "",
     stopPath: "/checkout|/login|/signin|/sign-in|/account|/payment",
     reached: "checkout|place order|confirm",
   },
@@ -29,6 +35,7 @@ export const GUARD_PRESETS: Record<PresetName, GuardPreset> = {
     start: "https://www.instacart.com/",
     deny: INSTACART_DENY,
     commit: "checkout|place(?:\\s+\\w+){0,3}\\s+order|pay now|review order|start trial|try plus",
+    submit: "^(?:add|add to cart|add item|add \\d+ (?:ct|items?|pkg|ea|each)\\b.*|search|(?:decrease|decrement|increase|increment)\\b.*|remove\\b(?!.*\\ball\\b).*)$",
     stopPath: INSTACART_PATH_BLOCK.source,
     reached: "your cart|cart",
   },
@@ -37,6 +44,7 @@ export const GUARD_PRESETS: Record<PresetName, GuardPreset> = {
     start: "https://books.toscrape.com/",
     deny: "sign in|log in|password|register",
     commit: "checkout|place(?:\\s+\\w+){0,3}\\s+order|proceed to checkout",
+    submit: "^(?:add to basket|search)$",
     stopPath: "/login|/account",
     reached: "basket",
   },
