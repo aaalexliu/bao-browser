@@ -826,7 +826,7 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
         break;
       }
       const label = redactLabel(name);
-      const control = read.view.controls.find((item) => item.label === label);
+      const control = label ? read.view.controls.find((item) => item.label === label) : undefined;
       if (!control) {
         stopAt(step.id, "failed", "not_found");
         break;

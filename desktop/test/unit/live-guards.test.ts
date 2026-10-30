@@ -385,6 +385,15 @@ test("live replay finds a saved control whose name has digits the view redacts",
   const result = await replayLive(shop.target, workflow, file);
   assert.equal(result.status, "passed");
   assert.equal(shop.clicks.length, 1);
+  const street = liveWorkflow([liveStep(0, "click", "Add 1 ct Mission Street Taco Tortillas")]);
+  const unlabeled = replayTarget([facts([
+    { index: 0, label: "", kind: "button" },
+    { index: 1, label: "Add 1 ct Mission Street Taco Tortillas", kind: "button" },
+  ])]);
+  const missing = await replayLive(unlabeled.target, street, file);
+  assert.equal(missing.status, "failed");
+  assert.equal(missing.reason, "not_found");
+  assert.deepEqual(unlabeled.clicks, []);
 });
 
 test("a click or type plan holds only while the marked control keeps its label and kind", () => {
