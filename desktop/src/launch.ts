@@ -7,9 +7,9 @@
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import net from "node:net";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
+import { parseDevToolsActivePort } from "./cdp-live/endpoint";
 import { assertNotDailyChrome } from "./profile";
 
 export const ACCOUNT_CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -208,59 +208,47 @@ export function accountLaunchArgs(port: number): string[] {
   return args;
 }
 
-function freeLoopbackPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      server.close(() => resolve(port));
-    });
-  });
+/**
+ * Port 0: Chrome binds a free port itself. A port this process picked would
+ * stay free until Chrome bound it, and a parallel launch could pick it too.
+ * Both launches would then attach to one Chrome, and closing either one would
+ * close both.
+ */
+const OWNED_DEBUG_PORT = 0;
+
+function readActivePort(file: string): string | undefined {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * A port in this process's slice of the ephemeral range. Two launches that
- * both take the port the kernel just released can attach to one Chrome, and
- * closing either one closes both. Different processes start at different ports.
+ * Spawn Chrome on its own profile and return the port it bound. Chrome writes
+ * that port to DevToolsActivePort in the profile once it is listening. A file
+ * left by an earlier Chrome on this profile is skipped: each start writes a new
+ * browser id on its second line.
  */
-async function ownedDebugPort(): Promise<number> {
-  const start = 20000 + (process.pid % 20000);
-  for (let offset = 0; offset < 32; offset++) {
-    const port = (start + offset) % 20000 + 20000;
-    if (port === 9222) continue;
-    if (await loopbackPortFree(port)) return port;
-  }
-  let port = await freeLoopbackPort();
-  if (port === 9222) port = await freeLoopbackPort();
-  return port;
-}
-
-function loopbackPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.listen(port, "127.0.0.1", () => {
-      server.close(() => resolve(true));
-    });
-  });
-}
-
-async function waitForCdp(port: number): Promise<void> {
+async function spawnOwnedChrome(exe: string, args: string[], userDataDir: string): Promise<{ child: ChildProcess; port: number }> {
+  const file = path.join(userDataDir, "DevToolsActivePort");
+  const stale = readActivePort(file);
+  const child: ChildProcess = spawn(exe, args, { stdio: "ignore" });
   const deadline = Date.now() + 15000;
-  let last = "not open";
   while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
-      if (response.ok) return;
-      last = String(response.status);
-    } catch (err) {
-      last = err instanceof Error ? err.message : "not open";
+    if (child.exitCode != null || child.signalCode != null) {
+      throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    const text = readActivePort(file);
+    if (text && text !== stale) {
+      try {
+        return { child, port: parseDevToolsActivePort(text).port };
+      } catch { /* Chrome is still writing the file. */ }
+    }
+    await delay(50);
   }
-  throw new Error(`Chrome debugging port did not open (${last})`);
+  child.kill("SIGTERM");
+  throw new Error("Chrome debugging port did not open");
 }
 
 function delay(ms: number): Promise<void> {
@@ -343,15 +331,8 @@ export async function launchAccountChrome(opts: {
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
   const exe = resolveAccountChrome();
-  const port = await ownedDebugPort();
-  const args = [...accountLaunchArgs(port), ...testLaneKeychainArgs()];
-  const child: ChildProcess = spawn(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], { stdio: "ignore" });
-  try {
-    await waitForCdp(port);
-  } catch (err) {
-    if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
-    throw err;
-  }
+  const args = [...accountLaunchArgs(OWNED_DEBUG_PORT), ...testLaneKeychainArgs()];
+  const { child, port } = await spawnOwnedChrome(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], opts.userDataDir);
   const stop = () => {
     if (child.exitCode == null) child.kill("SIGTERM");
   };
@@ -430,20 +411,13 @@ async function launchNormalChrome(opts: {
   discardRestoredTabs(opts.userDataDir);
   const exe = opts.executablePath || resolveNormalChrome();
   const headless = opts.headless ?? true;
-  const port = await ownedDebugPort();
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args, opts.appendArgs),
-    `--remote-debugging-port=${port}`,
+    `--remote-debugging-port=${OWNED_DEBUG_PORT}`,
     ...(headless ? ["--headless=new"] : []),
   ];
-  const child: ChildProcess = spawn(exe, args, { stdio: "ignore" });
-  try {
-    await waitForCdp(port);
-  } catch (err) {
-    if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
-    throw err;
-  }
+  const { child, port } = await spawnOwnedChrome(exe, args, opts.userDataDir);
   const stop = () => {
     if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
   };
