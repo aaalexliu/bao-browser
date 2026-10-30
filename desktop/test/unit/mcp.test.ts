@@ -240,6 +240,24 @@ test("closing stdin after a live call sends one disconnect with the same client 
   }
 });
 
+test("closing stdin answers a catalog call and the live call queued behind it, then disconnects", async () => {
+  const mcp = startMcp("bao-mcp-end-queue-");
+  const app = await fakeApp(mcp.home, () => ({ outcome: { kind: "applied" } }));
+  try {
+    await initialize(mcp);
+    const search = mcp.tool("search_workflows", { query: "x" });
+    const snapshot = mcp.tool("live_snapshot");
+    mcp.child.stdin.end();
+    assert.equal((await search).isError, false);
+    assert.deepEqual(await snapshot, { text: JSON.stringify({ outcome: { kind: "applied" } }), isError: false });
+    assert.equal(await exited(mcp.child), 0);
+    assert.deepEqual(app.bodies.map((body) => body.op), ["live_snapshot", LIVE_DISCONNECT]);
+  } finally {
+    mcp.child.kill();
+    await closeServer(app.server);
+  }
+});
+
 test("a live tool names the command that starts Bao when the app is not running", async () => {
   const mcp = startMcp("bao-mcp-down-");
   const expected = `Bao is not running. Open the Bao app, or run: ${serveCommand(mcp.home, ["node", cli])}`;

@@ -82,8 +82,8 @@ interface Context {
   live: LiveReplayer;
   /** Set once this process sends a live call, so a disconnect is sent only then. */
   liveUsed: boolean;
-  /** Rejects 15 s after the client goes away. Only live work races it. */
-  liveDeadline: Promise<never>;
+  /** Resolves when the client goes away. From then on each live call gets 15 s. */
+  gone: Promise<void>;
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
@@ -98,10 +98,9 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   }
   let ending = false;
   let ended: () => void = () => undefined;
-  const liveDeadline = new Promise<void>((resolve) => { ended = resolve; })
-    .then(() => new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The Bao app did not answer.")), 15_000).unref()));
-  liveDeadline.catch(() => undefined);
-  const ctx: Context = { library: new Library(home), libraries, args, env, client: randomUUID(), live: appLiveReplay(args, env), liveUsed: false, liveDeadline };
+  const gone = new Promise<void>((resolve) => { ended = resolve; });
+  const replay = appLiveReplay(args, env);
+  const ctx: Context = { library: new Library(home), libraries, args, env, client: randomUUID(), live: (workflow, inputs) => limited(replay(workflow, inputs), gone), liveUsed: false, gone };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -122,7 +121,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     ending = true;
     ended();
     void chain
-      .then(() => ctx.liveUsed ? Promise.race([postLive({ op: LIVE_DISCONNECT, client: ctx.client }, ctx.args, ctx.env), ctx.liveDeadline]) : undefined)
+      .then(() => ctx.liveUsed ? limited(postLive({ op: LIVE_DISCONNECT, client: ctx.client }, ctx.args, ctx.env), gone) : undefined)
       .catch(() => undefined)
       .finally(() => process.exit(0));
   };
@@ -179,7 +178,15 @@ async function handle(body: string, ctx: Context): Promise<void> {
 
 function liveCall(body: Record<string, unknown>, ctx: Context): Promise<unknown> {
   ctx.liveUsed = true;
-  return Promise.race([postLive(body, ctx.args, ctx.env), ctx.liveDeadline]);
+  return limited(postLive(body, ctx.args, ctx.env), ctx.gone);
+}
+
+/** Live work in the app gets 15 s from when it starts or the client goes away, whichever is later. */
+function limited<T>(work: Promise<T>, gone: Promise<void>): Promise<T> {
+  const deadline = gone.then(() => new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("The Bao app did not answer.")), 15_000).unref();
+  }));
+  return Promise.race([work, deadline]);
 }
 
 async function callTool(library: Library, libraries: string[] | undefined, live: LiveReplayer, name: string, args: Record<string, unknown>): Promise<unknown> {
