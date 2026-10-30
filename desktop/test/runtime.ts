@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium } from "playwright";
+import { pinTestBrowser } from "../src/launch";
 import type { KeySources } from "../src/login-import/keys";
 
 const SECRET_KEYS = [
@@ -46,25 +46,14 @@ function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
- * Both lanes. BAO_TEST_BROWSER makes every owned launch start this browser
- * with a mock keychain. Without it a test would open the user's Chrome, so a
- * missing browser stops the run.
+ * Both lanes. BAO_TEST_BROWSER makes every owned launch start Playwright's
+ * Chromium with a mock keychain. Without it a test would open the user's
+ * Chrome, so a missing browser stops the run.
  */
-export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, testBrowser: string | undefined): NodeJS.ProcessEnv {
-  if (!testBrowser) throw new Error("Playwright Chromium is missing. Run: npx playwright install chromium");
+export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, playwrightPath?: () => string): NodeJS.ProcessEnv {
   const env = laneEnv(lane, parent);
-  env.BAO_TEST_BROWSER = testBrowser;
+  pinTestBrowser(env, playwrightPath);
   return env;
-}
-
-export function pinnedTestBrowser(): string | undefined {
-  try {
-    const exe = chromium.executablePath();
-    if (exe && existsSync(exe)) return exe;
-  } catch {
-    return undefined;
-  }
-  return undefined;
 }
 
 export function compiledTestPlan(sourceDir: string, distDir: string): CompiledPlan {

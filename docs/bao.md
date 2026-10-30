@@ -521,7 +521,7 @@ The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres
 
 This section is the eval server. The default `bao mcp` server is the catalog and live tools above. Steps for that server are in [Agent quickstart](agent-quickstart.md).
 
-`BAO_MCP_LIVE=1` runs `desktop/src/eval/live-mcp.ts`. The process creates a temporary profile, launches the test browser with a mock keychain, and opens `BAO_FIXTURE_URL`. The test browser is `BAO_TEST_BROWSER`, else Playwright's Chromium. It is never the installed Google Chrome. That browser ends with the process. It is the stdio server a driver talks to in `bao eval drivers`. The live tool table below belongs to this evaluator.
+`BAO_MCP_LIVE=1` runs `desktop/src/eval/live-mcp.ts`. The process creates a temporary profile, launches the test browser with a mock keychain, and opens `BAO_FIXTURE_URL`. The test browser is `BAO_TEST_BROWSER`, else Playwright's Chromium. The process refuses a `BAO_TEST_BROWSER` that is one of the standard installed Google Chrome paths, `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` or `/opt/google/chrome/chrome`, including through a link. That browser ends with the process. It is the stdio server a driver talks to in `bao eval drivers`. The live tool table below belongs to this evaluator.
 
 ## Live tools
 

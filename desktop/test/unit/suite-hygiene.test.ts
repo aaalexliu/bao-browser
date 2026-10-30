@@ -8,6 +8,13 @@ import { artifactsRoot, testArtifacts, tryWriteEvidence } from "../artifacts";
 import { ACCOUNT_CHROME_MAC, LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs, resolveNormalChrome } from "../../src/launch";
 import { classifyStatus, compiledTestPlan, cookieKeys, laneChildEnv, liveSkip, MAC_MOCK_KEYCHAIN_PASSWORD, ownApiOutage } from "../runtime";
 
+function fakeChromium(): string {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-lane-pin-")), "Google Chrome for Testing");
+  writeFileSync(file, "");
+  chmodSync(file, 0o755);
+  return file;
+}
+
 test("the required files and dates demo stays on local fixtures", () => {
   const demo = readFileSync("desktop/test/unit/files-dates-demo.test.ts", "utf8");
   assert.equal(demo.includes("/opt/cursor"), false);
@@ -34,6 +41,7 @@ test("artifact roots stay in the checkout unless an env dir is set", () => {
 });
 
 test("hermetic env drops inherited launch settings and pins the test browser", () => {
+  const pin = fakeChromium();
   const env = laneChildEnv("hermetic", {
     BAO_HEADED: "1",
     OPENAI_API_KEY: "sk-test",
@@ -54,12 +62,12 @@ test("hermetic env drops inherited launch settings and pins the test browser", (
     BAO_RUN_VIDEO: "1",
     BAO_HOME: "/tmp/real-home",
     BAO_TEST_MOCK_KEYCHAIN: "1",
-  }, "/tmp/playwright-chromium");
+  }, () => pin);
   assert.equal(env.BAO_HEADED, "0");
   assert.equal(env.OPENAI_API_KEY, undefined);
   assert.equal(env.BAO_OS_HELPER, undefined);
   assert.equal(env.BAO_BROWSER, undefined);
-  assert.equal(env.BAO_TEST_BROWSER, "/tmp/playwright-chromium");
+  assert.equal(env.BAO_TEST_BROWSER, pin);
   assert.equal(env.BAO_CAPTURE_BAR, undefined);
   assert.equal(env.BAO_CAPTURE_BAR_BIN, undefined);
   assert.equal(env.BAO_CHROME_NO_SANDBOX, undefined);
@@ -82,10 +90,8 @@ test("hermetic env drops inherited launch settings and pins the test browser", (
 });
 
 test("the live lane turns public demos on, stays headless, and launches the test browser, not installed Chrome", () => {
-  const pin = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-pin-")), "Google Chrome for Testing");
-  writeFileSync(pin, "");
-  chmodSync(pin, 0o755);
-  const env = laneChildEnv("live", { BAO_BROWSER: "/tmp/bundle", BAO_LIVE_TESTS: "0", BAO_TEST_BROWSER: "/tmp/parent-pin" }, pin);
+  const pin = fakeChromium();
+  const env = laneChildEnv("live", { BAO_BROWSER: "/tmp/bundle", BAO_LIVE_TESTS: "0", BAO_TEST_BROWSER: "/tmp/parent-pin" }, () => pin);
   assert.equal(env.BAO_LIVE_TESTS, "1");
   assert.equal(env.BAO_HEADED, "0");
   assert.equal(env.BAO_LANE, "live");
@@ -98,9 +104,13 @@ test("the live lane turns public demos on, stays headless, and launches the test
 });
 
 test("both lanes stop when the test browser is missing", () => {
+  const missing = path.join(mkdtempSync(path.join(tmpdir(), "bao-lane-missing-")), "chrome");
+  const folder = path.dirname(fakeChromium());
   for (const lane of ["hermetic", "live"] as const) {
-    assert.throws(() => laneChildEnv(lane, {}, undefined), /npx playwright install chromium/);
-    assert.throws(() => laneChildEnv(lane, {}, ""), /npx playwright install chromium/);
+    assert.throws(() => laneChildEnv(lane, {}, () => ""), /Playwright Chromium is missing\. Run: npx playwright install chromium/);
+    assert.throws(() => laneChildEnv(lane, {}, () => missing), /Playwright Chromium is missing\. Run: npx playwright install chromium/);
+    assert.throws(() => laneChildEnv(lane, {}, () => folder), /Playwright Chromium is missing\. Run: npx playwright install chromium/);
+    assert.throws(() => laneChildEnv(lane, {}, () => { throw new Error("not downloaded"); }), /Playwright Chromium is missing\. Run: npx playwright install chromium/);
   }
 });
 
@@ -199,8 +209,8 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
     BAO_TEST_RUN_ID: "parent-run-canary",
     CI: "true",
   };
-  const pin = "/tmp/bao-lane-pin";
-  const env = laneChildEnv("hermetic", { ...process.env, ...canaries, LANG: "C" }, pin);
+  const pin = fakeChromium();
+  const env = laneChildEnv("hermetic", { ...process.env, ...canaries, LANG: "C" }, () => pin);
   const names = Object.keys(env).filter((key) => /^bao/i.test(key)).sort();
   assert.deepEqual(names, [
     "BAO_HEADED",

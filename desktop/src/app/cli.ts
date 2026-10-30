@@ -106,7 +106,8 @@ async function main(): Promise<void> {
     return;
   }
   // The browser evals start the test browser with a mock keychain, never the user's Chrome.
-  if (cmd === "eval" && ["drivers", "heldout", "nightly"].includes(rest[0] || "")) pinTestBrowser();
+  const judgeOnly = rest[0] === "heldout" && rest[1] !== "capture" && rest.includes("--judge");
+  if (cmd === "eval" && ["drivers", "heldout", "nightly"].includes(rest[0] || "") && !judgeOnly) pinTestBrowser();
   if (cmd === "eval" && rest[0] === "drivers") {
     const { evalDrivers } = await import("../eval/drivers");
     const result = await evalDrivers(rest.slice(1));

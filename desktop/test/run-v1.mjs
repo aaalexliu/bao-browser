@@ -1,7 +1,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import path from "node:path";
-import { compiledTestPlan, laneChildEnv, pinnedTestBrowser } from "../dist/desktop/test/runtime.js";
+import { compiledTestPlan, laneChildEnv } from "../dist/desktop/test/runtime.js";
 
 function isolationArg() {
   const help = execFileSync(process.execPath, ["--test", "--help"], { encoding: "utf8" });
@@ -19,7 +19,7 @@ if (plan.missing.length) {
 }
 
 const files = plan.run.map((name) => path.join(distDir, name));
-const env = laneChildEnv("hermetic", process.env, pinnedTestBrowser());
+const env = laneChildEnv("hermetic", process.env);
 const child = spawn(process.execPath, ["--test", isolationArg(), ...files], {
   env,
   stdio: "inherit",
