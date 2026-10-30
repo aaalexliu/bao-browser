@@ -115,12 +115,54 @@ function stubServer(dir: string) {
   writeFileSync(path.join(dir, "src/app/server.js"), "module.exports = {};\n");
 }
 
-function stubPackage(dir: string, name: string, body = "module.exports = {};\n") {
+function stubPackage(dir: string, name: string, body = "module.exports = {};\n", manifest: Record<string, unknown> = {}) {
   const pkg = path.join(dir, "node_modules", name);
   mkdirSync(pkg, { recursive: true });
-  writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name, main: "index.js" }));
+  writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name, main: "index.js", ...manifest }));
   writeFileSync(path.join(pkg, "index.js"), body);
 }
+
+test("an unstaged optional module fails to load even when the checkout or NODE_PATH has it", () => {
+  const parent = mkdtempSync(path.join(tmpdir(), "bao-optional-"));
+  const walked = path.join(parent, "checkout", "dist", "bao");
+  const bare = path.join(parent, "bare");
+  const lib = path.join(parent, "lib");
+  const declared = { optionalDependencies: { "opt-watch": "1.0.0" } };
+  const tolerant = "try { require('opt-watch'); } catch {}\n";
+  const stage = (dir: string, body: string, manifest: Record<string, unknown>) => {
+    rmSync(dir, { recursive: true, force: true });
+    stubServer(dir);
+    stubPackage(dir, "classic-level");
+    stubPackage(dir, "playwright", body, manifest);
+  };
+  const run = (dir: string, nodePath: string) => spawnSync(process.execPath, ["desktop/packaging/require-staged.js", dir], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: { ...process.env, NODE_PATH: nodePath, NODE_OPTIONS: "", HOME: parent },
+  });
+  try {
+    stubPackage(path.join(parent, "checkout"), "opt-watch");
+    stubPackage(lib, "opt-watch");
+    for (const [dir, nodePath] of [[walked, ""], [bare, path.join(lib, "node_modules")]] as const) {
+      stage(dir, tolerant, declared);
+      const skipped = run(dir, nodePath);
+      assert.equal(skipped.status, 0, skipped.stderr);
+      assert.match(skipped.stdout, /optional opt-watch is not staged/);
+
+      stage(dir, "require('opt-watch');\n", declared);
+      const needed = run(dir, nodePath);
+      assert.notEqual(needed.status, 0);
+      assert.match(needed.stderr, /'opt-watch': it is optional and not in the staged copy/);
+
+      stage(dir, tolerant, {});
+      const undeclared = run(dir, nodePath);
+      assert.notEqual(undeclared.status, 0);
+      assert.match(undeclared.stderr, /outside the staged copy/);
+    }
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
 
 test("a correct staged tree behind a directory symlink is accepted", () => {
   const parent = mkdtempSync(path.join(tmpdir(), "bao-var-"));
