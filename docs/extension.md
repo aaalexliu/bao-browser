@@ -27,7 +27,7 @@ The extension is not in the Chrome Web Store. Load the unpacked build.
 
 6. In Chrome, open `chrome://extensions`, turn on Developer mode, and Load unpacked `~/.bao-browser/extension`.
 7. Open the site, click the Bao icon, choose Allow this site, then Record. Stop saves the workflow.
-8. On the run form, Driver chooses Extension, Playwright, or CDP live. An old workflow with no driver stays on Playwright.
+8. On the run form, Driver chooses Extension or Playwright. A workflow a live session saved shows Live, and its driver cannot change, because it replays only in the live Chrome. An old workflow with no driver stays on Playwright.
 
 ## Reload and the native host
 

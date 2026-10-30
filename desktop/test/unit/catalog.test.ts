@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
 import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, type SearchHit } from "../../src/mcp/catalog";
+import type { RunResult } from "../../src/v1/replay";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
@@ -105,6 +106,48 @@ for (const [driver, reason] of [["cdp-live", CDP_LIVE_SERVER_REFUSAL], ["extensi
     assert.deepEqual(library.listRuns(), []);
   });
 }
+
+test("run_workflow sends a cdp-live workflow to the live runner with the recorded defaults, and never opens Bao's Chrome", async () => {
+  const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
+  const doc: WorkflowV2 = { ...workflow("wf-live", "Live workflow"), driver: "cdp-live" };
+  doc.inputs = [{ name: "query", type: "text", label: "Query", default: "blueberries" }];
+  library.save(doc);
+  const seen: Record<string, unknown>[] = [];
+  const live = async (run: WorkflowV2, inputs: Record<string, unknown>, status: RunResult["status"] = "passed"): Promise<RunResult> => {
+    seen.push({ id: run.id, ...inputs });
+    return {
+      runId: `run-live-${seen.length}`,
+      status,
+      steps: run.steps.map((step) => ({ id: step.id, status: status === "passed" ? "passed" as const : "paused" as const })),
+      heals: [],
+      repairs: [],
+      locatorHits: [],
+      receipts: [],
+      trajectory: [],
+      trail: [],
+      pageClasses: [],
+      modelCalls: 0,
+      ...(status === "paused" ? { pausedKind: "wall" as const, pausedStepId: "go" } : {}),
+    };
+  };
+  const plain = await runWorkflow(library, { id: "wf-live" }, undefined, { live: (run, inputs) => live(run, inputs) });
+  assert.equal(plain.outcome, "ok", plain.reason);
+  const asked = await runWorkflow(library, { id: "wf-live", inputs: { query: "strawberries" } }, undefined, { live: (run, inputs) => live(run, inputs) });
+  assert.equal(asked.outcome, "ok", asked.reason);
+  assert.deepEqual(seen, [{ id: "wf-live", query: "blueberries" }, { id: "wf-live", query: "strawberries" }]);
+  assert.equal(library.readRun("run-live-2").status, "passed");
+  assert.deepEqual(library.readRun("run-live-2").inputs, { query: "strawberries" });
+  const walled = await runWorkflow(library, { id: "wf-live" }, undefined, { live: (run, inputs) => live(run, inputs, "paused") });
+  assert.equal(walled.outcome, "needs_human");
+  assert.equal(existsSync(path.join(library.root, "chrome-profile")), false);
+  const broken = await runWorkflow(library, { id: "wf-live" }, undefined, {
+    live: async () => {
+      throw new Error("bao app is not running");
+    },
+  });
+  assert.equal(broken.outcome, "failed");
+  assert.equal(broken.reason, "bao app is not running");
+});
 
 test("run_workflow still replays a Playwright workflow in Bao's Chrome", { timeout: 60_000 }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";

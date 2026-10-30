@@ -1,8 +1,18 @@
 import path from "node:path";
-import { navigationGuard, originsFor } from "./allowlist";
+import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import type { ChromeAx } from "./ax";
 import { type CdpLiveDriver } from "./driver";
+import {
+  clickLive,
+  pressLiveKey,
+  scrollLive,
+  typeLive,
+  watchNewTargets,
+  type LiveActOutcome,
+  type LiveActTarget,
+} from "./live-act";
+import { liveScope, replayLiveWorkflow } from "./live-replay";
 import {
   connectTarget,
   openChromeProfileWindow,
@@ -13,27 +23,18 @@ import {
   type OpenProfileWindow,
 } from "./live-target";
 import { acquireCdpLock, CDP_LOCK_PATH, rememberLockTarget, releaseCdpLock, takeDeadTarget } from "./lock";
-import { redactLabel } from "./live-record";
 import {
   admit,
   buildView,
-  focusLiveMark,
   isLiveOp,
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
-  markedFieldValue,
+  LIVE_REPLAY,
   markedState,
   pageHalt,
-  planClick,
-  planKey,
-  planScroll,
-  planType,
   publicLiveResult,
   readLivePage,
-  sameTarget,
-  scrollLivePage,
   searchField,
-  targetVerdict,
   viewPage,
   workflowIdsFromIntent,
   type LabelGuard,
@@ -42,7 +43,6 @@ import {
   type LiveViewPage,
   type MarkedState,
   type PageFacts,
-  type ScrollFacts,
   type SlotState,
 } from "./live-ops";
 import {
@@ -55,11 +55,10 @@ import {
   workflowFromTrail,
   type LiveSide,
 } from "./live-trail";
-import { guardPreset, presetForUrl } from "./presets";
 import type { CdpSocket } from "./socket";
 import { leafTexts } from "../v1/recorder";
-import { pageWhen, type PageGuard } from "../v1/replay";
-import type { Identity, WorkflowV2 } from "../v1/schema";
+import type { RunResult } from "../v1/replay";
+import { validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
 
 const AGENT = "bao-live";
@@ -75,7 +74,6 @@ interface OpenState {
   stopPath: string;
   hosts: string[];
   origins: string[];
-  portFile: string;
   /** The MCP client that started the session. Its disconnect saves the session. */
   client: string;
   host: string;
@@ -98,32 +96,6 @@ interface Before {
   side: LiveSide;
 }
 
-export interface ReplayTarget {
-  driver: Pick<CdpLiveDriver, "setOrigins" | "goto" | "evaluateFunction" | "clickCss" | "takeBlockedNav">;
-  guard: LabelGuard;
-  stopPath: string;
-  hosts: string[];
-  origins: string[];
-}
-
-/** The open page a key press or a scroll acts on. */
-export interface LiveActTarget {
-  driver: Pick<CdpLiveDriver, "evaluateFunction" | "pressMarked" | "takeBlockedNav" | "returnFromBlock" | "sleep">;
-  read: LiveRead;
-  guard: LabelGuard;
-  stopPath: string;
-  hosts: readonly string[];
-  origins: readonly string[];
-  /** Writes the audit row. It runs after every check and before the page is touched. */
-  before(action: string, label: string): Promise<void>;
-  /** Reads the page again under a new epoch. */
-  reread(): Promise<LiveRead>;
-}
-
-export type LiveActOutcome =
-  | { kind: "refused" | "halted"; reason: string }
-  | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
-
 const LOOK_OPS: Record<string, LiveOpName> = {
   start: "live_session_start",
   snapshot: "live_snapshot",
@@ -136,83 +108,6 @@ const LOOK_OPS: Record<string, LiveOpName> = {
 
 function shown(read: LiveRead | null | undefined): LiveViewPage | null {
   return read ? viewPage(read.view) : null;
-}
-
-/** Marks the control again and keeps the plan only if the mark is still the control the plan named. */
-async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guard">, ref: string, index: number): Promise<boolean> {
-  const marked = await target.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: index });
-  return sameTarget(target.read, buildView(marked, target.read.view.epoch, target.guard), ref);
-}
-
-/** A load the window failed on a stop path goes back to the last allowed page, and the refusal reads that page again. */
-async function refuseBlocked(target: LiveActTarget, reason: string): Promise<LiveActOutcome> {
-  if (reason === "stop-path") {
-    await target.driver.returnFromBlock();
-    await target.reread();
-  }
-  return { kind: "refused", reason };
-}
-
-/** Enter, Tab, or Escape, on the same guards as a click. */
-export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
-  const plan = planKey(target.read, key, ref);
-  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
-  const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
-  const control = ref ? target.read.view.controls.find((item) => item.ref === ref) : undefined;
-  if (key === "Enter" && entry?.href) {
-    const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
-    if (why) return { kind: "refused", reason: why };
-  }
-  const index = entry?.index ?? -1;
-  if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
-  const label = control?.label || "";
-  await target.before("key", `${key} ${label}`.trim());
-  target.driver.takeBlockedNav();
-  try {
-    await target.driver.pressMarked(key, index);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : "focus_moved";
-    if (reason === "credential_field" || reason === "focus_moved") return { kind: "halted", reason };
-    throw err;
-  }
-  const blockedNav = target.driver.takeBlockedNav();
-  if (blockedNav) return refuseBlocked(target, blockedNav);
-  return { kind: "applied", label, control: control?.kind || "" };
-}
-
-/** Scrolls the page, or the box around one listed control, so more of a long page loads. */
-export async function scrollLive(target: LiveActTarget, direction: string, ref: string): Promise<LiveActOutcome> {
-  const plan = planScroll(target.read, direction, ref);
-  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
-  const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
-  const control = ref ? target.read.view.controls.find((item) => item.ref === ref) : undefined;
-  const index = entry?.index ?? -1;
-  if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
-  const label = control?.label || "";
-  await target.before("scroll", `${direction} ${label}`.trim());
-  target.driver.takeBlockedNav();
-  const scroll = await target.driver.evaluateFunction<ScrollFacts>(scrollLivePage, { markIndex: index, direction });
-  if (scroll.target === "none") return { kind: "refused", reason: "stale_ref" };
-  await target.driver.sleep(500);
-  const blockedNav = target.driver.takeBlockedNav();
-  if (blockedNav) return refuseBlocked(target, blockedNav);
-  return { kind: "applied", label, control: control?.kind || "", scroll };
-}
-
-interface Parked extends ReplayTarget {
-  driver: CdpLiveDriver;
-  cdp: CdpSocket;
-  portFile: string;
-}
-
-export interface LiveReplayResult {
-  id: string;
-  workflowId: string;
-  status: "passed" | "needs_human" | "failed";
-  modelCalls: 0;
-  stoppedAt: string;
-  reason: string;
-  steps: { id: string; status: string }[];
 }
 
 export interface LiveHostOptions {
@@ -233,7 +128,8 @@ type EndReason = "stop" | "disconnect" | "idle";
 
 export function createLiveHost(opts: LiveHostOptions): {
   call(raw: unknown): Promise<unknown>;
-  replay(workflow: WorkflowV2): Promise<LiveReplayResult>;
+  /** Replays a cdp-live workflow in a new window of this host's target. */
+  replay(workflow: WorkflowV2, inputs?: ReplayArgs): Promise<RunResult>;
   close(): Promise<void>;
 } {
   const lockFile = opts.lockFile || CDP_LOCK_PATH;
@@ -242,7 +138,6 @@ export function createLiveHost(opts: LiveHostOptions): {
   const idleMs = opts.idleMs ?? LIVE_IDLE_MS;
   let slot: SlotState = { phase: "idle" };
   let open: OpenState | null = null;
-  let parked: Parked | null = null;
   let chain = Promise.resolve();
   let pending = 0;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -291,6 +186,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const body = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const op = typeof body.op === "string" ? body.op : "";
     if (op === LIVE_DISCONNECT) return disconnect(body);
+    if (op === LIVE_REPLAY) return replayBody(body);
     if (!isLiveOp(op)) {
       return reply({ op, session: "", outcome: { kind: "rejected", reason: "unknown" }, view: null, shot: "" });
     }
@@ -361,20 +257,11 @@ export function createLiveHost(opts: LiveHostOptions): {
     if (!intent) throw new Error("intent is required");
     if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
     const target = portFile ? targetForPortFile(portFile, defaultTarget) : defaultTarget;
-    const preset = presetForUrl(url, asked);
-    if (!preset) throw new Error("unknown preset");
-    const flags = guardPreset(preset);
+    const { guard, stopPath, hosts, origins } = liveScope(url, asked);
     const host = new URL(url).hostname;
-    const hosts = [...new Set([host, ...flags.hosts])];
-    const origins = originsFor(url, hosts);
-    const blocked = navigationGuard(url, hosts, origins, flags.stopPath);
+    const blocked = navigationGuard(url, hosts, origins, stopPath);
     if (blocked) throw new Error(blocked);
     const prepared = await prepareTarget(target, opts.helper);
-    if (parked) {
-      await parked.driver.end().catch(() => undefined);
-      parked.cdp.close();
-      parked = null;
-    }
     await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
     let cdp: CdpSocket | undefined;
     let driver: CdpLiveDriver | undefined;
@@ -387,7 +274,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       cdp = opened.cdp;
       driver = opened.driver;
       driver.setOrigins(origins);
-      driver.setStopPath(flags.stopPath);
+      driver.setStopPath(stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
       const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40));
       const trail = await LiveTrail.open(opts.home);
@@ -398,11 +285,10 @@ export function createLiveHost(opts: LiveHostOptions): {
         driver,
         cdp,
         log,
-        guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit },
-        stopPath: flags.stopPath,
+        guard,
+        stopPath,
         hosts,
         origins,
-        portFile: target.portFile,
         client,
         host,
         epoch: 0,
@@ -420,7 +306,11 @@ export function createLiveHost(opts: LiveHostOptions): {
       if (leftover && leftover !== driver.targetId) {
         await cdp.send("Target.closeTarget", { targetId: leftover }).catch(() => undefined);
       }
-      await watchTargets(cdp, driver.targetId);
+      await watchNewTargets(cdp, driver.targetId, () => open !== null, () => {
+        if (!open) return;
+        open.halted = "new_target";
+        open.refused = true;
+      });
       await note("start", url, "running", null);
       await driver.goto(url);
       return await look("start");
@@ -436,25 +326,6 @@ export function createLiveHost(opts: LiveHostOptions): {
       slot = { phase: "idle" };
       throw err;
     }
-  }
-
-  async function watchTargets(cdp: CdpSocket, ownId: string): Promise<void> {
-    const baseline = new Set<string>([ownId]);
-    let ready = false;
-    cdp.on("Target.targetCreated", undefined, (params) => {
-      const info = (params as { targetInfo?: { type?: string; targetId?: string; openerId?: string } }).targetInfo;
-      if (!ready || !info?.targetId || !open) return;
-      if (targetVerdict(info, ownId, baseline) !== "close") return;
-      void cdp.send("Target.closeTarget", { targetId: info.targetId }).catch(() => undefined);
-      open.halted = "new_target";
-      open.refused = true;
-    });
-    const listed = await cdp.send<{ targetInfos?: { targetId?: string }[] }>("Target.getTargets");
-    for (const info of listed.targetInfos || []) {
-      if (info.targetId) baseline.add(info.targetId);
-    }
-    ready = true;
-    await cdp.send("Target.setDiscoverTargets", { discover: true }).catch(() => undefined);
   }
 
   async function reread(state: OpenState): Promise<{ read: LiveRead; facts: PageFacts }> {
@@ -564,65 +435,46 @@ export function createLiveHost(opts: LiveHostOptions): {
     return look(action, outcome.scroll ? { scroll: outcome.scroll } : {});
   }
 
+  /** The open session's page, for one act. `before` runs after every check and right before the act. */
+  function actTarget(state: OpenState, read: LiveRead, before: LiveActTarget["before"]): LiveActTarget {
+    return {
+      driver: state.driver,
+      read,
+      guard: state.guard,
+      stopPath: state.stopPath,
+      hosts: state.hosts,
+      origins: state.origins,
+      before,
+      reread: async () => (await reread(state)).read,
+    };
+  }
+
   async function click(ref: string): Promise<unknown> {
     if (!open?.read) throw new Error("no live page");
-    const plan = planClick(open.read, ref);
-    const target = open.read.targets.byRef.get(ref);
-    if (!plan.ok) {
-      open.refused = true;
-      await note("click", plan.refusal, "failed", null);
-      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: plan.refusal }, view: shown(open.read), shot: "" });
+    const state = open;
+    const index = open.read.targets.byRef.get(ref)?.index ?? -1;
+    let before: Before | undefined;
+    const outcome: LiveActOutcome = await clickLive(actTarget(state, open.read, async (_action, label) => {
+      before = await readBefore(state, index, true);
+      await note("click", label, "running", null);
+    }), ref);
+    if (before) await state.log.patchLast(state.driver.lastTrusted());
+    if (outcome.kind !== "applied") {
+      state.refused = true;
+      // A refusal before the click gets its own audit row. After the click, the click's row stands.
+      if (!before) await note("click", outcome.reason, "failed", null);
+      return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
-    const href = target?.href || "";
-    if (href) {
-      const why = navigationGuard(href, open.hosts, open.origins, open.stopPath);
-      if (why) {
-        open.refused = true;
-        await note("click", why, "failed", null);
-        return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: why }, view: shown(open.read), shot: "" });
-      }
-    }
-    const index = target?.index ?? -1;
-    const label = open.read.view.controls.find((control) => control.ref === ref)?.label || ref;
-    open.driver.takeBlockedNav();
-    if (!await stillMarked({ driver: open.driver, read: open.read, guard: open.guard }, ref, index)) {
-      open.refused = true;
-      await note("click", "stale_ref", "failed", null);
-      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: "stale_ref" }, view: shown(open.read), shot: "" });
-    }
-    const before = await readBefore(open, index, true);
-    await note("click", label, "running", null);
-    open.driver.markTrust();
-    try {
-      await open.driver.clickCss(plan.selector);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "click failed";
-      open.refused = true;
-      if (reason === "element is covered") {
-        return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason }, view: shown(open.read), shot: "" });
-      }
-      throw err;
-    }
-    await open.log.patchLast(open.driver.lastTrusted());
-    const blockedNav = open.driver.takeBlockedNav();
-    if (blockedNav) {
-      open.refused = true;
-      if (blockedNav === "stop-path") {
-        await open.driver.returnFromBlock();
-        await reread(open);
-      }
-      return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: blockedNav }, view: shown(open.read), shot: "" });
-    }
-    const after = await readAfter(open, index, true);
+    const after = await readAfter(state, index, true);
     // The accessible name, not the redacted view label, so the item in "Add 1 ct {item}" keeps its digits.
-    const name = before.identity?.name || before.identity?.text || label;
-    const skipWhen = cartAddItem(name) ? inCartMarker(name, before.nodes, (await open.driver.tree().catch(() => null))?.nodes || []) : "";
-    await open.trail.add({
+    const name = before?.identity?.name || before?.identity?.text || outcome.label;
+    const skipWhen = cartAddItem(name) ? inCartMarker(name, before?.nodes || [], (await state.driver.tree().catch(() => null))?.nodes || []) : "";
+    await state.trail.add({
       op: "click",
-      identity: before.identity,
-      beforeUrl: before.side.url,
+      identity: before?.identity,
+      beforeUrl: before?.side.url,
       afterUrl: after.url || undefined,
-      ...clickEffect(before.side, after),
+      ...(before ? clickEffect(before.side, after) : {}),
       ...(skipWhen ? { skipWhen } : {}),
     });
     return look("click");
@@ -630,49 +482,28 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function typeInto(ref: string, text: string): Promise<unknown> {
     if (!open?.read) throw new Error("no live page");
-    const early = planType(open.read, ref, text);
-    if (!early.ok) {
-      open.refused = true;
-      await note("type", early.refusal, "failed", null);
-      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: early.refusal }, view: shown(open.read), shot: "" });
-    }
+    const state = open;
     const index = open.read.targets.byRef.get(ref)?.index ?? -1;
-    const label = open.read.view.controls.find((control) => control.ref === ref)?.label || ref;
-    if (!await stillMarked({ driver: open.driver, read: open.read, guard: open.guard }, ref, index)) {
-      open.refused = true;
-      await note("type", "stale_ref", "failed", null);
-      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: "stale_ref" }, view: shown(open.read), shot: "" });
+    let before: Before | undefined;
+    const outcome: LiveActOutcome = await typeLive(actTarget(state, open.read, async (_action, label) => {
+      before = await readBefore(state, index);
+      await note("type", label, "running", null);
+    }), ref, text);
+    if (outcome.kind !== "applied") {
+      state.refused = true;
+      if (outcome.kind === "halted") state.halted = outcome.reason;
+      else await note("type", outcome.reason, "failed", null);
+      return reply({ op: "live_type", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
-    const prior = await open.driver.evaluateFunction<string>(markedFieldValue, { markIndex: index });
-    const plan = planType(open.read, ref, text, prior);
-    if (!plan.ok) {
-      open.refused = true;
-      await note("type", plan.refusal, "failed", null);
-      return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: plan.refusal }, view: shown(open.read), shot: "" });
-    }
-    const before = await readBefore(open, index);
-    await note("type", label, "running", null);
-    await open.driver.evaluateFunction(focusLiveMark, { markIndex: index });
-    try {
-      await open.driver.insertText(text, prior, index);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "focus_moved";
-      open.refused = true;
-      if (reason === "credential_field" || reason === "focus_moved") {
-        open.halted = reason;
-        return reply({ op: "live_type", session: open.id, outcome: { kind: "halted", reason }, view: shown(open.read), shot: "" });
-      }
-      throw err;
-    }
-    const after = await readAfter(open, index);
-    const fact = open.facts?.controls.find((item) => item.index === index);
-    await open.trail.add({
+    const after = await readAfter(state, index);
+    const fact = state.facts?.controls.find((item) => item.index === index);
+    await state.trail.add({
       op: "type",
-      identity: before.identity,
+      identity: before?.identity,
       // The whole field, as the recorder keeps it. Text typed after a prefilled value includes that value.
-      value: after.value || `${before.side.value}${text}`,
+      value: after.value || `${before?.side.value || ""}${text}`,
       ...(fact && searchField(fact) ? { parameter: QUERY_INPUT } : {}),
-      beforeUrl: before.side.url,
+      beforeUrl: before?.side.url,
       afterUrl: after.url || undefined,
     });
     return look("type");
@@ -730,31 +561,50 @@ export function createLiveHost(opts: LiveHostOptions): {
     } catch (err) {
       saveError = err instanceof Error ? err.message : "workflow save failed";
     }
-    parked = {
-      driver: open.driver,
-      cdp: open.cdp,
-      guard: open.guard,
-      stopPath: open.stopPath,
-      hosts: open.hosts,
-      origins: open.origins,
-      portFile: open.portFile,
-    };
-    await open.log.flush(saveError ? "failed" : status, saveError || noteText, open.host);
-    releaseCdpLock(AGENT, lockFile);
+    const ending = open;
+    await ending.log.flush(saveError ? "failed" : status, saveError || noteText, ending.host);
     slot = { phase: "closed", id, status: saveError ? "failed" : status };
     open = null;
+    // A replay opens its own connection, so the session closes its window and socket before it frees the lock.
+    await ending.driver.end().catch(() => undefined);
+    ending.cdp.close();
+    releaseCdpLock(AGENT, lockFile);
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });
     }
     return reply({ op: "live_stop", session: id, outcome: { kind: "stopped", already: false }, view, shot: "" });
   }
 
-  async function replay(workflow: WorkflowV2): Promise<LiveReplayResult> {
-    const run = chain.then(() => {
-      if (slot.phase === "open") throw new Error("stop the live session before replay");
-      if (!parked) throw new Error("live chrome is not open");
-      return replayLive(parked, workflow, lockFile);
+  /** Runs inside the call chain. The session must be closed, and the replay takes the CDP lock itself. */
+  async function runReplay(workflow: WorkflowV2, inputs: ReplayArgs): Promise<RunResult> {
+    if (slot.phase === "open") throw new Error("stop the live session before replay");
+    return replayLiveWorkflow(workflow, inputs, {
+      target: defaultTarget,
+      lockFile,
+      helper: opts.helper,
+      openProfile,
+      axLog: path.join(opts.home, "live-session", "ax.jsonl"),
+      connectTimeoutMs: opts.connectTimeoutMs,
     });
+  }
+
+  /** bao mcp's run_workflow sends the workflow it found and the inputs. The reply carries the run, or why it did not start. */
+  async function replayBody(body: Record<string, unknown>): Promise<unknown> {
+    const workflow = body.workflow && typeof body.workflow === "object" ? body.workflow as WorkflowV2 : undefined;
+    const inputs = body.inputs && typeof body.inputs === "object" && !Array.isArray(body.inputs) ? body.inputs as ReplayArgs : {};
+    try {
+      if (!workflow) throw new Error("workflow is required");
+      const errors = validateWorkflow(workflow);
+      if (errors.length) throw new Error(`invalid workflow: ${errors.join(", ")}`);
+      return reply({ op: LIVE_REPLAY, run: await runReplay(workflow, inputs) });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "live replay failed";
+      return reply({ op: LIVE_REPLAY, outcome: { kind: "rejected", reason: reason.slice(0, 180) } });
+    }
+  }
+
+  async function replay(workflow: WorkflowV2, inputs: ReplayArgs = {}): Promise<RunResult> {
+    const run = chain.then(() => runReplay(workflow, inputs));
     chain = run.then(() => undefined, () => undefined);
     return run;
   }
@@ -765,115 +615,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await stop().catch(() => undefined);
       releaseCdpLock(AGENT, lockFile);
     }
-    if (parked) {
-      await parked.driver.end().catch(() => undefined);
-      parked.cdp.close();
-      parked = null;
-    }
   }
 
   return { call, replay, close };
-}
-
-export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, lockFile = CDP_LOCK_PATH): Promise<LiveReplayResult> {
-  if (workflow.driver !== "cdp-live") throw new Error("not a live workflow");
-  await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 1_000 });
-  try {
-    const driver = target.driver;
-    driver.setOrigins(target.origins);
-    await driver.goto(workflow.startUrl);
-    const look = async (markIndex = -1): Promise<{ read: LiveRead; facts: PageFacts; halt: string | null }> => {
-      const facts = await driver.evaluateFunction<PageFacts>(readLivePage, { markIndex });
-      const read = buildView(facts, 1, target.guard);
-      const halt = pageHalt({
-        blocked: facts.blocked,
-        path: facts.path,
-        passwordFields: read.view.credentialFields,
-        text: facts.text,
-        stopPath: target.stopPath,
-      });
-      return { read, facts, halt };
-    };
-    let guard: PageGuard | undefined;
-    let stoppedAt = "";
-    let status: LiveReplayResult["status"] = "passed";
-    let reason = "";
-    const stopAt = (id: string, next: LiveReplayResult["status"], why: string): void => {
-      stoppedAt = id;
-      status = next;
-      reason = why;
-    };
-    for (const step of workflow.steps) {
-      const wants = pageWhen(step);
-      if (wants) {
-        if (!guard || guard.key !== wants.key) {
-          const { facts } = await look();
-          const shows = facts.controls.some((item) => item.label.includes(wants.text)) || (facts.text || "").includes(wants.text);
-          guard = { key: wants.key, open: shows === wants.shown };
-        }
-        if (!guard.open) continue;
-      } else {
-        guard = undefined;
-      }
-      if (step.human || step.action !== "click") {
-        stopAt(step.id, "needs_human", step.action);
-        break;
-      }
-      const name = step.identity?.name || step.locators?.find((item) => item.name)?.name || "";
-      const { read, halt } = await look();
-      if (halt) {
-        stopAt(step.id, "needs_human", halt);
-        break;
-      }
-      const label = redactLabel(name);
-      const control = label ? read.view.controls.find((item) => item.label === label) : undefined;
-      if (!control) {
-        stopAt(step.id, "failed", "not_found");
-        break;
-      }
-      const plan = planClick(read, control.ref);
-      if (!plan.ok) {
-        stopAt(step.id, "failed", plan.refusal);
-        break;
-      }
-      const href = read.targets.byRef.get(control.ref)?.href || "";
-      const blocked = href ? navigationGuard(href, target.hosts, target.origins, target.stopPath) : null;
-      if (blocked) {
-        stopAt(step.id, "failed", blocked);
-        break;
-      }
-      const index = read.targets.byRef.get(control.ref)?.index ?? -1;
-      if (!sameTarget(read, (await look(index)).read, control.ref)) {
-        stopAt(step.id, "failed", "stale_ref");
-        break;
-      }
-      driver.takeBlockedNav();
-      await driver.clickCss(plan.selector);
-      const blockedNav = driver.takeBlockedNav();
-      if (blockedNav) {
-        stopAt(step.id, "failed", blockedNav);
-        break;
-      }
-    }
-    const last = workflow.steps[workflow.steps.length - 1];
-    if (!stoppedAt && last) {
-      const halt = (await look()).halt;
-      if (halt) stopAt(last.id, "needs_human", halt);
-    }
-    const at = workflow.steps.findIndex((step) => step.id === stoppedAt);
-    return {
-      id: workflow.id,
-      workflowId: workflow.id,
-      status,
-      modelCalls: 0,
-      stoppedAt,
-      reason,
-      steps: workflow.steps.map((step, i) => ({
-        id: step.id,
-        status: at < 0 || i < at ? "passed" : i === at ? status : "skipped",
-      })),
-    };
-  } finally {
-    releaseCdpLock(AGENT, lockFile);
-  }
 }

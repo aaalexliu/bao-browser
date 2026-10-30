@@ -16,6 +16,7 @@ import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
 import { createLiveHost } from "../cdp-live/live-host";
+import { liveReplayArgs } from "../cdp-live/live-replay";
 import { parseLiveTarget } from "../cdp-live/live-target";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
@@ -118,7 +119,6 @@ import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, 
 import { defaultConfigHome } from "../extension/install-host";
 import { createRemoteAgent } from "../v1/remote-agent";
 import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
-import { runCdpLiveWorkflow } from "../v1/remote-run";
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -377,7 +377,7 @@ export async function startApp(opts: {
           reason: result.failure?.reason || result.reason,
         };
       },
-      cdpLive: (id, inputs) => runCdpLiveWorkflow(library, id, inputs),
+      live: (workflow, inputs) => live.replay(workflow, inputs),
     },
   });
   const sessions = new Map<string, FreezeSession>();
@@ -1085,12 +1085,22 @@ export async function startApp(opts: {
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         if (refusesOwnedBrowser(workflow.driver)) {
+          const liveArgs = liveReplayArgs(workflow, body.args || {});
+          let run: RunResult;
           try {
-            return json(res, await live.replay(workflow));
+            run = await live.replay(workflow, liveArgs);
           } catch (err) {
             const message = err instanceof Error ? err.message : "live replay failed";
             return json(res, { error: message, modelCalls: 0 }, 409);
           }
+          library.saveRun(persistedRun(run, workflow, liveArgs, {
+            promotion: undefined,
+            recorded: { wrote: false },
+            videoStartedAt: 0,
+            secretList: [],
+          }));
+          library.savePublicInputs(workflow.id, keptInputs(workflow, liveArgs));
+          return json(res, { ...run, id: run.runId });
         }
         const args = await materializeFiles(body.args || {});
         if (body.fresh) {
@@ -1453,6 +1463,8 @@ export async function startApp(opts: {
         }
         if (body.driver === "playwright" || body.driver === "extension" || body.driver === null) {
           const doc = library.read(id);
+          // A live workflow's steps came from the live Chrome. Replaying it in Bao's own Chrome is the wrong browser.
+          if (refusesOwnedBrowser(doc.driver)) return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
           const next: WorkflowV2 = { ...doc, updatedAt: Date.now() };
           if (body.driver) next.driver = body.driver;
           else delete next.driver;
@@ -3225,7 +3237,7 @@ function summary(doc: WorkflowV2) {
     expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
     firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
     startUrl: doc.startUrl,
-    driver: workflowDriver(doc),
+    driver: refusesOwnedBrowser(doc.driver) ? doc.driver : workflowDriver(doc),
   };
 }
 

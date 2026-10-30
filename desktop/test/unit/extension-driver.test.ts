@@ -4,7 +4,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { hostAccessPanel, runDriverField } from "../../src/app/views";
+import { hostAccessPanel, runDriverField, runHealField } from "../../src/app/views";
 import { FrameDecoder, encodeFrame } from "../../src/extension/frames";
 import { clampGesture, fillPlan, gestureQueue } from "../../src/extension/gestures";
 import { acceptAuth, originArg } from "../../src/extension/native-host";
@@ -226,6 +226,24 @@ test("the run form shows Playwright unless the workflow asks for the extension",
   assert.match(playwright, /value="playwright"[^>]*selected/);
   const extension = runDriverField("extension");
   assert.match(extension, /value="extension"[^>]*selected/);
+  const live = runDriverField("cdp-live");
+  assert.match(live, /<select id="wf-driver" data-testid="run-driver" disabled>/);
+  assert.match(live, /value="cdp-live" selected>Live - the Chrome the live session drove</);
+  assert.doesNotMatch(live, /Playwright|Extension/);
+});
+
+test("the run form locks healing off for a live workflow and keeps the choice for the others", () => {
+  for (const driver of [undefined, "playwright", "extension"]) {
+    const field = runHealField(driver, "approve", "auto");
+    assert.match(field, /<select id="wf-heal" data-testid="run-heal">/);
+    assert.match(field, /Use the global setting \(auto\)/);
+    assert.match(field, /Auto self-heal/);
+    assert.match(field, /value="approve" selected>Approve before applying/);
+  }
+  const live = runHealField("cdp-live", "approve", "auto");
+  assert.match(live, /<select id="wf-heal" data-testid="run-heal" disabled>/);
+  assert.match(live, /live replays run without healing or approval/);
+  assert.doesNotMatch(live, /Approve before applying|Auto self-heal|global setting/);
 });
 
 test("the bridge accepts the token file and drops a bad token", async () => {

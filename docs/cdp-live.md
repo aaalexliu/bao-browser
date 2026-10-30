@@ -10,7 +10,7 @@
 
 ## Driver
 
-`cdp-live` attaches to the browser WebSocket published by `DevToolsActivePort` and to no other file in the Chrome profile. The desktop and `bao mcp`'s `run_workflow` refuse to launch Bao's Chrome for a workflow whose driver is `cdp-live`. Their reason tells you to replay it from the Bao app that recorded it, after `live_stop`. Replay through `bao mcp` comes in a later step. The string `cdp` stays invalid and still maps to Playwright if something calls `workflowDriver` without the live-attach check.
+`cdp-live` attaches to the browser WebSocket published by `DevToolsActivePort` and to no other file in the Chrome profile. The desktop and `bao mcp`'s `run_workflow` never launch Bao's Chrome for a workflow whose driver is `cdp-live`. They replay it with `replayLiveWorkflow` in `desktop/src/cdp-live/live-replay.ts`, in the running app's live target, as [cdp-live-chrome.md](cdp-live-chrome.md) describes. The string `cdp` stays invalid and still maps to Playwright if something calls `workflowDriver` without the live-attach check.
 
 The driver:
 

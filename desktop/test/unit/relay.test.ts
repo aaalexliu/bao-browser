@@ -12,6 +12,7 @@ import { workflowDriver } from "../../src/extension/protocol";
 import { createRemoteAgent, remoteRunAllowed } from "../../src/v1/remote-agent";
 import { relayPath, saveRelay } from "../../src/v1/relay-link";
 import { remoteDriverKind } from "../../src/v1/remote-run";
+import type { RunResult } from "../../src/v1/replay";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
@@ -277,10 +278,26 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
     assert.ok(agent);
     saveRelay(root, { server: server.origin, token: paired.token, deviceId: paired.deviceId, tokenId: paired.tokenId });
     library.updateSettings({ remoteMcp: true, remotePermission: "deny" });
-    const calls = { extension: 0, cdpLive: 0, playwright: 0 };
+    const calls = { extension: 0, live: 0, playwright: 0 };
     const runners = {
       extension: async () => { calls.extension += 1; return { outcome: "ok", via: "extension" }; },
-      cdpLive: async () => { calls.cdpLive += 1; return { outcome: "ok", via: "cdp-live" }; },
+      // The live runner returns the engine's run. run_workflow turns it into the outcome, as for a Playwright run.
+      live: async (doc: WorkflowV2): Promise<RunResult> => {
+        calls.live += 1;
+        return {
+          runId: "run-live",
+          status: "passed",
+          steps: doc.steps.map((step) => ({ id: step.id, status: "passed" as const })),
+          heals: [],
+          repairs: [],
+          locatorHits: [],
+          receipts: [],
+          trajectory: [],
+          trail: [],
+          pageClasses: [],
+          modelCalls: 0,
+        };
+      },
       playwright: async () => { calls.playwright += 1; return { outcome: "ok", via: "playwright" }; },
     };
     const denied = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, autoAllow: true });
@@ -330,7 +347,10 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
       const ext = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(ext.json.via, "extension");
       const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
-      assert.equal(live.json.via, "cdp-live");
+      assert.equal(live.json.outcome, "ok", JSON.stringify(live.json));
+      assert.equal(live.json.runId, "run-live");
+      assert.equal(calls.live, 1);
+      assert.equal(library.readRun("run-live").status, "passed");
       assert.equal(calls.playwright, 1);
     } finally {
       await auto.stop();
@@ -346,7 +366,7 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
       assert.match(String(ext.json.reason), /extension is not connected/);
       const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
       assert.equal(live.json.outcome, "failed");
-      assert.match(String(live.json.reason), /Bao app that recorded it, after live_stop/);
+      assert.match(String(live.json.reason), /never in Bao's own Chrome/);
     } finally {
       await missing.stop();
     }

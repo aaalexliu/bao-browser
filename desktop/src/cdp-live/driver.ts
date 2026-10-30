@@ -355,6 +355,11 @@ export class CdpLiveDriver implements Driver {
     };
   }
 
+  /** The data-bao-i handle the last tree() gave this node. Empty when that tree() did not list it. */
+  handleOf(node: Identity): string {
+    return this.handles.get(node) || "";
+  }
+
   /** tree(), and the node in it that carries the live mark. A mark tree() did not list leaves `marked` out. */
   async markedTree(markIndex: number): Promise<{ tree: LiveTree; marked?: Identity; mark: MarkedState }> {
     const tree = await this.tree();
