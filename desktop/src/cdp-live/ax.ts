@@ -26,6 +26,9 @@ export interface AxClick {
   via: "BaoOSHelper";
 }
 
+/** The BaoOSHelper calls a live session makes on the daily Chrome. Tests pass a fake. */
+export type ChromeAx = Pick<MacOsHelper, "permissions" | "nodes" | "press">;
+
 export class AxUnavailable extends Error {
   constructor(message: string, readonly summary: AxSummary) {
     super(message);
@@ -63,7 +66,7 @@ function windowOf(node: AxNode | undefined): string {
   return publishWindow(named);
 }
 
-export async function chromeTree(helper: MacOsHelper, pid?: number): Promise<{ pid?: number; summary: AxSummary }> {
+export async function chromeTree(helper: Pick<ChromeAx, "nodes">, pid?: number): Promise<{ pid?: number; summary: AxSummary }> {
   const hit = await helper.nodes(CHROME_BUNDLE, pid);
   return { pid: hit.pid || pid, summary: summarizeAx(hit.nodes || []) };
 }
@@ -93,7 +96,7 @@ export async function openInspect(helper: MacOsHelper, logFile: string): Promise
 }
 
 /** Read the checkbox. Does not type and does not press. */
-export async function checkboxState(helper: MacOsHelper, pid?: number): Promise<{ pid?: number; summary: AxSummary; on: boolean | null }> {
+export async function checkboxState(helper: Pick<ChromeAx, "nodes">, pid?: number): Promise<{ pid?: number; summary: AxSummary; on: boolean | null }> {
   const tree = await chromeTree(helper, pid);
   if (!tree.summary.checkbox.found) return { pid: tree.pid, summary: tree.summary, on: null };
   return { pid: tree.pid, summary: tree.summary, on: checkboxOn(tree.summary.checkbox.value) };
@@ -129,7 +132,7 @@ export async function ensureRemoteDebugging(helper: MacOsHelper, logFile: string
   return { pid: tree.pid, summary: tree.summary, pressed: true };
 }
 
-export async function pressAllow(helper: MacOsHelper, pid: number | undefined, logFile: string): Promise<{ at: number; window: string }> {
+export async function pressAllow(helper: Pick<ChromeAx, "press">, pid: number | undefined, logFile: string): Promise<{ at: number; window: string }> {
   const hit = await helper.press(target("AXButton", ALLOW_BUTTON), pid);
   const window = windowOf(hit.element) || "Allow remote debugging?";
   await note(logFile, { what: "AXPress", role: "AXButton", name: ALLOW_BUTTON, window });

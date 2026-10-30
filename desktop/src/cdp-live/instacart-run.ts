@@ -10,15 +10,11 @@ import { listenPid, readDevToolsActivePort } from "./endpoint";
 import { acquireCdpLock, releaseCdpLock } from "./lock";
 import { publicPath } from "./session";
 import {
+  READER_HELPERS,
   STAPLE,
   addLabelOk,
-  addProductName,
-  cartControlLabel,
-  cartCountFromLabel,
   cartLabelOk,
   cartRestored,
-  classifyDialog,
-  clickForbidden,
   removeLabelOk,
   searchLabelOk,
   stapleNameOk,
@@ -83,18 +79,7 @@ async function writeState(file: string, state: Saved): Promise<void> {
 }
 
 async function snap(driver: CdpLiveDriver, want: string): Promise<InstacartSnap> {
-  return driver.evaluateFunction<InstacartSnap>(readInstacart, want, [
-    classifyDialog,
-    clickForbidden,
-    stapleNameOk,
-    searchLabelOk,
-    addProductName,
-    addLabelOk,
-    cartControlLabel,
-    cartLabelOk,
-    cartCountFromLabel,
-    removeLabelOk,
-  ]);
+  return driver.evaluateFunction<InstacartSnap>(readInstacart, want, READER_HELPERS);
 }
 
 function safeTrustText(text: string): string {

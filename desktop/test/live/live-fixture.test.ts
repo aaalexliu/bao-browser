@@ -152,19 +152,14 @@ test("live fixture refuses the reviewed traps, then replays a shop with no model
     assert.equal(shop.hits.some((hit) => hit.startsWith("/checkout")), false);
     await waitForPort(portFile);
     const call = (body: Record<string, unknown>) => host.call({ ...body, portFile }) as Promise<LiveBody>;
-    let opened: LiveBody = {};
-    const visibleAt = Date.now() + 20_000;
-    while (Date.now() < visibleAt) {
-      opened = await call({
-        op: "live_session_start",
-        intent: "Shop the fixture",
-        url: `${shop.origin}/shop`,
-        preset: "generic",
-        workflowId: "wf-shop-fixture",
-      });
-      if (opened.outcome?.reason !== "BaoOSHelper cannot see a Chrome window") break;
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
+    // A Chrome started with --remote-debugging-port has no Allow dialog, so BaoOSHelper is not needed.
+    const opened = await call({
+      op: "live_session_start",
+      intent: "Shop the fixture",
+      url: `${shop.origin}/shop`,
+      preset: "generic",
+      workflowId: "wf-shop-fixture",
+    });
     assert.equal(opened.outcome?.kind, "applied", JSON.stringify(opened.outcome));
     const labels = (opened.view?.controls || []).map((item) => item.label);
     assert.equal(labels.includes("Place your order"), false);

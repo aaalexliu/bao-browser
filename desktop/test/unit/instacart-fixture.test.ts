@@ -10,26 +10,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
-import {
-  addLabelOk,
-  addProductName,
-  cartControlLabel,
-  cartCountFromLabel,
-  cartLabelOk,
-  classifyDialog,
-  clickForbidden,
-  readInstacart,
-  removeLabelOk,
-  searchLabelOk,
-  stapleNameOk,
-  type InstacartSnap,
-} from "../../src/cdp-live/instacart";
+import { READER_HELPERS, readInstacart, type InstacartSnap } from "../../src/cdp-live/instacart";
 import { ACCOUNT_CHROME_MAC, pidsForDataDir } from "../../src/launch";
 import { fixtureBrowserArgs, hostResolverRules, launchFixtureBrowser, type FixtureBrowser } from "../instacart/browser";
 import { FIXTURE_HOSTS, TARGET, TARGET_PATH, startInstacartFixture, trapKind, type InstacartFixture } from "../instacart/fixture";
 import { classNames } from "../instacart/pages";
-
-const READER_HELPERS = [classifyDialog, clickForbidden, stapleNameOk, searchLabelOk, addProductName, addLabelOk, cartControlLabel, cartLabelOk, cartCountFromLabel, removeLabelOk];
 
 /** The same page call cdp-live's evaluateFunction makes for the one-shot Instacart run. */
 function readInstacartScript(want: string): string {

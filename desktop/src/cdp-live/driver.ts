@@ -781,6 +781,18 @@ export async function openLiveWindow(
   return driver;
 }
 
+/** Drive a window this process asked Chrome to open. Like openLiveWindow, end() closes it. */
+export async function adoptLiveWindow(
+  cdp: CdpSocket,
+  hosts: readonly string[],
+  targetId: string,
+): Promise<CdpLiveDriver> {
+  const sessionId = await flattenedSession(cdp, targetId);
+  const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts);
+  await driver.start();
+  return driver;
+}
+
 /** Attach to a tab the person already opened. Does not create, navigate, or close it. */
 export async function attachLivePage(
   cdp: CdpSocket,

@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { serverPort } from "../home";
 import { frameRpc, takeRpcChunk } from "./frame";
-import { isLiveOp, LIVE_TOOLS, publicLiveResult } from "../cdp-live/live-ops";
+import { isLiveOp, LIVE_DISCONNECT, LIVE_TOOLS, publicLiveResult } from "../cdp-live/live-ops";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -21,7 +22,7 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
       intent: flag(args, "--intent") || "",
       url: flag(args, "--url") || "",
       portFile: flag(args, "--port-file") || "",
-      preset: flag(args, "--preset") || "generic",
+      preset: flag(args, "--preset") || "",
       workflowId: flag(args, "--workflow-id") || "",
     };
   }
@@ -66,9 +67,16 @@ export async function runLiveCli(cmd: string, args: string[]): Promise<void> {
   else if (kind === "refused" || kind === "halted") process.exitCode = 2;
 }
 
+/**
+ * stdio MCP server that forwards live tools to the running app. Each call
+ * carries this process's client id, so when the client goes away the app saves
+ * and ends only the session this client started.
+ */
 export async function liveProxyMain(args: string[] = []): Promise<void> {
+  const client = randomUUID();
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
+  let ending = false;
   const send = (msg: unknown): void => {
     process.stdout.write(frameRpc(msg, "json"));
   };
@@ -94,7 +102,7 @@ export async function liveProxyMain(args: string[] = []): Promise<void> {
         return;
       }
       try {
-        const result = await postLive({ op: name, ...(msg.params?.arguments || {}) }, args);
+        const result = await postLive({ op: name, ...(msg.params?.arguments || {}), client }, args);
         send({ jsonrpc: "2.0", id: msg.id, result: liveToolResult(result) });
       } catch (err) {
         const message = err instanceof Error ? err.message : "live call failed";
@@ -103,6 +111,17 @@ export async function liveProxyMain(args: string[] = []): Promise<void> {
       return;
     }
     if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
+  };
+  // The client closed stdin or stopped this process: finish queued calls, then save its session.
+  const end = (): void => {
+    if (ending) return;
+    ending = true;
+    // A call stuck in the app must not keep this process alive. The app's idle timeout still saves.
+    setTimeout(() => process.exit(0), 15_000).unref();
+    void chain
+      .then(() => postLive({ op: LIVE_DISCONNECT, client }, args))
+      .catch(() => undefined)
+      .finally(() => process.exit(0));
   };
   process.stdin.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
@@ -115,5 +134,8 @@ export async function liveProxyMain(args: string[] = []): Promise<void> {
       });
     }
   });
+  process.stdin.on("end", end);
+  process.once("SIGTERM", end);
+  process.once("SIGINT", end);
   await new Promise(() => {});
 }

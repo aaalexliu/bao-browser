@@ -179,7 +179,24 @@ The session contract is [cdp-live.md](cdp-live.md).
 
 ## Agent entry point
 
-`bao mcp-live [--home dir]` is a stdio MCP server with eight tools: `live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop`. The same names are CLI verbs, for example `bao live_session_start --intent text --url https://host/ --port-file DevToolsActivePort --preset generic`, `bao live_key --key Enter --ref e3.c0`, `bao live_scroll --direction down`, and `bao live_snapshot --page 2`. Both forward each call to the running Bao app's `POST /api/live`, so the app must be running. The host is `desktop/src/cdp-live/live-host.ts`. It takes `/tmp/bao-cdp-session.lock`, writes an audit row before each action, and refuses or halts on the same guards as the intent session. The live window fails a page load to another host or onto a stop path before the request leaves Chrome. After a blocked stop-path load, the window goes back to the last allowed page, and the refusal carries a fresh read of that page, so its refs work. A rejected, refused, or halted call is an MCP error. The CLI exits 1 when rejected and 2 when refused or halted. `live_stop` saves the session as a workflow in the library. Replaying it attaches to the same Chrome and makes no model calls.
+`bao mcp-live [--home dir]` is a stdio MCP server with eight tools: `live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop`. The same names are CLI verbs, for example `bao live_session_start --intent text --url https://host/`, `bao live_key --key Enter --ref e3.c0`, `bao live_scroll --direction down`, and `bao live_snapshot --page 2`. Both forward each call to the running Bao app's `POST /api/live`, so the app must be running. The host is `desktop/src/cdp-live/live-host.ts`. It takes `/tmp/bao-cdp-session.lock`, writes an audit row before each action, and refuses or halts on the same guards as the intent session. The live window fails a page load to another host or onto a stop path before the request leaves Chrome. After a blocked stop-path load, the window goes back to the last allowed page, and the refusal carries a fresh read of that page, so its refs work. A rejected, refused, or halted call is an MCP error. The CLI exits 1 when rejected and 2 when refused or halted.
+
+`live_session_start` needs only `intent` and `url`. `workflowId` is optional. The app picks the Chrome with `bao serve --live-target <target>` or `BAO_LIVE_TARGET`, and the flag wins (`desktop/src/cdp-live/live-target.ts`):
+
+| Target | Chrome | Port file | Allow dialog |
+| --- | --- | --- | --- |
+| `daily` (default) | The person's own Chrome, window in the `Default` profile | `~/Library/Application Support/Google/Chrome/DevToolsActivePort` | Yes. BaoOSHelper reads the checkbox and presses Allow. |
+| `daily:<profile directory>` | The same Chrome, window in that profile, such as `Profile 2` | Same | Yes |
+| `bao` | Bao's own Chrome | `<home>/chrome-profile/DevToolsActivePort` | No |
+| `throwaway:<path>` | A Chrome started with `--remote-debugging-port` and its own `--user-data-dir`, such as a test browser | That absolute path | No |
+
+A caller can still pass `portFile`. The configured target's own file keeps that target, profile included. The daily Chrome's file keeps the Allow press, and any other file is a throwaway target. For a target with no dialog, the host connects with no helper call, so neither the Accessibility grant nor the checkbox is read.
+
+`Target.createTarget` opens a window in whichever profile Chrome used last, and CDP cannot pick another one. So for the daily Chrome the host runs the binary of the Chrome that owns the DevTools port with `--user-data-dir=<the port file's folder> --profile-directory=<profile> --new-window` and a `data:` marker page. Chrome hands that command line to the running browser and exits. The browser opens the window in that profile, and the session drives only the page that shows its own marker. A headless Chrome does not take the hand-off, so the live lane checks it on a headed test browser (`desktop/test/live/live-profile.test.ts`). Chrome quietly makes a new, empty profile for a name it does not know, so the host first refuses a profile with no folder in that user-data dir. The error names the profile and lists the `Default` and `Profile <n>` folders that do exist.
+
+The start url's host picks the preset. `instacart.com` and `www.instacart.com` always use `instacart`, and `books.toscrape.com` always uses `books`, whatever `preset` says. Other hosts use the `preset` given, else `generic`.
+
+The session saves its workflow in the library when it ends. It ends on `live_stop`, when the MCP client closes `mcp-live`'s stdin or stops it with SIGTERM or SIGINT, or after 10 minutes with no call. `mcp-live` sends a client id with each call, so a disconnect ends only the session that client started. Replaying the workflow attaches to the same Chrome and makes no model calls.
 
 The live tools, as `desktop/src/cdp-live/live-ops.ts` defines them:
 

@@ -4,9 +4,12 @@ import { INSTACART_DENY } from "./presets";
 
 export const STAPLE = "bananas";
 
+/** clickForbidden also runs in the tab, where the import does not exist. READER_HELPERS sends this value there. */
+const INSTACART_DENY_SOURCE = INSTACART_DENY;
+
 export function clickForbidden(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
-  return new RegExp(INSTACART_DENY, "i").test(text);
+  return new RegExp(INSTACART_DENY_SOURCE, "i").test(text);
 }
 
 export function stapleNameOk(name: string): boolean {
@@ -433,3 +436,18 @@ export function readInstacart(wantProduct: string): InstacartSnap {
   }
   return snap;
 }
+
+/** Everything readInstacart calls in the tab, in the shape evaluateFunction takes. */
+export const READER_HELPERS: ReadonlyArray<{ name: string; toString(): string }> = [
+  { name: "INSTACART_DENY_SOURCE", toString: () => JSON.stringify(INSTACART_DENY_SOURCE) },
+  classifyDialog,
+  clickForbidden,
+  stapleNameOk,
+  searchLabelOk,
+  addProductName,
+  addLabelOk,
+  cartControlLabel,
+  cartLabelOk,
+  cartCountFromLabel,
+  removeLabelOk,
+];

@@ -45,7 +45,8 @@ async function main(): Promise<void> {
     const home = resolveHome({ args: rest, warn: (line) => notices.push(line) });
     for (const line of notices) console.error(line);
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || 4787);
-    const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true });
+    const liveTarget = flag(rest, "--live-target") || process.env.BAO_LIVE_TARGET;
+    const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true, liveTarget });
     console.log(`bao ${app.port} home ${home}`);
     await new Promise(() => {});
     return;
@@ -163,7 +164,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-live [--home dir] | bao mcp-ax | bao live_session_start --intent text --url https://host/ --port-file DevToolsActivePort --preset generic|instacart|books | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort>] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-live [--home dir] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 
