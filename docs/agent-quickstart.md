@@ -50,7 +50,7 @@ command = "/Applications/Bao.app/Contents/MacOS/bao-mcp"
 tool_timeout_sec = 180
 ```
 
-Codex stops a tool call after 60 s by default. On the daily Chrome, a live call waits 8 to 50 s for the Allow press ([permissions.md](permissions.md)), and a live replay presses Allow again on its own connection. `codex mcp add` cannot set `tool_timeout_sec`, so bao writes the table itself. It replaces an earlier `[mcp_servers.bao]` table and its sub-tables in place and leaves every other line alone. A bao entry in another form, such as an inline table, is refused, and nothing is written.
+Codex stops a tool call after 60 s by default. On the daily Chrome, a live call waits 8 to 50 s for the Allow press ([permissions.md](permissions.md)), and a live replay presses Allow again on its own connection. `codex mcp add` cannot set `tool_timeout_sec`, so bao writes the table itself. bao owns `command`, `args`, `env`, and `tool_timeout_sec` in `[mcp_servers.bao]`, and an `[mcp_servers.bao.env]` sub-table. It replaces those in place and removes an old `args` or `env` that the new entry does not set. Every other line stays as it was, including your own keys in `[mcp_servers.bao]`, such as `enabled_tools` or `startup_timeout_sec`, and the tool approvals Codex saves in `[mcp_servers.bao.tools.<tool>]`. Running `--write` again on a current entry leaves the file unchanged. A bao entry in another form, such as an inline table, is refused, and nothing is written.
 
 `--app` names another Bao.app. Without `--app`, the launcher is the one in the Bao.app the CLI runs from, else `/Applications/Bao.app`. A missing launcher is named on stderr, and `--write` then writes nothing. A Bao.app built before the launcher has no `bao-mcp`; rebuild it from [Build Bao on a Mac](mac-build.md).
 

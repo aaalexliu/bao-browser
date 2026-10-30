@@ -89,13 +89,13 @@ test("the Codex entry runs the launcher with the long tool timeout", () => {
 
 test("a new bao table goes at the end of config.toml", () => {
   const entry = block("/L");
-  assert.equal(upsertCodexServer("", entry), entry);
-  assert.equal(upsertCodexServer("model = \"o3\"\n", entry), `model = "o3"\n\n${entry}`);
-  assert.equal(upsertCodexServer("model = \"o3\"", entry), `model = "o3"\n\n${entry}`);
-  assert.equal(upsertCodexServer("model = \"o3\"\n\n", entry), `model = "o3"\n\n${entry}`);
+  assert.equal(upsertCodexServer("", "/L"), entry);
+  assert.equal(upsertCodexServer("model = \"o3\"\n", "/L"), `model = "o3"\n\n${entry}`);
+  assert.equal(upsertCodexServer("model = \"o3\"", "/L"), `model = "o3"\n\n${entry}`);
+  assert.equal(upsertCodexServer("model = \"o3\"\n\n", "/L"), `model = "o3"\n\n${entry}`);
 });
 
-test("the old bao table and its sub-tables are replaced in place and nothing else changes", () => {
+test("bao replaces only the keys it owns and keeps the user's keys and tool approvals", () => {
   const before = [
     "model = \"o3\" # keep",
     "",
@@ -104,22 +104,29 @@ test("the old bao table and its sub-tables are replaced in place and nothing els
     "",
     "# bao from an old checkout",
     "[mcp_servers.bao]",
-    "command = \"node\"",
+    "enabled = true",
+    "command = \"node\" # old",
+    "startup_timeout_sec = 20",
     "args = [",
     "  \"/old/cli.js\",",
     "  \"mcp\",",
     "]",
+    "tool_timeout_sec = 60",
+    "tools.run_workflow.approval_mode = \"approve\"",
     "",
     "[mcp_servers.bao.env]",
     "BAO_HOME = \"/old\"",
+    "",
+    "# approvals Codex saved",
+    "[mcp_servers.bao.tools.live_click]",
+    "approval_mode = \"approve\"",
     "",
     "# zeta keeps this comment",
     "[mcp_servers.zeta]",
     "command = \"z\"",
     "",
   ].join("\n");
-  const entry = block("/L");
-  const after = upsertCodexServer(before, entry);
+  const after = upsertCodexServer(before, "/L");
   assert.equal(after, [
     "model = \"o3\" # keep",
     "",
@@ -127,16 +134,36 @@ test("the old bao table and its sub-tables are replaced in place and nothing els
     "command = \"a\"",
     "",
     "# bao from an old checkout",
-    entry,
+    "[mcp_servers.bao]",
+    "enabled = true",
+    "command = \"/L\"",
+    `tool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}`,
+    "startup_timeout_sec = 20",
+    "tools.run_workflow.approval_mode = \"approve\"",
+    "",
+    "# approvals Codex saved",
+    "[mcp_servers.bao.tools.live_click]",
+    "approval_mode = \"approve\"",
+    "",
     "# zeta keeps this comment",
     "[mcp_servers.zeta]",
     "command = \"z\"",
     "",
   ].join("\n"));
-  assert.equal(upsertCodexServer(after, entry), after);
+  assert.equal(upsertCodexServer(after, "/L"), after);
+  assert.equal(upsertCodexServer(after, "/M"), after.replace("command = \"/L\"", "command = \"/M\""));
 });
 
-test("quoted keys, a sub-table far below, and header lookalikes in values", () => {
+test("a bao table with none of bao's keys gets them under its header", () => {
+  const tools = "[mcp_servers.bao.tools.live_click]\napproval_mode = \"approve\"\n";
+  const lines = block("/L").replace("[mcp_servers.bao]\n", "");
+  assert.equal(upsertCodexServer(`[mcp_servers.bao]\nenabled = true\n\n${tools}`, "/L"), `[mcp_servers.bao]\n${lines}enabled = true\n\n${tools}`);
+  assert.equal(upsertCodexServer("[mcp_servers.bao]", "/L"), `[mcp_servers.bao]\n${lines}`);
+  // Approvals with no bao table: the table goes at the end, which TOML allows after its sub-tables.
+  assert.equal(upsertCodexServer(tools, "/L"), `${tools}\n${block("/L")}`);
+});
+
+test("quoted keys, an env sub-table far below, and header lookalikes in values", () => {
   const before = [
     "[ mcp_servers . \"bao\" ] # spaced and quoted",
     "command = \"old\"",
@@ -150,10 +177,10 @@ test("quoted keys, a sub-table far below, and header lookalikes in values", () =
     "['mcp_servers'.'bao'.env]",
     "A = \"1\"",
   ].join("\n");
-  const entry = block("/L");
+  const lines = block("/L").replace("[mcp_servers.bao]\n", "");
   assert.equal(
-    upsertCodexServer(before, entry),
-    `${entry}\n[profiles.x]\nnotes = """\n[mcp_servers.bao]\n"""\nnested = [\n  ["mcp_servers"],\n]\n`,
+    upsertCodexServer(before, "/L"),
+    `[ mcp_servers . "bao" ] # spaced and quoted\n${lines}[profiles.x]\nnotes = """\n[mcp_servers.bao]\n"""\nnested = [\n  ["mcp_servers"],\n]\n`,
   );
 });
 
@@ -164,13 +191,15 @@ test("a bao entry in another TOML form is refused", () => {
     "mcp_servers.bao.command = \"x\"\n",
     "[mcp_servers]\nbao = { command = \"x\" }\n",
     "[mcp_servers]\n\"bao\".command = \"x\"\n",
+    "[mcp_servers]\nbao.tools.live_click.approval_mode = \"approve\"\n",
+    "[mcp_servers.bao]\ncommand = \"a\"\n[mcp_servers.bao]\ncommand = \"b\"\n",
     "[mcp_servers.bao\n",
     "key = \"no end\n",
   ]) {
-    assert.throws(() => upsertCodexServer(text, entry), { name: "CodexConfigError" }, text);
+    assert.throws(() => upsertCodexServer(text, "/L"), { name: "CodexConfigError" }, text);
   }
   // Other servers next to a new bao table are fine, in any form TOML allows.
-  assert.equal(upsertCodexServer("[mcp_servers]\nother = { command = \"o\" }\n", entry), `[mcp_servers]\nother = { command = "o" }\n\n${entry}`);
+  assert.equal(upsertCodexServer("[mcp_servers]\nother = { command = \"o\" }\n", "/L"), `[mcp_servers]\nother = { command = "o" }\n\n${entry}`);
 });
 
 test("bao agent config prints the entries and writes nothing", (t) => {
@@ -216,6 +245,27 @@ test("bao agent config codex --write keeps the rest of config.toml and runs twic
   assert.equal(second.status, 0, second.stderr);
   assert.equal(readFileSync(file, "utf8"), expected);
   assert.deepEqual(readdirSync(path.dirname(file)), ["config.toml"]);
+});
+
+test("bao agent config codex --write keeps saved tool approvals and the user's keys, and a re-run changes no byte", (t) => {
+  const l = lab(t, "bao-agent-codex-approvals-");
+  const codexHome = path.join(l.root, "codex-home");
+  const file = path.join(codexHome, "config.toml");
+  mkdirSync(codexHome);
+  const approvals = "[mcp_servers.bao.tools.live_click]\napproval_mode = \"approve\"\n";
+  writeFileSync(file, `[mcp_servers.bao]\ncommand = "node"\nargs = ["/old/cli.js", "mcp"]\nenv = { BAO_HOME = "/old" }\ndefault_tools_approval_mode = "approve"\n\n${approvals}`);
+  const first = run(l, ["config", "codex", "--app", l.app, "--write"], { CODEX_HOME: codexHome });
+  assert.equal(first.status, 0, first.stderr);
+  const written = readFileSync(file);
+  assert.equal(
+    written.toString("utf8"),
+    `${block(l.launcher)}default_tools_approval_mode = "approve"\n\n${approvals}`,
+  );
+  const second = run(l, ["config", "codex", "--app", l.app, "--write"], { CODEX_HOME: codexHome });
+  assert.equal(second.status, 0, second.stderr);
+  assert.ok(readFileSync(file).equals(written));
+  assert.deepEqual(readdirSync(codexHome), ["config.toml"]);
+  assert.deepEqual(readdirSync(l.user), []);
 });
 
 test("bao agent config codex --write follows CODEX_HOME", (t) => {

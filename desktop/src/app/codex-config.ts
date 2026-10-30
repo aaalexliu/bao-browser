@@ -1,7 +1,9 @@
 // Codex reads its MCP servers from ~/.codex/config.toml. `codex mcp add` cannot set a tool
-// timeout, so bao writes its own [mcp_servers.bao] table. The edit touches only that table:
-// it replaces [mcp_servers.bao] and its sub-tables in place, or appends one, and leaves every
-// other line as it was. A bao entry in any other TOML form is refused, not rewritten.
+// timeout, so bao writes its own [mcp_servers.bao] table. bao owns command, args, env, and
+// tool_timeout_sec in that table, and an [mcp_servers.bao.env] sub-table. The edit replaces
+// those, or appends the table, and leaves every other line as it was, including the user's
+// own keys in the table and the tool approvals Codex saves in [mcp_servers.bao.tools.*].
+// A bao entry in any other TOML form is refused, not rewritten.
 
 /**
  * Codex gives up on a tool call after 60 s unless tool_timeout_sec says otherwise. A live call
@@ -17,8 +19,14 @@ export class CodexConfigError extends Error {
   }
 }
 
+const OWNED = new Set(["command", "args", "env", "tool_timeout_sec"]);
+
+function ownedLines(command: string): string {
+  return `command = ${tomlString(command)}\ntool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}\n`;
+}
+
 export function codexServerBlock(command: string): string {
-  return `[mcp_servers.bao]\ncommand = ${tomlString(command)}\ntool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}\n`;
+  return `[mcp_servers.bao]\n${ownedLines(command)}`;
 }
 
 export function tomlString(value: string): string {
@@ -33,37 +41,72 @@ export function tomlString(value: string): string {
   return `${out}"`;
 }
 
-/** config.toml text with block as its only mcp_servers.bao table. */
-export function upsertCodexServer(text: string, block: string): string {
+interface Edit {
+  start: number;
+  end: number;
+  insert: string;
+  /** A removed table. The blank lines on both sides of it become one. */
+  table: boolean;
+}
+
+/** config.toml text whose [mcp_servers.bao] runs command, with every key and sub-table bao does not own kept. */
+export function upsertCodexServer(text: string, command: string): string {
   const items = scan(text);
-  const regions: [number, number][] = [];
-  let table: string[] = [];
-  items.forEach((item, index) => {
+  const lines = ownedLines(command);
+  const edits: Edit[] = [];
+  let table: Item | undefined;
+  let main: Item | undefined;
+  let written = false;
+  for (const [index, item] of items.entries()) {
     if (item.kind === "table") {
-      table = item.key;
-      if (!isBao(item.key)) return;
-      const next = items.slice(index + 1).find((later) => later.kind === "table");
-      regions.push([item.start, contentEnd(text, item.start, next ? next.start : text.length)]);
-      return;
+      table = item;
+      if (!isBao(item.key)) continue;
+      if (item.key.length === 2) {
+        if (main) throw new CodexConfigError(`line ${lineOf(text, item.start)} defines [mcp_servers.bao] a second time`);
+        main = item;
+      } else if (item.key[2] === "env") {
+        const next = items.slice(index + 1).find((later) => later.kind === "table");
+        edits.push({ start: item.start, end: contentEnd(text, item.start, next ? next.start : text.length), insert: "", table: true });
+      }
+      continue;
     }
-    if (isBao(table)) return;
-    const full = [...table, ...item.key];
+    if (main && table === main && OWNED.has(item.key[0] as string)) {
+      edits.push({ start: item.start, end: item.end, insert: written ? "" : lines, table: false });
+      written = true;
+      continue;
+    }
+    const key = table ? table.key : [];
+    if (isBao(key)) continue;
+    const full = [...key, ...item.key];
     if (isBao(full) || (full.length === 1 && full[0] === "mcp_servers")) {
       throw new CodexConfigError(`line ${lineOf(text, item.start)} sets ${full.join(".")} outside a [mcp_servers.bao] table`);
     }
-  });
-  if (!regions.length) {
-    const gap = text === "" || text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n";
-    return `${text}${gap}${block}`;
   }
-  // What follows the new table: the text between and after the old bao tables, one blank line at each seam.
-  let rest = "";
-  regions.forEach(([, end], index) => {
-    const part = text.slice(end, regions[index + 1]?.[0] ?? text.length);
-    rest += rest.endsWith("\n\n") ? part.replace(/^\n+/, "") : part;
-  });
-  rest = rest.trim() ? rest.replace(/^\n*/, "\n") : "";
-  return `${text.slice(0, regions[0]?.[0] ?? 0)}${block}${rest}`;
+  if (main && !written) {
+    edits.push({ start: main.end, end: main.end, insert: text[main.end - 1] === "\n" ? lines : `\n${lines}`, table: false });
+  }
+  const out = apply(text, edits);
+  if (main) return out;
+  const gap = out === "" || out.endsWith("\n\n") ? "" : out.endsWith("\n") ? "\n" : "\n\n";
+  return `${out}${gap}${codexServerBlock(command)}`;
+}
+
+function apply(text: string, edits: Edit[]): string {
+  let out = "";
+  let at = 0;
+  for (const edit of [...edits].sort((a, b) => a.start - b.start || a.end - b.end)) {
+    out += text.slice(at, edit.start) + edit.insert;
+    at = edit.end;
+    if (!edit.table) continue;
+    const rest = text.slice(at);
+    if (!rest.trim()) {
+      out = out.replace(/\n+$/, "\n");
+      at = text.length;
+    } else if (out === "" || out.endsWith("\n\n")) {
+      at += rest.length - rest.replace(/^\n+/, "").length;
+    }
+  }
+  return out + text.slice(at);
 }
 
 function isBao(key: readonly string[]): boolean {
@@ -74,6 +117,8 @@ interface Item {
   kind: "table" | "key";
   /** Offset of the line the header or key starts on. */
   start: number;
+  /** Offset just past the header line, or past the last line of the key's value. */
+  end: number;
   key: string[];
 }
 
@@ -84,12 +129,17 @@ function scan(text: string): Item[] {
   let depth = 0;
   let lineStart = 0;
   let fresh = true;
+  let value: Item | undefined;
   while (i < text.length) {
     const ch = text[i] as string;
     if (ch === "\n") {
       i += 1;
       lineStart = i;
       fresh = true;
+      if (value && depth === 0) {
+        value.end = i;
+        value = undefined;
+      }
       continue;
     }
     if (ch === " " || ch === "\t" || ch === "\r") {
@@ -107,14 +157,15 @@ function scan(text: string): Item[] {
       if (ch === "[") {
         const key = headerKey(line);
         if (!key) throw new CodexConfigError(`line ${lineOf(text, i)} is not a table header bao can read`);
-        items.push({ kind: "table", start: lineStart, key });
+        items.push({ kind: "table", start: lineStart, end: Math.min(end + 1, text.length), key });
         i = end;
         continue;
       }
       const eq = keyLength(line);
       const key = eq > 0 ? parseKey(line.slice(0, eq)) : undefined;
       if (!key) throw new CodexConfigError(`line ${lineOf(text, i)} is not a key bao can read`);
-      items.push({ kind: "key", start: lineStart, key });
+      value = { kind: "key", start: lineStart, end: text.length, key };
+      items.push(value);
       i += eq + 1;
       continue;
     }

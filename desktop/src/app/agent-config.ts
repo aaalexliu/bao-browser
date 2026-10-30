@@ -62,7 +62,7 @@ export function agentMain(argv: readonly string[], io: AgentIo = defaultIo()): n
     io.err(`${missing(request.launcher)} Nothing was written.\n`);
     return 1;
   }
-  return request.agent === "claude" ? writeClaude(request, entry, io) : writeCodex(entry, io);
+  return request.agent === "claude" ? writeClaude(request, entry, io) : writeCodex(request, entry, io);
 }
 
 function parse(argv: readonly string[]): Request {
@@ -105,12 +105,12 @@ function writeClaude(request: Request, entry: string, io: AgentIo): number {
   return 0;
 }
 
-function writeCodex(entry: string, io: AgentIo): number {
+function writeCodex(request: Request, entry: string, io: AgentIo): number {
   const file = codexConfigFile(io.env);
   let tmp = "";
   try {
     const before = existsSync(file) ? readFileSync(file, "utf8") : "";
-    const after = upsertCodexServer(before, entry);
+    const after = upsertCodexServer(before, request.launcher);
     if (after !== before) {
       // A linked config.toml, such as one a dotfiles manager owns, keeps its link. The write goes to the file it names.
       const target = existsSync(file) ? realpathSync(file) : file;
