@@ -480,9 +480,9 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 
 ## MCP
 
-The four tools in this section are the default `bao mcp` server. The operational steps are in [Agent quickstart](agent-quickstart.md).
+The operational steps for the default `bao mcp` server are in [Agent quickstart](agent-quickstart.md).
 
-`bao mcp` exposes four tools no matter how many workflows you add:
+`bao mcp` lists the same tools no matter how many workflows you add: the four catalog tools below, then the `live_*` tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point). The catalog tools run inside `bao mcp`. The live tools go to the running Bao app, and without it they return an error that names the command to start it. `bao mcp-live` is an alias.
 
 | Tool | What it returns |
 | --- | --- |
@@ -519,9 +519,9 @@ The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres
 
 # Bao MCP drivers
 
-This section records the pixel-tool evaluator and an earlier stub. The default `bao mcp` server is the four workflow tools above. Steps for that server are in [Agent quickstart](agent-quickstart.md).
+This section is the eval server. The default `bao mcp` server is the catalog and live tools above. Steps for that server are in [Agent quickstart](agent-quickstart.md).
 
-`BAO_MCP_LIVE=1` runs `desktop/src/eval/live-mcp.ts`. The process creates a temporary profile, launches an owned browser, and opens `BAO_FIXTURE_URL`. That browser ends with the process. The live tool table below belongs to this evaluator.
+`BAO_MCP_LIVE=1` runs `desktop/src/eval/live-mcp.ts`. The process creates a temporary profile, launches an owned browser, and opens `BAO_FIXTURE_URL`. That browser ends with the process. It is the stdio server a driver talks to in `bao eval drivers`. The live tool table below belongs to this evaluator.
 
 ## Live tools
 
@@ -543,11 +543,9 @@ A file input is a file parameter whether the driver called `upload`, dropped a f
 
 Every read and every act stores `snapshot.sha256` and `snapshot.path`. The file is a PNG. `latencyMs` is the time inside the tool call, including the snapshot.
 
-## Stub tools
+## Without live mode
 
-This list is the earlier stub, from before the four workflow tools.
-
-The stub answered `screenshot`, `click`, `type`, `key`, and `scroll`. `click` required `x` and `y`. The stub took no snapshot, returned no PNG, and changed no page.
+With `BAO_MCP_LIVE` unset, `bao mcp` is the agent server in [MCP](#mcp): the catalog tools and the `live_*` tools. The pixel tools above are not listed.
 
 ## What each driver can send
 

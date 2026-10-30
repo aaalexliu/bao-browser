@@ -10,6 +10,7 @@ import { frameRpc } from "../../src/mcp/frame";
 import { liveSessionDir, SessionLog } from "../../src/cdp-live/audit";
 import { startApp } from "../../src/app/server";
 import { resolveHome } from "../../src/home";
+import { serveCommand } from "../../src/mcp/live-proxy";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 const darwinPreload = path.join(process.cwd(), "desktop/test/unit/force-darwin.cjs");
@@ -255,11 +256,47 @@ test("live verbs find the app the same way as bao open", async () => {
 
     const flagged = await runCli(["live_snapshot", "--home", dirs.flagged], childEnv(dirs.user), dirs.cwdA, "darwin");
     assert.equal(flagged.code, 1);
-    assert.match(flagged.stderr, /bao app is not running/);
+    assert.ok(flagged.stderr.includes(`Bao is not running. Open the Bao app, or run: ${serveCommand(dirs.flagged, ["node", cli])}`), flagged.stderr);
     const fromEnv = await runCli(["live_snapshot"], childEnv(dirs.user, { BAO_HOME: dirs.fromEnv }), dirs.cwdA, "darwin");
     assert.equal(fromEnv.code, 1);
-    assert.match(fromEnv.stderr, /bao app is not running/);
+    assert.ok(fromEnv.stderr.includes(serveCommand(dirs.fromEnv, ["node", cli])), fromEnv.stderr);
     assert.deepEqual(hits, ["/api/live"]);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  }
+});
+
+test("bao mcp live tools find the app the same way as the live verbs", async () => {
+  const dirs = layout();
+  // The catalog reads the default library, and the app was started on the legacy one.
+  plantWorkflow(platformDefault(dirs.user, "darwin"), "mine");
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  mkdirSync(legacy, { recursive: true });
+  const bodies: unknown[] = [];
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk: Buffer) => { raw += chunk.toString("utf8"); });
+    req.on("end", () => {
+      const { client: _client, ...body } = JSON.parse(raw) as Record<string, unknown>;
+      if (body.op !== "live_disconnect") bodies.push(body);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ outcome: { kind: "applied" } }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const port = (server.address() as AddressInfo).port;
+  writeFileSync(path.join(legacy, "server.json"), `${JSON.stringify({ port })}\n`);
+  try {
+    const kept = await mcpCall(dirs.cwdA, [], childEnv(dirs.user), "live_snapshot", {}, "darwin");
+    assert.deepEqual(kept.payload, { outcome: { kind: "applied" } });
+    assert.deepEqual(bodies, [{ op: "live_snapshot" }]);
+    const search = await mcpCall(dirs.cwdA, [], childEnv(dirs.user), "search_workflows", { query: "mine" }, "darwin");
+    assert.deepEqual((search.payload.hits as { id: string }[]).map((hit) => hit.id), ["mine"]);
+    await assert.rejects(
+      mcpCall(dirs.cwdA, ["--home", dirs.flagged], childEnv(dirs.user), "live_snapshot", {}, "darwin"),
+      (err: Error) => err.message === `Bao is not running. Open the Bao app, or run: ${serveCommand(dirs.flagged, ["node", cli])}`,
+    );
+    assert.equal(bodies.length, 1);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
   }

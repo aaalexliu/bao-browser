@@ -168,7 +168,7 @@ These are the files a run actually writes.
 
 In this checkout, `.gitignore` covers every `.evidence/` path above. `.evidence/README.md` lists them.
 
-**Failure log.** A `bao live_*` call prints its reply JSON on stdout. When the app is not running, it prints `bao app is not running` on stderr and exits 1. The session script writes progress to stderr. A thrown error is one stderr line from `safeError`, with URLs replaced by `[url]`, then exit code 1. An `AxUnavailable` error also prints its summary JSON on stderr. A finished run whose `status` is not `passed` still writes `.evidence/session-run.json` and exits 2. A stop takes that path with status `needs_human`. There is no other failure log file.
+**Failure log.** A `bao live_*` call prints its reply JSON on stdout. When the app is not running, it prints `Bao is not running. Open the Bao app, or run: <serve command>` on stderr and exits 1. The session script writes progress to stderr. A thrown error is one stderr line from `safeError`, with URLs replaced by `[url]`, then exit code 1. An `AxUnavailable` error also prints its summary JSON on stderr. A finished run whose `status` is not `passed` still writes `.evidence/session-run.json` and exits 2. A stop takes that path with status `needs_human`. There is no other failure log file.
 
 ## Desktop unit suite
 

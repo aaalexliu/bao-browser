@@ -1,16 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { serverPort } from "../home";
+import path from "node:path";
+import { serverHomes, serverPort } from "../home";
 import type { RunResult } from "../v1/replay";
 import type { LiveReplayer } from "./catalog";
-import { frameRpc, takeRpcChunk } from "./frame";
-import { isLiveOp, LIVE_DISCONNECT, LIVE_REPLAY, LIVE_TOOLS, publicLiveResult } from "../cdp-live/live-ops";
-
-interface Rpc {
-  jsonrpc: "2.0";
-  id?: number | string;
-  method?: string;
-  params?: { name?: string; arguments?: Record<string, unknown> };
-}
+import { LIVE_REPLAY, publicLiveResult } from "../cdp-live/live-ops";
 
 function flag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
@@ -48,16 +40,50 @@ export function liveToolResult(result: unknown): { content: { type: "text"; text
   };
 }
 
-/** args are the CLI arguments, so --home and BAO_HOME pick the app the same way as bao open. */
-export async function postLive(body: unknown, args: readonly string[] = []): Promise<unknown> {
-  const port = serverPort(args);
-  if (!port) throw new Error("bao app is not running");
-  const response = await fetch(`http://127.0.0.1:${port}/api/live`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json() as unknown;
+function shellWord(word: string): string {
+  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`;
+}
+
+/** The command that starts the app for this home, from the program that is running now. */
+export function serveCommand(home: string, argv: readonly string[] = process.argv, node: string = process.execPath): string {
+  const cli = argv[1];
+  const program = cli && path.basename(cli) === "cli.js" ? `${shellWord(node)} ${shellWord(path.resolve(cli))}` : "bao";
+  return `${program} serve --home ${shellWord(home)}`;
+}
+
+export function notRunningMessage(home: string): string {
+  return `Bao is not running. Open the Bao app, or run: ${serveCommand(home)}`;
+}
+
+function refused(err: unknown): boolean {
+  const cause = (err as { cause?: { code?: string; errors?: { code?: string }[] } }).cause;
+  if (cause?.code === "ECONNREFUSED") return true;
+  return !!cause?.errors?.some((item) => item.code === "ECONNREFUSED");
+}
+
+/**
+ * Sends one live op to the running app's POST /api/live.
+ * args and env pick the app the same way as bao open: --home, then BAO_HOME, then the default homes.
+ */
+export async function postLive(body: unknown, args: readonly string[] = [], env: NodeJS.ProcessEnv = process.env): Promise<unknown> {
+  const port = serverPort(args, env);
+  const notRunning = (): Error => new Error(notRunningMessage(serverHomes(args, env)[0] || ""));
+  if (!port) throw notRunning();
+  let response: Response;
+  try {
+    response = await fetch(`http://127.0.0.1:${port}/api/live`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (refused(err)) throw notRunning();
+    const cause = (err as { cause?: { message?: string } }).cause?.message;
+    throw new Error(`Bao did not answer on port ${port}: ${cause || (err instanceof Error ? err.message : String(err))}`);
+  }
+  const payload = await response.json().catch(() => null) as { error?: string } | null;
+  if (!payload) throw new Error(`Bao did not answer on port ${port}: the reply was not JSON`);
+  if (!response.ok) throw new Error(`Bao refused the live call: ${payload.error || `HTTP ${response.status}`}`);
   return publicLiveResult(payload);
 }
 
@@ -65,9 +91,9 @@ export async function postLive(body: unknown, args: readonly string[] = []): Pro
  * bao mcp's live runner. The running app replays the workflow in its live target, under its
  * CDP lock, so a recording and its replay drive the same Chrome. The reply is the engine's run.
  */
-export function appLiveReplay(args: readonly string[] = []): LiveReplayer {
+export function appLiveReplay(args: readonly string[] = [], env: NodeJS.ProcessEnv = process.env): LiveReplayer {
   return async (workflow, inputs) => {
-    const reply = await postLive({ op: LIVE_REPLAY, workflow, inputs }, args) as { run?: RunResult; outcome?: { reason?: string } };
+    const reply = await postLive({ op: LIVE_REPLAY, workflow, inputs }, args, env) as { run?: RunResult; outcome?: { reason?: string } };
     if (reply.run) return reply.run;
     throw new Error(reply.outcome?.reason || "live replay failed");
   };
@@ -79,77 +105,4 @@ export async function runLiveCli(cmd: string, args: string[]): Promise<void> {
   const kind = result.outcome?.kind;
   if (kind === "rejected") process.exitCode = 1;
   else if (kind === "refused" || kind === "halted") process.exitCode = 2;
-}
-
-/**
- * stdio MCP server that forwards live tools to the running app. Each call
- * carries this process's client id, so when the client goes away the app saves
- * and ends only the session this client started.
- */
-export async function liveProxyMain(args: string[] = []): Promise<void> {
-  const client = randomUUID();
-  let buf = Buffer.alloc(0);
-  let chain = Promise.resolve();
-  let ending = false;
-  const send = (msg: unknown): void => {
-    process.stdout.write(frameRpc(msg, "json"));
-  };
-  const handle = async (text: string): Promise<void> => {
-    const msg = JSON.parse(text) as Rpc;
-    if (msg.method === "initialize") {
-      send({
-        jsonrpc: "2.0",
-        id: msg.id,
-        result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "bao-live", version: "0.2.0" } },
-      });
-      return;
-    }
-    if (msg.method === "notifications/initialized") return;
-    if (msg.method === "tools/list") {
-      send({ jsonrpc: "2.0", id: msg.id, result: { tools: LIVE_TOOLS } });
-      return;
-    }
-    if (msg.method === "tools/call") {
-      const name = msg.params?.name || "";
-      if (!isLiveOp(name)) {
-        send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text: "unknown tool" }], isError: true } });
-        return;
-      }
-      try {
-        const result = await postLive({ op: name, ...(msg.params?.arguments || {}), client }, args);
-        send({ jsonrpc: "2.0", id: msg.id, result: liveToolResult(result) });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "live call failed";
-        send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text: message }], isError: true } });
-      }
-      return;
-    }
-    if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
-  };
-  // The client closed stdin or stopped this process: finish queued calls, then save its session.
-  const end = (): void => {
-    if (ending) return;
-    ending = true;
-    // A call stuck in the app must not keep this process alive. The app's idle timeout still saves.
-    setTimeout(() => process.exit(0), 15_000).unref();
-    void chain
-      .then(() => postLive({ op: LIVE_DISCONNECT, client }, args))
-      .catch(() => undefined)
-      .finally(() => process.exit(0));
-  };
-  process.stdin.on("data", (chunk: Buffer) => {
-    buf = Buffer.concat([buf, chunk]);
-    while (true) {
-      const next = takeRpcChunk(buf, null);
-      if (!next) return;
-      buf = Buffer.from(next.rest);
-      chain = chain.then(() => handle(next.body)).catch((err: unknown) => {
-        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      });
-    }
-  });
-  process.stdin.on("end", end);
-  process.once("SIGTERM", end);
-  process.once("SIGINT", end);
-  await new Promise(() => {});
 }
