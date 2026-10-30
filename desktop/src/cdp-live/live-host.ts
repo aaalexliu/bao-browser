@@ -73,7 +73,7 @@ export interface ReplayTarget {
 
 /** The open page a key press or a scroll acts on. */
 export interface LiveActTarget {
-  driver: Pick<CdpLiveDriver, "evaluateFunction" | "pressMarked" | "takeBlockedNav" | "sleep">;
+  driver: Pick<CdpLiveDriver, "evaluateFunction" | "pressMarked" | "takeBlockedNav" | "returnFromBlock" | "sleep">;
   read: LiveRead;
   guard: LabelGuard;
   stopPath: string;
@@ -81,6 +81,8 @@ export interface LiveActTarget {
   origins: readonly string[];
   /** Writes the audit row. It runs after every check and before the page is touched. */
   before(action: string, label: string): Promise<void>;
+  /** Reads the page again under a new epoch. */
+  reread(): Promise<LiveRead>;
 }
 
 export type LiveActOutcome =
@@ -107,6 +109,15 @@ async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guar
   return sameTarget(target.read, buildView(marked, target.read.view.epoch, target.guard), ref);
 }
 
+/** A load the window failed on a stop path goes back to the last allowed page, and the refusal reads that page again. */
+async function refuseBlocked(target: LiveActTarget, reason: string): Promise<LiveActOutcome> {
+  if (reason === "stop-path") {
+    await target.driver.returnFromBlock();
+    await target.reread();
+  }
+  return { kind: "refused", reason };
+}
+
 /** Enter, Tab, or Escape, on the same guards as a click. */
 export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
   const plan = planKey(target.read, key, ref);
@@ -130,7 +141,7 @@ export async function pressLiveKey(target: LiveActTarget, key: string, ref: stri
     throw err;
   }
   const blockedNav = target.driver.takeBlockedNav();
-  if (blockedNav) return { kind: "refused", reason: blockedNav };
+  if (blockedNav) return refuseBlocked(target, blockedNav);
   return { kind: "applied", label, control: control?.kind || "" };
 }
 
@@ -149,7 +160,7 @@ export async function scrollLive(target: LiveActTarget, direction: string, ref: 
   if (scroll.target === "none") return { kind: "refused", reason: "stale_ref" };
   await target.driver.sleep(500);
   const blockedNav = target.driver.takeBlockedNav();
-  if (blockedNav) return { kind: "refused", reason: blockedNav };
+  if (blockedNav) return refuseBlocked(target, blockedNav);
   return { kind: "applied", label, control: control?.kind || "", scroll };
 }
 
@@ -367,12 +378,18 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     await cdp.send("Target.setDiscoverTargets", { discover: true }).catch(() => undefined);
   }
 
+  async function reread(state: OpenState): Promise<{ read: LiveRead; facts: PageFacts }> {
+    state.epoch += 1;
+    const facts = await state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
+    state.read = buildView(facts, state.epoch, state.guard);
+    return { read: state.read, facts };
+  }
+
   async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
     if (!open) throw new Error("no live session");
     const started = Date.now();
-    open.epoch += 1;
-    const facts = await open.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
-    open.read = buildView(facts, open.epoch, open.guard);
+    const { read, facts } = await reread(open);
+    open.read = read;
     const halt = pageHalt({
       blocked: facts.blocked,
       path: facts.path,
@@ -408,12 +425,13 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
       hosts: state.hosts,
       origins: state.origins,
       before: (name, label) => note(name, label, "running", null),
+      reread: async () => (await reread(state)).read,
     });
     if (outcome.kind !== "applied") {
       state.refused = true;
       if (outcome.kind === "halted") state.halted = outcome.reason;
       await note(action, outcome.reason, "failed", null);
-      return reply({ op, session: state.id, outcome, view: shown(read), shot: "" });
+      return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     if (action === "key") {
       state.actions.push({ name: "key", key, label: outcome.label, path: read.view.path, kind: outcome.control });
@@ -464,6 +482,10 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     const blockedNav = open.driver.takeBlockedNav();
     if (blockedNav) {
       open.refused = true;
+      if (blockedNav === "stop-path") {
+        await open.driver.returnFromBlock();
+        await reread(open);
+      }
       return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: blockedNav }, view: shown(open.read), shot: "" });
     }
     open.actions.push({ name: "click", label, path: open.read.view.path, kind });

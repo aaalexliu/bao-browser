@@ -280,6 +280,9 @@ function fakeTarget(read: LiveRead, opts: { marked?: PageFacts; press?: Error; b
       blocked = "";
       return reason;
     },
+    returnFromBlock: async () => {
+      log.calls.push("returnFromBlock");
+    },
     sleep: async () => undefined,
   } as unknown as LiveActTarget["driver"];
   return {
@@ -293,6 +296,10 @@ function fakeTarget(read: LiveRead, opts: { marked?: PageFacts; press?: Error; b
       origins: ["http://127.0.0.1"],
       before: async (action, label) => {
         log.calls.push(`before:${action}:${label}`);
+      },
+      reread: async () => {
+        log.calls.push("reread");
+        return read;
       },
     },
   };
@@ -340,6 +347,18 @@ test("a key press halts when focus moves or lands in a credential field, and a b
   await assert.rejects(pressLiveKey(broken.target, "Enter", "e1.c0"), /socket closed/);
   const off = fakeTarget(read, { marked: shop, blockedAfter: "evil.example" });
   assert.deepEqual(await pressLiveKey(off.target, "Enter", "e1.c0"), { kind: "refused", reason: "evil.example" });
+  assert.equal(off.log.calls.includes("returnFromBlock"), false);
+});
+
+test("a key press or scroll whose load is failed on a stop path goes back and reads the page again", async () => {
+  const shop = facts([{ index: 0, label: "Search deals", kind: "field", field: { type: "search", name: "d", autocomplete: "" }, form: "search" }]);
+  const read = buildView(shop, 1, instacart);
+  const key = fakeTarget(read, { marked: shop, blockedAfter: "stop-path" });
+  assert.deepEqual(await pressLiveKey(key.target, "Enter", "e1.c0"), { kind: "refused", reason: "stop-path" });
+  assert.deepEqual(key.log.calls.slice(-3), ["press:Enter:0", "returnFromBlock", "reread"]);
+  const scroll = fakeTarget(read, { blockedAfter: "stop-path" });
+  assert.deepEqual(await scrollLive(scroll.target, "down", ""), { kind: "refused", reason: "stop-path" });
+  assert.deepEqual(scroll.log.calls.slice(-2), ["returnFromBlock", "reread"]);
 });
 
 test("a scroll checks its ref before it moves anything and reports whether the page moved", async () => {
@@ -488,15 +507,19 @@ test("in a real page Enter submits a search box with no button, scroll loads mor
       epoch += 1;
       return buildView(await live.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 }), epoch, guard);
     };
-    const on = (read: LiveRead): LiveActTarget => ({
+    const on = (page: LiveRead): LiveActTarget => ({
       driver: live,
-      read,
+      read: page,
       guard: instacart,
       stopPath: instacart.stopPath,
       hosts: ["127.0.0.1"],
       origins: [origin],
       before: async (action, label) => {
         audit.push(`${action} ${label}`);
+      },
+      reread: async () => {
+        read = await look();
+        return read;
       },
     });
     const pathNow = () => live.evaluateFunction<string>(() => location.pathname + location.search, null);
@@ -581,9 +604,13 @@ test("in a real page Enter submits a search box with no button, scroll loads mor
     assert.deepEqual(await pressLiveKey(on(read), "Enter", refOf(read, "Add to cart")), { kind: "applied", label: "Add to cart", control: "submit" });
     assert.equal(effects("added"), 2);
     assert.deepEqual(await pressLiveKey(on(read), "Enter", refOf(read, "Gift message")), { kind: "refused", reason: "stop_before_confirm" });
+    const before = read.view.epoch;
     assert.deepEqual(await pressLiveKey(on(read), "Enter", refOf(read, "Search deals")), { kind: "refused", reason: "stop-path" });
-    await live.goto(`${origin}/products/blueberries`);
-    read = await look();
+    assert.equal(await pathNow(), "/products/blueberries", "a load failed on a stop path returns to the last allowed page");
+    assert.equal(read.view.epoch > before, true, "the refusal reads the page again");
+    assert.equal(read.view.path, "/products/blueberries");
+    assert.deepEqual(await pressLiveKey(on(read), "Enter", refOf(read, "Quantity")), { kind: "applied", label: "Quantity", control: "field" });
+    assert.equal(effects("added"), 3);
     await live.evaluateFunction(() => document.getElementById("pw")?.focus(), null);
     assert.deepEqual(await pressLiveKey(on(read), "Tab", ""), { kind: "halted", reason: "credential_field" });
     assert.equal(effects("ordered"), 0);
@@ -599,6 +626,7 @@ test("in a real page Enter submits a search box with no button, scroll loads mor
       "key Enter Quantity",
       "key Enter Add to cart",
       "key Enter Search deals",
+      "key Enter Quantity",
       "key Tab",
     ]);
   } finally {

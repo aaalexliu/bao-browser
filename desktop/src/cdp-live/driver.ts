@@ -122,6 +122,8 @@ export class CdpLiveDriver implements Driver {
   private loadEpoch = 0;
   private offHost = "";
   private blockedNav = "";
+  /** The last top-frame URL that committed on an allowed host and off any stop path. */
+  private lastAllowed = "";
   private origins: readonly string[] = [];
   private stopPath = "";
   private humanAsk: HumanAsk | undefined;
@@ -212,6 +214,40 @@ export class CdpLiveDriver implements Driver {
     return reason;
   }
 
+  /**
+   * After a load failed on a stop path, takes the tab off Chrome's error page and back to the
+   * last allowed page: one history step when that lands on it, otherwise a load of that URL.
+   */
+  async returnFromBlock(timeoutMs = 10_000): Promise<void> {
+    const target = this.lastAllowed;
+    if (this.preserveTarget || !target) return;
+    type History = { currentIndex: number; entries: { id: number; url: string }[] };
+    const history = () => this.cdp.send<History>("Page.getNavigationHistory", {}, this.sessionId);
+    let now = await history();
+    const settle = Date.now() + 2_000;
+    while (now.entries[now.currentIndex]?.url === target && Date.now() < settle) {
+      await sleep(100);
+      now = await history();
+    }
+    if (now.entries[now.currentIndex]?.url === target) return;
+    const prior = now.entries[now.currentIndex - 1];
+    if (prior?.url === target) {
+      await this.cdp.send("Page.navigateToHistoryEntry", { entryId: prior.id }, this.sessionId);
+    } else {
+      const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url: target }, this.sessionId);
+      if (nav.errorText) throw new Error(nav.errorText);
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const state = await this.evaluate<{ href: string; ready: string }>(
+        "({ href: location.href, ready: document.readyState })",
+      ).catch(() => undefined);
+      if (state && /^https?:/.test(state.href) && this.allows(state.href) && !stopPathHit(state.href, this.stopPath) && state.ready === "complete") return;
+      await sleep(100);
+    }
+    throw new Error("could not return to the last allowed page");
+  }
+
   markTrust(): void {
     this.trustCursor = this.trustEvents.length;
   }
@@ -223,13 +259,16 @@ export class CdpLiveDriver implements Driver {
   }
 
   private onFrame(params: Record<string, unknown>): void {
-    const frame = params.frame as { parentId?: string; url?: string } | undefined;
+    const frame = params.frame as { parentId?: string; url?: string; unreachableUrl?: string } | undefined;
     if (!frame) return;
     if (frame.parentId) {
       this.subframesSeen.count += 1;
       return;
     }
     const url = frame.url || "";
+    if (/^https?:/.test(url) && !frame.unreachableUrl && this.allows(url) && !stopPathHit(url, this.stopPath)) {
+      this.lastAllowed = url;
+    }
     if (url && this.allows(url)) {
       if (this.preserveTarget) this.offHost = "";
       void this.evaluate(TRUST_SOURCE).catch(() => undefined);
