@@ -565,12 +565,13 @@ The viewport is the page. The browser tab strip is not in it. The tabs task is i
 
 ```sh
 npm run bao -- eval drivers
+npm run bao -- eval agent-instacart --driver claude
 npm run bao -- eval intent
 npm run bao -- eval heldout capture --dir docs/eval/heldout/batch1
 npm run bao -- eval heldout --dir docs/eval/heldout/batch1 --out docs/eval/heldout/batch1.md
 ```
 
-`eval drivers` writes `docs/eval/drivers.md`. `eval intent` writes `docs/eval/intent.md`. A missing CLI or a missing key is a `not run` cell. The command does not invent a pass.
+`eval drivers` writes `docs/eval/drivers.md`. `eval agent-instacart` writes `docs/eval/agent-instacart.md`; `desktop/test/README.md` describes it. `eval intent` writes `docs/eval/intent.md`. A missing CLI or a missing key is a `not run` cell. The command does not invent a pass.
 
 `eval intent` runs three condensers. `condense` is deterministic. The model condenser edits the raw trail. `hybrid` starts from that deterministic workflow: the model may drop a Help step, write intent text, and flag login or confirm. It cannot add a step, change an input, or clear a secret tag. A judge model scores the intent text and is calibrated on ten hand labels.
 
