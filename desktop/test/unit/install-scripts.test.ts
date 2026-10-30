@@ -170,7 +170,12 @@ test("legacy installer stages dist/forceopen.js from the real build", () => {
   assert.equal(result.status, 0, output);
   assert.equal(readFileSync(path.join(stage, "dist/forceopen.js"), "utf8"), readFileSync(built, "utf8"));
   assert.match(output, /Stage succeeded/);
-  assert.match(output, /macOS-only/);
+  if (spawnSync("uname", ["-s"], { encoding: "utf8" }).stdout.trim() === "Darwin") {
+    assert.match(output, /Reload it at chrome:\/\/extensions/);
+    assert.doesNotMatch(output, /macOS-only/);
+  } else {
+    assert.match(output, /macOS-only/);
+  }
   assert.doesNotMatch(output, /Could not find a Chrome profile/);
 });
 
