@@ -22,7 +22,7 @@ The Mac launcher runs `desktop/src/print-home.cjs` before the server starts. [Bu
 
 ## MCP
 
-`bao mcp` is a stdio server. The tools are `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`.
+`bao mcp` is a stdio server. The tools are `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`, then the `live_*` tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point).
 
 Point the client at the compiled file, with `BAO_HOME` set to the serve home. Two forms, both after `npm run build:desktop`:
 
@@ -56,7 +56,7 @@ Example client config, with the repo path and the serve home filled in:
 
 `BAO_MCP_LIVE=1` selects `liveMcpMain` in `desktop/src/eval/live-mcp.ts`. The process requires `BAO_FIXTURE_URL`, creates a temporary profile, and launches an owned browser. That browser ends with the process. The evaluator's tools are `screenshot`, `snapshot`, `click`, `type`, `key`, `scroll`, and `upload`.
 
-Leave `BAO_MCP_LIVE` unset for the four workflow tools. The history of the evaluator and the old stub is in [bao.md](bao.md).
+Leave `BAO_MCP_LIVE` unset for the catalog and `live_*` tools. The evaluator is described in [bao.md](bao.md#bao-mcp-drivers).
 
 ## Extension
 

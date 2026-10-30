@@ -11,17 +11,13 @@ import { pairDevice, syncAll } from "../v1/sync";
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
-  if (cmd === "mcp") {
+  // mcp-live is the old name of the same server.
+  if (cmd === "mcp" || cmd === "mcp-live") {
     await mcpMain(rest);
     return;
   }
   if (cmd === "mcp-ax") {
     await mcpBaoMain();
-    return;
-  }
-  if (cmd === "mcp-live") {
-    const { liveProxyMain } = await import("../mcp/live-proxy");
-    await liveProxyMain(rest);
     return;
   }
   if (cmd && isLiveOp(cmd)) {
@@ -164,7 +160,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort>] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-live [--home dir] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort>] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 

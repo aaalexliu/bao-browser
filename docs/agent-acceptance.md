@@ -86,7 +86,7 @@ The hello frame is not a Mac check. `link.ts` stores whatever `extensionId` arri
 
 ## Update a live session
 
-`bao live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop` are CLI verbs. `bao mcp-live` serves the same eight names as MCP tools. `docs/cdp-live-chrome.md` describes each one, and `LIVE_TOOLS` in `desktop/src/cdp-live/live-ops.ts` defines them. Both post each call to the running app's `POST /api/live`. `serverPort` in `desktop/src/home.ts` finds the app from `server.json` in the library. The host is `desktop/src/cdp-live/live-host.ts`.
+`bao live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop` are CLI verbs. `bao mcp` serves the same eight names as MCP tools. `docs/cdp-live-chrome.md` describes each one, and `LIVE_TOOLS` in `desktop/src/cdp-live/live-ops.ts` defines them. Both post each call to the running app's `POST /api/live`. `serverPort` in `desktop/src/home.ts` finds the app from `server.json` in the library. The host is `desktop/src/cdp-live/live-host.ts`.
 
 **Command.** Run this only when the task names the start URL, the preset, and the Chrome to attach to. Attach to a throwaway Chrome, never the daily profile. `desktop/test/live/live-fixture.test.ts` uses the Chrome for Testing inside the installed app with a temp profile, as here.
 
@@ -168,7 +168,7 @@ These are the files a run actually writes.
 
 In this checkout, `.gitignore` covers every `.evidence/` path above. `.evidence/README.md` lists them.
 
-**Failure log.** A `bao live_*` call prints its reply JSON on stdout. When the app is not running, it prints `bao app is not running` on stderr and exits 1. The session script writes progress to stderr. A thrown error is one stderr line from `safeError`, with URLs replaced by `[url]`, then exit code 1. An `AxUnavailable` error also prints its summary JSON on stderr. A finished run whose `status` is not `passed` still writes `.evidence/session-run.json` and exits 2. A stop takes that path with status `needs_human`. There is no other failure log file.
+**Failure log.** A `bao live_*` call prints its reply JSON on stdout. When the app is not running, it prints `Bao is not running. Open the Bao app, or run: <serve command>` on stderr and exits 1. The session script writes progress to stderr. A thrown error is one stderr line from `safeError`, with URLs replaced by `[url]`, then exit code 1. An `AxUnavailable` error also prints its summary JSON on stderr. A finished run whose `status` is not `passed` still writes `.evidence/session-run.json` and exits 2. A stop takes that path with status `needs_human`. There is no other failure log file.
 
 ## Desktop unit suite
 

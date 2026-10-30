@@ -179,7 +179,25 @@ The session contract is [cdp-live.md](cdp-live.md).
 
 ## Agent entry point
 
-`bao mcp-live [--home dir]` is a stdio MCP server with eight tools: `live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop`. The same names are CLI verbs, for example `bao live_session_start --intent text --url https://host/`, `bao live_key --key Enter --ref e3.c0`, `bao live_scroll --direction down`, and `bao live_snapshot --page 2`. Both forward each call to the running Bao app's `POST /api/live`, so the app must be running. The host is `desktop/src/cdp-live/live-host.ts`. It takes `/tmp/bao-cdp-session.lock`, writes an audit row before each action, and refuses or halts on the same guards as the intent session. The live window fails a page load to another host or onto a stop path before the request leaves Chrome. After a blocked stop-path load, the window goes back to the last allowed page, and the refusal carries a fresh read of that page, so its refs work. A rejected, refused, or halted call is an MCP error. The CLI exits 1 when rejected and 2 when refused or halted.
+`bao mcp [--home dir]` is the one stdio MCP server for agents. It lists the four catalog tools (`search_workflows`, `describe_workflow`, `run_workflow`, `get_run`), then the eight live tools: `live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop`. The catalog tools run inside `bao mcp`. Each live call goes to the running Bao app's `POST /api/live`. `bao mcp` finds the app the same way as `bao open`: `server.json` in `--home`, then `BAO_HOME`, then the default libraries. `bao mcp-live` is an alias for `bao mcp`.
+
+The `initialize` reply has `instructions` that give the agent the order: start a session, read with `live_snapshot`, act with `live_click`, `live_type`, `live_key`, or `live_scroll`, and end with `live_stop`, which saves the workflow. When no app answers, a live tool returns an error that names the start command, for example `Bao is not running. Open the Bao app, or run: /usr/local/bin/node /ABS/bao-browser/desktop/dist/desktop/src/app/cli.js serve --home /ABS/bao/home`. The catalog tools still work then.
+
+Claude Code and Codex use one entry:
+
+```sh
+claude mcp add --scope user bao -- node /ABS/bao-browser/desktop/dist/desktop/src/app/cli.js mcp --home /ABS/bao/home
+```
+
+```toml
+# ~/.codex/config.toml
+[mcp_servers.bao]
+command = "node"
+args = ["/ABS/bao-browser/desktop/dist/desktop/src/app/cli.js", "mcp", "--home", "/ABS/bao/home"]
+tool_timeout_sec = 180   # the Allow press takes 8-50 s (permissions.md)
+```
+
+The live names are also CLI verbs, for example `bao live_session_start --intent text --url https://host/`, `bao live_key --key Enter --ref e3.c0`, `bao live_scroll --direction down`, and `bao live_snapshot --page 2`. They post to the same `POST /api/live`, so the app must be running. The host is `desktop/src/cdp-live/live-host.ts`. It takes `/tmp/bao-cdp-session.lock`, writes an audit row before each action, and refuses or halts on the same guards as the intent session. The live window fails a page load to another host or onto a stop path before the request leaves Chrome. After a blocked stop-path load, the window goes back to the last allowed page, and the refusal carries a fresh read of that page, so its refs work. A rejected, refused, or halted call is an MCP error. The CLI exits 1 when rejected and 2 when refused or halted.
 
 `live_session_start` needs only `intent` and `url`. `workflowId` is optional. The app picks the Chrome with `bao serve --live-target <target>` or `BAO_LIVE_TARGET`, and the flag wins (`desktop/src/cdp-live/live-target.ts`):
 
@@ -196,11 +214,11 @@ A caller can still pass `portFile`. The configured target's own file keeps that 
 
 The start url's host picks the preset. `instacart.com` and `www.instacart.com` always use `instacart`, and `books.toscrape.com` always uses `books`, whatever `preset` says. Other hosts use the `preset` given, else `generic`.
 
-The session saves its workflow in the library when it ends. It ends on `live_stop`, when the MCP client closes `mcp-live`'s stdin or stops it with SIGTERM or SIGINT, or after 10 minutes with no call. `mcp-live` sends a client id with each call, so a disconnect ends only the session that client started. The end closes the session's window and socket, then frees the CDP lock. Replaying the workflow drives the same live target and makes no model calls.
+The session saves its workflow in the library when it ends. It ends on `live_stop`, when the MCP client closes `bao mcp`'s stdin or stops it with SIGTERM or SIGINT, or after 10 minutes with no call. `bao mcp` sends a client id with each call, so a disconnect ends only the session that client started. The end closes the session's window and socket, then frees the CDP lock. Replaying the workflow drives the same live target and makes no model calls.
 
 Each `live_click`, `live_type`, `live_key`, and `live_scroll` that goes through appends one line to `<home>/live-session/trail.jsonl`, which a new session empties. The line names the control by the full identity `CdpLiveDriver.tree()` gives it: role, name, test id, css path, and xpath. It also has the url before and after, and for a click, the page text the click changed. A refused or halted call writes no line. When the session ends, `condense()` and `interpret()` build the workflow from the trail, as `bao eval drivers` does (`desktop/src/cdp-live/live-trail.ts`). A click with no effect is dropped. Typed text becomes an input, and text typed into a search box is the input `query`, whose default is what was typed. When a click on `Add 1 ct {item}` brings up a control that names the item, such as `Increment quantity of {item}`, the step gets `when: { absent }` with that name, so `replay()` on a `CdpLiveDriver` skips the Add while the item is in the cart. `desktop/test/unit/live-recording.test.ts` proves that path. A click on a Buy, Pay, or Reserve button becomes a confirm step that a person does on replay. The saved file has `driver: "cdp-live"`, no cookie or storage field, and no step label that matches the preset's deny or confirm labels. A trail that would break that rule fails the save. A session with no step saves nothing.
 
-One runner replays a `cdp-live` workflow: `replayLiveWorkflow` in `desktop/src/cdp-live/live-replay.ts`. The app replay (`POST /api/replay`), `bao mcp`'s `run_workflow`, and the relay all call it. `run_workflow` posts the workflow to the running app's `/api/live` as `live_replay`, so the replay drives the Chrome the live tools drive. Without the app it fails with `bao app is not running`.
+One runner replays a `cdp-live` workflow: `replayLiveWorkflow` in `desktop/src/cdp-live/live-replay.ts`. The app replay (`POST /api/replay`), `bao mcp`'s `run_workflow`, and the relay all call it. `run_workflow` posts the workflow to the running app's `/api/live` as `live_replay`, so the replay drives the Chrome the live tools drive. Without the app it fails with `Bao is not running. Open the Bao app, or run: <serve command>`.
 
 - It takes the CDP lock, opens its own connection and its own window in the serve-level live target, and runs `replay()` with no heal provider, so `modelCalls` is 0. A replay while a session is open is refused.
 - A recorded workflow runs with no approval step. Inputs start from the recorded defaults. `{ "query": "organic blueberries" }` searches for that text, and a missing or empty `query` types what the session typed.
