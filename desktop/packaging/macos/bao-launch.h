@@ -43,6 +43,12 @@ int bao_real_is_exec(const char *path, void *ctx);
 int bao_real_major(const char *path, void *ctx);
 int bao_real_shell(const char *shell_path, char *buf, size_t n, void *ctx);
 
+/* Runs argv in its own process group with stdout in buf. 0 when it exits 0
+ * and every writer closes stdout inside timeout_ms, else -1. When the deadline
+ * passes or a writer outlives the child, it first kills the group and every
+ * process that still holds the pipe. */
+int bao_run_capture(char *const argv[], char *buf, size_t n, int timeout_ms);
+
 /* 0 when this process owns the instance. 1 when another live process does,
  * and *other_pid is that window's pid or -1. -1 on error. */
 int bao_instance_acquire(const char *home, int *other_pid);

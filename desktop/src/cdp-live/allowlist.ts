@@ -71,8 +71,14 @@ export function stopPathHit(url: string, stopPath: string): boolean {
   } catch {
     return false;
   }
+  return stopPathMatch(`${parsed.pathname}${parsed.hash}`, stopPath);
+}
+
+/** `path` is a pathname plus hash, as a page reports it. */
+export function stopPathMatch(path: string, stopPath: string): boolean {
+  if (!stopPath) return false;
   try {
-    return new RegExp(stopPath, "i").test(`${parsed.pathname}${parsed.hash}`);
+    return new RegExp(stopPath, "i").test(path);
   } catch {
     return false;
   }

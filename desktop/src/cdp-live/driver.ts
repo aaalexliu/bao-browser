@@ -8,6 +8,7 @@ import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost } from "./allowlist";
+import { focusStillMarked } from "./live-ops";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -156,9 +157,11 @@ export class CdpLiveDriver implements Driver {
     this.cdp.on("Page.loadEventFired", this.sessionId, () => { this.loadEpoch += 1; });
     this.cdp.on("Page.frameNavigated", this.sessionId, (params) => this.onFrame(params));
     this.cdp.on("Fetch.requestPaused", this.sessionId, (params) => this.onPaused(params));
-    await this.cdp.send("Fetch.enable", {
-      patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }],
-    }, this.sessionId);
+    if (!this.preserveTarget) {
+      await this.cdp.send("Fetch.enable", {
+        patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }],
+      }, this.sessionId);
+    }
     let added: { identifier?: string } = {};
     try {
       added = await this.cdp.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", {
@@ -178,7 +181,7 @@ export class CdpLiveDriver implements Driver {
     if (!requestId) return;
     const request = params.request as { url?: string } | undefined;
     const url = request?.url || "";
-    if (this.allows(url)) {
+    if (params.frameId !== this.targetId || this.allows(url)) {
       void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
       return;
     }
@@ -372,27 +375,7 @@ export class CdpLiveDriver implements Driver {
   async insertText(text: string, prior = "", markIndex = -1): Promise<void> {
     const refusal = insertTextRefusal(text, prior);
     if (refusal) throw new Error(refusal);
-    const check = await this.evaluate<{ ok: boolean; credential: boolean }>(`(() => {
-      const marked = ${markIndex >= 0 ? `document.querySelector('[data-bao-live="${markIndex}"]')` : "null"};
-      const requireMark = ${markIndex >= 0 ? "true" : "false"};
-      let node = document.activeElement;
-      while (node && node.shadowRoot) {
-        const inner = node.shadowRoot.activeElement;
-        if (!inner || inner === node) break;
-        node = inner;
-      }
-      const focused = node;
-      const password = focused instanceof HTMLInputElement && (focused.getAttribute("type") || "").toLowerCase() === "password";
-      const auto = focused instanceof HTMLInputElement ? (focused.getAttribute("autocomplete") || "").toLowerCase() : "";
-      const name = focused instanceof HTMLElement
-        ? ((focused.getAttribute("name") || "") + " " + (focused.getAttribute("aria-label") || "")).toLowerCase()
-        : "";
-      const credential = password || /password|one-time-code|cc-number|cc-csc/.test(auto)
-        || /\\b(password|passcode|otp|cvv|cvc|ssn|security code|pin|verification code|one-time code|2fa|two-factor)\\b/.test(name);
-      if (!marked) return { ok: !requireMark && !credential, credential };
-      const same = focused === marked || (!!focused && marked.contains(focused));
-      return { ok: same && !credential, credential };
-    })()`);
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
     if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
     await this.cdp.send("Input.insertText", { text }, this.sessionId);
   }

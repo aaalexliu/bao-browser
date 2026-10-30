@@ -19,7 +19,7 @@ import { clearInbox, connectAndAllow } from "./connect";
 import { readDevToolsActivePort } from "./endpoint";
 import { acquireCdpLock, releaseCdpLock } from "./lock";
 import { workflowIdsFromIntent } from "./live-ops";
-import { liveChromeBlock } from "../helper-capabilities";
+import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
 import { resolveGuardFlags } from "./presets";
 import { classifyPage } from "../v1/page-class";
 import { validateWorkflow } from "../v1/schema";
@@ -971,7 +971,8 @@ async function runGuarded(
     botWall: code === "bot_wall",
     banner: { during: during.visible, afterClose: after.visible },
     checkboxOn: box.on,
-    screenCapture: false,
+    screenCapture: perms.screenCapture === true,
+    osWindowShot: usesScreenRecording(helper.calls),
     shots,
     audit: [
       {

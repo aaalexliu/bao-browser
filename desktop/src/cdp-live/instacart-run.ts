@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { liveChromeBlock } from "../helper-capabilities";
+import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
 import { checkboxReach } from "./consent";
 import { INSTACART_HOSTS, navigationAllowed, navigationRefusal } from "./allowlist";
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree } from "./ax";
@@ -443,7 +443,8 @@ async function run(): Promise<void> {
     steps,
     banner: { during: during.visible, duringText: during.text, afterClose: after.visible },
     checkboxOn: box.on,
-    screenCapture: false,
+    screenCapture: perms.screenCapture === true,
+    osWindowShot: usesScreenRecording(helper.calls),
   };
   log.setSteps(steps.map((step) => ({ name: step.name, status: step.status, ms: step.ms })));
   await log.flush(status, code, body.host);

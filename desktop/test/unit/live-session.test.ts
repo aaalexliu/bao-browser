@@ -99,10 +99,6 @@ test("the inbox is cleared only after the lock is held", async () => {
   await assert.rejects(clearInbox(file, false), /lock/);
   await clearInbox(file, true);
   assert.equal(readFileSync(file, "utf8"), "");
-  const source = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live/session.ts"), "utf8");
-  const lockAt = source.indexOf("acquireCdpLock");
-  const clearAt = source.indexOf("clearInbox(");
-  assert.equal(lockAt >= 0 && clearAt > lockAt, true);
 });
 
 test("confirm controls are listed and not clicked, and credential fields refuse typing", () => {
@@ -153,8 +149,22 @@ test("a login wall halts, a new tab opened by the page is blocked, and cookies n
     localStorage: { token: "secret" },
   });
   assert.equal(JSON.stringify(cleaned).includes("secret"), false);
-  assert.doesNotMatch(readLivePage.toString(), /document\.cookie|localStorage|sessionStorage|indexedDB|Network\.getCookies/);
-  assert.doesNotMatch(focusLiveMark.toString(), /document\.cookie|localStorage|sessionStorage|indexedDB|Network\.getCookies/);
+  const touched: string[] = [];
+  const spy = (name: string) => ({ get() { touched.push(name); return ""; }, configurable: true });
+  const page = globalThis as unknown as Record<string, unknown>;
+  const document = { title: "Shop", body: { innerText: "Shop" }, querySelectorAll: () => [], querySelector: () => null };
+  Object.defineProperty(document, "cookie", spy("cookie"));
+  page.document = document;
+  page.location = { pathname: "/shop", hash: "" };
+  page.HTMLElement = class {};
+  for (const name of ["localStorage", "sessionStorage", "indexedDB"]) Object.defineProperty(globalThis, name, spy(name));
+  try {
+    assert.equal(readLivePage({ markIndex: 0 }).path, "/shop");
+    focusLiveMark({ markIndex: 0 });
+  } finally {
+    for (const name of ["document", "location", "HTMLElement", "localStorage", "sessionStorage", "indexedDB"]) delete page[name];
+  }
+  assert.deepEqual(touched, []);
 });
 
 test("the six live tools stay off the remote relay and a workflow id comes from the intent", () => {

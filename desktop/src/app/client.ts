@@ -30,6 +30,7 @@ import {
   notices,
   onboarding,
   paletteView,
+  helperStatusText,
   rail,
   recordBar,
   saveSheetView,
@@ -383,7 +384,7 @@ function settings(): string {
     </div>
     <div class="card">
       <h3>Mac</h3>
-      <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
+      <p id="settings-helper">${esc(helperStatusText(state.helper))}</p>
     </div>
   </section>`;
 }

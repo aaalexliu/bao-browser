@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { liveSessionView } from "../../src/app/live-view";
 import { insertTextRefusal, navigationRefusal, INSTACART_HOSTS } from "../../src/cdp-live/allowlist";
-import { buildView, pageHalt, planClick, targetVerdict, type PageFacts } from "../../src/cdp-live/live-ops";
-import { liveCliBody } from "../../src/mcp/live-proxy";
+import { buildView, pageHalt, planClick, sameTarget, targetVerdict, type PageFacts } from "../../src/cdp-live/live-ops";
+import { liveCliBody, liveToolResult } from "../../src/mcp/live-proxy";
 import { acquireCdpLock, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
-import { createLiveHost } from "../../src/cdp-live/live-host";
+import { createLiveHost, replayLive, type ReplayTarget } from "../../src/cdp-live/live-host";
+import { CdpLiveDriver } from "../../src/cdp-live/driver";
+import type { CdpSocket } from "../../src/cdp-live/socket";
 import { workflowFromLive } from "../../src/cdp-live/attach";
 import { guardPreset } from "../../src/cdp-live/presets";
 import { validateWorkflow } from "../../src/v1/schema";
@@ -123,17 +126,20 @@ test("the live screen can open the first audit page and move to the next", () =>
 test("workflow id survives the CLI and a refused or halted MCP call is an error", () => {
   const body = liveCliBody("live_session_start", ["--workflow-id", "wf-from-the-flag", "--intent", "Shop"]);
   assert.equal(body.workflowId, "wf-from-the-flag");
-  const source = readFileSync(path.join(process.cwd(), "desktop/src/mcp/live-proxy.ts"), "utf8");
-  assert.match(source, /isError[\s\S]{0,160}refused/);
-  assert.match(source, /isError[\s\S]{0,160}halted/);
+  for (const kind of ["rejected", "refused", "halted"]) {
+    assert.equal(liveToolResult({ outcome: { kind } }).isError, true, kind);
+  }
+  assert.equal(liveToolResult({ outcome: { kind: "applied" } }).isError, false);
 });
 
 test("a dead lock holder is stale and the lock records a pid", async () => {
   const parsed = parseLock("agent=bao-live\nstartedAt=1\npid=999999\n") as { agentId: string; startedAt: number; pid?: number };
   assert.equal(parsed.pid, 999999);
-  const source = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live/lock.ts"), "utf8");
-  assert.match(source, /pid/);
-  assert.match(source, /process\.on\("exit"/);
+  const exited = path.join(mkdtempSync(path.join(tmpdir(), "bao-exit-lock-")), "lock");
+  const child = spawnSync(process.execPath, ["-e", `require(${JSON.stringify(path.join(__dirname, "../../src/cdp-live/lock.js"))}).acquireCdpLock("child", { file: ${JSON.stringify(exited)} }).then(() => { console.log(require("node:fs").readFileSync(${JSON.stringify(exited)}, "utf8")); process.exit(0); })`], { encoding: "utf8" });
+  assert.equal(child.status, 0, child.stderr);
+  assert.equal(parseLock(child.stdout)?.pid, child.pid);
+  assert.equal(existsSync(exited), false);
   const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-dead-lock-")), "lock");
   writeFileSync(file, "agent=bao-live\nstartedAt=1\npid=999999\n");
   let waits = 0;
@@ -146,7 +152,43 @@ test("a dead lock holder is stale and the lock records a pid", async () => {
       if (waits > 1) throw new Error("not stale");
     },
   });
+  assert.equal(waits, 0);
   releaseCdpLock("next", file);
+});
+
+test("a stale lock that cannot be removed fails at the deadline instead of spinning", { skip: process.getuid?.() === 0 }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-stuck-lock-"));
+  const file = path.join(dir, "lock");
+  writeFileSync(file, "agent=bao-live\nstartedAt=1\npid=999999\n");
+  chmodSync(dir, 0o500);
+  let now = 0;
+  let sleeps = 0;
+  try {
+    await assert.rejects(acquireCdpLock("next", {
+      file,
+      now: () => now,
+      timeoutMs: 1_000,
+      sleep: async (ms) => {
+        sleeps += 1;
+        now += ms;
+      },
+    }), /cdp lock is held/);
+  } finally {
+    chmodSync(dir, 0o700);
+  }
+  assert.equal(sleeps, 2);
+  assert.equal(existsSync(file), true);
+});
+
+test("a release from another pid leaves the holder's lock, and closing an idle host does too", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-foreign-lock-"));
+  const file = path.join(home, "lock");
+  writeFileSync(file, `agent=bao-live\nstartedAt=${Date.now()}\npid=${process.ppid}\n`);
+  releaseCdpLock("bao-live", file);
+  assert.equal(existsSync(file), true);
+  writeFileSync(file, `agent=bao-live\nstartedAt=${Date.now()}\n`);
+  await createLiveHost({ home, lockFile: file }).close();
+  assert.equal(existsSync(file), true);
 });
 
 test("the live entry refuses a stop path before navigation and keeps a blocked path distinct from a host miss", async () => {
@@ -182,6 +224,154 @@ test("the live entry refuses a stop path before navigation and keeps a blocked p
   await host.close();
 });
 
+function replayTarget(pages: PageFacts[], marked?: PageFacts, blockOnClick = ""): { target: ReplayTarget; clicks: string[] } {
+  const clicks: string[] = [];
+  let at = 0;
+  let blockedNav = "stale-block";
+  const driver = {
+    setOrigins: () => undefined,
+    goto: async () => undefined,
+    evaluateFunction: async (_fn: unknown, arg: { markIndex: number }) => {
+      if (arg.markIndex >= 0 && marked) return marked;
+      return pages[Math.min(at, pages.length - 1)];
+    },
+    clickCss: async (selector: string) => {
+      clicks.push(selector);
+      blockedNav = blockOnClick;
+      if (!blockOnClick) at += 1;
+    },
+    takeBlockedNav: () => {
+      const reason = blockedNav;
+      blockedNav = "";
+      return reason;
+    },
+  } as unknown as ReplayTarget["driver"];
+  return { target: { driver, commit: generic.commit, deny: generic.deny, stopPath: generic.stopPath, hosts: ["127.0.0.1"], origins: ["http://127.0.0.1"] }, clicks };
+}
+
+function addTwice() {
+  return workflowFromLive({
+    id: "wf-shop",
+    name: "Shop",
+    intent: "Shop",
+    startUrl: "http://127.0.0.1/shop",
+    createdAt: 1,
+    actions: [
+      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
+      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
+    ],
+  });
+}
+
+test("live replay refuses while another session holds the cdp lock", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-live-replay-"));
+  const file = path.join(home, "lock");
+  await acquireCdpLock("session", { file, timeoutMs: 0 });
+  const { target, clicks } = replayTarget([facts([{ index: 0, label: "Add to cart", kind: "button" }])]);
+  await assert.rejects(replayLive(target, addTwice(), file), /cdp lock is held/);
+  assert.deepEqual(clicks, []);
+  assert.equal(parseLock(readFileSync(file, "utf8"))?.agentId, "session");
+  releaseCdpLock("session", file);
+});
+
+test("live replay stops for a person on a halt page and releases the lock", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-live-replay-"));
+  const file = path.join(home, "lock");
+  const shop = facts([{ index: 0, label: "Add to cart", kind: "button" }]);
+  const wall = facts([{ index: 0, label: "Add to cart", kind: "button" }], { text: "I'm not a robot" });
+  const workflow = addTwice();
+  const { target, clicks } = replayTarget([shop, wall]);
+  const result = await replayLive(target, workflow, file);
+  assert.equal(result.status, "needs_human");
+  assert.equal(result.stoppedAt, workflow.steps[1]?.id);
+  assert.equal(clicks.length, 1);
+  assert.equal(existsSync(file), false);
+  const landed = replayTarget([shop, shop, wall]);
+  const end = await replayLive(landed.target, workflow, file);
+  assert.equal(end.status, "needs_human");
+  assert.equal(landed.clicks.length, 2);
+  const clean = replayTarget([shop]);
+  assert.equal((await replayLive(clean.target, workflow, file)).status, "passed");
+  assert.equal(existsSync(file), false);
+  const checkout = replayTarget([shop, facts([{ index: 0, label: "Add to cart", kind: "button" }], { path: "/checkout" })]);
+  const stopped = await replayLive(checkout.target, workflow, file);
+  assert.equal(stopped.status, "needs_human");
+  assert.equal(stopped.reason, "stop-path");
+  assert.equal(checkout.clicks.length, 1);
+});
+
+test("live replay fails the step whose click navigation the guard blocked", async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
+  const shop = facts([{ index: 0, label: "Add to cart", kind: "button" }]);
+  const workflow = addTwice();
+  const blocked = replayTarget([shop], undefined, "off-origin");
+  const result = await replayLive(blocked.target, workflow, file);
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "off-origin");
+  assert.equal(result.stoppedAt, workflow.steps[0]?.id);
+  assert.deepEqual(result.steps.map((step) => step.status), ["failed", "skipped"]);
+  assert.equal(blocked.clicks.length, 1);
+  assert.equal(existsSync(file), false);
+});
+
+test("live replay refuses a control that moved before the click, and names the step it stopped on", async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
+  const shop = facts([{ index: 0, label: "Add to cart", kind: "button" }]);
+  const moved = facts([{ index: 0, label: "Place your order", kind: "button" }]);
+  const workflow = addTwice();
+  const stale = replayTarget([shop], moved);
+  const result = await replayLive(stale.target, workflow, file);
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "stale_ref");
+  assert.equal(result.stoppedAt, workflow.steps[0]?.id);
+  assert.deepEqual(result.steps.map((step) => step.status), ["failed", "skipped"]);
+  assert.deepEqual(stale.clicks, []);
+  const missing = await replayLive(replayTarget([facts([])]).target, workflow, file);
+  assert.equal(missing.stoppedAt, workflow.steps[0]?.id);
+  assert.equal(missing.reason, "not_found");
+  const typed = workflowFromLive({
+    id: "wf-type",
+    name: "Type",
+    intent: "Type",
+    startUrl: "http://127.0.0.1/shop",
+    createdAt: 1,
+    actions: [
+      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
+      { name: "type", label: "Instructions", path: "/shop", kind: "field", value: "milk" },
+    ],
+  });
+  const confirm = await replayLive(replayTarget([shop]).target, typed, file);
+  assert.equal(confirm.status, "needs_human");
+  assert.deepEqual(confirm.steps.map((step) => step.status), ["passed", "needs_human", "skipped"]);
+});
+
+test("a click or type plan holds only while the marked control keeps its label and kind", () => {
+  const before = buildView(facts([
+    { index: 0, label: "Add to cart", kind: "button" },
+    { index: 1, label: "Instructions", kind: "field", field: { type: "text", name: "note", autocomplete: "" } },
+  ]), 3, generic.commit, generic.deny);
+  const same = buildView(facts([
+    { index: 0, label: "Add to cart", kind: "button" },
+    { index: 1, label: "Instructions", kind: "field", field: { type: "text", name: "note", autocomplete: "" } },
+  ]), 3, generic.commit, generic.deny);
+  assert.equal(sameTarget(before, same, "e3.c0"), true);
+  assert.equal(sameTarget(before, same, "e3.c1"), true);
+  const shifted = buildView(facts([
+    { index: 0, label: "Place your order", kind: "button" },
+    { index: 1, label: "Card number", kind: "field", field: { type: "text", name: "cc", autocomplete: "cc-number" } },
+  ]), 3, generic.commit, generic.deny);
+  assert.equal(sameTarget(before, shifted, "e3.c0"), false);
+  assert.equal(sameTarget(before, shifted, "e3.c1"), false);
+  const relabeled = buildView(facts([{ index: 0, label: "Remove", kind: "button" }]), 3, generic.commit, generic.deny);
+  assert.equal(sameTarget(before, relabeled, "e3.c0"), false);
+});
+
+test("a page that lands on a stop path halts", () => {
+  assert.equal(pageHalt({ blocked: "", path: "/checkout", passwordFields: 0, stopPath: generic.stopPath }), "stop-path");
+  assert.equal(pageHalt({ blocked: "", path: "/#/payment", passwordFields: 0, stopPath: generic.stopPath }), "stop-path");
+  assert.equal(pageHalt({ blocked: "", path: "/shop", passwordFields: 0, stopPath: generic.stopPath }), null);
+});
+
 test("a saved live workflow confirms before each typed field", () => {
   const doc = workflowFromLive({
     id: "wf-shop",
@@ -201,11 +391,37 @@ test("a saved live workflow confirms before each typed field", () => {
   assert.deepEqual(validateWorkflow(doc), []);
 });
 
-test("live Chrome stays allowed when Screen Recording is granted", () => {
-  const host = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live/live-host.ts"), "utf8");
-  const session = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live/session.ts"), "utf8");
-  assert.equal(host.includes("screen recording is granted"), false);
-  assert.equal(session.includes("screen recording is granted"), false);
-  assert.match(host, /liveChromeBlock/);
-  assert.match(session, /liveChromeBlock/);
+function fakeCdp(): { cdp: CdpSocket; sent: { method: string; params: Record<string, unknown> }[]; emit(method: string, params: Record<string, unknown>): void } {
+  const sent: { method: string; params: Record<string, unknown> }[] = [];
+  const handlers = new Map<string, (params: Record<string, unknown>) => void>();
+  const cdp = {
+    send: async (method: string, params: Record<string, unknown> = {}) => {
+      sent.push({ method, params });
+      return {};
+    },
+    on: (method: string, _session: string | undefined, handler: (params: Record<string, unknown>) => void) => {
+      handlers.set(method, handler);
+    },
+  } as unknown as CdpSocket;
+  return { cdp, sent, emit: (method, params) => handlers.get(method)?.(params) };
+}
+
+test("the live window blocks only its own main frame, and an attached tab is not intercepted", async () => {
+  const own = fakeCdp();
+  const driver = new CdpLiveDriver(own.cdp, "s", "MAIN", ["127.0.0.1"]);
+  driver.setOrigins(["http://127.0.0.1"]);
+  await driver.start();
+  assert.equal(own.sent.some((item) => item.method === "Fetch.enable"), true);
+  own.emit("Fetch.requestPaused", { requestId: "r1", frameId: "IFRAME", request: { url: "https://www.google.com/recaptcha/api2/anchor" } });
+  assert.equal(driver.takeBlockedNav(), "");
+  own.emit("Fetch.requestPaused", { requestId: "r2", frameId: "MAIN", request: { url: "https://evil.example/" } });
+  assert.equal(driver.takeBlockedNav(), "evil.example");
+  own.emit("Fetch.requestPaused", { requestId: "r3", frameId: "MAIN", request: { url: "http://127.0.0.1/shop" } });
+  const verdict = (id: string) => own.sent.find((item) => item.params.requestId === id)?.method;
+  assert.equal(verdict("r1"), "Fetch.continueRequest");
+  assert.equal(verdict("r2"), "Fetch.failRequest");
+  assert.equal(verdict("r3"), "Fetch.continueRequest");
+  const attached = fakeCdp();
+  await new CdpLiveDriver(attached.cdp, "s", "TAB", ["127.0.0.1"], true).start();
+  assert.equal(attached.sent.some((item) => item.method === "Fetch.enable"), false);
 });

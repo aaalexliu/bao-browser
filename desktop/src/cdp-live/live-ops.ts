@@ -1,4 +1,4 @@
-import { insertTextRefusal } from "./allowlist";
+import { insertTextRefusal, stopPathMatch } from "./allowlist";
 import { redactLabel } from "./live-record";
 
 export const LIVE_TOOL_NAMES = [
@@ -213,6 +213,16 @@ export function buildView(facts: PageFacts, epoch: number, commitSource: string,
   return { view, targets: { byRef, passwordRef } };
 }
 
+/** True when `after`, read while marking, still has the control `before` planned for `ref`. */
+export function sameTarget(before: LiveRead, after: LiveRead, ref: string): boolean {
+  const was = before.targets.byRef.get(ref);
+  const now = after.targets.byRef.get(ref);
+  if (!was || !now || was.kind !== now.kind || was.href !== now.href) return false;
+  const label = before.view.controls.find((control) => control.ref === ref);
+  const next = after.view.controls.find((control) => control.ref === ref);
+  return !!label && !!next && label.label === next.label && label.kind === next.kind;
+}
+
 function parsedRef(ref: string): { epoch: number; index: number } | null {
   const match = /^e(\d+)\.c(\d+)$/.exec(ref);
   if (!match) return null;
@@ -242,7 +252,8 @@ export function planType(read: LiveRead, ref: string, text: string, prior = ""):
   return { ok: true, selector: target.selector };
 }
 
-export function pageHalt(facts: { blocked: string; path: string; passwordFields: number; text?: string }): "login_wall" | "bot_wall" | null {
+export function pageHalt(facts: { blocked: string; path: string; passwordFields: number; text?: string; stopPath?: string }): "login_wall" | "bot_wall" | "stop-path" | null {
+  if (stopPathMatch(facts.path, facts.stopPath || "")) return "stop-path";
   const text = (facts.text || "").toLowerCase();
   if (/request unsuccessful|powered by imperva|incapsula incident/.test(text)) return "bot_wall";
   if (/verify you are human|i'm not a robot|i’m not a robot|recaptcha challenge/.test(text)) return "bot_wall";
@@ -307,7 +318,7 @@ export function markedFieldValue(ask: { markIndex: number }): string {
 
 /** Page function. True only when focus is still the marked control, including through an open shadow root. */
 export function focusStillMarked(ask: { markIndex: number }): { ok: boolean; credential: boolean } {
-  const marked = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
+  const marked = ask.markIndex >= 0 ? document.querySelector(`[data-bao-live="${ask.markIndex}"]`) : null;
   let node: Element | null = document.activeElement;
   while (node && node.shadowRoot) {
     const inner = node.shadowRoot.activeElement;
@@ -322,7 +333,8 @@ export function focusStillMarked(ask: { markIndex: number }): { ok: boolean; cre
     : "";
   const credential = password || /password|one-time-code|cc-number|cc-csc/.test(auto)
     || /\b(password|passcode|otp|cvv|cvc|ssn|social security|card number|security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor)\b/.test(name);
-  if (!(marked instanceof HTMLElement) || !focused) return { ok: false, credential };
+  if (!(marked instanceof HTMLElement)) return { ok: ask.markIndex < 0 && !credential, credential };
+  if (!focused) return { ok: false, credential };
   const same = focused === marked || marked.contains(focused);
   return { ok: same && !credential, credential };
 }

@@ -30,6 +30,15 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
   return { op: cmd };
 }
 
+/** MCP tool result for one live reply. A rejected, refused, or halted call is an error. */
+export function liveToolResult(result: unknown): { content: { type: "text"; text: string }[]; isError: boolean } {
+  const outcome = (result as { outcome?: { kind?: string } }).outcome?.kind;
+  return {
+    content: [{ type: "text", text: JSON.stringify(result) }],
+    isError: outcome === "rejected" || outcome === "refused" || outcome === "halted",
+  };
+}
+
 export async function postLive(body: unknown, homeFlag?: string): Promise<unknown> {
   const port = baoServerPort(homeFlag);
   if (!port) throw new Error("bao app is not running");
@@ -80,15 +89,7 @@ export async function liveProxyMain(args: string[] = []): Promise<void> {
       }
       try {
         const result = await postLive({ op: name, ...(msg.params?.arguments || {}) }, home);
-        const outcome = (result as { outcome?: { kind?: string } }).outcome?.kind;
-        send({
-          jsonrpc: "2.0",
-          id: msg.id,
-          result: {
-            content: [{ type: "text", text: JSON.stringify(result) }],
-            isError: outcome === "rejected" || outcome === "refused" || outcome === "halted",
-          },
-        });
+        send({ jsonrpc: "2.0", id: msg.id, result: liveToolResult(result) });
       } catch (err) {
         const message = err instanceof Error ? err.message : "live call failed";
         send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text: message }], isError: true } });

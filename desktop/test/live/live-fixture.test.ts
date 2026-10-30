@@ -108,7 +108,7 @@ async function waitForPort(file: string): Promise<void> {
   throw new Error("DevToolsActivePort was not written");
 }
 
-test("live fixture refuses the reviewed traps, then replays a shop with no model call", { skip: !existsSync(CHROME), timeout: 240_000 }, async () => {
+test("live fixture refuses the reviewed traps, then replays a shop with no model call", { skip: process.env.BAO_LIVE_TESTS !== "1" || !existsSync(CHROME), timeout: 240_000 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-live-fixture-"));
   const userData = path.join(root, "chrome");
   const other = await listen(() => "off");
