@@ -1,0 +1,292 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792657521457,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792657521497,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792657521538,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792657521578,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657521669,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "id": "slogan",
+      "tag": "h1",
+      "text": "Project Gutenberg is a library of 79,651 free eBooks",
+      "cssPath": "#slogan",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        }
+      ]
+    },
+    "subtreeBefore": "Project Gutenberg is a library of 79,651 free eBooks",
+    "subtreeAfter": "Project Gutenberg is a library of 79,651 free eBooks",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792657521998,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657522031,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657522065,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657522098,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657522131,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657522164,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657522164,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "id": "slogan",
+      "tag": "h1",
+      "text": "Project Gutenberg is a library of 79,651 free eBooks",
+      "cssPath": "#slogan",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        }
+      ]
+    },
+    "subtreeBefore": "Project Gutenberg is a library of 79,651 free eBooks",
+    "subtreeAfter": "Project Gutenberg is a library of 79,651 free eBooks",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e12",
+    "ts": 1792657522447,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e13",
+    "ts": 1792657522482,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e14",
+    "ts": 1792657522514,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e15",
+    "ts": 1792657522549,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657522582,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657522614,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657522614,
+    "kind": "act",
+    "op": "type",
+    "value": "Frankensteinn",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "Search books",
+      "nameAttr": "query",
+      "tag": "input",
+      "label": "Search books",
+      "cssPath": "div:nth-of-type(1) > header:nth-of-type(1) > div:nth-of-type(2) > form:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657522856,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657522856,
+    "kind": "act",
+    "op": "type",
+    "value": "Frankenstein",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "Search books",
+      "nameAttr": "query",
+      "tag": "input",
+      "label": "Search books",
+      "cssPath": "div:nth-of-type(1) > header:nth-of-type(1) > div:nth-of-type(2) > form:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/"
+  },
+  {
+    "id": "e21",
+    "ts": 1792657523067,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Go!",
+      "cssPath": "div:nth-of-type(1) > header:nth-of-type(1) > div:nth-of-type(2) > form:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "Go!",
+    "subtreeAfter": "Go!",
+    "beforeUrl": "https://www.gutenberg.org/",
+    "afterUrl": "https://www.gutenberg.org/ebooks/search/?query=Frankenstein"
+  }
+]

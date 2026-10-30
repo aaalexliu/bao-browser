@@ -1,0 +1,179 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642673479,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642673520,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642673560,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642673601,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "todos",
+      "cssPath": "#root > header:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://todomvc.com/examples/react/dist/",
+    "afterUrl": "https://todomvc.com/examples/react/dist/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642673912,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://todomvc.com/examples/react/dist/",
+    "afterUrl": "https://todomvc.com/examples/react/dist/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642673946,
+    "kind": "act",
+    "op": "type",
+    "value": "buy milkx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "New Todo Input",
+      "testId": "text-input",
+      "tag": "input",
+      "label": "New Todo Input",
+      "cssPath": "#root > header:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://todomvc.com/examples/react/dist/",
+    "afterUrl": "https://todomvc.com/examples/react/dist/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642674106,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://todomvc.com/examples/react/dist/",
+    "afterUrl": "https://todomvc.com/examples/react/dist/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792642674106,
+    "kind": "act",
+    "op": "type",
+    "value": "buy milk",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "name": "New Todo Input",
+      "testId": "text-input",
+      "tag": "input",
+      "label": "New Todo Input",
+      "cssPath": "#root > header:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "beforeUrl": "https://todomvc.com/examples/react/dist/",
+    "afterUrl": "https://todomvc.com/examples/react/dist/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792642674249,
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "beforeUrl": "https://todomvc.com/examples/react/dist/",
+    "afterUrl": "https://todomvc.com/examples/react/dist/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792642674466,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Completed",
+      "cssPath": "#root > footer:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(3) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "footer"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://todomvc.com/examples/react/dist/",
+    "afterUrl": "https://todomvc.com/examples/react/dist/#/completed"
+  },
+  {
+    "id": "e10",
+    "ts": 1792642674699,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "All",
+      "cssPath": "#root > footer:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "section"
+        },
+        {
+          "role": "footer"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "beforeUrl": "https://todomvc.com/examples/react/dist/#/completed",
+    "afterUrl": "https://todomvc.com/examples/react/dist/#/"
+  }
+]

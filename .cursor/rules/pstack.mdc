@@ -1,0 +1,10 @@
+---
+description: Use the vendored pstack skills before shape decisions and before calling a spike done
+alwaysApply: true
+---
+
+Vendored pstack lives in `.cursor/skills/` (see `.cursor/third-party/pstack/VENDORED.md`).
+
+- Use **architect** before a big shape decision.
+- Use **arena** when one attempt would lock in the wrong design.
+- Use **principle-prove-it-works** before calling a spike done.

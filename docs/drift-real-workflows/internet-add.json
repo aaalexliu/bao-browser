@@ -1,0 +1,63 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-add",
+  "name": "Add element",
+  "startUrl": "https://the-internet.herokuapp.com/add_remove_elements/",
+  "inputs": [],
+  "steps": [
+    {
+      "id": "wf-add-0",
+      "index": 0,
+      "action": "click",
+      "label": "Click \"Add Element\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "name": "Add Element now",
+        "text": "Add Element now",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Add Element now"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "element",
+        "identity": {
+          "surface": "dom",
+          "role": "button",
+          "tag": "button",
+          "text": "Add Element",
+          "cssPath": "#content > div:nth-of-type(1) > button:nth-of-type(1)",
+          "xpath": "/body[1]/div[2]/div[1]/div[1]/button[1]",
+          "path": [
+            {
+              "role": "div"
+            },
+            {
+              "role": "div"
+            },
+            {
+              "role": "div"
+            }
+          ],
+          "siblingIndex": 0
+        },
+        "timeoutMs": 4000
+      },
+      "intent": "Add Element",
+      "expect": {
+        "kind": "text",
+        "match": "Delete",
+        "timeoutMs": 8000
+      }
+    }
+  ],
+  "createdAt": 1
+}

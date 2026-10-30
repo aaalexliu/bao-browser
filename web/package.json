@@ -1,0 +1,34 @@
+{
+  "name": "bao-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bao workflow registry, library, and marketplace. Local PGlite or Postgres, deployable to Vercel.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "cd .. && node --experimental-transform-types --import ./web/test/register.mjs --test web/src/lib/relay.boundary.test.ts web/src/lib/relay-job.test.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.11",
+    "@neondatabase/serverless": "1.2.0",
+    "@vercel/blob": "2.8.2",
+    "ajv": "8.20.0",
+    "next": "16.4.2",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.15.5",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "6.0.3"
+  }
+}

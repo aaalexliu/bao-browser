@@ -1,0 +1,187 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792648081902,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792648081942,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792648081983,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792648082023,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "to: Mozilla",
+      "cssPath": "form:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "to: Mozilla",
+    "subtreeAfter": "to: Mozilla",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792648082306,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "to: Mozilla",
+      "cssPath": "form:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "to: Mozilla",
+    "subtreeAfter": "to: Mozilla",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792648082536,
+    "kind": "act",
+    "op": "type",
+    "value": "Adx",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "name",
+      "nameAttr": "user_name",
+      "tag": "input",
+      "label": "from:",
+      "cssPath": "#name",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e6",
+    "ts": 1792648082620,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e7",
+    "ts": 1792648082620,
+    "kind": "act",
+    "op": "type",
+    "value": "Ada",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "name",
+      "nameAttr": "user_name",
+      "tag": "input",
+      "label": "from:",
+      "cssPath": "#name",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e8",
+    "ts": 1792648082699,
+    "kind": "act",
+    "op": "type",
+    "value": "nope",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "msg",
+      "nameAttr": "user_message",
+      "tag": "textarea",
+      "label": "Your message:",
+      "cssPath": "#msg",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e9",
+    "ts": 1792648082795,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e10",
+    "ts": 1792648082796,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e11",
+    "ts": 1792648082797,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  },
+  {
+    "id": "e12",
+    "ts": 1792648082797,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html",
+    "afterUrl": "https://mdn.github.io/learning-area/html/forms/postcard-example/index.html"
+  }
+]

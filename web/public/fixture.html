@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Bao fixture</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; background: #f6f4ef; color: #1c1915; }
+    form, section { display: grid; gap: 0.6rem; max-width: 28rem; margin-bottom: 1.4rem; }
+    label { display: grid; gap: 0.2rem; }
+    input, button { font: inherit; padding: 0.4rem 0.5rem; }
+    #drop { border: 2px dashed #8a8175; padding: 1.2rem; min-height: 3rem; }
+    #flash, #files, #dropped { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Bao fixture</h1>
+  <form id="login">
+    <label>Username <input id="username" name="username" autocomplete="username"></label>
+    <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+    <button id="login-btn" type="submit" data-testid="login">Log in</button>
+  </form>
+  <p id="flash" data-testid="flash"></p>
+  <section>
+    <label>Upload <input id="file" name="file" type="file" data-testid="file"></label>
+    <p id="files" data-testid="files"></p>
+    <div id="drop" data-testid="drop" data-bao-drop="1">Drop a file here</div>
+    <p id="dropped"></p>
+  </section>
+  <ul id="rows">
+    <li data-testid="row" data-name="Ada">Ada</li>
+    <li data-testid="row" data-name="Grace">Grace</li>
+  </ul>
+  <p id="picked" data-testid="picked"></p>
+  <script>
+    document.getElementById("login").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const user = document.getElementById("username").value;
+      const pass = document.getElementById("password").value;
+      const flash = document.getElementById("flash");
+      if (!user || !pass) {
+        flash.textContent = "Missing credentials";
+        history.pushState({}, "", "/fixture.html?error=1");
+        return;
+      }
+      flash.textContent = "Welcome " + user;
+      history.pushState({}, "", "/fixture.html?ok=1");
+    });
+    document.getElementById("file").addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      document.getElementById("files").textContent = file ? file.name : "";
+    });
+    const drop = document.getElementById("drop");
+    drop.addEventListener("dragover", (event) => event.preventDefault());
+    drop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const file = event.dataTransfer && event.dataTransfer.files[0];
+      document.getElementById("dropped").textContent = file ? file.name : "";
+    });
+    document.getElementById("rows").addEventListener("click", (event) => {
+      const li = event.target.closest("li");
+      if (!li) return;
+      document.getElementById("picked").textContent = "Picked " + (li.dataset.name || li.textContent);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+{
+  "stepId": "wf-1792675703188-2",
+  "action": "click",
+  "label": "Click \"Search\"",
+  "url": "https://en.wikipedia.org/wiki/Special:Search",
+  "reason": "below-threshold",
+  "brokenAttr": "role",
+  "locators": [
+    {
+      "kind": "role",
+      "label": "role button Search",
+      "score": 40
+    },
+    {
+      "kind": "text",
+      "label": "text Search",
+      "score": 40
+    }
+  ],
+  "direct": [
+    {
+      "kind": "role",
+      "query": "button Search",
+      "count": 2,
+      "visible": 2
+    },
+    {
+      "kind": "text",
+      "query": "Search",
+      "count": 7,
+      "visible": 3
+    }
+  ],
+  "candidates": [
+    {
+      "index": 44,
+      "score": 110,
+      "role": "button",
+      "text": "Search",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 88,
+      "score": 110,
+      "role": "button",
+      "text": "Search",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 188,
+      "score": 110,
+      "role": "button",
+      "text": "Search",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 192,
+      "score": 110,
+      "role": "button",
+      "text": "Search",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "score": 40,
+      "role": "link",
+      "name": "Search Wikipedia [alt-f]",
+      "label": "Search Wikipedia [alt-f]",
+      "text": "Search",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 0,
+          "matched": false
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    }
+  ],
+  "identity": {
+    "surface": "dom",
+    "role": "button",
+    "tag": "button",
+    "text": "Search",
+    "path": []
+  },
+  "recordedLocators": [
+    {
+      "kind": "role",
+      "role": "button",
+      "name": "Search"
+    },
+    {
+      "kind": "text",
+      "value": "Search"
+    }
+  ]
+}

@@ -1,0 +1,290 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792657525310,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792657525350,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792657525392,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792657525432,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657525529,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Search",
+      "cssPath": "#content > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Search",
+    "subtreeAfter": "Search",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e5",
+    "ts": 1792657525847,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657525881,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657525914,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657525947,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657525981,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657526014,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657526014,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Search",
+      "cssPath": "#content > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Search",
+    "subtreeAfter": "Search",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e12",
+    "ts": 1792657526327,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e13",
+    "ts": 1792657526347,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e14",
+    "ts": 1792657526381,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e15",
+    "ts": 1792657526414,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657526448,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657526481,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657526481,
+    "kind": "act",
+    "op": "type",
+    "value": "Beatless",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "id-query",
+      "nameAttr": "query",
+      "tag": "input",
+      "label": "Query:",
+      "cssPath": "#id-query",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657526660,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657526660,
+    "kind": "act",
+    "op": "type",
+    "value": "Beatles",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "id-query",
+      "nameAttr": "query",
+      "tag": "input",
+      "label": "Query:",
+      "cssPath": "#id-query",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search"
+  },
+  {
+    "id": "e21",
+    "ts": 1792657526819,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "tag": "button",
+      "text": "Search",
+      "cssPath": "#content > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(5) > span:nth-of-type(1) > button:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "span"
+        }
+      ]
+    },
+    "subtreeBefore": "Search",
+    "subtreeAfter": "Search",
+    "beforeUrl": "https://musicbrainz.org/search",
+    "afterUrl": "https://musicbrainz.org/search?query=Beatles&type=artist&limit=25&method=indexed"
+  }
+]

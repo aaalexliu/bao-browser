@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch5/gutenberg-search",
+  "steps": [
+    {
+      "stepId": "gutenberg-search-0",
+      "action": "type",
+      "target": "textbox[name=query]",
+      "postcondition": "value {{query}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "gutenberg-search-1",
+      "action": "click",
+      "target": "button:Go!",
+      "postcondition": "url query={{query}}",
+      "timing": "lt1s"
+    }
+  ]
+}

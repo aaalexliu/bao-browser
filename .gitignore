@@ -1,11 +1,18 @@
 # Dependencies
 node_modules/
+web/node_modules/
+
+# Next build and local registry data
+web/.next/
+web/.data/
+.data/
 
 # Build / generated output
 out/
 
 # Local Chrome profile used for automation
 .chrome-profile/
+.bao-mcp/
 
 # OS files
 .DS_Store
@@ -14,8 +21,34 @@ out/
 *.log
 npm-debug.log*
 
+# Nightly runs are local. The committed comparison is docs/evals/nightly/baseline.
+docs/evals/nightly/runs/
+
 # TypeScript build output (esbuild)
 dist/
+*.tsbuildinfo
+
+# Rust helper build
+desktop/os-helper/target/
+desktop/os-helper-macos/target/
+desktop/os-helper-macos/BaoOSHelper.app/
+
+# Live CDP frames stay on this Mac. Redacted audit JSON and the app video may be added by hand.
+.evidence/frames/
+.evidence/bao-home/
+.evidence/session-inbox.txt
+.evidence/cdp-live-ax.jsonl
+.evidence/session-workflow.json
+.evidence/unfreeze-workflow.json
+.evidence/session-run.json
+.evidence/cdp-live-run.json
+.evidence/instacart-once.json
+.evidence/instacart-once-state.json
+.evidence/login-diff.json
+
+# Packaged binaries stay out of git. The build writes them under artifacts.
+*.AppImage
+.toolchain/
 
 # Chrome Web Store upload package (regenerate with `npm run package`)
 bao.zip

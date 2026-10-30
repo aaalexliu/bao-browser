@@ -1,0 +1,373 @@
+[
+  {
+    "id": "wiki-search",
+    "name": "Search Wikipedia",
+    "startUrl": "https://en.wikipedia.org/wiki/Main_Page",
+    "keep": [
+      "e9",
+      "e10"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Grace Hopper"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Alan Turing"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "w3c-form",
+    "name": "Fill the W3C label example",
+    "startUrl": "https://www.w3.org/WAI/tutorials/forms/labels/",
+    "keep": [
+      "e11",
+      "e13"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "Grace"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "Lin"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "#firstname",
+      "equals": "{{0}}"
+    }
+  },
+  {
+    "id": "mdn-form-link",
+    "name": "Open the MDN input element page",
+    "startUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/form",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "url",
+      "includes": "/Elements/input"
+    }
+  },
+  {
+    "id": "login",
+    "name": "Log in on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/login",
+    "keep": [
+      "e8",
+      "e9",
+      "e11"
+    ],
+    "secrets": [
+      "HeldOutDemoSecret!"
+    ],
+    "secretIds": [
+      "e9"
+    ],
+    "human": [
+      {
+        "id": "e9",
+        "gate": "login"
+      },
+      {
+        "id": "e11",
+        "gate": "login"
+      }
+    ],
+    "replays": [
+      {
+        "texts": [
+          "grace"
+        ],
+        "secret": "ReplaySecretOne!",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin"
+        ],
+        "secret": "ReplaySecretTwo!",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "invalid"
+    },
+    "secret": "HeldOutDemoSecret!"
+  },
+  {
+    "id": "upload",
+    "name": "Upload a file on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/upload",
+    "keep": [
+      "e7",
+      "e8"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": "held-out-a.txt"
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": "held-out-b.txt"
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{file}}"
+    }
+  },
+  {
+    "id": "dynamic-controls",
+    "name": "Remove a checkbox on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/dynamic_controls",
+    "keep": [
+      "e5"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "gone"
+    }
+  },
+  {
+    "id": "windows",
+    "name": "Open a new window on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/windows",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "any-body",
+      "includes": "New Window"
+    }
+  },
+  {
+    "id": "inputs",
+    "name": "Type a number on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/inputs",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "8"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "3"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "value",
+      "selector": "input[type=number]",
+      "equals": "{{0}}"
+    }
+  },
+  {
+    "id": "forgot-password",
+    "name": "Request a password reset on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/forgot_password",
+    "keep": [
+      "e8",
+      "e9"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "grace@example.com"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "lin@example.com"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "sent"
+    }
+  },
+  {
+    "id": "add-element",
+    "name": "Add an element on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/add_remove_elements/",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "Delete"
+    }
+  },
+  {
+    "id": "todo",
+    "name": "Add a todo on TodoMVC",
+    "startUrl": "https://todomvc.com/examples/react/dist/",
+    "keep": [
+      "e7",
+      "e8"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [
+          "write tests"
+        ],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [
+          "ship replay"
+        ],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "body",
+      "includes": "{{0}}"
+    }
+  },
+  {
+    "id": "checkboxes",
+    "name": "Check a box on the-internet",
+    "startUrl": "https://the-internet.herokuapp.com/checkboxes",
+    "keep": [
+      "e6"
+    ],
+    "secrets": [],
+    "secretIds": [],
+    "human": [],
+    "replays": [
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      },
+      {
+        "texts": [],
+        "secret": "",
+        "file": ""
+      }
+    ],
+    "oracle": {
+      "kind": "checked",
+      "selector": "form#checkboxes input >> nth=0"
+    }
+  }
+]

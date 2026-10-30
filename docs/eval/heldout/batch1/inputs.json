@@ -1,0 +1,101 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792642639568,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792642639608,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792642639649,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792642639689,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://the-internet.herokuapp.com/inputs",
+    "afterUrl": "https://the-internet.herokuapp.com/inputs"
+  },
+  {
+    "id": "e4",
+    "ts": 1792642639722,
+    "kind": "act",
+    "op": "type",
+    "value": "42x",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "tag": "input",
+      "cssPath": "#content > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/inputs",
+    "afterUrl": "https://the-internet.herokuapp.com/inputs"
+  },
+  {
+    "id": "e5",
+    "ts": 1792642639835,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://the-internet.herokuapp.com/inputs",
+    "afterUrl": "https://the-internet.herokuapp.com/inputs"
+  },
+  {
+    "id": "e6",
+    "ts": 1792642639835,
+    "kind": "act",
+    "op": "type",
+    "value": "42",
+    "identity": {
+      "surface": "dom",
+      "role": "input",
+      "tag": "input",
+      "cssPath": "#content > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/inputs",
+    "afterUrl": "https://the-internet.herokuapp.com/inputs"
+  }
+]

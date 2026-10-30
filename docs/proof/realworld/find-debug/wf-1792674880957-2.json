@@ -1,0 +1,133 @@
+{
+  "stepId": "wf-1792674880957-2",
+  "action": "type",
+  "label": "Type {{username}}",
+  "url": "https://automationexercise.com/login",
+  "reason": "below-threshold",
+  "brokenAttr": "role",
+  "locators": [
+    {
+      "kind": "role",
+      "label": "role textbox",
+      "score": 40
+    },
+    {
+      "kind": "css",
+      "label": "css input[name=\"email\"]",
+      "score": 40
+    },
+    {
+      "kind": "xpath",
+      "label": "xpath //input[@name=\"email\"]",
+      "score": 40
+    }
+  ],
+  "direct": [
+    {
+      "kind": "role",
+      "query": "textbox",
+      "count": 5,
+      "visible": 5
+    },
+    {
+      "kind": "css",
+      "query": "input[name=\"email\"]",
+      "count": 2,
+      "visible": 2
+    },
+    {
+      "kind": "xpath",
+      "query": "//input[@name=\"email\"]",
+      "count": 2,
+      "visible": 2
+    }
+  ],
+  "candidates": [
+    {
+      "index": 11,
+      "score": 70,
+      "role": "textbox",
+      "nameAttr": "email",
+      "parts": [
+        {
+          "attr": "nameAttr",
+          "points": 70,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "score": 70,
+      "role": "textbox",
+      "nameAttr": "email",
+      "parts": [
+        {
+          "attr": "nameAttr",
+          "points": 70,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 0,
+      "score": 0,
+      "role": "link",
+      "parts": [
+        {
+          "attr": "nameAttr",
+          "points": 0,
+          "matched": false
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "score": 0,
+      "role": "link",
+      "text": "Home",
+      "parts": [
+        {
+          "attr": "nameAttr",
+          "points": 0,
+          "matched": false
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "score": 0,
+      "role": "link",
+      "text": " Products",
+      "parts": [
+        {
+          "attr": "nameAttr",
+          "points": 0,
+          "matched": false
+        }
+      ]
+    }
+  ],
+  "identity": {
+    "surface": "dom",
+    "role": "textbox",
+    "nameAttr": "email",
+    "tag": "input",
+    "path": []
+  },
+  "recordedLocators": [
+    {
+      "kind": "role",
+      "role": "textbox",
+      "name": ""
+    },
+    {
+      "kind": "css",
+      "value": "input[name=\"email\"]"
+    },
+    {
+      "kind": "xpath",
+      "value": "//input[@name=\"email\"]"
+    }
+  ]
+}

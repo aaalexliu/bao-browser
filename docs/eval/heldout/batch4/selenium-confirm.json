@@ -1,0 +1,80 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653663919,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653663959,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653663999,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653664040,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Testing Alerts and Stuff",
+      "cssPath": "h1:nth-of-type(1)",
+      "path": []
+    },
+    "subtreeBefore": "Testing Alerts and Stuff",
+    "subtreeAfter": "Testing Alerts and Stuff",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/alerts.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/alerts.html"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653664334,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Testing Alerts and Stuff",
+      "cssPath": "h1:nth-of-type(1)",
+      "path": []
+    },
+    "subtreeBefore": "Testing Alerts and Stuff",
+    "subtreeAfter": "Testing Alerts and Stuff",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/alerts.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/alerts.html"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653664563,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "id": "confirm",
+      "tag": "a",
+      "text": "test confirm",
+      "cssPath": "#confirm",
+      "path": [
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "subtreeBefore": "test confirm",
+    "subtreeAfter": "",
+    "dialog": "Are you sure?",
+    "beforeUrl": "https://www.selenium.dev/selenium/web/alerts.html",
+    "afterUrl": "https://www.selenium.dev/selenium/web/simpleTest.html"
+  }
+]

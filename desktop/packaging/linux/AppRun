@@ -1,0 +1,13 @@
+#!/bin/bash
+# Product window. The capture browser is a second Chrome with its own profile.
+HERE="$(dirname "$(readlink -f "$0")")"
+export BAO_PUBLIC="${BAO_PUBLIC:-$HERE/usr/share/bao/public}"
+export BAO_HOME="${BAO_HOME:-$HOME/.local/share/bao}"
+PORT="${BAO_PORT:-4787}"
+"$HERE/usr/bin/node" "$HERE/usr/share/bao/cli.js" serve --home "$BAO_HOME" --port "$PORT" &
+server=$!
+sleep 0.6
+if command -v google-chrome >/dev/null; then
+  google-chrome --app="http://127.0.0.1:${PORT}" --user-data-dir="$BAO_HOME/ui-profile" --no-first-run >/dev/null 2>&1 || true
+fi
+wait "$server"

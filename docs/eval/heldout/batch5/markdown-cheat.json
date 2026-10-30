@@ -1,0 +1,233 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792657625366,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792657625406,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792657625446,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792657625486,
+    "kind": "act",
+    "op": "navigate",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792657625580,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Get Started",
+      "cssPath": "#navbarNavAltMarkup > div:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "nav"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Get Started",
+    "subtreeAfter": "Get Started",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792657625993,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792657626027,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792657626061,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e8",
+    "ts": 1792657626094,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e9",
+    "ts": 1792657626127,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e10",
+    "ts": 1792657626161,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e11",
+    "ts": 1792657626161,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e12",
+    "ts": 1792657626278,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Get Started",
+      "cssPath": "#navbarNavAltMarkup > div:nth-of-type(1) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "nav"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Get Started",
+    "subtreeAfter": "Get Started",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/getting-started/"
+  },
+  {
+    "id": "e13",
+    "ts": 1792657626652,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://www.markdownguide.org/getting-started/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e14",
+    "ts": 1792657626787,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e15",
+    "ts": 1792657626810,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e16",
+    "ts": 1792657626844,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e17",
+    "ts": 1792657626877,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e18",
+    "ts": 1792657626910,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e19",
+    "ts": 1792657626944,
+    "kind": "act",
+    "op": "scroll",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/basic-syntax/"
+  },
+  {
+    "id": "e20",
+    "ts": 1792657626944,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Cheat Sheet",
+      "cssPath": "#navbarNavAltMarkup > div:nth-of-type(1) > a:nth-of-type(2)",
+      "path": [
+        {
+          "role": "nav"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Cheat Sheet",
+    "subtreeAfter": "Cheat Sheet",
+    "beforeUrl": "https://www.markdownguide.org/basic-syntax/",
+    "afterUrl": "https://www.markdownguide.org/cheat-sheet/"
+  }
+]

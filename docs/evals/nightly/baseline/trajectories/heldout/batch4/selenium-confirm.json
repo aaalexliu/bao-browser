@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch4/selenium-confirm",
+  "steps": [
+    {
+      "stepId": "selenium-confirm-0",
+      "action": "click",
+      "target": "link#confirm",
+      "postcondition": "url /selenium/web/simpleTest.html",
+      "timing": "lt1s"
+    }
+  ]
+}

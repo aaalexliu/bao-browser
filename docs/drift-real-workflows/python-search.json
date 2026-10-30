@@ -1,0 +1,161 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "python-search",
+  "name": "Python docs search",
+  "startUrl": "https://docs.python.org/3/search.html",
+  "inputs": [
+    {
+      "name": "q",
+      "type": "text",
+      "required": true,
+      "label": "q",
+      "default": "json"
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-python-0",
+      "index": 0,
+      "action": "click",
+      "label": "Click \"Search\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "nameAttr": "q",
+        "tag": "input",
+        "label": "Search",
+        "cssPath": "div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(1)",
+        "xpath": "//input[@name=\"q\"]",
+        "path": [
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "main"
+          },
+          {
+            "role": "form"
+          }
+        ],
+        "value": "",
+        "siblingIndex": 0
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Search"
+        },
+        {
+          "kind": "css",
+          "value": "input[name=\"q\"]"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"q\"]"
+        },
+        {
+          "kind": "anchor",
+          "role": "textbox",
+          "relation": "left",
+          "anchor": {
+            "surface": "dom",
+            "role": "heading",
+            "text": "Search",
+            "id": "search-documentation",
+            "path": []
+          }
+        }
+      ],
+      "timeoutMs": 8000
+    },
+    {
+      "id": "wf-python-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{q}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "nameAttr": "q",
+        "tag": "input",
+        "label": "Search",
+        "cssPath": "div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(1)",
+        "xpath": "//input[@name=\"q\"]",
+        "path": [
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "div"
+          },
+          {
+            "role": "main"
+          },
+          {
+            "role": "form"
+          }
+        ],
+        "value": "",
+        "siblingIndex": 0
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Search"
+        },
+        {
+          "kind": "css",
+          "value": "input[name=\"q\"]"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"q\"]"
+        },
+        {
+          "kind": "anchor",
+          "role": "textbox",
+          "relation": "left",
+          "anchor": {
+            "surface": "dom",
+            "role": "heading",
+            "text": "Search",
+            "id": "search-documentation",
+            "path": []
+          }
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "q",
+      "value": "{{q}}"
+    },
+    {
+      "id": "wf-python-2",
+      "index": 2,
+      "action": "key",
+      "label": "Press Enter",
+      "surface": "dom",
+      "timeoutMs": 15000,
+      "key": "Enter",
+      "expect": {
+        "kind": "url",
+        "match": "q=json",
+        "timeoutMs": 15000
+      }
+    }
+  ],
+  "createdAt": 1
+}

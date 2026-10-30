@@ -1,0 +1,14 @@
+{
+  "source": "partial observation, not a tree dump",
+  "host": "macOS 26.6.2 (25G83)",
+  "captured": "2026-10-20",
+  "notes": "The spike resolved these keypad buttons by point hit-test. The tree walk did not include them. The mac agent replaces this file's job with calculator.dump.json from `bao-os-macos nodes`.",
+  "bundleId": "com.apple.calculator",
+  "app": "Calculator",
+  "nodes": [
+    { "role": "AXButton", "name": "7", "title": "7", "subrole": "", "identifier": "", "description": "", "value": "", "app": "Calculator", "path": [{ "role": "AXWindow", "name": "Calculator" }] },
+    { "role": "AXButton", "name": "Add", "title": "Add", "subrole": "", "identifier": "", "description": "", "value": "", "app": "Calculator", "path": [{ "role": "AXWindow", "name": "Calculator" }] },
+    { "role": "AXButton", "name": "5", "title": "5", "subrole": "", "identifier": "", "description": "", "value": "", "app": "Calculator", "path": [{ "role": "AXWindow", "name": "Calculator" }] },
+    { "role": "AXButton", "name": "Equals", "title": "Equals", "subrole": "", "identifier": "", "description": "", "value": "", "app": "Calculator", "path": [{ "role": "AXWindow", "name": "Calculator" }] }
+  ]
+}

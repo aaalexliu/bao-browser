@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch2/quotes-tag",
+  "steps": [
+    {
+      "stepId": "quotes-tag-0",
+      "action": "click",
+      "target": "link:inspirational",
+      "postcondition": "url /tag/inspirational/page/1/",
+      "timing": "lt1s"
+    }
+  ]
+}

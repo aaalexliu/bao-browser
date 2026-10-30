@@ -1,0 +1,4291 @@
+{
+  "bundle": "com.apple.finder",
+  "focusedOnly": true,
+  "geometry": {
+    "flipY": false,
+    "screenH": 1117,
+    "screenW": 1728
+  },
+  "manualAccessibility": true,
+  "nodeCount": 78,
+  "nodes": [
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:8",
+        "AXChildrenInNavigationOrder": "elements:8",
+        "AXEnhancedUserInterface": "true",
+        "AXExtrasMenuBar": null,
+        "AXFocusedUIElement": "element",
+        "AXFocusedWindow": "element",
+        "AXFrame": "axvalue",
+        "AXFrontmost": "true",
+        "AXFunctionRowTopLevelElements": "",
+        "AXHidden": "false",
+        "AXMainWindow": "element",
+        "AXMenuBar": "element",
+        "AXPosition": "0,1117",
+        "AXPreferredLanguage": "en",
+        "AXRole": "AXApplication",
+        "AXRoleDescription": "application",
+        "AXSize": "0,0",
+        "AXTitle": "Finder",
+        "AXValue": null,
+        "AXWindows": "elements:7"
+      },
+      "childCount": 8,
+      "children": [
+        {
+          "identifier": "FinderWindow",
+          "name": "bao-ax-finder",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "FinderWindow",
+          "name": "jxp",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "FinderWindow",
+          "name": "reflect",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "FinderWindow",
+          "name": "aws",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "FinderWindow",
+          "name": "[sidebar]",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "FinderWindow",
+          "name": "[sidebar]",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "FinderWindow",
+          "name": "Trash",
+          "role": "AXWindow"
+        },
+        {
+          "identifier": "_NS:1088",
+          "name": "_NS:1088",
+          "role": "AXMenuBar"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": false,
+      "focused": false,
+      "frame": null,
+      "identifier": "",
+      "label": "",
+      "role": "AXApplication",
+      "subrole": "",
+      "title": "Finder",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXRaise"
+      ],
+      "attrs": {
+        "AXActivationPoint": "492,263",
+        "AXCancelButton": null,
+        "AXChildren": "elements:7",
+        "AXChildrenInNavigationOrder": "elements:7",
+        "AXCloseButton": "element",
+        "AXDefaultButton": null,
+        "AXDocument": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXFullScreen": "false",
+        "AXFullScreenButton": "element",
+        "AXGrowArea": null,
+        "AXIdentifier": "FinderWindow",
+        "AXMain": "true",
+        "AXMinimizeButton": "element",
+        "AXMinimized": "false",
+        "AXModal": "false",
+        "AXParent": "element",
+        "AXPosition": "462,247",
+        "AXProxy": "element",
+        "AXRole": "AXWindow",
+        "AXRoleDescription": "standard window",
+        "AXSections": "",
+        "AXSize": "920,464",
+        "AXSubrole": "AXStandardWindow",
+        "AXTitle": "bao-ax-finder",
+        "AXTitleUIElement": "element",
+        "AXToolbarButton": null,
+        "AXValue": null,
+        "AXZoomButton": "element"
+      },
+      "childCount": 7,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXSplitGroup"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXToolbar"
+        },
+        {
+          "identifier": "",
+          "name": "tab bar",
+          "role": "AXTabGroup"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 464,
+        "w": 920,
+        "x": 462,
+        "y": 247
+      },
+      "identifier": "FinderWindow",
+      "label": "",
+      "role": "AXWindow",
+      "subrole": "AXStandardWindow",
+      "title": "bao-ax-finder",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEdited": "false",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "480,265",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "close button",
+        "AXSize": "16,16",
+        "AXSubrole": "AXCloseButton",
+        "AXTitle": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 480,
+        "y": 265
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXCloseButton",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "503,265",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "minimize button",
+        "AXSize": "16,16",
+        "AXSubrole": "AXMinimizeButton",
+        "AXTitle": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 503,
+        "y": 265
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXMinimizeButton",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress",
+        "AXZoomWindow",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "this button also has an action to zoom the window",
+        "AXParent": "element",
+        "AXPosition": "526,265",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "full screen button",
+        "AXSize": "16,16",
+        "AXSubrole": "AXFullScreenButton",
+        "AXTitle": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 526,
+        "y": 265
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXFullScreenButton",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "527,266",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "14,14",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 14,
+        "w": 14,
+        "x": 527,
+        "y": 266
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "13",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "635,247",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "338,52",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "bao-ax-finder",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 338,
+        "x": 635,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "bao-ax-finder"
+    },
+    {
+      "actions": [
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXChildren": "elements:7",
+        "AXChildrenInNavigationOrder": "elements:7",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXOverflowButton": null,
+        "AXParent": "element",
+        "AXPosition": "462,247",
+        "AXRole": "AXToolbar",
+        "AXRoleDescription": "toolbar",
+        "AXSelectedChildren": "",
+        "AXSize": "920,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 7,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        },
+        {
+          "identifier": "",
+          "name": "Group",
+          "role": "AXMenuButton"
+        },
+        {
+          "identifier": "",
+          "name": "Share",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "Edit Tags",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "Action",
+          "role": "AXMenuButton"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 920,
+        "x": 462,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXToolbar",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "Name:Move next\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXCustomActions": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "See folders you viewed previously",
+        "AXParent": "element",
+        "AXPosition": "554,247",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "81,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "_NS:51",
+          "name": "Back/Forward",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 81,
+        "x": 554,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:2",
+        "AXDescription": "Back/Forward",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "_NS:51",
+        "AXParent": "element",
+        "AXPosition": "557,254",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "75,38",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 2,
+      "children": [
+        {
+          "identifier": "",
+          "name": "back",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "forward",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "Back/Forward",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 38,
+        "w": 75,
+        "x": 557,
+        "y": 254
+      },
+      "identifier": "_NS:51",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXDescription": "back",
+        "AXEnabled": "false",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": null,
+        "AXParent": "element",
+        "AXPosition": "558,255",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "36,36",
+        "AXSubrole": "AXSegment",
+        "AXTopLevelUIElement": "element",
+        "AXUserInputLabels": null,
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "back",
+      "enabled": false,
+      "focused": false,
+      "frame": {
+        "h": 36,
+        "w": 36,
+        "x": 558,
+        "y": 255
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXSegment",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXDescription": "forward",
+        "AXEnabled": "false",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": null,
+        "AXParent": "element",
+        "AXPosition": "595,255",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "36,36",
+        "AXSubrole": "AXSegment",
+        "AXTopLevelUIElement": "element",
+        "AXUserInputLabels": null,
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "forward",
+      "enabled": false,
+      "focused": false,
+      "frame": {
+        "h": 36,
+        "w": 36,
+        "x": 595,
+        "y": 255
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXSegment",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "Name:Move previous\nTarget:0x0\nSelector:(null)",
+        "Name:Move next\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXCustomActions": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "Show items as icons, in a list, in columns, or in a gallery",
+        "AXParent": "element",
+        "AXPosition": "973,247",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "156,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXRadioGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 156,
+        "x": 973,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:4",
+        "AXChildrenInNavigationOrder": "elements:4",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "976,254",
+        "AXRole": "AXRadioGroup",
+        "AXRoleDescription": "radio group",
+        "AXSize": "150,38",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 4,
+      "children": [
+        {
+          "identifier": "",
+          "name": "icon view",
+          "role": "AXRadioButton"
+        },
+        {
+          "identifier": "",
+          "name": "list view",
+          "role": "AXRadioButton"
+        },
+        {
+          "identifier": "",
+          "name": "column view",
+          "role": "AXRadioButton"
+        },
+        {
+          "identifier": "",
+          "name": "gallery view",
+          "role": "AXRadioButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 38,
+        "w": 150,
+        "x": 976,
+        "y": 254
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRadioGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXDescription": "icon view",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": null,
+        "AXParent": "element",
+        "AXPosition": "977,255",
+        "AXRole": "AXRadioButton",
+        "AXRoleDescription": "radio button",
+        "AXSize": "37,36",
+        "AXSubrole": "AXSegment",
+        "AXTopLevelUIElement": "element",
+        "AXUserInputLabels": null,
+        "AXValue": "0",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "icon view",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 36,
+        "w": 37,
+        "x": 977,
+        "y": 255
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRadioButton",
+      "subrole": "AXSegment",
+      "title": "",
+      "value": "0"
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXDescription": "list view",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": null,
+        "AXParent": "element",
+        "AXPosition": "1015,255",
+        "AXRole": "AXRadioButton",
+        "AXRoleDescription": "radio button",
+        "AXSize": "36,36",
+        "AXSubrole": "AXSegment",
+        "AXTopLevelUIElement": "element",
+        "AXUserInputLabels": null,
+        "AXValue": "1",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "list view",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 36,
+        "w": 36,
+        "x": 1015,
+        "y": 255
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRadioButton",
+      "subrole": "AXSegment",
+      "title": "",
+      "value": "1"
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXDescription": "column view",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": null,
+        "AXParent": "element",
+        "AXPosition": "1052,255",
+        "AXRole": "AXRadioButton",
+        "AXRoleDescription": "radio button",
+        "AXSize": "36,36",
+        "AXSubrole": "AXSegment",
+        "AXTopLevelUIElement": "element",
+        "AXUserInputLabels": null,
+        "AXValue": "0",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "column view",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 36,
+        "w": 36,
+        "x": 1052,
+        "y": 255
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRadioButton",
+      "subrole": "AXSegment",
+      "title": "",
+      "value": "0"
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXDescription": "gallery view",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": null,
+        "AXParent": "element",
+        "AXPosition": "1089,255",
+        "AXRole": "AXRadioButton",
+        "AXRoleDescription": "radio button",
+        "AXSize": "36,36",
+        "AXSubrole": "AXSegment",
+        "AXTopLevelUIElement": "element",
+        "AXUserInputLabels": null,
+        "AXValue": "0",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "gallery view",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 36,
+        "w": 36,
+        "x": 1089,
+        "y": 255
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRadioButton",
+      "subrole": "AXSegment",
+      "title": "",
+      "value": "0"
+    },
+    {
+      "actions": [
+        "AXShowMenu",
+        "AXPress",
+        "Name:Move previous\nTarget:0x0\nSelector:(null)",
+        "Name:Move next\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXCustomActions": null,
+        "AXDescription": "Group",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "Change the item grouping (hold down Option to change the sort)",
+        "AXParent": "element",
+        "AXPosition": "1137,247",
+        "AXRole": "AXMenuButton",
+        "AXRoleDescription": "menu button",
+        "AXSize": "58,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Group",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 58,
+        "x": 1137,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXMenuButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress",
+        "Name:Move previous\nTarget:0x0\nSelector:(null)",
+        "Name:Move next\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXCustomActions": null,
+        "AXDescription": "Share",
+        "AXEnabled": "false",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "Share the selected items",
+        "AXParent": "element",
+        "AXPosition": "1203,247",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "41,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Share",
+      "enabled": false,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 41,
+        "x": 1203,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress",
+        "Name:Move previous\nTarget:0x0\nSelector:(null)",
+        "Name:Move next\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXCustomActions": null,
+        "AXDescription": "Edit Tags",
+        "AXEnabled": "false",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "Edit Tags",
+        "AXParent": "element",
+        "AXPosition": "1244,247",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "40,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Edit Tags",
+      "enabled": false,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 40,
+        "x": 1244,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXShowMenu",
+        "AXPress",
+        "Name:Move previous\nTarget:0x0\nSelector:(null)",
+        "Name:Move next\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXCustomActions": null,
+        "AXDescription": "Action",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "Perform tasks with the selected items",
+        "AXParent": "element",
+        "AXPosition": "1284,247",
+        "AXRole": "AXMenuButton",
+        "AXRoleDescription": "menu button",
+        "AXSize": "41,52",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Action",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 41,
+        "x": 1284,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXMenuButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "Name:Move previous\nTarget:0x0\nSelector:(null)",
+        "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+      ],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXCustomActions": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "1333,247",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "45,52",
+        "AXSubrole": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "Search",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 52,
+        "w": 45,
+        "x": 1333,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXDescription": "Search",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "1337,254",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "39,38",
+        "AXSubrole": "AXSearchField",
+        "AXTitle": "",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Search",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 38,
+        "w": 39,
+        "x": 1337,
+        "y": 254
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXSearchField",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:2",
+        "AXChildrenInNavigationOrder": "elements:2",
+        "AXContents": "elements:2",
+        "AXDescription": "Tab bar, 1 tab.",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "462,299",
+        "AXRole": "AXTabGroup",
+        "AXRoleDescription": "tab group",
+        "AXSize": "920,28",
+        "AXTabs": "elements:1",
+        "AXTitle": "tab bar",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 2,
+      "children": [
+        {
+          "identifier": "",
+          "name": "bao-ax-finder",
+          "role": "AXRadioButton"
+        },
+        {
+          "identifier": "",
+          "name": "new tab",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "Tab bar, 1 tab.",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 920,
+        "x": 462,
+        "y": 299
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXTabGroup",
+      "subrole": "",
+      "title": "tab bar",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXShowMenu",
+        "AXPress"
+      ],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXDescription": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": "bao-ax-finder",
+        "AXParent": "element",
+        "AXPosition": "472,301",
+        "AXRole": "AXRadioButton",
+        "AXRoleDescription": "tab",
+        "AXSize": "868,24",
+        "AXSubrole": "AXTabButton",
+        "AXTitle": "bao-ax-finder",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "true",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "_closeButton",
+          "name": "Close tab",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 24,
+        "w": 868,
+        "x": 472,
+        "y": 301
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRadioButton",
+      "subrole": "AXTabButton",
+      "title": "bao-ax-finder",
+      "value": "true"
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXDescription": "Close",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "_closeButton",
+        "AXParent": "element",
+        "AXPosition": "476,304",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "18,18",
+        "AXTitle": "Close tab",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "Close",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 18,
+        "x": 476,
+        "y": 304
+      },
+      "identifier": "_closeButton",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "Close tab",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXDescription": "new tab",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "1345,298",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "button",
+        "AXSize": "30,30",
+        "AXTitle": "",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "new tab",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 30,
+        "w": 30,
+        "x": 1345,
+        "y": 298
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "462,247",
+        "AXRole": "AXSplitGroup",
+        "AXRoleDescription": "split group",
+        "AXSize": "920,464",
+        "AXSplitters": "elements:1",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXSplitGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 464,
+        "w": 920,
+        "x": 462,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXSplitGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:3",
+        "AXChildrenInNavigationOrder": "elements:3",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "462,247",
+        "AXRole": "AXSplitGroup",
+        "AXRoleDescription": "split group",
+        "AXSize": "920,464",
+        "AXSplitters": "",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 3,
+      "children": [
+        {
+          "identifier": "_NS:188",
+          "name": "_NS:188",
+          "role": "AXScrollArea"
+        },
+        {
+          "identifier": "statusBar",
+          "name": "statusBar",
+          "role": "AXUnknown"
+        },
+        {
+          "identifier": "",
+          "name": "path",
+          "role": "AXList"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 464,
+        "w": 920,
+        "x": 462,
+        "y": 247
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXSplitGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXScrollLeftByPage",
+        "AXScrollRightByPage",
+        "AXScrollUpByPage",
+        "AXScrollDownByPage"
+      ],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXContentSize": "920,348",
+        "AXContents": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXHorizontalScrollBar": null,
+        "AXIdentifier": "_NS:188",
+        "AXMakeScreenRectVisible": null,
+        "AXParent": "element",
+        "AXPosition": "462,335",
+        "AXRole": "AXScrollArea",
+        "AXRoleDescription": "scroll area",
+        "AXSize": "920,348",
+        "AXTopLevelUIElement": "element",
+        "AXVerticalScrollBar": null,
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "ListView",
+          "name": "list view",
+          "role": "AXOutline"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 348,
+        "w": 920,
+        "x": 462,
+        "y": 335
+      },
+      "identifier": "_NS:188",
+      "label": "",
+      "role": "AXScrollArea",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXChildren": "elements:8",
+        "AXChildrenInNavigationOrder": "elements:8",
+        "AXColumns": "elements:4",
+        "AXDescription": "list view",
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXHeader": "element",
+        "AXHelp": null,
+        "AXIdentifier": "ListView",
+        "AXParent": "element",
+        "AXPosition": "461,334",
+        "AXRole": "AXOutline",
+        "AXRoleDescription": "outline",
+        "AXRows": "elements:3",
+        "AXSelectedCells": "",
+        "AXSelectedColumns": "",
+        "AXSelectedRows": "",
+        "AXSize": "922,350",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleColumns": "elements:4",
+        "AXVisibleRows": "elements:3",
+        "AXWindow": "element"
+      },
+      "childCount": 8,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXRow"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXRow"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXRow"
+        },
+        {
+          "identifier": "name",
+          "name": "name",
+          "role": "AXColumn"
+        },
+        {
+          "identifier": "dateModified",
+          "name": "dateModified",
+          "role": "AXColumn"
+        },
+        {
+          "identifier": "size",
+          "name": "size",
+          "role": "AXColumn"
+        },
+        {
+          "identifier": "kind",
+          "name": "kind",
+          "role": "AXColumn"
+        },
+        {
+          "identifier": "_NS:13",
+          "name": "_NS:13",
+          "role": "AXGroup"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "list view",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 350,
+        "w": 922,
+        "x": 461,
+        "y": 334
+      },
+      "identifier": "ListView",
+      "label": "",
+      "role": "AXOutline",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXShowDefaultUI",
+        "AXShowAlternateUI"
+      ],
+      "attrs": {
+        "AXAlternateUIVisible": "false",
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXCustomActions": "",
+        "AXDisclosedByRow": null,
+        "AXDisclosedRows": "elements:2",
+        "AXDisclosing": "true",
+        "AXDisclosureLevel": "0",
+        "AXFrame": "axvalue",
+        "AXIndex": "0",
+        "AXParent": "element",
+        "AXPosition": "462,340",
+        "AXRole": "AXRow",
+        "AXRoleDescription": "outline row",
+        "AXSelected": "false",
+        "AXSize": "920,28",
+        "AXSubrole": "AXOutlineRow",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleChildren": "elements:4",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": {
+        "h": 28,
+        "w": 920,
+        "x": 462,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRow",
+      "subrole": "AXOutlineRow",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:5",
+        "AXChildrenInNavigationOrder": "elements:5",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "462,340",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "920,28",
+        "AXTitleUIElement": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 5,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "go up",
+          "role": "AXImage"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 28,
+        "w": 920,
+        "x": 462,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "4",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "508,340",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "34,16",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Name",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 34,
+        "x": 508,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Name"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXDescription": "go up",
+        "AXEmbeddedImageDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "954,344",
+        "AXRole": "AXImage",
+        "AXRoleDescription": "image",
+        "AXSize": "12,10",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "go up",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 10,
+        "w": 12,
+        "x": 954,
+        "y": 344
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXImage",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "13",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "979,340",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "76,16",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Date Modified",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 76,
+        "x": 979,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Date Modified"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "4",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "1160,340",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "25,16",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Size",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 25,
+        "x": 1160,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Size"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "4",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "1257,340",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "26,16",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Kind",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 26,
+        "x": 1257,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Kind"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:5",
+        "AXChildrenInNavigationOrder": "elements:5",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "462,340",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "920,28",
+        "AXTitleUIElement": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 5,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "go up",
+          "role": "AXImage"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 28,
+        "w": 920,
+        "x": 462,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:5",
+        "AXChildrenInNavigationOrder": "elements:5",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "462,340",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "920,28",
+        "AXTitleUIElement": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 5,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "go up",
+          "role": "AXImage"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 28,
+        "w": 920,
+        "x": 462,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:5",
+        "AXChildrenInNavigationOrder": "elements:5",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "462,340",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "920,28",
+        "AXTitleUIElement": null,
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 5,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "go up",
+          "role": "AXImage"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 28,
+        "w": 920,
+        "x": 462,
+        "y": 340
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXShowDefaultUI",
+        "AXShowAlternateUI"
+      ],
+      "attrs": {
+        "AXAlternateUIVisible": "false",
+        "AXChildren": "elements:4",
+        "AXChildrenInNavigationOrder": "elements:4",
+        "AXCustomActions": "",
+        "AXDisclosedByRow": "element",
+        "AXDisclosedRows": "",
+        "AXDisclosing": "false",
+        "AXDisclosureLevel": "1",
+        "AXFrame": "axvalue",
+        "AXIndex": "1",
+        "AXParent": "element",
+        "AXPosition": "462,368",
+        "AXRole": "AXRow",
+        "AXRoleDescription": "outline row",
+        "AXSelected": "false",
+        "AXSize": "920,20",
+        "AXSubrole": "AXOutlineRow",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleChildren": "elements:4",
+        "AXWindow": "element"
+      },
+      "childCount": 4,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": {
+        "h": 20,
+        "w": 920,
+        "x": 462,
+        "y": 368
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRow",
+      "subrole": "AXOutlineRow",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:2",
+        "AXChildrenInNavigationOrder": "elements:2",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "488,368",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "485,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 2,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXImage"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXTextField"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 485,
+        "x": 488,
+        "y": 368
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXDescription": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "488,370",
+        "AXRole": "AXImage",
+        "AXRoleDescription": "image",
+        "AXSize": "16,16",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 488,
+        "y": 370
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXImage",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXOpen",
+        "AXShowMenu",
+        "AXConfirm"
+      ],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFilename": "a.txt",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "5",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "508,369",
+        "AXRole": "AXTextField",
+        "AXRoleDescription": "text field",
+        "AXSelected": "false",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "33,18",
+        "AXTopLevelUIElement": "element",
+        "AXURL": "",
+        "AXValue": "a.txt",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 33,
+        "x": 508,
+        "y": 369
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXTextField",
+      "subrole": "",
+      "title": "",
+      "value": "a.txt"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "973,368",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "181,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 181,
+        "x": 973,
+        "y": 368
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "17",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "979,369",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "169,18",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Today at 10:37 PM",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 169,
+        "x": 979,
+        "y": 369
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Today at 10:37 PM"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "1154,368",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "97,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 97,
+        "x": 1154,
+        "y": 368
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "7",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "1198,369",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "47,18",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "9 bytes",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 47,
+        "x": 1198,
+        "y": 369
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "9 bytes"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "1251,368",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "115,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 115,
+        "x": 1251,
+        "y": 368
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "10",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "1257,369",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "103,18",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Plain Text",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 103,
+        "x": 1257,
+        "y": 369
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Plain Text"
+    },
+    {
+      "actions": [
+        "AXShowDefaultUI",
+        "AXShowAlternateUI"
+      ],
+      "attrs": {
+        "AXAlternateUIVisible": "false",
+        "AXChildren": "elements:4",
+        "AXChildrenInNavigationOrder": "elements:4",
+        "AXCustomActions": "",
+        "AXDisclosedByRow": "element",
+        "AXDisclosedRows": "",
+        "AXDisclosing": "false",
+        "AXDisclosureLevel": "1",
+        "AXFrame": "axvalue",
+        "AXIndex": "2",
+        "AXParent": "element",
+        "AXPosition": "462,388",
+        "AXRole": "AXRow",
+        "AXRoleDescription": "outline row",
+        "AXSelected": "false",
+        "AXSize": "920,20",
+        "AXSubrole": "AXOutlineRow",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleChildren": "elements:4",
+        "AXWindow": "element"
+      },
+      "childCount": 4,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXCell"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": {
+        "h": 20,
+        "w": 920,
+        "x": 462,
+        "y": 388
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXRow",
+      "subrole": "AXOutlineRow",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:2",
+        "AXChildrenInNavigationOrder": "elements:2",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "488,388",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "485,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 2,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXImage"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXTextField"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 485,
+        "x": 488,
+        "y": 388
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXDescription": null,
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "488,390",
+        "AXRole": "AXImage",
+        "AXRoleDescription": "image",
+        "AXSize": "16,16",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 488,
+        "y": 390
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXImage",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXOpen",
+        "AXShowMenu",
+        "AXConfirm"
+      ],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFilename": "b.txt",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "5",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "508,389",
+        "AXRole": "AXTextField",
+        "AXRoleDescription": "text field",
+        "AXSelected": "false",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "34,18",
+        "AXTopLevelUIElement": "element",
+        "AXURL": "",
+        "AXValue": "b.txt",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 34,
+        "x": 508,
+        "y": 389
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXTextField",
+      "subrole": "",
+      "title": "",
+      "value": "b.txt"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "973,388",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "181,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 181,
+        "x": 973,
+        "y": 388
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "17",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "979,389",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "169,18",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Today at 10:37 PM",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 169,
+        "x": 979,
+        "y": 389
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Today at 10:37 PM"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "1154,388",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "97,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 97,
+        "x": 1154,
+        "y": 388
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "7",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "1198,389",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "47,18",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "9 bytes",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 47,
+        "x": 1198,
+        "y": 389
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "9 bytes"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXColumnIndexRange": "axvalue",
+        "AXCustomActions": null,
+        "AXDescription": null,
+        "AXEnabled": "true",
+        "AXFocused": "true",
+        "AXFrame": "axvalue",
+        "AXParent": "element",
+        "AXPosition": "1251,388",
+        "AXRole": "AXCell",
+        "AXRoleDescription": "cell",
+        "AXRowIndexRange": "axvalue",
+        "AXScrollToVisible": null,
+        "AXSelected": "false",
+        "AXSize": "115,20",
+        "AXTitleUIElement": "element",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": true,
+      "frame": {
+        "h": 20,
+        "w": 115,
+        "x": 1251,
+        "y": 388
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXCell",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "10",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "1257,389",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "103,18",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "Plain Text",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 18,
+        "w": 103,
+        "x": 1257,
+        "y": 389
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "Plain Text"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXFrame": "axvalue",
+        "AXHeader": "element",
+        "AXIdentifier": "name",
+        "AXIndex": "0",
+        "AXParent": "element",
+        "AXPosition": "472,335",
+        "AXRole": "AXColumn",
+        "AXRoleDescription": "column",
+        "AXRows": "elements:3",
+        "AXSelected": "false",
+        "AXSize": "501,348",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleRows": "elements:3",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": {
+        "h": 348,
+        "w": 501,
+        "x": 472,
+        "y": 335
+      },
+      "identifier": "name",
+      "label": "",
+      "role": "AXColumn",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXFrame": "axvalue",
+        "AXHeader": "element",
+        "AXIdentifier": "dateModified",
+        "AXIndex": "1",
+        "AXParent": "element",
+        "AXPosition": "973,335",
+        "AXRole": "AXColumn",
+        "AXRoleDescription": "column",
+        "AXRows": "elements:3",
+        "AXSelected": "false",
+        "AXSize": "181,348",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleRows": "elements:3",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": {
+        "h": 348,
+        "w": 181,
+        "x": 973,
+        "y": 335
+      },
+      "identifier": "dateModified",
+      "label": "",
+      "role": "AXColumn",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXFrame": "axvalue",
+        "AXHeader": "element",
+        "AXIdentifier": "size",
+        "AXIndex": "2",
+        "AXParent": "element",
+        "AXPosition": "1154,335",
+        "AXRole": "AXColumn",
+        "AXRoleDescription": "column",
+        "AXRows": "elements:3",
+        "AXSelected": "false",
+        "AXSize": "97,348",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleRows": "elements:3",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": {
+        "h": 348,
+        "w": 97,
+        "x": 1154,
+        "y": 335
+      },
+      "identifier": "size",
+      "label": "",
+      "role": "AXColumn",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXFrame": "axvalue",
+        "AXHeader": "element",
+        "AXIdentifier": "kind",
+        "AXIndex": "3",
+        "AXParent": "element",
+        "AXPosition": "1251,335",
+        "AXRole": "AXColumn",
+        "AXRoleDescription": "column",
+        "AXRows": "elements:3",
+        "AXSelected": "false",
+        "AXSize": "121,348",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleRows": "elements:3",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": null,
+      "frame": {
+        "h": 348,
+        "w": 121,
+        "x": 1251,
+        "y": 335
+      },
+      "identifier": "kind",
+      "label": "",
+      "role": "AXColumn",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:4",
+        "AXChildrenInNavigationOrder": "elements:4",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "_NS:13",
+        "AXParent": "element",
+        "AXPosition": "462,335",
+        "AXRole": "AXGroup",
+        "AXRoleDescription": "group",
+        "AXSize": "920,0",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 4,
+      "children": [
+        {
+          "identifier": "",
+          "name": "Name",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "Date Modified",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "Size",
+          "role": "AXButton"
+        },
+        {
+          "identifier": "",
+          "name": "Kind",
+          "role": "AXButton"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": null,
+      "identifier": "_NS:13",
+      "label": "",
+      "role": "AXGroup",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "472,335",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "sort button",
+        "AXSize": "501,28",
+        "AXSortDirection": "AXUnknownSortDirection",
+        "AXSubrole": "AXSortButton",
+        "AXTitle": "Name",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 501,
+        "x": 472,
+        "y": 335
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXSortButton",
+      "title": "Name",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "973,335",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "sort button",
+        "AXSize": "181,28",
+        "AXSortDirection": "AXUnknownSortDirection",
+        "AXSubrole": "AXSortButton",
+        "AXTitle": "Date Modified",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 181,
+        "x": 973,
+        "y": 335
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXSortButton",
+      "title": "Date Modified",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "1154,335",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "sort button",
+        "AXSize": "97,28",
+        "AXSortDirection": "AXUnknownSortDirection",
+        "AXSubrole": "AXSortButton",
+        "AXTitle": "Size",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 97,
+        "x": 1154,
+        "y": 335
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXSortButton",
+      "title": "Size",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXPress"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "1251,335",
+        "AXRole": "AXButton",
+        "AXRoleDescription": "sort button",
+        "AXSize": "121,28",
+        "AXSortDirection": "AXUnknownSortDirection",
+        "AXSubrole": "AXSortButton",
+        "AXTitle": "Kind",
+        "AXTopLevelUIElement": "element",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 121,
+        "x": 1251,
+        "y": 335
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXButton",
+      "subrole": "AXSortButton",
+      "title": "Kind",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXChildren": "elements:4",
+        "AXDescription": "path",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXOrientation": "AXHorizontalOrientation",
+        "AXParent": "element",
+        "AXPosition": "467,682",
+        "AXRole": "AXList",
+        "AXRoleDescription": "list",
+        "AXSelectedChildren": "",
+        "AXSize": "906,30",
+        "AXTopLevelUIElement": "element",
+        "AXVisibleChildren": "elements:4",
+        "AXWindow": "element"
+      },
+      "childCount": 4,
+      "children": [
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        },
+        {
+          "identifier": "",
+          "name": "",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "path",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 30,
+        "w": 906,
+        "x": 467,
+        "y": 682
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXList",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [
+        "AXOpen",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "468,683",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSize": "107,28",
+        "AXTopLevelUIElement": "element",
+        "AXURL": "",
+        "AXValue": "[sidebar]",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 107,
+        "x": 468,
+        "y": 683
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "[sidebar]"
+    },
+    {
+      "actions": [
+        "AXOpen",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "575,683",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSize": "70,28",
+        "AXTopLevelUIElement": "element",
+        "AXURL": "",
+        "AXValue": "private",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 70,
+        "x": 575,
+        "y": 683
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "private"
+    },
+    {
+      "actions": [
+        "AXOpen",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "645,683",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSize": "54,28",
+        "AXTopLevelUIElement": "element",
+        "AXURL": "",
+        "AXValue": "tmp",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 54,
+        "x": 645,
+        "y": 683
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "tmp"
+    },
+    {
+      "actions": [
+        "AXOpen",
+        "AXShowMenu"
+      ],
+      "attrs": {
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXParent": "element",
+        "AXPosition": "699,683",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSize": "101,28",
+        "AXTopLevelUIElement": "element",
+        "AXURL": "",
+        "AXValue": "bao-ax-finder",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 101,
+        "x": 699,
+        "y": 683
+      },
+      "identifier": "",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "bao-ax-finder"
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "elements:1",
+        "AXChildrenInNavigationOrder": "elements:1",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "statusBar",
+        "AXParent": "element",
+        "AXPosition": "462,711",
+        "AXRole": "AXUnknown",
+        "AXRoleDescription": "unknown",
+        "AXSize": "920,28",
+        "AXTopLevelUIElement": "element",
+        "AXValueDescription": "status bar",
+        "AXWindow": "element"
+      },
+      "childCount": 1,
+      "children": [
+        {
+          "identifier": "statusBarText",
+          "name": "statusBarText",
+          "role": "AXStaticText"
+        }
+      ],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": null,
+      "focused": false,
+      "frame": {
+        "h": 28,
+        "w": 920,
+        "x": 462,
+        "y": 711
+      },
+      "identifier": "statusBar",
+      "label": "",
+      "role": "AXUnknown",
+      "subrole": "",
+      "title": "",
+      "value": ""
+    },
+    {
+      "actions": [],
+      "attrs": {
+        "AXChildren": "",
+        "AXChildrenInNavigationOrder": "",
+        "AXEnabled": "true",
+        "AXFocused": "false",
+        "AXFrame": "axvalue",
+        "AXHelp": null,
+        "AXIdentifier": "statusBarText",
+        "AXInsertionPointLineNumber": "0",
+        "AXNumberOfCharacters": "28",
+        "AXParent": "element",
+        "AXPlaceholderValue": null,
+        "AXPosition": "836,717",
+        "AXRole": "AXStaticText",
+        "AXRoleDescription": "text",
+        "AXSelectedText": null,
+        "AXSelectedTextRange": "axvalue",
+        "AXSize": "162,16",
+        "AXTopLevelUIElement": "element",
+        "AXValue": "2 items, 501.91 GB available",
+        "AXVisibleCharacterRange": "axvalue",
+        "AXWindow": "element"
+      },
+      "childCount": 0,
+      "children": [],
+      "childrenTruncated": false,
+      "description": "",
+      "enabled": true,
+      "focused": false,
+      "frame": {
+        "h": 16,
+        "w": 162,
+        "x": 836,
+        "y": 717
+      },
+      "identifier": "statusBarText",
+      "label": "",
+      "role": "AXStaticText",
+      "subrole": "",
+      "title": "",
+      "value": "2 items, 501.91 GB available"
+    }
+  ],
+  "ok": true,
+  "os": "26.6.2",
+  "sampleCount": 80,
+  "samples": [
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXButton",
+      "x": 486,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXButton",
+      "x": 534,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "back",
+      "role": "AXButton",
+      "x": 582,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "forward",
+      "role": "AXButton",
+      "x": 630,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXStaticText",
+      "x": 678,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXStaticText",
+      "x": 726,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "",
+      "role": "AXRadioGroup",
+      "x": 1014,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "column view",
+      "role": "AXRadioButton",
+      "x": 1062,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "gallery view",
+      "role": "AXRadioButton",
+      "x": 1110,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "Group",
+      "role": "AXMenuButton",
+      "x": 1158,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "Share",
+      "role": "AXButton",
+      "x": 1206,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "Edit Tags",
+      "role": "AXButton",
+      "x": 1254,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "Action",
+      "role": "AXMenuButton",
+      "x": 1302,
+      "y": 271
+    },
+    {
+      "identifier": "",
+      "name": "Search",
+      "role": "AXButton",
+      "x": 1350,
+      "y": 271
+    },
+    {
+      "identifier": "_closeButton",
+      "name": "Close tab",
+      "role": "AXButton",
+      "x": 486,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 534,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 582,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 630,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 678,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 726,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 1014,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 1062,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 1110,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 1158,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 1206,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 1254,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "bao-ax-finder",
+      "role": "AXRadioButton",
+      "x": 1302,
+      "y": 319
+    },
+    {
+      "identifier": "",
+      "name": "new tab",
+      "role": "AXButton",
+      "x": 1350,
+      "y": 319
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 486,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 534,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 582,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 630,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 678,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 726,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1014,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1062,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1110,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1158,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1206,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1254,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1302,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1350,
+      "y": 367
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 486,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 534,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 582,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 630,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 678,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 726,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1014,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1062,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1110,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1158,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1206,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1254,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1302,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1350,
+      "y": 415
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 486,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 534,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 582,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 630,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 678,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 726,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1014,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1062,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1110,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1158,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1206,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1254,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1302,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 1350,
+      "y": 463
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 486,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 534,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 582,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 630,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 678,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 726,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 774,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 822,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 870,
+      "y": 511
+    },
+    {
+      "identifier": "ListView",
+      "name": "list view",
+      "role": "AXOutline",
+      "x": 918,
+      "y": 511
+    }
+  ],
+  "titleFilter": "bao-ax-finder",
+  "truncated": false
+}

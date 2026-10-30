@@ -1,0 +1,118 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644048015,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644048054,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644048094,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644048134,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "deep-thoughts",
+      "cssPath": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(2)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://quotes.toscrape.com/",
+    "afterUrl": "https://quotes.toscrape.com/tag/deep-thoughts/page/1/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644048454,
+    "kind": "act",
+    "op": "back",
+    "beforeUrl": "https://quotes.toscrape.com/tag/deep-thoughts/page/1/",
+    "afterUrl": "https://quotes.toscrape.com/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644048516,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Quotes to Scrape",
+      "cssPath": "div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://quotes.toscrape.com/",
+    "afterUrl": "https://quotes.toscrape.com/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792644048790,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "(about)",
+      "cssPath": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "span"
+        }
+      ]
+    },
+    "beforeUrl": "https://quotes.toscrape.com/",
+    "afterUrl": "http://quotes.toscrape.com/author/Albert-Einstein/"
+  }
+]

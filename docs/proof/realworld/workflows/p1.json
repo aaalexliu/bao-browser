@@ -1,0 +1,1473 @@
+{
+  "schema": "bao.workflow/v2",
+  "version": 2,
+  "id": "wf-1792700589362",
+  "name": "Captured workflow",
+  "startUrl": "https://automationexercise.com/login",
+  "inputs": [
+    {
+      "name": "name",
+      "type": "text",
+      "required": true,
+      "label": "name",
+      "default": "Bao Record"
+    },
+    {
+      "name": "username",
+      "type": "text",
+      "required": true,
+      "label": "username",
+      "default": "bao-record-mvjzm7ln@example.com"
+    },
+    {
+      "name": "password",
+      "type": "secret",
+      "required": true,
+      "label": "password"
+    },
+    {
+      "name": "days",
+      "type": "text",
+      "required": true,
+      "label": "days",
+      "default": "10"
+    },
+    {
+      "name": "months",
+      "type": "text",
+      "required": true,
+      "label": "months",
+      "default": "January"
+    },
+    {
+      "name": "years",
+      "type": "text",
+      "required": true,
+      "label": "years",
+      "default": "1990"
+    },
+    {
+      "name": "first_name",
+      "type": "text",
+      "required": true,
+      "label": "first_name",
+      "default": "Bao"
+    },
+    {
+      "name": "last_name",
+      "type": "text",
+      "required": true,
+      "label": "last_name",
+      "default": "Record"
+    },
+    {
+      "name": "country",
+      "type": "text",
+      "required": true,
+      "label": "country",
+      "default": "Canada"
+    },
+    {
+      "name": "address1",
+      "type": "text",
+      "required": true,
+      "label": "address1",
+      "default": "1 Proof Street"
+    },
+    {
+      "name": "state",
+      "type": "text",
+      "required": true,
+      "label": "state",
+      "default": "Ontario"
+    },
+    {
+      "name": "city",
+      "type": "text",
+      "required": true,
+      "label": "city",
+      "default": "Toronto"
+    },
+    {
+      "name": "zipcode",
+      "type": "text",
+      "required": true,
+      "label": "zipcode",
+      "default": "M5V1A1"
+    },
+    {
+      "name": "mobile_number",
+      "type": "text",
+      "required": true,
+      "label": "mobile_number",
+      "default": "5550100000"
+    },
+    {
+      "name": "name2",
+      "type": "text",
+      "required": true,
+      "label": "name2",
+      "default": "Bao Record"
+    },
+    {
+      "name": "username2",
+      "type": "text",
+      "required": true,
+      "label": "username2",
+      "default": "bao-record-mvjzm7ln@example.com"
+    },
+    {
+      "name": "subject",
+      "type": "text",
+      "required": true,
+      "label": "subject",
+      "default": "Proof note"
+    },
+    {
+      "name": "file",
+      "type": "file",
+      "required": true,
+      "label": "file"
+    },
+    {
+      "name": "message",
+      "type": "text",
+      "required": true,
+      "label": "message",
+      "default": "Hello from the proof record."
+    }
+  ],
+  "steps": [
+    {
+      "id": "wf-1792700589362-0",
+      "index": 0,
+      "action": "navigate",
+      "label": "Open https://automationexercise.com/login",
+      "surface": "dom",
+      "value": "https://automationexercise.com/login",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "automationexercise.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792700589362-1",
+      "index": 1,
+      "action": "type",
+      "label": "Type {{name}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "signup-name",
+        "nameAttr": "name",
+        "tag": "input",
+        "cssPath": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(2)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "testid",
+          "value": "signup-name"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"signup-name\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(2)"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "name",
+      "value": "{{name}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{name}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-2",
+      "index": 2,
+      "action": "type",
+      "label": "Type {{username}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "signup-email",
+        "nameAttr": "email",
+        "tag": "input",
+        "cssPath": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(3)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "testid",
+          "value": "signup-email"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"signup-email\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1) > input:nth-of-type(3)"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"email\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username",
+      "value": "{{username}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-3",
+      "index": 3,
+      "action": "click",
+      "label": "Click \"Signup\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "testId": "signup-button",
+        "tag": "button",
+        "cssPath": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1) > button:nth-of-type(1)",
+        "text": "Signup",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Signup"
+        },
+        {
+          "kind": "text",
+          "value": "Signup"
+        },
+        {
+          "kind": "testid",
+          "value": "signup-button"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"signup-button\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1) > button:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-4",
+      "index": 4,
+      "action": "check",
+      "label": "Check \"Mr.\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "id_gender1",
+        "nameAttr": "title",
+        "tag": "input",
+        "cssPath": "#id_gender1",
+        "name": "Mr.",
+        "label": "Mr.",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "radio",
+          "name": "Mr."
+        },
+        {
+          "kind": "text",
+          "value": "Mr."
+        },
+        {
+          "kind": "css",
+          "value": "#id_gender1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"id_gender1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "checked": true,
+      "expect": {
+        "kind": "state",
+        "state": "checked",
+        "identity": {
+          "surface": "dom",
+          "role": "radio",
+          "id": "id_gender1",
+          "nameAttr": "title",
+          "tag": "input",
+          "cssPath": "#id_gender1",
+          "name": "Mr.",
+          "label": "Mr.",
+          "path": []
+        },
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-5",
+      "index": 5,
+      "action": "click",
+      "label": "Click \"Mr.\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "label",
+        "tag": "label",
+        "cssPath": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > label:nth-of-type(1)",
+        "name": "Mr.",
+        "label": "Mr.",
+        "text": "Mr.",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "label",
+          "name": "Mr."
+        },
+        {
+          "kind": "text",
+          "value": "Mr."
+        },
+        {
+          "kind": "css",
+          "value": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > label:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-6",
+      "index": 6,
+      "action": "click",
+      "label": "Click \"Mr.\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "radio",
+        "id": "id_gender1",
+        "nameAttr": "title",
+        "tag": "input",
+        "cssPath": "#id_gender1",
+        "name": "Mr.",
+        "label": "Mr.",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "radio",
+          "name": "Mr."
+        },
+        {
+          "kind": "text",
+          "value": "Mr."
+        },
+        {
+          "kind": "css",
+          "value": "#id_gender1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"id_gender1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-7",
+      "index": 7,
+      "action": "type",
+      "label": "Type secret",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "password",
+        "testId": "password",
+        "id": "password",
+        "nameAttr": "password",
+        "tag": "input",
+        "cssPath": "#password",
+        "name": "Password *",
+        "label": "Password *",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "password",
+          "name": "Password *"
+        },
+        {
+          "kind": "text",
+          "value": "Password *"
+        },
+        {
+          "kind": "testid",
+          "value": "password"
+        },
+        {
+          "kind": "css",
+          "value": "#password"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"password\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "gate": "login",
+      "input": "password",
+      "value": "{{password}}",
+      "sensitive": true,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-8",
+      "index": 8,
+      "action": "select",
+      "label": "Select {{days}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "testId": "days",
+        "id": "days",
+        "nameAttr": "days",
+        "tag": "select",
+        "cssPath": "#days",
+        "text": "Day 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 2",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "Day 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 2"
+        },
+        {
+          "kind": "text",
+          "value": "Day 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 2"
+        },
+        {
+          "kind": "testid",
+          "value": "days"
+        },
+        {
+          "kind": "css",
+          "value": "#days"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"days\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "days",
+      "value": "{{days}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-9",
+      "index": 9,
+      "action": "select",
+      "label": "Select {{months}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "testId": "months",
+        "id": "months",
+        "nameAttr": "months",
+        "tag": "select",
+        "cssPath": "#months",
+        "text": "Month January February March April May June July August September October Novemb",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "Month January February March April May June July August September October Novemb"
+        },
+        {
+          "kind": "text",
+          "value": "Month January February March April May June July August September October Novemb"
+        },
+        {
+          "kind": "testid",
+          "value": "months"
+        },
+        {
+          "kind": "css",
+          "value": "#months"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"months\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "months",
+      "value": "{{months}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-10",
+      "index": 10,
+      "action": "select",
+      "label": "Select {{years}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "testId": "years",
+        "id": "years",
+        "nameAttr": "years",
+        "tag": "select",
+        "cssPath": "#years",
+        "text": "Year 2021 2020 2019 2018 2017 2016 2015 2014 2013 2012 2011 2010 2009 2008 2007 ",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "Year 2021 2020 2019 2018 2017 2016 2015 2014 2013 2012 2011 2010 2009 2008 2007 "
+        },
+        {
+          "kind": "text",
+          "value": "Year 2021 2020 2019 2018 2017 2016 2015 2014 2013 2012 2011 2010 2009 2008 2007 "
+        },
+        {
+          "kind": "testid",
+          "value": "years"
+        },
+        {
+          "kind": "css",
+          "value": "#years"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"years\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "years",
+      "value": "{{years}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-11",
+      "index": 11,
+      "action": "type",
+      "label": "Type {{first_name}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "first_name",
+        "id": "first_name",
+        "nameAttr": "first_name",
+        "tag": "input",
+        "cssPath": "#first_name",
+        "name": "First name *",
+        "label": "First name *",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "First name *"
+        },
+        {
+          "kind": "text",
+          "value": "First name *"
+        },
+        {
+          "kind": "testid",
+          "value": "first_name"
+        },
+        {
+          "kind": "css",
+          "value": "#first_name"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"first_name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "first_name",
+      "value": "{{first_name}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{first_name}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-12",
+      "index": 12,
+      "action": "type",
+      "label": "Type {{last_name}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "last_name",
+        "id": "last_name",
+        "nameAttr": "last_name",
+        "tag": "input",
+        "cssPath": "#last_name",
+        "name": "Last name *",
+        "label": "Last name *",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Last name *"
+        },
+        {
+          "kind": "text",
+          "value": "Last name *"
+        },
+        {
+          "kind": "testid",
+          "value": "last_name"
+        },
+        {
+          "kind": "css",
+          "value": "#last_name"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"last_name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "last_name",
+      "value": "{{last_name}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{last_name}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-13",
+      "index": 13,
+      "action": "select",
+      "label": "Select {{country}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "listbox",
+        "testId": "country",
+        "id": "country",
+        "nameAttr": "country",
+        "tag": "select",
+        "cssPath": "#country",
+        "name": "Country *",
+        "label": "Country *",
+        "text": "India United States Canada Australia Israel New Zealand Singapore",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "listbox",
+          "name": "Country *"
+        },
+        {
+          "kind": "text",
+          "value": "India United States Canada Australia Israel New Zealand Singapore"
+        },
+        {
+          "kind": "testid",
+          "value": "country"
+        },
+        {
+          "kind": "css",
+          "value": "#country"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"country\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "country",
+      "value": "{{country}}",
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-14",
+      "index": 14,
+      "action": "type",
+      "label": "Type {{address1}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "address",
+        "id": "address1",
+        "nameAttr": "address1",
+        "tag": "input",
+        "cssPath": "#address1",
+        "name": "Address * (Street address, P.O. Box, Company name, etc.)",
+        "label": "Address * (Street address, P.O. Box, Company name, etc.)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Address * (Street address, P.O. Box, Company name, etc.)"
+        },
+        {
+          "kind": "text",
+          "value": "Address * (Street address, P.O. Box, Company name, etc.)"
+        },
+        {
+          "kind": "testid",
+          "value": "address"
+        },
+        {
+          "kind": "css",
+          "value": "#address1"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"address1\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "address1",
+      "value": "{{address1}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{address1}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-15",
+      "index": 15,
+      "action": "type",
+      "label": "Type {{state}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "state",
+        "id": "state",
+        "nameAttr": "state",
+        "tag": "input",
+        "cssPath": "#state",
+        "name": "State *",
+        "label": "State *",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "State *"
+        },
+        {
+          "kind": "text",
+          "value": "State *"
+        },
+        {
+          "kind": "testid",
+          "value": "state"
+        },
+        {
+          "kind": "css",
+          "value": "#state"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"state\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "state",
+      "value": "{{state}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{state}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-16",
+      "index": 16,
+      "action": "type",
+      "label": "Type {{city}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "city",
+        "id": "city",
+        "nameAttr": "city",
+        "tag": "input",
+        "cssPath": "#city",
+        "name": "City *",
+        "label": "City *",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "City *"
+        },
+        {
+          "kind": "text",
+          "value": "City *"
+        },
+        {
+          "kind": "testid",
+          "value": "city"
+        },
+        {
+          "kind": "css",
+          "value": "#city"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"city\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "city",
+      "value": "{{city}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{city}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-17",
+      "index": 17,
+      "action": "type",
+      "label": "Type {{zipcode}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "zipcode",
+        "id": "zipcode",
+        "nameAttr": "zipcode",
+        "tag": "input",
+        "cssPath": "#zipcode",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "testid",
+          "value": "zipcode"
+        },
+        {
+          "kind": "css",
+          "value": "#zipcode"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"zipcode\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "zipcode",
+      "value": "{{zipcode}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{zipcode}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-18",
+      "index": 18,
+      "action": "type",
+      "label": "Type {{mobile_number}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "mobile_number",
+        "id": "mobile_number",
+        "nameAttr": "mobile_number",
+        "tag": "input",
+        "cssPath": "#mobile_number",
+        "name": "Mobile Number *",
+        "label": "Mobile Number *",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "textbox",
+          "name": "Mobile Number *"
+        },
+        {
+          "kind": "text",
+          "value": "Mobile Number *"
+        },
+        {
+          "kind": "testid",
+          "value": "mobile_number"
+        },
+        {
+          "kind": "css",
+          "value": "#mobile_number"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"mobile_number\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "mobile_number",
+      "value": "{{mobile_number}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{mobile_number}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-19",
+      "index": 19,
+      "action": "click",
+      "label": "Click \"Create Account\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "testId": "create-account",
+        "tag": "button",
+        "cssPath": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > button:nth-of-type(1)",
+        "text": "Create Account",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Create Account"
+        },
+        {
+          "kind": "text",
+          "value": "Create Account"
+        },
+        {
+          "kind": "testid",
+          "value": "create-account"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"create-account\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > form:nth-of-type(1) > button:nth-of-type(1)"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-20",
+      "index": 20,
+      "action": "click",
+      "label": "Click \"Continue\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "testId": "continue-button",
+        "tag": "a",
+        "cssPath": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "href": "/",
+        "text": "Continue",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "Continue"
+        },
+        {
+          "kind": "text",
+          "value": "Continue"
+        },
+        {
+          "kind": "testid",
+          "value": "continue-button"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"continue-button\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#form > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-21",
+      "index": 21,
+      "action": "navigate",
+      "label": "Open https://automationexercise.com/",
+      "surface": "dom",
+      "value": "https://automationexercise.com/",
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "url",
+        "match": "automationexercise.com",
+        "timeoutMs": 8000
+      }
+    },
+    {
+      "id": "wf-1792700589362-22",
+      "index": 22,
+      "action": "click",
+      "label": "Click \"Contact us\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "tag": "a",
+        "cssPath": "#header > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(9) > a:nth-of-type(1)",
+        "href": "/contact_us",
+        "text": "Contact us",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "Contact us"
+        },
+        {
+          "kind": "text",
+          "value": "Contact us"
+        },
+        {
+          "kind": "css",
+          "value": "#header > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(9) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/contact_us\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    },
+    {
+      "id": "wf-1792700589362-23",
+      "index": 23,
+      "action": "type",
+      "label": "Type {{name2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "name",
+        "nameAttr": "name",
+        "tag": "input",
+        "cssPath": "#contact-us-form > div:nth-of-type(1) > input:nth-of-type(1)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "testid",
+          "value": "name"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"name\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#contact-us-form > div:nth-of-type(1) > input:nth-of-type(1)"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"name\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "name2",
+      "value": "{{name2}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{name2}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-24",
+      "index": 24,
+      "action": "type",
+      "label": "Type {{username2}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "email",
+        "nameAttr": "email",
+        "tag": "input",
+        "cssPath": "#contact-us-form > div:nth-of-type(2) > input:nth-of-type(1)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "testid",
+          "value": "email"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"email\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#contact-us-form > div:nth-of-type(2) > input:nth-of-type(1)"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"email\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "username2",
+      "value": "{{username2}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{username2}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-25",
+      "index": 25,
+      "action": "type",
+      "label": "Type {{subject}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "subject",
+        "nameAttr": "subject",
+        "tag": "input",
+        "cssPath": "#contact-us-form > div:nth-of-type(3) > input:nth-of-type(1)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "testid",
+          "value": "subject"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"subject\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#contact-us-form > div:nth-of-type(3) > input:nth-of-type(1)"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"subject\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "subject",
+      "value": "{{subject}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{subject}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-26",
+      "index": 26,
+      "action": "upload",
+      "label": "Upload file",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "nameAttr": "upload_file",
+        "tag": "input",
+        "cssPath": "#contact-us-form > div:nth-of-type(5) > input:nth-of-type(1)",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "css",
+          "value": "input[name=\"upload_file\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#contact-us-form > div:nth-of-type(5) > input:nth-of-type(1)"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"upload_file\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "file",
+      "value": "{{file}}",
+      "postcondition": {
+        "kind": "text",
+        "match": "{{file}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-27",
+      "index": 27,
+      "action": "type",
+      "label": "Type {{message}}",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "textbox",
+        "testId": "message",
+        "id": "message",
+        "nameAttr": "message",
+        "tag": "textarea",
+        "cssPath": "#message",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "testid",
+          "value": "message"
+        },
+        {
+          "kind": "css",
+          "value": "#message"
+        },
+        {
+          "kind": "xpath",
+          "value": "//*[@id=\"message\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "input": "message",
+      "value": "{{message}}",
+      "postcondition": {
+        "kind": "value",
+        "match": "{{message}}",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-28",
+      "index": 28,
+      "action": "click",
+      "label": "Click \"Submit\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "button",
+        "testId": "submit-button",
+        "nameAttr": "submit",
+        "tag": "input",
+        "cssPath": "#contact-us-form > div:nth-of-type(6) > input:nth-of-type(1)",
+        "name": "Submit",
+        "label": "Submit",
+        "text": "Submit",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        {
+          "kind": "text",
+          "value": "Submit"
+        },
+        {
+          "kind": "testid",
+          "value": "submit-button"
+        },
+        {
+          "kind": "css",
+          "value": "[data-testid=\"submit-button\"]"
+        },
+        {
+          "kind": "css",
+          "value": "#contact-us-form > div:nth-of-type(6) > input:nth-of-type(1)"
+        },
+        {
+          "kind": "xpath",
+          "value": "//input[@name=\"submit\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "postcondition": {
+        "kind": "text",
+        "match": "Success! Your details have been submitted successfully.",
+        "timeoutMs": 4000
+      },
+      "expect": {
+        "kind": "text",
+        "match": "Success! Your details have been submitted successfully.",
+        "timeoutMs": 4000
+      }
+    },
+    {
+      "id": "wf-1792700589362-29",
+      "index": 29,
+      "action": "click",
+      "label": "Click \"Delete Account\"",
+      "surface": "dom",
+      "identity": {
+        "surface": "dom",
+        "role": "link",
+        "tag": "a",
+        "cssPath": "#header > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(5) > a:nth-of-type(1)",
+        "href": "/delete_account",
+        "text": "Delete Account",
+        "path": []
+      },
+      "locators": [
+        {
+          "kind": "role",
+          "role": "link",
+          "name": "Delete Account"
+        },
+        {
+          "kind": "text",
+          "value": "Delete Account"
+        },
+        {
+          "kind": "css",
+          "value": "#header > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(5) > a:nth-of-type(1)"
+        },
+        {
+          "kind": "css",
+          "value": "a[href=\"/delete_account\"]"
+        }
+      ],
+      "timeoutMs": 8000,
+      "expect": {
+        "kind": "settled",
+        "match": "no error and the page settled",
+        "timeoutMs": 4000
+      },
+      "confidence": "low"
+    }
+  ],
+  "createdAt": 1792700544497
+}

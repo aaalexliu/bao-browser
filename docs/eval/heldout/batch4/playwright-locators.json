@@ -1,0 +1,95 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653739915,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653739955,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653739995,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653740035,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Installation",
+      "cssPath": "#__docusaurus_skipToContent_fallback > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > article:nth-of-type(1) > div:nth-of-type(2) > header:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "article"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        }
+      ]
+    },
+    "subtreeBefore": "Installation",
+    "subtreeAfter": "Installation",
+    "beforeUrl": "https://playwright.dev/docs/intro",
+    "afterUrl": "https://playwright.dev/docs/intro"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653740382,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "tag": "a",
+      "text": "Locators",
+      "cssPath": "#__docusaurus_skipToContent_fallback > div:nth-of-type(1) > div:nth-of-type(1) > aside:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > nav:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(5) > ul:nth-of-type(1) > li:nth-of-type(22) > a:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "nav",
+          "name": "Docs sidebar"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        },
+        {
+          "role": "ul"
+        },
+        {
+          "role": "li"
+        }
+      ]
+    },
+    "subtreeBefore": "Locators",
+    "subtreeAfter": "Node.js",
+    "beforeUrl": "https://playwright.dev/docs/intro",
+    "afterUrl": "https://playwright.dev/docs/locators"
+  }
+]

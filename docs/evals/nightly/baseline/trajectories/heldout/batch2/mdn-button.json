@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch2/mdn-button",
+  "steps": [
+    {
+      "stepId": "mdn-button-0",
+      "action": "click",
+      "target": "link:form",
+      "postcondition": "url /en-US/docs/Learn_web_development/Extensions/Forms",
+      "timing": "lt1s"
+    }
+  ]
+}

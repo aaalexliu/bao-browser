@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch4/selenium-greeting",
+  "steps": [
+    {
+      "stepId": "selenium-greeting-0",
+      "action": "type",
+      "target": "textbox#my-text-id",
+      "postcondition": "value {{text}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "selenium-greeting-1",
+      "action": "click",
+      "target": "button:Submit",
+      "postcondition": "url my-text={{text}}",
+      "timing": "lt1s"
+    }
+  ]
+}

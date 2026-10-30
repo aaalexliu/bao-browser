@@ -1,0 +1,161 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653703841,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653703881,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653703921,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653703961,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Form controls",
+      "cssPath": "#js-docs > div:nth-of-type(3) > section:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Form controls",
+    "subtreeAfter": "Form controls",
+    "beforeUrl": "https://bulma.io/documentation/form/general/",
+    "afterUrl": "https://bulma.io/documentation/form/general/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653704385,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h1",
+      "text": "Form controls",
+      "cssPath": "#js-docs > div:nth-of-type(3) > section:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+      "path": [
+        {
+          "role": "main"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "subtreeBefore": "Form controls",
+    "subtreeAfter": "Form controls",
+    "beforeUrl": "https://bulma.io/documentation/form/general/",
+    "afterUrl": "https://bulma.io/documentation/form/general/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653704731,
+    "kind": "act",
+    "op": "type",
+    "value": "Cascadex",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "tag": "input",
+      "cssPath": "#js-docs > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://bulma.io/documentation/form/general/",
+    "afterUrl": "https://bulma.io/documentation/form/general/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792653704975,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://bulma.io/documentation/form/general/",
+    "afterUrl": "https://bulma.io/documentation/form/general/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792653704975,
+    "kind": "act",
+    "op": "type",
+    "value": "Cascade",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "tag": "input",
+      "cssPath": "#js-docs > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://bulma.io/documentation/form/general/",
+    "afterUrl": "https://bulma.io/documentation/form/general/"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch5/git-add",
+  "steps": [
+    {
+      "stepId": "git-add-0",
+      "action": "click",
+      "target": "link:add",
+      "postcondition": "text English",
+      "timing": "lt1s"
+    }
+  ]
+}

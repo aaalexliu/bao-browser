@@ -1,0 +1,4415 @@
+{
+  "args": {
+    "firstName": "Radia",
+    "lastName": "Perlman",
+    "username": "ada-form@example.com",
+    "username2": "9990003333",
+    "subjectsInput": "Chemistry",
+    "file": {
+      "name": "p2-replay-b.png"
+    },
+    "currentAddress": "3 Packet Lane",
+    "text": "Uttar Pradesh",
+    "text2": "Agra",
+    "dateOfBirthInput": "1984-11-04"
+  },
+  "replay": {
+    "heals": [],
+    "repairs": [],
+    "locatorHits": [
+      {
+        "stepId": "wf-1792700745872-1",
+        "kind": "css",
+        "detail": "css firstName"
+      },
+      {
+        "stepId": "wf-1792700745872-2",
+        "kind": "css",
+        "detail": "css lastName"
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "kind": "css",
+        "detail": "css userEmail"
+      },
+      {
+        "stepId": "wf-1792700745872-4",
+        "kind": "css",
+        "detail": "css Male"
+      },
+      {
+        "stepId": "wf-1792700745872-5",
+        "kind": "role",
+        "detail": "role Male"
+      },
+      {
+        "stepId": "wf-1792700745872-6",
+        "kind": "css",
+        "detail": "css Male"
+      },
+      {
+        "stepId": "wf-1792700745872-7",
+        "kind": "css",
+        "detail": "css userNumber"
+      },
+      {
+        "stepId": "wf-1792700745872-9",
+        "kind": "css",
+        "detail": "css subjectsInput"
+      },
+      {
+        "stepId": "wf-1792700745872-10",
+        "kind": "role",
+        "detail": "selection subjectsInput"
+      },
+      {
+        "stepId": "wf-1792700745872-11",
+        "kind": "css",
+        "detail": "css Sports"
+      },
+      {
+        "stepId": "wf-1792700745872-12",
+        "kind": "role",
+        "detail": "role Sports"
+      },
+      {
+        "stepId": "wf-1792700745872-13",
+        "kind": "css",
+        "detail": "css Sports"
+      },
+      {
+        "stepId": "wf-1792700745872-14",
+        "kind": "css",
+        "detail": "css uploadPicture"
+      },
+      {
+        "stepId": "wf-1792700745872-15",
+        "kind": "css",
+        "detail": "css currentAddress"
+      },
+      {
+        "stepId": "wf-1792700745872-16",
+        "kind": "css",
+        "detail": "css react-select-3-input"
+      },
+      {
+        "stepId": "wf-1792700745872-17",
+        "kind": "role",
+        "detail": "selection text"
+      },
+      {
+        "stepId": "wf-1792700745872-18",
+        "kind": "css",
+        "detail": "css react-select-4-input"
+      },
+      {
+        "stepId": "wf-1792700745872-19",
+        "kind": "role",
+        "detail": "selection text2"
+      },
+      {
+        "stepId": "wf-1792700745872-20",
+        "kind": "css",
+        "detail": "css Submit"
+      }
+    ],
+    "receipts": [],
+    "trajectory": [
+      {
+        "stepId": "wf-1792700745872-0",
+        "action": "navigate",
+        "target": "page",
+        "postcondition": "url demoqa.com",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "action": "type",
+        "target": "textbox#firstName",
+        "postcondition": "value {{firstName}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-2",
+        "action": "type",
+        "target": "textbox#lastName",
+        "postcondition": "value {{lastName}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "action": "type",
+        "target": "textbox#userEmail",
+        "postcondition": "value {{username}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-4",
+        "action": "check",
+        "target": "radio#gender-radio-1",
+        "postcondition": "state checked",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-5",
+        "action": "click",
+        "target": "label:Male",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-6",
+        "action": "click",
+        "target": "radio#gender-radio-1",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-7",
+        "action": "type",
+        "target": "textbox#userNumber",
+        "postcondition": "value {{username2}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-8",
+        "action": "click",
+        "target": "textbox#dateOfBirthInput",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-9",
+        "action": "type",
+        "target": "combobox#subjectsInput",
+        "postcondition": "value {{subjectsInput}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-10",
+        "action": "click",
+        "target": "option#react-select-2-option-0",
+        "postcondition": "text {{subjectsInput}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-11",
+        "action": "check",
+        "target": "checkbox#hobbies-checkbox-1",
+        "postcondition": "state checked",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-12",
+        "action": "click",
+        "target": "label:Sports",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-13",
+        "action": "click",
+        "target": "checkbox#hobbies-checkbox-1",
+        "postcondition": "settled no error and the page settled",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-14",
+        "action": "upload",
+        "target": "textbox#uploadPicture",
+        "postcondition": "text {{file}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-15",
+        "action": "type",
+        "target": "textbox#currentAddress",
+        "postcondition": "value {{currentAddress}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-16",
+        "action": "type",
+        "target": "combobox#react-select-3-input",
+        "postcondition": "value {{text}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-17",
+        "action": "click",
+        "target": "option#react-select-3-option-1",
+        "postcondition": "text {{text}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-18",
+        "action": "type",
+        "target": "combobox#react-select-4-input",
+        "postcondition": "value {{text2}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-19",
+        "action": "click",
+        "target": "option#react-select-4-option-0",
+        "postcondition": "text {{text2}}",
+        "timing": "lt1s"
+      },
+      {
+        "stepId": "wf-1792700745872-20",
+        "action": "click",
+        "target": "button#submit",
+        "postcondition": "text Male",
+        "timing": "lt1s"
+      }
+    ],
+    "trail": [
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-5",
+        "target": "Male"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-6",
+        "target": "gender-radio-1"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-10",
+        "target": "react-select-2-option-0"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-12",
+        "target": "Sports"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-13",
+        "target": "hobbies-checkbox-1"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-17",
+        "target": "react-select-3-option-1"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-19",
+        "target": "react-select-4-option-0"
+      },
+      {
+        "kind": "click",
+        "stepId": "wf-1792700745872-20",
+        "target": "submit"
+      }
+    ],
+    "pageClasses": [],
+    "console": [
+      {
+        "stepId": "wf-1792700745872-0",
+        "type": "log",
+        "text": "automation-practice-form",
+        "ts": 1792700786052
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "type": "warning",
+        "text": "[GPT] PubAdsService.setTargeting is deprecated, use googletag.setConfig({targeting: ...}) instead. https://goo.gle/gpt-message#170",
+        "ts": 1792700786257
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "type": "log",
+        "text": "automation-practice-form",
+        "ts": 1792700786530
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "type": "warning",
+        "text": "[GPT] PubAdsService.setTargeting is deprecated, use googletag.setConfig({targeting: ...}) instead. https://goo.gle/gpt-message#170",
+        "ts": 1792700786568
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "type": "info",
+        "text": "Powered by AMP ⚡ HTML – Version 2607210106000 https://demoqa.com/automation-practice-form",
+        "ts": 1792700787308
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "type": "warning",
+        "text": "[amp-analytics/transport] Response unparseable or failed to send image request https://securepubads.g.doubleclick.net/btr/view?ai=CvoFMcnHaarKTM9iasLUPrIvjgQWT0ZueigHysK3inwzWtpz9pxwQASDG-9Z5YMmm9YvMpKwZoAGel8L_A8gBCeACAKgDAcgDCqoEiwJP0BrL1",
+        "ts": 1792700787390
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "type": "warning",
+        "text": "[amp-analytics/transport] Response unparseable or failed to send image request https://securepubads.g.doubleclick.net/pagead/adview?ai=CvoFMcnHaarKTM9iasLUPrIvjgQWT0ZueigHysK3inwzWtpz9pxwQASDG-9Z5YMmm9YvMpKwZoAGel8L_A8gBCeACAKgDAcgDCqoEiwJP",
+        "ts": 1792700787390
+      }
+    ],
+    "network": [
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://demoqa.com/automation-practice-form",
+        "status": 200,
+        "ts": 1792700784778
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/index-pe2EUVKA.css",
+        "status": 200,
+        "ts": 1792700785326
+      },
+      {
+        "stepId": "open",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/index-D_rDx8ml.js",
+        "status": 200,
+        "ts": 1792700785749
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.googletagservices.com/tag/js/gpt.js",
+        "status": 200,
+        "ts": 1792700786132
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.googletagmanager.com/gtm.js",
+        "status": 200,
+        "ts": 1792700786153
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/Toolsqa-DZdwt2ul.jpg",
+        "status": 200,
+        "ts": 1792700786210
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/gplaypattern-DtLXoPaW.jpg",
+        "status": 200,
+        "ts": 1792700786212
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202610200101/pubads_impl.js",
+        "status": 200,
+        "ts": 1792700786215
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.googletagmanager.com/gtag/js",
+        "status": 200,
+        "ts": 1792700786314
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/pagead/managed/dict/m202610200101/gpt",
+        "status": 200,
+        "ts": 1792700786314
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.google-analytics.com/analytics.js",
+        "status": 200,
+        "ts": 1792700786317
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/pagead/purl_config",
+        "status": 200,
+        "ts": 1792700786317
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://tags.crwdcntrl.net/lt/c/16589/sync.min.js",
+        "status": 200,
+        "ts": 1792700786317
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://cdn.jsdelivr.net/gh/prebid/shared-id/pubcid.js/docs/pubcid.min.js",
+        "status": 200,
+        "ts": 1792700786318
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://cm.g.doubleclick.net/partnerpixels",
+        "status": 200,
+        "ts": 1792700786319
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://demoqa.com/automation-practice-form",
+        "status": 200,
+        "ts": 1792700786346
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/index-pe2EUVKA.css",
+        "status": 304,
+        "ts": 1792700786513
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/index-D_rDx8ml.js",
+        "status": 304,
+        "ts": 1792700786513
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.googletagservices.com/tag/js/gpt.js",
+        "status": 200,
+        "ts": 1792700786539
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.googletagmanager.com/gtm.js",
+        "status": 200,
+        "ts": 1792700786539
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202610200101/pubads_impl.js",
+        "status": 200,
+        "ts": 1792700786568
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://cm.g.doubleclick.net/partnerpixels",
+        "status": 200,
+        "ts": 1792700786596
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/getconfig/sodar",
+        "status": 200,
+        "ts": 1792700786607
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.googletagmanager.com/gtag/js",
+        "status": 200,
+        "ts": 1792700786626
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://www.google-analytics.com/analytics.js",
+        "status": 200,
+        "ts": 1792700786627
+      },
+      {
+        "stepId": "wf-1792700745872-0",
+        "method": "GET",
+        "url": "https://6894f8f73fe031fefb8774155903b216.safeframe.googlesyndication.com/safeframe/1-0-45/html/container.html",
+        "status": 200,
+        "ts": 1792700786644
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2.js",
+        "status": 200,
+        "ts": 1792700786657
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/Toolsqa-DZdwt2ul.jpg",
+        "status": 304,
+        "ts": 1792700786668
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://demoqa.com/assets/gplaypattern-DtLXoPaW.jpg",
+        "status": 304,
+        "ts": 1792700786677
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/pagead/managed/dict/m202610200101/gpt",
+        "status": 200,
+        "ts": 1792700786678
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/sodar/sodar2/255/runner.html",
+        "status": 200,
+        "ts": 1792700786681
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "POST",
+        "url": "https://www.google-analytics.com/j/collect",
+        "status": 200,
+        "ts": 1792700786683
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://www.google.com/recaptcha/api2/aframe",
+        "status": 200,
+        "ts": 1792700786723
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/bg/Q4JUrRZKx44KoEV1oNKGtVt0B5XYxhrnEhIOwuBMW6U.js",
+        "status": 200,
+        "ts": 1792700786735
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://ep2.adtrafficquality.google/generate_204",
+        "status": 204,
+        "ts": 1792700786792
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/gampad/ads",
+        "status": 200,
+        "ts": 1792700786793
+      },
+      {
+        "stepId": "wf-1792700745872-1",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/gampad/ads",
+        "status": 200,
+        "ts": 1792700786850
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://securepubads.g.doubleclick.net/gampad/ads",
+        "status": 200,
+        "ts": 1792700787238
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://tpc.googlesyndication.com/pagead/images/adchoices/en.png",
+        "status": 200,
+        "ts": 1792700787282
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://tpc.googlesyndication.com/pagead/images/adchoices/adchoices_blue_wb.png",
+        "status": 200,
+        "ts": 1792700787282
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://tpc.googlesyndication.com/simgad/17444089832674065081/14763004658117789537",
+        "status": 200,
+        "ts": 1792700787284
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://tpc.googlesyndication.com/simgad/15316651500426906605/14763004658117789537",
+        "status": 200,
+        "ts": 1792700787285
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://fonts.googleapis.com/css",
+        "status": 200,
+        "ts": 1792700787292
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://cdn.ampproject.org/rtv/012607210106000/amp4ads-v0.js",
+        "status": 200,
+        "ts": 1792700787296
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://cdn.ampproject.org/rtv/012607210106000/v0/amp-form-0.1.js",
+        "status": 200,
+        "ts": 1792700787323
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://cdn.ampproject.org/rtv/012607210106000/v0/amp-fit-text-0.1.js",
+        "status": 200,
+        "ts": 1792700787324
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://cdn.ampproject.org/rtv/012607210106000/v0/amp-ad-exit-0.1.js",
+        "status": 200,
+        "ts": 1792700787324
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://cdn.ampproject.org/rtv/012607210106000/v0/amp-analytics-0.1.js",
+        "status": 200,
+        "ts": 1792700787324
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2",
+        "status": 200,
+        "ts": 1792700787390
+      },
+      {
+        "stepId": "wf-1792700745872-3",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pagead/sodar",
+        "status": 204,
+        "ts": 1792700787514
+      },
+      {
+        "stepId": "wf-1792700745872-7",
+        "method": "GET",
+        "url": "https://ep1.adtrafficquality.google/pagead/sodar",
+        "status": 204,
+        "ts": 1792700788341
+      },
+      {
+        "stepId": "wf-1792700745872-8",
+        "method": "GET",
+        "url": "https://pagead2.googlesyndication.com/pcs/activeview",
+        "status": 200,
+        "ts": 1792700788594
+      }
+    ],
+    "runId": "run-mvjzrfcm-ktg6",
+    "status": "passed",
+    "steps": [
+      {
+        "id": "wf-1792700745872-0",
+        "status": "passed",
+        "startedAt": 1792700786051,
+        "endedAt": 1792700786567,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\"\n- textbox \"Last Name\"\n- text: Email\n- textbox \"name@example.com\"\n- text: Gender\n- radio \"Male\"\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-1",
+        "status": "passed",
+        "startedAt": 1792700786656,
+        "endedAt": 1792700786898,
+        "beforeShot": "wf-1792700745872-1-before.png",
+        "afterShot": "wf-1792700745872-1-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\"\n- text: Email\n- textbox \"name@example.com\"\n- text: Gender\n- radio \"Male\"\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-2",
+        "status": "passed",
+        "startedAt": 1792700786966,
+        "endedAt": 1792700787122,
+        "beforeShot": "wf-1792700745872-2-before.png",
+        "afterShot": "wf-1792700745872-2-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\"\n- text: Gender\n- radio \"Male\"\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-3",
+        "status": "passed",
+        "startedAt": 1792700787198,
+        "endedAt": 1792700787437,
+        "beforeShot": "wf-1792700745872-3-before.png",
+        "afterShot": "wf-1792700745872-3-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\"\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-4",
+        "status": "passed",
+        "startedAt": 1792700787519,
+        "endedAt": 1792700787740,
+        "beforeShot": "wf-1792700745872-4-before.png",
+        "afterShot": "wf-1792700745872-4-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-5",
+        "status": "passed",
+        "startedAt": 1792700787816,
+        "endedAt": 1792700787947,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-6",
+        "status": "passed",
+        "startedAt": 1792700787956,
+        "endedAt": 1792700788146,
+        "beforeShot": "wf-1792700745872-6-before.png",
+        "afterShot": "wf-1792700745872-6-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-7",
+        "status": "passed",
+        "startedAt": 1792700788214,
+        "endedAt": 1792700788365,
+        "beforeShot": "wf-1792700745872-7-before.png",
+        "afterShot": "wf-1792700745872-7-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 22 Oct 2026\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-8",
+        "status": "passed",
+        "startedAt": 1792700788432,
+        "endedAt": 1792700788986,
+        "beforeShot": "wf-1792700745872-8-before.png",
+        "afterShot": "wf-1792700745872-8-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-9",
+        "status": "passed",
+        "startedAt": 1792700789084,
+        "endedAt": 1792700789450,
+        "beforeShot": "wf-1792700745872-9-before.png",
+        "afterShot": "wf-1792700745872-9-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log: 1 result available for search term Chemistry.Use Up and Down to choose options, press Enter to select the currently focused option, press Escape to exit the menu, press Tab to select the option and exit the menu.\n- combobox [expanded]: Chemistry\n- listbox:\n  - option \"Chemistry\"\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-10",
+        "status": "passed",
+        "startedAt": 1792700789515,
+        "endedAt": 1792700789685,
+        "beforeShot": "wf-1792700745872-10-before.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log: option Chemistry, selected.\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-11",
+        "status": "passed",
+        "startedAt": 1792700789694,
+        "endedAt": 1792700789853,
+        "beforeShot": "wf-1792700745872-11-before.png",
+        "afterShot": "wf-1792700745872-11-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-12",
+        "status": "passed",
+        "startedAt": 1792700789933,
+        "endedAt": 1792700790048,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\"\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-13",
+        "status": "passed",
+        "startedAt": 1792700790057,
+        "endedAt": 1792700790214,
+        "beforeShot": "wf-1792700745872-13-before.png",
+        "afterShot": "wf-1792700745872-13-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-14",
+        "status": "passed",
+        "startedAt": 1792700790283,
+        "endedAt": 1792700790444,
+        "beforeShot": "wf-1792700745872-14-before.png",
+        "afterShot": "wf-1792700745872-14-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\"\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-15",
+        "status": "passed",
+        "startedAt": 1792700790517,
+        "endedAt": 1792700790675,
+        "beforeShot": "wf-1792700745872-15-before.png",
+        "afterShot": "wf-1792700745872-15-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\": 3 Packet Lane\n- text: State and City\n- log\n- text: Select State\n- combobox\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-16",
+        "status": "passed",
+        "startedAt": 1792700790752,
+        "endedAt": 1792700791200,
+        "beforeShot": "wf-1792700745872-16-before.png",
+        "afterShot": "wf-1792700745872-16-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\": 3 Packet Lane\n- text: State and City\n- log: 1 result available for search term Uttar Pradesh.Use Up and Down to choose options, press Enter to select the currently focused option, press Escape to exit the menu, press Tab to select the option and exit the menu.\n- combobox [expanded]: Uttar Pradesh\n- listbox:\n  - option \"Uttar Pradesh\"\n- log\n- text: Select City\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-17",
+        "status": "passed",
+        "startedAt": 1792700791265,
+        "endedAt": 1792700791364,
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\": 3 Packet Lane\n- text: State and City\n- log: option Uttar Pradesh, selected.\n- text: Uttar Pradesh\n- combobox\n- log\n- text: Select City\n- combobox\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-18",
+        "status": "passed",
+        "startedAt": 1792700791374,
+        "endedAt": 1792700791646,
+        "beforeShot": "wf-1792700745872-18-before.png",
+        "afterShot": "wf-1792700745872-18-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\": 3 Packet Lane\n- text: State and City\n- log\n- text: Uttar Pradesh\n- combobox\n- log: 1 result available for search term Agra.Use Up and Down to choose options, press Enter to select the currently focused option, press Escape to exit the menu, press Tab to select the option and exit the menu.\n- combobox [expanded]: Agra\n- listbox:\n  - option \"Agra\"\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-19",
+        "status": "passed",
+        "startedAt": 1792700791716,
+        "endedAt": 1792700791882,
+        "beforeShot": "wf-1792700745872-19-before.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\": 3 Packet Lane\n- text: State and City\n- log\n- text: Uttar Pradesh\n- combobox\n- log: option Agra, selected.\n- text: Agra\n- combobox\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED."
+        }
+      },
+      {
+        "id": "wf-1792700745872-20",
+        "status": "passed",
+        "startedAt": 1792700791894,
+        "endedAt": 1792700792057,
+        "beforeShot": "wf-1792700745872-20-before.png",
+        "afterShot": "wf-1792700745872-20-after.png",
+        "snapshot": {
+          "dom": [
+            {
+              "role": "link"
+            },
+            {
+              "role": "button"
+            },
+            {
+              "role": "link",
+              "text": "Text Box"
+            },
+            {
+              "role": "link",
+              "text": "Check Box"
+            },
+            {
+              "role": "link",
+              "text": "Radio Button"
+            },
+            {
+              "role": "link",
+              "text": "Web Tables"
+            },
+            {
+              "role": "link",
+              "text": "Buttons"
+            },
+            {
+              "role": "link",
+              "text": "Links"
+            },
+            {
+              "role": "link",
+              "text": "Broken Links - Images"
+            },
+            {
+              "role": "link",
+              "text": "Upload and Download"
+            },
+            {
+              "role": "link",
+              "text": "Dynamic Properties"
+            },
+            {
+              "role": "link",
+              "text": "Practice Form"
+            },
+            {
+              "role": "link",
+              "text": "Browser Windows"
+            },
+            {
+              "role": "link",
+              "text": "Alerts"
+            },
+            {
+              "role": "link",
+              "text": "Frames"
+            },
+            {
+              "role": "link",
+              "text": "Nested Frames"
+            },
+            {
+              "role": "link",
+              "text": "Modal Dialogs"
+            },
+            {
+              "role": "link",
+              "text": "Accordian"
+            },
+            {
+              "role": "link",
+              "text": "Auto Complete"
+            },
+            {
+              "role": "link",
+              "text": "Date Picker"
+            },
+            {
+              "role": "link",
+              "text": "Slider"
+            },
+            {
+              "role": "link",
+              "text": "Progress Bar"
+            },
+            {
+              "role": "link",
+              "text": "Tabs"
+            },
+            {
+              "role": "link",
+              "text": "Tool Tips"
+            },
+            {
+              "role": "link",
+              "text": "Menu"
+            },
+            {
+              "role": "link",
+              "text": "Select Menu"
+            },
+            {
+              "role": "link",
+              "text": "Sortable"
+            },
+            {
+              "role": "link",
+              "text": "Selectable"
+            },
+            {
+              "role": "link",
+              "text": "Resizable"
+            },
+            {
+              "role": "link",
+              "text": "Droppable"
+            },
+            {
+              "role": "link",
+              "text": "Dragabble"
+            },
+            {
+              "role": "link",
+              "text": "Login"
+            },
+            {
+              "role": "link",
+              "text": "Book Store"
+            },
+            {
+              "role": "link",
+              "text": "Profile"
+            },
+            {
+              "role": "link",
+              "text": "Book Store API"
+            },
+            {
+              "role": "heading",
+              "text": "Practice Form"
+            },
+            {
+              "role": "label",
+              "name": "Name",
+              "text": "Name",
+              "id": "userName-label"
+            },
+            {
+              "role": "textbox",
+              "id": "firstName"
+            },
+            {
+              "role": "textbox",
+              "id": "lastName"
+            },
+            {
+              "role": "label",
+              "name": "Email",
+              "text": "Email",
+              "id": "userEmail-label"
+            }
+          ],
+          "ax": "- banner:\n  - link:\n    - /url: https://demoqa.com\n    - img\n- img\n- text: Elements\n- img\n- img\n- text: Forms\n- img\n- list:\n  - listitem:\n    - link \"Practice Form\":\n      - /url: /automation-practice-form\n      - img\n      - text: Practice Form\n- img\n- text: Alerts, Frame & Windows\n- img\n- img\n- text: Widgets\n- img\n- img\n- text: Interactions\n- img\n- img\n- text: Book Store Application\n- img\n- heading \"Practice Form\" [level=1]\n- heading \"Student Registration Form\" [level=5]\n- text: Name\n- textbox \"First Name\": Radia\n- textbox \"Last Name\": Perlman\n- text: Email\n- textbox \"name@example.com\": ada-form@example.com\n- text: Gender\n- radio \"Male\" [checked]\n- text: Male\n- radio \"Female\"\n- text: Female\n- radio \"Other\"\n- text: Other Mobile(10 Digits)\n- textbox \"Mobile Number\": \"9990003333\"\n- text: Date of Birth\n- textbox: 04 Nov 1984\n- text: Subjects\n- log\n- text: Chemistry\n- button \"Remove Chemistry\"\n- combobox\n- text: Hobbies\n- checkbox \"Sports\" [checked]\n- text: Sports\n- checkbox \"Reading\"\n- text: Reading\n- checkbox \"Music\"\n- text: Music Picture\n- button \"Choose File\"\n- text: Current Address\n- textbox \"Current Address\": 3 Packet Lane\n- text: State and City\n- log\n- text: Uttar Pradesh\n- combobox\n- log\n- text: Agra\n- combobox\n- button \"Submit\"\n- iframe\n- contentinfo: © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED.\n- dialog \"Thanks for submitting the form\":\n  - text: Thanks for submitting the form\n  - table:\n    - rowgroup:\n      - row \"Label Values\":\n        - columnheader \"Label\"\n        - columnheader \"Values\"\n    - rowgroup:\n      - row \"Student Name Radia Perlman\":\n        - cell \"Student Name\"\n        - cell \"Radia Perlman\"\n      - row \"Student Email ada-form@example.com\":\n        - cell \"Student Email\"\n        - cell \"ada-form@example.com\"\n      - row \"Gender Male\":\n        - cell \"Gender\"\n        - cell \"Male\"\n      - row \"Mobile 9990003333\":\n        - cell \"Mobile\"\n        - cell \"9990003333\"\n      - row \"Date of Birth 04 November,1984\":\n        - cell \"Date of Birth\"\n        - cell \"04 November,1984\"\n      - row \"Subjects Chemistry\":\n        - cell \"Subjects\"\n        - cell \"Chemistry\"\n      - row \"Hobbies Sports\":\n        - cell \"Hobbies\"\n        - cell \"Sports\"\n      - row \"Picture p2-replay-b.png\":\n        - cell \"Picture\"\n        - cell \"p2-replay-b.png\"\n      - row \"Address 3 Packet Lane\":\n        - cell \"Address\"\n        - cell \"3 Packet Lane\"\n      - row \"State and City Uttar Pradesh Agra\":\n        - cell \"State and City\"\n        - cell \"Uttar Pradesh Agra\"\n  - button \"Close\""
+        }
+      }
+    ],
+    "modelCalls": 0,
+    "mode": "auto",
+    "fileProof": [
+      {
+        "action": "upload",
+        "name": "p2-replay-b.png",
+        "via": "input.files"
+      }
+    ],
+    "bounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1100,
+      "height": 700
+    }
+  },
+  "page": {
+    "url": "https://demoqa.com/automation-practice-form",
+    "title": "demosite",
+    "text": "Elements Forms Practice Form Alerts, Frame & Windows Widgets Interactions Book Store Application Practice Form Student Registration Form Name Email Gender Male Female Other Mobile(10 Digits) Date of Birth Subjects Chemistry Hobbies Sports Reading Music Picture Current Address State and City Uttar Pradesh Agra Submit © 2013-2026 TOOLSQA.COM | ALL RIGHTS RESERVED. Thanks for submitting the form Label Values Student Name Radia Perlman Student Email ada-form@example.com Gender Male Mobile 9990003333 Date of Birth 04 November,1984 Subjects Chemistry Hobbies Sports Picture p2-replay-b.png Address 3 Packet Lane State and City Uttar Pradesh Agra Close"
+  },
+  "downloaded": [],
+  "shot": {
+    "sha256": "d27e8d559b1fef5ba76118dbeeeaa99622302c8729aa48b507165559a613f617",
+    "samePixels": false,
+    "identity": ""
+  }
+}

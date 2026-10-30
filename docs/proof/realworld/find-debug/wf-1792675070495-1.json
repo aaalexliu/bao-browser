@@ -1,0 +1,143 @@
+{
+  "stepId": "wf-1792675070495-1",
+  "action": "click",
+  "label": "Click \"Book now\"",
+  "url": "https://automationintesting.online/",
+  "reason": "below-threshold",
+  "brokenAttr": "role",
+  "locators": [
+    {
+      "kind": "role",
+      "label": "role link Book now",
+      "score": 40
+    },
+    {
+      "kind": "text",
+      "label": "text Book now",
+      "score": 40
+    }
+  ],
+  "direct": [
+    {
+      "kind": "role",
+      "query": "link Book now",
+      "count": 3,
+      "visible": 3
+    },
+    {
+      "kind": "text",
+      "query": "Book now",
+      "count": 3,
+      "visible": 3
+    }
+  ],
+  "candidates": [
+    {
+      "index": 17,
+      "score": 110,
+      "role": "link",
+      "text": "Book now",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "score": 110,
+      "role": "link",
+      "text": "Book now",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "score": 110,
+      "role": "link",
+      "text": "Book now",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 70,
+          "matched": true
+        },
+        {
+          "attr": "text",
+          "points": 40,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "index": 0,
+      "score": 0,
+      "role": "link",
+      "text": "Shady Meadows B&B",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 0,
+          "matched": false
+        },
+        {
+          "attr": "text",
+          "points": 0,
+          "matched": false
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "score": 0,
+      "role": "button",
+      "parts": [
+        {
+          "attr": "roleName",
+          "points": 0,
+          "matched": false
+        },
+        {
+          "attr": "text",
+          "points": 0,
+          "matched": false
+        }
+      ]
+    }
+  ],
+  "identity": {
+    "surface": "dom",
+    "role": "link",
+    "tag": "a",
+    "text": "Book now",
+    "path": []
+  },
+  "recordedLocators": [
+    {
+      "kind": "role",
+      "role": "link",
+      "name": "Book now"
+    },
+    {
+      "kind": "text",
+      "value": "Book now"
+    }
+  ]
+}

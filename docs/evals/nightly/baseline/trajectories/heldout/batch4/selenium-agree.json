@@ -1,0 +1,12 @@
+{
+  "caseId": "heldout/batch4/selenium-agree",
+  "steps": [
+    {
+      "stepId": "selenium-agree-0",
+      "action": "check",
+      "target": "checkbox#my-check-2",
+      "postcondition": "state checked",
+      "timing": "lt1s"
+    }
+  ]
+}

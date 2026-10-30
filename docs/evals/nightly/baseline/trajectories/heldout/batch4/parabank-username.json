@@ -1,0 +1,19 @@
+{
+  "caseId": "heldout/batch4/parabank-username",
+  "steps": [
+    {
+      "stepId": "parabank-username-0",
+      "action": "type",
+      "target": "textbox[name=username]",
+      "postcondition": "value {{username}}",
+      "timing": "lt1s"
+    },
+    {
+      "stepId": "parabank-username-1",
+      "action": "type",
+      "target": "textbox[name=password]",
+      "postcondition": "settled no error and the page settled",
+      "timing": "lt1s"
+    }
+  ]
+}

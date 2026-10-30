@@ -1,0 +1,169 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792653698101,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792653698141,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792653698181,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792653698221,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h2",
+      "text": "Legend",
+      "cssPath": "#main > footer:nth-of-type(1) > div:nth-of-type(4) > section:nth-of-type(1) > h2:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "footer"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "section"
+        }
+      ]
+    },
+    "subtreeBefore": "Legend",
+    "subtreeAfter": "Legend",
+    "beforeUrl": "https://caniuse.com/",
+    "afterUrl": "https://caniuse.com/"
+  },
+  {
+    "id": "e4",
+    "ts": 1792653698552,
+    "kind": "act",
+    "op": "type",
+    "value": "gridd",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "feat_search",
+      "nameAttr": "search",
+      "tag": "input",
+      "label": "Search",
+      "cssPath": "#feat_search",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://caniuse.com/",
+    "afterUrl": "https://caniuse.com/"
+  },
+  {
+    "id": "e5",
+    "ts": 1792653698704,
+    "kind": "act",
+    "op": "key",
+    "key": "Backspace",
+    "beforeUrl": "https://caniuse.com/",
+    "afterUrl": "https://caniuse.com/"
+  },
+  {
+    "id": "e6",
+    "ts": 1792653698704,
+    "kind": "act",
+    "op": "type",
+    "value": "grid",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "feat_search",
+      "nameAttr": "search",
+      "tag": "input",
+      "label": "Search",
+      "cssPath": "#feat_search",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "beforeUrl": "https://caniuse.com/",
+    "afterUrl": "https://caniuse.com/"
+  },
+  {
+    "id": "e7",
+    "ts": 1792653698812,
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "feat_search",
+      "nameAttr": "search",
+      "tag": "input",
+      "label": "Search",
+      "cssPath": "#feat_search",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "header"
+        },
+        {
+          "role": "section"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "form"
+        }
+      ]
+    },
+    "subtreeBefore": "",
+    "subtreeAfter": "",
+    "valueBefore": "grid",
+    "valueAfter": "grid",
+    "beforeUrl": "https://caniuse.com/",
+    "afterUrl": "https://caniuse.com/?search=grid"
+  }
+]

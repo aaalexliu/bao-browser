@@ -1,0 +1,102 @@
+[
+  {
+    "id": "e0",
+    "ts": 1792644031760,
+    "kind": "read",
+    "op": "screenshot"
+  },
+  {
+    "id": "e1",
+    "ts": 1792644031800,
+    "kind": "read",
+    "op": "move"
+  },
+  {
+    "id": "e2",
+    "ts": 1792644031841,
+    "kind": "read",
+    "op": "ax"
+  },
+  {
+    "id": "e3",
+    "ts": 1792644031881,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Redirection",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/redirector",
+    "afterUrl": "https://the-internet.herokuapp.com/redirector"
+  },
+  {
+    "id": "e4",
+    "ts": 1792644032160,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "heading",
+      "tag": "h3",
+      "text": "Redirection",
+      "cssPath": "#content > div:nth-of-type(1) > h3:nth-of-type(1)",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/redirector",
+    "afterUrl": "https://the-internet.herokuapp.com/redirector"
+  },
+  {
+    "id": "e5",
+    "ts": 1792644032388,
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "link",
+      "id": "redirect",
+      "tag": "a",
+      "text": "here",
+      "cssPath": "#redirect",
+      "path": [
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "div"
+        },
+        {
+          "role": "p"
+        }
+      ]
+    },
+    "beforeUrl": "https://the-internet.herokuapp.com/redirector",
+    "afterUrl": "https://the-internet.herokuapp.com/status_codes"
+  }
+]
