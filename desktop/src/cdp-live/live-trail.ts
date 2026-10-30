@@ -182,19 +182,13 @@ export function cartAddItem(label: string): string {
   return "";
 }
 
-/** A control that puts something in the cart: "Add 1 ct {item}", "Add {item} to cart", or a product page's "Add to cart". */
-export function isCartAdd(label: string): boolean {
-  return !!cartAddItem(label) || PLAIN_ADD.test(flat(label));
-}
-
 function nameOf(node: Identity): string {
   return flat(node.name || node.label || node.text || "");
 }
 
-/** The item a product page is about: the text of its one top-level heading. Empty when it has none or several. */
-export function pageItem(nodes: readonly Identity[]): string {
-  const heads = nodes.filter((node) => node.tag === "h1").map(nameOf).filter(Boolean);
-  return heads.length === 1 ? heads[0]! : "";
+/** A product page names its one item in one top-level heading. A page with no named h1, or several, is not one. */
+export function productPage(nodes: readonly Identity[]): boolean {
+  return nodes.filter((node) => node.tag === "h1" && nameOf(node)).length === 1;
 }
 
 /** The text replay looks for before a cart add, and whether each number in it matches any number. */
@@ -208,21 +202,23 @@ export interface CartSkip {
  * An Add that names its item, as "Add 1 ct {item}" on a results page, is marked by a control
  * the add revealed that names the item. A plain "Add to cart" on a product page, one with a
  * single h1, is marked only by the add's own effect when it reads "{n} in cart", at any count.
- * Undefined when the add left no mark. `effect` is the text the add made appear, from clickEffect.
+ * Undefined when the control is no cart add, or the add left no mark. `effect` is the text the
+ * add made appear, from clickEffect. `readAfter` reads the page after the add, and only an Add
+ * that names its item calls it.
  */
-export function cartAddSkip(
+export async function cartAddSkip(
   label: string,
   before: readonly Identity[],
-  after: readonly Identity[],
-  effect = "",
-): CartSkip | undefined {
+  effect: string | undefined,
+  readAfter: () => Promise<readonly Identity[]>,
+): Promise<CartSkip | undefined> {
   const named = cartAddItem(label);
   if (named) {
-    const marker = inCartMarker(named, before, after);
+    const marker = inCartMarker(named, before, await readAfter());
     return marker ? { text: marker, anyCount: false } : undefined;
   }
-  const shown = flat(effect);
-  return PLAIN_ADD.test(flat(label)) && pageItem(before) && IN_CART.test(shown) ? { text: shown, anyCount: true } : undefined;
+  const shown = flat(effect || "");
+  return PLAIN_ADD.test(flat(label)) && productPage(before) && IN_CART.test(shown) ? { text: shown, anyCount: true } : undefined;
 }
 
 /**

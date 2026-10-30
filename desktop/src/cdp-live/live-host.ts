@@ -48,7 +48,6 @@ import {
 import {
   cartAddSkip,
   clickEffect,
-  isCartAdd,
   LiveTrail,
   trailIdentity,
   workflowFromTrail,
@@ -469,9 +468,12 @@ export function createLiveHost(opts: LiveHostOptions): {
     // The accessible name, not the redacted view label, so the item in "Add 1 ct {item}" keeps its digits.
     const name = before?.identity?.name || before?.identity?.text || outcome.label;
     const effect = before ? clickEffect(before.side, after) : {};
-    const skip = isCartAdd(name)
-      ? cartAddSkip(name, before?.nodes || [], (await state.driver.tree().catch(() => null))?.nodes || [], effect.subtreeAfter)
-      : undefined;
+    const skip = await cartAddSkip(
+      name,
+      before?.nodes || [],
+      effect.subtreeAfter,
+      async () => (await state.driver.tree().catch(() => null))?.nodes || [],
+    );
     await state.trail.add({
       op: "click",
       identity: before?.identity,
