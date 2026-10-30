@@ -115,7 +115,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   });
   // The client closed stdin or stopped this process: finish queued calls, then save its live session.
   // A live_* call or the disconnect stuck in the app must not keep this process alive. The app's idle timeout still saves.
-  // Catalog work, a run_workflow live replay included, finishes and saves with no cap.
+  // After stdin closes, catalog work, a run_workflow live replay included, finishes and saves with no cap. A SIGTERM or SIGINT exits within 15 s, even mid-run.
   const end = (): void => {
     if (ending) return;
     ending = true;
