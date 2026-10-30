@@ -266,10 +266,11 @@ function icon(name: string): string {
   return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
 }
 
-export function helperStatusText(helper?: { label?: string; capabilities?: { status: string }[] }): string {
-  const label = helper?.label || "helper off";
-  const extra = (helper?.capabilities ?? []).map((row) => row.status).filter((status) => status.length > 0);
-  return extra.length ? `${label} ${extra.join(" ")}` : label;
+/** One line per helper job, so each job's state reads on its own. */
+export function helperJobList(helper?: { capabilities?: { status: string }[] }): string {
+  const rows = (helper?.capabilities ?? []).map((row) => row.status).filter((status) => status.length > 0);
+  if (!rows.length) return "";
+  return `<ul class="helper-jobs">${rows.map((status) => `<li>${esc(status)}</li>`).join("")}</ul>`;
 }
 
 export function rail(state: ShellState): string {
@@ -282,7 +283,7 @@ export function rail(state: ShellState): string {
     reviews: reviews.length,
   });
   const rec = state.recording ? "on" : "";
-  const helper = helperStatusText(state.helper);
+  const helper = state.helper?.label || "helper off";
   const model = state.model?.label || "no model";
   const healBadge = heals > 0 ? `<span class="count" id="heal-count">${heals}</span>` : "";
   const perm = state.permDot ? permissionDot(state.helper) : "";
@@ -302,6 +303,7 @@ export function rail(state: ShellState): string {
       <div id="attention-label">${waiting} waiting</div>
       <div class="channel"><span class="dot ${rec}" id="dot"></span><span id="rec-label">${state.recording ? "recording" : "idle"}</span></div>
       <div class="channel" id="helper-status">${perm}${esc(helper)}</div>
+      ${helperJobList(state.helper)}
       <div class="channel" id="model-status">${esc(model)}</div>
     </div>`;
 }

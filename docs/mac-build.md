@@ -236,9 +236,14 @@ The product window does not need Accessibility. The nested helper does. On the f
 1. Accessibility. The usage string is `BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.`
 2. Screen Recording. The usage string is `BaoOSHelper captures one throwaway window so the spike can show the control it pressed.`
 
-Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility, and again under Screen & System Audio Recording. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it.
+Live Chrome needs Accessibility only. It does not capture a window, so it works with Screen Recording on or off. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer reads **helper ok**.
+Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Enable it under Screen & System Audio Recording too for window capture and the MCP driver. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it.
+
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job:
+
+- With Accessibility alone: **helper needs permission**, then **AX press ready**, **window capture needs Screen Recording**, **live Chrome ready**, and **MCP driver needs Accessibility and Screen Recording**.
+- With both grants: **helper ok**, then **AX press ready**, **window capture ready**, **live Chrome ready**, and **MCP driver ready**.
 
 An agent can check the local server. This is not a page to open:
 
@@ -246,7 +251,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` and `helper.screenCapture` are true, and `helper.label` is `helper ok`. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+`helper.accessibility` is true, and the `live-chrome` row in `helper.capabilities` has status `live Chrome ready`. `helper.screenCapture` is true only with Screen Recording on. `helper.label` is `helper ok` only when both grants are on, and `helper needs permission` otherwise. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 
