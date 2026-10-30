@@ -8,7 +8,7 @@ import { driftMarkdown, driftReport, recoveryRows } from "../../src/v1/drift";
 import { toPuppeteerReplay } from "../../src/v1/export-replay";
 import { applyPatch, unavailableHeal } from "../../src/v1/heal";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
-import { buildLocators, matchLocator } from "../../src/v1/locators";
+import { buildLocators, matchLabeledControl, matchLocator } from "../../src/v1/locators";
 import { uniqueNamedRole } from "../../src/v1/os-driver";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
@@ -118,6 +118,33 @@ test("a calculator button wins the tie with its label when the role is button", 
   const label = ident({ surface: "atspi", role: "label", name: "7", app: "gnome-calculator" });
   assert.equal(uniqueNamedRole([button, label], "gnome-calculator", "button", "7"), button);
   assert.equal(uniqueNamedRole([button, { ...button }], "gnome-calculator", "button", "7"), undefined);
+});
+
+test("a role or text locator with no price matches a node at any price, and a priced one keeps its price", () => {
+  const name = "Kirkland Signature Organic Blueberries, 3 lbs 3 lb";
+  const nodes = [
+    ident({ role: "link", text: `Current price: $10.49 $1049 ${name}` }),
+    ident({ role: "button", name: "Tip $2" }),
+    ident({ role: "button", name: "Tip $3" }),
+  ];
+  assert.equal(matchLocator({ kind: "role", role: "link", name }, nodes)?.index, 0);
+  assert.equal(matchLocator({ kind: "text", value: name }, nodes)?.index, 0);
+  assert.equal(matchLocator({ kind: "role", role: "link", name: `Current price: $9.89 $989 ${name}` }, nodes), undefined);
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "Tip $3" }, nodes)?.index, 2);
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "Tip" }, nodes), undefined, "a name two priced controls share is ambiguous");
+});
+
+test("a name with no price picks the control that shows it as written over one that adds a price", () => {
+  const nodes = [
+    ident({ role: "button", text: "Donate $10" }),
+    ident({ role: "button", text: "Donate" }),
+    ident({ role: "radio", nameAttr: "tip", label: "Tip $2" }),
+    ident({ role: "radio", nameAttr: "tip", label: "Tip" }),
+  ];
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "Donate" }, nodes)?.index, 1);
+  assert.equal(matchLocator({ kind: "text", value: "Donate" }, nodes)?.index, 1);
+  const tip = ident({ role: "radio", nameAttr: "tip", label: "Tip" });
+  assert.equal(matchLabeledControl([{ kind: "css", value: "[name=\"tip\"]" }], tip, nodes)?.index, 3);
 });
 
 test("a collapsed box is not a locator hit", () => {

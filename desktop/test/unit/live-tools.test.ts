@@ -234,7 +234,7 @@ test("a saved live workflow keeps each key press, on its control when it had one
   const storefront = "https://www.instacart.com/store/costco/storefront";
   const results = "https://www.instacart.com/store/costco/s?k=blueberries";
   const events: TrailEvent[] = [
-    { id: "live-1", ts: 1, kind: "act", op: "type", identity: field, value: "blueberries", parameter: "query", beforeUrl: storefront, afterUrl: storefront },
+    { id: "live-1", ts: 1, kind: "act", op: "type", identity: field, value: "blueberries", literal: true, beforeUrl: storefront, afterUrl: storefront },
     { id: "live-2", ts: 2, kind: "act", op: "key", key: "Enter", identity: field, beforeUrl: storefront, afterUrl: results },
     { id: "live-3", ts: 3, kind: "act", op: "key", key: "Escape", beforeUrl: results, afterUrl: results },
     {
@@ -264,7 +264,7 @@ test("a saved live workflow keeps each key press, on its control when it had one
   assert.equal(enter?.key, "Enter");
   assert.equal(enter?.identity?.name, "Search Costco");
   assert.equal(enter?.label, "Press Enter");
-  assert.equal(enter?.expect?.match, "k={{query}}");
+  assert.equal(enter?.expect?.match, "k=blueberries");
   const escape = doc.steps[2];
   assert.equal(escape?.key, "Escape");
   assert.equal(escape?.identity, undefined);

@@ -135,7 +135,7 @@ describe("a recorded live workflow replays through the one live runner", { timeo
     assert.deepEqual(run.heals, []);
   };
 
-  it("records the blueberries task, replays it with a new query, skips an Add already in the cart, and refuses checkout", async () => {
+  it("records the blueberries task, replays the recorded search, skips an Add already in the cart, and refuses checkout", async () => {
     // Record, the way an agent drives the live tools.
     fixture.reset();
     const started = await live({ op: "live_session_start", intent: INTENT, url: fixture.url("/store/costco/storefront"), client: "mock-user" });
@@ -153,7 +153,8 @@ describe("a recorded live workflow replays through the one live runner", { timeo
     const recorded = app.library.read(id);
     assert.equal(recorded.driver, "cdp-live");
     assert.deepEqual(recorded.steps.map((step) => step.action), ["type", "key", "click"]);
-    assert.deepEqual(recorded.inputs.map((input) => [input.name, input.default]), [["query", "blueberries"]]);
+    assert.deepEqual(recorded.inputs, [], "the search text is not an input");
+    assert.equal(recorded.steps[0]?.value, "blueberries");
     assert.deepEqual(recorded.steps[2]?.when, { absent: MARKER });
     assert.deepEqual(writes(), [["add", TARGET.id, 1]]);
     // The run form cannot move a live workflow to Bao's own Chrome.
@@ -167,37 +168,36 @@ describe("a recorded live workflow replays through the one live runner", { timeo
     assert.equal(moved.status, 409);
     assert.equal(app.library.read(id).driver, "cdp-live");
 
-    // The app's replay, with a different search text, on an empty cart.
+    // The app's replay on an empty cart. It types the recorded search text.
     fixture.reset();
-    const organic = await post<ReplayBody>("/api/replay", { id, args: { query: "organic blueberries" } });
-    assert.equal(organic.status, 200, organic.body.error);
-    passedNoModel(organic.body);
-    assert.equal(organic.body.id, organic.body.runId);
-    assert.deepEqual(organic.body.steps.map((step) => [step.status, step.reason ?? ""]), [["passed", ""], ["passed", ""], ["passed", ""]]);
-    assert.deepEqual(searched(), ["/store/costco/s?k=organic+blueberries"]);
+    const first = await post<ReplayBody>("/api/replay", { id, args: {} });
+    assert.equal(first.status, 200, first.body.error);
+    passedNoModel(first.body);
+    assert.equal(first.body.id, first.body.runId);
+    assert.deepEqual(first.body.steps.map((step) => [step.status, step.reason ?? ""]), [["passed", ""], ["passed", ""], ["passed", ""]]);
+    assert.deepEqual(searched(), ["/store/costco/s?k=blueberries"]);
     assert.deepEqual(writes(), [["add", TARGET.id, 1]]);
-    assert.equal(app.library.readRun(organic.body.runId).status, "passed");
+    assert.equal(app.library.readRun(first.body.runId).status, "passed");
     assert.equal(existsSync(lockFile), false, "the replay frees the CDP lock");
 
-    // Again with no inputs: the recorded query, and the item is already in the cart.
+    // Again: the item is already in the cart.
     const again = await post<ReplayBody>("/api/replay", { id, args: {} });
     passedNoModel(again.body);
     assert.deepEqual(again.body.steps.map((step) => step.reason ?? ""), ["", "", "already done"]);
-    assert.deepEqual(searched(), ["/store/costco/s?k=organic+blueberries", "/store/costco/s?k=blueberries"]);
+    assert.deepEqual(searched(), ["/store/costco/s?k=blueberries", "/store/costco/s?k=blueberries"]);
     assert.deepEqual(writes(), [["add", TARGET.id, 1]], "replay added nothing to a cart that had the item");
 
-    // bao mcp's run_workflow, with another query. The mcp process hands the run to the app.
+    // bao mcp's run_workflow. The mcp process hands the run to the app.
     fixture.reset();
     const mcp = mcpClient(home);
     try {
-      const viaMcp = await mcp.tool("run_workflow", { id, inputs: { query: "kirkland blueberries" } });
+      const viaMcp = await mcp.tool("run_workflow", { id });
       assert.equal(viaMcp.outcome, "ok", JSON.stringify(viaMcp));
-      assert.deepEqual(searched(), ["/store/costco/s?k=kirkland+blueberries"]);
+      assert.deepEqual(searched(), ["/store/costco/s?k=blueberries"]);
       assert.deepEqual(writes(), [["add", TARGET.id, 1]]);
       const stored = app.library.readRun(viaMcp.runId || "");
       assert.equal(stored.status, "passed");
       assert.equal(stored.modelCalls, 0);
-      assert.deepEqual(stored.inputs, { query: "kirkland blueberries" });
 
       // A workflow edited to click Checkout after the Add. Replay refuses the click and never loads /checkout.
       const checkout: WorkflowStep = {

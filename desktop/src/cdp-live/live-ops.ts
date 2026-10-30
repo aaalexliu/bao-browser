@@ -86,7 +86,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_stop",
-    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, and a search box's text is the input query. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay takes new inputs, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
+    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, except a search box's text, which replay types again as recorded. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay repeats the recorded steps, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;

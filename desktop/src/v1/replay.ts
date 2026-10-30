@@ -368,7 +368,7 @@ export async function replay(
     const wants = pageWhen(step);
     if (wants) {
       if (!guard || guard.key !== wants.key) {
-        guard = { key: wants.key, open: pageShows(await driver.tree(), wants.text) === wants.shown };
+        guard = { key: wants.key, open: pageShows(await driver.tree(), wants.text, wants.anyCount) === wants.shown };
       }
       if (!guard.open) {
         steps[i] = { id: step.id, status: "passed", reason: wants.shown ? "other branch" : "already done" };
@@ -710,7 +710,9 @@ export async function replay(
     }
   }
   const executed = steps.filter((step) => step.status === "passed" && step.reason !== "other branch" && step.reason !== "not re-run");
-  const lastId = executed[executed.length - 1]?.id;
+  // A step skipped as already done showed its result through its guard, so its own expect is not the final check.
+  const ran = executed.filter((step) => step.reason !== "already done");
+  const lastId = ran[ran.length - 1]?.id;
   const last = workflow.steps.find((step) => step.id === lastId && step.action !== "note");
   let finalCheckFailed = false;
   if (last && (last.expect || last.postcondition)) {
@@ -930,20 +932,29 @@ export interface PageGuard {
 
 /**
  * The page text a step's `when` names. `shown` true runs the step only while the page shows it,
- * false only while it does not. Steps with the same key are decided once, on the first of them.
+ * false only while it does not. With `absent`, `anyCount` lets each number in the text match any number.
+ * Steps with the same key are decided once, on the first of them.
  */
-export function pageWhen(step: Pick<WorkflowStep, "when">): { key: string; text: string; shown: boolean } | undefined {
+export function pageWhen(step: Pick<WorkflowStep, "when">): { key: string; text: string; shown: boolean; anyCount: boolean } | undefined {
   const present = step.when?.present?.trim();
-  if (present) return { key: `present:${present}`, text: present, shown: true };
+  if (present) return { key: `present:${present}`, text: present, shown: true, anyCount: false };
   const absent = step.when?.absent?.trim();
-  if (absent) return { key: `absent:${absent}`, text: absent, shown: false };
+  const anyCount = step.when?.anyCount === true;
+  if (absent) return { key: `absent${anyCount ? "#" : ""}:${absent}`, text: absent, shown: false, anyCount };
   return undefined;
 }
 
-/** Visible text, or a control's name, that marks an interstitial or a step's result as on the page. */
-export function pageShows(tree: LiveTree, present: string): boolean {
-  if (tree.texts.some((text) => text.includes(present))) return true;
-  return tree.nodes.some((node) => [node.text, node.name, node.label].some((bit) => bit?.includes(present)));
+/**
+ * Visible text, or a control's name, that marks an interstitial or a step's result as on the page.
+ * With `anyCount`, each number in `present` matches any number, so "1 in cart" matches "3 in cart".
+ */
+export function pageShows(tree: LiveTree, present: string, anyCount = false): boolean {
+  const pattern = anyCount
+    ? new RegExp(present.split(/\d+/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\d+"))
+    : undefined;
+  const shows = (bit: string | undefined): boolean => !!bit && (pattern ? pattern.test(bit) : bit.includes(present));
+  if (tree.texts.some(shows)) return true;
+  return tree.nodes.some((node) => [node.text, node.name, node.label].some(shows));
 }
 
 function withLocators(failure: StepFailure, tried: TriedLocator[]): StepFailure {

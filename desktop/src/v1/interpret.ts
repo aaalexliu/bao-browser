@@ -77,8 +77,12 @@ export interface TrailEvent {
    * On a typed value, the input's name.
    */
   parameter?: string;
+  /** Typed text that replay types as recorded. It does not become an input, and the step's label names the field, not the text. */
+  literal?: boolean;
   /** Text or a control name this step leaves on the page. Replay skips the step when the page already shows it. */
   skipWhen?: string;
+  /** A number in skipWhen matches any number, so "1 in cart" also matches "3 in cart". */
+  skipAnyCount?: boolean;
   /** Rows the person selected or copied. */
   list?: ListCapture;
   /** A picked element or list, already named. */
@@ -132,8 +136,8 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
     const skip = event.skipWhen?.trim();
-    if (skip) step.when = { absent: skip };
-    if (step.action === "type" && step.input && event.value && !step.sensitive && !secrets.includes(event.value)) {
+    if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
+    if (step.action === "type" && (step.input || event.literal) && event.value && !step.sensitive && !secrets.includes(event.value)) {
       known.push({ name: step.input, value: event.value });
     }
     return { events: [event], step };
@@ -344,9 +348,10 @@ function bindTypedOptions(pieces: InterpretPiece[]): void {
   }
 }
 
-/** A currency or unit choice stays a literal. The other typed values become inputs. */
+/** A currency or unit choice stays a literal, and so does text the trail marked literal. The other typed values become inputs. */
 export function isConstantType(event: TrailEvent): boolean {
   if (!isType(event) || event.sensitive || event.gate) return false;
+  if (event.literal) return true;
   const id = [event.identity?.id, event.identity?.nameAttr].filter(Boolean).join(" ");
   return /\b(currency|unit)\b/i.test(id);
 }
@@ -500,11 +505,12 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   if (isType(event)) {
     const secret = isSecret(event, meta.secrets ?? []);
     if (!secret && isConstantType(event)) {
+      const field = event.identity?.name || event.identity?.label;
       return {
         ...step,
         action: "type",
         value: event.value,
-        label: `Type ${event.value}`,
+        label: event.literal ? (field ? `Type into "${field}"` : "Type") : `Type ${event.value}`,
         ...observed(event, undefined, false, known, meta.secrets ?? []),
       };
     }

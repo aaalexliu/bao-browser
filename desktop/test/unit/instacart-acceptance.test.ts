@@ -11,8 +11,10 @@
 //   A  after recording, the cart is one line: Costco, Kirkland Organic Blueberries 3 lb, qty 1
 //   B  the write follows the audit row of the click that made it, and only the test browser reached the fixture
 //   C  no trap page loaded, and bao refused each trap the client tried
-//   D  the disconnect saved a valid, clean cdp-live workflow with the query input, the search submit, and the Add
-//   E  two replays through run_workflow pass with no model call and leave the same cart line
+//   D  the disconnect saved a valid, clean cdp-live workflow with no input: the recorded search, the product
+//      step with no price in its label, and an Add that replay skips while the item is in the cart
+//   E  two replays through run_workflow from an empty cart pass with no model call and leave the same cart
+//      line, and a replay on a cart that already holds the item skips the Add and writes nothing
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -27,7 +29,15 @@ import type { WorkflowOutcome } from "../../src/mcp/catalog";
 import { validateWorkflow } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { launchFixtureBrowser, type FixtureBrowser } from "../instacart/browser";
-import { TARGET, TARGET_PATH, startInstacartFixture, type CartWrite, type Hit, type InstacartFixture } from "../instacart/fixture";
+import {
+  TARGET,
+  TARGET_PATH,
+  startInstacartFixture,
+  type CartWrite,
+  type Hit,
+  type InstacartFixture,
+  type SeedLine,
+} from "../instacart/fixture";
 import { applyHermeticApp } from "../runtime";
 
 const INTENT = "put costco blueberries into the cart at instacart";
@@ -192,21 +202,21 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
     if (root) rmSync(root, { recursive: true, force: true });
   });
 
-  it("records the task, saves it when the agent disconnects, refuses the traps, and replays it twice with no model", async () => {
+  it("records the task, saves it when the agent disconnects, refuses the traps, and replays it with no model, skipping the Add when the cart holds the item", async () => {
     const library = new Library(home);
     const file = path.join(home, "workflows", `${WORKFLOW_ID}.json`);
     // fixture.reset() clears its logs, so every request and trap hit is kept here first.
     const requests: Hit[] = [];
     const trapHits: Hit[] = [];
-    const resetCart = (): void => {
+    const resetCart = (seed: SeedLine[] = []): void => {
       requests.push(...fixture.state().requests);
       trapHits.push(...fixture.state().traps);
-      fixture.reset();
+      fixture.reset(seed);
     };
     const writes = () => fixture.state().writes.map((write) => [write.op, write.store, write.productId, write.after]);
-    const oneLine = () => {
+    const oneLine = (qty = 1) => {
       const { carts } = fixture.state();
-      assert.deepEqual(carts.costco.map((line) => [line.productId, line.name, line.qty]), [[TARGET.id, TARGET.name, 1]]);
+      assert.deepEqual(carts.costco.map((line) => [line.productId, line.name, line.qty]), [[TARGET.id, TARGET.name, qty]]);
       assert.deepEqual([carts.safeway, carts.sprouts], [[], []]);
     };
 
@@ -279,13 +289,22 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
     assert.equal(workflow.driver, "cdp-live");
     assert.equal(new URL(workflow.startUrl).host, "www.instacart.com");
     assert.equal(workflow.intent, INTENT);
-    assert.deepEqual(workflow.inputs.map((input) => [input.name, input.type, input.default]), [["query", "text", "blueberries"]]);
+    // The owner's call: a recorded workflow is a cart replay. It types the search it saw and takes no input.
+    assert.deepEqual(workflow.inputs, []);
     const [type, enter, open, add, openCart] = workflow.steps;
     assert.equal(workflow.steps.length, 5, workflow.steps.map((step) => step.label).join(" | "));
-    assert.deepEqual([type?.action, type?.input, type?.value, type?.identity?.name], ["type", "query", "{{query}}", "Search Costco"]);
-    assert.deepEqual([enter?.action, enter?.key, enter?.identity?.name], ["key", "Enter", "Search Costco"]);
+    assert.deepEqual([type?.action, type?.input, type?.value, type?.identity?.name], ["type", undefined, "blueberries", "Search Costco"]);
+    assert.deepEqual([enter?.action, enter?.key, enter?.identity?.name, enter?.expect?.match], ["key", "Enter", "Search Costco", "k=blueberries"]);
+    assert.equal(JSON.stringify(workflow).includes("{{"), false, "no step reads an input");
+    // The product link shows its price. The step's label and role locator leave it out, and the href stays.
     assert.deepEqual([open?.action, open?.identity?.role, open?.identity?.href?.endsWith(TARGET_PATH)], ["click", "link", true]);
+    assert.equal(open?.label, `Click "${TARGET.name} ${TARGET.size}"`);
+    assert.deepEqual(open?.locators?.find((locator) => locator.kind === "role"), { kind: "role", role: "link", name: `${TARGET.name} ${TARGET.size}` });
+    assert.ok(open?.locators?.some((locator) => locator.kind === "css" && locator.value?.endsWith(`${TARGET_PATH}"]`)), JSON.stringify(open?.locators));
+    assert.equal(/\$|price/i.test(JSON.stringify(open)), false, JSON.stringify(open));
     assert.deepEqual([add?.action, add?.identity?.text, add?.identity?.testId, add?.expect?.match, add?.human], ["click", "Add to cart", "add-to-cart-button", "1 in cart", undefined]);
+    // The Add names no item. Its product page does, and shows "{n} in cart" once the item is in the cart.
+    assert.deepEqual(add?.when, { absent: "1 in cart", anyCount: true });
     assert.equal(openCart?.action, "click");
     assert.match(openCart?.identity?.name || "", /^View Cart/);
     assert.deepEqual([...keysOf(workflow)].filter((key) => /cookie|storage/i.test(key)), []);
@@ -295,7 +314,7 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
       }
     }
 
-    // E: replay through run_workflow from a new client, on an empty cart each time.
+    // E: replay through run_workflow from a new client, twice on an empty cart, then on carts that already hold the item.
     const replayer = McpClient.start(env);
     try {
       await replayer.handshake();
@@ -306,18 +325,33 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
         const run = library.readRun(outcome.runId || "");
         assert.equal(run.modelCalls, 0, result.text);
         assert.deepEqual(run.heals, []);
-        return { outcome, run };
+        const steps = (run.steps as { status: string; reason?: string }[]).map((step) => [step.status, step.reason ?? ""]);
+        return { outcome, run, steps };
       };
+      const searched = () => fixture.state().requests.filter((hit) => hit.path.startsWith("/store/costco/s?")).map((hit) => hit.path);
       for (const round of [1, 2]) {
         resetCart();
-        const { outcome, run } = await runWorkflow({});
+        const { outcome, run, steps } = await runWorkflow({});
         assert.equal(outcome.outcome, "ok", `round ${round}: ${JSON.stringify(outcome)}`);
         assert.equal(run.status, "passed");
         assert.deepEqual(outcome.receipts.map((step) => step.status), ["passed", "passed", "passed", "passed", "passed"]);
-        assert.deepEqual(run.inputs, { query: "blueberries" });
+        assert.deepEqual(steps.map(([, reason]) => reason), ["", "", "", "", ""], `round ${round}`);
         oneLine();
         assert.deepEqual(writes(), [["add", "costco", TARGET.id, 1]], `round ${round}`);
-        assert.deepEqual(fixture.state().requests.filter((hit) => hit.path.startsWith("/store/costco/s?")).map((hit) => hit.path), ["/store/costco/s?k=blueberries"]);
+        assert.deepEqual(searched(), ["/store/costco/s?k=blueberries"]);
+      }
+      // The item is already in the cart, at the recorded quantity and above it. Replay skips the Add and writes nothing.
+      for (const qty of [1, 2]) {
+        resetCart([{ store: "costco", productId: TARGET.id, qty }]);
+        const { outcome, run, steps } = await runWorkflow({});
+        assert.equal(outcome.outcome, "ok", `qty ${qty}: ${JSON.stringify(outcome)}`);
+        assert.equal(run.status, "passed");
+        assert.deepEqual(steps, [
+          ["passed", ""], ["passed", ""], ["passed", ""], ["passed", "already done"], ["passed", ""],
+        ], `qty ${qty}`);
+        oneLine(qty);
+        assert.deepEqual(writes(), [], `qty ${qty}: the Add was skipped`);
+        assert.deepEqual(searched(), ["/store/costco/s?k=blueberries"]);
       }
     } finally {
       await replayer.close();
