@@ -108,10 +108,12 @@ function writeClaude(request: Request, entry: string, io: AgentIo): number {
 function writeCodex(request: Request, entry: string, io: AgentIo): number {
   const file = codexConfigFile(io.env);
   let tmp = "";
+  let changed = false;
   try {
     const before = existsSync(file) ? readFileSync(file, "utf8") : "";
     const after = upsertCodexServer(before, request.launcher);
-    if (after !== before) {
+    changed = after !== before;
+    if (changed) {
       // A linked config.toml, such as one a dotfiles manager owns, keeps its link. The write goes to the file it names.
       const target = existsSync(file) ? realpathSync(file) : file;
       mkdirSync(path.dirname(target), { recursive: true });
@@ -125,7 +127,7 @@ function writeCodex(request: Request, entry: string, io: AgentIo): number {
     io.err(`${file}: ${err instanceof Error ? err.message : String(err)}. Nothing was written. Put this table in by hand:\n${entry}`);
     return 1;
   }
-  io.out(`Wrote this table to ${file}:\n${entry}`);
+  io.out(changed ? `Wrote this table to ${file}:\n${entry}` : `${file} already has this bao entry. Nothing changed.\n`);
   return 0;
 }
 

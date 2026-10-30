@@ -243,6 +243,7 @@ test("bao agent config codex --write keeps the rest of config.toml and runs twic
   assert.match(first.stdout, new RegExp(`Wrote this table to ${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   const second = run(l, ["config", "codex", "--app", l.app, "--write"]);
   assert.equal(second.status, 0, second.stderr);
+  assert.equal(second.stdout, `${file} already has this bao entry. Nothing changed.\n`);
   assert.equal(readFileSync(file, "utf8"), expected);
   assert.deepEqual(readdirSync(path.dirname(file)), ["config.toml"]);
 });
@@ -263,6 +264,7 @@ test("bao agent config codex --write keeps saved tool approvals and the user's k
   );
   const second = run(l, ["config", "codex", "--app", l.app, "--write"], { CODEX_HOME: codexHome });
   assert.equal(second.status, 0, second.stderr);
+  assert.equal(second.stdout, `${file} already has this bao entry. Nothing changed.\n`);
   assert.ok(readFileSync(file).equals(written));
   assert.deepEqual(readdirSync(codexHome), ["config.toml"]);
   assert.deepEqual(readdirSync(l.user), []);
