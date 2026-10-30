@@ -10,10 +10,9 @@ import { readout, isTwelve } from "./spike-macos-calc";
 import { replayOsWorkflow, replayUsedCoordinates } from "./macos-replay";
 import { MacOsHelper, targetFrom } from "./os-macos";
 import {
-  ARTIFACTS, CALC_BUNDLE, EDIT_BUNDLE, HELPER, cleanupNewAutosave, launchIfDown,
+  artifactsDir, CALC_BUNDLE, EDIT_BUNDLE, HELPER, cleanupNewAutosave, ensureArtifacts, ffmpegBin, launchIfDown,
   namesIn, quitOwned, sleep, TEXTEDIT_AUTOSAVE, workDir, writeJson,
 } from "./spike-macos-host";
-const FFMPEG = process.env.BAO_FFMPEG || "/etc/profiles/per-user/alexliu/bin/ffmpeg";
 
 interface TrailFile {
   source?: { agent?: string; vendor?: string; model?: string };
@@ -38,8 +37,9 @@ function operator(workflow: Workflow): string {
 async function encode(dir: string, out: string): Promise<string> {
   const frames = (await readdir(dir)).filter((name) => name.endsWith(".png")).sort();
   if (frames.length < 2) return "skipped";
+  const bin = ffmpegBin();
   await new Promise<void>((resolve, reject) => {
-    execFile(FFMPEG, [
+    execFile(bin, [
       "-y", "-framerate", "2", "-start_number", "1", "-i", path.join(dir, "frame-%02d.png"),
       "-c:v", "libx264", "-pix_fmt", "yuv420p", out,
     ], { timeout: 30000 }, (err) => err ? reject(err) : resolve());
@@ -87,8 +87,8 @@ async function main(): Promise<void> {
   if (!trailPath) throw new Error("usage: spike-macos-live.js calc|textedit <trail.json> <tag>");
   const raw = JSON.parse(await readFile(trailPath, "utf8")) as TrailFile;
   const interpreted = interpretOs(raw.events ?? [], kind);
+  await ensureArtifacts();
   await mkdir(workDir(), { recursive: true });
-  await mkdir(ARTIFACTS, { recursive: true });
   const helper = new MacOsHelper(HELPER);
   const runs = [];
   if (kind === "calc") {
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
       await sleep(700);
       try {
         const moved = await place(helper, CALC_BUNDLE);
-        const frames = path.join(ARTIFACTS, `live-${tag}-${inputs.a}${inputs.b}`);
+        const frames = path.join(artifactsDir(), `live-${tag}-${inputs.a}${inputs.b}`);
         await mkdir(frames, { recursive: true });
         const mark = helper.calls.length;
         let n = 0;
@@ -110,8 +110,8 @@ async function main(): Promise<void> {
           await helper.shot(CALC_BUNDLE, path.join(frames, `frame-${String(n).padStart(2, "0")}.png`));
         });
         const shown = readout((await helper.nodes(CALC_BUNDLE)).nodes ?? []);
-        await helper.shot(CALC_BUNDLE, path.join(ARTIFACTS, `live-${tag}-${inputs.a}${inputs.b}.png`));
-        const video = await encode(frames, path.join(ARTIFACTS, `live-${tag}-${inputs.a}${inputs.b}.mp4`));
+        await helper.shot(CALC_BUNDLE, path.join(artifactsDir(), `live-${tag}-${inputs.a}${inputs.b}.png`));
+        const video = await encode(frames, path.join(artifactsDir(), `live-${tag}-${inputs.a}${inputs.b}.mp4`));
         runs.push({
           inputs, want, shown, pass: shown === want || shown === `${want}.`,
           pressed: replay.pressed, skipped: replay.skipped,
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
       try {
         await prepareTextEdit(helper);
         const moved = await place(helper, EDIT_BUNDLE);
-        const frames = path.join(ARTIFACTS, `live-${tag}-${text.replace(/\s/g, "-")}`);
+        const frames = path.join(artifactsDir(), `live-${tag}-${text.replace(/\s/g, "-")}`);
         await mkdir(frames, { recursive: true });
         const mark = helper.calls.length;
         let n = 1;
@@ -144,8 +144,8 @@ async function main(): Promise<void> {
         const nodes = (await helper.nodes(EDIT_BUNDLE)).nodes ?? [];
         const area = nodes.find((node) => node.role === "AXTextArea" || node.role === "AXTextField");
         const shown = area?.value ?? "";
-        await helper.shot(EDIT_BUNDLE, path.join(ARTIFACTS, `live-${tag}-${text.replace(/\s/g, "-")}.png`));
-        const video = await encode(frames, path.join(ARTIFACTS, `live-${tag}-${text.replace(/\s/g, "-")}.mp4`));
+        await helper.shot(EDIT_BUNDLE, path.join(artifactsDir(), `live-${tag}-${text.replace(/\s/g, "-")}.png`));
+        const video = await encode(frames, path.join(artifactsDir(), `live-${tag}-${text.replace(/\s/g, "-")}.mp4`));
         runs.push({
           inputs: { text }, shown, pass: shown === text,
           pressed: replay.pressed, skipped: replay.skipped,

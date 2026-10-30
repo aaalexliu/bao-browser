@@ -6,7 +6,7 @@ import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
-import { liveSessionView, screenFromQuery } from "./live-view";
+import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
@@ -30,7 +30,7 @@ import {
   notices,
   onboarding,
   paletteView,
-  helperStatusText,
+  helperJobList,
   rail,
   recordBar,
   saveSheetView,
@@ -95,6 +95,8 @@ let state: ShellState & {
   runs?: RunSummary[];
   opened?: OpenedState | null;
   liveSession?: LiveSessionRecord | null;
+  librarySplits?: string[];
+  home?: string;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
 let screen: Screen = screenFromQuery(location.search) || "library";
@@ -228,7 +230,7 @@ function render(): void {
     const body = screen === "capture" ? capture()
       : screen === "teach" ? teachScreen()
       : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
-      : screen === "live" ? liveSessionView(state.liveSession)
+      : screen === "live" ? liveSessionView(state.liveSession, livePageFromQuery(location.search))
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
       : screen === "settings" ? settings()
@@ -236,7 +238,7 @@ function render(): void {
       : screen === "replay" ? replayForm()
       : screen === "import" ? importSheet()
       : screen === "workflow" ? `<section id="workflow-host"><p class="meta">Loading workflow…</p></section>`
-      : libraryTable(state.workflows || [], state.runs || [], state.promotions || []);
+      : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "");
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
     mainEl().innerHTML = body;
@@ -356,7 +358,9 @@ function settings(): string {
   const promoteAfter = state.settings?.promoteAfter ?? 3;
   const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
+  const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
   return `<section><h2>Settings</h2>
+    ${libraryHome}
     ${hostAccessPanel(state.settings?.hostAccess)}
     <label>When a step misses <select id="heal">
       <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
@@ -384,7 +388,8 @@ function settings(): string {
     </div>
     <div class="card">
       <h3>Mac</h3>
-      <p id="settings-helper">${esc(helperStatusText(state.helper))}</p>
+      <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
+      ${helperJobList(state.helper)}
     </div>
   </section>`;
 }
@@ -1888,6 +1893,7 @@ function paintGuide(): void {
 }
 
 function paintLive(): void {
+  if (!captureTrailOwnsSteps(screen)) return;
   const host = document.getElementById("live-steps");
   if (!host) return;
   const live = (state as ShellState & { liveTrail?: { id?: string; op?: string; kind?: string }[] }).liveTrail || [];

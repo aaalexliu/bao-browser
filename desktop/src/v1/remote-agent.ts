@@ -8,7 +8,7 @@ import { redactAudit } from "../../../web/src/lib/audit-redact";
 import { devicePermission, policyAllowsRemoteRun, type RemotePolicy } from "../../../web/src/lib/remote-policy";
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
-import { CDP_LIVE_SERVER_REFUSAL } from "../cdp-live/launch-guard";
+import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../cdp-live/launch-guard";
 import { describeWorkflow, runWorkflow, searchWorkflows, withHeldPage, type WorkflowOutcome } from "../mcp/catalog";
 import type { PersonPrompts } from "./browser-driver";
 import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
@@ -389,7 +389,7 @@ export function createRemoteAgent(opts: {
       if (kind === "extension") {
         return opts.runners?.extension
           ? await opts.runners.extension(id, inputs)
-          : { outcome: "failed", workflowId: id, reason: "extension is not connected" };
+          : { outcome: "failed", workflowId: id, reason: EXTENSION_NOT_CONNECTED };
       }
       if (kind === "cdp-live") {
         return opts.runners?.cdpLive

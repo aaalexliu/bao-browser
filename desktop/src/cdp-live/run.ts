@@ -5,12 +5,12 @@ import type { OutputTable } from "../v1/data-steps";
 import { unavailableHeal } from "../v1/heal";
 import { replay, type RunResult } from "../v1/replay";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
-import { ALLOW_CLICK_WINDOW_MS, mayClickAllow, type AxSummary } from "./consent";
 import { readDevToolsActivePort } from "./endpoint";
 import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
-import { AxUnavailable, chromeHelper, chromeTree, ensureRemoteDebugging, pressAllow } from "./ax";
+import { AxUnavailable, chromeHelper, chromeTree, ensureRemoteDebugging } from "./ax";
 import { CdpLiveDriver, openLiveWindow, type PageObservation } from "./driver";
-import { connectCdp, type CdpSocket } from "./socket";
+import { connectAndAllow } from "./connect";
+import type { CdpSocket } from "./socket";
 
 function repoRoot(): string {
   const candidates = [process.cwd(), path.resolve(__dirname, "../../../../..")];
@@ -128,46 +128,18 @@ async function main(): Promise<void> {
   progress("reading DevToolsActivePort");
   const endpoint = await readDevToolsActivePort();
   progress(`browser socket on port ${endpoint.port}`);
-  const abort = new AbortController();
-  const connectionStartedAt = Date.now();
-  let opened = false;
-  const pending = connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 200_000, signal: abort.signal })
-    .then((socket) => {
-      opened = true;
-      return socket;
-    });
-  pending.catch(() => undefined);
-  let last = enabled.summary;
-  let clickedAt: number | undefined;
-  let allowWindow = "";
-  const deadline = connectionStartedAt + ALLOW_CLICK_WINDOW_MS;
-  while (Date.now() < deadline && !opened) {
-    progress("reading AX for the Allow dialog");
-    const tree = await chromeTree(helper);
-    last = tree.summary;
-    if (opened) break;
-    if (mayClickAllow({
-      openedByBao: true,
-      connectionStartedAt,
-      now: Date.now(),
-      dialogPresentBeforeConnect,
-      dialog: tree.summary.dialog,
-    })) {
-      if (opened) break;
-      progress("pressing Allow");
-      const pressed = await pressAllow(helper, enabled.pid, axLog);
-      clickedAt = pressed.at;
-      allowWindow = pressed.window;
-      break;
-    }
-  }
-  if (clickedAt == null && !opened) {
-    abort.abort();
-    await pending.catch(() => undefined);
-    throw new AxUnavailable("BaoOSHelper cannot see the Allow remote debugging dialog", last);
-  }
-  const cdp = await pending;
-  const connectToAllowMs = clickedAt == null ? null : clickedAt - connectionStartedAt;
+  const opened = await connectAndAllow({
+    helper,
+    endpoint,
+    dialogPresentBeforeConnect,
+    axLog,
+    pid: enabled.pid,
+    log: progress,
+  });
+  const cdp = opened.cdp;
+  const clickedAt = opened.clickedAt;
+  const allowWindow = opened.allowWindow;
+  const connectToAllowMs = opened.connectToAllowMs;
   progress(`socket open; connect-to-Allow ${connectToAllowMs == null ? "not clicked" : `${connectToAllowMs}ms`}`);
   const workflow = JSON.parse(await readFile(path.join(root, "docs/proof/realworld/workflows/p5.json"), "utf8")) as WorkflowV2;
   const errors = validateWorkflow(workflow);

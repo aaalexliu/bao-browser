@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
 import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -88,6 +91,64 @@ test("describe omits secret defaults and a missing secret does not launch a brow
   assert.match(outcome.resume || "", /^r_[a-f0-9]+$/);
   assert.equal(JSON.stringify(outcome).includes("SuperSecret"), false);
 });
+
+for (const [driver, reason] of [["cdp-live", CDP_LIVE_SERVER_REFUSAL], ["extension", EXTENSION_NOT_CONNECTED]] as const) {
+  test(`run_workflow refuses ${driver} workflows and does not open Bao's Chrome`, async () => {
+    const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
+    library.save({ ...workflow("wf-driver", "Driver workflow"), driver });
+    const outcome = await runWorkflow(library, { id: "wf-driver", inputs: { query: "ada" } });
+    assert.equal(outcome.outcome, "failed");
+    assert.equal(outcome.reason, reason);
+    assert.equal(outcome.runId, undefined);
+    assert.equal(outcome.resume, undefined);
+    assert.equal(existsSync(path.join(library.root, "chrome-profile")), false);
+    assert.deepEqual(library.listRuns(), []);
+  });
+}
+
+test("run_workflow still replays a Playwright workflow in Bao's Chrome", { timeout: 60_000 }, async () => {
+  process.env.BAO_CHROME_NO_SANDBOX = "1";
+  const server = createServer((_req, res) => {
+    res.setHeader("content-type", "text/html");
+    res.end("<!doctype html><button data-testid=\"go\" onclick=\"document.getElementById('status').textContent = 'Clicked'\">Go</button><p id=\"status\">Waiting</p>");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  try {
+    const { port } = server.address() as AddressInfo;
+    const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
+    library.save(clickWorkflow(`http://127.0.0.1:${port}/`));
+    const outcome = await runWorkflow(library, { id: "wf-click" });
+    assert.equal(outcome.outcome, "ok", outcome.reason);
+    assert.equal(existsSync(path.join(library.root, "chrome-profile")), true);
+    const run = library.readRun(outcome.runId || "");
+    assert.equal(run.status, "passed");
+    assert.equal(run.modelCalls, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+function clickWorkflow(startUrl: string): WorkflowV2 {
+  return {
+    schema: "bao.workflow/v2",
+    version: 2,
+    id: "wf-click",
+    name: "Click Go",
+    startUrl,
+    createdAt: 1,
+    inputs: [],
+    steps: [{
+      id: "go",
+      index: 0,
+      action: "click",
+      label: "Go",
+      surface: "dom",
+      timeoutMs: 5000,
+      identity: { surface: "dom", role: "button", testId: "go", text: "Go", path: [] },
+      postcondition: { kind: "text", match: "Clicked", timeoutMs: 5000 },
+    }],
+  };
+}
 
 function hit(id: string, source: string, score: number, title: string): SearchHit {
   return {

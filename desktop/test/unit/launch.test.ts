@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome, resolveNormalChrome } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
+/** No BAO_TEST_BROWSER: the product launch. The test lane sets it in process.env. */
+const product: NodeJS.ProcessEnv = {};
 
 test("the launcher pid is the descendant whose profile is ours", () => {
   const rows = [
@@ -20,12 +23,12 @@ test("the launcher pid is the descendant whose profile is ours", () => {
     assert.equal(pid, 200);
     return fixture;
   });
-  assert.equal(assessOwnedCommand(cmd, owned).ok, true);
+  assert.equal(assessOwnedCommand(cmd, owned, product).ok, true);
 });
 
 test("mac ps output: the Google Chrome binary path is not the daily profile", () => {
   const cmd = readOwnedCommand(4242, owned, "darwin", () => fixture);
-  const verdict = assessOwnedCommand(cmd, owned);
+  const verdict = assessOwnedCommand(cmd, owned, product);
   assert.equal(verdict.ok, true, verdict.reason);
   assert.match(cmd, /Google Chrome\.app/);
 });
@@ -42,7 +45,7 @@ test("a user-data-dir inside the daily profile is refused even when the binary i
     "--user-data-dir=/tmp/bao-owned-profile",
     "--user-data-dir=/Users/alex/Library/Application Support/Google/Chrome",
   );
-  const verdict = assessOwnedCommand(daily, "/Users/alex/Library/Application Support/Google/Chrome");
+  const verdict = assessOwnedCommand(daily, "/Users/alex/Library/Application Support/Google/Chrome", product);
   assert.equal(verdict.ok, false);
   assert.match(verdict.reason || "", /daily profile/);
 });
@@ -91,10 +94,64 @@ test("installed Chrome wins, and a missing BAO_BROWSER falls through", () => {
   assert.throws(() => resolveNormalChrome(() => false, { BAO_BROWSER: "/missing/chrome" }, "linux", () => "/missing/playwright"), /Chrome was not found/);
 });
 
-test("the product arg builder drops the mock keychain", () => {
-  const mocked = ownedChromeLaunchArgs(["--use-mock-keychain", "--password-store=basic"], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "darwin");
-  assert.equal(mocked.includes("--use-mock-keychain"), false);
-  assert.equal(mocked.includes("--password-store=basic"), false);
+test("product launch arguments are unchanged and drop the mock keychain", () => {
+  assert.deepEqual(ownedChromeLaunchArgs([], product, "darwin"), [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-sync",
+    "--force-renderer-accessibility",
+  ]);
+  assert.deepEqual(ownedChromeLaunchArgs([], product, "linux"), [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-sync",
+  ]);
+  assert.deepEqual(
+    ownedChromeLaunchArgs(["--use-mock-keychain", "--password-store=basic", "--lang=en"], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "darwin"),
+    ["--no-first-run", "--no-default-browser-check", "--disable-sync", "--force-renderer-accessibility", "--lang=en"],
+  );
+  assert.equal(ownedChromeLaunchArgs([], { BAO_TEST_BROWSER: "   " }, "darwin").includes("--use-mock-keychain"), false);
+  assert.deepEqual(accountLaunchArgs(9333), [
+    "--remote-debugging-port=9333",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-sync",
+    ...(process.platform === "darwin" ? ["--force-renderer-accessibility"] : []),
+  ]);
+  assert.equal(resolveNormalChrome((file) => file === ACCOUNT_CHROME_MAC, product, "darwin"), ACCOUNT_CHROME_MAC);
+  assert.equal(resolveNormalChrome((file) => file === LINUX_CHROME, product, "linux"), LINUX_CHROME);
+});
+
+test("the test lane launches BAO_TEST_BROWSER with a mock keychain", () => {
+  const pin = path.join(mkdtempSync(path.join(tmpdir(), "bao-test-browser-")), "Google Chrome for Testing");
+  writeFileSync(pin, "");
+  chmodSync(pin, 0o755);
+  const lane: NodeJS.ProcessEnv = { BAO_TEST_BROWSER: pin };
+  const installed = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME;
+  assert.equal(testLaneBrowser(lane), pin);
+  assert.equal(testLaneBrowser(product), undefined);
+  assert.equal(resolveNormalChrome(installed, lane, "darwin"), pin);
+  assert.equal(resolveNormalChrome(installed, lane, "linux"), pin);
+  assert.throws(
+    () => resolveNormalChrome(installed, { BAO_TEST_BROWSER: "/missing/chrome-for-testing" }, "darwin"),
+    /BAO_TEST_BROWSER is not an executable file/,
+  );
+  assert.deepEqual(testLaneKeychainArgs(lane), ["--use-mock-keychain", "--password-store=basic"]);
+  assert.deepEqual(testLaneKeychainArgs(product), []);
+  assert.deepEqual(ownedChromeLaunchArgs(["--use-mock-keychain=0", "--password-store=gnome"], lane, "darwin"), [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-sync",
+    "--force-renderer-accessibility",
+    "--use-mock-keychain",
+    "--password-store=basic",
+  ]);
+  const laneCmd = `${pin} --user-data-dir=${owned} --no-first-run --use-mock-keychain --password-store=basic`;
+  assert.equal(assessOwnedCommand(laneCmd, owned, lane).ok, true);
+  assert.equal(assessOwnedCommand(laneCmd, owned, product).ok, false);
+  const bare = assessOwnedCommand(fixture, owned, lane);
+  assert.equal(bare.ok, false);
+  assert.match(bare.reason || "", /without a mock keychain/);
 });
 
 test("a product command line rejects mock keychain flags in every form", () => {
@@ -107,7 +164,7 @@ test("a product command line rejects mock keychain flags in every form", () => {
     "--password-store ",
   ];
   for (const flag of flags) {
-    const verdict = assessOwnedCommand(`${fixture.trim()} ${flag}`, owned);
+    const verdict = assessOwnedCommand(`${fixture.trim()} ${flag}`, owned, product);
     assert.equal(verdict.ok, false, flag);
     assert.match(verdict.reason || "", /mock keychain/);
   }
@@ -118,10 +175,8 @@ test("a product command line rejects mock keychain flags in every form", () => {
     "--password-store=basic",
     "--password-store=gnome",
     "--password-store ",
-  ], {}, "darwin");
+  ], product, "darwin");
   assert.equal(cleaned.some((arg) => /use-mock-keychain|password-store/.test(arg)), false);
-  const source = readFileSync(path.join(process.cwd(), "desktop/src/launch.ts"), "utf8");
-  assert.equal(source.includes("...(opts.appendArgs ?? [])"), false);
 });
 
 test("BAO_BROWSER and the Playwright path must be executable files", () => {
@@ -143,13 +198,13 @@ test("BAO_BROWSER and the Playwright path must be executable files", () => {
 
 test("remote debugging port 9222 is refused", () => {
   const cmd = `${fixture.trim()} --remote-debugging-port=9222`;
-  const verdict = assessOwnedCommand(cmd, owned);
+  const verdict = assessOwnedCommand(cmd, owned, product);
   assert.equal(verdict.ok, false);
   assert.match(verdict.reason || "", /9222/);
 });
 
 test("a mismatched user-data-dir is refused", () => {
-  const verdict = assessOwnedCommand(fixture, "/tmp/someone-else");
+  const verdict = assessOwnedCommand(fixture, "/tmp/someone-else", product);
   assert.equal(verdict.ok, false);
 });
 
@@ -193,5 +248,77 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   for (const message of messages) {
     assert.equal(message.includes("127.0.0.1"), false, message);
     assert.equal(message.includes("4787"), false, message);
+  }
+});
+
+test("package-app.sh stops before it builds an app when the helper is absent", () => {
+  const dist = mkdtempSync(path.join(tmpdir(), "bao-dist-"));
+  const helper = path.join(dist, "fixture", "BaoOSHelper.app");
+  try {
+    const result = spawnSync("bash", ["desktop/packaging/macos/package-app.sh"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        BAO_DIST: dist,
+        BAO_HELPER_APP: helper,
+        BAO_SIGN_IDENTITY: "bao dev signing",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /helper is absent/);
+    assert.match(result.stderr, /fixture\/BaoOSHelper\.app/);
+    assert.equal((result.stderr || "").includes("desktop/os-helper-macos/BaoOSHelper.app"), false);
+    assert.equal((result.stderr || "").includes("codesign"), false);
+    assert.equal(existsSync(path.join(dist, "Bao.app")), false);
+  } finally {
+    rmSync(dist, { recursive: true, force: true });
+  }
+});
+
+test("stage-runtime compiles into a temp dir and leaves extension/dist alone", { timeout: 180_000 }, () => {
+  const parent = mkdtempSync(path.join(tmpdir(), "bao-stage-"));
+  const dest = path.join(parent, "Resources");
+  mkdirSync(dest);
+  const manifest = path.join(process.cwd(), "extension/dist/manifest.json");
+  const compiled = path.join(process.cwd(), "desktop/dist/desktop/src/app/server.js");
+  const manifestBefore = existsSync(manifest) ? statSync(manifest).mtimeMs : null;
+  const compiledBefore = existsSync(compiled) ? statSync(compiled).mtimeMs : null;
+  try {
+    const result = spawnSync("bash", ["desktop/packaging/stage-runtime.sh", dest], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ""}`,
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
+      },
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const line = (result.stdout || "").split("\n").find((row) => row.startsWith("STAGED_TSC "));
+    assert.ok(line);
+    const out = line.slice("STAGED_TSC ".length).trim();
+    assert.equal(out.includes(`${path.sep}bao-tsc`), true, out);
+    assert.equal(out.startsWith(process.cwd() + path.sep), false, out);
+    assert.equal(existsSync(path.join(dest, "extension/src/host-grant.js")), true);
+    assert.equal(existsSync(path.join(dest, "extension/dist/manifest.json")), true);
+    const user = path.join(parent, "user");
+    mkdirSync(user);
+    const printed = spawnSync(process.execPath, [path.join(dest, "bao/src/print-home.cjs")], {
+      cwd: user,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH || "", HOME: user },
+    });
+    assert.equal(printed.status, 0, printed.stderr || printed.stdout);
+    const library = process.platform === "darwin"
+      ? path.join(user, "Library", "Application Support", "bao")
+      : path.join(user, ".local", "share", "bao");
+    assert.equal(printed.stdout, `ok\n${library}\n`);
+    if (manifestBefore == null) assert.equal(existsSync(manifest), false);
+    else assert.equal(statSync(manifest).mtimeMs, manifestBefore);
+    if (compiledBefore == null) assert.equal(existsSync(compiled), false);
+    else assert.equal(statSync(compiled).mtimeMs, compiledBefore);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
   }
 });

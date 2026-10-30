@@ -7,6 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
+import { replayRefusal } from "../cdp-live/launch-guard";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
@@ -211,6 +212,9 @@ export async function runWorkflow(
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
+  // run_workflow only opens Bao's own Chrome, and no extension links to it.
+  const refusal = replayRefusal((request.document ?? placed!.document).driver, { extensionLinked: false });
+  if (refusal) return emptyOutcome(id, "failed", refusal);
   if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
     const listingId = placed.forkedFrom || placed.document.id;
     const access = await marketplaceAccess(library, listingId, placed.document);

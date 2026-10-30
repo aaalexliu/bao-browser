@@ -1,9 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { checkboxReach, mayClickAllow, ALLOW_CLICK_WINDOW_MS } from "./consent";
-import { INSTACART_HOSTS, navigationAllowed, navigationRefusal } from "./allowlist";
 import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
-import { AxUnavailable, checkboxState, chromeHelper, chromeTree, pressAllow } from "./ax";
+import { checkboxReach } from "./consent";
+import { INSTACART_HOSTS, navigationAllowed, navigationRefusal } from "./allowlist";
+import { AxUnavailable, checkboxState, chromeHelper, chromeTree } from "./ax";
 import { liveSessionDir, SessionLog } from "./audit";
 import { attachLiveTarget, type CdpLiveDriver, type PageObservation } from "./driver";
 import { listenPid, readDevToolsActivePort } from "./endpoint";
@@ -26,7 +26,8 @@ import {
   type InstacartSnap,
 } from "./instacart";
 import { classifyPage } from "../v1/page-class";
-import { connectCdp, type CdpSocket } from "./socket";
+import { connectAndAllow } from "./connect";
+import type { CdpSocket } from "./socket";
 
 const HOME = "https://www.instacart.com/";
 const CLICK_CAP = 6;
@@ -210,50 +211,21 @@ async function run(): Promise<void> {
   if (dialogPresentBeforeConnect) {
     throw new AxUnavailable("Allow dialog was already up; not connecting and not clicking", box.summary);
   }
-  const abort = new AbortController();
-  const connectionStartedAt = Date.now();
-  let opened = false;
-  const pending = connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 200_000, signal: abort.signal })
-    .then((socket) => {
-      opened = true;
-      return socket;
-    });
-  pending.catch(() => undefined);
-  let last = box.summary;
-  let clickedAt: number | undefined;
-  let allowWindow = "";
-  const deadline = connectionStartedAt + ALLOW_CLICK_WINDOW_MS;
-  while (Date.now() < deadline && !opened) {
-    progress("reading AX for the Allow dialog");
-    const tree = await chromeTree(helper, chromePid);
-    last = tree.summary;
-    if (opened) break;
-    if (mayClickAllow({
-      openedByBao: true,
-      connectionStartedAt,
-      now: Date.now(),
-      dialogPresentBeforeConnect,
-      dialog: tree.summary.dialog,
-    })) {
-      if (opened) break;
-      progress("pressing Allow");
-      const pressed = await pressAllow(helper, box.pid || chromePid, axLog);
-      clickedAt = pressed.at;
-      allowWindow = pressed.window;
-      break;
-    }
-  }
-  if (clickedAt == null && !opened) {
-    abort.abort();
-    await pending.catch(() => undefined);
-    throw new AxUnavailable("BaoOSHelper cannot see the Allow remote debugging dialog", last);
-  }
-  const cdp: CdpSocket = await pending;
-  const connectToAllowMs = clickedAt == null ? null : clickedAt - connectionStartedAt;
+  const opened = await connectAndAllow({
+    helper,
+    endpoint,
+    dialogPresentBeforeConnect,
+    axLog,
+    pid: box.pid || chromePid,
+    log: progress,
+  });
+  const cdp: CdpSocket = opened.cdp;
+  const allowWindow = opened.allowWindow;
+  const connectToAllowMs = opened.connectToAllowMs;
   progress(`socket open; connect-to-Allow ${connectToAllowMs == null ? "not clicked" : `${connectToAllowMs}ms`}`);
 
   const steps: StepNote[] = [];
-  const log = new SessionLog(liveSessionDir(), "Add one cheap Instacart item, then remove it.");
+  const log = new SessionLog(liveSessionDir(process.env.BAO_HOME), "Add one cheap Instacart item, then remove it.");
   let returnUrl = "";
   const record = async (
     live: CdpLiveDriver | undefined,

@@ -231,7 +231,7 @@ The replay form used to rebuild on each state change and drop a password that ha
 
 ### 2026-10-22 — Look like a normal browser
 
-Capture, replay, login import, and the computer-use spikes start the installed Google Chrome and attach over a private debugging port (`connectOverCDP` with `noDefaults`). The binary is Google Chrome when it is installed (`/Applications/Google Chrome.app` on macOS, `/opt/google/chrome/chrome` on Linux), otherwise `BAO_BROWSER`, otherwise Playwright's Chromium. Bao does not look up `google-chrome` on `PATH`. A wrapper there can inject `--no-sandbox` and port 9222.
+Capture, replay, login import, and the computer-use spikes start the installed Google Chrome and attach over a private debugging port (`connectOverCDP` with `noDefaults`). The binary is Google Chrome when it is installed (`/Applications/Google Chrome.app` on macOS, `/opt/google/chrome/chrome` on Linux), otherwise `BAO_BROWSER`, otherwise Playwright's Chromium. Bao does not look up `google-chrome` on `PATH`. A wrapper there can inject `--no-sandbox` and port 9222. `npm run test:v1` uses a test browser instead. See `desktop/test/README.md`.
 
 Playwright's `launchPersistentContext` was putting `--no-sandbox` on the command line whenever `chromiumSandbox` was left unset, plus `--disable-extensions`, a debugging pipe, a mock keychain, SwiftShader, and a long `--disable-features` list. That launch reports `navigator.webdriver === true`, and on a Mac the window shows the unsupported-flag infobar for `--no-sandbox`. A Chrome process started with the profile and a private port keeps `navigator.webdriver === false` after the attach, including after `Runtime.evaluate`. The port is never 9222, and the profile is never the daily Chrome. `page.video()` does not exist on a CDP attach, so `BAO_RUN_VIDEO=1` is the one path that still uses Playwright's launcher. The Mac window recorder does not need it.
 
@@ -439,8 +439,8 @@ Pair a Mac from Devices. The page shows a code. Type it in the Mac app under Set
 
 ```bash
 npm run build:desktop
-npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/share/bao
-npm run bao -- sync --home ~/.local/share/bao
+npm run bao -- sync pair CODE --server http://127.0.0.1:3000
+npm run bao -- sync
 ```
 
 A hosted registry also needs the invite secret on that command (`--secret`) or in the Settings → Sync field. Paste it once. It is stored in `sync.json` with the device token and is not sent on later syncs. Local `vercel dev` leaves the owner variables unset, so pairing does not ask for a secret.
@@ -488,7 +488,7 @@ The four tools in this section are the default `bao mcp` server. The operational
 | --- | --- |
 | `search_workflows` | At most 5 ranked hits from this Mac, workflows synced from your other devices, and marketplace listings. Each hit includes its input schema, a source (`this Mac`, the device name, or `marketplace`), and the last green time in the local zone. A marketplace time this Mac has not replayed is labeled `publisher green`. When the score is tied, this Mac comes first, then another device, then marketplace. |
 | `describe_workflow` | The steps, the input schema, a `bao://workflow/<id>` link, the same source, and the last green time. Secret defaults are omitted. |
-| `run_workflow` | `ok`, `needs_human`, `needs_signin`, `needs_approval`, or `failed`. A workflow that is not on this Mac is installed here before replay. A marketplace listing that has not been allowed returns `needs_approval` (`outcome`, `status`, `workflowId`, `source`, `reason`, `link`, and `permissions`) and does not run. Allow is the same account choice as the listing page. A confirm or submit listing is Always ask, so an allowed run still waits before that step. A passed run stamps the last green time, and the next search shows it. A human step returns immediately with `status`, `run_id`, `step`, `reason`, `ask`, `deadline`, and `resume_token`. Pass that token to continue the same run. `cancel: true` stops it and applies nothing. `rerun: true` reuses past non-secret inputs. |
+| `run_workflow` | `ok`, `needs_human`, `needs_signin`, `needs_approval`, or `failed`. It replays only in Bao's own Chrome. A `cdp-live` workflow or an `extension` workflow returns `failed` with the reason and does not run. Replay a `cdp-live` workflow from the Bao app that recorded it, after `live_stop`. Replay through `bao mcp` comes in a later step. A workflow that is not on this Mac is installed here before replay. A marketplace listing that has not been allowed returns `needs_approval` (`outcome`, `status`, `workflowId`, `source`, `reason`, `link`, and `permissions`) and does not run. Allow is the same account choice as the listing page. A confirm or submit listing is Always ask, so an allowed run still waits before that step. A passed run stamps the last green time, and the next search shows it. A human step returns immediately with `status`, `run_id`, `step`, `reason`, `ask`, `deadline`, and `resume_token`. Pass that token to continue the same run. `cancel: true` stops it and applies nothing. `rerun: true` reuses past non-secret inputs. |
 | `get_run` | A stored outcome. |
 
 A missing secret or file, or a heal that is waiting for approval, is `needs_human` and does not leave the device. A sign-in ask is `needs_signin`. A confirm ask is `needs_human`. Neither blocks the tool call, and neither is a bare string. Pass the resume token after the person acts to continue that same run. `cancel: true` with the token stops the run and leaves the page unpressed. The token is deleted when it is used. While the person has the page, step screenshots and trail capture pause. The trail records handoff start and end with the local zone.
