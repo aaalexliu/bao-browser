@@ -271,6 +271,35 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
     }
   });
 
+  it("refuses a daily profile that does not exist before reading the grant or opening a window", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-live-noprofile-"));
+    const ax = fakeChromeHelper();
+    const asks: ProfileWindowAsk[] = [];
+    const host = createLiveHost({
+      home,
+      lockFile: path.join(home, "lock"),
+      target: { kind: "daily", portFile: browser.portFile, profile: "Profile 3" },
+      helper: () => ax.helper,
+      openProfile: async (ask) => {
+        asks.push(ask);
+      },
+    });
+    try {
+      const started = await host.call({ op: "live_session_start", intent: "Shop", url: fixture.url("/store/costco/storefront") }) as LiveBody;
+      assert.equal(started.outcome?.kind, "rejected");
+      assert.equal(
+        started.outcome?.reason,
+        `Chrome profile Profile 3 does not exist in ${browser.userDataDir}. Profiles there: Default`,
+      );
+      assert.deepEqual(ax.calls, []);
+      assert.deepEqual(asks, []);
+      assert.equal(existsSync(path.join(browser.userDataDir, "Profile 3")), false);
+      assert.equal(existsSync(path.join(home, "lock")), false);
+    } finally {
+      await host.close();
+    }
+  });
+
   it("an MCP client that disconnects without live_stop still saves its workflow", async () => {
     const dirs = applyHermeticApp("live-target");
     const app = await startApp({

@@ -2,7 +2,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { readlink } from "node:fs/promises";
+import { readdir, readlink } from "node:fs/promises";
 import path from "node:path";
 import { liveChromeBlock } from "../helper-capabilities";
 import { AxUnavailable, checkboxState, chromeHelper, type ChromeAx } from "./ax";
@@ -188,6 +188,17 @@ function missingPortReason(target: LiveTarget, err: unknown): string {
 }
 
 /** Checks before the CDP lock. Only the daily Chrome needs its pid and the helper's Accessibility grant. */
+/** Chrome quietly makes a new, empty profile for a name it does not know, so refuse one that is missing. */
+async function requireProfile(userDataDir: string, profile: string): Promise<void> {
+  const entries = await readdir(userDataDir, { withFileTypes: true }).catch(() => []);
+  const profiles = entries
+    .filter((entry) => entry.isDirectory() && (entry.name === "Default" || /^Profile \d+$/.test(entry.name)))
+    .map((entry) => entry.name);
+  if (profiles.includes(profile)) return;
+  const known = profiles.length ? profiles.join(", ") : "none";
+  throw new Error(`Chrome profile ${profile} does not exist in ${userDataDir}. Profiles there: ${known}`);
+}
+
 export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx = () => chromeHelper()): Promise<PreparedTarget> {
   let endpoint: DevToolsEndpoint;
   try {
@@ -196,6 +207,7 @@ export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx =
     throw new Error(missingPortReason(target, err));
   }
   if (!asksToAllow(target)) return { target, endpoint, chromePid: 0, helper: null };
+  if (target.kind === "daily") await requireProfile(path.dirname(target.portFile), target.profile);
   const chromePid = await listenPid(endpoint.port);
   if (!chromePid) throw new Error("no Chrome is listening on the DevTools port");
   const ax = helper();

@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -64,14 +64,13 @@ test("the daily target opens its window in the Default profile when another prof
     const pages = async () => ((await side.send<Listed>("Target.getTargets")).targetInfos || []).filter((info) => info.type === "page");
     const first = (await pages())[0];
     assert.ok(first?.browserContextId);
-    assert.equal(existsSync(path.join(userData, "Default")), false);
+    mkdirSync(path.join(userData, "Default"));
 
     const started = await host.call({ op: "live_session_start", intent: "Shop", url: `${origin}/shop` }) as { outcome?: { kind?: string } };
     assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
     const driven = (await pages()).filter((info) => (info.url || "").startsWith(origin));
     assert.equal(driven.length, 1);
     assert.notEqual(driven[0]?.browserContextId, first.browserContextId);
-    assert.equal(existsSync(path.join(userData, "Default")), true);
     const contexts = await side.send<{ defaultBrowserContextId?: string }>("Target.getBrowserContexts");
     assert.equal(contexts.defaultBrowserContextId, driven[0]?.browserContextId);
     side.close();
