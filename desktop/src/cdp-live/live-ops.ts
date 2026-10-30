@@ -86,7 +86,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_stop",
-    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, and a search box's text is the input query. The Bao app's replay of that workflow uses the open Chrome and does not call a model. It does not take inputs yet, and it stops at the first step that is not a click, so it does not yet reach an Add after a search. Plan W5 wires inputs and those steps into it.",
+    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, and a search box's text is the input query. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay takes new inputs, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;
@@ -117,6 +117,9 @@ export function admit(slot: SlotState, op: LiveOpName): Admission {
 /** Not a tool. The MCP proxy sends it when its client goes away, and the host saves that client's open session. */
 export const LIVE_DISCONNECT = "live_disconnect";
 
+/** Not a tool. bao mcp's run_workflow sends it so the app replays a cdp-live workflow in its live target. */
+export const LIVE_REPLAY = "live_replay";
+
 export interface LiveControlFact {
   index: number;
   label: string;
@@ -135,6 +138,8 @@ export interface PageFacts {
   blocked: string;
   text?: string;
   controls: LiveControlFact[];
+  /** The index of the control readLivePage marked by its tree() handle. -1 when that element is not a listed control. */
+  marked?: number;
 }
 
 export interface LiveControlView {
@@ -421,6 +426,12 @@ export function focusLiveMark(ask: { markIndex: number }): void {
   if (el instanceof HTMLElement) el.focus();
 }
 
+/** Page function. Selects the marked field's text, so the next insert replaces it. */
+export function selectLiveMark(ask: { markIndex: number }): void {
+  const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.select();
+}
+
 /** Page function. The value already in the marked field. It is not returned to the caller of the tool. */
 export function markedFieldValue(ask: { markIndex: number }): string {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
@@ -477,14 +488,20 @@ export function focusStillMarked(ask: { markIndex: number }): { ok: boolean; cre
   return { ok: same && !credential, credential };
 }
 
-/** Page function. It lists visible controls and never reads cookies or storage. */
-export function readLivePage(ask: { markIndex: number }): PageFacts {
+/**
+ * Page function. It lists visible controls and never reads cookies or storage.
+ * markIndex marks the control at that index. markHandle marks the control that
+ * tree() gave that data-bao-i handle, and the reply says which index it has.
+ */
+export function readLivePage(ask: { markIndex: number; markHandle?: string }): PageFacts {
   const mark = typeof ask?.markIndex === "number" ? ask.markIndex : -1;
-  if (mark >= 0) {
+  const handle = typeof ask?.markHandle === "string" ? ask.markHandle : "";
+  if (mark >= 0 || handle) {
     document.querySelectorAll("[data-bao-live]").forEach((el) => el.removeAttribute("data-bao-live"));
   }
   const controls: LiveControlFact[] = [];
   let index = 0;
+  let marked = -1;
   let credentialHalt = false;
   const buttonInput = (el: Element): boolean => el instanceof HTMLInputElement
     && /^(submit|image|button|reset)$/.test((el.getAttribute("type") || "").toLowerCase());
@@ -521,7 +538,10 @@ export function readLivePage(ask: { markIndex: number }): PageFacts {
     if (concealed(el)) return;
     const label = textOf(el);
     if (!label) return;
-    if (mark === index) el.setAttribute("data-bao-live", String(index));
+    if (mark === index || (handle && el.getAttribute("data-bao-i") === handle)) {
+      el.setAttribute("data-bao-live", String(index));
+      if (handle) marked = index;
+    }
     const form = ownerOf(el);
     const search = !!form && (!!form.querySelector("input[type=search]") || !!form.closest("[role=search], search"));
     const href = el instanceof HTMLAnchorElement ? el.href : "";
@@ -560,6 +580,7 @@ export function readLivePage(ask: { markIndex: number }): PageFacts {
     blocked: credentialHalt ? "login" : "",
     text: (document.body?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1500),
     controls,
+    ...(handle ? { marked } : {}),
   };
 }
 

@@ -2,7 +2,7 @@
 export const CDP_LIVE_DRIVER = "cdp-live";
 
 export const CDP_LIVE_SERVER_REFUSAL =
-  "replay this cdp-live workflow from the Bao app that recorded it, after live_stop; replay through bao mcp comes in a later step";
+  "a cdp-live workflow replays only in the live Chrome, through the running Bao app or bao mcp's run_workflow, never in Bao's own Chrome";
 
 export const EXTENSION_NOT_CONNECTED = "extension is not connected";
 

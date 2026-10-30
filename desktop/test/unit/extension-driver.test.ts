@@ -226,6 +226,10 @@ test("the run form shows Playwright unless the workflow asks for the extension",
   assert.match(playwright, /value="playwright"[^>]*selected/);
   const extension = runDriverField("extension");
   assert.match(extension, /value="extension"[^>]*selected/);
+  const live = runDriverField("cdp-live");
+  assert.match(live, /<select id="wf-driver" data-testid="run-driver" disabled>/);
+  assert.match(live, /value="cdp-live" selected>Live - the Chrome the live session drove</);
+  assert.doesNotMatch(live, /Playwright|Extension/);
 });
 
 test("the bridge accepts the token file and drops a bad token", async () => {

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { serverPort } from "../home";
+import type { RunResult } from "../v1/replay";
+import type { LiveReplayer } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
-import { isLiveOp, LIVE_DISCONNECT, LIVE_TOOLS, publicLiveResult } from "../cdp-live/live-ops";
+import { isLiveOp, LIVE_DISCONNECT, LIVE_REPLAY, LIVE_TOOLS, publicLiveResult } from "../cdp-live/live-ops";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -57,6 +59,18 @@ export async function postLive(body: unknown, args: readonly string[] = []): Pro
   });
   const payload = await response.json() as unknown;
   return publicLiveResult(payload);
+}
+
+/**
+ * bao mcp's live runner. The running app replays the workflow in its live target, under its
+ * CDP lock, so a recording and its replay drive the same Chrome. The reply is the engine's run.
+ */
+export function appLiveReplay(args: readonly string[] = []): LiveReplayer {
+  return async (workflow, inputs) => {
+    const reply = await postLive({ op: LIVE_REPLAY, workflow, inputs }, args) as { run?: RunResult; outcome?: { reason?: string } };
+    if (reply.run) return reply.run;
+    throw new Error(reply.outcome?.reason || "live replay failed");
+  };
 }
 
 export async function runLiveCli(cmd: string, args: string[]): Promise<void> {

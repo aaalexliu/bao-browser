@@ -8,7 +8,7 @@ import test from "node:test";
 import { chromium } from "playwright";
 import { openLiveWindow, type CdpLiveDriver } from "../../src/cdp-live/driver";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
-import { pressLiveKey, scrollLive, type LiveActTarget } from "../../src/cdp-live/live-host";
+import { clickLive, pressLiveKey, scrollLive, typeLive, type LiveActTarget } from "../../src/cdp-live/live-act";
 import {
   buildView,
   focusLiveMark,
@@ -275,7 +275,10 @@ interface FakeLog {
   calls: string[];
 }
 
-function fakeTarget(read: LiveRead, opts: { marked?: PageFacts; press?: Error; blockedAfter?: string; scroll?: { target: string; moved: boolean } } = {}): { target: LiveActTarget; log: FakeLog } {
+function fakeTarget(
+  read: LiveRead,
+  opts: { marked?: PageFacts; press?: Error; click?: Error; prior?: string; blockedAfter?: string; scroll?: { target: string; moved: boolean } } = {},
+): { target: LiveActTarget; log: FakeLog } {
   const log: FakeLog = { calls: [] };
   let blocked = "stale";
   const driver = {
@@ -285,7 +288,20 @@ function fakeTarget(read: LiveRead, opts: { marked?: PageFacts; press?: Error; b
         blocked = opts.blockedAfter || "";
         return opts.scroll || { target: "page", moved: true };
       }
+      if (fn.name === "markedFieldValue") return opts.prior ?? "";
       return opts.marked;
+    },
+    clickCss: async (selector: string) => {
+      log.calls.push(`click:${selector}`);
+      if (opts.click) throw opts.click;
+      blocked = opts.blockedAfter || "";
+    },
+    markTrust: () => {
+      log.calls.push("markTrust");
+    },
+    insertText: async (text: string, prior: string, index: number) => {
+      log.calls.push(`insert:${text}:${prior}:${index}`);
+      if (opts.press) throw opts.press;
     },
     pressMarked: async (key: string, index: number) => {
       log.calls.push(`press:${key}:${index}`);
@@ -351,6 +367,38 @@ test("a refused key press never marks, writes, or presses, and a stale mark stop
   const free = fakeTarget(read);
   assert.deepEqual(await pressLiveKey(free.target, "Escape", ""), { kind: "applied", label: "", control: "" });
   assert.deepEqual(free.log.calls, ["before:key:Escape", "press:Escape:-1"]);
+});
+
+test("a click and a typed field go through the same guard path for a live tool and a replay", async () => {
+  const shop = facts([
+    { index: 0, label: "Add to cart", kind: "button" },
+    { index: 1, label: "Note", kind: "field", field: { type: "text", name: "n", autocomplete: "" } },
+    { index: 2, label: "Checkout", kind: "button" },
+  ]);
+  const read = buildView(shop, 1, instacart);
+  const ok = fakeTarget(read, { marked: shop });
+  assert.deepEqual(await clickLive(ok.target, "e1.c0"), { kind: "applied", label: "Add to cart", control: "button" });
+  assert.deepEqual(ok.log.calls, ["readLivePage:0", "before:click:Add to cart", "markTrust", "click:[data-bao-live=\"0\"]"]);
+  const denied = fakeTarget(read, { marked: shop });
+  assert.deepEqual(await clickLive(denied.target, "e1.c2"), { kind: "refused", reason: "denied" });
+  assert.deepEqual(denied.log.calls, []);
+  const covered = fakeTarget(read, { marked: shop, click: new Error("element is covered") });
+  assert.deepEqual(await clickLive(covered.target, "e1.c0"), { kind: "refused", reason: "element is covered" });
+  const away = fakeTarget(read, { marked: shop, blockedAfter: "stop-path" });
+  assert.deepEqual(await clickLive(away.target, "e1.c0"), { kind: "refused", reason: "stop-path" });
+  assert.deepEqual(away.log.calls.slice(-2), ["returnFromBlock", "reread"]);
+
+  const typed = fakeTarget(read, { marked: shop, prior: "blue" });
+  assert.deepEqual(await typeLive(typed.target, "e1.c1", "berries"), { kind: "applied", label: "Note", control: "field" });
+  assert.deepEqual(typed.log.calls, ["readLivePage:1", "markedFieldValue:1", "before:type:Note", "focusLiveMark:1", "insert:berries:blue:1"]);
+  const replaced = fakeTarget(read, { marked: shop, prior: "blue" });
+  assert.deepEqual(await typeLive(replaced.target, "e1.c1", "blueberries", true), { kind: "applied", label: "Note", control: "field" });
+  assert.deepEqual(replaced.log.calls, ["readLivePage:1", "before:type:Note", "focusLiveMark:1", "selectLiveMark:1", "insert:blueberries::1"]);
+  const card = fakeTarget(read, { marked: shop, prior: "41111111" });
+  assert.deepEqual(await typeLive(card.target, "e1.c1", "11111111"), { kind: "refused", reason: "cdp-live does not type card numbers" });
+  assert.equal(card.log.calls.some((call) => call.startsWith("insert")), false);
+  const moved = fakeTarget(read, { marked: shop, press: new Error("focus_moved") });
+  assert.deepEqual(await typeLive(moved.target, "e1.c1", "milk"), { kind: "halted", reason: "focus_moved" });
 });
 
 test("a key press halts when focus moves or lands in a credential field, and a blocked navigation is refused", async () => {

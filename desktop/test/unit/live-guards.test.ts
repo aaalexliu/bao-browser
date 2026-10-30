@@ -6,14 +6,15 @@ import path from "node:path";
 import test from "node:test";
 import { liveSessionView } from "../../src/app/live-view";
 import { insertTextRefusal, navigationRefusal, INSTACART_HOSTS } from "../../src/cdp-live/allowlist";
-import { buildView, pageHalt, planClick, sameTarget, targetVerdict, type PageFacts } from "../../src/cdp-live/live-ops";
+import { buildView, markedFieldValue, pageHalt, planClick, readLivePage, sameTarget, targetVerdict, type PageFacts } from "../../src/cdp-live/live-ops";
 import { liveCliBody, liveToolResult } from "../../src/mcp/live-proxy";
 import { acquireCdpLock, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
-import { createLiveHost, replayLive, type ReplayTarget } from "../../src/cdp-live/live-host";
+import { createLiveHost } from "../../src/cdp-live/live-host";
+import { GuardedLiveDriver, liveReplayArgs, liveScope, replayGuarded, replayLiveWorkflow, type LiveWindow } from "../../src/cdp-live/live-replay";
 import { CdpLiveDriver } from "../../src/cdp-live/driver";
 import type { CdpSocket } from "../../src/cdp-live/socket";
 import { guardPreset } from "../../src/cdp-live/presets";
-import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { WORKFLOW_SCHEMA_ID, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import type { LiveSessionRecord } from "../../src/cdp-live/live-record";
 
 const generic = guardPreset("generic");
@@ -223,40 +224,115 @@ test("the live entry refuses a stop path before navigation and keeps a blocked p
   await host.close();
 });
 
-function replayTarget(pages: PageFacts[], marked?: PageFacts, blockOnClick = ""): { target: ReplayTarget; clicks: string[] } {
-  const clicks: string[] = [];
-  let at = 0;
-  let blockedNav = "stale-block";
-  const driver = {
-    setOrigins: () => undefined,
-    goto: async () => undefined,
-    evaluateFunction: async (_fn: unknown, arg: { markIndex: number }) => {
-      if (arg.markIndex >= 0 && marked) return marked;
-      return pages[Math.min(at, pages.length - 1)];
-    },
-    clickCss: async (selector: string) => {
-      clicks.push(selector);
-      blockedNav = blockOnClick;
-      if (!blockOnClick) at += 1;
-    },
-    takeBlockedNav: () => {
-      const reason = blockedNav;
-      blockedNav = "";
-      return reason;
-    },
-  } as unknown as ReplayTarget["driver"];
-  return { target: { driver, guard: generic, stopPath: generic.stopPath, hosts: ["127.0.0.1"], origins: ["http://127.0.0.1"] }, clicks };
+interface FakeControl {
+  label: string;
+  kind: "button" | "link" | "field" | "submit";
+  href?: string;
+  form?: string;
+  field?: { type: string; name: string; autocomplete: string };
+  /** On the page, but not a control the live view lists. */
+  unlisted?: boolean;
 }
 
-function liveStep(index: number, action: "click" | "type", name: string, extra: Partial<WorkflowStep> = {}): WorkflowStep {
+interface FakePage {
+  path?: string;
+  text?: string;
+  controls: FakeControl[];
+}
+
+/**
+ * A live window over a list of pages. A click or a key press moves to the next page.
+ * tree() gives each control the handle of its index, and readLivePage marks by that handle.
+ */
+function liveWindow(pages: FakePage[], opts: { moved?: FakePage; blockOnClick?: string } = {}): { window: LiveWindow; calls: string[] } {
+  let at = 0;
+  let blocked = "";
+  const calls: string[] = [];
+  const handles = new WeakMap<Identity, string>();
+  const page = (): FakePage => pages[Math.min(at, pages.length - 1)]!;
+  const url = (): string => `http://127.0.0.1${page().path || "/shop"}`;
+  const role = (control: FakeControl): string => (control.kind === "field" ? "textbox" : control.kind === "link" ? "link" : "button");
+  const factsOf = (shown: FakePage, handle?: string): PageFacts => {
+    const listed = shown.controls.map((control, index) => ({ control, index })).filter(({ control }) => !control.unlisted);
+    return {
+      path: shown.path || "/shop",
+      title: "Shop",
+      headings: [],
+      blocked: "",
+      text: shown.text || "",
+      controls: listed.map(({ control, index }) => ({
+        index,
+        label: control.label,
+        kind: control.kind,
+        href: control.href || "",
+        form: control.form || "",
+        field: control.field,
+      })),
+      ...(handle === undefined ? {} : { marked: listed.find(({ index }) => String(index) === handle)?.index ?? -1 }),
+    };
+  };
+  const fake = {
+    tree: async () => {
+      const nodes = page().controls.map((control, index) => {
+        const node: Identity = { surface: "dom", role: role(control), name: control.label, path: [] };
+        handles.set(node, String(index));
+        return node;
+      });
+      return { nodes, url: url(), texts: [page().text || ""], values: [] };
+    },
+    handleOf: (node: Identity) => handles.get(node) || "",
+    snapshot: async () => ({ dom: [] }),
+    pageSignals: async () => ({ url: url(), title: "Shop", texts: [], iframeSrcs: [], markers: [], widgets: [], hasPassword: false, closes: [], cookies: [] }),
+    waitIdle: async () => undefined,
+    sleep: async () => undefined,
+    goto: async (to: string) => {
+      calls.push(`goto ${to}`);
+    },
+    evaluateFunction: async (fn: unknown, arg: { markIndex?: number; markHandle?: string }) => {
+      if (fn === readLivePage) {
+        if ((arg.markIndex ?? -1) >= 0 && opts.moved) return factsOf(opts.moved);
+        return factsOf(page(), arg.markHandle);
+      }
+      if (fn === markedFieldValue) return "";
+      calls.push(`${(fn as { name: string }).name} ${arg.markIndex}`);
+      return undefined;
+    },
+    clickCss: async (selector: string) => {
+      calls.push(`click ${page().controls[Number(/\d+/.exec(selector)?.[0])]?.label}`);
+      if (opts.blockOnClick) blocked = opts.blockOnClick;
+      else at += 1;
+    },
+    markTrust: () => undefined,
+    insertText: async (text: string) => {
+      calls.push(`insert ${text}`);
+    },
+    pressMarked: async (key: string, index: number) => {
+      calls.push(`press ${key} ${page().controls[index]?.label ?? ""}`.trim());
+      at += 1;
+    },
+    takeBlockedNav: () => {
+      const reason = blocked;
+      blocked = "";
+      return reason;
+    },
+    returnFromBlock: async () => {
+      calls.push("returnFromBlock");
+    },
+  };
+  return { window: fake as unknown as LiveWindow, calls };
+}
+
+const SHOP_SCOPE = liveScope("http://127.0.0.1/shop", "generic");
+
+function liveStep(index: number, action: WorkflowStep["action"], name: string, extra: Partial<WorkflowStep> = {}): WorkflowStep {
   const role = action === "type" ? "textbox" : "button";
   return {
     id: `wf-shop-${index}`,
     index,
     action,
-    label: action === "type" ? "Type {{text}}" : `Click "${name}"`,
+    label: action === "type" ? "Type {{query}}" : `Click "${name}"`,
     surface: "dom",
-    timeoutMs: 8000,
+    timeoutMs: 100,
     identity: { surface: "dom", role, name, path: [] },
     locators: [{ kind: "role", role, name }],
     ...extra,
@@ -281,119 +357,169 @@ function addTwice(): WorkflowV2 {
   return liveWorkflow([liveStep(0, "click", "Add to cart"), liveStep(1, "click", "Add to cart")]);
 }
 
-test("live replay refuses while another session holds the cdp lock", async () => {
+async function guarded(workflow: WorkflowV2, pages: FakePage[], opts: { moved?: FakePage; blockOnClick?: string; inputs?: Record<string, string> } = {}) {
+  const { window, calls } = liveWindow(pages, opts);
+  const run = await replayGuarded(workflow, opts.inputs || {}, new GuardedLiveDriver(window, SHOP_SCOPE), "run-test");
+  return { run, calls };
+}
+
+const ADD_TO_CART: FakePage = { controls: [{ label: "Add to cart", kind: "button" }] };
+
+test("a live replay waits for the cdp lock a session holds, and does not connect", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-replay-"));
   const file = path.join(home, "lock");
-  await acquireCdpLock("session", { file, timeoutMs: 0 });
-  const { target, clicks } = replayTarget([facts([{ index: 0, label: "Add to cart", kind: "button" }])]);
-  await assert.rejects(replayLive(target, addTwice(), file), /cdp lock is held/);
-  assert.deepEqual(clicks, []);
-  assert.equal(parseLock(readFileSync(file, "utf8"))?.agentId, "session");
-  releaseCdpLock("session", file);
+  const portFile = path.join(home, "DevToolsActivePort");
+  writeFileSync(portFile, "9\n/devtools/browser/fake\n");
+  await acquireCdpLock("bao-live", { file, timeoutMs: 0 });
+  const opened: string[] = [];
+  await assert.rejects(replayLiveWorkflow(addTwice(), {}, {
+    target: { kind: "throwaway", portFile },
+    lockFile: file,
+    openProfile: async () => {
+      opened.push("window");
+    },
+    axLog: path.join(home, "ax.jsonl"),
+  }), /cdp lock is held/);
+  assert.deepEqual(opened, []);
+  assert.equal(parseLock(readFileSync(file, "utf8"))?.agentId, "bao-live");
+  releaseCdpLock("bao-live", file);
+  await assert.rejects(replayLiveWorkflow({ ...addTwice(), driver: "playwright" }, {}, {
+    target: { kind: "throwaway", portFile },
+    lockFile: file,
+    openProfile: async () => undefined,
+    axLog: path.join(home, "ax.jsonl"),
+  }), /not a live workflow/);
 });
 
-test("live replay stops for a person on a halt page and releases the lock", async () => {
-  const home = mkdtempSync(path.join(tmpdir(), "bao-live-replay-"));
-  const file = path.join(home, "lock");
-  const shop = facts([{ index: 0, label: "Add to cart", kind: "button" }]);
-  const wall = facts([{ index: 0, label: "Add to cart", kind: "button" }], { text: "I'm not a robot" });
-  const workflow = addTwice();
-  const { target, clicks } = replayTarget([shop, wall]);
-  const result = await replayLive(target, workflow, file);
-  assert.equal(result.status, "needs_human");
-  assert.equal(result.stoppedAt, workflow.steps[1]?.id);
-  assert.equal(clicks.length, 1);
-  assert.equal(existsSync(file), false);
-  const landed = replayTarget([shop, shop, wall]);
-  const end = await replayLive(landed.target, workflow, file);
-  assert.equal(end.status, "needs_human");
-  assert.equal(landed.clicks.length, 2);
-  const clean = replayTarget([shop]);
-  assert.equal((await replayLive(clean.target, workflow, file)).status, "passed");
-  assert.equal(existsSync(file), false);
-  const checkout = replayTarget([shop, facts([{ index: 0, label: "Add to cart", kind: "button" }], { path: "/checkout" })]);
-  const stopped = await replayLive(checkout.target, workflow, file);
-  assert.equal(stopped.status, "needs_human");
-  assert.equal(stopped.reason, "stop-path");
-  assert.equal(checkout.clicks.length, 1);
+test("the replay scope comes from the start url's preset, not a default host list", () => {
+  const shop = liveScope("https://www.instacart.com/store/costco/storefront");
+  assert.equal(shop.preset, "instacart");
+  assert.deepEqual(shop.hosts, ["www.instacart.com", "instacart.com"]);
+  assert.deepEqual(shop.origins, ["https://www.instacart.com", "https://instacart.com", "http://instacart.com"]);
+  assert.equal(shop.guard.deny, instacart.deny);
+  const other = liveScope("http://127.0.0.1:8080/shop");
+  assert.equal(other.preset, "generic");
+  assert.deepEqual(other.hosts, ["127.0.0.1"]);
+  assert.deepEqual(other.origins, ["http://127.0.0.1:8080"]);
+  assert.throws(() => liveScope("http://127.0.0.1/shop", "nope"), /unknown preset/);
 });
 
-test("live replay fails the step whose click navigation the guard blocked", async () => {
-  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
-  const shop = facts([{ index: 0, label: "Add to cart", kind: "button" }]);
-  const workflow = addTwice();
-  const blocked = replayTarget([shop], undefined, "off-origin");
-  const result = await replayLive(blocked.target, workflow, file);
-  assert.equal(result.status, "failed");
-  assert.equal(result.reason, "off-origin");
-  assert.equal(result.stoppedAt, workflow.steps[0]?.id);
-  assert.deepEqual(result.steps.map((step) => step.status), ["failed", "skipped"]);
-  assert.equal(blocked.clicks.length, 1);
-  assert.equal(existsSync(file), false);
+test("replay inputs start from the recorded defaults, and an empty value keeps the default", () => {
+  const workflow = liveWorkflow([], [
+    { name: "query", type: "text", required: true, default: "blueberries" },
+    { name: "count", type: "number", required: false, default: "2" },
+    { name: "pin", type: "secret", required: false },
+  ]);
+  assert.deepEqual(liveReplayArgs(workflow, {}), { query: "blueberries", count: 2 });
+  assert.deepEqual(liveReplayArgs(workflow, { query: "" }), { query: "blueberries", count: 2 });
+  assert.deepEqual(liveReplayArgs(workflow, { query: "strawberries", pin: "1234" }), { query: "strawberries", count: 2, pin: "1234" });
 });
 
-test("live replay refuses a control that moved before the click, and names the step it stopped on", async () => {
-  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
-  const shop = facts([{ index: 0, label: "Add to cart", kind: "button" }]);
-  const moved = facts([{ index: 0, label: "Place your order", kind: "button" }]);
-  const workflow = addTwice();
-  const stale = replayTarget([shop], moved);
-  const result = await replayLive(stale.target, workflow, file);
-  assert.equal(result.status, "failed");
-  assert.equal(result.reason, "stale_ref");
-  assert.equal(result.stoppedAt, workflow.steps[0]?.id);
-  assert.deepEqual(result.steps.map((step) => step.status), ["failed", "skipped"]);
-  assert.deepEqual(stale.clicks, []);
-  const missing = await replayLive(replayTarget([facts([])]).target, workflow, file);
-  assert.equal(missing.stoppedAt, workflow.steps[0]?.id);
-  assert.equal(missing.reason, "not_found");
-  const typed = liveWorkflow([
-    liveStep(0, "click", "Add to cart"),
-    liveStep(1, "type", "Instructions", { input: "text", value: "{{text}}" }),
-  ], [{ name: "text", type: "text", required: true, default: "milk" }]);
-  const human = await replayLive(replayTarget([shop]).target, typed, file);
-  assert.equal(human.status, "needs_human");
-  assert.deepEqual(human.steps.map((step) => step.status), ["passed", "needs_human"]);
+test("a guarded replay types the input over the field's text, presses Enter on that field, and clicks the Add", async () => {
+  const search: FakeControl = { label: "Search Costco", kind: "field", form: "search", field: { type: "search", name: "k", autocomplete: "off" } };
+  const workflow = liveWorkflow([
+    liveStep(0, "type", "Search Costco", { input: "query", value: "{{query}}" }),
+    liveStep(1, "key", "Search Costco", { key: "Enter", identity: { surface: "dom", role: "textbox", name: "Search Costco", path: [] }, locators: [{ kind: "role", role: "textbox", name: "Search Costco" }] }),
+    liveStep(2, "click", "Add 1 ct Blueberries"),
+  ], [{ name: "query", type: "text", required: true, default: "blueberries" }]);
+  const pages: FakePage[] = [
+    { controls: [search] },
+    { path: "/s", controls: [search, { label: "Add 1 ct Blueberries", kind: "button" }] },
+    { path: "/s", controls: [search, { label: "Increment quantity of Blueberries", kind: "button" }] },
+  ];
+  const organic = await guarded(workflow, pages, { inputs: { query: "organic blueberries" } });
+  assert.equal(organic.run.status, "passed", JSON.stringify(organic.run.failure));
+  assert.equal(organic.run.modelCalls, 0);
+  assert.deepEqual(organic.calls, [
+    "focusLiveMark 0",
+    "selectLiveMark 0",
+    "insert organic blueberries",
+    "press Enter Search Costco",
+    "click Add 1 ct Blueberries",
+  ]);
+  const plain = await guarded(workflow, pages);
+  assert.ok(plain.calls.includes("insert blueberries"), plain.calls.join(", "));
 });
 
-test("live replay skips an Add whose result is already on the page, and runs it when it is not", async () => {
-  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
+test("a guarded replay pauses for a person on a bot wall or a stop path, and on a new window", async () => {
+  const wall: FakePage = { text: "I'm not a robot", controls: [{ label: "Add to cart", kind: "button" }] };
+  const bot = await guarded(addTwice(), [ADD_TO_CART, wall]);
+  assert.equal(bot.run.status, "paused");
+  assert.equal(bot.run.pausedKind, "wall");
+  assert.equal(bot.run.pausedStepId, "wf-shop-1");
+  assert.deepEqual(bot.run.steps.map((step) => [step.status, step.reason ?? ""]), [["passed", ""], ["paused", "bot_wall"]]);
+  assert.match(bot.run.ask?.instruction || "", /bot check/);
+  assert.deepEqual(bot.calls, ["click Add to cart"]);
+  assert.equal(bot.run.modelCalls, 0);
+
+  const checkout: FakePage = { path: "/checkout", controls: [{ label: "Add to cart", kind: "button" }] };
+  const stopped = await guarded(addTwice(), [ADD_TO_CART, checkout]);
+  assert.equal(stopped.run.status, "paused");
+  assert.equal(stopped.run.steps[1]?.reason, "stop-path");
+  assert.deepEqual(stopped.calls, ["click Add to cart"]);
+
+  const { window, calls } = liveWindow([ADD_TO_CART]);
+  const driver = new GuardedLiveDriver(window, SHOP_SCOPE);
+  driver.halted = "new_target";
+  const popped = await replayGuarded(addTwice(), {}, driver, "run-popup");
+  assert.equal(popped.status, "paused");
+  assert.equal(popped.steps[0]?.reason, "new_target");
+  assert.deepEqual(calls, []);
+});
+
+test("a guarded replay refuses a confirm or denied control, a blocked load, a control that moved, and a control the live view does not list", async () => {
+  const order = await guarded(liveWorkflow([liveStep(0, "click", "Place your order")]), [{ controls: [{ label: "Place your order", kind: "button" }] }]);
+  assert.equal(order.run.status, "failed");
+  assert.equal(order.run.failure?.reason, "stop_before_confirm");
+  const account = await guarded(liveWorkflow([liveStep(0, "click", "Delete account")]), [{ controls: [{ label: "Delete account", kind: "button" }] }]);
+  assert.equal(account.run.failure?.reason, "denied");
+  const away = await guarded(liveWorkflow([liveStep(0, "click", "Deals")]), [{ controls: [{ label: "Deals", kind: "link", href: "https://evil.example/deals" }] }]);
+  assert.equal(away.run.failure?.reason, "url is not on the host list");
+  assert.deepEqual([...order.calls, ...account.calls, ...away.calls], []);
+
+  const blocked = await guarded(addTwice(), [ADD_TO_CART], { blockOnClick: "evil.example" });
+  assert.equal(blocked.run.status, "failed");
+  assert.equal(blocked.run.failure?.reason, "evil.example");
+  assert.deepEqual(blocked.run.steps.map((step) => step.status), ["failed", "pending"]);
+  assert.deepEqual(blocked.calls, ["click Add to cart"]);
+
+  const moved = await guarded(addTwice(), [ADD_TO_CART], { moved: { controls: [{ label: "Place your order", kind: "button" }] } });
+  assert.equal(moved.run.failure?.reason, "stale_ref");
+  assert.deepEqual(moved.calls, []);
+
+  const hidden = await guarded(addTwice(), [{ controls: [{ label: "Add to cart", kind: "button", unlisted: true }] }]);
+  assert.equal(hidden.run.failure?.reason, "not_a_live_control");
+  assert.deepEqual(hidden.calls, []);
+  for (const run of [order, account, away, blocked, moved, hidden]) assert.equal(run.run.modelCalls, 0);
+});
+
+test("a guarded replay skips an Add whose result is already on the page, and runs it when it is not", async () => {
   const workflow = liveWorkflow([
     liveStep(0, "click", "Add 1 ct Blueberries", { when: { absent: "Increment quantity of Blueberries" } }),
   ]);
-  const inCart = replayTarget([facts([
-    { index: 0, label: "Remove Blueberries", kind: "button" },
-    { index: 1, label: "Increment quantity of Blueberries", kind: "button" },
-  ])]);
-  const skipped = await replayLive(inCart.target, workflow, file);
-  assert.equal(skipped.status, "passed");
-  assert.deepEqual(inCart.clicks, []);
-  const empty = replayTarget([
-    facts([{ index: 0, label: "Add 1 ct Blueberries", kind: "button" }]),
-    facts([{ index: 0, label: "Increment quantity of Blueberries", kind: "button" }]),
-  ]);
-  const added = await replayLive(empty.target, workflow, file);
-  assert.equal(added.status, "passed");
-  assert.equal(empty.clicks.length, 1);
+  const inCart = await guarded(workflow, [{ controls: [
+    { label: "Remove Blueberries", kind: "button" },
+    { label: "Increment quantity of Blueberries", kind: "button" },
+  ] }]);
+  assert.equal(inCart.run.status, "passed");
+  assert.equal(inCart.run.steps[0]?.reason, "already done");
+  assert.deepEqual(inCart.calls, []);
+  const empty = await guarded(workflow, [{ controls: [{ label: "Add 1 ct Blueberries", kind: "button" }] }]);
+  assert.equal(empty.run.status, "passed");
+  assert.deepEqual(empty.calls, ["click Add 1 ct Blueberries"]);
 });
 
-test("live replay finds a saved control whose name has digits the view redacts", async () => {
-  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
-  const name = "Add 1 ct Kirkland Signature Bath Tissue, 380 sheets";
-  const workflow = liveWorkflow([liveStep(0, "click", name)]);
-  const shop = replayTarget([facts([{ index: 0, label: name, kind: "button" }])]);
-  const result = await replayLive(shop.target, workflow, file);
-  assert.equal(result.status, "passed");
-  assert.equal(shop.clicks.length, 1);
-  const street = liveWorkflow([liveStep(0, "click", "Add 1 ct Mission Street Taco Tortillas")]);
-  const unlabeled = replayTarget([facts([
-    { index: 0, label: "", kind: "button" },
-    { index: 1, label: "Add 1 ct Mission Street Taco Tortillas", kind: "button" },
-  ])]);
-  const missing = await replayLive(unlabeled.target, street, file);
-  assert.equal(missing.status, "failed");
-  assert.equal(missing.reason, "not_found");
-  assert.deepEqual(unlabeled.clicks, []);
+test("a guarded replay does not type a secret, a card number, or into a credential field", async () => {
+  const note: FakeControl = { label: "Note", kind: "field", field: { type: "text", name: "note", autocomplete: "" } };
+  const typed = (value: string, extra: Partial<WorkflowStep> = {}) => liveWorkflow([liveStep(0, "type", "Note", { value, ...extra })]);
+  const card = await guarded(typed("4111 1111 1111 1111"), [{ controls: [note] }]);
+  assert.equal(card.run.failure?.reason, "cdp-live does not type card numbers");
+  const secret = await guarded(typed("hunter2", { sensitive: true, value: undefined, input: "pin" }), [{ controls: [note] }], { inputs: { pin: "hunter2" } });
+  assert.equal(secret.run.status, "failed");
+  const pin: FakeControl = { label: "PIN", kind: "field", field: { type: "text", name: "pin", autocomplete: "" } };
+  const credential = await guarded(liveWorkflow([liveStep(0, "type", "PIN", { value: "1234" })]), [{ controls: [pin] }]);
+  assert.equal(credential.run.failure?.reason, "credential_field");
+  assert.deepEqual([...card.calls, ...secret.calls, ...credential.calls].filter((call) => call.startsWith("insert")), []);
 });
 
 test("a click or type plan holds only while the marked control keeps its label and kind", () => {

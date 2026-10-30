@@ -10,7 +10,7 @@ import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
-import { runCdpLiveWorkflow } from "../../src/v1/remote-run";
+import { replayLiveWorkflow } from "../../src/cdp-live/live-replay";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
@@ -23,14 +23,12 @@ test("a paired relay replays books.toscrape.com from a throwaway profile", { tim
     sandbox: process.env.BAO_CHROME_NO_SANDBOX,
     headed: process.env.BAO_HEADED,
     heal: process.env.BAO_HEAL_CURSOR_ACCOUNT,
-    port: process.env.BAO_CDP_PORT_FILE,
     remote: process.env.BAO_REMOTE_MCP,
   };
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   process.env.BAO_HEADED = "0";
   process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   delete process.env.BAO_REMOTE_MCP;
-  delete process.env.BAO_CDP_PORT_FILE;
   const root = mkdtempSync(path.join(tmpdir(), "bao-relay-books-"));
   const library = new Library(root);
   library.save(books("books-playwright"));
@@ -102,7 +100,6 @@ test("a paired relay replays books.toscrape.com from a throwaway profile", { tim
     copyFileSync(written, portFile);
     assert.equal(path.basename(portFile), "DevToolsActivePort");
     assert.equal(portFile.startsWith(root), true);
-    process.env.BAO_CDP_PORT_FILE = portFile;
     library.save(books("books-cdp", "cdp-live"));
     assert.equal(workflowDriver(library.read("books-cdp")), "playwright");
     const liveDevice = createRemoteAgent({
@@ -112,7 +109,14 @@ test("a paired relay replays books.toscrape.com from a throwaway profile", { tim
       clearStop() {},
       autoAllow: true,
       runners: {
-        cdpLive: (id, inputs) => runCdpLiveWorkflow(library, id, inputs),
+        live: (workflow, inputs) => replayLiveWorkflow(workflow, inputs, {
+          target: { kind: "throwaway", portFile },
+          lockFile: path.join(root, "cdp.lock"),
+          openProfile: async () => {
+            throw new Error("a throwaway Chrome has no profile window");
+          },
+          axLog: path.join(root, "ax.jsonl"),
+        }),
       },
     });
     liveDevice.start();
@@ -136,7 +140,6 @@ test("a paired relay replays books.toscrape.com from a throwaway profile", { tim
     restore("BAO_CHROME_NO_SANDBOX", previous.sandbox);
     restore("BAO_HEADED", previous.headed);
     restore("BAO_HEAL_CURSOR_ACCOUNT", previous.heal);
-    restore("BAO_CDP_PORT_FILE", previous.port);
     restore("BAO_REMOTE_MCP", previous.remote);
   }
 });

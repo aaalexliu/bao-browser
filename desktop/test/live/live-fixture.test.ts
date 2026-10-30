@@ -129,6 +129,8 @@ test("live fixture refuses the reviewed traps, then replays a shop with no model
     home: root,
     lockFile: path.join(root, "lock"),
     connectTimeoutMs: 30_000,
+    // The replay drives the host's target, so it is this throwaway Chrome too.
+    target: { kind: "throwaway", portFile: path.join(userData, "DevToolsActivePort") },
   });
   let chrome: ChildProcess | undefined;
   try {
@@ -215,6 +217,8 @@ test("live fixture refuses the reviewed traps, then replays a shop with no model
     assert.equal(workflow.steps[1]?.value, "{{instructions}}");
     const first = await host.replay(workflow);
     const second = await host.replay(workflow);
+    assert.equal(first.status, "passed", JSON.stringify(first.failure));
+    assert.equal(second.status, "passed", JSON.stringify(second.failure));
     assert.equal(first.modelCalls, 0);
     assert.equal(second.modelCalls, 0);
     const effects = () => shop.hits.filter((hit) => hit.startsWith("/effect"));
@@ -225,7 +229,7 @@ test("live fixture refuses the reviewed traps, then replays a shop with no model
     assert.equal(count("place-shadow"), 0);
     assert.equal(count("secret-hunter2"), 0);
     assert.equal(count("added"), 3);
-    assert.equal(count("typed-milk"), 1);
+    assert.equal(count("typed-milk"), 3, "each replay types the recorded text");
     assert.equal(shop.hits.some((hit) => hit.startsWith("/account-settings")), false);
     assert.equal(shop.hits.some((hit) => hit.startsWith("/payment")), false);
     assert.equal(shop.hits.some((hit) => hit.startsWith("/checkout")), false);

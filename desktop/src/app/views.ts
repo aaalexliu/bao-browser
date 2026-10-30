@@ -40,12 +40,17 @@ export interface WorkflowSummary {
   firstStep?: { action?: string; label?: string };
   inputs?: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }[];
   startUrl?: string;
-  /** Playwright is Bao's Chrome. Extension is this machine's Chrome. Absent is Playwright. */
-  driver?: "playwright" | "extension" | string;
+  /** Playwright is Bao's Chrome. Extension is this machine's Chrome. cdp-live is the Chrome a live session drove. Absent is Playwright. */
+  driver?: "playwright" | "extension" | "cdp-live" | string;
 }
 
-/** The run form's driver line. Absent stays on Playwright. */
+/** The run form's driver line. Absent stays on Playwright. A live workflow replays only in the live Chrome, so its line cannot change. */
 export function runDriverField(driver: string | undefined): string {
+  if (driver === "cdp-live") {
+    return `<label>Driver <select id="wf-driver" data-testid="run-driver" disabled>
+      <option value="cdp-live" selected>Live - the Chrome the live session drove</option>
+    </select></label>`;
+  }
   const extension = driver === "extension";
   return `<label>Driver <select id="wf-driver" data-testid="run-driver">
       <option value="playwright" ${extension ? "" : "selected"}>Playwright — Bao's Chrome</option>

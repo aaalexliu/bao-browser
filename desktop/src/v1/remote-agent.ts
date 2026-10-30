@@ -9,7 +9,7 @@ import { devicePermission, policyAllowsRemoteRun, type RemotePolicy } from "../.
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../cdp-live/launch-guard";
-import { describeWorkflow, runWorkflow, searchWorkflows, withHeldPage, type WorkflowOutcome } from "../mcp/catalog";
+import { describeWorkflow, runWorkflow, searchWorkflows, withHeldPage, type LiveReplayer, type WorkflowOutcome } from "../mcp/catalog";
 import type { PersonPrompts } from "./browser-driver";
 import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
@@ -37,7 +37,8 @@ export interface RemoteView {
 
 export interface RemoteRunners {
   extension?: (workflowId: string, inputs: Record<string, string | number>) => Promise<Record<string, unknown>>;
-  cdpLive?: (workflowId: string, inputs: Record<string, string | number>) => Promise<Record<string, unknown>>;
+  /** Replays a cdp-live workflow in the app's live Chrome. The run goes through run_workflow, as a Playwright run does. */
+  live?: LiveReplayer;
   playwright?: (workflowId: string, inputs: Record<string, string | number>) => Promise<Record<string, unknown>>;
 }
 
@@ -391,15 +392,14 @@ export function createRemoteAgent(opts: {
           ? await opts.runners.extension(id, inputs)
           : { outcome: "failed", workflowId: id, reason: EXTENSION_NOT_CONNECTED };
       }
-      if (kind === "cdp-live") {
-        return opts.runners?.cdpLive
-          ? await opts.runners.cdpLive(id, inputs)
-          : { outcome: "failed", workflowId: id, reason: CDP_LIVE_SERVER_REFUSAL };
+      if (kind === "cdp-live" && !opts.runners?.live) {
+        return { outcome: "failed", workflowId: id, reason: CDP_LIVE_SERVER_REFUSAL };
       }
-      if (opts.runners?.playwright) return await opts.runners.playwright(id, inputs);
+      if (kind !== "cdp-live" && opts.runners?.playwright) return await opts.runners.playwright(id, inputs);
       const outcome = await runWorkflow(opts.library, { id, inputs }, undefined, {
         prompts: opts.prompts,
         onContext: (next) => { context = next; },
+        live: opts.runners?.live,
       });
       if (outcome.reason === "cancelled") {
         return { outcome: "cancelled", workflowId: outcome.workflowId || id, runId: outcome.runId };

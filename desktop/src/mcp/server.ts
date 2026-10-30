@@ -1,6 +1,7 @@
 import { baoUserHome, otherLibraries, resolveHome, tildePath } from "../home";
-import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
+import { describeWorkflow, getRun, runWorkflow, searchWorkflows, type LiveReplayer } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
+import { appLiveReplay } from "./live-proxy";
 import { Library } from "../v1/store";
 
 interface Rpc {
@@ -32,7 +33,7 @@ export const TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live or extension workflow returns failed with the reason and does not run. Replay a cdp-live workflow from the Bao app that recorded it, after live_stop; replay through this server comes in a later step. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live workflow, which a live session saves, replays instead through the running Bao app in a new window of the Chrome the live tools drive, with no model call and no approval step. Its inputs default to the recorded text, so pass inputs.query to search for something else. It skips a cart add when the item is already in the cart, and it keeps the live guards: checkout and other confirm or denied controls are refused, and a sign-in page or bot check stops it with needs_human. An extension workflow returns failed with the reason and does not run. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -63,6 +64,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     return;
   }
   const library = new Library(home);
+  const live = appLiveReplay(args);
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -71,7 +73,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       const next = takeRpcChunk(buf, null);
       if (!next) return;
       buf = Buffer.from(next.rest);
-      chain = chain.then(() => handle(next.body, library, libraries)).catch((err: unknown) => {
+      chain = chain.then(() => handle(next.body, library, libraries, live)).catch((err: unknown) => {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       });
     }
@@ -79,7 +81,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   await new Promise(() => {});
 }
 
-async function handle(body: string, library: Library, libraries: string[] | undefined): Promise<void> {
+async function handle(body: string, library: Library, libraries: string[] | undefined, live: LiveReplayer): Promise<void> {
   const msg = JSON.parse(body) as Rpc;
   if (msg.method === "initialize") {
     send({
@@ -100,7 +102,7 @@ async function handle(body: string, library: Library, libraries: string[] | unde
   }
   if (msg.method === "tools/call") {
     try {
-      const text = JSON.stringify(await callTool(library, libraries, msg.params?.name || "", msg.params?.arguments || {}));
+      const text = JSON.stringify(await callTool(library, libraries, live, msg.params?.name || "", msg.params?.arguments || {}));
       send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], isError: false } });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -115,7 +117,7 @@ async function handle(body: string, library: Library, libraries: string[] | unde
   if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
 }
 
-async function callTool(library: Library, libraries: string[] | undefined, name: string, args: Record<string, unknown>): Promise<unknown> {
+async function callTool(library: Library, libraries: string[] | undefined, live: LiveReplayer, name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === "search_workflows") {
     const filters = args.filters && typeof args.filters === "object" ? args.filters as Record<string, unknown> : args;
     return withLibraries({
@@ -134,7 +136,7 @@ async function callTool(library: Library, libraries: string[] | undefined, name:
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
-    });
+    }, undefined, { live });
     return withLibraries(result, libraries);
   }
   if (name === "get_run") return withLibraries(getRun(library, String(args.run_id || "")), libraries);
