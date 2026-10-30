@@ -31,7 +31,7 @@ node scripts/check-node.mjs
 | Mac acceptance | On a Mac, follow [docs/mac-test.md](docs/mac-test.md). `npm run package:mac` writes `Bao.app`. |
 | Install the desktop extension | `./install-extension.sh` |
 | Install the legacy extension | `./install-dev-legacy.sh` |
-| MCP | Agents run `/Applications/Bao.app/Contents/MacOS/bao-mcp`. After `npm run build:desktop`, `node desktop/dist/desktop/src/app/cli.js agent config claude --write` (or `codex`) adds it to that agent. [docs/agent-quickstart.md](docs/agent-quickstart.md#mcp) has the entries and the checkout form. |
+| MCP | Agents run `/Applications/Bao.app/Contents/MacOS/bao-mcp`. After `npm run build:desktop`, `node desktop/dist/desktop/src/app/cli.js agent config claude --write` (or `codex`) adds it to that agent and pre-approves Bao's tools there, so the agent runs them without asking. [docs/agent-quickstart.md](docs/agent-quickstart.md#mcp) has the entries and the checkout form. |
 
 `./install-dev.sh` prints the two installer names and exits 2.
 
