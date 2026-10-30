@@ -105,7 +105,7 @@ import {
 import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
-import { librarySplitLine, otherLibraries } from "../home";
+import { showOnce } from "../home";
 import { Library } from "../v1/store";
 import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
@@ -190,16 +190,14 @@ export async function startApp(opts: {
   /** Chrome config home for the host manifest. The socket still lives under home. */
   extensionConfigHome?: string;
   extensionHostDirs?: string[];
+  /** Resolver notices for this launch. Each shows in the window once per library. */
   libraryNotices?: string[];
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
   process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
-  const librarySplits = [...new Set([
-    ...(opts.libraryNotices || []).map((line) => line.startsWith("bao: ") ? line.slice("bao: ".length) : line),
-    ...otherLibraries(opts.home).map((other) => librarySplitLine(other, opts.home)),
-  ])];
+  const librarySplits = showOnce(opts.home, opts.libraryNotices || []);
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");

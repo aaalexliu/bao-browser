@@ -1,13 +1,15 @@
 // One library directory for the CLI, MCP, the Mac launcher, and the Claude observer.
 // Those entry points load this file. A second copy of the rules drifts and hides data.
+// An explicit --home or BAO_HOME is used as given. Legacy directories count only without one.
 
-const { existsSync, readdirSync, realpathSync, statSync } = require("node:fs");
+const { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } = require("node:fs");
 const { homedir } = require("node:os");
 const path = require("node:path");
 
 const warned = new Set();
 const DATA_FILES = ["server.json", "settings.json", "sync.json", "relay.json", "login-sites.json"];
 const DATA_DIRS = ["workflows", "runs", "trails", "reports", "inputs", "bounds", "promotions"];
+const SHOWN_FILE = "shown-notices.json";
 
 function isArgList(value) {
   return Array.isArray(value);
@@ -67,13 +69,15 @@ function resolveLibraryHome(argsOrOptions, env) {
 
 function otherLibraries(root, argsOrOptions, env) {
   const settings = normalize(argsOrOptions || {}, env);
+  if (explicitHome(settings) !== undefined) return [];
   return legacyDirs(settings).filter((dir) => !samePath(dir, root) && libraryHasData(dir));
 }
 
 function serverHomes(args, env) {
   const settings = normalize(args || [], env);
-  const home = chooseHome(settings);
-  const homes = [home];
+  const explicit = explicitHome(settings);
+  if (explicit !== undefined) return [explicit];
+  const homes = [chooseHome(settings)];
   for (const extra of legacyDirs(settings)) {
     if (!homes.some((item) => samePath(item, extra))) homes.push(extra);
   }
@@ -99,15 +103,54 @@ function baoUserHome(env, platform) {
   return userHomeFrom(env ?? process.env, platform ?? process.platform);
 }
 
-function chooseHome(settings) {
+// Returns the lines this library has not shown yet and records them as shown.
+// The record is keyed by text without "bao: ", so a second launch stays quiet.
+function showOnce(home, lines) {
+  const fresh = [...new Set(lines.map(bareNotice))];
+  if (fresh.length === 0) return [];
+  const file = path.join(home, SHOWN_FILE);
+  const shown = readShown(file);
+  const unseen = fresh.filter((line) => !Object.hasOwn(shown, line));
+  if (unseen.length === 0) return [];
+  const at = new Date().toISOString();
+  for (const line of unseen) shown[line] = at;
+  try {
+    mkdirSync(home, { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify({ shown }, null, 2)}\n`);
+    renameSync(tmp, file);
+  } catch {
+    // A library we cannot write still gets the message. It shows again next time.
+  }
+  return unseen;
+}
+
+function readShown(file) {
+  try {
+    const body = JSON.parse(readFileSync(file, "utf8"));
+    const shown = body && typeof body.shown === "object" && !Array.isArray(body.shown) ? body.shown : {};
+    return { ...shown };
+  } catch {
+    return {};
+  }
+}
+
+function bareNotice(line) {
+  return line.startsWith("bao: ") ? line.slice("bao: ".length) : line;
+}
+
+function explicitHome(settings) {
   const flagged = readHomeFlag(settings.args);
+  if (flagged !== undefined) return absoluteHome(flagged, settings.userHome, "--home");
   const fromEnv = nonempty(settings.env.BAO_HOME);
-  const requested = flagged ?? fromEnv ?? platformHome(settings.userHome, settings.platform);
-  const resolved = flagged !== undefined
-    ? absoluteHome(requested, settings.userHome, "--home")
-    : fromEnv !== undefined
-      ? absoluteHome(requested, settings.userHome, "BAO_HOME")
-      : requested;
+  if (fromEnv !== undefined) return absoluteHome(fromEnv, settings.userHome, "BAO_HOME");
+  return undefined;
+}
+
+function chooseHome(settings) {
+  const explicit = explicitHome(settings);
+  if (explicit !== undefined) return explicit;
+  const resolved = platformHome(settings.userHome, settings.platform);
   const legacies = legacyDirs(settings).filter((dir) => !samePath(dir, resolved));
   const workflowHits = legacies.filter((dir) => hasWorkflows(dir));
   const dataHits = legacies.filter((dir) => libraryHasData(dir));
@@ -118,7 +161,7 @@ function chooseHome(settings) {
   }
   if (workflowHits.length > 0) {
     const root = workflowHits[0];
-    emit(settings, `bao: no workflows in ${resolved}; using ${root}`);
+    emit(settings, `bao: no workflows in ${resolved}; using ${root}`, "fallback");
     warnOthers(settings, root, workflowHits.slice(1), dataHits);
     return root;
   }
@@ -128,7 +171,7 @@ function chooseHome(settings) {
   }
   if (dataHits.length > 0) {
     const root = dataHits[0];
-    emit(settings, `bao: no library data in ${resolved}; using ${root}`);
+    emit(settings, `bao: no library data in ${resolved}; using ${root}`, "fallback");
     warnOthers(settings, root, [], dataHits.slice(1));
     return root;
   }
@@ -138,11 +181,11 @@ function chooseHome(settings) {
 function warnOthers(settings, root, workflowHits, dataHits) {
   for (const other of workflowHits) {
     if (samePath(other, root)) continue;
-    emit(settings, `bao: ${librarySplitLine(other, root)}`);
+    emit(settings, `bao: ${librarySplitLine(other, root)}`, "split");
   }
   for (const other of dataHits) {
     if (samePath(other, root) || workflowHits.some((dir) => samePath(dir, other))) continue;
-    emit(settings, `bao: ${librarySplitLine(other, root)}`);
+    emit(settings, `bao: ${librarySplitLine(other, root)}`, "split");
   }
 }
 
@@ -185,10 +228,10 @@ function legacyDirs(settings) {
   ];
 }
 
-function emit(settings, line) {
+function emit(settings, line, kind) {
   if (warned.has(line)) return;
   warned.add(line);
-  settings.warn(line);
+  settings.warn(line, kind);
 }
 
 function warnOnStderr(line) {
@@ -241,7 +284,7 @@ module.exports = {
   resolveLibraryHome,
   otherLibraries,
   serverHomes,
-  librarySplitLine,
+  showOnce,
   tildePath,
   baoUserHome,
 };
