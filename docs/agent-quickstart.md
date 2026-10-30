@@ -52,7 +52,7 @@ tool_timeout_sec = 180
 
 Codex stops a tool call after 60 s by default. On the daily Chrome, a live call waits 8 to 50 s for the Allow press ([permissions.md](permissions.md)), and a live replay presses Allow again on its own connection. `codex mcp add` cannot set `tool_timeout_sec`, so bao writes the table itself. It replaces an earlier `[mcp_servers.bao]` table and its sub-tables in place and leaves every other line alone. A bao entry in another form, such as an inline table, is refused, and nothing is written.
 
-`--app` names another Bao.app. `--home dir` adds `--home dir` to the entry. Without `--app`, the launcher is the one in the Bao.app the CLI runs from, else `/Applications/Bao.app`. A missing launcher is named on stderr, and `--write` then writes nothing. A Bao.app built before the launcher has no `bao-mcp`; rebuild it from [Build Bao on a Mac](mac-build.md).
+`--app` names another Bao.app. Without `--app`, the launcher is the one in the Bao.app the CLI runs from, else `/Applications/Bao.app`. A missing launcher is named on stderr, and `--write` then writes nothing. A Bao.app built before the launcher has no `bao-mcp`; rebuild it from [Build Bao on a Mac](mac-build.md).
 
 The live tools need the Bao app running. Without it, a live tool returns `Bao is not running. Open the Bao app, or run: open /Applications/Bao.app`. The catalog tools still work.
 

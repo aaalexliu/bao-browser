@@ -17,11 +17,8 @@ export class CodexConfigError extends Error {
   }
 }
 
-export function codexServerBlock(command: string, args: readonly string[]): string {
-  const lines = ["[mcp_servers.bao]", `command = ${tomlString(command)}`];
-  if (args.length) lines.push(`args = [${args.map(tomlString).join(", ")}]`);
-  lines.push(`tool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}`);
-  return `${lines.join("\n")}\n`;
+export function codexServerBlock(command: string): string {
+  return `[mcp_servers.bao]\ncommand = ${tomlString(command)}\ntool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}\n`;
 }
 
 export function tomlString(value: string): string {

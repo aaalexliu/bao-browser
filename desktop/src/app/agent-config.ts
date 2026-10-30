@@ -4,12 +4,12 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { baoUserHome, resolveHome } from "../home";
+import { baoUserHome } from "../home";
 import { shellWord } from "../mcp/live-proxy";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
 import { codexServerBlock, upsertCodexServer } from "./codex-config";
 
-export const AGENT_USAGE = "usage: bao agent config claude|codex [--write] [--app /Applications/Bao.app] [--home dir]";
+export const AGENT_USAGE = "usage: bao agent config claude|codex [--write] [--app /Applications/Bao.app]";
 
 const AGENTS = ["claude", "codex"] as const;
 type Agent = (typeof AGENTS)[number];
@@ -24,8 +24,6 @@ interface Request {
   agent: Agent;
   write: boolean;
   launcher: string;
-  /** Arguments after the launcher. Only --home, when given. */
-  args: string[];
 }
 
 /**
@@ -33,8 +31,8 @@ interface Request {
  * Claude Code 2.1.308 waits up to 100,000,000 ms for an MCP tool call, and 30 minutes for a
  * silent stdio server, so the Allow press fits already. A per-server timeout would only shorten that.
  */
-export function claudeAddArgs(launcher: string, args: readonly string[]): string[] {
-  return ["mcp", "add", "--scope", "user", "bao", "--", launcher, ...args];
+export function claudeAddArgs(launcher: string): string[] {
+  return ["mcp", "add", "--scope", "user", "bao", "--", launcher];
 }
 
 /** The config.toml Codex reads: $CODEX_HOME/config.toml, else ~/.codex/config.toml. */
@@ -46,15 +44,15 @@ export function codexConfigFile(env: NodeJS.ProcessEnv): string {
 export function agentMain(argv: readonly string[], io: AgentIo = defaultIo()): number {
   let request: Request;
   try {
-    request = parse(argv, io.env);
+    request = parse(argv);
   } catch (err) {
     io.err(`${err instanceof Error ? err.message : String(err)}\n${AGENT_USAGE}\n`);
     return 1;
   }
   const ready = isExecutable(request.launcher);
   const entry = request.agent === "claude"
-    ? `${["claude", ...claudeAddArgs(request.launcher, request.args)].map(shellWord).join(" ")}\n`
-    : codexServerBlock(request.launcher, request.args);
+    ? `${["claude", ...claudeAddArgs(request.launcher)].map(shellWord).join(" ")}\n`
+    : codexServerBlock(request.launcher);
   if (!request.write) {
     io.out(entry);
     if (!ready) io.err(`${missing(request.launcher)}\n`);
@@ -67,27 +65,24 @@ export function agentMain(argv: readonly string[], io: AgentIo = defaultIo()): n
   return request.agent === "claude" ? writeClaude(request, entry, io) : writeCodex(entry, io);
 }
 
-function parse(argv: readonly string[], env: NodeJS.ProcessEnv): Request {
+function parse(argv: readonly string[]): Request {
   const [sub, agent, ...rest] = argv;
   if (sub !== "config") throw new Error(sub ? `unknown agent command: ${sub}` : "missing agent command");
   if (!AGENTS.includes(agent as Agent)) throw new Error(agent ? `unknown agent: ${agent}` : "missing agent: claude or codex");
   let write = false;
   let app: string | undefined;
-  let home: string | undefined;
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg === "--write") write = true;
-    else if (arg === "--app" || arg === "--home") {
+    else if (arg === "--app") {
       const value = rest[i + 1];
-      if (!value || value.startsWith("--")) throw new Error(`${arg} needs a path`);
-      if (arg === "--app") app = value;
-      else home = value;
+      if (!value || value.startsWith("--")) throw new Error("--app needs a path");
+      app = value;
       i += 1;
     } else throw new Error(`unknown argument: ${arg}`);
   }
   const bundle = app ? path.resolve(app) : appBundleOf(__filename) || DEFAULT_APP;
-  const args = home === undefined ? [] : ["--home", resolveHome({ args: ["--home", home], env })];
-  return { agent: agent as Agent, write, launcher: mcpLauncher(bundle), args };
+  return { agent: agent as Agent, write, launcher: mcpLauncher(bundle) };
 }
 
 function writeClaude(request: Request, entry: string, io: AgentIo): number {
@@ -98,11 +93,12 @@ function writeClaude(request: Request, entry: string, io: AgentIo): number {
     io.err(`${why} Nothing was written. Run this yourself:\n${entry}`);
     return 1;
   }
-  const added = spawnSync("claude", claudeAddArgs(request.launcher, request.args), { env: io.env, encoding: "utf8" });
+  const added = spawnSync("claude", claudeAddArgs(request.launcher), { env: io.env, encoding: "utf8" });
   if (added.stdout) io.out(added.stdout);
   if (added.stderr) io.err(added.stderr);
   if (added.error || added.status !== 0) {
-    io.err(`claude mcp add failed. Run this yourself:\n${entry}`);
+    const lost = removed.status === 0 ? " The earlier bao entry was removed, so Claude Code has no bao server now." : "";
+    io.err(`claude mcp add failed.${lost} Run this yourself:\n${entry}`);
     return 1;
   }
   if (removed.status === 0) io.out("Replaced the earlier bao entry in Claude Code's user config.\n");

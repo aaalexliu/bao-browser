@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const app = path.resolve(process.argv[2] || "");
+const app = realpathSync(path.resolve(process.argv[2] || ""));
 const launcher = path.join(app, "Contents", "MacOS", "bao-mcp");
 const scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-mcp-launcher-")));
 const user = path.join(scratch, "user");

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { CODEX_TOOL_TIMEOUT_SEC, codexServerBlock, upsertCodexServer } from "../../src/app/codex-config";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
@@ -19,8 +19,9 @@ interface Lab {
 }
 
 /** A temp HOME, a Bao.app whose bao-mcp is a stub, and a fake claude that logs its arguments. */
-function lab(prefix: string, withLauncher = true): Lab {
+function lab(t: TestContext, prefix: string, withLauncher = true): Lab {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), prefix)));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const user = path.join(root, "user");
   const app = path.join(root, "Bao Test.app");
   const launcher = path.join(app, "Contents", "MacOS", "bao-mcp");
@@ -44,6 +45,7 @@ function lab(prefix: string, withLauncher = true): Lab {
     "  [ \"$prior\" = 1 ] && { echo 'Removed MCP server bao from user config'; exit 0; }",
     "  echo 'No user-scoped MCP server found with name: bao' >&2; exit 1",
     "fi",
+    "[ -n \"$CLAUDE_ADD_FAIL\" ] && { echo 'add broke' >&2; exit 1; }",
     "echo \"Added stdio MCP server bao with command: $7 to user config\"",
     "",
   ].join("\n"));
@@ -69,19 +71,19 @@ function claudeCalls(l: Lab): string[][] {
   return readFileSync(l.claudeLog, "utf8").split("---\n").filter(Boolean).map((call) => call.trimEnd().split("\n"));
 }
 
-function block(launcher: string, args: string[] = []): string {
-  return codexServerBlock(launcher, args);
+function block(launcher: string): string {
+  return codexServerBlock(launcher);
 }
 
 test("the Codex entry runs the launcher with the long tool timeout", () => {
   assert.equal(CODEX_TOOL_TIMEOUT_SEC, 180);
   assert.equal(
-    codexServerBlock("/Applications/Bao.app/Contents/MacOS/bao-mcp", []),
+    codexServerBlock("/Applications/Bao.app/Contents/MacOS/bao-mcp"),
     "[mcp_servers.bao]\ncommand = \"/Applications/Bao.app/Contents/MacOS/bao-mcp\"\ntool_timeout_sec = 180\n",
   );
   assert.equal(
-    codexServerBlock("/A \"q\"\\b.app/bao-mcp", ["--home", "/x\ty"]),
-    "[mcp_servers.bao]\ncommand = \"/A \\\"q\\\"\\\\b.app/bao-mcp\"\nargs = [\"--home\", \"/x\\u0009y\"]\ntool_timeout_sec = 180\n",
+    codexServerBlock("/A \"q\"\\b\t.app/bao-mcp"),
+    "[mcp_servers.bao]\ncommand = \"/A \\\"q\\\"\\\\b\\u0009.app/bao-mcp\"\ntool_timeout_sec = 180\n",
   );
 });
 
@@ -171,21 +173,21 @@ test("a bao entry in another TOML form is refused", () => {
   assert.equal(upsertCodexServer("[mcp_servers]\nother = { command = \"o\" }\n", entry), `[mcp_servers]\nother = { command = "o" }\n\n${entry}`);
 });
 
-test("bao agent config prints the entries and writes nothing", () => {
-  const l = lab("bao-agent-print-");
+test("bao agent config prints the entries and writes nothing", (t) => {
+  const l = lab(t, "bao-agent-print-");
   const claude = run(l, ["config", "claude", "--app", l.app]);
   assert.equal(claude.status, 0, claude.stderr);
   assert.equal(claude.stdout, `claude mcp add --scope user bao -- '${l.launcher}'\n`);
   assert.equal(claude.stderr, "");
-  const codex = run(l, ["config", "codex", "--app", l.app, "--home", "~/lib"]);
+  const codex = run(l, ["config", "codex", "--app", l.app]);
   assert.equal(codex.status, 0, codex.stderr);
-  assert.equal(codex.stdout, block(l.launcher, ["--home", path.join(l.user, "lib")]));
+  assert.equal(codex.stdout, block(l.launcher));
   assert.deepEqual(readdirSync(l.user), []);
   assert.deepEqual(claudeCalls(l), []);
 });
 
-test("bao agent config names a missing launcher and --write then refuses", () => {
-  const l = lab("bao-agent-missing-", false);
+test("bao agent config names a missing launcher and --write then refuses", (t) => {
+  const l = lab(t, "bao-agent-missing-", false);
   const printed = run(l, ["config", "codex", "--app", l.app]);
   assert.equal(printed.status, 0);
   assert.equal(printed.stdout, block(l.launcher));
@@ -199,8 +201,8 @@ test("bao agent config names a missing launcher and --write then refuses", () =>
   assert.deepEqual(claudeCalls(l), []);
 });
 
-test("bao agent config codex --write keeps the rest of config.toml and runs twice the same", () => {
-  const l = lab("bao-agent-codex-");
+test("bao agent config codex --write keeps the rest of config.toml and runs twice the same", (t) => {
+  const l = lab(t, "bao-agent-codex-");
   const file = path.join(l.user, ".codex", "config.toml");
   mkdirSync(path.dirname(file));
   const mine = "model = \"o3\"\n\n[mcp_servers.alpha]\ncommand = \"a\"\n\n[mcp_servers.bao]\ncommand = \"node\"\nargs = [\"/old/cli.js\", \"mcp\"]\n";
@@ -216,8 +218,8 @@ test("bao agent config codex --write keeps the rest of config.toml and runs twic
   assert.deepEqual(readdirSync(path.dirname(file)), ["config.toml"]);
 });
 
-test("bao agent config codex --write follows CODEX_HOME", () => {
-  const l = lab("bao-agent-codex-home-");
+test("bao agent config codex --write follows CODEX_HOME", (t) => {
+  const l = lab(t, "bao-agent-codex-home-");
   const codexHome = path.join(l.root, "codex-home");
   const wrote = run(l, ["config", "codex", "--app", l.app, "--write"], { CODEX_HOME: codexHome });
   assert.equal(wrote.status, 0, wrote.stderr);
@@ -225,8 +227,8 @@ test("bao agent config codex --write follows CODEX_HOME", () => {
   assert.deepEqual(readdirSync(l.user), []);
 });
 
-test("bao agent config codex --write keeps a linked config.toml linked, and a read-only one unchanged", () => {
-  const l = lab("bao-agent-codex-link-");
+test("bao agent config codex --write keeps a linked config.toml linked, and a read-only one unchanged", (t) => {
+  const l = lab(t, "bao-agent-codex-link-");
   const dotfiles = path.join(l.root, "dotfiles");
   const real = path.join(dotfiles, "codex.toml");
   const file = path.join(l.user, ".codex", "config.toml");
@@ -254,8 +256,8 @@ test("bao agent config codex --write keeps a linked config.toml linked, and a re
   assert.deepEqual(readdirSync(dotfiles), ["codex.toml"]);
 });
 
-test("bao agent config codex --write leaves a bao entry it cannot rewrite alone", () => {
-  const l = lab("bao-agent-codex-inline-");
+test("bao agent config codex --write leaves a bao entry it cannot rewrite alone", (t) => {
+  const l = lab(t, "bao-agent-codex-inline-");
   const file = path.join(l.user, ".codex", "config.toml");
   mkdirSync(path.dirname(file));
   const mine = "mcp_servers = { bao = { command = \"x\" } }\n";
@@ -267,32 +269,50 @@ test("bao agent config codex --write leaves a bao entry it cannot rewrite alone"
   assert.equal(readFileSync(file, "utf8"), mine);
 });
 
-test("bao agent config claude --write runs claude mcp add at user scope, and again replaces it", () => {
-  const l = lab("bao-agent-claude-");
-  const first = run(l, ["config", "claude", "--app", l.app, "--home", "/srv/bao lib", "--write"]);
+test("bao agent config claude --write runs claude mcp add at user scope, and again replaces it", (t) => {
+  const l = lab(t, "bao-agent-claude-");
+  const first = run(l, ["config", "claude", "--app", l.app, "--write"]);
   assert.equal(first.status, 0, first.stderr);
-  const add = ["mcp", "add", "--scope", "user", "bao", "--", l.launcher, "--home", "/srv/bao lib"];
+  const add = ["mcp", "add", "--scope", "user", "bao", "--", l.launcher];
   const remove = ["mcp", "remove", "--scope", "user", "bao"];
   assert.deepEqual(claudeCalls(l), [remove, add]);
   assert.match(first.stdout, /Added stdio MCP server bao/);
   assert.doesNotMatch(first.stdout, /Replaced/);
-  const second = run(l, ["config", "claude", "--app", l.app, "--home", "/srv/bao lib", "--write"]);
+  const second = run(l, ["config", "claude", "--app", l.app, "--write"]);
   assert.equal(second.status, 0, second.stderr);
   assert.deepEqual(claudeCalls(l), [remove, add, remove, add]);
   assert.match(second.stdout, /Replaced the earlier bao entry in Claude Code's user config\./);
   assert.deepEqual(readdirSync(l.user), []);
 });
 
-test("bao agent config claude --write without claude on PATH prints the command to run", () => {
-  const l = lab("bao-agent-noclaude-");
+test("bao agent config claude --write says when a failed add leaves no bao entry", (t) => {
+  const fresh = lab(t, "bao-agent-claude-fail-");
+  const command = `claude mcp add --scope user bao -- '${fresh.launcher}'\n`;
+  const none = run(fresh, ["config", "claude", "--app", fresh.app, "--write"], { CLAUDE_ADD_FAIL: "1" });
+  assert.equal(none.status, 1);
+  assert.equal(none.stderr, `add broke\nclaude mcp add failed. Run this yourself:\n${command}`);
+
+  const l = lab(t, "bao-agent-claude-lost-");
+  assert.equal(run(l, ["config", "claude", "--app", l.app, "--write"]).status, 0);
+  const lost = run(l, ["config", "claude", "--app", l.app, "--write"], { CLAUDE_ADD_FAIL: "1" });
+  assert.equal(lost.status, 1);
+  assert.equal(
+    lost.stderr,
+    `add broke\nclaude mcp add failed. The earlier bao entry was removed, so Claude Code has no bao server now. Run this yourself:\n${command.replace(fresh.launcher, l.launcher)}`,
+  );
+  assert.doesNotMatch(lost.stdout, /Replaced/);
+});
+
+test("bao agent config claude --write without claude on PATH prints the command to run", (t) => {
+  const l = lab(t, "bao-agent-noclaude-");
   const wrote = run(l, ["config", "claude", "--app", l.app, "--write"], { PATH: "/usr/bin:/bin" });
   assert.equal(wrote.status, 1);
   assert.equal(wrote.stderr, `claude is not on PATH. Nothing was written. Run this yourself:\nclaude mcp add --scope user bao -- '${l.launcher}'\n`);
 });
 
-test("bao agent without a known command or agent prints usage", () => {
-  const l = lab("bao-agent-usage-");
-  for (const args of [[], ["config"], ["config", "cursor"], ["list"], ["config", "codex", "--home"], ["config", "codex", "--force"]]) {
+test("bao agent without a known command or agent prints usage", (t) => {
+  const l = lab(t, "bao-agent-usage-");
+  for (const args of [[], ["config"], ["config", "cursor"], ["list"], ["config", "codex", "--app"], ["config", "codex", "--home", "/srv/lib"], ["config", "codex", "--force"]]) {
     const result = run(l, args);
     assert.equal(result.status, 1, args.join(" "));
     assert.match(result.stderr, /usage: bao agent config claude\|codex \[--write\]/);
