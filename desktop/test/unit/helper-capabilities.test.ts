@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { helperStatusText, rail } from "../../src/app/views";
+import { helperJobList, rail } from "../../src/app/views";
 import { chromeHelper } from "../../src/cdp-live/ax";
 import {
   capabilityReport,
@@ -140,24 +140,31 @@ test("helper status names each job and keeps the old label", () => {
   assert.deepEqual(noBundle.capabilities, []);
 });
 
-test("the footer shows each job and still says helper ok", () => {
+function helperLine(html: string): string | undefined {
+  return html.match(/<div class="channel" id="helper-status">([^<]*)<\/div>/)?.[1];
+}
+
+function jobRows(html: string): string[] {
+  const list = html.match(/<ul class="helper-jobs">(.*?)<\/ul>/)?.[1] ?? "";
+  return [...list.matchAll(/<li>([^<]*)<\/li>/g)].map((row) => row[1]);
+}
+
+test("the footer shows each job on its own line and still says helper ok", () => {
   const both = capabilityReport({
     platform: "darwin",
     helperPresent: true,
     accessibility: true,
     screenCapture: true,
   });
-  const text = helperStatusText(both);
-  assert.match(text, /helper ok/);
-  assert.match(text, /AX press ready/);
-  assert.match(text, /live Chrome ready/);
-  assert.match(text, /window capture ready/);
-  assert.match(text, /MCP driver ready/);
+  assert.deepEqual(jobRows(helperJobList(both)), [
+    "AX press ready",
+    "window capture ready",
+    "live Chrome ready",
+    "MCP driver ready",
+  ]);
   const html = rail({ helper: both });
-  assert.match(html, /id="helper-status"/);
-  assert.match(html, /helper ok/);
-  assert.match(html, /live Chrome ready/);
-  assert.match(html, /window capture ready/);
+  assert.equal(helperLine(html), "helper ok");
+  assert.deepEqual(jobRows(html), both.capabilities.map((row) => row.status));
 
   const axOnly = capabilityReport({
     platform: "darwin",
@@ -166,7 +173,21 @@ test("the footer shows each job and still says helper ok", () => {
     screenCapture: false,
   });
   const axHtml = rail({ helper: axOnly });
-  assert.match(axHtml, /helper needs permission/);
-  assert.match(axHtml, /live Chrome ready/);
+  assert.equal(helperLine(axHtml), "helper needs permission");
+  assert.deepEqual(jobRows(axHtml), [
+    "AX press ready",
+    "window capture needs Screen Recording",
+    "live Chrome ready",
+    "MCP driver needs Accessibility and Screen Recording",
+  ]);
+  assert.doesNotMatch(axHtml, /helper needs permission AX press ready/);
   assert.doesNotMatch(axHtml, /BaoOSHelper screen recording is granted/);
+
+  const off = capabilityReport({
+    platform: "linux",
+    helperPresent: false,
+  });
+  assert.equal(helperJobList(off), "");
+  assert.equal(helperLine(rail({ helper: off })), "helper off");
+  assert.equal(helperLine(rail({})), "helper off");
 });
