@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { fileAct, isFileTarget } from "../v1/file-chooser";
 import type { Identity } from "../v1/schema";
 import { frameRpc, takeRpcChunk, type RpcFraming } from "../mcp/frame";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { pageApi, type PageRequest } from "./page";
 import { resolveHome } from "../home";
 
@@ -54,6 +54,8 @@ export async function liveMcpMain(): Promise<void> {
   const home = resolveHome();
   const url = process.env.BAO_FIXTURE_URL;
   if (!url) throw new Error("BAO_FIXTURE_URL is required when BAO_MCP_LIVE=1");
+  // An eval, so the test browser with a mock keychain, never the user's Chrome.
+  pinTestBrowser();
   mkdirSync(path.join(home, "shots"), { recursive: true });
   const trailPath = path.join(home, "trail.jsonl");
   const profile = await mkdtemp(path.join(tmpdir(), "bao-mcp-"));

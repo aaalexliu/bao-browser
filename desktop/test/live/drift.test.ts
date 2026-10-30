@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { launchOwnedChrome } from "../../src/launch";
+import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { driftMarkdown, driftReport, type DriftRow } from "../../src/v1/drift";
 import { unavailableHeal } from "../../src/v1/heal";
@@ -16,6 +16,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
+pinTestBrowser();
 
 async function post(port: number, pathname: string, body?: unknown): Promise<Record<string, unknown>> {
   const res = await fetch(`http://127.0.0.1:${port}${pathname}`, {

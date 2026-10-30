@@ -1,6 +1,6 @@
 # Desktop tests
 
-`npm run test:v1` is the required suite. It compiles `desktop/test/unit` and runs those files only. It does not open the public demo sites. Chrome can still contact Google for its own account and update checks. Those calls do not decide the result. The runner drops model credentials, `CI`, and every inherited name that starts with `BAO`. It then sets a headless window, the lane name, replay video off, and heal account off. It sets `BAO_TEST_BROWSER` to Playwright's Chromium, and it stops when that binary is missing. Run `npx playwright install chromium` to get it. While `BAO_TEST_BROWSER` is set, every owned launch in `desktop/src/launch.ts` starts that binary with `--use-mock-keychain` and `--password-store=basic`. The suite never opens the installed Google Chrome or the login keychain. Without `BAO_TEST_BROWSER`, resolution is installed Chrome, then an executable `BAO_BROWSER`, then an executable Playwright browser. The live lane does not set it.
+`npm run test:v1` is the required suite. It compiles `desktop/test/unit` and runs those files only. It does not open the public demo sites. Chrome can still contact Google for its own account and update checks. Those calls do not decide the result. The runner drops model credentials, `CI`, and every inherited name that starts with `BAO`. It then sets a headless window, the lane name, replay video off, and heal account off. It sets `BAO_TEST_BROWSER` to Playwright's Chromium, and it stops when that binary is missing. Run `npx playwright install chromium` to get it. While `BAO_TEST_BROWSER` is set, every owned launch in `desktop/src/launch.ts` starts that binary with `--use-mock-keychain` and `--password-store=basic`. The suite never opens the installed Google Chrome or the login keychain. Without `BAO_TEST_BROWSER`, resolution is installed Chrome, then an executable `BAO_BROWSER`, then an executable Playwright browser. `resolveNormalChrome` and `pinTestBrowser` in `desktop/src/launch.ts` refuse a `BAO_TEST_BROWSER` that is the installed Google Chrome or a link to it.
 
 Artifacts go to `BAO_ARTIFACTS_DIR`, then `BAO_ARTIFACTS`, then `out/test-artifacts/<run-id>/<test>/`. The lane does not forward those two names, so a test that wants a custom directory sets it itself. A leaf that contains a path separator, `..`, or is empty is rejected. The directory is printed. `out/` is gitignored. Evidence writes do not replace the original test error.
 
@@ -14,9 +14,15 @@ npx tsc -p tsconfig.desktop.json && node desktop/test/run-live.mjs
 
 Name compiled files after the runner to run only those. An unknown name fails the run. `npm run test:desktop:integration` runs `browser.test.js`, then `drift.test.js`, the local fixture capture. Run in parallel, one file's Chrome loaded the other file's pages.
 
+The live lane uses the same test browser. `desktop/test/run-live.mjs` builds the same env as the required suite, adds `BAO_LIVE_TESTS=1`, sets `BAO_TEST_BROWSER` to Playwright's Chromium, and stops when that binary is missing. Each live file that starts a browser also calls `pinTestBrowser()` from `desktop/src/launch.ts`, so a direct `node --test` run of that file uses the test browser too. Owned launches, the `startApp` replays, and the `bao mcp` and web servers a file spawns read the pin from the env. A file that starts Chromium itself passes the pinned binary: `chromium.launch` with `executablePath`, which adds Playwright's mock keychain flags, or a spawn with `--use-mock-keychain` and `--password-store=basic`. No live file starts the installed Google Chrome. Linux-only files still need their Linux tools, such as `xdotool` in `extension-host.test.ts`.
+
+The login-import live test decrypts cookies that the test browser wrote. `cookieKeys` in `desktop/test/runtime.ts` gives the mock keychain's fixed key on a Mac and the Linux `peanuts` key elsewhere, so the test never reads Chrome Safe Storage from the login keychain. The test browser applies Chromium's field-trial testing config, which keeps IndexedDB in SQLite, and the import copies only the LevelDB layout. So the test's profiles that write or read IndexedDB start with `--disable-features=IdbSqliteBackingStore,IdbSqliteOnDiskRollout`.
+
+The browser evals use the test browser too. `bao eval drivers`, `bao eval heldout`, `bao eval heldout capture`, and `bao eval nightly` call `pinTestBrowser()` before they start. The `BAO_MCP_LIVE=1` evaluator calls it when it starts, and the live drivers pass `BAO_TEST_BROWSER` to that server. A missing Playwright Chromium stops the eval.
+
 Installed Chrome on a Mac is headed when `BAO_HEADED` is unset, and headless when `BAO_HEADED=0`. The builder drops `--use-mock-keychain` and `--password-store` from both caller argument lists, including a value after `=` or a trailing space. Only `BAO_TEST_BROWSER` adds them back. Without it, `assessOwnedCommand` rejects a command line that carries either flag. With it, `assessOwnedCommand` rejects a command line without `--use-mock-keychain`. A Linux pass does not show that the Mac cookie relaunch is fine. Stderr prints `bao shutdown` with `browserClose`, the child exit, and any killed profile pids.
 
-Mac repro for the session cookie and the startup navigation, on the m1 worker, from this branch:
+Mac repro for the session cookie and the startup navigation on installed Chrome, on the m1 worker, from this branch:
 
 ```
 unset BAO_BROWSER
@@ -24,11 +30,10 @@ unset BAO_TEST_BROWSER
 unset BAO_HEADED
 unset BAO_CHROME_USER_DATA
 npx tsc -p tsconfig.desktop.json
-node --test --test-name-pattern "session cookie survives" desktop/dist/desktop/test/live/login-import.test.js
 node --test --test-name-pattern "first replay after a fresh launch" desktop/dist/desktop/test/unit/startup-nav.test.js
 ```
 
-The second command is the required-suite test, run against installed Chrome. It asserts `document.cookie` in the first session and the Cookie header after relaunch. If the header is missing, that relaunch is a Mac keychain result. The product command line refuses `--use-mock-keychain` and `--password-store`. Do not point either command at a daily Chrome profile.
+This runs a required-suite test outside the runner, so it opens installed Chrome on a throwaway profile. It asserts `document.cookie` in the first session and the Cookie header after relaunch. If the header is missing, that relaunch is a Mac keychain result. The product command line refuses `--use-mock-keychain` and `--password-store`. Do not point it at a daily Chrome profile. The live test "a session cookie survives relaunching bao's Chrome" in `login-import.test.ts` runs on the test browser with the mock keychain, so its pass does not show the Mac keychain result.
 
 ## Instacart fixture
 

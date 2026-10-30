@@ -13,7 +13,7 @@ import test from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
 import { startApp } from "../../src/app/server";
 import { getRun, runWorkflow } from "../../src/mcp/catalog";
-import { launchOwnedChrome } from "../../src/launch";
+import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
 import { makeAsk } from "../../src/v1/human-ask";
 import { writePendingPrompt } from "../../src/v1/pending-prompt";
 import { classifyPage, clickKnownClose, readPageMarkers } from "../../src/v1/page-class";
@@ -26,6 +26,7 @@ import { testArtifacts } from "../artifacts";
 process.env.BAO_CHROME_NO_SANDBOX = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 process.env.BAO_HEADED = "0";
+pinTestBrowser();
 
 const ARTIFACTS = testArtifacts("page-class");
 const LINE = "Experian is showing a bot check. Complete the check in the Bao window, then press Continue.";

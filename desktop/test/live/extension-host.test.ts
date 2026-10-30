@@ -4,13 +4,13 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { copyFileSync, createWriteStream, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, createWriteStream, mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
 import { startApp } from "../../src/app/server";
-import { keepSessionCookies } from "../../src/launch";
+import { keepSessionCookies, pinTestBrowser } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
 import { EXTENSION_ID } from "../../src/extension/protocol";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -19,6 +19,8 @@ import { testArtifacts } from "../artifacts";
 process.env.BAO_CHROME_NO_SANDBOX = process.env.BAO_CHROME_NO_SANDBOX || "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CURSOR_API_KEY"]) delete process.env[key];
+// Branded Google Chrome ignores --load-extension. The test Chromium is Chrome for Testing, which loads the unpacked build.
+const TEST_BROWSER = pinTestBrowser();
 
 const BOOKS = "https://books.toscrape.com/";
 const BOOKS_ORIGIN = "https://books.toscrape.com/*";
@@ -27,26 +29,6 @@ const ARTIFACTS = testArtifacts("extension-host");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function chromeBin(): string {
-  // Branded Google Chrome ignores --load-extension. Chrome for Testing still loads the unpacked build.
-  const fromEnv = process.env.BAO_PROOF_CHROME;
-  if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  const candidates = [path.join(homedir(), ".cache/chrome-for-testing/chrome-linux64/chrome")];
-  const playwright = path.join(homedir(), ".cache/ms-playwright");
-  if (existsSync(playwright)) {
-    const hits = readdirSync(playwright)
-      .map((name) => path.join(playwright, name, "chrome-linux64", "chrome"))
-      .filter((file) => existsSync(file))
-      .sort();
-    const found = hits[hits.length - 1];
-    if (found) candidates.push(found);
-  }
-  candidates.push("/usr/local/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome");
-  const hit = candidates.find((file) => existsSync(file));
-  if (!hit) throw new Error("chrome was not found");
-  return hit;
 }
 
 interface Target {
@@ -140,10 +122,12 @@ test("extension replay asks for one origin and does not error with no host permi
       "--window-position=40,40",
       `--remote-debugging-port=${debugPort}`,
       "--remote-debugging-address=127.0.0.1",
+      "--use-mock-keychain",
+      "--password-store=basic",
       "about:blank",
     ];
     if (process.env.BAO_CHROME_NO_SANDBOX === "1") args.push("--no-sandbox", "--disable-dev-shm-usage");
-    chrome = spawn(chromeBin(), args, {
+    chrome = spawn(TEST_BROWSER, args, {
       env: {
         ...process.env,
         HOME: chromeHome,

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium, type Page } from "playwright";
+import { pinTestBrowser } from "../../src/launch";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import { startApp } from "../../src/app/server";
@@ -20,6 +21,7 @@ import { SEED_WORKFLOWS } from "../../../web/src/lib/seeds";
 import { testArtifacts } from "../artifacts";
 
 process.env.TZ = "America/New_York";
+const TEST_BROWSER = pinTestBrowser();
 
 const planted = "SuperSecretValue99";
 const fixturePassword = "fixture-pass-value";
@@ -219,7 +221,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
 
     const shots = testArtifacts("registry");
     mkdirSync(shots, { recursive: true });
-    const browser = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+    const browser = await chromium.launch({ executablePath: TEST_BROWSER, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
     try {
       const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, timezoneId: "America/New_York" });
       await context.addCookies([{ name: "bao_session", value: examples.split("=")[1] || "", url: origin }]);
@@ -316,7 +318,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).text();
       const tokenB = JSON.parse(readFileSync(path.join(homeB, "sync.json"), "utf8")).deviceToken as string;
       assert.equal(state.includes(tokenB), false);
-      const desktop = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+      const desktop = await chromium.launch({ executablePath: TEST_BROWSER, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
       try {
         const desk = await desktop.newContext({ viewport: { width: 1100, height: 900 }, timezoneId: "America/New_York" });
         const page = await desk.newPage();

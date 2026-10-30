@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { artifactsRoot, testArtifacts, tryWriteEvidence } from "../artifacts";
-import { LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs } from "../../src/launch";
-import { classifyStatus, compiledTestPlan, cookieKeyPlan, hermeticChildEnv, laneEnv, liveSkip, ownApiOutage } from "../runtime";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs, resolveNormalChrome } from "../../src/launch";
+import { classifyStatus, compiledTestPlan, cookieKeys, laneChildEnv, liveSkip, MAC_MOCK_KEYCHAIN_PASSWORD, ownApiOutage } from "../runtime";
 
 test("the required files and dates demo stays on local fixtures", () => {
   const demo = readFileSync("desktop/test/unit/files-dates-demo.test.ts", "utf8");
@@ -34,7 +34,7 @@ test("artifact roots stay in the checkout unless an env dir is set", () => {
 });
 
 test("hermetic env drops inherited launch settings and pins the test browser", () => {
-  const env = hermeticChildEnv({
+  const env = laneChildEnv("hermetic", {
     BAO_HEADED: "1",
     OPENAI_API_KEY: "sk-test",
     BAO_OS_HELPER: "/tmp/helper",
@@ -81,18 +81,27 @@ test("hermetic env drops inherited launch settings and pins the test browser", (
   assert.deepEqual(ownedChromeLaunchArgs([], env, "darwin").slice(-2), ["--use-mock-keychain", "--password-store=basic"]);
 });
 
-test("the live lane turns public demos on, stays headless, and keeps the installed Chrome", () => {
-  const env = laneEnv("live", { BAO_BROWSER: "/tmp/bundle", BAO_LIVE_TESTS: "0", BAO_TEST_BROWSER: "/tmp/parent-pin" });
+test("the live lane turns public demos on, stays headless, and launches the test browser, not installed Chrome", () => {
+  const pin = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-pin-")), "Google Chrome for Testing");
+  writeFileSync(pin, "");
+  chmodSync(pin, 0o755);
+  const env = laneChildEnv("live", { BAO_BROWSER: "/tmp/bundle", BAO_LIVE_TESTS: "0", BAO_TEST_BROWSER: "/tmp/parent-pin" }, pin);
   assert.equal(env.BAO_LIVE_TESTS, "1");
   assert.equal(env.BAO_HEADED, "0");
+  assert.equal(env.BAO_LANE, "live");
   assert.equal(env.BAO_BROWSER, undefined);
-  assert.equal(env.BAO_TEST_BROWSER, undefined);
-  assert.equal(ownedChromeLaunchArgs([], env, "darwin").includes("--use-mock-keychain"), false);
+  assert.equal(env.BAO_TEST_BROWSER, pin);
+  assert.deepEqual(ownedChromeLaunchArgs([], env, "darwin").slice(-2), ["--use-mock-keychain", "--password-store=basic"]);
+  const installed = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME;
+  assert.equal(resolveNormalChrome(installed, env, "darwin"), pin);
+  assert.equal(resolveNormalChrome(installed, env, "linux"), pin);
 });
 
-test("the required suite stops when the test browser is missing", () => {
-  assert.throws(() => hermeticChildEnv({}, undefined), /npx playwright install chromium/);
-  assert.throws(() => hermeticChildEnv({}, ""), /npx playwright install chromium/);
+test("both lanes stop when the test browser is missing", () => {
+  for (const lane of ["hermetic", "live"] as const) {
+    assert.throws(() => laneChildEnv(lane, {}, undefined), /npx playwright install chromium/);
+    assert.throws(() => laneChildEnv(lane, {}, ""), /npx playwright install chromium/);
+  }
 });
 
 test("a deleted source is stale and a missing compile is reported", () => {
@@ -191,7 +200,7 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
     CI: "true",
   };
   const pin = "/tmp/bao-lane-pin";
-  const env = hermeticChildEnv({ ...process.env, ...canaries, LANG: "C" }, pin);
+  const env = laneChildEnv("hermetic", { ...process.env, ...canaries, LANG: "C" }, pin);
   const names = Object.keys(env).filter((key) => /^bao/i.test(key)).sort();
   assert.deepEqual(names, [
     "BAO_HEADED",
@@ -263,11 +272,11 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
   }
 });
 
-test("browser cookies do not take an injected linux key", () => {
-  assert.deepEqual(cookieKeyPlan("browser", "darwin"), { platform: "darwin", injected: false });
-  assert.deepEqual(cookieKeyPlan("browser", "linux"), { platform: "linux", injected: false });
-  assert.equal(cookieKeyPlan("synthetic-linux", "darwin").injected, true);
-  assert.equal(cookieKeyPlan("synthetic-linux", "darwin").platform, "linux");
+test("login-import cookies use the test browser's fixed key, never the login keychain", () => {
+  assert.deepEqual(cookieKeys("browser", "darwin"), { platform: "darwin", secret: MAC_MOCK_KEYCHAIN_PASSWORD });
+  assert.deepEqual(cookieKeys("browser", "linux"), { platform: "linux" });
+  assert.deepEqual(cookieKeys("synthetic-linux", "darwin"), { platform: "linux" });
+  assert.deepEqual(cookieKeys("synthetic-linux", "linux"), { platform: "linux" });
 });
 
 test("shutdown trace names close and profile release", () => {

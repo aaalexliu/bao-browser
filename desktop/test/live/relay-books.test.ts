@@ -11,12 +11,13 @@ import { workflowDriver } from "../../src/extension/protocol";
 import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
 import { replayLiveWorkflow } from "../../src/cdp-live/live-replay";
+import { pinTestBrowser } from "../../src/launch";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 
-const CHROME = "/opt/google/chrome/chrome";
+const TEST_BROWSER = pinTestBrowser();
 
 test("a paired relay replays books.toscrape.com from a throwaway profile", { timeout: 180_000 }, async () => {
   const previous = {
@@ -78,13 +79,9 @@ test("a paired relay replays books.toscrape.com from a throwaway profile", { tim
       await device.stop();
     }
 
-    if (!existsSync(CHROME)) {
-      console.log("books cdp-live skipped: chrome missing");
-      return;
-    }
     const userData = path.join(root, "cdp-user");
     mkdirSync(userData, { recursive: true });
-    chrome = spawn(CHROME, [
+    chrome = spawn(TEST_BROWSER, [
       `--user-data-dir=${userData}`,
       "--remote-debugging-port=0",
       "--headless=new",
@@ -92,6 +89,8 @@ test("a paired relay replays books.toscrape.com from a throwaway profile", { tim
       "--disable-gpu",
       "--no-first-run",
       "--disable-dev-shm-usage",
+      "--use-mock-keychain",
+      "--password-store=basic",
       "about:blank",
     ], { stdio: "ignore" });
     const written = path.join(userData, "DevToolsActivePort");

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium, type Page } from "playwright";
+import { pinTestBrowser } from "../../src/launch";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import { isElementCrop } from "../../../web/src/lib/png";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
@@ -21,6 +22,7 @@ import { testArtifacts } from "../artifacts";
 
 const LISTING_ID = "trust-submit";
 const shots = testArtifacts("marketplace-trust");
+const TEST_BROWSER = pinTestBrowser();
 
 test("a marketplace listing previews permissions and waits for Allow", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";
@@ -52,7 +54,7 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
   web.stdout?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
   web.stderr?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
 
-  const browser = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  const browser = await chromium.launch({ executablePath: TEST_BROWSER, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   let mcp: ChildProcess | undefined;
   try {
     const health = await waitHealth(origin, logs);

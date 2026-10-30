@@ -231,7 +231,7 @@ The replay form used to rebuild on each state change and drop a password that ha
 
 ### 2026-10-22 — Look like a normal browser
 
-Capture, replay, login import, and the computer-use spikes start the installed Google Chrome and attach over a private debugging port (`connectOverCDP` with `noDefaults`). The binary is Google Chrome when it is installed (`/Applications/Google Chrome.app` on macOS, `/opt/google/chrome/chrome` on Linux), otherwise `BAO_BROWSER`, otherwise Playwright's Chromium. Bao does not look up `google-chrome` on `PATH`. A wrapper there can inject `--no-sandbox` and port 9222. `npm run test:v1` uses a test browser instead. See `desktop/test/README.md`.
+Capture, replay, login import, and the computer-use spikes start the installed Google Chrome and attach over a private debugging port (`connectOverCDP` with `noDefaults`). The binary is Google Chrome when it is installed (`/Applications/Google Chrome.app` on macOS, `/opt/google/chrome/chrome` on Linux), otherwise `BAO_BROWSER`, otherwise Playwright's Chromium. Bao does not look up `google-chrome` on `PATH`. A wrapper there can inject `--no-sandbox` and port 9222. `npm run test:v1`, the live lane in `desktop/test/run-live.mjs`, and the browser evals use a test browser instead. See `desktop/test/README.md`.
 
 Playwright's `launchPersistentContext` was putting `--no-sandbox` on the command line whenever `chromiumSandbox` was left unset, plus `--disable-extensions`, a debugging pipe, a mock keychain, SwiftShader, and a long `--disable-features` list. That launch reports `navigator.webdriver === true`, and on a Mac the window shows the unsupported-flag infobar for `--no-sandbox`. A Chrome process started with the profile and a private port keeps `navigator.webdriver === false` after the attach, including after `Runtime.evaluate`. The port is never 9222, and the profile is never the daily Chrome. `page.video()` does not exist on a CDP attach, so `BAO_RUN_VIDEO=1` is the one path that still uses Playwright's launcher. The Mac window recorder does not need it.
 
@@ -521,7 +521,7 @@ The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres
 
 This section is the eval server. The default `bao mcp` server is the catalog and live tools above. Steps for that server are in [Agent quickstart](agent-quickstart.md).
 
-`BAO_MCP_LIVE=1` runs `desktop/src/eval/live-mcp.ts`. The process creates a temporary profile, launches an owned browser, and opens `BAO_FIXTURE_URL`. That browser ends with the process. It is the stdio server a driver talks to in `bao eval drivers`. The live tool table below belongs to this evaluator.
+`BAO_MCP_LIVE=1` runs `desktop/src/eval/live-mcp.ts`. The process creates a temporary profile, launches the test browser with a mock keychain, and opens `BAO_FIXTURE_URL`. The test browser is `BAO_TEST_BROWSER`, else Playwright's Chromium. It is never the installed Google Chrome. That browser ends with the process. It is the stdio server a driver talks to in `bao eval drivers`. The live tool table below belongs to this evaluator.
 
 ## Live tools
 

@@ -8,13 +8,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { launchOwnedChrome } from "../../src/launch";
+import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
 import type { PageProposal } from "../../src/v1/data-steps";
 import { testArtifacts } from "../artifacts";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 process.env.BAO_CHROME_NO_SANDBOX = "1";
+pinTestBrowser();
 delete process.env.OPENAI_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.GROQ_API_KEY;

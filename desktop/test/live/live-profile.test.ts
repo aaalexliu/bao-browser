@@ -12,9 +12,9 @@ import test from "node:test";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { connectCdp } from "../../src/cdp-live/socket";
+import { pinTestBrowser } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
 import { fakeChromeHelper } from "../fake-helper";
-import { fixtureBrowserExecutable } from "../instacart/browser";
 
 async function waitForPort(file: string): Promise<void> {
   const deadline = Date.now() + 20_000;
@@ -45,7 +45,7 @@ test("the daily target opens its window in the Default profile when another prof
     helper: () => fakeChromeHelper().helper,
   });
   try {
-    chrome = spawn(fixtureBrowserExecutable(), [
+    chrome = spawn(pinTestBrowser(), [
       `--user-data-dir=${userData}`,
       "--remote-debugging-port=0",
       "--profile-directory=Profile 1",

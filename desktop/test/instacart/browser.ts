@@ -11,9 +11,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { needsLinuxNoSandbox, pidsForDataDir, testLaneBrowser } from "../../src/launch";
+import { needsLinuxNoSandbox, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
-import { pinnedTestBrowser } from "../runtime";
 import { FIXTURE_HOSTS } from "./fixture";
 
 export interface FixtureTarget {
@@ -64,13 +63,6 @@ export function fixtureBrowserArgs(
   ];
 }
 
-/** The test lane's pinned browser, else Playwright's Chromium. Never a PATH lookup or the installed Chrome. */
-export function fixtureBrowserExecutable(env: NodeJS.ProcessEnv = process.env): string {
-  const exe = testLaneBrowser(env) || pinnedTestBrowser();
-  if (!exe || !existsSync(exe)) throw new Error("Playwright Chromium is missing. Run: npx playwright install chromium");
-  return exe;
-}
-
 async function waitForPortFile(file: string, child: ChildProcess, timeoutMs: number): Promise<{ port: number; wsPath: string }> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -93,7 +85,7 @@ export async function launchFixtureBrowser(
   target: FixtureTarget,
   opts: { headless?: boolean; executablePath?: string; timeoutMs?: number } = {},
 ): Promise<FixtureBrowser> {
-  const executable = opts.executablePath || fixtureBrowserExecutable();
+  const executable = opts.executablePath || pinTestBrowser();
   const userDataDir = mkdtempSync(path.join(tmpdir(), "bao-instacart-chrome-"));
   assertNotDailyChrome(userDataDir);
   const headless = opts.headless ?? process.env.BAO_HEADED !== "1";

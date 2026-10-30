@@ -1,12 +1,12 @@
 // Launch an owned browser. Never port 9222, never the daily profile.
 // Capture, replay, login import, and computer-use start the installed Google
 // Chrome and attach over a private debugging port. Playwright's launcher is
-// only used when a caller asks for page.video(). The hermetic test lane sets
-// BAO_TEST_BROWSER, and then every launch starts that browser with a mock
-// keychain instead.
+// only used when a caller asks for page.video(). Both test lanes and the
+// browser evals set BAO_TEST_BROWSER, and then every launch starts that
+// browser with a mock keychain instead.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { parseDevToolsActivePort } from "./cdp-live/endpoint";
@@ -87,13 +87,50 @@ export function productHeadless(env: NodeJS.ProcessEnv = process.env, platform: 
 const MOCK_KEYCHAIN_ARGS = ["--use-mock-keychain", "--password-store=basic"];
 
 /**
- * The hermetic test lane's browser. desktop/test/run-v1.mjs sets
- * BAO_TEST_BROWSER to Playwright's Chromium. While it is set, every launch
- * starts that binary with a mock keychain, so a test never opens the user's
- * Chrome or the login keychain. Product launches never set it.
+ * The test browser. desktop/test/run-v1.mjs and desktop/test/run-live.mjs set
+ * BAO_TEST_BROWSER to Playwright's Chromium, and pinTestBrowser sets it for
+ * the browser evals. While it is set, every launch starts that binary with a
+ * mock keychain, so a test never opens the user's Chrome or the login
+ * keychain. Product launches never set it.
  */
 export function testLaneBrowser(env: NodeJS.ProcessEnv = process.env): string | undefined {
   return env.BAO_TEST_BROWSER?.trim() || undefined;
+}
+
+/**
+ * Tests and evals only. Returns BAO_TEST_BROWSER, and sets it to Playwright's
+ * Chromium when it is unset, so every later launch in this process, and in a
+ * child that inherits the env, starts the test browser with a mock keychain.
+ */
+export function pinTestBrowser(
+  env: NodeJS.ProcessEnv = process.env,
+  playwrightPath: () => string = () => chromium.executablePath(),
+): string {
+  const pinned = testLaneBrowser(env);
+  if (pinned) return checkedTestBrowser(pinned);
+  let exe = "";
+  try {
+    exe = playwrightPath();
+  } catch { /* Playwright has not downloaded a browser. */ }
+  if (!exe || !chromeExecutable(exe)) throw new Error("Playwright Chromium is missing. Run: npx playwright install chromium");
+  env.BAO_TEST_BROWSER = exe;
+  return exe;
+}
+
+/** The test browser is never the installed Google Chrome, even through a link. */
+function checkedTestBrowser(pinned: string): string {
+  if (isInstalledChrome(pinned)) throw new Error(`BAO_TEST_BROWSER is the installed Google Chrome: ${pinned}`);
+  if (!chromeExecutable(pinned)) throw new Error(`BAO_TEST_BROWSER is not an executable file: ${pinned}`);
+  return pinned;
+}
+
+function isInstalledChrome(file: string): boolean {
+  const given = path.resolve(file);
+  let real = given;
+  try {
+    real = realpathSync(file);
+  } catch { /* a missing file fails the executable check */ }
+  return [ACCOUNT_CHROME_MAC, LINUX_CHROME].some((chrome) => chrome === given || chrome === real);
 }
 
 /** The mock keychain flags in the test lane. Empty for every product launch. */
@@ -169,10 +206,7 @@ export function resolveNormalChrome(
   playwrightPath: () => string = () => chromium.executablePath(),
 ): string {
   const pinned = testLaneBrowser(env);
-  if (pinned) {
-    if (chromeExecutable(pinned)) return pinned;
-    throw new Error(`BAO_TEST_BROWSER is not an executable file: ${pinned}`);
-  }
+  if (pinned) return checkedTestBrowser(pinned);
   if (platform === "darwin" && exists(ACCOUNT_CHROME_MAC)) return ACCOUNT_CHROME_MAC;
   if (platform === "linux" && exists(LINUX_CHROME)) return LINUX_CHROME;
   const bundled = env.BAO_BROWSER;

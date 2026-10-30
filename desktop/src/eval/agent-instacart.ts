@@ -33,7 +33,7 @@ import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
 import { FIXTURE_HOSTS, TARGET, type CartWrite, type FixtureState, type Hit } from "../../test/instacart/fixture";
 import { CLI, startLane, until, type Lane } from "../../test/instacart/lane";
-import { hermeticChildEnv, pinnedTestBrowser } from "../../test/runtime";
+import { laneChildEnv, pinnedTestBrowser } from "../../test/runtime";
 import {
   claudeAgentArgs,
   claudeAgentAuth,
@@ -811,7 +811,7 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
       return { row: blankRow(driver, "fail", `lock-down check: ${locked.join("; ")}. No agent run.`), listing, judgeModel: "" };
     }
     // Keep lane names short: bao serve binds <lane root>/home/extension-host/bridge.sock, and macOS caps a socket path at 104 bytes.
-    lane = await startLane(`l2-${driver}`, hermeticChildEnv(process.env, pinnedTestBrowser()));
+    lane = await startLane(`l2-${driver}`, laneChildEnv("hermetic", process.env, pinnedTestBrowser()));
     const agentHome = path.join(scratch, "home");
     mkdirSync(agentHome, { recursive: true });
     const server = baoServer(lane.home, lane.env.HOME);
@@ -845,7 +845,7 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
     if (opts.checkout) {
       await lane.close();
       lane = undefined;
-      const fresh = await startLane(`f-${driver}`, hermeticChildEnv(process.env, pinnedTestBrowser()));
+      const fresh = await startLane(`f-${driver}`, laneChildEnv("hermetic", process.env, pinnedTestBrowser()));
       lane = fresh;
       checkout = await runSession({ ...ctx, lane: fresh, server: baoServer(fresh.home, fresh.env.HOME) }, "checkout", CHECKOUT_PROMPT);
     }

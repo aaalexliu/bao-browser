@@ -69,7 +69,7 @@ export BAO_HOME="/the/home/bao/serve/printed"
 
 ## Fixture MCP
 
-`BAO_MCP_LIVE=1` selects `liveMcpMain` in `desktop/src/eval/live-mcp.ts`. The process requires `BAO_FIXTURE_URL`, creates a temporary profile, and launches an owned browser. That browser ends with the process. The evaluator's tools are `screenshot`, `snapshot`, `click`, `type`, `key`, `scroll`, and `upload`.
+`BAO_MCP_LIVE=1` selects `liveMcpMain` in `desktop/src/eval/live-mcp.ts`. The process requires `BAO_FIXTURE_URL`, creates a temporary profile, and launches the test browser (`BAO_TEST_BROWSER`, else Playwright's Chromium) with a mock keychain. That browser ends with the process. The evaluator's tools are `screenshot`, `snapshot`, `click`, `type`, `key`, `scroll`, and `upload`.
 
 Leave `BAO_MCP_LIVE` unset for the catalog and `live_*` tools. The evaluator is described in [bao.md](bao.md#bao-mcp-drivers).
 

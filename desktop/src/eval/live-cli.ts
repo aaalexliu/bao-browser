@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { userInfo } from "node:os";
 import { CODEX_TOOL_TIMEOUT_SEC } from "../app/codex-config";
+import { pinTestBrowser } from "../launch";
 import type { DriverTask } from "./tasks";
 
 export type LiveDriver = "claude" | "codex" | "cursor";
@@ -67,18 +68,24 @@ export async function runLiveCli(opts: {
 }): Promise<LiveCliResult> {
   const cli = path.join(__dirname, "../app/cli.js");
   const node = process.execPath;
-  const env = {
-    BAO_MCP_LIVE: "1",
-    BAO_HOME: opts.home,
-    BAO_FIXTURE_URL: opts.fixtureUrl,
-    BAO_HEADED: "0",
-  };
+  const env = liveMcpServerEnv(opts.home, opts.fixtureUrl);
   const run = () => {
     if (opts.driver === "claude") return runClaude(opts.bin, cli, node, opts.home, env, opts.prompt);
     if (opts.driver === "codex") return runCodex(opts.bin, cli, node, opts.home, env, opts.prompt);
     return runCursor(opts.bin, cli, node, opts.home, env, opts.prompt);
   };
   return withRateLimitRetry(run);
+}
+
+/** The evaluator server's env. It starts the test browser with a mock keychain, never the user's Chrome. */
+export function liveMcpServerEnv(home: string, fixtureUrl: string, parent: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  return {
+    BAO_MCP_LIVE: "1",
+    BAO_HOME: home,
+    BAO_FIXTURE_URL: fixtureUrl,
+    BAO_HEADED: "0",
+    BAO_TEST_BROWSER: pinTestBrowser(parent),
+  };
 }
 
 export function isRateLimited(result: Pick<LiveCliResult, "stdout" | "stderr">): boolean {
@@ -146,10 +153,7 @@ function runCodex(bin: string, cli: string, node: string, home: string, env: Rec
   const config = [
     configPair("mcp_servers.bao.command", node),
     configPair("mcp_servers.bao.args", JSON.stringify([cli, "mcp"]), true),
-    configPair("mcp_servers.bao.env.BAO_MCP_LIVE", env.BAO_MCP_LIVE || ""),
-    configPair("mcp_servers.bao.env.BAO_HOME", env.BAO_HOME || ""),
-    configPair("mcp_servers.bao.env.BAO_FIXTURE_URL", env.BAO_FIXTURE_URL || ""),
-    configPair("mcp_servers.bao.env.BAO_HEADED", env.BAO_HEADED || ""),
+    ...Object.entries(env).map(([key, value]) => configPair(`mcp_servers.bao.env.${key}`, value)),
   ].flat();
   return spawnCli(bin, [
     "exec",

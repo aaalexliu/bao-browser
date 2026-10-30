@@ -12,6 +12,7 @@ import path from "node:path";
 import test from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
 import { startApp, type App } from "../../src/app/server";
+import { pinTestBrowser } from "../../src/launch";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice } from "../../src/v1/sync";
@@ -21,7 +22,7 @@ const PASSWORD = "fixture-pass-value";
 const COOKIE = "session=super-secret-cookie";
 const ARTIFACTS = testArtifacts("remote-mcp");
 const SHOTS = testArtifacts("remote-mcp-screenshots");
-const CHROME = "/opt/google/chrome/chrome";
+const TEST_BROWSER = pinTestBrowser();
 
 let tail: Promise<unknown> = Promise.resolve();
 
@@ -122,7 +123,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     appA = await startApp({ home: homeA });
     appB = await startApp({ home: homeB });
     browser = await chromium.launch({
-      executablePath: CHROME,
+      executablePath: TEST_BROWSER,
       headless: true,
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
     });
