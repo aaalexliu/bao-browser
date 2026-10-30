@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { realpathSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -14,6 +14,15 @@ import { launchOwnedChrome } from "../../src/launch";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function profileDir(context: BrowserContext): Promise<string> {
@@ -48,5 +57,33 @@ test("owned launches that overlap each drive their own Chrome", { timeout: 90_00
   } finally {
     for (const context of contexts) await context.close().catch(() => undefined);
     await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true }).catch(() => undefined)));
+  }
+});
+
+test("a browser that binds port 9222 is refused and stopped", { timeout: 30_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-owned-9222-"));
+  const userDataDir = path.join(root, "profile");
+  const exe = path.join(root, "fake-chrome.sh");
+  const pidFile = path.join(root, "fake.pid");
+  await writeFile(exe, [
+    "#!/bin/sh",
+    "for arg in \"$@\"; do",
+    "  case \"$arg\" in --user-data-dir=*) dir=\"${arg#--user-data-dir=}\" ;; esac",
+    "done",
+    `echo $$ > "${pidFile}"`,
+    "printf '9222\\n/devtools/browser/fake-id\\n' > \"$dir/DevToolsActivePort\"",
+    "exec sleep 60",
+    "",
+  ].join("\n"));
+  await chmod(exe, 0o755);
+  try {
+    await assert.rejects(launchOwnedChrome({ userDataDir, executablePath: exe, headless: true }), /remote-debugging-port 9222/);
+    const pid = Number((await readFile(pidFile, "utf8")).trim());
+    assert.ok(pid > 0);
+    const deadline = Date.now() + 5000;
+    while (alive(pid) && Date.now() < deadline) await delay(50);
+    assert.equal(alive(pid), false);
+  } finally {
+    await rm(root, { recursive: true, force: true }).catch(() => undefined);
   }
 });

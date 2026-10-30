@@ -228,7 +228,7 @@ function readActivePort(file: string): string | undefined {
  * Spawn Chrome on its own profile and return the port it bound. Chrome writes
  * that port to DevToolsActivePort in the profile once it is listening. A file
  * left by an earlier Chrome on this profile is skipped: each start writes a new
- * browser id on its second line.
+ * browser id on its second line. A Chrome that bound 9222 is stopped.
  */
 async function spawnOwnedChrome(exe: string, args: string[], userDataDir: string): Promise<{ child: ChildProcess; port: number }> {
   const file = path.join(userDataDir, "DevToolsActivePort");
@@ -241,9 +241,15 @@ async function spawnOwnedChrome(exe: string, args: string[], userDataDir: string
     }
     const text = readActivePort(file);
     if (text && text !== stale) {
+      let port: number | undefined;
       try {
-        return { child, port: parseDevToolsActivePort(text).port };
+        port = parseDevToolsActivePort(text).port;
       } catch { /* Chrome is still writing the file. */ }
+      if (port === 9222) {
+        child.kill("SIGTERM");
+        throw new Error("Chrome bound remote-debugging-port 9222.");
+      }
+      if (port !== undefined) return { child, port };
     }
     await delay(50);
   }
