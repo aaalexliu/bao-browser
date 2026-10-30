@@ -28,7 +28,7 @@ export interface CompiledPlan {
   missing: string[];
 }
 
-export function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv, pinnedBrowser?: string): NodeJS.ProcessEnv {
+export function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...parent };
   for (const key of Object.keys(env)) {
     if (/^bao/i.test(key)) delete env[key];
@@ -41,17 +41,20 @@ export function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv, pinnedBrowser
   env.BAO_HEADED = "0";
   env.BAO_TEST_RUN_ID = `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   if (lane === "live") env.BAO_LIVE_TESTS = "1";
-  if (pinnedBrowser) env.BAO_TEST_BROWSER = pinnedBrowser;
   return env;
 }
 
-export function mockKeychainArgs(env: NodeJS.ProcessEnv = process.env): string[] {
-  if (env.BAO_TEST_MOCK_KEYCHAIN !== "1") return [];
-  return ["--use-mock-keychain", "--password-store=basic"];
-}
-
-export function hermeticChildEnv(parent: NodeJS.ProcessEnv, pinnedBrowser?: string): NodeJS.ProcessEnv {
-  return laneEnv("hermetic", parent, pinnedBrowser);
+/**
+ * The required suite. BAO_TEST_BROWSER makes every owned launch start this
+ * browser with a mock keychain. Without it the suite would open the user's
+ * Chrome, so a missing browser stops the run. The live lane keeps the
+ * installed Chrome.
+ */
+export function hermeticChildEnv(parent: NodeJS.ProcessEnv, testBrowser: string | undefined): NodeJS.ProcessEnv {
+  if (!testBrowser) throw new Error("Playwright Chromium is missing. Run: npx playwright install chromium");
+  const env = laneEnv("hermetic", parent);
+  env.BAO_TEST_BROWSER = testBrowser;
+  return env;
 }
 
 export function pinnedTestBrowser(): string | undefined {
