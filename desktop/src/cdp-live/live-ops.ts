@@ -27,20 +27,23 @@ export function isLiveOp(value: string): value is LiveOpName {
   return (LIVE_TOOL_NAMES as readonly string[]).includes(value);
 }
 
+/** An open session with no call for this long saves its workflow and ends. */
+export const LIVE_IDLE_MS = 10 * 60_000;
+
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: "Open a local live session on one http(s) page in the running Chrome. Pass an intent, a url, and an absolute DevToolsActivePort path. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage.",
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. The Bao app picks the Chrome, by default this Mac's own Chrome in its Default profile. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart and books.toscrape.com uses books. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call.`,
     inputSchema: {
       type: "object",
       properties: {
         intent: { type: "string" },
         url: { type: "string" },
-        portFile: { type: "string" },
-        preset: { type: "string", enum: ["generic", "instacart", "books"] },
-        workflowId: { type: "string" },
+        portFile: { type: "string", description: "Leave this out. An absolute DevToolsActivePort path, only for a Chrome started with its own --user-data-dir." },
+        preset: { type: "string", enum: ["generic", "instacart", "books"], description: "Leave this out for a known host." },
+        workflowId: { type: "string", description: "Optional wf-<name>. Without it the id comes from the intent." },
       },
-      required: ["intent", "url", "portFile"],
+      required: ["intent", "url"],
     },
   },
   {
@@ -110,6 +113,9 @@ export function admit(slot: SlotState, op: LiveOpName): Admission {
   if (slot.phase !== "open") return { kind: "reject", reason: "not_open" };
   return { kind: "run" };
 }
+
+/** Not a tool. The MCP proxy sends it when its client goes away, and the host saves that client's open session. */
+export const LIVE_DISCONNECT = "live_disconnect";
 
 export interface LiveControlFact {
   index: number;

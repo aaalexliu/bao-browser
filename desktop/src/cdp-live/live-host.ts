@@ -2,18 +2,25 @@ import path from "node:path";
 import { navigationGuard, originsFor } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import { workflowFromLive, type LiveAction } from "./attach";
-import { checkboxReach } from "./consent";
-import { connectAndAllow } from "./connect";
-import { AxUnavailable, checkboxState, chromeHelper } from "./ax";
-import { openLiveWindow, type CdpLiveDriver } from "./driver";
-import { listenPid, readDevToolsActivePort } from "./endpoint";
-import { liveChromeBlock } from "../helper-capabilities";
+import type { ChromeAx } from "./ax";
+import { type CdpLiveDriver } from "./driver";
+import {
+  connectTarget,
+  openChromeProfileWindow,
+  parseLiveTarget,
+  prepareTarget,
+  targetForPortFile,
+  type LiveTarget,
+  type OpenProfileWindow,
+} from "./live-target";
 import { acquireCdpLock, CDP_LOCK_PATH, rememberLockTarget, releaseCdpLock, takeDeadTarget } from "./lock";
 import {
   admit,
   buildView,
   focusLiveMark,
   isLiveOp,
+  LIVE_DISCONNECT,
+  LIVE_IDLE_MS,
   markedFieldValue,
   pageHalt,
   planClick,
@@ -35,7 +42,7 @@ import {
   type ScrollFacts,
   type SlotState,
 } from "./live-ops";
-import { guardPreset, presetName } from "./presets";
+import { guardPreset, presetForUrl } from "./presets";
 import type { CdpSocket } from "./socket";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
@@ -54,6 +61,8 @@ interface OpenState {
   hosts: string[];
   origins: string[];
   portFile: string;
+  /** The MCP client that started the session. Its disconnect saves the session. */
+  client: string;
   host: string;
   epoch: number;
   read: LiveRead | null;
@@ -180,30 +189,82 @@ export interface LiveReplayResult {
   steps: { id: string; status: string }[];
 }
 
-export function createLiveHost(opts: { home: string; lockFile?: string; connectTimeoutMs?: number }): {
+export interface LiveHostOptions {
+  home: string;
+  lockFile?: string;
+  connectTimeoutMs?: number;
+  /** The Chrome a start drives when the caller names no port file. Default: the daily Chrome. */
+  target?: LiveTarget;
+  /** BaoOSHelper, for the daily Chrome's Allow dialog. Tests pass a fake. */
+  helper?: () => ChromeAx;
+  /** Asks the daily Chrome to open a window in the target's profile. Tests pass a fake. */
+  openProfile?: OpenProfileWindow;
+  /** An open session with no call for this long saves and ends. */
+  idleMs?: number;
+}
+
+type EndReason = "stop" | "disconnect" | "idle";
+
+export function createLiveHost(opts: LiveHostOptions): {
   call(raw: unknown): Promise<unknown>;
   replay(workflow: WorkflowV2): Promise<LiveReplayResult>;
   close(): Promise<void>;
 } {
   const lockFile = opts.lockFile || CDP_LOCK_PATH;
+  const defaultTarget = opts.target || parseLiveTarget("daily", "");
+  const openProfile = opts.openProfile || openChromeProfileWindow;
+  const idleMs = opts.idleMs ?? LIVE_IDLE_MS;
   let slot: SlotState = { phase: "idle" };
   let open: OpenState | null = null;
   let parked: Parked | null = null;
   let chain = Promise.resolve();
+  let pending = 0;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
   function reply(body: Record<string, unknown>): unknown {
     return publicLiveResult(body);
   }
 
   async function call(raw: unknown): Promise<unknown> {
+    clearTimeout(idleTimer);
+    pending += 1;
     const run = chain.then(() => dispatch(raw));
-    chain = run.then(() => undefined, () => undefined);
+    chain = run.then(() => undefined, () => undefined).then(() => {
+      pending -= 1;
+      armIdle();
+    });
     return run;
+  }
+
+  /** The session saves once no call has come for idleMs. Each call restarts the wait. */
+  function armIdle(): void {
+    clearTimeout(idleTimer);
+    idleTimer = undefined;
+    if (!open || pending > 0 || idleMs <= 0) return;
+    idleTimer = setTimeout(() => {
+      const run = chain.then(() => (open ? stop("idle") : undefined));
+      chain = run.then(() => undefined, () => undefined);
+    }, idleMs);
+    idleTimer.unref?.();
+  }
+
+  async function disconnect(body: Record<string, unknown>): Promise<unknown> {
+    const client = typeof body.client === "string" ? body.client : "";
+    if (!open || !client || open.client !== client) {
+      return reply({ op: LIVE_DISCONNECT, session: "", outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
+    }
+    try {
+      return await stop("disconnect");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "live call failed";
+      return reply({ op: LIVE_DISCONNECT, session: "", outcome: { kind: "rejected", reason: reason.slice(0, 180) }, view: null, shot: "" });
+    }
   }
 
   async function dispatch(raw: unknown): Promise<unknown> {
     const body = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const op = typeof body.op === "string" ? body.op : "";
+    if (op === LIVE_DISCONNECT) return disconnect(body);
     if (!isLiveOp(op)) {
       return reply({ op, session: "", outcome: { kind: "rejected", reason: "unknown" }, view: null, shot: "" });
     }
@@ -265,27 +326,21 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     const intent = typeof body.intent === "string" ? body.intent.trim() : "";
     const url = typeof body.url === "string" ? body.url.trim() : "";
     const portFile = typeof body.portFile === "string" ? body.portFile.trim() : "";
-    const preset = typeof body.preset === "string" && body.preset ? body.preset : "generic";
+    const asked = typeof body.preset === "string" ? body.preset.trim() : "";
     const workflowId = typeof body.workflowId === "string" ? body.workflowId.trim() : "";
+    const client = typeof body.client === "string" ? body.client.slice(0, 80) : "";
     if (!intent) throw new Error("intent is required");
     if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
-    if (!path.isAbsolute(portFile) || path.basename(portFile) !== "DevToolsActivePort") {
-      throw new Error("port file must be an absolute DevToolsActivePort path");
-    }
-    if (!presetName(preset)) throw new Error("unknown preset");
+    const target = portFile ? targetForPortFile(portFile) : defaultTarget;
+    const preset = presetForUrl(url, asked);
+    if (!preset) throw new Error("unknown preset");
     const flags = guardPreset(preset);
     const host = new URL(url).hostname;
     const hosts = [...new Set([host, ...flags.hosts])];
     const origins = originsFor(url, hosts);
     const blocked = navigationGuard(url, hosts, origins, flags.stopPath);
     if (blocked) throw new Error(blocked);
-    const endpoint = await readDevToolsActivePort(portFile);
-    const chromePid = await listenPid(endpoint.port);
-    if (!chromePid) throw new Error("no Chrome is listening on the DevTools port");
-    const helper = chromeHelper();
-    const perms = await helper.permissions(false);
-    const permissionBlock = liveChromeBlock(perms);
-    if (permissionBlock) throw new Error(permissionBlock);
+    const prepared = await prepareTarget(target, opts.helper);
     if (parked) {
       await parked.driver.end().catch(() => undefined);
       parked.cdp.close();
@@ -295,22 +350,13 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     let cdp: CdpSocket | undefined;
     let driver: CdpLiveDriver | undefined;
     try {
-      const box = await checkboxState(helper, chromePid);
-      if (checkboxReach(box.summary) === "stop") {
-        throw new AxUnavailable("BaoOSHelper cannot see a Chrome window", box.summary);
-      }
-      const dialogPresentBeforeConnect = box.summary.dialog.present || box.summary.dialog.buttonCount > 0;
-      if (dialogPresentBeforeConnect) throw new Error("Allow dialog was already up");
-      const opened = await connectAndAllow({
-        helper,
-        endpoint,
-        dialogPresentBeforeConnect,
+      const opened = await connectTarget(prepared, hosts, {
+        openProfile,
         axLog: path.join(opts.home, "live-session", "ax.jsonl"),
-        pid: chromePid,
-        timeoutMs: opts.connectTimeoutMs,
+        connectTimeoutMs: opts.connectTimeoutMs,
       });
       cdp = opened.cdp;
-      driver = await openLiveWindow(cdp, hosts);
+      driver = opened.driver;
       driver.setOrigins(origins);
       driver.setStopPath(flags.stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
@@ -326,7 +372,8 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
         stopPath: flags.stopPath,
         hosts,
         origins,
-        portFile,
+        portFile: target.portFile,
+        client,
         host,
         epoch: 0,
         read: null,
@@ -561,13 +608,17 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
     new Library(opts.home).save(workflow);
   }
 
-  async function stop(): Promise<unknown> {
+  async function stop(reason: EndReason = "stop"): Promise<unknown> {
+    clearTimeout(idleTimer);
     if (!open) {
       return reply({ op: "live_stop", session: "", outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
     }
     const id = open.id;
     const view = shown(open.read);
-    const noteText = open.halted ? open.halted : open.refused ? "Refused." : "Stopped.";
+    const ended = reason === "disconnect" ? "Saved when the agent disconnected."
+      : reason === "idle" ? "Saved after the agent went quiet."
+        : "Stopped.";
+    const noteText = open.halted ? open.halted : open.refused ? "Refused." : ended;
     const status = open.halted ? "needs_human" : open.refused ? "failed" : "passed";
     let saveError = "";
     try {
@@ -605,6 +656,7 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
   }
 
   async function close(): Promise<void> {
+    clearTimeout(idleTimer);
     if (slot.phase === "open") {
       await stop().catch(() => undefined);
       releaseCdpLock(AGENT, lockFile);

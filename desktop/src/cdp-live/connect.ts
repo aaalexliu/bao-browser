@@ -1,9 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { MacOsHelper } from "../proxy/os-macos";
 import { ALLOW_CLICK_WINDOW_MS, mayClickAllow, type AxSummary } from "./consent";
 import type { DevToolsEndpoint } from "./endpoint";
-import { AxUnavailable, chromeTree, pressAllow } from "./ax";
+import { AxUnavailable, chromeTree, pressAllow, type ChromeAx } from "./ax";
 import { connectCdp, type CdpSocket } from "./socket";
 
 export async function clearInbox(file: string, held: boolean): Promise<void> {
@@ -14,7 +13,7 @@ export async function clearInbox(file: string, held: boolean): Promise<void> {
 
 /** Connect, wait for Allow, and press Allow once. Callers keep their own checkbox policy. */
 export async function connectAndAllow(opts: {
-  helper: MacOsHelper;
+  helper: Pick<ChromeAx, "nodes" | "press">;
   endpoint: DevToolsEndpoint;
   dialogPresentBeforeConnect: boolean;
   axLog: string;

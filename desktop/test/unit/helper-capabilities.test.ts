@@ -11,7 +11,7 @@ import {
 } from "../../src/helper-capabilities";
 import { MacOsHelper } from "../../src/proxy/os-macos";
 
-const LIVE_ENTRIES = ["session.ts", "instacart-run.ts", "login-diff.ts", "run.ts", "live-host.ts"];
+const LIVE_ENTRIES = ["session.ts", "instacart-run.ts", "login-diff.ts", "run.ts", "live-target.ts"];
 
 function liveEntryProblem(src: string): string | undefined {
   if (src.includes("screen recording is granted; not starting")) return "old throw";

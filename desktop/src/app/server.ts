@@ -16,6 +16,7 @@ import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
 import { createLiveHost } from "../cdp-live/live-host";
+import { parseLiveTarget } from "../cdp-live/live-target";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
@@ -193,16 +194,24 @@ export async function startApp(opts: {
   extensionHostDirs?: string[];
   /** Resolver notices for this launch. Each shows in the window once per library. */
   libraryNotices?: string[];
+  /** The Chrome a live session drives when the agent names none: daily (default), daily:<profile>, bao, or throwaway:<DevToolsActivePort>. */
+  liveTarget?: string;
+  /** Live session lock. Default /tmp/bao-cdp-session.lock, shared by every Bao on this machine. */
+  liveLockFile?: string;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
   process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
   const librarySplits = showOnce(opts.home, opts.libraryNotices || []);
-  const live = createLiveHost({ home: library.root });
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
+  const live = createLiveHost({
+    home: library.root,
+    target: parseLiveTarget(opts.liveTarget, baoProfile),
+    lockFile: opts.liveLockFile,
+  });
   let signIn: { close(): Promise<void> } | undefined;
   const notices: Notice[] = [];
   let boundPort = opts.port ?? 0;

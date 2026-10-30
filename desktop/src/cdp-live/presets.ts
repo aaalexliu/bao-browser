@@ -54,6 +54,24 @@ export function presetName(value: string): PresetName | null {
   return (PRESET_NAMES as readonly string[]).includes(value) ? value as PresetName : null;
 }
 
+/**
+ * The preset for a live session's start url. A known host always gets its own
+ * preset, so an agent cannot drop www.instacart.com to generic. Other hosts use
+ * the preset asked for, else generic. Null means the asked name is unknown.
+ */
+export function presetForUrl(url: string, asked = ""): PresetName | null {
+  if (asked && !presetName(asked)) return null;
+  let host = "";
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    host = "";
+  }
+  if ((INSTACART_HOSTS as readonly string[]).includes(host)) return "instacart";
+  if ((BOOKS_HOSTS as readonly string[]).includes(host)) return "books";
+  return presetName(asked) || "generic";
+}
+
 export function guardPreset(name: string): GuardPreset {
   const found = presetName(name);
   if (!found) throw new Error(`unknown preset ${name}`);
