@@ -17,7 +17,7 @@
 //      line, and a replay on a cart that already holds the item skips the Add and writes nothing
 
 import assert from "node:assert/strict";
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import test, { after, before, describe, it } from "node:test";
@@ -28,22 +28,13 @@ import { McpClient } from "../../src/eval/mcp-client";
 import type { WorkflowOutcome } from "../../src/mcp/catalog";
 import { validateWorkflow } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { launchFixtureBrowser, type FixtureBrowser } from "../instacart/browser";
-import {
-  TARGET,
-  TARGET_PATH,
-  startInstacartFixture,
-  type CartWrite,
-  type Hit,
-  type InstacartFixture,
-  type SeedLine,
-} from "../instacart/fixture";
+import { TARGET, TARGET_PATH, type CartWrite, type Hit, type SeedLine } from "../instacart/fixture";
+import { CLI, startLane, until, type Lane } from "../instacart/lane";
 import { applyHermeticApp } from "../runtime";
 
 const INTENT = "put costco blueberries into the cart at instacart";
 const WORKFLOW_ID = "wf-put-costco-blueberries-into-the-cart";
 const PRODUCT_PATH = TARGET_PATH.split("?")[0];
-const CLI = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 const instacart = guardPreset("instacart");
 const validateSchema = new Ajv({ allErrors: true, strict: false })
   .compile(JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8")));
@@ -61,16 +52,6 @@ interface LiveReply {
   session?: string;
   outcome?: { kind?: string; reason?: string };
   view?: LiveView | null;
-}
-
-async function until<T>(read: () => T | undefined, what: string, timeoutMs = 30_000): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const value = read();
-    if (value !== undefined) return value;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`timed out waiting for ${what}`);
 }
 
 /** One live tool call. bao mcp marks a refused, halted, or rejected reply as an error, so the caller says which it expects. */
@@ -124,36 +105,6 @@ function keysOf(value: unknown, out = new Set<string>()): Set<string> {
   return out;
 }
 
-interface Serve {
-  close(): Promise<void>;
-}
-
-/** `bao serve` as a person starts it: a temp home, the test browser as the live target, and its own live lock. */
-async function startServe(env: NodeJS.ProcessEnv, home: string, portFile: string, lockFile: string): Promise<Serve> {
-  const proc: ChildProcessWithoutNullStreams = spawn(process.execPath, [
-    CLI, "serve", "--home", home, "--port", "0",
-    "--live-target", `throwaway:${portFile}`, "--live-lock", lockFile,
-  ], { env, stdio: ["pipe", "pipe", "pipe"] });
-  let stdout = "";
-  let stderr = "";
-  proc.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-  proc.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-  await until(() => {
-    if (proc.exitCode !== null) throw new Error(`bao serve exited ${proc.exitCode}: ${stderr}`);
-    return /^bao \d+ home /m.test(stdout) ? true : undefined;
-  }, "bao serve", 60_000);
-  return {
-    async close() {
-      if (proc.exitCode !== null || proc.signalCode !== null) return;
-      const exited = new Promise((resolve) => proc.once("exit", resolve));
-      proc.kill("SIGTERM");
-      const timer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-      await exited;
-      clearTimeout(timer);
-    },
-  };
-}
-
 test("bao serve takes its own live lock only for a throwaway Chrome, so every Bao on the daily Chrome shares one", () => {
   const env = { ...process.env };
   const home = applyHermeticApp("instacart-acceptance-lock", env).home;
@@ -175,34 +126,19 @@ test("bao serve takes its own live lock only for a throwaway Chrome, so every Ba
 });
 
 describe("L1: a scripted agent puts Costco blueberries in the cart through bao mcp, and bao replays it", { timeout: 300_000 }, () => {
-  let fixture: InstacartFixture;
-  let browser: FixtureBrowser;
-  let serve: Serve | undefined;
-  let root: string;
-  let home: string;
-  let lockFile: string;
-  let env: NodeJS.ProcessEnv;
+  let lane: Lane | undefined;
 
   before(async () => {
-    fixture = await startInstacartFixture();
-    browser = await launchFixtureBrowser(fixture);
-    env = { ...process.env };
-    home = applyHermeticApp("l1", env).home;
-    root = path.dirname(home);
-    env.HOME = path.join(root, "user");
-    mkdirSync(env.HOME, { recursive: true });
-    lockFile = path.join(root, "live.lock");
-    serve = await startServe(env, home, browser.portFile, lockFile);
+    lane = await startLane("l1", { ...process.env });
   });
 
   after(async () => {
-    await serve?.close();
-    await browser?.close();
-    await fixture?.close();
-    if (root) rmSync(root, { recursive: true, force: true });
+    await lane?.close();
   });
 
   it("records the task, saves it when the agent disconnects, refuses the traps, and replays it with no model, skipping the Add when the cart holds the item", async () => {
+    assert.ok(lane);
+    const { fixture, browser, env, home, lockFile } = lane;
     const library = new Library(home);
     const file = path.join(home, "workflows", `${WORKFLOW_ID}.json`);
     // fixture.reset() clears its logs, so every request and trap hit is kept here first.

@@ -110,6 +110,19 @@ async function main(): Promise<void> {
     process.stdout.write(result.markdown);
     return;
   }
+  if (cmd === "eval" && rest[0] === "agent-instacart") {
+    const { agentDrivers, checkAgentLockdown, evalAgentInstacart } = await import("../eval/agent-instacart");
+    if (rest.includes("--check")) {
+      const checked = await checkAgentLockdown(agentDrivers(rest.slice(1)));
+      console.log(JSON.stringify(checked, null, 2));
+      if (checked.some((item) => item.problems.length)) process.exitCode = 1;
+      return;
+    }
+    const result = await evalAgentInstacart(rest.slice(1));
+    process.stdout.write(result.markdown);
+    if (result.rows.some((row) => row.status === "fail" || row.status === "driver-error")) process.exitCode = 1;
+    return;
+  }
   if (cmd === "eval" && rest[0] === "intent") {
     const { evalIntent } = await import("../eval/intent/run");
     const result = await evalIntent(rest.slice(1));
@@ -168,7 +181,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval agent-instacart [--driver claude|codex] [--skip-checkout] [--check] | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 

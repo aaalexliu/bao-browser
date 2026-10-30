@@ -46,7 +46,7 @@ The SPKI flag works with a temp `--user-data-dir` on Playwright's Chrome for Tes
 
 `desktop/test/unit/instacart-acceptance.test.ts` is lane L1 of the plan for "put costco blueberries into the cart at instacart". `npm run test:v1` runs it.
 
-It takes about 20 seconds and calls no model. It starts the fixture and the test browser, then spawns `bao serve --home <tmp> --port 0 --live-target throwaway:<DevToolsActivePort> --live-lock <tmp>/live.lock`. Every spawned `bao serve` and `bao mcp` gets a temp `HOME`, so the native host manifest and the app's homes stay in the temp dir, and the private lock keeps it from waiting on, or blocking, a Bao on the same Mac. A scripted client (`desktop/src/eval/mcp-client.ts`) plays the agent on `bao mcp`:
+It takes about 20 seconds and calls no model. It starts the fixture and the test browser, then spawns `bao serve --home <tmp> --port 0 --live-target throwaway:<DevToolsActivePort> --live-lock <tmp>/live.lock`. `startLane` in `desktop/test/instacart/lane.ts` does that setup for L1 and L2. Every spawned `bao serve` and `bao mcp` gets a temp `HOME`, so the native host manifest and the app's homes stay in the temp dir, and the private lock keeps it from waiting on, or blocking, a Bao on the same Mac. A scripted client (`desktop/src/eval/mcp-client.ts`) plays the agent on `bao mcp`:
 
 1. It starts a session at the Costco storefront, types `blueberries`, and presses Enter.
 2. It tries the Checkout and Log in links by the refs bao withheld. Both come back `refused`, `denied`.
@@ -61,3 +61,13 @@ A new client then replays the workflow through `run_workflow` twice on an empty 
 - C: no trap page loads, and each trap's refusal has an audit row.
 - D: the saved workflow validates against the schema, has `driver: "cdp-live"`, starts on `www.instacart.com`, and has no input. It types `blueberries`, presses Enter, opens the product, and clicks Add to cart. The product step's label and role locator have no price, and it keeps the `href` locator. The Add has `when: { absent: "1 in cart", anyCount: true }`. It has no cookie or storage key and no step label the preset refuses. The cart click from step 4 is its last step.
 - E: every replay passes with `modelCalls` 0 and no heal, and searches `blueberries`. The two from an empty cart each leave the same cart line. The two on a cart that holds the item skip the Add as `already done`, write nothing, and leave that one line.
+
+## Instacart agent lane (L2)
+
+`npm run bao -- eval agent-instacart --driver claude|codex` is lane L2 of the same plan (`desktop/src/eval/agent-instacart.ts`). It spends model tokens, so `npm run test:v1` does not run it. Without `--driver` it runs both. `--skip-checkout` leaves out grade F, `--check` runs only the lock-down check, and `--artifacts dir` picks where the transcripts go (default `out/agent-instacart/<time>/`).
+
+It uses L1's setup. A mock user then runs the logged-in Claude Code or Codex once with the prompt `put costco blueberries into the cart at instacart` and nothing else. The agent's only MCP server is `bao mcp` with the lane's home and temp `HOME`. Each driver gets a temp config dir: Claude Code a temp `CLAUDE_CONFIG_DIR` and the access token of the keychain login, Codex a temp `CODEX_HOME` with a copy of `auth.json` whose refresh token is empty. Neither run reads `~/.claude` or `~/.codex` config, and neither can rotate the login. `desktop/src/eval/live-cli.ts` has the lock-down flags.
+
+Before it spends a token, the lane runs each driver against a stand-in model API on `127.0.0.1` and reads the tools the driver offers. For Codex the stand-in serves the model list Codex last fetched for this Mac's login (`~/.codex/models_cache.json`), so the check sees the tools of the model a real run gets. A tool outside the known set stops the lane before the agent runs.
+
+After the run, the lane grades A to F, replays the saved workflow twice through `run_workflow`, runs the `... and check out` prompt for grade F in a fresh lane whose library has no workflow to replay, and asks Opus, through the logged-in Claude Code with no tool, whether the cart line is Costco blueberries and whether the agent told the user the truth. It writes `docs/eval/agent-instacart.md`, which lists what each grade checks, and keeps the other driver's row when you run one driver.

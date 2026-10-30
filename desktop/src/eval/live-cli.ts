@@ -1,10 +1,11 @@
-// Start a logged-in CLI against the fixture MCP server.
-// No login command, no --dangerously-* flag, no edit of ~/.codex/config.toml.
+// Start a logged-in CLI against the fixture MCP server, or against the product `bao mcp`
+// for the agent lane. No login command, no --dangerously-* flag, no edit of ~/.codex/config.toml.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { userInfo } from "node:os";
+import { CODEX_TOOL_TIMEOUT_SEC } from "../app/codex-config";
 import type { DriverTask } from "./tasks";
 
 export type LiveDriver = "claude" | "codex" | "cursor";
@@ -201,7 +202,188 @@ function configPair(key: string, value: string, raw = false): string[] {
   return ["-c", `${key}=${raw ? value : JSON.stringify(value)}`];
 }
 
-function spawnCli(bin: string, args: string[], stdin: string, env: NodeJS.ProcessEnv, cwd?: string): Promise<LiveCliResult> {
+/** The agent lane's drivers. Each drives the browser only through the product `bao mcp`. */
+export type AgentDriver = "claude" | "codex";
+
+/**
+ * Codex features that give the model a way to act outside bao. Checked against codex-cli 0.164.0
+ * with a stand-in model API that records the tools Codex sends. shell_tool removes exec_command
+ * and write_stdin, also from code mode's nested tools, view_image removes view_image, goals removes
+ * the goal tools, and multi_agent removes the sub-agent tools of a model without code mode. The
+ * browser, computer use, apps, and plugins features add no tool to `codex exec` with a fresh
+ * CODEX_HOME, and stay off in case a login or a later Codex adds one.
+ * Codex refuses an unknown feature name, so a renamed feature fails the run instead of passing.
+ */
+export const CODEX_DISABLED_FEATURES = [
+  "shell_tool",
+  "browser_use",
+  "browser_use_external",
+  "browser_use_full_cdp_access",
+  "computer_use",
+  "in_app_browser",
+  "view_image",
+  "goals",
+  "multi_agent",
+  "apps",
+  "plugins",
+] as const;
+
+export interface BaoMcpServer {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+/**
+ * claude -p locked to bao: no built-in tool, no Claude in Chrome, only the --mcp-config server,
+ * and only mcp__bao__* calls allowed with no prompt. --max-budget-usd caps one run.
+ */
+export function claudeAgentArgs(mcpConfig: string): string[] {
+  return [
+    "-p",
+    "--output-format", "stream-json",
+    "--verbose",
+    "--strict-mcp-config",
+    "--mcp-config", mcpConfig,
+    "--tools", "",
+    "--no-chrome",
+    "--allowedTools", "mcp__bao__*",
+    "--permission-mode", "dontAsk",
+    "--max-budget-usd", "1",
+  ];
+}
+
+export function claudeMcpConfig(server: BaoMcpServer): string {
+  return JSON.stringify({ mcpServers: { bao: server } });
+}
+
+/**
+ * codex exec locked to bao. It ignores config.toml and the rules files, turns off every feature
+ * that acts outside bao, turns off web search, and runs read-only. bao is the only MCP server.
+ * Its calls run with no approval prompt, which `codex exec` would otherwise refuse, and get the
+ * tool timeout `bao agent config codex` writes. The prompt comes on stdin.
+ */
+export function codexAgentArgs(server: BaoMcpServer, workdir: string): string[] {
+  const config: string[] = [
+    configPair("web_search", "disabled"),
+    configPair("mcp_servers.bao.command", server.command),
+    configPair("mcp_servers.bao.args", JSON.stringify(server.args), true),
+    ...Object.entries(server.env).map(([key, value]) => configPair(`mcp_servers.bao.env.${key}`, value)),
+    configPair("mcp_servers.bao.tool_timeout_sec", String(CODEX_TOOL_TIMEOUT_SEC), true),
+    configPair("mcp_servers.bao.default_tools_approval_mode", "approve"),
+  ].flat();
+  return [
+    "exec",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--json",
+    "--sandbox", "read-only",
+    "-C", workdir,
+    ...CODEX_DISABLED_FEATURES.flatMap((feature) => ["--disable", feature]),
+    ...config,
+    "-",
+  ];
+}
+
+export interface AgentAuth {
+  /** Env for the driver: its temp config dir and the credential it runs with. */
+  env: NodeJS.ProcessEnv;
+  /** Set when the driver cannot run. */
+  missing?: string;
+}
+
+/**
+ * Claude Code with a temp CLAUDE_CONFIG_DIR, so no user setting, CLAUDE.md, hook, plugin, or MCP
+ * entry of this Mac reaches the run, and the run writes nothing to ~/.claude. A temp config dir
+ * has no login, so the run takes CLAUDE_CODE_OAUTH_TOKEN, else the access token of the login in
+ * the macOS keychain. The refresh token is never passed, so the run cannot rotate that login.
+ */
+export function claudeAgentAuth(configDir: string, base: NodeJS.ProcessEnv = process.env, now = Date.now()): AgentAuth {
+  const env = agentBaseEnv(base);
+  env.CLAUDE_CONFIG_DIR = configDir;
+  // No update check, telemetry, or error report from an eval run.
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+  mkdirSync(configDir, { recursive: true });
+  if (base.CLAUDE_CODE_OAUTH_TOKEN) return { env };
+  if (base.ANTHROPIC_API_KEY) {
+    env.ANTHROPIC_API_KEY = base.ANTHROPIC_API_KEY;
+    return { env };
+  }
+  const read = process.platform === "darwin"
+    ? spawnSync("security", ["find-generic-password", "-a", userInfo().username, "-s", "Claude Code-credentials", "-w"], { encoding: "utf8", timeout: 20_000 })
+    : undefined;
+  let oauth: { accessToken?: unknown; expiresAt?: unknown } | undefined;
+  try {
+    oauth = (JSON.parse(read?.stdout || "") as { claudeAiOauth?: typeof oauth }).claudeAiOauth;
+  } catch {
+    oauth = undefined;
+  }
+  if (typeof oauth?.accessToken !== "string" || !oauth.accessToken) {
+    return { env, missing: "not run: no Claude Code login in the keychain and no CLAUDE_CODE_OAUTH_TOKEN" };
+  }
+  if (typeof oauth.expiresAt === "number" && oauth.expiresAt < now + 20 * 60_000) {
+    return { env, missing: "not run: the Claude Code login expires within 20 minutes. Run claude once to refresh it" };
+  }
+  env.CLAUDE_CODE_OAUTH_TOKEN = oauth.accessToken;
+  return { env };
+}
+
+/**
+ * Codex with a temp CODEX_HOME, so no config.toml, AGENTS.md, hook, skill, plugin, or rule of
+ * this Mac reaches the run, and the run writes nothing to ~/.codex. The login is copied from
+ * $CODEX_HOME/auth.json, else ~/.codex/auth.json, with an empty refresh token, so the run cannot
+ * rotate that login. Codex refreshes a ChatGPT login 8 days after its last refresh; past that,
+ * the run is not started.
+ */
+export function codexAgentAuth(codexHome: string, base: NodeJS.ProcessEnv = process.env, now = Date.now()): AgentAuth {
+  const env = agentBaseEnv(base);
+  env.CODEX_HOME = codexHome;
+  mkdirSync(codexHome, { recursive: true });
+  const source = path.join(base.CODEX_HOME || path.join(userInfo().homedir, ".codex"), "auth.json");
+  let auth: { auth_mode?: unknown; tokens?: Record<string, unknown> | null; last_refresh?: unknown } & Record<string, unknown>;
+  try {
+    auth = JSON.parse(readFileSync(source, "utf8")) as typeof auth;
+  } catch {
+    return { env, missing: `not run: no Codex login at ${source}` };
+  }
+  if (auth.tokens && typeof auth.tokens === "object") {
+    const refreshed = typeof auth.last_refresh === "string" ? Date.parse(auth.last_refresh) : NaN;
+    if (!Number.isFinite(refreshed) || refreshed < now - 7 * 24 * 60 * 60_000) {
+      return { env, missing: "not run: the Codex login is due for a refresh. Run codex once to refresh it" };
+    }
+    auth = { ...auth, tokens: { ...auth.tokens, refresh_token: "" } };
+  }
+  writeFileSync(path.join(codexHome, "auth.json"), JSON.stringify(auth), { mode: 0o600 });
+  return { env };
+}
+
+/** The driver's env: the account's HOME and PATH, with no Bao, Claude, or Codex setting from this shell. */
+function agentBaseEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env = driverProcessEnv(base);
+  for (const key of Object.keys(env)) {
+    if (/^(?:bao|claude|codex|anthropic|openai)_/i.test(key)) delete env[key];
+  }
+  delete env.CI;
+  delete env.CLAUDECODE;
+  if (base.CLAUDE_CODE_OAUTH_TOKEN) env.CLAUDE_CODE_OAUTH_TOKEN = base.CLAUDE_CODE_OAUTH_TOKEN;
+  return env;
+}
+
+/** One agent run. stdout is the transcript: Claude's stream-json or Codex's JSONL events. */
+export function runAgentCli(opts: {
+  bin: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  cwd: string;
+  prompt: string;
+  timeoutMs: number;
+}): Promise<LiveCliResult> {
+  return spawnCli(opts.bin, opts.args, opts.prompt, opts.env, opts.cwd, opts.timeoutMs);
+}
+
+function spawnCli(bin: string, args: string[], stdin: string, env: NodeJS.ProcessEnv, cwd?: string, timeoutMs = TIMEOUT_MS): Promise<LiveCliResult> {
   return new Promise((resolve) => {
     const child = spawn(bin, args, { env, cwd, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
@@ -211,7 +393,7 @@ function spawnCli(bin: string, args: string[], stdin: string, env: NodeJS.Proces
       timedOut = true;
       child.kill("SIGTERM");
       setTimeout(() => child.kill("SIGKILL"), 5000).unref();
-    }, TIMEOUT_MS);
+    }, timeoutMs);
     child.stdout.on("data", (chunk: Buffer) => {
       if (stdout.length < 2_000_000) stdout += chunk.toString("utf8");
     });
