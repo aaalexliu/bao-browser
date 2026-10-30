@@ -154,7 +154,11 @@ interface PendingCapture {
   gestures?: Gesture[];
 }
 
-const publicDir = process.env.BAO_PUBLIC || path.join(process.cwd(), "desktop/src/app/public");
+/** The checkout this server runs from: the cwd, or the repo above desktop/dist, so `serve` works from any directory. */
+const sourceRoot =
+  [process.cwd(), path.resolve(__dirname, "../../../../..")].find((dir) => existsSync(path.join(dir, "desktop/src/app/public"))) ||
+  process.cwd();
+const publicDir = process.env.BAO_PUBLIC || path.join(sourceRoot, "desktop/src/app/public");
 
 /** Move each source step's outlined crop onto the merged step id. A 96×54 stripe is not a crop. */
 function copyMergedShots(
@@ -3427,7 +3431,7 @@ async function browserScript(): Promise<string> {
   }
   const esbuild = await import("esbuild");
   const result = await esbuild.build({
-    absWorkingDir: process.cwd(),
+    absWorkingDir: sourceRoot,
     entryPoints: ["desktop/src/app/client.ts"],
     bundle: true,
     format: "iife",
@@ -3462,8 +3466,9 @@ function writeLogin(res: ServerResponse, body: unknown, cookies: string[]): void
 }
 
 function sendFile(res: ServerResponse, file: string, type: string): void {
+  const body = readFileSync(file);
   res.writeHead(200, { "content-type": type });
-  res.end(readFileSync(file));
+  res.end(body);
 }
 
 function json(res: ServerResponse, body: unknown, status = 200): void {

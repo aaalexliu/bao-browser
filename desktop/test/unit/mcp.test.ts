@@ -224,6 +224,42 @@ test("a live tool names the command that starts Bao when the app is not running"
   }
 });
 
+test("the printed start command serves the app from a directory outside the repo", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-serve-elsewhere-"));
+  const elsewhere = mkdtempSync(path.join(tmpdir(), "bao-cwd-"));
+  const app = spawn(process.execPath, [cli, "serve", "--home", home, "--port", "0"], {
+    cwd: elsewhere,
+    env: { ...process.env, BAO_HOME: home, BAO_PUBLIC: "" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let logs = "";
+  app.stdout.on("data", (chunk) => { logs += chunk.toString(); });
+  app.stderr.on("data", (chunk) => { logs += chunk.toString(); });
+  try {
+    const port = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(logs || "serve did not listen")), 30_000);
+      app.stdout.on("data", () => {
+        const match = logs.match(/bao (\d+) home /);
+        if (!match?.[1]) return;
+        clearTimeout(timer);
+        resolve(Number(match[1]));
+      });
+      app.on("exit", () => {
+        clearTimeout(timer);
+        reject(new Error(logs || "serve exited"));
+      });
+    });
+    const page = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(page.status, 200, logs);
+    assert.match(await page.text(), /<html/i);
+    const script = await fetch(`http://127.0.0.1:${port}/app.js`);
+    assert.equal(script.status, 200, logs);
+    assert.equal(app.exitCode, null, logs);
+  } finally {
+    app.kill();
+  }
+});
+
 test("the start command quotes a home with a space and names the running program", () => {
   assert.equal(
     serveCommand("/Users/a/Library/Application Support/bao", ["node", "/opt/bao/cli.js"], "/usr/local/bin/node"),
