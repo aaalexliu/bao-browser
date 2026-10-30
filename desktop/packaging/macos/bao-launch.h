@@ -39,6 +39,15 @@ const char *bao_login_shell(const char *env_shell, int (*is_exec)(const char *pa
 int bao_discover_node(const char *bao_node, const char *home, const char *env_shell,
                       const BaoDiscoverHooks *hooks, char *out, size_t out_n);
 
+/* HOME when it is absolute, else the passwd entry's directory, else empty.
+ * Only for the Node lookup: an empty HOME must not become /tmp for the library. */
+void bao_user_home(char *out, size_t n);
+
+/* 1 and the browser path in out when Resources/Chromium.app has one, else 0.
+ * Playwright's mac download is "Google Chrome for Testing.app". package-app.sh
+ * copies it to Chromium.app, and the inner executable keeps that name. */
+int bao_find_browser(char *out, size_t n, const char *resources);
+
 int bao_real_is_exec(const char *path, void *ctx);
 int bao_real_major(const char *path, void *ctx);
 int bao_real_shell(const char *shell_path, char *buf, size_t n, void *ctx);

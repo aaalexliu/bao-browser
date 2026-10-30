@@ -742,6 +742,38 @@ static void test_port(void) {
   check(elapsed_ms(start) < 1500, "dead child does not wait out the timeout");
 }
 
+static void test_bundle(const char *home) {
+  char resources[4096];
+  char found[4096];
+  char want[4096];
+  snprintf(resources, sizeof resources, "%s/bundle/Resources", home);
+  mkdir_p(resources);
+  check(bao_find_browser(found, sizeof found, resources) == 0, "no browser in an empty Resources");
+  check(found[0] == 0, "no browser leaves the path empty");
+  snprintf(want, sizeof want, "%s/Chromium.app/Contents/MacOS/Google Chrome for Testing", resources);
+  touch_x(want);
+  check(bao_find_browser(found, sizeof found, resources) == 1 && strcmp(found, want) == 0, "finds Chrome for Testing inside Chromium.app");
+  snprintf(want, sizeof want, "%s/Chromium.app/Contents/MacOS/Chromium", resources);
+  touch_x(want);
+  check(bao_find_browser(found, sizeof found, resources) == 1 && strcmp(found, want) == 0, "prefers Chromium");
+  check(bao_find_browser(found, 8, resources) == 0, "a short buffer finds nothing");
+
+  char saved[4096];
+  const char *env = getenv("HOME");
+  snprintf(saved, sizeof saved, "%s", env ? env : "");
+  char user[4096];
+  setenv("HOME", home, 1);
+  bao_user_home(user, sizeof user);
+  check(strcmp(user, home) == 0, "user home is an absolute HOME");
+  bao_user_home(user, 4);
+  check(user[0] == 0, "a short buffer gets no home");
+  setenv("HOME", "relative", 1);
+  bao_user_home(user, sizeof user);
+  check(user[0] == '/', "a relative HOME falls back to the passwd entry");
+  if (env) setenv("HOME", saved, 1);
+  else unsetenv("HOME");
+}
+
 int main(void) {
   char tmpl[] = "/tmp/bao-launch-XXXXXX";
   char *home = mkdtemp(tmpl);
@@ -755,6 +787,7 @@ int main(void) {
   test_real_exec(home);
   test_instance(home);
   test_port();
+  test_bundle(home);
   rm_rf(home);
   if (failed) {
     fprintf(stderr, "failed %d of %d\n", failed, checks);

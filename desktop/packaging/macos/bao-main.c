@@ -10,7 +10,6 @@
 #include <fcntl.h>
 #include <mach-o/dyld.h>
 #include <signal.h>
-#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,19 +49,6 @@ static void nap_ms(int ms) {
   ts.tv_sec = ms / 1000;
   ts.tv_nsec = (long)(ms % 1000) * 1000000L;
   nanosleep(&ts, NULL);
-}
-
-/* Playwright's mac download is "Google Chrome for Testing.app". The bundle
- * is copied to Chromium.app, and the inner executable keeps that name. */
-static int find_browser(char *out, size_t n, const char *resources) {
-  char dir[4096];
-  const char *names[] = {"Chromium", "Google Chrome for Testing", "chrome"};
-  snprintf(dir, sizeof dir, "%s/Chromium.app/Contents/MacOS", resources);
-  for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
-    snprintf(out, n, "%s/%s", dir, names[i]);
-    if (access(out, X_OK) == 0) return 1;
-  }
-  return 0;
 }
 
 /* 0 and *out set when exec worked. The pipe is CLOEXEC, so a successful exec
@@ -118,23 +104,6 @@ static void stop_pid(pid_t pid) {
   }
   kill(pid, SIGKILL);
   waitpid(pid, &status, 0);
-}
-
-/* Node lookup only. An empty HOME must not become /tmp for the library.
- * The passwd directory is copied because getpwuid reuses one buffer. */
-static void node_lookup_home(char *out, size_t n) {
-  if (!out || n == 0) return;
-  out[0] = '\0';
-  const char *env = getenv("HOME");
-  const char *dir = (env && env[0] == '/') ? env : NULL;
-  if (!dir) {
-    struct passwd *pw = getpwuid(getuid());
-    if (pw && pw->pw_dir && pw->pw_dir[0] == '/') dir = pw->pw_dir;
-  }
-  if (!dir) return;
-  size_t len = strlen(dir);
-  if (len + 1 > n) return;
-  memcpy(out, dir, len + 1);
 }
 
 static int read_line(int fd, char *out, size_t n) {
@@ -234,7 +203,7 @@ int main(void) {
   snprintf(resources, sizeof resources, "%s/Resources", resolved);
   snprintf(root, sizeof root, "%s/bao", resources);
   snprintf(public_dir, sizeof public_dir, "%s/public", root);
-  if (!find_browser(browser, sizeof browser, resources)) {
+  if (!bao_find_browser(browser, sizeof browser, resources)) {
     bao_show_alert(kOpenTitle, kBrowserBody);
     return 1;
   }
@@ -252,7 +221,7 @@ int main(void) {
   }
 
   char user_home[4096];
-  node_lookup_home(user_home, sizeof user_home);
+  bao_user_home(user_home, sizeof user_home);
   char node_bin[4096];
   BaoDiscoverHooks hooks;
   hooks.is_exec = bao_real_is_exec;

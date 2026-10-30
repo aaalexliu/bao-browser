@@ -85,6 +85,11 @@ codesign --force --sign "$IDENTITY" "$CHROME"
   -framework Foundation -framework AppKit -framework UserNotifications \
   -o "$APP/Contents/MacOS/bao" \
   desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c desktop/packaging/macos/bao-notify.m
+# The agents' MCP entry. Built and run once, with a temp HOME that holds only a test
+# library, before it and Bao.app are signed.
+bash desktop/packaging/macos/build-mcp-launcher.sh "$APP"
+# codesign on Bao.app signs only the main executable, so the launcher is signed on its own.
+codesign --force --sign "$IDENTITY" --identifier dev.bao.mcp "$APP/Contents/MacOS/bao-mcp"
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"

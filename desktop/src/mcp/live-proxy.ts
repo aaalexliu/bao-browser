@@ -1,4 +1,5 @@
 import path from "node:path";
+import { appBundleOf } from "../app/bundle";
 import { serverHomes, serverPort } from "../home";
 import type { RunResult } from "../v1/replay";
 import type { LiveReplayer } from "./catalog";
@@ -40,13 +41,18 @@ export function liveToolResult(result: unknown): { content: { type: "text"; text
   };
 }
 
-function shellWord(word: string): string {
+export function shellWord(word: string): string {
   return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The command that starts the app for this home, from the program that is running now. */
+/**
+ * The command that starts the app for this home, from the program that is running now.
+ * The server copy inside Bao.app, which bao-mcp runs, names the app instead of a node command.
+ */
 export function serveCommand(home: string, argv: readonly string[] = process.argv, node: string = process.execPath): string {
   const cli = argv[1];
+  const app = cli ? appBundleOf(cli) : undefined;
+  if (app) return `open ${shellWord(app)}`;
   const program = cli && path.basename(cli) === "cli.js" ? `${shellWord(node)} ${shellWord(path.resolve(cli))}` : "bao";
   return `${program} serve --home ${shellWord(home)}`;
 }

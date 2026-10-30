@@ -354,6 +354,15 @@ test("the start command quotes a home with a space and names the running program
   assert.equal(serveCommand("/tmp/it's", ["bao"], "/usr/local/bin/node"), "bao serve --home '/tmp/it'\\''s'");
 });
 
+test("the server copy inside Bao.app, which bao-mcp runs, names the app instead of node", () => {
+  const cliInApp = ["node", "/Applications/Bao Test.app/Contents/Resources/bao/src/app/cli.js"];
+  assert.equal(serveCommand("/srv/bao lib", cliInApp, "/usr/local/bin/node"), "open '/Applications/Bao Test.app'");
+  assert.equal(
+    serveCommand("/srv/lib", ["node", "/Applications/Bao.app/Contents/Resources/Chromium.app/x/cli.js"], "/usr/local/bin/node"),
+    "/usr/local/bin/node /Applications/Bao.app/Contents/Resources/Chromium.app/x/cli.js serve --home /srv/lib",
+  );
+});
+
 test("a Content-Length request still gets a newline-delimited reply", async () => {
   const { child } = startMcp("bao-mcp-header-");
   try {
