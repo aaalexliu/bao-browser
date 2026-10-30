@@ -55,6 +55,7 @@ import {
 } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { openReplayVideo } from "../v1/replay-video";
+import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
 import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
@@ -3351,20 +3352,15 @@ function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, st
   return out;
 }
 
-function helperStatus(report: unknown): { label: string; platform: string; accessibility: boolean; screenCapture: boolean } {
+function helperStatus(report: unknown): HelperStatus {
   const platform = process.platform;
   const row = report as { accessibility?: boolean; screenCapture?: boolean } | undefined;
-  if (platform !== "darwin" || !bundledHelperApp()) {
-    return { label: "helper off", platform, accessibility: false, screenCapture: false };
-  }
-  const accessibility = !!row?.accessibility;
-  const screenCapture = !!row?.screenCapture;
-  return {
-    label: accessibility && screenCapture ? "helper ok" : "helper needs permission",
+  return capabilityReport({
     platform,
-    accessibility,
-    screenCapture,
-  };
+    helperPresent: platform === "darwin" && !!bundledHelperApp(),
+    accessibility: row?.accessibility === true,
+    screenCapture: row?.screenCapture === true,
+  });
 }
 
 function modelStatus(): { label: string } {

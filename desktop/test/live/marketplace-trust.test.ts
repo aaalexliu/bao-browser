@@ -17,9 +17,10 @@ import { releaseHash } from "../../../web/src/lib/publish";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
+import { testArtifacts } from "../artifacts";
 
 const LISTING_ID = "trust-submit";
-const shots = "/opt/cursor/artifacts/screenshots";
+const shots = testArtifacts("marketplace-trust");
 
 test("a marketplace listing previews permissions and waits for Allow", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";

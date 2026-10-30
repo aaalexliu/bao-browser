@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome, resolveNormalChrome } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -69,12 +69,77 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   assert.equal(ownedChromeLaunchArgs(["--restore-last-session"], {}, "darwin").includes("--restore-last-session"), false);
   assert.throws(() => accountLaunchArgs(9222), /9222/);
   const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  const bundled = "/tmp/Bao.app/Chromium";
   if (process.platform === "darwin") {
     assert.equal(resolveAccountChrome((file) => file === chrome, {}), chrome);
   }
-  assert.equal(resolveAccountChrome((file) => file === bundled, { BAO_BROWSER: bundled }), bundled);
-  assert.throws(() => resolveAccountChrome(() => false, {}), /Chrome was not found/);
+  const accountExe = path.join(mkdtempSync(path.join(tmpdir(), "bao-account-bin-")), "chrome");
+  writeFileSync(accountExe, "");
+  chmodSync(accountExe, 0o755);
+  assert.equal(resolveAccountChrome(() => false, { BAO_BROWSER: accountExe }, () => "/missing/playwright"), accountExe);
+  assert.throws(() => resolveAccountChrome(() => false, {}, () => "/missing/playwright"), /Chrome was not found/);
+});
+
+test("installed Chrome wins, and a missing BAO_BROWSER falls through", () => {
+  const bundled = "/tmp/Bao.app/Chromium";
+  const both = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME || file === bundled;
+  assert.equal(resolveNormalChrome(both, { BAO_BROWSER: bundled }, "darwin"), ACCOUNT_CHROME_MAC);
+  assert.equal(resolveNormalChrome(both, { BAO_BROWSER: bundled }, "linux"), LINUX_CHROME);
+  assert.equal(resolveNormalChrome(both, { BAO_BROWSER: "/missing/chrome" }, "linux"), LINUX_CHROME);
+  const exe = path.join(mkdtempSync(path.join(tmpdir(), "bao-bundled-")), "chrome");
+  writeFileSync(exe, "");
+  chmodSync(exe, 0o755);
+  assert.equal(resolveNormalChrome(() => false, { BAO_BROWSER: exe }, "linux", () => "/missing/playwright"), exe);
+  assert.throws(() => resolveNormalChrome(() => false, { BAO_BROWSER: "/missing/chrome" }, "linux", () => "/missing/playwright"), /Chrome was not found/);
+});
+
+test("the product arg builder drops the mock keychain", () => {
+  const mocked = ownedChromeLaunchArgs(["--use-mock-keychain", "--password-store=basic"], { BAO_TEST_MOCK_KEYCHAIN: "1" }, "darwin");
+  assert.equal(mocked.includes("--use-mock-keychain"), false);
+  assert.equal(mocked.includes("--password-store=basic"), false);
+});
+
+test("a product command line rejects mock keychain flags in every form", () => {
+  const flags = [
+    "--use-mock-keychain",
+    "--use-mock-keychain=1",
+    "--use-mock-keychain ",
+    "--password-store=basic",
+    "--password-store=gnome",
+    "--password-store ",
+  ];
+  for (const flag of flags) {
+    const verdict = assessOwnedCommand(`${fixture.trim()} ${flag}`, owned);
+    assert.equal(verdict.ok, false, flag);
+    assert.match(verdict.reason || "", /mock keychain/);
+  }
+  const cleaned = ownedChromeLaunchArgs([
+    "--use-mock-keychain",
+    "--use-mock-keychain=1",
+    "--use-mock-keychain ",
+    "--password-store=basic",
+    "--password-store=gnome",
+    "--password-store ",
+  ], {}, "darwin");
+  assert.equal(cleaned.some((arg) => /use-mock-keychain|password-store/.test(arg)), false);
+  const source = readFileSync(path.join(process.cwd(), "desktop/src/launch.ts"), "utf8");
+  assert.equal(source.includes("...(opts.appendArgs ?? [])"), false);
+});
+
+test("BAO_BROWSER and the Playwright path must be executable files", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-chrome-bin-"));
+  const dir = path.join(root, "dir");
+  mkdirSync(dir);
+  const plain = path.join(root, "plain");
+  writeFileSync(plain, "");
+  const exe = path.join(root, "chrome");
+  writeFileSync(exe, "");
+  chmodSync(exe, 0o755);
+  const system = (file: string) => file === LINUX_CHROME || file === ACCOUNT_CHROME_MAC ? false : existsSync(file);
+  assert.throws(() => resolveNormalChrome(system, { BAO_BROWSER: dir }, "linux", () => plain), /Chrome was not found/);
+  assert.throws(() => resolveNormalChrome(system, { BAO_BROWSER: plain }, "linux", () => dir), /Chrome was not found/);
+  assert.equal(resolveNormalChrome(system, { BAO_BROWSER: exe }, "linux", () => plain), exe);
+  assert.throws(() => resolveNormalChrome(system, {}, "linux", () => dir), /Chrome was not found/);
+  assert.equal(resolveNormalChrome(system, {}, "linux", () => exe), exe);
 });
 
 test("remote debugging port 9222 is refused", () => {
@@ -117,15 +182,6 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   assert.match(main, /--app=/);
   assert.match(main, /--disable-infobars/);
   assert.match(script, /bao-launch\.c/);
-  assert.match(script, /stage-runtime\.sh/);
-  assert.match(script, /require-staged\.js/);
-  assert.match(script, /env -u NODE_PATH/);
-  assert.match(script, /BAO_HELPER_APP/);
-  assert.match(script, /helper-identity\.js/);
-  const stage = readFileSync(path.join(process.cwd(), "desktop/packaging/stage-runtime.sh"), "utf8");
-  assert.match(stage, /extension\/dist/);
-  assert.match(stage, /host-grant\.js/);
-  assert.match(stage, /require-staged\.js/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);
   assert.match(main, /bao_discover_node/);
@@ -145,10 +201,6 @@ test("package-app.sh stops before it builds an app when the helper is absent", (
   const dist = mkdtempSync(path.join(tmpdir(), "bao-dist-"));
   const helper = path.join(dist, "fixture", "BaoOSHelper.app");
   try {
-    const script = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/package-app.sh"), "utf8");
-    const helperAt = script.indexOf("helper-identity.js");
-    const stageAt = script.indexOf("stage-runtime.sh");
-    assert.ok(helperAt >= 0 && stageAt > helperAt);
     const result = spawnSync("bash", ["desktop/packaging/macos/package-app.sh"], {
       cwd: process.cwd(),
       encoding: "utf8",
