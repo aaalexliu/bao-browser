@@ -12,6 +12,8 @@ Public date, download, and upload demos are `desktop/test/live/files-dates-publi
 npx tsc -p tsconfig.desktop.json && node desktop/test/run-live.mjs
 ```
 
+Name compiled files after the runner to run only those. An unknown name fails the run. `npm run test:desktop:integration` runs `browser.test.js` and `drift.test.js`, the local fixture capture.
+
 Installed Chrome on a Mac is headed when `BAO_HEADED` is unset, and headless when `BAO_HEADED=0`. The required suite does not set `BAO_TEST_MOCK_KEYCHAIN`. The product builder drops `--use-mock-keychain` and `--password-store` from both argument lists, including a value after `=` or a trailing space. `assessOwnedCommand` rejects a command line that still carries either flag. A Linux pass does not show that the Mac cookie relaunch is fine. Stderr prints `bao shutdown` with `browserClose`, the child exit, and any killed profile pids.
 
 Mac repro for the session cookie and the startup navigation, on the m1 worker, from this branch:

@@ -261,7 +261,13 @@ test("bao runs the compiled cli and the aggregate scripts exist", () => {
   assert.match(pkg.scripts["typecheck:desktop"], /tsc -p tsconfig\.desktop\.json --noEmit/);
   assert.match(pkg.scripts["typecheck:extension"], /extension\/tsconfig\.json/);
   assert.match(pkg.scripts["test:desktop:unit"], /run-v1\.mjs/);
-  assert.match(pkg.scripts["test:desktop:integration"], /run-v1\.mjs live/);
+  const integration = pkg.scripts["test:desktop:integration"].split(" ");
+  const live = integration.slice(integration.indexOf("desktop/test/run-live.mjs") + 1);
+  assert.deepEqual(live, ["browser.test.js", "drift.test.js"]);
+  for (const name of live) {
+    const source = path.join(root, "desktop/test/live", name.replace(/\.js$/, ".ts"));
+    assert.equal(existsSync(source), true, source);
+  }
   assert.match(pkg.scripts["package:mac"], /package-app\.sh/);
   assert.match(pkg.scripts.typecheck, /typecheck:desktop/);
   assert.match(pkg.scripts.check, /test:desktop:unit/);
@@ -279,6 +285,18 @@ test("bao runs the compiled cli and the aggregate scripts exist", () => {
   assert.equal(result.status, 1, output);
   assert.match(output, /usage: bao/);
   assert.doesNotMatch(output, /tsconfig\.desktop\.json/);
+});
+
+test("live runner rejects a test name it did not compile", () => {
+  const result = spawnSync(process.execPath, [path.join(root, "desktop/test/run-live.mjs"), "browser.test.js", "nope.test.js"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 20000,
+  });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.status, 1, output);
+  assert.match(output, /no compiled live test named: nope\.test\.js/);
+  assert.doesNotMatch(output, /browser\.test\.js/);
 });
 
 test("stager refuses the repo and the filesystem root", () => {
