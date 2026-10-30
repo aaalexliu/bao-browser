@@ -18,9 +18,10 @@
     "readBack": { "$ref": "#/$defs/readBack" },
     "precondition": { "$ref": "#/$defs/precondition" },
     "summary": { "type": "string" },
+    "intent": { "type": "string" },
     "driver": {
-      "enum": ["playwright", "extension"],
-      "description": "Which browser runs this workflow. Absent means Playwright, Bao's own Chrome."
+      "enum": ["playwright", "extension", "cdp-live"],
+      "description": "Which browser runs this workflow. Absent means Playwright, Bao's own Chrome. cdp-live is the Chrome a live session drove."
     },
     "inputs": {
       "type": "array",
@@ -244,6 +245,14 @@
               "required": ["present"],
               "properties": {
                 "present": { "type": "string", "minLength": 1 }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["absent"],
+              "properties": {
+                "absent": { "type": "string", "minLength": 1 }
               }
             }
           ]

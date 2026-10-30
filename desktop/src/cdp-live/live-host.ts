@@ -1,7 +1,6 @@
 import path from "node:path";
 import { navigationGuard, originsFor } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
-import { workflowFromLive, type LiveAction } from "./attach";
 import type { ChromeAx } from "./ax";
 import { type CdpLiveDriver } from "./driver";
 import {
@@ -14,6 +13,7 @@ import {
   type OpenProfileWindow,
 } from "./live-target";
 import { acquireCdpLock, CDP_LOCK_PATH, rememberLockTarget, releaseCdpLock, takeDeadTarget } from "./lock";
+import { redactLabel } from "./live-record";
 import {
   admit,
   buildView,
@@ -22,6 +22,7 @@ import {
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
   markedFieldValue,
+  markedState,
   pageHalt,
   planClick,
   planKey,
@@ -31,6 +32,7 @@ import {
   readLivePage,
   sameTarget,
   scrollLivePage,
+  searchField,
   targetVerdict,
   viewPage,
   workflowIdsFromIntent,
@@ -38,13 +40,26 @@ import {
   type LiveOpName,
   type LiveRead,
   type LiveViewPage,
+  type MarkedState,
   type PageFacts,
   type ScrollFacts,
   type SlotState,
 } from "./live-ops";
+import {
+  cartAddItem,
+  clickEffect,
+  inCartMarker,
+  LiveTrail,
+  QUERY_INPUT,
+  trailIdentity,
+  workflowFromTrail,
+  type LiveSide,
+} from "./live-trail";
 import { guardPreset, presetForUrl } from "./presets";
 import type { CdpSocket } from "./socket";
-import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
+import { leafTexts } from "../v1/recorder";
+import { pageWhen, type PageGuard } from "../v1/replay";
+import type { Identity, WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
 
 const AGENT = "bao-live";
@@ -66,10 +81,21 @@ interface OpenState {
   host: string;
   epoch: number;
   read: LiveRead | null;
+  /** The page facts behind `read`, before redaction. */
+  facts: PageFacts | null;
   halted: string;
   refused: boolean;
-  actions: LiveAction[];
+  /** Every act that went through. The saved workflow is built from it. */
+  trail: LiveTrail;
+  startedAt: number;
   steps: { name: string; status: string; ms: number }[];
+}
+
+/** The marked control and the page around it, read after every check and before the act. */
+interface Before {
+  identity?: Identity;
+  nodes: Identity[];
+  side: LiveSide;
 }
 
 export interface ReplayTarget {
@@ -293,10 +319,13 @@ export function createLiveHost(opts: LiveHostOptions): {
       if (op === "live_type") return await typeInto(String(body.ref || ""), String(body.text || ""));
       if (op === "live_key") {
         const key = String(body.key || "");
-        return await act("key", (target) => pressLiveKey(target, key, String(body.ref || "")), key);
+        const ref = String(body.ref || "");
+        return await act("key", ref, key, (target) => pressLiveKey(target, key, ref));
       }
       if (op === "live_scroll") {
-        return await act("scroll", (target) => scrollLive(target, String(body.direction || ""), String(body.ref || "")));
+        const direction = String(body.direction || "");
+        const ref = String(body.ref || "");
+        return await act("scroll", ref, direction, (target) => scrollLive(target, direction, ref));
       }
       return await look("screenshot");
     } catch (err) {
@@ -361,6 +390,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       driver.setStopPath(flags.stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
       const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40));
+      const trail = await LiveTrail.open(opts.home);
       open = {
         id: ids.workflowId.slice(0, 40),
         intent,
@@ -377,9 +407,11 @@ export function createLiveHost(opts: LiveHostOptions): {
         host,
         epoch: 0,
         read: null,
+        facts: null,
         halted: "",
         refused: false,
-        actions: [],
+        trail,
+        startedAt: Date.now(),
         steps: [],
       };
       slot = { phase: "open", id: open.id };
@@ -429,7 +461,37 @@ export function createLiveHost(opts: LiveHostOptions): {
     state.epoch += 1;
     const facts = await state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
     state.read = buildView(facts, state.epoch, state.guard);
+    state.facts = facts;
     return { read: state.read, facts };
+  }
+
+  /** The marked control's full identity, from tree(), and the page around it. A failed read refuses the act. */
+  async function readBefore(state: OpenState, index: number, leaves = false): Promise<Before> {
+    const seen = index >= 0 ? await state.driver.markedTree(index) : undefined;
+    return {
+      identity: trailIdentity(seen?.marked),
+      nodes: seen?.tree.nodes || [],
+      side: {
+        url: await state.driver.locationHref(),
+        leaves: leaves ? await state.driver.evaluateFunction<Record<string, string>>(leafTexts, null) : {},
+        text: seen?.mark.text || "",
+        value: seen?.mark.value || "",
+        missing: !seen || seen.mark.missing,
+      },
+    };
+  }
+
+  /** The same reads after the act. The act already happened, so a read that fails stays empty. */
+  async function readAfter(state: OpenState, index: number, leaves = false): Promise<LiveSide> {
+    const url = await state.driver.locationHref().catch(() => "");
+    const leafMap = leaves
+      ? await state.driver.evaluateFunction<Record<string, string>>(leafTexts, null).catch(() => ({}))
+      : {};
+    const gone: MarkedState = { handle: "", text: "", value: "", missing: true };
+    const mark = index >= 0
+      ? await state.driver.evaluateFunction<MarkedState>(markedState, { markIndex: index }).catch(() => gone)
+      : gone;
+    return { url, leaves: leafMap, text: mark.text, value: mark.value, missing: mark.missing };
   }
 
   async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
@@ -459,11 +521,19 @@ export function createLiveHost(opts: LiveHostOptions): {
     });
   }
 
-  async function act(action: "key" | "scroll", run: (target: LiveActTarget) => Promise<LiveActOutcome>, key = ""): Promise<unknown> {
+  /** A key press or a scroll. `what` is the key, or the scroll direction. */
+  async function act(
+    action: "key" | "scroll",
+    ref: string,
+    what: string,
+    run: (target: LiveActTarget) => Promise<LiveActOutcome>,
+  ): Promise<unknown> {
     if (!open?.read) throw new Error("no live page");
     const state = open;
     const read = open.read;
     const op = LOOK_OPS[action];
+    const index = ref ? read.targets.byRef.get(ref)?.index ?? -1 : -1;
+    let before: Before | undefined;
     const outcome = await run({
       driver: state.driver,
       read,
@@ -471,7 +541,10 @@ export function createLiveHost(opts: LiveHostOptions): {
       stopPath: state.stopPath,
       hosts: state.hosts,
       origins: state.origins,
-      before: (name, label) => note(name, label, "running", null),
+      before: async (name, label) => {
+        before = await readBefore(state, index);
+        await note(name, label, "running", null);
+      },
       reread: async () => (await reread(state)).read,
     });
     if (outcome.kind !== "applied") {
@@ -480,9 +553,14 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note(action, outcome.reason, "failed", null);
       return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
-    if (action === "key") {
-      state.actions.push({ name: "key", key, label: outcome.label, path: read.view.path, kind: outcome.control });
-    }
+    const after = await readAfter(state, -1);
+    await state.trail.add({
+      op: action,
+      ...(action === "key" ? { key: what } : { detail: what }),
+      identity: before?.identity,
+      beforeUrl: before?.side.url,
+      afterUrl: after.url || undefined,
+    });
     return look(action, outcome.scroll ? { scroll: outcome.scroll } : {});
   }
 
@@ -506,13 +584,13 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
     const index = target?.index ?? -1;
     const label = open.read.view.controls.find((control) => control.ref === ref)?.label || ref;
-    const kind = open.read.view.controls.find((control) => control.ref === ref)?.kind || "button";
     open.driver.takeBlockedNav();
     if (!await stillMarked({ driver: open.driver, read: open.read, guard: open.guard }, ref, index)) {
       open.refused = true;
       await note("click", "stale_ref", "failed", null);
       return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: "stale_ref" }, view: shown(open.read), shot: "" });
     }
+    const before = await readBefore(open, index, true);
     await note("click", label, "running", null);
     open.driver.markTrust();
     try {
@@ -535,7 +613,18 @@ export function createLiveHost(opts: LiveHostOptions): {
       }
       return reply({ op: "live_click", session: open.id, outcome: { kind: "refused", reason: blockedNav }, view: shown(open.read), shot: "" });
     }
-    open.actions.push({ name: "click", label, path: open.read.view.path, kind });
+    const after = await readAfter(open, index, true);
+    // The accessible name, not the redacted view label, so the item in "Add 1 ct {item}" keeps its digits.
+    const name = before.identity?.name || before.identity?.text || label;
+    const skipWhen = cartAddItem(name) ? inCartMarker(name, before.nodes, (await open.driver.tree().catch(() => null))?.nodes || []) : "";
+    await open.trail.add({
+      op: "click",
+      identity: before.identity,
+      beforeUrl: before.side.url,
+      afterUrl: after.url || undefined,
+      ...clickEffect(before.side, after),
+      ...(skipWhen ? { skipWhen } : {}),
+    });
     return look("click");
   }
 
@@ -561,6 +650,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note("type", plan.refusal, "failed", null);
       return reply({ op: "live_type", session: open.id, outcome: { kind: "refused", reason: plan.refusal }, view: shown(open.read), shot: "" });
     }
+    const before = await readBefore(open, index);
     await note("type", label, "running", null);
     await open.driver.evaluateFunction(focusLiveMark, { markIndex: index });
     try {
@@ -574,7 +664,17 @@ export function createLiveHost(opts: LiveHostOptions): {
       }
       throw err;
     }
-    open.actions.push({ name: "type", label, path: open.read.view.path, kind: "field", value: text });
+    const after = await readAfter(open, index);
+    const fact = open.facts?.controls.find((item) => item.index === index);
+    await open.trail.add({
+      op: "type",
+      identity: before.identity,
+      // The whole field, as the recorder keeps it. Text typed after a prefilled value includes that value.
+      value: after.value || `${before.side.value}${text}`,
+      ...(fact && searchField(fact) ? { parameter: QUERY_INPUT } : {}),
+      beforeUrl: before.side.url,
+      afterUrl: after.url || undefined,
+    });
     return look("type");
   }
 
@@ -593,18 +693,22 @@ export function createLiveHost(opts: LiveHostOptions): {
     });
   }
 
+  /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
   function saveWorkflow(): void {
     if (!open) return;
-    const workflow = workflowFromLive({
+    const events = open.trail.list();
+    if (!events.length) return;
+    const workflow = workflowFromTrail({
       id: open.id,
       name: open.intent.slice(0, 80),
       intent: open.intent,
       startUrl: open.startUrl,
-      createdAt: Date.now(),
-      actions: open.actions,
+      createdAt: open.startedAt,
+      savedAt: Date.now(),
+      events,
+      guard: open.guard,
     });
-    const errors = validateWorkflow(workflow);
-    if (errors.length) throw new Error(errors.join(", "));
+    if (!workflow.steps.length) return;
     new Library(opts.home).save(workflow);
   }
 
@@ -678,7 +782,7 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
     const driver = target.driver;
     driver.setOrigins(target.origins);
     await driver.goto(workflow.startUrl);
-    const look = async (markIndex = -1): Promise<{ read: LiveRead; halt: string | null }> => {
+    const look = async (markIndex = -1): Promise<{ read: LiveRead; facts: PageFacts; halt: string | null }> => {
       const facts = await driver.evaluateFunction<PageFacts>(readLivePage, { markIndex });
       const read = buildView(facts, 1, target.guard);
       const halt = pageHalt({
@@ -688,8 +792,9 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
         text: facts.text,
         stopPath: target.stopPath,
       });
-      return { read, halt };
+      return { read, facts, halt };
     };
+    let guard: PageGuard | undefined;
     let stoppedAt = "";
     let status: LiveReplayResult["status"] = "passed";
     let reason = "";
@@ -699,6 +804,17 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
       reason = why;
     };
     for (const step of workflow.steps) {
+      const wants = pageWhen(step);
+      if (wants) {
+        if (!guard || guard.key !== wants.key) {
+          const { facts } = await look();
+          const shows = facts.controls.some((item) => item.label.includes(wants.text)) || (facts.text || "").includes(wants.text);
+          guard = { key: wants.key, open: shows === wants.shown };
+        }
+        if (!guard.open) continue;
+      } else {
+        guard = undefined;
+      }
       if (step.human || step.action !== "click") {
         stopAt(step.id, "needs_human", step.action);
         break;
@@ -709,7 +825,8 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
         stopAt(step.id, "needs_human", halt);
         break;
       }
-      const control = read.view.controls.find((item) => item.label === name);
+      const label = redactLabel(name);
+      const control = label ? read.view.controls.find((item) => item.label === label) : undefined;
       if (!control) {
         stopAt(step.id, "failed", "not_found");
         break;

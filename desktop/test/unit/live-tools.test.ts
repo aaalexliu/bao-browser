@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
-import { workflowFromLive } from "../../src/cdp-live/attach";
 import { openLiveWindow, type CdpLiveDriver } from "../../src/cdp-live/driver";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { pressLiveKey, scrollLive, type LiveActTarget } from "../../src/cdp-live/live-host";
@@ -26,7 +25,9 @@ import {
 } from "../../src/cdp-live/live-ops";
 import { guardPreset } from "../../src/cdp-live/presets";
 import { connectCdp } from "../../src/cdp-live/socket";
+import { workflowFromTrail } from "../../src/cdp-live/live-trail";
 import { liveCliBody } from "../../src/mcp/live-proxy";
+import type { TrailEvent } from "../../src/v1/interpret";
 import { validateWorkflow } from "../../src/v1/schema";
 
 const generic = guardPreset("generic");
@@ -229,26 +230,42 @@ test("the CLI passes key, scroll direction, and snapshot page", () => {
 });
 
 test("a saved live workflow keeps each key press, on its control when it had one", () => {
-  const doc = workflowFromLive({
+  const field = { surface: "dom" as const, role: "input", name: "Search Costco", nameAttr: "k", tag: "input", path: [] };
+  const storefront = "https://www.instacart.com/store/costco/storefront";
+  const results = "https://www.instacart.com/store/costco/s?k=blueberries";
+  const events: TrailEvent[] = [
+    { id: "live-1", ts: 1, kind: "act", op: "type", identity: field, value: "blueberries", parameter: "query", beforeUrl: storefront, afterUrl: storefront },
+    { id: "live-2", ts: 2, kind: "act", op: "key", key: "Enter", identity: field, beforeUrl: storefront, afterUrl: results },
+    { id: "live-3", ts: 3, kind: "act", op: "key", key: "Escape", beforeUrl: results, afterUrl: results },
+    {
+      id: "live-4",
+      ts: 4,
+      kind: "act",
+      op: "click",
+      identity: { surface: "dom", role: "button", name: "Add to cart", tag: "button", path: [] },
+      beforeUrl: results,
+      afterUrl: results,
+      subtreeBefore: "",
+      subtreeAfter: "1 in cart",
+    },
+  ];
+  const doc = workflowFromTrail({
     id: "wf-blueberries",
     name: "Blueberries",
     intent: "Put Costco blueberries in the cart",
-    startUrl: "https://www.instacart.com/store/costco",
+    startUrl: storefront,
     createdAt: 1,
-    actions: [
-      { name: "type", label: "Search Costco", path: "/store/costco", kind: "field", value: "blueberries" },
-      { name: "key", key: "Enter", label: "Search Costco", path: "/store/costco", kind: "field" },
-      { name: "key", key: "Escape", label: "", path: "/store/s", kind: "" },
-      { name: "click", label: "Add to cart", path: "/products/1", kind: "submit" },
-    ],
+    savedAt: 2,
+    events,
+    guard: instacart,
   });
-  assert.deepEqual(doc.steps.map((step) => step.action), ["confirm", "type", "key", "key", "click"]);
-  const enter = doc.steps[2];
+  assert.deepEqual(doc.steps.map((step) => step.action), ["type", "key", "key", "click"]);
+  const enter = doc.steps[1];
   assert.equal(enter?.key, "Enter");
-  assert.equal(enter?.identity?.role, "textbox");
   assert.equal(enter?.identity?.name, "Search Costco");
-  assert.equal(enter?.label, "Press Enter in Search Costco");
-  const escape = doc.steps[3];
+  assert.equal(enter?.label, "Press Enter");
+  assert.equal(enter?.expect?.match, "k={{query}}");
+  const escape = doc.steps[2];
   assert.equal(escape?.key, "Escape");
   assert.equal(escape?.identity, undefined);
   assert.deepEqual(validateWorkflow(doc), []);

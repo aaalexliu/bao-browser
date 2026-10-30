@@ -2,8 +2,8 @@
 // advances when the person does that step. It never clicks, types, or presses keys.
 
 import { lookup } from "./identity";
-import type { Driver, GuideAct, LiveTree } from "./replay";
-import { holdsExpect } from "./replay";
+import type { Driver, GuideAct } from "./replay";
+import { holdsExpect, pageShows, pageWhen, type PageGuard } from "./replay";
 import { subst, type Identity, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface GuideStepResult {
@@ -46,7 +46,7 @@ export async function guideMe(
   const total = workflow.steps.length;
   const pollMs = opts.pollMs ?? 40;
   const timeoutMs = opts.timeoutMs ?? 20000;
-  let guard: { present: string; open: boolean } | undefined;
+  let guard: PageGuard | undefined;
   const report = (index: number, step: WorkflowStep, status: GuideProgress["status"]) => {
     opts.onProgress?.({
       index,
@@ -63,10 +63,10 @@ export async function guideMe(
       report(index, step, "stopped");
       return { runId: opts.runId || "guide", status: "stopped", actions: actionCount(driver), steps };
     }
-    const present = step.when?.present?.trim();
-    if (present) {
-      if (!guard || guard.present !== present) {
-        guard = { present, open: pageShows(await driver.tree(), present) };
+    const wants = pageWhen(step);
+    if (wants) {
+      if (!guard || guard.key !== wants.key) {
+        guard = { key: wants.key, open: pageShows(await driver.tree(), wants.text) === wants.shown };
       }
       if (!guard.open) {
         steps.push({ id: step.id, status: "skipped" });
@@ -217,11 +217,6 @@ function sameTarget(identity: Identity | undefined, act: { id?: string; testId?:
   if (identity.nameAttr && act.name && identity.nameAttr === act.name) return true;
   if (identity.name && act.name && identity.name === act.name) return true;
   return false;
-}
-
-function pageShows(tree: LiveTree, present: string): boolean {
-  if (tree.texts.some((text) => text.includes(present))) return true;
-  return tree.nodes.some((node) => [node.text, node.name, node.label].some((bit) => bit?.includes(present)));
 }
 
 function sleep(ms: number): Promise<void> {
