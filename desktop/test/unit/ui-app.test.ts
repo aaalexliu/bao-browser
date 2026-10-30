@@ -1,13 +1,11 @@
 // Headless window. Fixture page only. No vendor network and no real profile.
 
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
 import { startApp } from "../../src/app/server";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
+import { applyHermeticApp } from "../runtime";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
@@ -40,12 +38,13 @@ async function post(port: number, pathname: string, body?: unknown): Promise<unk
 
 test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, async () => {
   process.env.BAO_DRIVE = "1";
-  process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   delete process.env.BAO_HEAL_FIXTURE;
-  const home = mkdtempSync(path.join(tmpdir(), "bao-ui-"));
   const previousChrome = process.env.BAO_CHROME_USER_DATA;
-  process.env.BAO_CHROME_USER_DATA = path.join(home, "no-chrome");
-  const app = await startApp({ home, port: 0 });
+  const previousHome = process.env.BAO_HOME;
+  const previousHeaded = process.env.BAO_HEADED;
+  const previousBrowser = process.env.BAO_BROWSER;
+  const dirs = applyHermeticApp("ui-app");
+  const app = await startApp({ home: dirs.home, port: 0 });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
@@ -227,6 +226,12 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
   } finally {
     if (previousChrome === undefined) delete process.env.BAO_CHROME_USER_DATA;
     else process.env.BAO_CHROME_USER_DATA = previousChrome;
+    if (previousHome === undefined) delete process.env.BAO_HOME;
+    else process.env.BAO_HOME = previousHome;
+    if (previousHeaded === undefined) delete process.env.BAO_HEADED;
+    else process.env.BAO_HEADED = previousHeaded;
+    if (previousBrowser === undefined) delete process.env.BAO_BROWSER;
+    else process.env.BAO_BROWSER = previousBrowser;
     delete process.env.BAO_HEAL_FIXTURE;
     await page.close().catch(() => undefined);
     await browser.close().catch(() => undefined);

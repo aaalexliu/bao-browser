@@ -1,10 +1,7 @@
-// Hermetic runner for npm run test:v1. The suite never sees a logged-in Cursor
-// account or a vendor model key. A test opts in by setting the env in its own
-// process, after this runner has cleared it.
-
-import { execFileSync, spawn } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { spawn, execFileSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import path from "node:path";
+import { compiledTestPlan, hermeticChildEnv, pinnedTestBrowser } from "../dist/desktop/test/runtime.js";
 
 function isolationArg() {
   const help = execFileSync(process.execPath, ["--test", "--help"], { encoding: "utf8" });
@@ -12,28 +9,17 @@ function isolationArg() {
   return "--experimental-test-isolation=process";
 }
 
-const dir = "desktop/dist/desktop/test/unit";
-const files = readdirSync(dir)
-  .filter((name) => name.endsWith(".test.js"))
-  .sort()
-  .map((name) => path.join(dir, name));
-
-const env = { ...process.env, BAO_HEAL_CURSOR_ACCOUNT: "0" };
-for (const key of [
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GROQ_API_KEY",
-  "XAI_API_KEY",
-  "BAO_XAI_MODEL",
-  "CURSOR_API_KEY",
-  "BAO_HEAL_CURSOR",
-  "BAO_HEAL_CURSOR_RESPONSE",
-  "BAO_HEAL_FIXTURE",
-  "BAO_CURSOR_AGENT",
-]) {
-  delete env[key];
+const sourceDir = "desktop/test/unit";
+const distDir = "desktop/dist/desktop/test/unit";
+const plan = compiledTestPlan(sourceDir, distDir);
+for (const stale of plan.stale) rmSync(path.join(distDir, stale), { force: true });
+if (plan.missing.length) {
+  console.error(`compiled unit test missing: ${plan.missing.join(", ")}`);
+  process.exit(1);
 }
 
+const files = plan.run.map((name) => path.join(distDir, name));
+const env = hermeticChildEnv(process.env, pinnedTestBrowser());
 const child = spawn(process.execPath, ["--test", isolationArg(), ...files], {
   env,
   stdio: "inherit",

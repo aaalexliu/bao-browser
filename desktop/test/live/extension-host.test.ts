@@ -14,6 +14,7 @@ import { keepSessionCookies } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
 import { EXTENSION_ID } from "../../src/extension/protocol";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { testArtifacts } from "../artifacts";
 
 process.env.BAO_CHROME_NO_SANDBOX = process.env.BAO_CHROME_NO_SANDBOX || "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -22,7 +23,7 @@ for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CURSOR_API_KEY"]) del
 const BOOKS = "https://books.toscrape.com/";
 const BOOKS_ORIGIN = "https://books.toscrape.com/*";
 const EXT_DIR = path.resolve("extension/dist");
-const ARTIFACTS = "/opt/cursor/artifacts";
+const ARTIFACTS = testArtifacts("extension-host");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

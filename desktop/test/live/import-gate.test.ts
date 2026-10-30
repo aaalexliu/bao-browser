@@ -11,11 +11,12 @@ import test from "node:test";
 import { chromium } from "playwright";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
+import { testArtifacts } from "../artifacts";
 
 process.env.TZ = "America/New_York";
 process.env.BAO_CHROME_NO_SANDBOX = "1";
 
-const shots = "/opt/cursor/artifacts/screenshots";
+const shots = testArtifacts("import-gate");
 
 test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-gate-live-"));
