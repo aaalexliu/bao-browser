@@ -34,7 +34,7 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { withoutPrice } from "../../src/v1/identity";
 import { locatorsFromIdentity, matchLabeledControl } from "../../src/v1/locators";
 import type { TrailEvent } from "../../src/v1/interpret";
-import { pageShows, replay, type Driver } from "../../src/v1/replay";
+import { holdsExpect, pageShows, replay, type Driver } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { fakeChromeHelper } from "../fake-helper";
@@ -134,7 +134,10 @@ test("a live trail condenses into a valid cdp-live workflow that types the recor
   assert.equal(typed?.label, "Type into \"Search Costco\"", "the label names the field, not the search text");
   assert.equal(typed?.identity?.testId, "search-input");
   assert.equal(enter?.key, "Enter");
-  assert.equal(enter?.expect?.match, "/store/costco/s");
+  assert.equal(enter?.expect?.match, "k=blueberries");
+  const at = (url: string) => ({ nodes: [], url, texts: [], values: [] });
+  assert.equal(holdsExpect(enter!.expect!, at(STOREFRONT), {}), false, "the storefront does not pass the Enter step's check");
+  assert.equal(holdsExpect(enter!.expect!, at(RESULTS), {}), true);
   assert.equal(add?.label, `Click "${ADD}"`);
   assert.deepEqual(add?.when, { absent: MARKER });
   assert.equal(add?.expect?.match, "1 ct");
@@ -164,8 +167,11 @@ test("a search for text that matches a deny word saves, and its step names the f
     },
   ]);
   assertClean(workflow);
-  const typed = workflow.steps[0];
+  const [typed, enter] = workflow.steps;
   assert.deepEqual([typed?.action, typed?.value, typed?.input, typed?.label], ["type", "q tip", undefined, "Type into \"Search Costco\""]);
+  assert.equal(enter?.expect?.match, "k=q tip");
+  assert.equal(holdsExpect(enter!.expect!, { nodes: [], url: found, texts: [], values: [] }, {}), true);
+  assert.equal(holdsExpect(enter!.expect!, { nodes: [], url: STOREFRONT, texts: [], values: [] }, {}), false);
   assert.deepEqual(refusedStepLabels(workflow, instacart), []);
 });
 

@@ -2,6 +2,7 @@
 // Order: text that appeared in the target subtree, then a value or checked
 // change, then a URL change. A URL template uses a param only when the
 // recorded URL contained that typed value as a query value or path segment.
+// A literal typed value, which has no input, stays in the URL check as written.
 // When none of those happened, the step expects the page to settle and is
 // marked low-confidence. A browser error page is not an effect.
 
@@ -10,7 +11,8 @@ import type { Expectation, Identity, Postcondition, WorkflowStep } from "./schem
 export const SETTLED_EXPECT = "no error and the page settled";
 
 export interface KnownTyped {
-  name: string;
+  /** The input the value fills. A literal typed value has none. */
+  name?: string;
   value: string;
 }
 
@@ -129,9 +131,10 @@ function appearedText(before: string | undefined, after: string | undefined): st
 }
 
 function templateText(text: string, known: readonly KnownTyped[]): string {
-  const exact = [...known].reverse().find((item) => item.value === text);
+  const named = known.filter((item) => item.name);
+  const exact = [...named].reverse().find((item) => item.value === text);
   if (exact) return `{{${exact.name}}}`;
-  const inner = [...known].reverse().find((item) => item.value.length >= 3 && text.includes(item.value));
+  const inner = [...named].reverse().find((item) => item.value.length >= 3 && text.includes(item.value));
   if (!inner) return text;
   return text.split(inner.value).join(`{{${inner.name}}}`);
 }
@@ -163,36 +166,24 @@ function urlCheck(
     return undefined;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-  const query: string[] = [];
-  let templated = false;
+  const typedQuery: string[] = [];
   for (const [key, raw] of url.searchParams) {
     let decoded = raw;
     try { decoded = decodeURIComponent(raw); } catch { /* keep the raw value */ }
     const hit = [...known].reverse().find((item) => item.value === decoded);
-    if (hit) {
-      templated = true;
-      query.push(`${key}={{${hit.name}}}`);
-    } else {
-      query.push(`${key}=${raw}`);
-    }
+    if (hit) typedQuery.push(`${key}=${hit.name ? `{{${hit.name}}}` : raw}`);
   }
-  const segments = url.pathname.split("/");
-  const path = segments.map((seg) => {
+  let typedPath = false;
+  const path = url.pathname.split("/").map((seg) => {
     let decoded = seg;
     try { decoded = decodeURIComponent(seg); } catch { /* keep the raw segment */ }
     const hit = [...known].reverse().find((item) => item.value && item.value === decoded);
     if (!hit) return seg;
-    templated = true;
-    return `{{${hit.name}}}`;
+    typedPath = true;
+    return hit.name ? `{{${hit.name}}}` : seg;
   }).join("/");
-  if (templated) {
-    const templatedQuery = query.filter((part) => part.includes("{{"));
-    if (templatedQuery.length && path.split("/").some((seg) => seg.includes("{{"))) {
-      return `${path}?${templatedQuery.join("&")}`;
-    }
-    if (templatedQuery.length) return templatedQuery.join("&");
-    return path;
-  }
+  if (typedQuery.length && typedPath) return `${path}?${typedQuery.join("&")}`;
+  if (typedQuery.length) return typedQuery.join("&");
   if (!path || path === "/") return undefined;
   return path;
 }

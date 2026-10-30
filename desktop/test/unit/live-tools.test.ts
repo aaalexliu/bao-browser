@@ -264,7 +264,7 @@ test("a saved live workflow keeps each key press, on its control when it had one
   assert.equal(enter?.key, "Enter");
   assert.equal(enter?.identity?.name, "Search Costco");
   assert.equal(enter?.label, "Press Enter");
-  assert.equal(enter?.expect?.match, "/store/costco/s");
+  assert.equal(enter?.expect?.match, "k=blueberries");
   const escape = doc.steps[2];
   assert.equal(escape?.key, "Escape");
   assert.equal(escape?.identity, undefined);

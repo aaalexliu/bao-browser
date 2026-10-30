@@ -294,7 +294,7 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
     const [type, enter, open, add, openCart] = workflow.steps;
     assert.equal(workflow.steps.length, 5, workflow.steps.map((step) => step.label).join(" | "));
     assert.deepEqual([type?.action, type?.input, type?.value, type?.identity?.name], ["type", undefined, "blueberries", "Search Costco"]);
-    assert.deepEqual([enter?.action, enter?.key, enter?.identity?.name], ["key", "Enter", "Search Costco"]);
+    assert.deepEqual([enter?.action, enter?.key, enter?.identity?.name, enter?.expect?.match], ["key", "Enter", "Search Costco", "k=blueberries"]);
     assert.equal(JSON.stringify(workflow).includes("{{"), false, "no step reads an input");
     // The product link shows its price. The step's label and role locator leave it out, and the href stays.
     assert.deepEqual([open?.action, open?.identity?.role, open?.identity?.href?.endsWith(TARGET_PATH)], ["click", "link", true]);

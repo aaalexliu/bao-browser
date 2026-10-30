@@ -137,7 +137,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     const step = toStep(event, 0, seen, inputs, known);
     const skip = event.skipWhen?.trim();
     if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
-    if (step.action === "type" && step.input && event.value && !step.sensitive && !secrets.includes(event.value)) {
+    if (step.action === "type" && (step.input || event.literal) && event.value && !step.sensitive && !secrets.includes(event.value)) {
       known.push({ name: step.input, value: event.value });
     }
     return { events: [event], step };

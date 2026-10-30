@@ -494,7 +494,6 @@ export class CdpLiveDriver implements Driver {
     }
     const name = key === "Return" ? "Enter" : key;
     const known = KEY_EVENTS[name];
-    const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.cdp.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key: name,
@@ -508,7 +507,6 @@ export class CdpLiveDriver implements Driver {
       code: known?.code || name,
       windowsVirtualKeyCode: known?.keyCode || 0,
     }, this.sessionId);
-    await this.waitAfterClick(before, 10_000);
   }
 
   /**
@@ -521,7 +519,9 @@ export class CdpLiveDriver implements Driver {
     if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
     const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
     if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
+    const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.key(key);
+    await this.waitAfterClick(before, 10_000);
   }
 
   async upload(_node: Identity, _files: FileArg[]): Promise<void> {
