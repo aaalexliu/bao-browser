@@ -710,7 +710,9 @@ export async function replay(
     }
   }
   const executed = steps.filter((step) => step.status === "passed" && step.reason !== "other branch" && step.reason !== "not re-run");
-  const lastId = executed[executed.length - 1]?.id;
+  // A step skipped as already done showed its result through its guard, so its own expect is not the final check.
+  const ran = executed.filter((step) => step.reason !== "already done");
+  const lastId = ran[ran.length - 1]?.id;
   const last = workflow.steps.find((step) => step.id === lastId && step.action !== "note");
   let finalCheckFailed = false;
   if (last && (last.expect || last.postcondition)) {

@@ -486,6 +486,7 @@ test("replay skips a step whose result the page already shows, and runs it other
   assert.deepEqual(empty.clicks, [ADD]);
 
   // A product page's Add to cart, skipped while the page shows any count of the item in the cart.
+  // The workflow ends at the Add, so a skipped Add's own "1 in cart" expect is not the final check.
   const plain = {
     ...add,
     steps: [{
@@ -494,14 +495,18 @@ test("replay skips a step whose result the page already shows, and runs it other
       identity: dom({ text: "Add to cart", tag: "button" }),
       locators: [{ kind: "text" as const, value: "Add to cart" }],
       when: { absent: "1 in cart", anyCount: true },
+      expect: { kind: "text" as const, match: "1 in cart", timeoutMs: 4000 },
+      postcondition: { kind: "text" as const, match: "1 in cart", timeoutMs: 4000 },
     }],
   };
-  for (const count of [1, 2]) {
+  for (const count of [1, 2, 3]) {
     const held = await run(["Add to cart", "View Cart. Items in cart: 3"], plain, [`${count} in cart`]);
+    assert.equal(held.result.status, "passed", `${count} in cart: ${JSON.stringify(held.result.failure)}`);
     assert.deepEqual(held.result.steps.map((step) => step.reason), ["already done"], `${count} in cart`);
     assert.deepEqual(held.clicks, []);
   }
-  const none = await run(["Add to cart", "View Cart. Items in cart: 3"], plain, [""]);
+  const bare = { ...plain, steps: [{ ...plain.steps[0]!, expect: undefined, postcondition: undefined }] };
+  const none = await run(["Add to cart", "View Cart. Items in cart: 3"], bare, [""]);
   assert.equal(none.result.status, "passed", JSON.stringify(none.result.failure));
   assert.deepEqual(none.clicks, ["Add to cart"]);
 });
