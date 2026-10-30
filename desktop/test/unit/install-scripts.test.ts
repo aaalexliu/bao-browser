@@ -261,9 +261,10 @@ test("bao runs the compiled cli and the aggregate scripts exist", () => {
   assert.match(pkg.scripts["typecheck:desktop"], /tsc -p tsconfig\.desktop\.json --noEmit/);
   assert.match(pkg.scripts["typecheck:extension"], /extension\/tsconfig\.json/);
   assert.match(pkg.scripts["test:desktop:unit"], /run-v1\.mjs/);
-  const integration = pkg.scripts["test:desktop:integration"].split(" ");
-  const live = integration.slice(integration.indexOf("desktop/test/run-live.mjs") + 1);
+  const integration = pkg.scripts["test:desktop:integration"];
+  const live = [...integration.matchAll(/node desktop\/test\/run-live\.mjs (\S+)/g)].map((match) => match[1]);
   assert.deepEqual(live, ["browser.test.js", "drift.test.js"]);
+  assert.doesNotMatch(integration, /run-v1\.mjs/);
   for (const name of live) {
     const source = path.join(root, "desktop/test/live", name.replace(/\.js$/, ".ts"));
     assert.equal(existsSync(source), true, source);

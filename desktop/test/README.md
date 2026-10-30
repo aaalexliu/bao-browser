@@ -12,7 +12,7 @@ Public date, download, and upload demos are `desktop/test/live/files-dates-publi
 npx tsc -p tsconfig.desktop.json && node desktop/test/run-live.mjs
 ```
 
-Name compiled files after the runner to run only those. An unknown name fails the run. `npm run test:desktop:integration` runs `browser.test.js` and `drift.test.js`, the local fixture capture.
+Name compiled files after the runner to run only those. An unknown name fails the run. `npm run test:desktop:integration` runs `browser.test.js`, then `drift.test.js`, the local fixture capture. Run in parallel, one file's Chrome loaded the other file's pages.
 
 Installed Chrome on a Mac is headed when `BAO_HEADED` is unset, and headless when `BAO_HEADED=0`. The builder drops `--use-mock-keychain` and `--password-store` from both caller argument lists, including a value after `=` or a trailing space. Only `BAO_TEST_BROWSER` adds them back. Without it, `assessOwnedCommand` rejects a command line that carries either flag. With it, `assessOwnedCommand` rejects a command line without `--use-mock-keychain`. A Linux pass does not show that the Mac cookie relaunch is fine. Stderr prints `bao shutdown` with `browserClose`, the child exit, and any killed profile pids.
 
