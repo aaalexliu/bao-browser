@@ -76,7 +76,8 @@ function showsPriceFree(node: Identity, want: string): boolean {
  * one of them shows. They keep their prices as recorded when another node on the page reads the
  * same once its prices drop, as "Donate $10" beside "Donate $25". Replay matches a role or text
  * locator against a control's text with its prices dropped too, so a product link's step label
- * and locators carry no price and still find the link at any price. The href stays.
+ * and locators carry no price and still find the link after its price changes, while its text
+ * fits the page dump's 80-character cut. The href stays.
  */
 export function trailIdentity(identity: Identity | undefined, nodes: readonly Identity[]): Identity | undefined {
   if (!identity) return undefined;

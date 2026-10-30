@@ -2,7 +2,8 @@
 // A locator hits only when exactly one node matches. Two matches are a miss,
 // unless they are checkable inputs that share a name and the recorded label
 // picks exactly one of them. A name or text matches a node's text as shown or
-// with its prices dropped, so a price-free name finds a control at any price.
+// with its prices dropped, so a price-free name finds a control after its price
+// changes, while its text fits the page dump's 80-character cut.
 // A match as shown comes first, so "Donate" still picks "Donate" beside "Donate $10".
 
 import { normRole, normText, withoutPrice } from "./identity";
