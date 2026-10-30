@@ -55,9 +55,10 @@ export function parseLiveTarget(spec: string | undefined, baoProfile: string, da
   throw new Error(`unknown live target ${text}. Use ${LIVE_TARGET_USAGE}`);
 }
 
-/** A caller may still name a DevToolsActivePort. The daily Chrome's own file keeps the Allow press. */
-export function targetForPortFile(portFile: string, dailyPortFile = DEVTOOLS_ACTIVE_PORT): LiveTarget {
+/** A caller may still name a DevToolsActivePort. The configured target's file keeps its profile; the daily Chrome's own file keeps the Allow press. */
+export function targetForPortFile(portFile: string, configured: LiveTarget, dailyPortFile = DEVTOOLS_ACTIVE_PORT): LiveTarget {
   if (!portFileOk(portFile)) throw new Error("port file must be an absolute DevToolsActivePort path");
+  if (path.resolve(portFile) === path.resolve(configured.portFile)) return configured;
   if (path.resolve(portFile) === path.resolve(dailyPortFile)) return { kind: "daily", portFile, profile: DAILY_PROFILE };
   return { kind: "throwaway", portFile };
 }

@@ -331,7 +331,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const client = typeof body.client === "string" ? body.client.slice(0, 80) : "";
     if (!intent) throw new Error("intent is required");
     if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
-    const target = portFile ? targetForPortFile(portFile) : defaultTarget;
+    const target = portFile ? targetForPortFile(portFile, defaultTarget) : defaultTarget;
     const preset = presetForUrl(url, asked);
     if (!preset) throw new Error("unknown preset");
     const flags = guardPreset(preset);

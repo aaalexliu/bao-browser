@@ -62,9 +62,13 @@ test("the live target defaults to the daily Chrome's Default profile, and bao an
   assert.throws(() => parseLiveTarget("daily:", BAO_PROFILE), /profile directory/);
   assert.throws(() => parseLiveTarget("chrome", BAO_PROFILE), /unknown live target chrome/);
 
-  assert.deepEqual(targetForPortFile(DEVTOOLS_ACTIVE_PORT), daily);
-  assert.deepEqual(targetForPortFile("/tmp/t/chrome/DevToolsActivePort"), { kind: "throwaway", portFile: "/tmp/t/chrome/DevToolsActivePort" });
-  assert.throws(() => targetForPortFile("DevToolsActivePort"), /absolute DevToolsActivePort/);
+  const bao = parseLiveTarget("bao", BAO_PROFILE);
+  const profile2 = parseLiveTarget("daily:Profile 2", BAO_PROFILE);
+  assert.deepEqual(targetForPortFile(DEVTOOLS_ACTIVE_PORT, bao), daily);
+  assert.deepEqual(targetForPortFile(DEVTOOLS_ACTIVE_PORT, profile2), profile2);
+  assert.deepEqual(targetForPortFile(bao.portFile, profile2), { kind: "throwaway", portFile: bao.portFile });
+  assert.deepEqual(targetForPortFile("/tmp/t/chrome/DevToolsActivePort", bao), { kind: "throwaway", portFile: "/tmp/t/chrome/DevToolsActivePort" });
+  assert.throws(() => targetForPortFile("DevToolsActivePort", bao), /absolute DevToolsActivePort/);
 
   assert.equal(asksToAllow(parseLiveTarget("daily", BAO_PROFILE)), true);
   assert.equal(asksToAllow(parseLiveTarget("bao", BAO_PROFILE)), false);
