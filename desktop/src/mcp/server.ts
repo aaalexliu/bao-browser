@@ -35,7 +35,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live workflow, which a live session saves, replays instead through the running Bao app in a new window of the Chrome the live tools drive, with no model call and no approval step. Its inputs default to the recorded text, so pass inputs.query to search for something else. It skips a cart add when the item is already in the cart, and it keeps the live guards: checkout and other confirm or denied controls are refused, and a sign-in page or bot check stops it with needs_human. An extension workflow returns failed with the reason and does not run. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live workflow, which a live session saves, replays instead through the running Bao app in a new window of the Chrome the live tools drive, with no model call and no approval step. It repeats the recorded steps, including the search text the session typed. It skips a cart add when the item is already in the cart, and it keeps the live guards: checkout and other confirm or denied controls are refused, and a sign-in page or bot check stops it with needs_human. An extension workflow returns failed with the reason and does not run. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -67,7 +67,7 @@ export const INSTRUCTIONS = [
   "3. Act: live_click, live_type, live_key, or live_scroll on one ref, then read again.",
   "4. End: live_stop. Ending the session saves the workflow in the Bao library. If the client disconnects first, Bao saves it too.",
   "Bao does not click a control listed under stopBeforeConfirm, such as a place order button. For a stale_ref or unknown_ref refusal, read again. For any other refusal or a halted reply, do not try another way: end the session and tell the user what Bao stopped on.",
-  "search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows. run_workflow replays a saved live workflow through the running Bao app with no model call. Pass inputs.query to search for something else.",
+  "search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows. run_workflow replays a saved live workflow through the running Bao app with no model call. It repeats the recorded search and skips a cart add when the item is already in the cart.",
   "The live tools need the Bao app running. When a live tool says Bao is not running, tell the user the command it names.",
 ].join("\n");
 

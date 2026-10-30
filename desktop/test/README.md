@@ -38,7 +38,7 @@ The second command is the required-suite test, run against installed Chrome. It 
 - `launchFixtureBrowser(fixture)` starts the pinned Playwright Chromium with a temp `--user-data-dir`, `--remote-debugging-port=0` and the mock keychain flags. `--host-resolver-rules` maps both hosts to the fixture and every other host to `~NOTFOUND`. `--ignore-certificate-errors-spki-list` trusts the fixture's key. The result names the `DevToolsActivePort` file that bao's live host reads, and the CDP URL. `close()` stops Chrome and deletes the profile.
 - `desktop/test/unit/instacart-fixture.test.ts` checks the fixture and runs in `npm run test:v1`.
 - `desktop/test/unit/live-recording.test.ts` records a live session on the fixture, then replays the saved workflow with no model, once with the item already in the cart and once without.
-- `desktop/test/unit/live-replay.test.ts` records the same task through the app's `/api/live`, then replays it through `/api/replay` and through `bao mcp`'s `run_workflow` with new search text. It checks the skipped Add, the refused checkout, and zero model calls.
+- `desktop/test/unit/live-replay.test.ts` records the same task through the app's `/api/live`, then replays it through `/api/replay` and through `bao mcp`'s `run_workflow`. It checks the recorded search, the skipped Add, the refused checkout, and zero model calls.
 
 The SPKI flag works with a temp `--user-data-dir` on Playwright's Chrome for Testing 149. Without the flag the same pages fail with `ERR_CERT_AUTHORITY_INVALID`. `MAP * ~NOTFOUND` also fails IP literals and `localhost`, so a page cannot reach `127.0.0.1` by address.
 
@@ -54,10 +54,10 @@ It takes about 20 seconds and calls no model. It starts the fixture and the test
 4. It opens the cart and tries its Go to checkout link, which is refused too.
 5. It closes stdin without `live_stop`. The app saves the workflow and frees the lock.
 
-A new client then replays the workflow through `run_workflow` twice, on an empty cart each time. The test checks:
+A new client then replays the workflow through `run_workflow` twice on an empty cart, then once each on a cart that already holds the item at qty 1 and at qty 2. The test checks:
 
 - A: after recording, the cart is one Costco line, the Kirkland Organic Blueberries 3 lb, qty 1.
 - B: the cart write comes right after the audit row of the trusted Add to cart click in `<home>/live-session/session.json`. Every fixture request has the host `www.instacart.com` and the test browser's User-Agent.
 - C: no trap page loads, and each trap's refusal has an audit row.
-- D: the saved workflow validates against the schema, has `driver: "cdp-live"`, starts on `www.instacart.com`, has the input `query` with the default `blueberries`, types it, presses Enter, opens the product, and clicks Add to cart. It has no cookie or storage key and no step label the preset refuses. The cart click from step 4 is its last step.
-- E: both replays pass with `modelCalls` 0 and no heal, and each leaves the same cart line.
+- D: the saved workflow validates against the schema, has `driver: "cdp-live"`, starts on `www.instacart.com`, and has no input. It types `blueberries`, presses Enter, opens the product, and clicks Add to cart. The product step's label and role locator have no price, and it keeps the `href` locator. The Add has `when: { absent: "1 in cart", anyCount: true }`. It has no cookie or storage key and no step label the preset refuses. The cart click from step 4 is its last step.
+- E: every replay passes with `modelCalls` 0 and no heal, and searches `blueberries`. The two from an empty cart each leave the same cart line. The two on a cart that holds the item skip the Add as `already done`, write nothing, and leave that one line.

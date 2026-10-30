@@ -3,7 +3,8 @@
 // the control's full identity from CdpLiveDriver.tree(). A refused or halted call
 // appends nothing. When the session ends, condense() and interpret() build its
 // workflow from that trail, as the eval drivers do: typed text becomes an input,
-// a search box's text is the input `query`, and a purchase control is a gate.
+// a search box's text replays as typed, a cart add is skipped while its item is
+// in the cart, and a purchase control is a gate.
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -17,9 +18,6 @@ import { redactLabel } from "./live-record";
 import { COMMIT_FLOOR } from "./presets";
 
 export const LIVE_TRAIL_SOURCE = { agent: "live-model", vendor: "bao", adapter: "cdp-live" } as const;
-
-/** The input a search box's typed text becomes. */
-export const QUERY_INPUT = "query";
 
 export function liveTrailFile(home: string): string {
   return path.join(liveSessionDir(home), "trail.jsonl");
@@ -59,11 +57,31 @@ export class LiveTrail {
   }
 }
 
-/** The marked control's identity for the trail. A field's current text is not part of who the field is. */
+/** A price and the words that announce it, as in "Current price: $9.89". Also "$989", which "$9<sup>89</sup>" reads as. */
+const PRICE = /(?:\b(?:current|original|regular|sale|unit|list)\s+)?(?:\bprice:?\s*)?[$€£]\s?\d[\d,]*(?:\.\d+)?/gi;
+
+/** Text without its prices, which change between a recording and a replay. */
+export function withoutPrice(text: string): string {
+  const out = text.replace(PRICE, " ");
+  return out === text ? text : out.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The marked control's identity for the trail. A field's current text is not part of who the
+ * field is. A price is not part of a control's name either, so a product link that shows one
+ * keeps the same label and role locator when the price changes. The href stays.
+ */
 export function trailIdentity(identity: Identity | undefined): Identity | undefined {
   if (!identity) return undefined;
   const copy: Identity = { ...identity, path: identity.path.map((seg) => ({ ...seg })) };
   if (copy.tag === "textarea" || (copy.tag === "input" && copy.role !== "button")) delete copy.value;
+  for (const key of ["name", "text", "label", "title"] as const) {
+    const shown = copy[key];
+    if (typeof shown !== "string") continue;
+    const clean = withoutPrice(shown);
+    if (clean) copy[key] = clean;
+    else delete copy[key];
+  }
   return copy;
 }
 
@@ -134,9 +152,19 @@ const CART_ADD = [
   /^add\s+(.+?)\s+to\s+(?:cart|bag|basket)$/i,
 ];
 
+/** An Add that does not name its item, as a product page's "Add to cart". */
+const PLAIN_ADD = /^add(?:\s+item|\s+to\s+(?:cart|bag|basket))?$/i;
+
+/** What a product page shows once its item is in the cart, as "1 in cart". */
+const IN_CART = /^\d+\s+in\s+(?:your\s+)?(?:cart|bag|basket)$/i;
+
+function flat(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 /** The item an Add control names, as Instacart's "Add 1 ct {item}". Empty for a bare Add or Add to cart. */
 export function cartAddItem(label: string): string {
-  const text = label.replace(/\s+/g, " ").trim();
+  const text = flat(label);
   for (const shape of CART_ADD) {
     const item = shape.exec(text)?.[1]?.trim() || "";
     if (item.length >= 3) return item;
@@ -144,8 +172,48 @@ export function cartAddItem(label: string): string {
   return "";
 }
 
+/** A control that puts something in the cart: "Add 1 ct {item}", "Add {item} to cart", or a plain Add. */
+export function isCartAdd(label: string): boolean {
+  return !!cartAddItem(label) || PLAIN_ADD.test(flat(label));
+}
+
 function nameOf(node: Identity): string {
-  return (node.name || node.label || node.text || "").replace(/\s+/g, " ").trim();
+  return flat(node.name || node.label || node.text || "");
+}
+
+/** The item a product page is about: the text of its one top-level heading. Empty when it has none or several. */
+export function pageItem(nodes: readonly Identity[]): string {
+  const heads = nodes.filter((node) => node.tag === "h1").map(nameOf).filter(Boolean);
+  return heads.length === 1 ? heads[0]! : "";
+}
+
+/** The text replay looks for before a cart add, and whether each number in it matches any number. */
+export interface CartSkip {
+  text: string;
+  anyCount: boolean;
+}
+
+/**
+ * What tells replay that a cart add's item is already in the cart, so the add is skipped.
+ * The item is the one the Add names, as in "Add 1 ct {item}". A plain "Add to cart" adds the
+ * item of the product page it is on. A control the add revealed that names the item is the
+ * mark, as on a results page. A product page that revealed none is marked by the add's own
+ * effect when it reads "{n} in cart", at any count. Undefined when the add left no mark.
+ * `effect` is the text the add made appear, from clickEffect.
+ */
+export function cartAddSkip(
+  label: string,
+  before: readonly Identity[],
+  after: readonly Identity[],
+  effect = "",
+): CartSkip | undefined {
+  const named = cartAddItem(label);
+  const item = named || (PLAIN_ADD.test(flat(label)) ? pageItem(before) : "");
+  if (!item) return undefined;
+  const marker = inCartMarker(item, before, after);
+  if (marker) return { text: marker, anyCount: false };
+  const shown = flat(effect);
+  return !named && IN_CART.test(shown) ? { text: shown, anyCount: true } : undefined;
 }
 
 /**
@@ -154,8 +222,7 @@ function nameOf(node: Identity): string {
  * add while the page shows it. A control that adds more is preferred, because it stays at
  * every quantity. Empty when the add revealed no such control.
  */
-export function inCartMarker(label: string, before: readonly Identity[], after: readonly Identity[]): string {
-  const item = cartAddItem(label);
+export function inCartMarker(item: string, before: readonly Identity[], after: readonly Identity[]): string {
   if (!item) return "";
   const want = item.toLowerCase();
   const had = new Set(before.map(nameOf));
@@ -207,7 +274,7 @@ export function workflowFromTrail(input: {
     heal: "approve",
     driver: "cdp-live",
     intent: input.intent,
-    summary: "Local draft. Recorded in the open Chrome through bao's live tools. Typed text is an input.",
+    summary: "Local draft. Recorded in the open Chrome through bao's live tools. Typed text is an input, except search text, which replays as typed.",
   };
   const errors = [
     ...validateWorkflow(workflow),

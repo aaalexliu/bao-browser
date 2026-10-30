@@ -66,7 +66,7 @@ export async function guideMe(
     const wants = pageWhen(step);
     if (wants) {
       if (!guard || guard.key !== wants.key) {
-        guard = { key: wants.key, open: pageShows(await driver.tree(), wants.text) === wants.shown };
+        guard = { key: wants.key, open: pageShows(await driver.tree(), wants.text, wants.anyCount) === wants.shown };
       }
       if (!guard.open) {
         steps.push({ id: step.id, status: "skipped" });

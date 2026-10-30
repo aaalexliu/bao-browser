@@ -46,11 +46,10 @@ import {
   type SlotState,
 } from "./live-ops";
 import {
-  cartAddItem,
+  cartAddSkip,
   clickEffect,
-  inCartMarker,
+  isCartAdd,
   LiveTrail,
-  QUERY_INPUT,
   trailIdentity,
   workflowFromTrail,
   type LiveSide,
@@ -469,14 +468,17 @@ export function createLiveHost(opts: LiveHostOptions): {
     const after = await readAfter(state, index, true);
     // The accessible name, not the redacted view label, so the item in "Add 1 ct {item}" keeps its digits.
     const name = before?.identity?.name || before?.identity?.text || outcome.label;
-    const skipWhen = cartAddItem(name) ? inCartMarker(name, before?.nodes || [], (await state.driver.tree().catch(() => null))?.nodes || []) : "";
+    const effect = before ? clickEffect(before.side, after) : {};
+    const skip = isCartAdd(name)
+      ? cartAddSkip(name, before?.nodes || [], (await state.driver.tree().catch(() => null))?.nodes || [], effect.subtreeAfter)
+      : undefined;
     await state.trail.add({
       op: "click",
       identity: before?.identity,
       beforeUrl: before?.side.url,
       afterUrl: after.url || undefined,
-      ...(before ? clickEffect(before.side, after) : {}),
-      ...(skipWhen ? { skipWhen } : {}),
+      ...effect,
+      ...(skip ? { skipWhen: skip.text, ...(skip.anyCount ? { skipAnyCount: true } : {}) } : {}),
     });
     return look("click");
   }
@@ -503,7 +505,8 @@ export function createLiveHost(opts: LiveHostOptions): {
       identity: before?.identity,
       // The whole field, as the recorder keeps it. Text typed after a prefilled value includes that value.
       value: after.value || `${before?.side.value || ""}${text}`,
-      ...(fact && searchField(fact) ? { parameter: QUERY_INPUT } : {}),
+      // A recorded workflow replays the search it saw. The search text is not an input.
+      ...(fact && searchField(fact) ? { literal: true } : {}),
       beforeUrl: before?.side.url,
       afterUrl: after.url || undefined,
     });
