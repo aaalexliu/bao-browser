@@ -10,6 +10,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { launchOwnedChrome } from "../../src/launch";
 import type { PageProposal } from "../../src/v1/data-steps";
+import { testArtifacts } from "../artifacts";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -22,7 +23,7 @@ delete process.env.BAO_HEAL_CURSOR;
 delete process.env.BAO_HEAL_CURSOR_RESPONSE;
 delete process.env.BAO_HEAL_FIXTURE;
 
-const ARTIFACTS = "/opt/cursor/artifacts";
+const ARTIFACTS = testArtifacts("scrape");
 const BOOKS = "https://books.toscrape.com/";
 const LOGIN = "https://the-internet.herokuapp.com/login";
 

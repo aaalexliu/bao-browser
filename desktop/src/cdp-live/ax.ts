@@ -2,6 +2,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import type { OsTarget } from "../../../src/types";
+import { forbidScreenRecording } from "../helper-capabilities";
 import { MacOsHelper, type AxNode } from "../proxy/os-macos";
 import {
   ALLOW_BUTTON,
@@ -41,7 +42,7 @@ export function helperBin(): string {
 export function chromeHelper(): MacOsHelper {
   const bin = helperBin();
   if (!bin.endsWith(".app")) throw new Error("BaoOSHelper must be launched as an app bundle");
-  return new MacOsHelper(bin);
+  return forbidScreenRecording(new MacOsHelper(bin));
 }
 
 export async function logAx(file: string, event: AxClick): Promise<void> {
