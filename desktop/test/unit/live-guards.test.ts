@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -154,6 +154,30 @@ test("a dead lock holder is stale and the lock records a pid", async () => {
   });
   assert.equal(waits, 0);
   releaseCdpLock("next", file);
+});
+
+test("a stale lock that cannot be removed fails at the deadline instead of spinning", { skip: process.getuid?.() === 0 }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-stuck-lock-"));
+  const file = path.join(dir, "lock");
+  writeFileSync(file, "agent=bao-live\nstartedAt=1\npid=999999\n");
+  chmodSync(dir, 0o500);
+  let now = 0;
+  let sleeps = 0;
+  try {
+    await assert.rejects(acquireCdpLock("next", {
+      file,
+      now: () => now,
+      timeoutMs: 1_000,
+      sleep: async (ms) => {
+        sleeps += 1;
+        now += ms;
+      },
+    }), /cdp lock is held/);
+  } finally {
+    chmodSync(dir, 0o700);
+  }
+  assert.equal(sleeps, 2);
+  assert.equal(existsSync(file), true);
 });
 
 test("a release from another pid leaves the holder's lock, and closing an idle host does too", async () => {

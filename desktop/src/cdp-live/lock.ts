@@ -140,10 +140,10 @@ export async function acquireCdpLock(
       if (fileIsStale(file, now(), staleMs)) {
         try {
           unlinkSync(file);
-        } catch {
-          /* the other waiter removed it */
+          continue;
+        } catch (unlinkErr) {
+          if ((unlinkErr as NodeJS.ErrnoException).code === "ENOENT") continue;
         }
-        continue;
       }
     }
     if (now() >= deadline) break;
