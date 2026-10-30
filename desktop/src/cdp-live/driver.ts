@@ -8,7 +8,7 @@ import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
-import { focusLiveMark, focusStillMarked } from "./live-ops";
+import { focusLiveMark, focusStillMarked, markedState, type MarkedState } from "./live-ops";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -353,6 +353,14 @@ export class CdpLiveDriver implements Driver {
       inDialog: dump.nodes.map((node) => !!node.inDialog),
       flags: dump.nodes.map((node) => ({ checked: node.checked, enabled: node.enabled })),
     };
+  }
+
+  /** tree(), and the node in it that carries the live mark. A mark tree() did not list leaves `marked` out. */
+  async markedTree(markIndex: number): Promise<{ tree: LiveTree; marked?: Identity; mark: MarkedState }> {
+    const tree = await this.tree();
+    const mark = await this.evaluateFunction<MarkedState>(markedState, { markIndex });
+    const marked = mark.handle ? tree.nodes.find((node) => this.handles.get(node) === mark.handle) : undefined;
+    return { tree, marked, mark };
   }
 
   async snapshot(): Promise<FailureSnapshot> {

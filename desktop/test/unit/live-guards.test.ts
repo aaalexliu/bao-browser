@@ -12,9 +12,8 @@ import { acquireCdpLock, parseLock, releaseCdpLock } from "../../src/cdp-live/lo
 import { createLiveHost, replayLive, type ReplayTarget } from "../../src/cdp-live/live-host";
 import { CdpLiveDriver } from "../../src/cdp-live/driver";
 import type { CdpSocket } from "../../src/cdp-live/socket";
-import { workflowFromLive } from "../../src/cdp-live/attach";
 import { guardPreset } from "../../src/cdp-live/presets";
-import { validateWorkflow } from "../../src/v1/schema";
+import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import type { LiveSessionRecord } from "../../src/cdp-live/live-record";
 
 const generic = guardPreset("generic");
@@ -249,18 +248,37 @@ function replayTarget(pages: PageFacts[], marked?: PageFacts, blockOnClick = "")
   return { target: { driver, guard: generic, stopPath: generic.stopPath, hosts: ["127.0.0.1"], origins: ["http://127.0.0.1"] }, clicks };
 }
 
-function addTwice() {
-  return workflowFromLive({
+function liveStep(index: number, action: "click" | "type", name: string, extra: Partial<WorkflowStep> = {}): WorkflowStep {
+  const role = action === "type" ? "textbox" : "button";
+  return {
+    id: `wf-shop-${index}`,
+    index,
+    action,
+    label: action === "type" ? "Type {{text}}" : `Click "${name}"`,
+    surface: "dom",
+    timeoutMs: 8000,
+    identity: { surface: "dom", role, name, path: [] },
+    locators: [{ kind: "role", role, name }],
+    ...extra,
+  };
+}
+
+function liveWorkflow(steps: WorkflowStep[], inputs: WorkflowV2["inputs"] = []): WorkflowV2 {
+  return {
+    schema: WORKFLOW_SCHEMA_ID,
+    version: 2,
     id: "wf-shop",
     name: "Shop",
-    intent: "Shop",
     startUrl: "http://127.0.0.1/shop",
+    inputs,
+    steps,
     createdAt: 1,
-    actions: [
-      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
-      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
-    ],
-  });
+    driver: "cdp-live",
+  };
+}
+
+function addTwice(): WorkflowV2 {
+  return liveWorkflow([liveStep(0, "click", "Add to cart"), liveStep(1, "click", "Add to cart")]);
 }
 
 test("live replay refuses while another session holds the cdp lock", async () => {
@@ -329,20 +347,34 @@ test("live replay refuses a control that moved before the click, and names the s
   const missing = await replayLive(replayTarget([facts([])]).target, workflow, file);
   assert.equal(missing.stoppedAt, workflow.steps[0]?.id);
   assert.equal(missing.reason, "not_found");
-  const typed = workflowFromLive({
-    id: "wf-type",
-    name: "Type",
-    intent: "Type",
-    startUrl: "http://127.0.0.1/shop",
-    createdAt: 1,
-    actions: [
-      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
-      { name: "type", label: "Instructions", path: "/shop", kind: "field", value: "milk" },
-    ],
-  });
-  const confirm = await replayLive(replayTarget([shop]).target, typed, file);
-  assert.equal(confirm.status, "needs_human");
-  assert.deepEqual(confirm.steps.map((step) => step.status), ["passed", "needs_human", "skipped"]);
+  const typed = liveWorkflow([
+    liveStep(0, "click", "Add to cart"),
+    liveStep(1, "type", "Instructions", { input: "text", value: "{{text}}" }),
+  ], [{ name: "text", type: "text", required: true, default: "milk" }]);
+  const human = await replayLive(replayTarget([shop]).target, typed, file);
+  assert.equal(human.status, "needs_human");
+  assert.deepEqual(human.steps.map((step) => step.status), ["passed", "needs_human"]);
+});
+
+test("live replay skips an Add whose result is already on the page, and runs it when it is not", async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
+  const workflow = liveWorkflow([
+    liveStep(0, "click", "Add 1 ct Blueberries", { when: { absent: "Increment quantity of Blueberries" } }),
+  ]);
+  const inCart = replayTarget([facts([
+    { index: 0, label: "Remove Blueberries", kind: "button" },
+    { index: 1, label: "Increment quantity of Blueberries", kind: "button" },
+  ])]);
+  const skipped = await replayLive(inCart.target, workflow, file);
+  assert.equal(skipped.status, "passed");
+  assert.deepEqual(inCart.clicks, []);
+  const empty = replayTarget([
+    facts([{ index: 0, label: "Add 1 ct Blueberries", kind: "button" }]),
+    facts([{ index: 0, label: "Increment quantity of Blueberries", kind: "button" }]),
+  ]);
+  const added = await replayLive(empty.target, workflow, file);
+  assert.equal(added.status, "passed");
+  assert.equal(empty.clicks.length, 1);
 });
 
 test("a click or type plan holds only while the marked control keeps its label and kind", () => {
@@ -370,25 +402,6 @@ test("a page that lands on a stop path halts", () => {
   assert.equal(pageHalt({ blocked: "", path: "/checkout", passwordFields: 0, stopPath: generic.stopPath }), "stop-path");
   assert.equal(pageHalt({ blocked: "", path: "/#/payment", passwordFields: 0, stopPath: generic.stopPath }), "stop-path");
   assert.equal(pageHalt({ blocked: "", path: "/shop", passwordFields: 0, stopPath: generic.stopPath }), null);
-});
-
-test("a saved live workflow confirms before each typed field", () => {
-  const doc = workflowFromLive({
-    id: "wf-shop",
-    name: "Shop",
-    intent: "Shop",
-    startUrl: "http://127.0.0.1/shop",
-    createdAt: 1,
-    actions: [
-      { name: "click", label: "Add to cart", path: "/shop", kind: "button" },
-      { name: "type", label: "Instructions", path: "/shop", kind: "field", value: "milk" },
-    ],
-  });
-  assert.equal(doc.driver, "cdp-live");
-  assert.deepEqual(doc.steps.map((step) => step.action), ["click", "confirm", "type"]);
-  assert.equal(doc.steps[1]?.human, true);
-  assert.equal(doc.steps[2]?.value, "milk");
-  assert.deepEqual(validateWorkflow(doc), []);
 });
 
 function fakeCdp(): { cdp: CdpSocket; sent: { method: string; params: Record<string, unknown> }[]; emit(method: string, params: Record<string, unknown>): void } {

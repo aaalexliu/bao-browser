@@ -188,6 +188,8 @@ test("the eight live tools stay off the remote relay and a workflow id comes fro
     runId: "run-find-the-cheapest-mystery",
   });
   assert.equal(workflowIdsFromIntent("Unfreeze credit", "wf-unfreeze-credit").runId, "run-unfreeze-credit");
+  const long = workflowIdsFromIntent("put costco blueberries into the cart at instacart").workflowId;
+  assert.equal(long, "wf-put-costco-blueberries-into-the-cart", "a long intent's id fits in 40 characters and does not end on a dash");
 });
 
 test("a second start is busy, a second stop writes nothing, and a click after stop is closed", () => {

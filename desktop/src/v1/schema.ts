@@ -117,14 +117,18 @@ export interface ReadBack {
 }
 
 /**
- * Run this step only on one demonstration, or only when an interstitial is on the page.
+ * Run this step only on one demonstration, only when an interstitial is on the page,
+ * or only when the step's own result is not on the page yet.
  * `input` and `value` select a merged take.
- * `present` is visible text. Consecutive steps that share it are decided once, on the first of them.
+ * `present` is visible text or a control's name. Consecutive steps that share it are decided once, on the first of them.
+ * `absent` is the same kind of text. The step runs only when the page does not show it,
+ * so an Add whose item is already in the cart is skipped.
  */
 export interface StepWhen {
   input?: string;
   value?: string;
   present?: string;
+  absent?: string;
 }
 
 /**
@@ -338,8 +342,9 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.heal && step.heal !== "auto" && step.heal !== "ask" && step.heal !== "never") errors.push(`heal ${step.id}`);
     if (step.when) {
       const present = step.when.present?.trim();
-      if (present) {
-        if (step.when.input || step.when.value) errors.push(`when ${step.id}`);
+      const absent = step.when.absent?.trim();
+      if (present || absent) {
+        if (step.when.input || step.when.value || (present && absent)) errors.push(`when ${step.id}`);
       } else {
         const input = doc.inputs.find((item) => item.name === step.when?.input);
         const value = step.when.value;

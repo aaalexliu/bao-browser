@@ -86,7 +86,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_stop",
-    description: "Close the live session and write its workflow in this Mac's library. A confirm step is saved before each typed field. Replay of that file uses the open Chrome and does not call a model.",
+    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, and a search box's text is the input query. Replay skips an Add whose item is already in the cart. Replay of that file uses the open Chrome and does not call a model.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;
@@ -232,7 +232,7 @@ function denied(control: LiveControlFact, denySource: string): boolean {
   return pattern(denySource, control.label);
 }
 
-function searchField(control: LiveControlFact): boolean {
+export function searchField(control: LiveControlFact): boolean {
   return control.form === "search" || control.field?.type === "search" || /\bsearch\b/i.test(control.label);
 }
 
@@ -393,7 +393,8 @@ export function workflowIdsFromIntent(intent: string, explicit?: string): { work
   if (explicit && /^wf-[\w.-]+$/.test(explicit)) {
     return { workflowId: explicit, runId: `run-${explicit.slice(3)}` };
   }
-  const slug = intent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "session";
+  // 37 keeps wf-{slug} within the 40 characters a live session id holds, so the cut never ends on a dash.
+  const slug = intent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+/, "").slice(0, 37).replace(/-+$/, "") || "session";
   return { workflowId: `wf-${slug}`, runId: `run-${slug}` };
 }
 
@@ -425,6 +426,29 @@ export function markedFieldValue(ask: { markIndex: number }): string {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return String(el.value || "").slice(0, 80);
   return "";
+}
+
+export interface MarkedState {
+  /** The data-bao-i handle tree() gave the element. */
+  handle: string;
+  /** The element's own text. */
+  text: string;
+  /** A text field's value. Empty for a password and for other controls. */
+  value: string;
+  /** The marked element is no longer on the page. */
+  missing: boolean;
+}
+
+/** Page function. The marked control as the live trail records it. */
+export function markedState(ask: { markIndex: number }): MarkedState {
+  const el = ask.markIndex >= 0 ? document.querySelector(`[data-bao-live="${ask.markIndex}"]`) : null;
+  if (!(el instanceof HTMLElement) || !el.isConnected) return { handle: "", text: "", value: "", missing: true };
+  const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  const field = el instanceof HTMLTextAreaElement
+    || (el instanceof HTMLInputElement
+      && !/^(password|button|submit|reset|image|checkbox|radio|file|hidden)$/.test((el.getAttribute("type") || "text").toLowerCase()));
+  const value = field ? String((el as HTMLInputElement | HTMLTextAreaElement).value || "").slice(0, 2000) : "";
+  return { handle: el.getAttribute("data-bao-i") || "", text, value, missing: false };
 }
 
 /** Page function. True only when focus is still the marked control, including through an open shadow root. */

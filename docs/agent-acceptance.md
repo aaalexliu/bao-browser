@@ -107,7 +107,7 @@ curl -s "http://127.0.0.1:4787/api/live-session/shots/shot-001.png" -o /tmp/bao-
 
 After each call except `live_snapshot --page`, `liveSession` in `/api/state` has a new audit row. `GET /api/live-session/shots/shot-001.png` returns the first shot. A name that is not `shot-NNN.png` returns 404. `shotNameOk` in `desktop/src/cdp-live/live-record.ts` is that rule.
 
-**Evidence.** `<home>/live-session/session.json` and `<home>/live-session/shots/shot-NNN.png`. `SessionLog` in `desktop/src/cdp-live/audit.ts` writes both. When the helper presses Allow, it appends a row to `<home>/live-session/ax.jsonl`.
+**Evidence.** `<home>/live-session/session.json` and `<home>/live-session/shots/shot-NNN.png`. `SessionLog` in `desktop/src/cdp-live/audit.ts` writes both. Each `live_click`, `live_type`, `live_key`, and `live_scroll` that goes through appends a line to `<home>/live-session/trail.jsonl`. When the helper presses Allow, it appends a row to `<home>/live-session/ax.jsonl`.
 
 ## Stop a live session and replay it
 
@@ -119,7 +119,7 @@ node "$CLI" live_stop --home "$LIB"
 curl -s -X POST -H 'content-type: application/json' -d '{"id":"<workflow id>"}' "http://127.0.0.1:4787/api/replay"
 ```
 
-**Expected.** The first `live_stop` replies `outcome.kind` `stopped` with `already` false. The second replies `stopped` with `already` true and writes nothing. `live_stop` saves the workflow, with driver `cdp-live`, in `<home>/workflows/`. `session.json` gets status `passed`, `failed` after a refusal, or `needs_human` after a halt. The stop releases `/tmp/bao-cdp-session.lock`. It keeps the session's window and socket, so the replay uses the same Chrome. The replay reply has `modelCalls` 0. It stops with `needs_human` at a step that is not a click, such as a `key` step that `live_key` saved. A replay while a session is open, or after Bao restarts, returns HTTP 409 with an `error`. `bao mcp`'s `run_workflow` refuses a `cdp-live` workflow and says to replay it from the Bao app that recorded it.
+**Expected.** The first `live_stop` replies `outcome.kind` `stopped` with `already` false. The second replies `stopped` with `already` true and writes nothing. `live_stop` saves the workflow, with driver `cdp-live`, in `<home>/workflows/`. It is built from the session's trail: typed text is an input, and a search box's text is the input `query`. A session with no step saves nothing. `session.json` gets status `passed`, `failed` after a refusal, or `needs_human` after a halt. The stop releases `/tmp/bao-cdp-session.lock`. It keeps the session's window and socket, so the replay uses the same Chrome. The replay reply has `modelCalls` 0. It stops with `needs_human` at a step that is not a click, such as a `key` step that `live_key` saved. A replay while a session is open, or after Bao restarts, returns HTTP 409 with an `error`. `bao mcp`'s `run_workflow` refuses a `cdp-live` workflow and says to replay it from the Bao app that recorded it.
 
 While a session is open, `watchTargets` in `live-host.ts` closes any new page target and halts the session with `new_target`. That covers a tab the page opens and a tab a person opens. Tabs that were open before `live_session_start` stay open. The live host calls `Target.closeTarget` only on its own window and on those new page targets. The next `live_session_start` closes the window a stopped session kept.
 
@@ -157,6 +157,7 @@ These are the files a run actually writes.
 - A live session record is `<home>/live-session/session.json`.
 - A live session shot is `<home>/live-session/shots/shot-NNN.png`.
 - The live host's Allow log is `<home>/live-session/ax.jsonl`.
+- A live session trail is `<home>/live-session/trail.jsonl`. A new session empties it.
 - A saved live workflow is `<home>/workflows/<workflow id>.json`.
 - The live lock is `/tmp/bao-cdp-session.lock`. The live host and the session script share it.
 - The session script result is `.evidence/session-run.json` under the process working directory.

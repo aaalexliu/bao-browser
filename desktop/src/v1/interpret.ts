@@ -72,8 +72,13 @@ export interface TrailEvent {
   dialogDecision?: "accept" | "dismiss";
   /** Text the prompt returned. Replay types it again. */
   dialogValue?: string;
-  /** Name this click from an input. The recorded text is the sample default. */
+  /**
+   * Name this click from an input. The recorded text is the sample default.
+   * On a typed value, the input's name.
+   */
   parameter?: string;
+  /** Text or a control name this step leaves on the page. Replay skips the step when the page already shows it. */
+  skipWhen?: string;
   /** Rows the person selected or copied. */
   list?: ListCapture;
   /** A picked element or list, already named. */
@@ -95,6 +100,7 @@ const NOISE = new Set([
 ]);
 
 const DIGIT = /^[0-9]$/;
+const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const OP = new Set(["+", "-", "*", "/", "×", "÷", "="]);
 
 /** Events that become steps, in step order. A merged type keeps the first event id. */
@@ -125,6 +131,8 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
+    const skip = event.skipWhen?.trim();
+    if (skip) step.when = { absent: skip };
     if (step.action === "type" && step.input && event.value && !step.sensitive && !secrets.includes(event.value)) {
       known.push({ name: step.input, value: event.value });
     }
@@ -501,7 +509,8 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       };
     }
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
-    const input = addInput(inputs, kind, nameHint(event, secret));
+    const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(event, secret);
+    const input = addInput(inputs, kind, named);
     if (!secret && event.value && !event.rawPath) input.default = event.value;
     return {
       ...step,
@@ -667,8 +676,8 @@ function nameHint(event: TrailEvent, secret: boolean): string {
     .join(" ");
   if (secret || /pass/i.test(hay)) return "password";
   if (/user|email|login/i.test(hay)) return "username";
-  if (event.identity?.nameAttr && /^[A-Za-z][A-Za-z0-9_]*$/.test(event.identity.nameAttr)) return event.identity.nameAttr;
-  if (event.identity?.id && /^[A-Za-z][A-Za-z0-9_]*$/.test(event.identity.id)) return event.identity.id;
+  if (event.identity?.nameAttr && NAME_RE.test(event.identity.nameAttr)) return event.identity.nameAttr;
+  if (event.identity?.id && NAME_RE.test(event.identity.id)) return event.identity.id;
   return secret ? "secret" : "text";
 }
 

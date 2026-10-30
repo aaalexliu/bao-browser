@@ -342,7 +342,7 @@ export async function replay(
   const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
   const startAt = fromIndex < 0 ? 0 : fromIndex;
   const recovery: RecoveryBudget = { used: 0 };
-  let guard: { present: string; open: boolean } | undefined;
+  let guard: PageGuard | undefined;
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
     if (driver.shouldStop?.()) {
@@ -365,13 +365,13 @@ export async function replay(
       steps[i] = { id: step.id, status: "skipped", reason: "not re-run" };
       continue;
     }
-    const present = step.when?.present?.trim();
-    if (present) {
-      if (!guard || guard.present !== present) {
-        guard = { present, open: pageShows(await driver.tree(), present) };
+    const wants = pageWhen(step);
+    if (wants) {
+      if (!guard || guard.key !== wants.key) {
+        guard = { key: wants.key, open: pageShows(await driver.tree(), wants.text) === wants.shown };
       }
       if (!guard.open) {
-        steps[i] = { id: step.id, status: "passed", reason: "other branch" };
+        steps[i] = { id: step.id, status: "passed", reason: wants.shown ? "other branch" : "already done" };
         continue;
       }
     } else {
@@ -923,8 +923,25 @@ async function runStepAction(
   return { ok: true, repairs, acted: node, recovered: found.recovered || held.recovered };
 }
 
-/** Visible text, or a control's name, that marks an interstitial as on the page. */
-function pageShows(tree: LiveTree, present: string): boolean {
+export interface PageGuard {
+  key: string;
+  open: boolean;
+}
+
+/**
+ * The page text a step's `when` names. `shown` true runs the step only while the page shows it,
+ * false only while it does not. Steps with the same key are decided once, on the first of them.
+ */
+export function pageWhen(step: Pick<WorkflowStep, "when">): { key: string; text: string; shown: boolean } | undefined {
+  const present = step.when?.present?.trim();
+  if (present) return { key: `present:${present}`, text: present, shown: true };
+  const absent = step.when?.absent?.trim();
+  if (absent) return { key: `absent:${absent}`, text: absent, shown: false };
+  return undefined;
+}
+
+/** Visible text, or a control's name, that marks an interstitial or a step's result as on the page. */
+export function pageShows(tree: LiveTree, present: string): boolean {
   if (tree.texts.some((text) => text.includes(present))) return true;
   return tree.nodes.some((node) => [node.text, node.name, node.label].some((bit) => bit?.includes(present)));
 }
