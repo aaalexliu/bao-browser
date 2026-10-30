@@ -10,8 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { launchOwnedChrome, navigateOwned } from "../../src/launch";
-import { mockKeychainArgs } from "../runtime";
+import { launchOwnedChrome, navigateOwned, testLaneBrowser } from "../../src/launch";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -47,12 +46,7 @@ test("the first replay after a fresh launch is not interrupted by a restored tab
   const port = typeof address === "object" && address ? address.port : 0;
   const origin = `http://127.0.0.1:${port}`;
   try {
-      const first = await launchOwnedChrome({
-        userDataDir: dir,
-        headless: true,
-        executablePath: process.env.BAO_TEST_BROWSER?.trim() || undefined,
-        appendArgs: mockKeychainArgs(),
-      });
+    const first = await launchOwnedChrome({ userDataDir: dir, headless: true });
     try {
       const page = first.pages()[0] || await first.newPage();
       assert.equal(page.url(), "about:blank");
@@ -63,12 +57,7 @@ test("the first replay after a fresh launch is not interrupted by a restored tab
     } finally {
       await first.close();
     }
-      const second = await launchOwnedChrome({
-        userDataDir: dir,
-        headless: true,
-        executablePath: process.env.BAO_TEST_BROWSER?.trim() || undefined,
-        appendArgs: mockKeychainArgs(),
-      });
+    const second = await launchOwnedChrome({ userDataDir: dir, headless: true });
     try {
       const page = second.pages()[0] || await second.newPage();
       assert.equal(page.url(), "about:blank");
@@ -78,6 +67,11 @@ test("the first replay after a fresh launch is not interrupted by a restored tab
         assert.ok(argv, `browser command line was not readable on ${process.platform}`);
         assert.equal(argv.includes("--restore-last-session"), false);
         assert.equal(argv.includes("--user-data-dir"), true);
+        const pinned = testLaneBrowser();
+        if (pinned) {
+          assert.equal(argv.startsWith(pinned), true, argv);
+          assert.equal(argv.includes("--use-mock-keychain"), true, argv);
+        }
       } else {
         console.error(`startup argv check skipped: no process listing on ${process.platform}`);
       }
