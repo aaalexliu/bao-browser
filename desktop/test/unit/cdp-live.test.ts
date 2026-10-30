@@ -41,7 +41,7 @@ import {
   type AxLike,
 } from "../../src/cdp-live/consent";
 import { assertActivePortFile, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
-import { CDP_LIVE_SERVER_REFUSAL, refusesOwnedBrowser } from "../../src/cdp-live/launch-guard";
+import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../../src/cdp-live/launch-guard";
 import { TRUST_SOURCE } from "../../src/cdp-live/driver";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
 
@@ -230,6 +230,14 @@ test("cdp-live is accepted and does not select Playwright's launcher or the exte
   assert.equal(refusesOwnedBrowser("extension"), false);
   assert.equal(refusesOwnedBrowser("cdp"), false);
   assert.match(CDP_LIVE_SERVER_REFUSAL, /live attach/);
+});
+
+test("a replay refuses cdp-live, and refuses an extension workflow only without a linked extension", () => {
+  assert.equal(replayRefusal("cdp-live", { extensionLinked: true }), CDP_LIVE_SERVER_REFUSAL);
+  assert.equal(replayRefusal("extension", { extensionLinked: false }), EXTENSION_NOT_CONNECTED);
+  assert.equal(replayRefusal("extension", { extensionLinked: true }), null);
+  assert.equal(replayRefusal("playwright", { extensionLinked: false }), null);
+  assert.equal(replayRefusal(undefined, { extensionLinked: false }), null);
 });
 
 test("click trust is recorded from the event and kept across navigations", () => {

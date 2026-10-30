@@ -136,7 +136,7 @@ To turn it off: open `chrome://inspect/#remote-debugging` and clear **Allow remo
 
 ## Driver
 
-`cdp-live` attaches to the browser WebSocket published by `DevToolsActivePort` and to no other file in the Chrome profile. The desktop refuses to launch Bao's Chrome for a workflow whose driver is `cdp-live`. The string `cdp` stays invalid and still maps to Playwright if something calls `workflowDriver` without the live-attach check.
+`cdp-live` attaches to the browser WebSocket published by `DevToolsActivePort` and to no other file in the Chrome profile. The desktop and `bao mcp`'s `run_workflow` refuse to launch Bao's Chrome for a workflow whose driver is `cdp-live`. The string `cdp` stays invalid and still maps to Playwright if something calls `workflowDriver` without the live-attach check.
 
 The driver:
 
