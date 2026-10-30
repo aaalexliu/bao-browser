@@ -32,6 +32,7 @@ import { COMMIT_FLOOR, guardPreset } from "../../src/cdp-live/presets";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { unavailableHeal } from "../../src/v1/heal";
 import { withoutPrice } from "../../src/v1/identity";
+import { locatorsFromIdentity, matchLabeledControl } from "../../src/v1/locators";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { pageShows, replay, type Driver } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
@@ -130,7 +131,7 @@ test("a live trail condenses into a valid cdp-live workflow that types the recor
   const [typed, enter, add] = workflow.steps;
   assert.equal(typed?.input, undefined);
   assert.equal(typed?.value, "blueberries");
-  assert.equal(typed?.label, "Type blueberries");
+  assert.equal(typed?.label, "Type into \"Search Costco\"", "the label names the field, not the search text");
   assert.equal(typed?.identity?.testId, "search-input");
   assert.equal(enter?.key, "Enter");
   assert.equal(enter?.expect?.match, "/store/costco/s");
@@ -140,6 +141,32 @@ test("a live trail condenses into a valid cdp-live workflow that types the recor
   assert.equal(add?.human, undefined);
   assert.equal(JSON.stringify(workflow).includes("{{"), false, "no step reads an input");
   assert.equal(JSON.stringify(build(blueberryTrail())), JSON.stringify(workflow), "the same trail builds the same workflow");
+});
+
+test("a search for text that matches a deny word saves, and its step names the field", () => {
+  const source = { ...LIVE_TRAIL_SOURCE };
+  const add = "Add 1 ct Q-tips Original Cotton Swabs, 500 ct";
+  const found = "https://www.instacart.com/store/costco/s?k=q+tip";
+  const workflow = build([
+    { id: "live-1", ts: 1, kind: "act", source, op: "type", identity: SEARCH, value: "q tip", literal: true, beforeUrl: STOREFRONT, afterUrl: STOREFRONT },
+    { id: "live-2", ts: 2, kind: "act", source, op: "key", key: "Enter", identity: SEARCH, beforeUrl: STOREFRONT, afterUrl: found },
+    {
+      id: "live-3",
+      ts: 3,
+      kind: "act",
+      source,
+      op: "click",
+      identity: dom({ name: add, label: add, text: "Add", tag: "button" }),
+      beforeUrl: found,
+      afterUrl: found,
+      subtreeBefore: "",
+      subtreeAfter: "1 ct",
+    },
+  ]);
+  assertClean(workflow);
+  const typed = workflow.steps[0];
+  assert.deepEqual([typed?.action, typed?.value, typed?.input, typed?.label], ["type", "q tip", undefined, "Type into \"Search Costco\""]);
+  assert.deepEqual(refusedStepLabels(workflow, instacart), []);
 });
 
 test("a typed field that is not a search box keeps the name interpret gives it", () => {
@@ -239,20 +266,23 @@ test("a product page's Add to cart, on a page with one h1, is skipped while the 
   assert.equal(cartAddSkip("Add to cart", page.filter((node) => node !== heading), added, "1 in cart"), undefined, "a page with no one item marks nothing");
 });
 
-test("a recorded control's name, text, and label drop prices, and keep the href", () => {
+test("a recorded control's name, text, and label drop prices when the price-free name stays unique, and keep the href", () => {
   assert.equal(withoutPrice(`Current price: $9.89 $989 ${TARGET.name} 3 lb`), `${TARGET.name} 3 lb`);
   assert.equal(withoutPrice("Original price: $12.99 Sale price: $9.89 Fresh Blueberries"), "Fresh Blueberries");
   assert.equal(withoutPrice("Add to cart"), "Add to cart");
   assert.equal(withoutPrice("View Cart. Items in cart: 1"), "View Cart. Items in cart: 1");
   const href = "/products/2001-kirkland-signature-organic-blueberries-3-lb-3-lb?retailerSlug=costco";
-  const link = trailIdentity(dom({
-    role: "link",
-    tag: "a",
-    text: `Current price: $9.89 $989 ${TARGET.name} 3 lb`,
-    href,
-  }));
+  const shownLink = dom({ role: "link", tag: "a", text: `Current price: $9.89 $989 ${TARGET.name} 3 lb`, href });
+  const results = [
+    dom({ role: "link", tag: "a", name: TARGET.name, href }),
+    shownLink,
+    dom({ role: "heading", tag: "h3", text: TARGET.name }),
+    dom({ name: ADD, label: ADD, text: "Add", tag: "button" }),
+    dom({ role: "link", tag: "a", text: "Current price: $4.99 $499 Fresh Blueberries 1 pint", href: "/products/3001-fresh-blueberries" }),
+  ];
+  const link = trailIdentity(shownLink, results);
   assert.deepEqual([link?.name, link?.text, link?.label, link?.href], [undefined, `${TARGET.name} 3 lb`, undefined, href]);
-  const tip = trailIdentity(dom({ role: "radio", tag: "input", name: "$5", label: "$5", nameAttr: "tip" }));
+  const tip = trailIdentity(dom({ role: "radio", tag: "input", name: "$5", label: "$5", nameAttr: "tip" }), []);
   assert.deepEqual([tip?.name, tip?.label], ["$5", "$5"], "a price that is all a control shows stays its name");
   const workflow = build([{
     id: "live-1",
@@ -279,7 +309,7 @@ test("replay finds the recorded product link by its price-free name at a new pri
     ts: 1,
     kind: "act",
     op: "click",
-    identity: trailIdentity(dom({ role: "link", tag: "a", text: `Current price: $9.89 $989 ${TARGET.name} 3 lb`, href, cssPath: slot(1) })),
+    identity: trailIdentity(dom({ role: "link", tag: "a", text: `Current price: $9.89 $989 ${TARGET.name} 3 lb`, href, cssPath: slot(1) }), []),
     beforeUrl: RESULTS,
     afterUrl: productUrl,
   }]);
@@ -311,6 +341,63 @@ test("replay finds the recorded product link by its price-free name at a new pri
   assert.equal(result.status, "passed", JSON.stringify(result.failure));
   assert.deepEqual(clicks, [target]);
   assert.equal(result.locatorHits.find((hit) => hit.stepId === workflow.steps[0]?.id)?.kind, "role");
+});
+
+test("controls that differ only by price keep their prices, and replay picks the recorded one after the page reorders", async () => {
+  const slot = (n: number) => `main > div > button:nth-of-type(${n})`;
+  const ten = dom({ text: "Donate $10", tag: "button", cssPath: slot(1) });
+  const twentyFive = dom({ text: "Donate $25", tag: "button", cssPath: slot(2) });
+  const recorded = trailIdentity(twentyFive, [dom({ role: "heading", tag: "h1", text: "Give" }), ten, twentyFive]);
+  assert.equal(recorded?.text, "Donate $25");
+  const workflow = build([{
+    id: "live-1",
+    ts: 1,
+    kind: "act",
+    op: "click",
+    identity: recorded,
+    beforeUrl: "https://give.example/",
+    afterUrl: "https://give.example/thanks",
+  }], generic);
+  const donate = workflow.steps[0];
+  assert.equal(donate?.label, 'Click "Donate $25"');
+  assert.deepEqual(donate?.locators?.find((locator) => locator.kind === "role"), { kind: "role", role: "button", name: "Donate $25" });
+
+  const reordered = [
+    dom({ text: "Donate $25", tag: "button", cssPath: slot(1) }),
+    dom({ text: "Donate $50", tag: "button", cssPath: slot(2) }),
+    dom({ text: "Donate $10", tag: "button", cssPath: slot(3) }),
+  ];
+  let url = "https://give.example/";
+  const clicks: string[] = [];
+  const driver: Driver = {
+    tree: async () => ({ nodes: url === "https://give.example/" ? reordered : [], url, texts: [], values: [] }),
+    snapshot: async () => ({ dom: [] }),
+    click: async (node) => {
+      clicks.push(node.text || "");
+      url = "https://give.example/thanks";
+    },
+    fill: async () => {},
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+  };
+  const result = await replay(workflow, {}, driver, { heal: unavailableHeal(), siteTrust: "allow", holdForPerson: false });
+  assert.equal(result.status, "passed", JSON.stringify(result.failure));
+  assert.deepEqual(clicks, ["Donate $25"]);
+});
+
+test("checkable inputs that differ only by price keep their priced labels, and the label picks the recorded one", () => {
+  const two = dom({ role: "radio", tag: "input", nameAttr: "tip", label: "Tip $2" });
+  const five = dom({ role: "radio", tag: "input", nameAttr: "tip", label: "Tip $5" });
+  const recorded = trailIdentity(five, [two, five]);
+  assert.equal(recorded?.label, "Tip $5");
+  const locators = locatorsFromIdentity(recorded) || [];
+  assert.equal(matchLabeledControl(locators, recorded, [{ ...five }, { ...two }])?.index, 0);
+  assert.equal(matchLabeledControl(locators, recorded, [{ ...two }, { ...five }])?.index, 1);
 });
 
 test("a click's effect is new page text, else its own text, and a url change is enough by itself", () => {

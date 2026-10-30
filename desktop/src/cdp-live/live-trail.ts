@@ -9,7 +9,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { condense } from "../v1/condense";
-import { withoutPrice } from "../v1/identity";
+import { normText, withoutPrice } from "../v1/identity";
 import type { TrailEvent } from "../v1/interpret";
 import { smallestChange } from "../v1/recorder";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../v1/schema";
@@ -58,20 +58,38 @@ export class LiveTrail {
   }
 }
 
+const SHOWN = ["name", "text", "label", "title"] as const;
+
+/** Some node's name, text, label, or title reads `want` once its prices are dropped. */
+function showsPriceFree(node: Identity, want: string): boolean {
+  const plain = normText(want);
+  return SHOWN.some((key) => {
+    const value = node[key];
+    return !!value && normText(withoutPrice(value)) === plain;
+  });
+}
+
 /**
- * The marked control's identity for the trail. A field's current text is not part of who the
- * field is. A price is not part of a control's name either: its name, text, label, and title
- * drop prices, unless a price is all one of them shows. Replay matches a role or text locator
- * against a control's text with its prices dropped too, so a product link's step label and
- * locators carry no price and still find the link at any price. The href stays.
+ * The marked control's identity for the trail. `nodes` is the page tree() read, with the marked
+ * control in it. A field's current text is not part of who the field is. A price is not part of
+ * a control's name either: its name, text, label, and title drop prices, unless a price is all
+ * one of them shows. They keep their prices as recorded when another node on the page reads the
+ * same once its prices drop, as "Donate $10" beside "Donate $25". Replay matches a role or text
+ * locator against a control's text with its prices dropped too, so a product link's step label
+ * and locators carry no price and still find the link at any price. The href stays.
  */
-export function trailIdentity(identity: Identity | undefined): Identity | undefined {
+export function trailIdentity(identity: Identity | undefined, nodes: readonly Identity[]): Identity | undefined {
   if (!identity) return undefined;
   const copy: Identity = { ...identity, path: identity.path.map((seg) => ({ ...seg })) };
   if (copy.tag === "textarea" || (copy.tag === "input" && copy.role !== "button")) delete copy.value;
-  for (const key of ["name", "text", "label", "title"] as const) {
+  const free = SHOWN.flatMap((key) => {
     const shown = copy[key];
-    if (typeof shown === "string") copy[key] = withoutPrice(shown) || shown;
+    const plain = shown ? withoutPrice(shown) : "";
+    return plain && plain !== shown ? [{ key, plain }] : [];
+  });
+  const others = nodes.filter((node) => node !== identity);
+  if (!free.some(({ plain }) => others.some((node) => showsPriceFree(node, plain)))) {
+    for (const { key, plain } of free) copy[key] = plain;
   }
   return copy;
 }

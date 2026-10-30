@@ -340,7 +340,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   async function readBefore(state: OpenState, index: number, leaves = false): Promise<Before> {
     const seen = index >= 0 ? await state.driver.markedTree(index) : undefined;
     return {
-      identity: trailIdentity(seen?.marked),
+      identity: trailIdentity(seen?.marked, seen?.tree.nodes || []),
       nodes: seen?.tree.nodes || [],
       side: {
         url: await state.driver.locationHref(),

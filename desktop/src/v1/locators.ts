@@ -3,6 +3,7 @@
 // unless they are checkable inputs that share a name and the recorded label
 // picks exactly one of them. A name or text matches a node's text as shown or
 // with its prices dropped, so a price-free name finds a control at any price.
+// A match as shown comes first, so "Donate" still picks "Donate" beside "Donate $10".
 
 import { normRole, normText, withoutPrice } from "./identity";
 import type { Box } from "./repair";
@@ -73,11 +74,22 @@ export function matchLocator(
   hidden?: boolean[],
 ): { index: number; detail: string } | undefined {
   if (locator.kind === "anchor") return matchAnchor(locator, nodes, boxes);
-  const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
-  const index = hits.length === 1 ? hits[0] : preferExactControl(locator, hits, nodes);
+  const index = oneHit(locator, nodes, boxes, hidden, false) ?? oneHit(locator, nodes, boxes, hidden, true);
   if (index == null) return undefined;
   const node = nodes[index];
   return { index, detail: `${locator.kind} ${shown(node)}` };
+}
+
+/** The one visible node the locator names. With `dropPrice`, a name also matches a node's text with its prices dropped. */
+function oneHit(
+  locator: StepLocator,
+  nodes: Identity[],
+  boxes: Box[] | undefined,
+  hidden: boolean[] | undefined,
+  dropPrice: boolean,
+): number | undefined {
+  const hits = locatorIndexes(locator, nodes, dropPrice).filter((index) => !isCollapsedBox(index, boxes, hidden));
+  return hits.length === 1 ? hits[0] : preferExactControl(locator, hits, nodes, dropPrice);
 }
 
 /**
@@ -85,30 +97,30 @@ export function matchLocator(
  * control. One interactive node whose visible text or accessible name equals
  * the query is that control. Two controls with the same name stay a miss.
  */
-function preferExactControl(locator: StepLocator, hits: number[], nodes: Identity[]): number | undefined {
+function preferExactControl(locator: StepLocator, hits: number[], nodes: Identity[], dropPrice: boolean): number | undefined {
   if (hits.length < 2 || (locator.kind !== "text" && locator.kind !== "role")) return undefined;
   const want = normText(locator.kind === "text" ? locator.value || "" : locator.name || "");
   if (!want) return undefined;
-  const exact = hits.filter((index) => exactVisible(nodes[index], want));
+  const exact = hits.filter((index) => exactVisible(nodes[index], want, dropPrice));
   const controls = exact.filter((index) => isControl(nodes[index]));
   const other = exact.filter((index) => !isControl(nodes[index]));
   if (controls.length === 1 && other.length > 0 && controls.length + other.length === exact.length) return controls[0];
-  const named = hits.filter((index) => accessibleEquals(nodes[index], want) && isControl(nodes[index]));
+  const named = hits.filter((index) => accessibleEquals(nodes[index], want, dropPrice) && isControl(nodes[index]));
   if (named.length === 1) {
     const rest = hits.filter((index) => index !== named[0]);
-    if (rest.every((index) => !isControl(nodes[index]) || !accessibleEquals(nodes[index], want))) return named[0];
+    if (rest.every((index) => !isControl(nodes[index]) || !accessibleEquals(nodes[index], want, dropPrice))) return named[0];
   }
   return undefined;
 }
 
-function exactVisible(node: Identity | undefined, want: string): boolean {
+function exactVisible(node: Identity | undefined, want: string, dropPrice: boolean): boolean {
   if (!node) return false;
-  return [node.text, node.name, node.label, node.title].some((value) => shownAs(value, want));
+  return [node.text, node.name, node.label, node.title].some((value) => shownAs(value, want, dropPrice));
 }
 
-function accessibleEquals(node: Identity | undefined, want: string): boolean {
+function accessibleEquals(node: Identity | undefined, want: string, dropPrice: boolean): boolean {
   if (!node) return false;
-  return [node.name, node.label, node.title].some((value) => shownAs(value, want));
+  return [node.name, node.label, node.title].some((value) => shownAs(value, want, dropPrice));
 }
 
 function isControl(node: Identity | undefined): boolean {
@@ -133,20 +145,22 @@ export function matchLabeledControl(
 ): { index: number; kind: "css" | "xpath"; detail: string } | undefined {
   const want = identity?.label;
   if (!want || !identity || !isCheckable(identity.role)) return undefined;
-  for (const locator of locators) {
-    if (locator.kind !== "css" && locator.kind !== "xpath") continue;
-    const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
-    if (hits.length < 2) continue;
-    const labeled = hits.filter((index) => {
+  for (const dropPrice of [false, true]) {
+    for (const locator of locators) {
+      if (locator.kind !== "css" && locator.kind !== "xpath") continue;
+      const hits = locatorIndexes(locator, nodes).filter((index) => !isCollapsedBox(index, boxes, hidden));
+      if (hits.length < 2) continue;
+      const labeled = hits.filter((index) => {
+        const node = nodes[index];
+        if (!node || !isCheckable(node.role)) return false;
+        if (identity.nameAttr && node.nameAttr !== identity.nameAttr) return false;
+        return same(want, [node.label, node.name, node.text], dropPrice);
+      });
+      if (labeled.length !== 1) continue;
+      const index = labeled[0]!;
       const node = nodes[index];
-      if (!node || !isCheckable(node.role)) return false;
-      if (identity.nameAttr && node.nameAttr !== identity.nameAttr) return false;
-      return same(want, node.label, node.name, node.text);
-    });
-    if (labeled.length !== 1) continue;
-    const index = labeled[0]!;
-    const node = nodes[index];
-    return { index, kind: locator.kind, detail: `${locator.kind} ${node?.label || want}` };
+      return { index, kind: locator.kind, detail: `${locator.kind} ${node?.label || want}` };
+    }
   }
   return undefined;
 }
@@ -156,12 +170,12 @@ function isCheckable(role: string | undefined): boolean {
   return name === "input" || name === "radio" || name === "checkbox";
 }
 
-/** Every node the locator names, including a 0×0 or hidden box. */
-export function locatorIndexes(locator: StepLocator, nodes: Identity[]): number[] {
+/** Every node the locator names, including a 0×0 or hidden box. `dropPrice` false matches names only as shown. */
+export function locatorIndexes(locator: StepLocator, nodes: Identity[], dropPrice = true): number[] {
   if (locator.kind === "anchor") return [];
   const hits: number[] = [];
   nodes.forEach((node, index) => {
-    if (nodeMatches(locator, node)) hits.push(index);
+    if (nodeMatches(locator, node, dropPrice)) hits.push(index);
   });
   return hits;
 }
@@ -173,22 +187,22 @@ export function isCollapsedBox(index: number, boxes?: Box[], hidden?: boolean[])
   return !!box && box.w <= 0 && box.h <= 0;
 }
 
-function nodeMatches(locator: StepLocator, node: Identity): boolean {
-  if (locator.kind === "role") return roleMatches(locator, node);
-  if (locator.kind === "text") return !!locator.value && same(locator.value, node.text, node.name, node.label);
-  if (locator.kind === "testid") return !!locator.value && same(locator.value, node.testId);
+function nodeMatches(locator: StepLocator, node: Identity, dropPrice: boolean): boolean {
+  if (locator.kind === "role") return roleMatches(locator, node, dropPrice);
+  if (locator.kind === "text") return !!locator.value && same(locator.value, [node.text, node.name, node.label], dropPrice);
+  if (locator.kind === "testid") return !!locator.value && same(locator.value, [node.testId], false);
   if (locator.kind === "css") return !!locator.value && cssMatches(locator.value, node);
   if (locator.kind === "xpath") return !!locator.value && xpathMatches(locator.value, node);
   return false;
 }
 
-function roleMatches(locator: StepLocator, node: Identity): boolean {
+function roleMatches(locator: StepLocator, node: Identity, dropPrice: boolean): boolean {
   if (!locator.role || locator.name == null) return false;
   if (normRole(locator.role) !== normRole(node.role)) return false;
   if (locator.name === "") {
     return !normText(node.name || "") && !normText(node.text || "") && !normText(node.label || "");
   }
-  return same(locator.name, node.name, node.text, node.label, node.title);
+  return same(locator.name, [node.name, node.text, node.label, node.title], dropPrice);
 }
 
 function cssMatches(selector: string, node: Identity): boolean {
@@ -294,8 +308,8 @@ function matchAnchor(
 function sameNode(query: Identity, node: Identity): boolean {
   if (query.testId && node.testId === query.testId) return true;
   if (query.id && node.id === query.id) return true;
-  if (query.role && normRole(query.role) === normRole(node.role) && query.text && same(query.text, node.text, node.name)) return true;
-  if (query.role && normRole(query.role) === normRole(node.role) && query.name && same(query.name, node.name, node.text, node.label)) return true;
+  if (query.role && normRole(query.role) === normRole(node.role) && query.text && same(query.text, [node.text, node.name], false)) return true;
+  if (query.role && normRole(query.role) === normRole(node.role) && query.name && same(query.name, [node.name, node.text, node.label], false)) return true;
   return false;
 }
 
@@ -339,15 +353,15 @@ function center(box: Box | undefined): { x: number; y: number } | undefined {
   return { x: box.x + box.w / 2, y: box.y + box.h / 2 };
 }
 
-function same(want: string, ...values: (string | undefined)[]): boolean {
+function same(want: string, values: readonly (string | undefined)[], dropPrice: boolean): boolean {
   const left = normText(want);
   if (!left) return false;
-  return values.some((value) => shownAs(value, left));
+  return values.some((value) => shownAs(value, left, dropPrice));
 }
 
-/** A node's text equals `want`, which is already normalized, as shown or once its prices are dropped. */
-function shownAs(value: string | undefined, want: string): boolean {
-  return !!value && (normText(value) === want || normText(withoutPrice(value)) === want);
+/** A node's text equals `want`, which is already normalized, as shown, or with `dropPrice` once its prices are dropped. */
+function shownAs(value: string | undefined, want: string, dropPrice: boolean): boolean {
+  return !!value && (normText(value) === want || (dropPrice && normText(withoutPrice(value)) === want));
 }
 
 function shown(node: Identity | undefined): string {

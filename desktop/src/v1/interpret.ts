@@ -77,7 +77,7 @@ export interface TrailEvent {
    * On a typed value, the input's name.
    */
   parameter?: string;
-  /** Typed text that replay types as recorded. It does not become an input. */
+  /** Typed text that replay types as recorded. It does not become an input, and the step's label names the field, not the text. */
   literal?: boolean;
   /** Text or a control name this step leaves on the page. Replay skips the step when the page already shows it. */
   skipWhen?: string;
@@ -505,11 +505,12 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   if (isType(event)) {
     const secret = isSecret(event, meta.secrets ?? []);
     if (!secret && isConstantType(event)) {
+      const field = event.identity?.name || event.identity?.label;
       return {
         ...step,
         action: "type",
         value: event.value,
-        label: `Type ${event.value}`,
+        label: event.literal ? (field ? `Type into "${field}"` : "Type") : `Type ${event.value}`,
         ...observed(event, undefined, false, known, meta.secrets ?? []),
       };
     }
