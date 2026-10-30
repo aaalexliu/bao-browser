@@ -323,7 +323,7 @@ export async function startApp(opts: {
   }
   function clearAct(): void {
     if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
-    void clearOsNotify();
+    if (!liveIdle) void clearOsNotify();
   }
   /** The idle warning posts through the same notification and Dock badge as an act. Keep open is in the Bao window. */
   function raiseLiveIdle(warning: LiveIdleWarning): void {
