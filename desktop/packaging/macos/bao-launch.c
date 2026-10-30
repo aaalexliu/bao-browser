@@ -481,7 +481,7 @@ static int capture_parent(pid_t pid, int fd, char *buf, size_t n, int timeout_ms
   return reap_bounded(pid, fd, &status, reaped);
 }
 
-static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) {
+int bao_run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) {
   if (!argv || !argv[0] || !buf || n == 0) return -1;
   /* A tight signal storm runs the handler between every syscall, so the
      deadline is never read. Block signals for the whole parent capture.
@@ -505,14 +505,24 @@ static int run_capture(char *const argv[], char *buf, size_t n, int timeout_ms) 
   if (pid == 0) {
     restore_mask(masked, &saved_mask);
     setpgid(0, 0);
-    /* This group is not the terminal's foreground group. Ignore the stop
-       signals or a login shell that reads the tty never execs the command. */
+    /* This group is not the terminal's foreground group, so a profile that
+       runs `stty` or reads the tty gets SIGTTOU or SIGTTIN and stops until
+       the deadline. Ignoring them is not enough: bash 3.2 (macOS /bin/sh)
+       and zsh reset both to the default in every command they start. They
+       keep the signal mask, and the tty treats a blocked SIGTTIN or SIGTTOU
+       like an ignored one. dash clears the mask but keeps the ignore, so do
+       both. */
     struct sigaction ignore_stop;
     memset(&ignore_stop, 0, sizeof ignore_stop);
     ignore_stop.sa_handler = SIG_IGN;
     sigemptyset(&ignore_stop.sa_mask);
     sigaction(SIGTTIN, &ignore_stop, NULL);
     sigaction(SIGTTOU, &ignore_stop, NULL);
+    sigset_t tty_stop;
+    sigemptyset(&tty_stop);
+    sigaddset(&tty_stop, SIGTTIN);
+    sigaddset(&tty_stop, SIGTTOU);
+    sigprocmask(SIG_BLOCK, &tty_stop, NULL);
     if (dup2(pipefd[1], STDOUT_FILENO) < 0) _exit(127);
     int devnull = open("/dev/null", O_RDONLY);
     if (devnull >= 0) {
@@ -540,7 +550,7 @@ int bao_real_major(const char *path, void *ctx) {
   if (!path || path[0] != '/') return -1;
   char *argv[] = {(char *)path, "-v", NULL};
   char buf[128];
-  if (run_capture(argv, buf, sizeof buf, 2000) != 0) return -1;
+  if (bao_run_capture(argv, buf, sizeof buf, 2000) != 0) return -1;
   BaoVer ver;
   if (!bao_parse_version(buf, &ver) || !ver.ok) return -1;
   return ver.major;
@@ -550,7 +560,7 @@ int bao_real_shell(const char *shell_path, char *buf, size_t n, void *ctx) {
   (void)ctx;
   if (!shell_path || shell_path[0] != '/' || !buf || n == 0) return -1;
   char *argv[] = {(char *)shell_path, "-lc", "command -v node", NULL};
-  return run_capture(argv, buf, n, 3000);
+  return bao_run_capture(argv, buf, n, 3000);
 }
 
 static int pid_path(const char *home, char *out, size_t n) {

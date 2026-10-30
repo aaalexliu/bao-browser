@@ -18,6 +18,11 @@
 #include <time.h>
 #include <unistd.h>
 
+/* The hang cases wait out a deadline. bao_real_shell's 3 s one is checked
+   once. The rest use this shorter one so the harness stays fast. It still
+   leaves a new script time to start and write its pid file under load. */
+#define TEST_DEADLINE_MS 1000
+
 static int checks;
 static int failed;
 
@@ -26,6 +31,17 @@ static void check(int cond, const char *msg) {
   if (cond) return;
   fprintf(stderr, "fail %s\n", msg);
   failed++;
+}
+
+static void check_under(int cond, const char *msg, const char *shell) {
+  char line[256];
+  snprintf(line, sizeof line, "%s under %s", msg, shell);
+  check(cond, line);
+}
+
+static int capture_fast(const char *path, char *buf, size_t n) {
+  char *argv[] = {(char *)path, NULL};
+  return bao_run_capture(argv, buf, n, TEST_DEADLINE_MS);
 }
 
 static long elapsed_ms(struct timespec start) {
@@ -453,22 +469,18 @@ static void test_flood_deadline(const char *home) {
   char buf[128];
   struct timespec start;
   clock_gettime(CLOCK_MONOTONIC, &start);
-  int rc = bao_real_shell(bin, buf, sizeof buf, NULL);
+  int rc = capture_fast(bin, buf, sizeof buf);
   long took = elapsed_ms(start);
-  check(rc != 0, "flooding shell fails");
-  check(took > 1000 && took < 4000, "flooding shell stays inside the deadline");
-  clock_gettime(CLOCK_MONOTONIC, &start);
-  int major = bao_real_major(bin, NULL);
-  took = elapsed_ms(start);
-  check(major < 0, "flooding version fails");
-  check(took > 500 && took < 2800, "flooding version stays inside the deadline");
+  check(rc != 0, "flooding capture fails");
+  check(took >= TEST_DEADLINE_MS && took < TEST_DEADLINE_MS + 1000, "flooding capture stays inside the deadline");
 }
 
-static void test_pty_stty(const char *home) {
+static void test_pty_stty(const char *home, const char *shell) {
   char script[512];
-  snprintf(script, sizeof script, "%s/bin/stty.sh", home);
-  check(write_script(script, "#!/bin/sh\nif stty -ixon < /dev/tty; then echo STTY_OK; else echo STTY_FAIL; fi\n") == 0,
-        "stty script written");
+  snprintf(script, sizeof script, "%s/bin/stty-%s.sh", home, strrchr(shell, '/') + 1);
+  char body[256];
+  snprintf(body, sizeof body, "#!%s\nif stty -ixon < /dev/tty; then echo STTY_OK; else echo STTY_FAIL; fi\n", shell);
+  check_under(write_script(script, body) == 0, "stty script written", shell);
   int master = posix_openpt(O_RDWR | O_NOCTTY);
   check(master >= 0, "pty master opens");
   if (master < 0) return;
@@ -556,10 +568,10 @@ static void test_pty_stty(const char *home) {
   char out[160];
   memset(out, 0, sizeof out);
   int parsed = sscanf(line, "%d %ld %159s", &rc, &took, out);
-  check(parsed >= 2, "pty result");
-  check(rc == 0, "pty stty capture succeeds");
-  check(took > 0 && took < 1500, "pty stty returns inside the deadline");
-  check(strcmp(out, "STTY_OK") == 0, "pty stty prints");
+  check_under(parsed >= 2, "pty result", shell);
+  check_under(rc == 0, "pty stty capture succeeds", shell);
+  check_under(took > 0 && took < 1500, "pty stty returns inside the deadline", shell);
+  check_under(strcmp(out, "STTY_OK") == 0, "pty stty prints", shell);
 }
 
 static void test_real_exec(const char *home) {
@@ -625,10 +637,10 @@ static void test_real_exec(const char *home) {
   pid_t storm = start_signal_storm();
   check(storm > 0, "signal storm started");
   clock_gettime(CLOCK_MONOTONIC, &start);
-  check(bao_real_shell(storm_shell, buf, sizeof buf, NULL) != 0, "signal storm capture fails");
+  check(capture_fast(storm_shell, buf, sizeof buf) != 0, "signal storm capture fails");
   took = elapsed_ms(start);
   stop_signal_storm(storm);
-  check(took < 5000, "signal storm stays inside the deadline");
+  check(took < TEST_DEADLINE_MS + 2000, "signal storm stays inside the deadline");
   long storm_pid = read_pid_file(storm_pid_path);
   check(storm_pid > 1, "signal storm sleeper pid recorded");
   check(waited_until_gone(storm_pid), "signal storm sleeper is dead");
@@ -655,9 +667,9 @@ static void test_real_exec(const char *home) {
   char escape_pid_path[1024];
   snprintf(escape_pid_path, sizeof escape_pid_path, "%s.pid", escape_bin);
   clock_gettime(CLOCK_MONOTONIC, &start);
-  check(bao_real_shell(escape_bin, buf, sizeof buf, NULL) != 0, "escaped child capture fails");
+  check(capture_fast(escape_bin, buf, sizeof buf) != 0, "escaped child capture fails");
   took = elapsed_ms(start);
-  check(took < 5000, "escaped child returns");
+  check(took < TEST_DEADLINE_MS + 2000, "escaped child returns");
   long escape_pid = read_pid_file(escape_pid_path);
   check(escape_pid > 1, "escaped child pid recorded");
   check(waited_until_gone(escape_pid), "escaped child is dead");
@@ -677,7 +689,12 @@ static void test_real_exec(const char *home) {
   check(waited_until_gone(monitor_pid), "monitor holder is dead");
   reap_test_pid(monitor_pid);
   test_flood_deadline(home);
-  test_pty_stty(home);
+  /* /bin/sh is bash 3.2 on macOS and often dash on Linux. bash 3.2 and zsh
+     reset SIGTTOU in the commands they start. dash clears the signal mask. */
+  const char *shells[] = {"/bin/sh", "/bin/zsh", "/bin/dash"};
+  for (size_t i = 0; i < sizeof shells / sizeof shells[0]; i++) {
+    if (i == 0 || bao_real_is_exec(shells[i], NULL)) test_pty_stty(home, shells[i]);
+  }
 }
 
 static void test_instance(const char *home) {
