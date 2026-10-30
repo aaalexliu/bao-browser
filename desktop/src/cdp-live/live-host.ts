@@ -56,13 +56,17 @@ interface OpenState {
   steps: { name: string; status: string; ms: number }[];
 }
 
-interface Parked {
-  driver: CdpLiveDriver;
-  cdp: CdpSocket;
+export interface ReplayTarget {
+  driver: Pick<CdpLiveDriver, "setOrigins" | "goto" | "evaluateFunction" | "clickCss">;
   commit: string;
   deny: string;
   hosts: string[];
   origins: string[];
+}
+
+interface Parked extends ReplayTarget {
+  driver: CdpLiveDriver;
+  cdp: CdpSocket;
   portFile: string;
 }
 
@@ -436,58 +440,13 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
   }
 
   async function replay(workflow: WorkflowV2): Promise<LiveReplayResult> {
-    if (slot.phase === "open") throw new Error("stop the live session before replay");
-    if (!parked) throw new Error("live chrome is not open");
-    if (workflow.driver !== "cdp-live") throw new Error("not a live workflow");
-    const driver = parked.driver;
-    driver.setOrigins(parked.origins);
-    await driver.goto(workflow.startUrl);
-    let stoppedAt = "";
-    let failed = "";
-    for (const step of workflow.steps) {
-      if (stoppedAt || failed) break;
-      if (step.human || step.action === "confirm") {
-        stoppedAt = step.id;
-        break;
-      }
-      if (step.action !== "click") {
-        stoppedAt = step.id;
-        break;
-      }
-      const name = step.identity?.name || step.locators?.find((item) => item.name)?.name || "";
-      const facts = await driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
-      const read = buildView(facts, 1, parked.commit, parked.deny);
-      const control = read.view.controls.find((item) => item.label === name);
-      if (!control) {
-        failed = name || step.id;
-        break;
-      }
-      const plan = planClick(read, control.ref);
-      if (!plan.ok) {
-        failed = plan.refusal;
-        break;
-      }
-      const href = read.targets.byRef.get(control.ref)?.href || "";
-      if (href && navigationGuard(href, parked.hosts, parked.origins, "")) {
-        failed = "stop-path";
-        break;
-      }
-      const index = read.targets.byRef.get(control.ref)?.index ?? -1;
-      await driver.evaluateFunction(readLivePage, { markIndex: index });
-      await driver.clickCss(plan.selector);
-    }
-    const status = failed ? "failed" : stoppedAt ? "needs_human" : "passed";
-    return {
-      id: workflow.id,
-      workflowId: workflow.id,
-      status,
-      modelCalls: 0,
-      stoppedAt: stoppedAt || failed,
-      steps: workflow.steps.map((step) => ({
-        id: step.id,
-        status: step.id === stoppedAt || step.id === failed ? status : "passed",
-      })),
-    };
+    const run = chain.then(() => {
+      if (slot.phase === "open") throw new Error("stop the live session before replay");
+      if (!parked) throw new Error("live chrome is not open");
+      return replayLive(parked, workflow, lockFile);
+    });
+    chain = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   async function close(): Promise<void> {
@@ -501,4 +460,67 @@ export function createLiveHost(opts: { home: string; lockFile?: string; connectT
   }
 
   return { call, replay, close };
+}
+
+export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, lockFile = CDP_LOCK_PATH): Promise<LiveReplayResult> {
+  if (workflow.driver !== "cdp-live") throw new Error("not a live workflow");
+  await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 0 });
+  try {
+    const driver = target.driver;
+    driver.setOrigins(target.origins);
+    await driver.goto(workflow.startUrl);
+    const look = async (): Promise<{ read: LiveRead; halt: string | null }> => {
+      const facts = await driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
+      const read = buildView(facts, 1, target.commit, target.deny);
+      return { read, halt: pageHalt({ blocked: facts.blocked, path: facts.path, passwordFields: read.view.credentialFields, text: facts.text }) };
+    };
+    let stoppedAt = "";
+    let failed = "";
+    for (const step of workflow.steps) {
+      if (step.human || step.action !== "click") {
+        stoppedAt = step.id;
+        break;
+      }
+      const name = step.identity?.name || step.locators?.find((item) => item.name)?.name || "";
+      const { read, halt } = await look();
+      if (halt) {
+        stoppedAt = step.id;
+        break;
+      }
+      const control = read.view.controls.find((item) => item.label === name);
+      if (!control) {
+        failed = name || step.id;
+        break;
+      }
+      const plan = planClick(read, control.ref);
+      if (!plan.ok) {
+        failed = plan.refusal;
+        break;
+      }
+      const href = read.targets.byRef.get(control.ref)?.href || "";
+      if (href && navigationGuard(href, target.hosts, target.origins, "")) {
+        failed = "stop-path";
+        break;
+      }
+      const index = read.targets.byRef.get(control.ref)?.index ?? -1;
+      await driver.evaluateFunction(readLivePage, { markIndex: index });
+      await driver.clickCss(plan.selector);
+    }
+    const last = workflow.steps[workflow.steps.length - 1];
+    if (!stoppedAt && !failed && last && (await look()).halt) stoppedAt = last.id;
+    const status = failed ? "failed" : stoppedAt ? "needs_human" : "passed";
+    return {
+      id: workflow.id,
+      workflowId: workflow.id,
+      status,
+      modelCalls: 0,
+      stoppedAt: stoppedAt || failed,
+      steps: workflow.steps.map((step) => ({
+        id: step.id,
+        status: step.id === stoppedAt || step.id === failed ? status : "passed",
+      })),
+    };
+  } finally {
+    releaseCdpLock(AGENT, lockFile);
+  }
 }
