@@ -99,8 +99,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   let ending = false;
   let ended: () => void = () => undefined;
   const gone = new Promise<void>((resolve) => { ended = resolve; });
-  const replay = appLiveReplay(args, env);
-  const ctx: Context = { library: new Library(home), libraries, args, env, client: randomUUID(), live: (workflow, inputs) => limited(replay(workflow, inputs), gone), liveUsed: false, gone };
+  const ctx: Context = { library: new Library(home), libraries, args, env, client: randomUUID(), live: appLiveReplay(args, env), liveUsed: false, gone };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {

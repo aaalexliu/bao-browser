@@ -6,10 +6,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { LIVE_DISCONNECT, LIVE_TOOL_NAMES } from "../../src/cdp-live/live-ops";
+import { LIVE_DISCONNECT, LIVE_REPLAY, LIVE_TOOL_NAMES } from "../../src/cdp-live/live-ops";
 import { frameRpc } from "../../src/mcp/frame";
 import { serveCommand } from "../../src/mcp/live-proxy";
 import { INSTRUCTIONS, TOOL_NAMES } from "../../src/mcp/server";
+import { Library } from "../../src/v1/store";
+import type { WorkflowV2 } from "../../src/v1/schema";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 const CATALOG = ["search_workflows", "describe_workflow", "run_workflow", "get_run"];
@@ -88,7 +90,7 @@ async function initialize(mcp: Mcp): Promise<Reply> {
 }
 
 /** A stand-in for bao serve's POST /api/live. It records each body and answers with reply(body). */
-async function fakeApp(home: string, reply: (body: Record<string, unknown>) => unknown): Promise<{ bodies: Record<string, unknown>[]; server: Server }> {
+async function fakeApp(home: string, reply: (body: Record<string, unknown>) => unknown | Promise<unknown>): Promise<{ bodies: Record<string, unknown>[]; server: Server }> {
   const bodies: Record<string, unknown>[] = [];
   const server = createServer((req, res) => {
     let raw = "";
@@ -100,8 +102,10 @@ async function fakeApp(home: string, reply: (body: Record<string, unknown>) => u
       }
       const body = JSON.parse(raw) as Record<string, unknown>;
       bodies.push(body);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(reply(body)));
+      void Promise.resolve(reply(body)).then((answer) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(answer));
+      });
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
@@ -252,6 +256,29 @@ test("closing stdin answers a catalog call and the live call queued behind it, t
     assert.deepEqual(await snapshot, { text: JSON.stringify({ outcome: { kind: "applied" } }), isError: false });
     assert.equal(await exited(mcp.child), 0);
     assert.deepEqual(app.bodies.map((body) => body.op), ["live_snapshot", LIVE_DISCONNECT]);
+  } finally {
+    mcp.child.kill();
+    await closeServer(app.server);
+  }
+});
+
+test("a live replay that outlasts the client still saves the run the app returns", { timeout: 60_000 }, async () => {
+  const mcp = startMcp("bao-mcp-end-replay-");
+  const app = await fakeApp(mcp.home, async (body) => {
+    if (body.op !== LIVE_REPLAY) return { outcome: { kind: "applied" } };
+    await new Promise((resolve) => setTimeout(resolve, 16_000));
+    return { run: { runId: "run-live-late", status: "passed", steps: [], heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0 } };
+  });
+  try {
+    await initialize(mcp);
+    new Library(mcp.home).save({ ...JSON.parse(shelfWorkflow), driver: "cdp-live" } as WorkflowV2);
+    const run = mcp.tool("run_workflow", { id: "wf-shelf" }).catch(() => undefined);
+    while (!app.bodies.some((body) => body.op === LIVE_REPLAY)) await new Promise((resolve) => setTimeout(resolve, 20));
+    mcp.child.stdin.end();
+    assert.equal(await exited(mcp.child), 0);
+    await run;
+    assert.equal(new Library(mcp.home).readRun("run-live-late").status, "passed");
+    assert.deepEqual(app.bodies.map((body) => body.op), [LIVE_REPLAY]);
   } finally {
     mcp.child.kill();
     await closeServer(app.server);
