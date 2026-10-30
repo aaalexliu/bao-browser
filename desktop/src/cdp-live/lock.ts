@@ -123,7 +123,7 @@ export async function acquireCdpLock(
   const staleMs = opts.staleMs ?? CDP_LOCK_STALE_MS;
   const sleep = opts.sleep || ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const deadline = now() + timeoutMs;
-  while (now() <= deadline) {
+  for (;;) {
     try {
       const fd = openSync(file, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
       try {
@@ -145,8 +145,9 @@ export async function acquireCdpLock(
         }
         continue;
       }
-      await sleep(500);
     }
+    if (now() >= deadline) break;
+    await sleep(500);
   }
   throw new Error("cdp lock is held");
 }
@@ -160,6 +161,7 @@ export function releaseCdpLock(agentId: string, file = CDP_LOCK_PATH): void {
   }
   const parsed = parseLock(text);
   if (!parsed || parsed.agentId !== agentId) return;
+  if (parsed.pid && parsed.pid !== process.pid) return;
   if (heldLock && heldLock.file === file && heldLock.agentId === agentId) heldLock = null;
   try {
     unlinkSync(file);
