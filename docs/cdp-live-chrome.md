@@ -183,18 +183,7 @@ The session contract is [cdp-live.md](cdp-live.md).
 
 The `initialize` reply has `instructions` that give the agent the order: start a session, read with `live_snapshot`, act with `live_click`, `live_type`, `live_key`, or `live_scroll`, and end with `live_stop`, which saves the workflow. When no app answers, a live tool returns an error that names the start command. From the app's `bao-mcp` launcher that is `Bao is not running. Open the Bao app, or run: open /Applications/Bao.app`. From a checkout it is the `node ... cli.js serve --home <home>` command. The catalog tools still work then.
 
-Claude Code and Codex use one entry, the `bao-mcp` launcher inside Bao.app. `bao agent config claude|codex` prints it, and `--write` adds it to the agent's config. [Agent quickstart](agent-quickstart.md#mcp) has the details.
-
-```sh
-claude mcp add --scope user bao -- /Applications/Bao.app/Contents/MacOS/bao-mcp
-```
-
-```toml
-# ~/.codex/config.toml
-[mcp_servers.bao]
-command = "/Applications/Bao.app/Contents/MacOS/bao-mcp"
-tool_timeout_sec = 180
-```
+Claude Code and Codex use one entry, the `bao-mcp` launcher inside Bao.app. `bao agent config claude|codex` prints it, and `--write` adds it to the agent's config. [Agent quickstart](agent-quickstart.md#mcp) has both entries.
 
 The live names are also CLI verbs, for example `bao live_session_start --intent text --url https://host/`, `bao live_key --key Enter --ref e3.c0`, `bao live_scroll --direction down`, and `bao live_snapshot --page 2`. They post to the same `POST /api/live`, so the app must be running. The host is `desktop/src/cdp-live/live-host.ts`. It takes `/tmp/bao-cdp-session.lock`, writes an audit row before each action, and refuses or halts on the same guards as the intent session. The live window fails a page load to another host or onto a stop path before the request leaves Chrome. After a blocked stop-path load, the window goes back to the last allowed page, and the refusal carries a fresh read of that page, so its refs work. A rejected, refused, or halted call is an MCP error. The CLI exits 1 when rejected and 2 when refused or halted.
 
