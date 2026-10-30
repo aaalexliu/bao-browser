@@ -29,6 +29,7 @@ import {
   isLiveOp,
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
+  LIVE_IDLE_WARN_MS,
   LIVE_REPLAY,
   markedState,
   pageHalt,
@@ -38,6 +39,7 @@ import {
   viewPage,
   workflowIdsFromIntent,
   type LabelGuard,
+  type LiveIdleWarning,
   type LiveOpName,
   type LiveRead,
   type LiveViewPage,
@@ -120,6 +122,10 @@ export interface LiveHostOptions {
   openProfile?: OpenProfileWindow;
   /** An open session with no call for this long saves and ends. */
   idleMs?: number;
+  /** The warning comes this long before the idle save. Zero turns it off. */
+  idleWarnMs?: number;
+  /** Gets the warning when it comes, and null when a call, Keep open, or the end clears it. */
+  onIdleWarn?: (warning: LiveIdleWarning | null) => void;
 }
 
 type EndReason = "stop" | "disconnect" | "idle";
@@ -128,24 +134,43 @@ export function createLiveHost(opts: LiveHostOptions): {
   call(raw: unknown): Promise<unknown>;
   /** Replays a cdp-live workflow in a new window of this host's target. */
   replay(workflow: WorkflowV2, inputs?: ReplayArgs): Promise<RunResult>;
+  /** The person's Keep open. False when no session is open. */
+  keepOpen(): Promise<boolean>;
   close(): Promise<void>;
 } {
   const lockFile = opts.lockFile || CDP_LOCK_PATH;
   const defaultTarget = opts.target || parseLiveTarget("daily", "");
   const openProfile = opts.openProfile || openChromeProfileWindow;
   const idleMs = opts.idleMs ?? LIVE_IDLE_MS;
+  const warnMs = Math.min(opts.idleWarnMs ?? LIVE_IDLE_WARN_MS, idleMs);
   let slot: SlotState = { phase: "idle" };
   let open: OpenState | null = null;
   let chain = Promise.resolve();
   let pending = 0;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let warnTimer: ReturnType<typeof setTimeout> | undefined;
+  let warning: LiveIdleWarning | null = null;
 
   function reply(body: Record<string, unknown>): unknown {
     return publicLiveResult(body);
   }
 
-  async function call(raw: unknown): Promise<unknown> {
+  function setWarning(next: LiveIdleWarning | null): void {
+    if (!warning && !next) return;
+    warning = next;
+    opts.onIdleWarn?.(next);
+  }
+
+  function disarmIdle(): void {
     clearTimeout(idleTimer);
+    clearTimeout(warnTimer);
+    idleTimer = undefined;
+    warnTimer = undefined;
+    setWarning(null);
+  }
+
+  async function call(raw: unknown): Promise<unknown> {
+    disarmIdle();
     pending += 1;
     const run = chain.then(() => dispatch(raw));
     chain = run.then(() => undefined, () => undefined).then(() => {
@@ -155,11 +180,18 @@ export function createLiveHost(opts: LiveHostOptions): {
     return run;
   }
 
-  /** The session saves once no call has come for idleMs. Each call restarts the wait. */
+  /** The session saves once no call has come for idleMs, and warns warnMs before that. Each call restarts the wait. */
   function armIdle(): void {
-    clearTimeout(idleTimer);
-    idleTimer = undefined;
+    disarmIdle();
     if (!open || pending > 0 || idleMs <= 0) return;
+    const state = open;
+    const saveAt = Date.now() + idleMs;
+    if (warnMs > 0) {
+      warnTimer = setTimeout(() => {
+        if (open === state) setWarning({ session: state.id, host: state.host, saveAt });
+      }, idleMs - warnMs);
+      warnTimer.unref?.();
+    }
     idleTimer = setTimeout(() => {
       const run = chain.then(() => (open ? stop("idle") : undefined));
       chain = run.then(() => undefined, () => undefined);
@@ -550,7 +582,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   async function stop(reason: EndReason = "stop"): Promise<unknown> {
-    clearTimeout(idleTimer);
+    disarmIdle();
     if (!open) {
       return reply({ op: "live_stop", session: "", outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
     }
@@ -615,13 +647,24 @@ export function createLiveHost(opts: LiveHostOptions): {
     return run;
   }
 
+  /** Runs in the call chain, so an idle save that already started wins and the reply says the session is gone. */
+  async function keepOpen(): Promise<boolean> {
+    const run = chain.then(() => {
+      if (!open) return false;
+      armIdle();
+      return true;
+    });
+    chain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
   async function close(): Promise<void> {
-    clearTimeout(idleTimer);
+    disarmIdle();
     if (slot.phase === "open") {
       await stop().catch(() => undefined);
       releaseCdpLock(AGENT, lockFile);
     }
   }
 
-  return { call, replay, close };
+  return { call, replay, keepOpen, close };
 }

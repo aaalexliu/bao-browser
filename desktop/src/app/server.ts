@@ -16,10 +16,11 @@ import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
 import { createLiveHost } from "../cdp-live/live-host";
+import type { LiveIdleWarning } from "../cdp-live/live-ops";
 import { liveReplayArgs } from "../cdp-live/live-replay";
 import { parseLiveTarget } from "../cdp-live/live-target";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
-import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
+import { actAskLine, actDeadlineLine, actSurfaceText, liveIdleSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
@@ -202,6 +203,9 @@ export async function startApp(opts: {
   liveTarget?: string;
   /** Live session lock. Default /tmp/bao-cdp-session.lock, shared by every Bao on this machine. */
   liveLockFile?: string;
+  /** Idle save and its warning lead, for a test. Default LIVE_IDLE_MS and LIVE_IDLE_WARN_MS. */
+  liveIdleMs?: number;
+  liveIdleWarnMs?: number;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
   process.env.BAO_HOME = opts.home;
@@ -211,10 +215,18 @@ export async function startApp(opts: {
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
+  let liveIdle: LiveIdleWarning | null = null;
   const live = createLiveHost({
     home: library.root,
     target: parseLiveTarget(opts.liveTarget, baoProfile),
     lockFile: opts.liveLockFile,
+    idleMs: opts.liveIdleMs,
+    idleWarnMs: opts.liveIdleWarnMs,
+    onIdleWarn: (warning) => {
+      liveIdle = warning;
+      if (warning) raiseLiveIdle(warning);
+      else if (!activeAsk && !loginWait && !humanConfirm) void clearOsNotify();
+    },
   });
   let signIn: { close(): Promise<void> } | undefined;
   const notices: Notice[] = [];
@@ -311,7 +323,13 @@ export async function startApp(opts: {
   }
   function clearAct(): void {
     if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
-    void clearOsNotify();
+    if (!liveIdle) void clearOsNotify();
+  }
+  /** The idle warning posts through the same notification and Dock badge as an act. Keep open is in the Bao window. */
+  function raiseLiveIdle(warning: LiveIdleWarning): void {
+    const notice = actNotice(liveIdleSurfaceText(warning));
+    notifications.push({ title: notice.title, body: notice.body, tooltip: notice.tooltip });
+    void notifyOs(notice.title, notice.body, notice.tooltip);
   }
   const prompts: PersonPrompts = {
     showConfirm(_label) {
@@ -419,6 +437,12 @@ export async function startApp(opts: {
     return hostAccessMode(library.settings().hostAccess);
   }
 
+  /** A request a page on another origin sent. A local client sends no Origin, or this app's own. */
+  function foreignOrigin(req: IncomingMessage): boolean {
+    const origin = req.headers.origin;
+    return typeof origin === "string" && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`;
+  }
+
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -467,12 +491,13 @@ export async function startApp(opts: {
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
       if (req.method === "POST" && url.pathname === "/api/live") {
-        const origin = req.headers.origin;
-        if (typeof origin === "string" && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
-          return json(res, { error: "local clients only" }, 403);
-        }
+        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
         const body = await readBody(req);
         return json(res, await live.call(body));
+      }
+      if (req.method === "POST" && url.pathname === "/api/live/keep") {
+        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
+        return json(res, { open: await live.keepOpen() });
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/live-session/shots/")) {
         const name = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
@@ -517,6 +542,7 @@ export async function startApp(opts: {
           remote: remote.view(),
           relay: relayStatus(library.root),
           liveSession: readLiveSessionFile(library.root),
+          liveIdle,
         });
       }
       if (req.method === "POST" && url.pathname === "/api/open") {

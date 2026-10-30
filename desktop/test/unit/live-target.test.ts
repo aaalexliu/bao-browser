@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { after, before, describe, it } from "node:test";
@@ -12,7 +13,7 @@ import { startApp } from "../../src/app/server";
 import { ALLOW_BUTTON } from "../../src/cdp-live/consent";
 import { DEVTOOLS_ACTIVE_PORT, readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { createLiveHost } from "../../src/cdp-live/live-host";
-import { LIVE_TOOLS } from "../../src/cdp-live/live-ops";
+import { LIVE_TOOLS, type LiveIdleWarning } from "../../src/cdp-live/live-ops";
 import {
   asksToAllow,
   chromeExecutable,
@@ -195,6 +196,155 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
       assert.equal(late.outcome?.kind, "rejected");
     } finally {
       await host.close();
+    }
+  });
+
+  it("warns before the idle save, and a person who is away still gets the save", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-live-warn-"));
+    const lockFile = path.join(home, "lock");
+    const seen: { at: number; warning: LiveIdleWarning | null }[] = [];
+    const host = createLiveHost({
+      home,
+      lockFile,
+      target: { kind: "throwaway", portFile: browser.portFile },
+      openProfile: async () => undefined,
+      idleMs: 3_000,
+      idleWarnMs: 2_000,
+      onIdleWarn: (warning) => seen.push({ at: Date.now(), warning }),
+    });
+    try {
+      const started = await host.call({ op: "live_session_start", intent: "Put costco blueberries in the cart", url: fixture.url("/store/costco/storefront") }) as LiveBody;
+      assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
+      const search = started.view?.controls.find((item) => item.label === "Search Costco");
+      assert.ok(search, labels(started).join(", "));
+      assert.equal((await host.call({ op: "live_type", ref: search.ref, text: "blueberries" }) as LiveBody).outcome?.kind, "applied");
+      const quietFrom = Date.now();
+
+      const record = await until(() => {
+        const read = sessionRecord(home);
+        return read.status === "running" ? undefined : read;
+      }, "the idle save");
+      assert.equal(record.status, "passed");
+      assert.equal(record.note, "Saved after the agent went quiet.");
+      assert.deepEqual(seen.map((item) => item.warning === null), [false, true], "one warning, then the save clears it");
+      const [warned, cleared] = seen;
+      assert.equal(warned?.warning?.session, started.session);
+      assert.equal(warned?.warning?.host, "www.instacart.com");
+      assert.ok((warned?.at || 0) - quietFrom >= 1_000 - 50, "the warning waits until two seconds before the save");
+      assert.ok((warned?.warning?.saveAt || 0) - (warned?.at || 0) <= 2_000 + 50, "saveAt is the lead time away");
+      assert.ok((cleared?.at || 0) >= (warned?.warning?.saveAt || 0) - 50, "the save comes at saveAt, not sooner");
+      assert.ok(savedWorkflow(home, started.session || ""), "the away person still gets the saved workflow");
+      assert.equal(await host.keepOpen(), false, "Keep open after the save says the session is gone");
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("keeps a busy session quiet, and Keep open restarts the idle wait", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-live-keep-"));
+    const seen: { at: number; warning: LiveIdleWarning | null }[] = [];
+    const host = createLiveHost({
+      home,
+      lockFile: path.join(home, "lock"),
+      target: { kind: "throwaway", portFile: browser.portFile },
+      openProfile: async () => undefined,
+      idleMs: 4_000,
+      idleWarnMs: 2_000,
+      onIdleWarn: (warning) => seen.push({ at: Date.now(), warning }),
+    });
+    try {
+      const started = await host.call({ op: "live_session_start", intent: "Shop", url: fixture.url("/store/costco/storefront") }) as LiveBody;
+      assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
+      // An agent that keeps calling for longer than the warning delay never sees a warning.
+      const busyUntil = Date.now() + 3_000;
+      while (Date.now() < busyUntil) {
+        assert.equal((await host.call({ op: "live_snapshot", page: 1 }) as LiveBody).outcome?.kind, "applied");
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      assert.equal(seen.length, 0, "no warning while the agent calls");
+
+      const first = await until(() => seen[0]?.warning || undefined, "the warning");
+      assert.equal(await host.keepOpen(), true);
+      const keptAt = Date.now();
+      assert.equal(seen[1]?.warning, null, "Keep open clears the warning");
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, first.saveAt + 1_000 - Date.now())));
+      assert.equal(sessionRecord(home).status, "running", "the session is open past the first saveAt");
+      const second = await until(() => seen[2]?.warning || undefined, "the next warning");
+      assert.ok(second.saveAt >= keptAt + 4_000 - 50, "the next save is a full idle wait after Keep open");
+      assert.equal((await host.call({ op: "live_stop" }) as LiveBody).outcome?.kind, "stopped");
+      assert.equal(seen.at(-1)?.warning, null, "a call clears the warning");
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("the app posts the idle warning, shows it in the window state, and Keep open clears it", async () => {
+    const dirs = applyHermeticApp("live-idle");
+    // Stands in for Bao.app's notifier socket. Darwin posts through it; other systems use notify-send.
+    const posts: { cmd?: string; title?: string }[] = [];
+    const notifier = createServer((conn) => {
+      let buf = "";
+      conn.on("data", (chunk: Buffer) => {
+        buf += chunk.toString("utf8");
+        const nl = buf.indexOf("\n");
+        if (nl < 0) return;
+        posts.push(JSON.parse(buf.slice(0, nl)) as { cmd?: string; title?: string });
+        conn.end(`${JSON.stringify({ ok: true, authorization: "authorized", delivered: true })}\n`);
+      });
+    });
+    const sock = path.join(mkdtempSync(path.join(tmpdir(), "bao-ns-")), "n.sock");
+    await new Promise<void>((resolve) => notifier.listen(sock, resolve));
+    process.env.BAO_NOTIFY_SOCK = sock;
+    const app = await startApp({
+      home: dirs.home,
+      port: 0,
+      liveTarget: `throwaway:${browser.portFile}`,
+      liveLockFile: path.join(dirs.home, "live.lock"),
+      liveIdleMs: 6_000,
+      liveIdleWarnMs: 4_000,
+    });
+    const base = `http://127.0.0.1:${app.port}`;
+    type State = { liveIdle?: LiveIdleWarning | null; notifications?: { title: string }[] };
+    const state = async () => await (await fetch(`${base}/api/state`)).json() as State;
+    const live = async (body: Record<string, unknown>) => await (await fetch(`${base}/api/live`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })).json() as LiveBody;
+    const keep = async () => await (await fetch(`${base}/api/live/keep`, { method: "POST" })).json() as { open?: boolean };
+    try {
+      const started = await live({ op: "live_session_start", intent: "Shop", url: fixture.url("/store/costco/storefront") });
+      assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
+      assert.equal((await state()).liveIdle, null);
+      let warned: State = {};
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        warned = await state();
+        if (warned.liveIdle) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal(warned.liveIdle?.host, "www.instacart.com");
+      assert.equal(warned.liveIdle?.session, started.session);
+      const posted = /^Press Keep open in the Bao window to keep the live session on www\.instacart\.com\. Waiting \d+:\d\d · times out at /;
+      assert.match(warned.notifications?.at(-1)?.title || "", posted);
+
+      const refused = await fetch(`${base}/api/live/keep`, { method: "POST", headers: { origin: "https://evil.example" } });
+      assert.equal(refused.status, 403);
+      assert.ok((await state()).liveIdle, "a page on another origin cannot keep the session open");
+
+      assert.deepEqual(await keep(), { open: true });
+      assert.equal((await state()).liveIdle, null);
+      if (process.platform === "darwin") {
+        await until(() => (posts.length >= 2 ? true : undefined), "the notifier clear");
+        assert.deepEqual(posts.map((post) => post.cmd), ["act", "clear"]);
+        assert.match(posts[0]?.title || "", posted);
+      }
+      assert.equal((await live({ op: "live_stop" })).outcome?.kind, "stopped");
+      assert.deepEqual(await keep(), { open: false });
+    } finally {
+      await app.close();
+      delete process.env.BAO_NOTIFY_SOCK;
+      notifier.close();
     }
   });
 

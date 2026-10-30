@@ -12,6 +12,7 @@ import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
+  liveIdleBar,
   remoteBanner,
   remoteMcpSetting,
   commandItems,
@@ -174,6 +175,7 @@ async function refresh(): Promise<void> {
     recording: state.recording,
     pending: state.pendingImport,
     ask: state.activeAsk,
+    liveIdle: state.liveIdle,
     notices: state.notices,
     workflows: state.workflows,
     settings: state.settings,
@@ -217,7 +219,7 @@ function render(): void {
   const showCard = missing && !onboarded && screen === "library";
   railEl().innerHTML = rail({ ...state, permDot: missing && !showCard });
   const importAsk = screen === "logins" ? loginAct(login) : "";
-  actEl().innerHTML = remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
+  actEl().innerHTML = remoteBanner(state.remote) + liveIdleBar(state.liveIdle) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
@@ -878,6 +880,8 @@ function bindAsk(): void {
   if (cancel) cancel.onclick = () => void fetch("/api/replay/cancel", { method: "POST" });
   const cont = document.getElementById("act-continue");
   if (cont) cont.onclick = () => void fetch("/api/prompt/continue", { method: "POST" });
+  const keep = document.getElementById("live-keep") as HTMLButtonElement | null;
+  if (keep) keep.onclick = () => void keepLiveOpen(keep);
   const yes = document.getElementById("import-yes");
   if (yes) yes.onclick = () => void answerImport({ accept: true });
   const no = document.getElementById("import-no");
@@ -885,6 +889,16 @@ function bindAsk(): void {
   document.querySelectorAll("[data-import-profile]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => void answerImport({ accept: true, profile: (btn as HTMLButtonElement).dataset.importProfile });
   });
+}
+
+async function keepLiveOpen(button: HTMLButtonElement): Promise<void> {
+  button.disabled = true;
+  const reply = await fetch("/api/live/keep", { method: "POST" }).then((res) => res.json()).catch(() => ({})) as { open?: boolean };
+  banner = reply.open
+    ? { id: `live-keep-${Date.now()}`, title: "Live session kept open", body: "Bao warns you again if the agent stays quiet." }
+    : { id: `live-keep-${Date.now()}`, title: "Live session already saved", body: "It saved before Keep open reached it. The Live screen shows the record." };
+  renderKey = "";
+  await refresh();
 }
 
 function bindHeal(): void {
@@ -1484,8 +1498,9 @@ async function answerImport(body: { accept: boolean; profile?: string }): Promis
 }
 
 function tickClock(): void {
-  const node = document.getElementById("act-timeout");
-  if (node && node.dataset.deadline) {
+  for (const id of ["act-timeout", "live-idle-timeout"]) {
+    const node = document.getElementById(id);
+    if (!node?.dataset.deadline) continue;
     const deadline = Number(node.dataset.deadline);
     if (deadline) node.textContent = formatWait(Date.now(), deadline, node.dataset.effect || "run stops, nothing applied");
   }
@@ -1503,6 +1518,7 @@ function paintDockBadge(): void {
     importPhase: state.pendingImport?.phase,
     pendingHeals: pendingHealCount(state.runs || []),
     reviews: reviewItems(state.runs).length,
+    liveIdle: Boolean(state.liveIdle),
   });
   document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };

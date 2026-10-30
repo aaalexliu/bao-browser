@@ -193,7 +193,7 @@
     #envelope-details summary { font-weight: 500; color: var(--quiet); font-size: var(--text-sm); }
     #envelope-details p { margin: 0.25rem 0; font-size: var(--text-sm); color: var(--quiet); }
     #envelope-details .mono { font-family: var(--mono); }
-    #act-bar {
+    #act-bar, #live-idle {
       background: var(--need-bg);
       border: 1px solid var(--need);
       border-left: 4px solid var(--need);
@@ -201,9 +201,9 @@
       padding: 0.9rem 1rem;
       margin-bottom: 0.35rem;
     }
-    #act-bar .kicker { margin: 0; font-weight: 700; color: var(--need); font-size: var(--text-sm); letter-spacing: 0.01em; }
-    #act-bar .instruction { margin: 0.3rem 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
-    #act-bar .timeout { margin: 0.1rem 0 0.5rem; color: var(--quiet); }
+    #act-bar .kicker, #live-idle .kicker { margin: 0; font-weight: 700; color: var(--need); font-size: var(--text-sm); letter-spacing: 0.01em; }
+    #act-bar .instruction, #live-idle .instruction { margin: 0.3rem 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+    #act-bar .timeout, #live-idle .timeout { margin: 0.1rem 0 0.5rem; color: var(--quiet); }
     #remote-agent {
       background: var(--heal-bg);
       border: 1px solid var(--heal);

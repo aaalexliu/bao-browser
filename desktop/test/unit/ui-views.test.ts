@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
-import { attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
+import { attentionCount, formatWait, liveIdleSurfaceText, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
 import { viewFromLookup } from "../../src/v1/run-trace";
 import { paddedClip } from "../../src/v1/shots";
@@ -80,6 +80,23 @@ test("attention count covers the ask, the import, and undecided heals", () => {
   assert.match(html, /helper off/);
   assert.match(html, /no model/);
   assert.equal(attentionCount({ ask: { kind: "confirm" }, importPhase: "confirm", pendingHeals: 1 }), 3);
+});
+
+test("the idle warning names the site and the save time, and offers only Keep open", () => {
+  const warning = { session: "wf-shop", host: "www.instacart.com", saveAt: 121_000 };
+  const html = liveIdleBar(warning, 1_000);
+  assert.match(html, /id="live-idle" data-session="wf-shop"/);
+  assert.match(html, /You need to act · live session · www\.instacart\.com/);
+  assert.match(html, /The agent has gone quiet\. Press Keep open if you still need this session\./);
+  assert.match(html, /data-deadline="121000"/);
+  assert.match(html, /Waiting 2:00 · times out .* \(the session saves and closes\)/);
+  assert.match(html, /<button id="live-keep" type="button">Keep open<\/button>/);
+  assert.equal((html.match(/<button/g) || []).length, 1);
+  assert.equal(liveIdleBar(null), "");
+  assert.equal(liveIdleBar({ ...warning, host: "127.0.0.1" }, 1_000).includes("127.0.0.1"), false);
+  assert.match(liveIdleSurfaceText(warning, 1_000), /^Press Keep open in the Bao window to keep the live session on www\.instacart\.com\. Waiting 2:00 · times out at /);
+  assert.match(rail({ liveIdle: warning }), /id="attention" data-count="1"/);
+  assert.match(rail({}), /id="attention" data-count="0"/);
 });
 
 test("import errors render code, cause, and hint from the structured fields", () => {
