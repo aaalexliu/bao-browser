@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "n
 import { createServer, type Server, type Socket } from "node:net";
 import path from "node:path";
 import { FrameDecoder, encodeFrame } from "./frames";
-import { installNativeHost } from "./install-host";
+import { appHostScript, installNativeHost } from "./install-host";
 import type { Gesture, HelloMessage } from "./protocol";
 import { EXTENSION_ID } from "./protocol";
 
@@ -266,5 +266,5 @@ export async function startExtensionLink(opts: {
 }
 
 export function hostScriptPath(): string {
-  return path.join(__dirname, "native-host.js");
+  return appHostScript(__dirname) || path.join(__dirname, "native-host.js");
 }

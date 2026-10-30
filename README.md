@@ -31,7 +31,7 @@ node scripts/check-node.mjs
 | Mac acceptance | On a Mac, follow [docs/mac-test.md](docs/mac-test.md). `npm run package:mac` writes `Bao.app`. |
 | Install the desktop extension | `./install-extension.sh` |
 | Install the legacy extension | `./install-dev-legacy.sh` |
-| MCP | `BAO_HOME="$HOME/.local/share/bao" node desktop/dist/desktop/src/app/cli.js mcp` or `BAO_HOME="$HOME/.local/share/bao" ./scripts/bao-mcp.sh` after `npm run build:desktop`. |
+| MCP | After `npm run build:desktop`, set `BAO_HOME` to the home `bao serve` printed, then run `./scripts/bao-mcp.sh` or `node desktop/dist/desktop/src/app/cli.js mcp`. |
 
 `./install-dev.sh` prints the two installer names and exits 2.
 

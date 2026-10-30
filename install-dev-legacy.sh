@@ -12,16 +12,16 @@ if [ -z "${BAO_SKIP_BUILD:-}" ]; then
   ( cd "$ROOT" && npm run --silent build )
 fi
 
-FORCE=()
+FORCE=
 LAUNCH=0
 for arg in "$@"; do
   case "$arg" in
-    --force) FORCE+=(--force) ;;
+    --force) FORCE=--force ;;
     --launch) LAUNCH=1 ;;
   esac
 done
 
-node "$ROOT/scripts/stage-unpacked.mjs" copy "$SOURCE" "$STAGE" "${FORCE[@]}"
+node "$ROOT/scripts/stage-unpacked.mjs" copy "$SOURCE" "$STAGE" ${FORCE:+"$FORCE"}
 echo "Synced legacy extension → $STAGE"
 
 if [ "$(uname -s)" != "Darwin" ]; then

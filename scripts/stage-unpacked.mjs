@@ -100,6 +100,10 @@ function refuse(stageReal, reason) {
   process.exit(1);
 }
 
+function shellQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function resolvePath(target) {
   const abs = path.resolve(target);
   try {
@@ -159,8 +163,13 @@ function assertSafeStage(source, stage, expectedFiles) {
       allowed.add(MARKER);
       const extra = present.filter((rel) => !allowed.has(rel));
       const force = process.env.BAO_STAGE_FORCE === "1" || process.argv.includes("--force");
-      if ((!markerOk || extra.length > 0) && !force) {
+      if (!markerOk && !force) {
         refuse(stageReal, "is not a previous Bao stage. Set BAO_STAGE_FORCE=1 to replace it");
+      }
+      if (extra.length > 0 && !force) {
+        const shown = extra.slice(0, 5).join(", ");
+        const rest = extra.length > 5 ? ` and ${extra.length - 5} more` : "";
+        refuse(stageReal, `is a previous Bao stage with extra files: ${shown}${rest}. Clear it with: rm -rf ${shellQuote(stageReal)}`);
       }
     }
   }

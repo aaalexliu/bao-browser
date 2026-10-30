@@ -176,3 +176,7 @@ The gap is that results-page cart control. Its accessible name does not include 
 ## Intent session
 
 The session contract is [cdp-live.md](cdp-live.md).
+
+## Agent entry point
+
+`bao mcp-live [--home dir]` is a stdio MCP server with six tools: `live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_screenshot`, and `live_stop`. The same names are CLI verbs, for example `bao live_session_start --intent text --url https://host/ --port-file DevToolsActivePort --preset generic`. Both forward each call to the running Bao app's `POST /api/live`, so the app must be running. The host is `desktop/src/cdp-live/live-host.ts`. It takes `/tmp/bao-cdp-session.lock`, writes an audit row before each action, and refuses or halts on the same guards as the intent session. A rejected, refused, or halted call is an MCP error. The CLI exits 1 when rejected and 2 when refused or halted. `live_stop` saves the session as a workflow in the library. Replaying it attaches to the same Chrome and makes no model calls.

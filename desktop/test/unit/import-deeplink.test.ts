@@ -213,10 +213,12 @@ test("a secret key in a run link is refused", { timeout: 30_000 }, async () => {
   }
 });
 
+// The child gets its own HOME, so it never reads or writes the person's library.
 function runCli(cli: string, args: string[], home: string): Promise<{ status: number; stdout: string; stderr: string }> {
+  const user = mkdtempSync(path.join(tmpdir(), "bao-cli-user-"));
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [cli, ...args], {
-      env: { ...process.env, BAO_HOME: home },
+      env: { ...process.env, HOME: user, BAO_HOME: home },
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];

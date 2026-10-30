@@ -3,7 +3,8 @@
 // Coordinates come from the caller, never from this file.
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { unlinkSync, writeFileSync } from "node:fs";
+import { resolveHome } from "../home";
 import { createConnection, createServer } from "node:net";
 import path from "node:path";
 import { frameRpc, takeRpcChunk } from "./frame";
@@ -34,8 +35,8 @@ async function main(): Promise<void> {
 }
 
 async function serve(): Promise<void> {
-  const home = process.env.BAO_HOME || path.join(process.cwd(), ".bao-mcp");
-  mkdirSync(home, { recursive: true });
+  const home = resolveHome();
+  process.env.BAO_HOME = home;
   try { unlinkSync(sock); } catch { /* first start */ }
   const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
   const child = spawn(process.execPath, [cli, "mcp"], {

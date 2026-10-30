@@ -1,7 +1,4 @@
-// MCP stdio server. Four tools, however many workflows are on disk.
-// search_workflows, describe_workflow, run_workflow, get_run.
-
-import path from "node:path";
+import { baoUserHome, otherLibraries, resolveHome, tildePath } from "../home";
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
@@ -35,7 +32,7 @@ export const TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live or extension workflow returns failed with the reason and does not run. Replay a cdp-live workflow from the Bao app that recorded it, after live_stop; replay through this server comes in a later step. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -56,13 +53,15 @@ export const TOOLS = [
 
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
-export async function mcpMain(): Promise<void> {
+export async function mcpMain(args: readonly string[] = []): Promise<void> {
+  const home = resolveHome(args);
+  const libraries = publishedLibraries(home, otherLibraries(home, args));
+  process.env.BAO_HOME = home;
   if (process.env.BAO_MCP_LIVE === "1") {
     const { liveMcpMain } = await import("../eval/live-mcp");
     await liveMcpMain();
     return;
   }
-  const home = process.env.BAO_HOME || path.join(process.cwd(), ".bao-mcp");
   const library = new Library(home);
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
@@ -72,7 +71,7 @@ export async function mcpMain(): Promise<void> {
       const next = takeRpcChunk(buf, null);
       if (!next) return;
       buf = Buffer.from(next.rest);
-      chain = chain.then(() => handle(next.body, library)).catch((err: unknown) => {
+      chain = chain.then(() => handle(next.body, library, libraries)).catch((err: unknown) => {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       });
     }
@@ -80,7 +79,7 @@ export async function mcpMain(): Promise<void> {
   await new Promise(() => {});
 }
 
-async function handle(body: string, library: Library): Promise<void> {
+async function handle(body: string, library: Library, libraries: string[] | undefined): Promise<void> {
   const msg = JSON.parse(body) as Rpc;
   if (msg.method === "initialize") {
     send({
@@ -101,7 +100,7 @@ async function handle(body: string, library: Library): Promise<void> {
   }
   if (msg.method === "tools/call") {
     try {
-      const text = JSON.stringify(await callTool(library, msg.params?.name || "", msg.params?.arguments || {}));
+      const text = JSON.stringify(await callTool(library, libraries, msg.params?.name || "", msg.params?.arguments || {}));
       send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], isError: false } });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -116,29 +115,41 @@ async function handle(body: string, library: Library): Promise<void> {
   if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
 }
 
-async function callTool(library: Library, name: string, args: Record<string, unknown>): Promise<unknown> {
+async function callTool(library: Library, libraries: string[] | undefined, name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === "search_workflows") {
     const filters = args.filters && typeof args.filters === "object" ? args.filters as Record<string, unknown> : args;
-    return {
+    return withLibraries({
       hits: await searchWorkflows(library, String(args.query || ""), {
         source: stringArg(filters.source),
         site: stringArg(filters.site),
         category: stringArg(filters.category),
       }),
-    };
+    }, libraries);
   }
   if (name === "describe_workflow") return describeWorkflow(library, String(args.id || ""));
   if (name === "run_workflow") {
-    return runWorkflow(library, {
+    const result = await runWorkflow(library, {
       id: args.id ? String(args.id) : undefined,
       inputs: args.inputs && typeof args.inputs === "object" ? args.inputs as Record<string, string | number> : {},
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
     });
+    return withLibraries(result, libraries);
   }
-  if (name === "get_run") return getRun(library, String(args.run_id || ""));
+  if (name === "get_run") return withLibraries(getRun(library, String(args.run_id || "")), libraries);
   throw new Error("unknown tool");
+}
+
+function publishedLibraries(root: string, also: string[]): string[] | undefined {
+  if (!also.length) return undefined;
+  const prefix = baoUserHome();
+  return [root, ...also].map((dir) => tildePath(dir, prefix));
+}
+
+function withLibraries(result: object, libraries: string[] | undefined): object {
+  if (!libraries) return result;
+  return { ...result, libraries };
 }
 
 function stringArg(value: unknown): string | undefined {

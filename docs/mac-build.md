@@ -73,7 +73,7 @@ Run `xcode-select --install` only when `xcode-select -p` fails. When the tools a
 
 ### Rust, for a helper rebuild
 
-`desktop/os-helper-macos/package-app.sh` runs cargo from `~/dev/bao-mac-toolchain/cargo` unless `CARGO_HOME` is already set. Skip the installer when `"$HOME/dev/bao-mac-toolchain/cargo/bin/cargo" --version` already prints `cargo 1.`. On a Mac that already has the helper grant, do not run this script. See Build.
+`desktop/os-helper-macos/package-app.sh` runs cargo from `~/dev/bao-mac-toolchain/cargo` unless `CARGO_HOME` is already set. Skip the installer when `"$HOME/dev/bao-mac-toolchain/cargo/bin/cargo" --version` already prints `cargo 1.`. A Mac that already has the helper grant uses [Rebuild with an existing grant](#rebuild-with-an-existing-grant) and does not run this script. A machine without that signed helper uses [Fresh setup](#fresh-setup).
 
 ```sh
 mkdir -p "$HOME/dev/bao-mac-toolchain"
@@ -116,18 +116,53 @@ rm -rf "$WORKDIR"
 
 ### This checkout
 
-Build from `v1/desktop`.
+Package the checkout you have. `v1/desktop` is the integration branch when that is the branch you mean to ship. Do not switch to it if you are already on the branch you are packaging.
+
+```sh
+git rev-parse --abbrev-ref HEAD
+git status -sb
+```
+
+`git rev-parse` prints the branch name. `git status -sb` prints that branch and a clean or dirty worktree.
+
+To clone for the first time, check out the branch you intend to package.
 
 ```sh
 git clone https://github.com/aaalexliu/bao-browser.git
 cd bao-browser
-git fetch origin v1/desktop
 git checkout v1/desktop
 ```
 
-## Build
+Replace `v1/desktop` with the branch you are packaging.
 
-On this Mac the helper is already signed with `bao dev signing` (CDHash `e2ad7477d8f989484c3d0ef8a2598561844127bf`). Skip the helper script. Run only the desktop script, so the nested helper keeps that CDHash and the grant stays. Do not pass `--deep` to `codesign`.
+## Fresh setup
+
+Use this when `desktop/os-helper-macos/BaoOSHelper.app` is missing, or when `codesign -dvvv` does not show identifier `dev.bao.oshelper` signed by `bao dev signing`. The helper is gitignored. Packaging stops if it is missing.
+
+The helper script signs bundle id `dev.bao.oshelper` with `BAO_SIGN_IDENTITY`. Do not pass `--deep` to `codesign`. Do not sign the helper ad-hoc, and do not drop a raw executable in place of the `.app`.
+
+```sh
+npm install
+export BAO_SIGN_IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
+bash desktop/os-helper-macos/package-app.sh
+bash desktop/packaging/macos/package-app.sh
+file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
+```
+
+`npm install` finishes before the desktop script runs `tsc`. The helper script prints a `codesign` verify. The desktop script then refuses to continue unless that helper is a bundle, identifier `dev.bao.oshelper`, not ad-hoc, and the first `Authority` line equals `BAO_SIGN_IDENTITY`. The designated requirement must be exactly `identifier "dev.bao.oshelper" and certificate leaf = H"a522e15d431a2f36ace451dd575a02e9e877fbd1"`. Set `BAO_HELPER_CERT_HASH` to the new certificate SHA-1 when the certificate changes. Use 40 hex digits. Colons are optional. The script does not accept a different hash on its own. It does not compare a binary CDHash. It copies the helper into `Bao.app` without signing it again.
+
+The desktop script stages Playwright and `classic-level` by reading those two versions from `package-lock.json` and running `npm install`. That install resolves transitive versions from the registry. It is not `npm ci`. A version match on the day of the build is not a lockfile install of the transitive tree. The staged tree includes the native binary for this Mac. The script compiles `extension/src/host-grant.ts` to `Contents/Resources/extension/src/host-grant.js`. It builds the window script to `Contents/Resources/bao/src/app/app.js`, so launch does not need the TypeScript sources or esbuild. It copies `desktop/src/library-home.cjs` and `desktop/src/print-home.cjs` to `Contents/Resources/bao/src`, next to the compiled server. The launcher runs that `print-home.cjs` to pick the library, and staging fails unless it prints `ok`. It copies the unpacked extension to `Contents/Resources/extension/dist`. Before `codesign`, it copies `bao`, `extension`, `src`, and `web` to a temp directory outside the checkout, unsets `NODE_PATH` and `NODE_OPTIONS`, points `HOME` at an empty temp directory, and requires `./src/app/server.js`, `playwright`, and `classic-level`. Each resolved file must realpath inside that copy. A module that exists only in the repo, on `NODE_PATH`, in `$HOME/.node_modules`, or through a symlink to another directory does not pass. The same check runs at the end of staging, so a missing `classic-level` cannot load the repo copy. The `extension`, `src`, and `web` copies are there so the server require can see `host-grant` and the other relative modules. A module that a staged package lists under `optionalDependencies` and that the copy lacks fails to load during the check, as it does in the installed app, even when the repo or `NODE_PATH` has it. The check then prints `require-staged: optional <name> is not staged; the app loads without it`. On macOS that is Playwright's `fsevents`: the registry entry for `fsevents@2.3.2` runs `node-gyp rebuild`, the package ships no `binding.gyp`, and the staged `npm install` drops it. Playwright catches the failed require and falls back to `fs.watch`.
+
+It compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). It copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
+
+- `npm install` ends without `EBADENGINE`.
+- The desktop script prints `BUNDLED_BROWSER` and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
+- `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
+- `codesign -dvvv` on the nested helper prints `Identifier=dev.bao.oshelper` and `Authority=bao dev signing`.
+
+## Rebuild with an existing grant
+
+Use this when this Mac already has the helper grant. Do not run `desktop/os-helper-macos/package-app.sh`. Do not pass `--deep` to `codesign`. Do not replace the helper with an ad-hoc signature or a raw binary. A new certificate is a different app, and the grant does not follow it.
 
 ```sh
 npm install
@@ -136,14 +171,63 @@ bash desktop/packaging/macos/package-app.sh
 file desktop/packaging/macos/dist/Bao.app/Contents/MacOS/bao
 ```
 
-`npm install` finishes before the desktop script runs `tsc`. The desktop script compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). It copies the helper that is already at `desktop/os-helper-macos/BaoOSHelper.app` to `Bao.app/Contents/Resources/BaoOSHelper.app`. It copies `src/mask.ts` to `Contents/Resources/bao/src/mask.ts` (without that file the window script fails and the sidebar never renders). It copies Playwright Chromium to `Contents/Resources/Chromium.app`, and writes `Bao.dmg` beside the app.
+The desktop script reads `desktop/os-helper-macos/BaoOSHelper.app` and exits before it compiles or signs if any of these are true.
 
-- `npm install` ends without `EBADENGINE`.
-- The desktop script prints `BUNDLED_BROWSER` and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
-- `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
-- `codesign -dvvv` on the nested `BaoOSHelper.app` still shows CDHash `e2ad7477d8f989484c3d0ef8a2598561844127bf`.
+- The path is missing.
+- The path is not an app bundle with `Contents/MacOS/BaoOSHelper`.
+- `codesign --verify --strict` fails.
+- The identifier is not `dev.bao.oshelper`.
+- The signature is ad-hoc.
+- The first `Authority` line is not `$BAO_SIGN_IDENTITY`.
+- The designated requirement is not exactly `identifier "dev.bao.oshelper" and certificate leaf = H"a522e15d431a2f36ace451dd575a02e9e877fbd1"`. A new certificate passes only when `BAO_HELPER_CERT_HASH` is set to that certificate's SHA-1.
 
-Copy `Bao.app` to `/Applications/Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
+`codesign -dvvv` prints a CDHash. Rebuilding the helper changes it. The CDHash is not the acceptance check.
+
+Inspect the helper you are about to nest:
+
+```sh
+codesign --verify --strict --verbose=2 desktop/os-helper-macos/BaoOSHelper.app
+codesign -dvvv desktop/os-helper-macos/BaoOSHelper.app
+codesign -d -r- desktop/os-helper-macos/BaoOSHelper.app
+```
+
+`Identifier=dev.bao.oshelper`. The first `Authority=` line is `bao dev signing` unless you set `BAO_SIGN_IDENTITY`. The designated requirement line is `identifier "dev.bao.oshelper" and certificate leaf = H"a522e15d431a2f36ace451dd575a02e9e877fbd1"` unless you set `BAO_HELPER_CERT_HASH`.
+
+## Install or update
+
+Quit Bao from the Dock. Replacing the app does not remove the library.
+
+```sh
+rm -rf /Applications/Bao.app
+cp -a desktop/packaging/macos/dist/Bao.app /Applications/Bao.app
+codesign --verify --strict --verbose=2 /Applications/Bao.app
+codesign --verify --strict --verbose=2 /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
+codesign -dvvv /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
+open /Applications/Bao.app
+```
+
+Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
+
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With both privacy grants on, the footer reads **helper ok**.
+
+## Logs
+
+Bao does not write a launch log. Finder does not keep the server stdout. The server prints one line, `bao <port> home <home>`, when a terminal is attached.
+
+An import appends a line to `~/Library/Application Support/bao/audit/import-login.jsonl`. That directory is the library. Do not delete it to clear a log.
+
+## Roll back
+
+Keep the previous `Bao.app` or `Bao.dmg`. Quit Bao from the Dock. Replace `/Applications/Bao.app` with that copy. Leave `~/Library/Application Support/bao` in place. Open the restored app from Finder.
+
+```sh
+rm -rf /Applications/Bao.app
+cp -a /path/to/previous/Bao.app /Applications/Bao.app
+codesign --verify --strict --verbose=2 /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
+open /Applications/Bao.app
+```
+
+The nested helper in the restored app must still be the signed `dev.bao.oshelper` bundle. Do not copy an ad-hoc helper or a raw executable into it.
 
 ## Permissions
 
@@ -152,9 +236,14 @@ The product window does not need Accessibility. The nested helper does. On the f
 1. Accessibility. The usage string is `BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.`
 2. Screen Recording. The usage string is `BaoOSHelper captures one throwaway window so the spike can show the control it pressed.`
 
-Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility, and again under Screen & System Audio Recording. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it.
+Live Chrome needs Accessibility only. It does not capture a window, so it works with Screen Recording on or off. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer reads **helper ok**.
+Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Enable it under Screen & System Audio Recording too for window capture and the MCP driver. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it.
+
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job:
+
+- With Accessibility alone: **helper needs permission**, then **AX press ready**, **window capture needs Screen Recording**, **live Chrome ready**, and **MCP driver needs Accessibility and Screen Recording**.
+- With both grants: **helper ok**, then **AX press ready**, **window capture ready**, **live Chrome ready**, and **MCP driver ready**.
 
 An agent can check the local server. This is not a page to open:
 
@@ -162,7 +251,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` and `helper.screenCapture` are true, and `helper.label` is `helper ok`. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+`helper.accessibility` is true, and the `live-chrome` row in `helper.capabilities` has status `live Chrome ready`. `helper.screenCapture` is true only with Screen Recording on. `helper.label` is `helper ok` only when both grants are on, and `helper needs permission` otherwise. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 

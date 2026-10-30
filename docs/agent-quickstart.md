@@ -10,11 +10,13 @@ export PATH="$(dirname "$(nvm which node)"):$PATH"
 
 `npm run build:desktop` compiles `desktop/` to `desktop/dist`. `npm run bao` then runs `node desktop/dist/desktop/src/app/cli.js` and skips `tsc`. A second `npm run build:desktop` picks up TypeScript edits.
 
-`bao serve` listens on port 4787 unless `BAO_PORT` is set. It prints `bao <port> home <path>`. The checkout CLI checks `--home`, then `BAO_HOME`, then `~/.local/share/bao`. `defaultHome` in `desktop/src/app/cli.ts` returns `~/.local/share/bao` on Linux and on macOS.
+`bao serve` listens on port 4787 unless `BAO_PORT` is set. It prints `bao <port> home <path>`. `bao status` prints the same home as JSON and starts nothing.
 
-`bao mcp` reads `BAO_HOME`, then `.bao-mcp` in the current directory. With `BAO_HOME` unset, `search_workflows` returns `hits: []` for a workflow saved under the serve home. Set `BAO_HOME` to the path `bao serve` printed.
+The CLI, `bao mcp`, and the installed Mac app pick the library with one resolver, `desktop/src/library-home.cjs`. `--home`, then `BAO_HOME`, is used as given, even when that directory is empty. Without either, the home is `~/Library/Application Support/bao` on macOS and `~/.local/share/bao` elsewhere. When that directory has no workflows or library data, Bao keeps an older library that has them: `~/.local/share/bao` on macOS, or `.bao-mcp` in the working directory. It names both directories on stderr when it does.
 
-The installed app chooses its own home before the server starts. That path is in [Build Bao on a Mac](mac-build.md). Commands on this page use `~/.local/share/bao`.
+So `bao mcp` without `BAO_HOME` reads the library `bao serve` would pick from the same working directory. An MCP client starts the server from its own working directory, and a `.bao-mcp` library there can win. Set `BAO_HOME` to the path `bao serve` printed to pin MCP to that library.
+
+The Mac launcher runs `desktop/src/print-home.cjs` before the server starts. [Build Bao on a Mac](mac-build.md) has the installed app's paths.
 
 `bao serve` writes `com.bao.desktop.json` under the real user home from `homedir()` in `defaultConfigHome`. On Linux that directory is `~/.config/google-chrome/NativeMessagingHosts`. `--home` does not move it.
 
@@ -25,14 +27,14 @@ The installed app chooses its own home before the server starts. That path is in
 Point the client at the compiled file, with `BAO_HOME` set to the serve home. Two forms, both after `npm run build:desktop`:
 
 ```sh
-export BAO_HOME="$HOME/.local/share/bao"
+export BAO_HOME="/the/home/bao/serve/printed"
 node desktop/dist/desktop/src/app/cli.js mcp
 ./scripts/bao-mcp.sh
 ```
 
-That `BAO_HOME` value is the checkout default from `defaultHome`. If `bao serve` printed a different path, use the printed path.
+On a Mac with no older library, that path is `~/Library/Application Support/bao`. On Linux it is `~/.local/share/bao`.
 
-`./scripts/bao-mcp.sh` execs that file. If `desktop/dist` is missing it writes one line to stderr and exits 1. If `BAO_HOME` is unset it exits 1 before the CLI creates `.bao-mcp`.
+`./scripts/bao-mcp.sh` execs that file. If `desktop/dist` is missing it writes one line to stderr and exits 1. If `BAO_HOME` is unset it exits 1 before the CLI picks a library.
 
 `npm run bao -- mcp` still starts the same CLI, and npm writes its script header to stdout before the first JSON-RPC byte. A client that parses stdout as the protocol will fail on that header. The header also used to wait on a full `tsc` run. The compile is gone. The header remains. Use the compiled file or `./scripts/bao-mcp.sh`.
 

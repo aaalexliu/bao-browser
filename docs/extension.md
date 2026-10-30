@@ -33,11 +33,11 @@ The extension is not in the Chrome Web Store. Load the unpacked build.
 
 After `./install-extension.sh`, click Reload on the Bao card at `chrome://extensions`. A page that already ran the content script needs its own reload.
 
-`npm run bao` is `bao serve`. Each start rewrites the native-host manifest and `bao-native-host.sh`. The socket directory is `$BAO_HOME/extension-host` when `BAO_HOME` is set, and `~/.local/share/bao/extension-host` otherwise. Workflows live in the same home, beside `extension-host`. `bao mcp` reads those workflows when `BAO_HOME` is the serve home. With `BAO_HOME` unset, `bao mcp` reads `.bao-mcp` in the current directory. The token file stays when it is already there. The open port drops because the socket is replaced.
+`npm run bao` is `bao serve`. Each start rewrites the native-host manifest and `bao-native-host.sh`. The socket directory is `extension-host` in the serve home: `$BAO_HOME/extension-host` when `BAO_HOME` is set, otherwise `~/Library/Application Support/bao/extension-host` on macOS and `~/.local/share/bao/extension-host` elsewhere. Bao can keep an older library instead, as [Agent quickstart](agent-quickstart.md#desktop-service) says. `bao serve` prints the home it chose. Workflows live in the same home, beside `extension-host`. `bao mcp` reads those workflows when `BAO_HOME` is the serve home. The token file stays when it is already there. The open port drops because the socket is replaced.
 
 Chrome reads `com.bao.desktop.json` when the browser starts. On macOS that file is `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.bao.desktop.json`. On Linux it is `~/.config/google-chrome/NativeMessagingHosts/com.bao.desktop.json`. `allowed_origins` is `chrome-extension://jcjcpblcjaakcmbgljdjkfgmmdfdbnfj/`. The same manifest is written for Chromium.
 
-The wrapper path inside that file is `$BAO_HOME/extension-host/bao-native-host.sh`. While that path is unchanged, the next `connectNative` runs the new wrapper. A different `BAO_HOME` changes the path. Quit Chrome and open it again so Chrome picks up the new path.
+The wrapper path inside that file is `extension-host/bao-native-host.sh` in the serve home. While that path is unchanged, the next `connectNative` runs the new wrapper. A different home changes the path. Quit Chrome and open it again so Chrome picks up the new path.
 
 The extension connects on install, on Chrome startup, and on the `bao-link` alarm about once a minute. Reload the extension to connect again immediately. Click the Bao icon. The popup says `linked to Bao` when the native port is open, and `Bao isn't running` when it is closed. A replay that needed the extension and found no port returns `extension is not connected`.
 

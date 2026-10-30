@@ -1,10 +1,12 @@
 // Launch an owned browser. Never port 9222, never the daily profile.
 // Capture, replay, login import, and computer-use start the installed Google
 // Chrome and attach over a private debugging port. Playwright's launcher is
-// only used when a caller asks for page.video().
+// only used when a caller asks for page.video(). The hermetic test lane sets
+// BAO_TEST_BROWSER, and then every launch starts that browser with a mock
+// keychain instead.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
@@ -82,7 +84,27 @@ export function productHeadless(env: NodeJS.ProcessEnv = process.env, platform: 
   return platform !== "darwin";
 }
 
-/** Owned Chrome only. Account Chrome never receives the sandbox opt-in. */
+const MOCK_KEYCHAIN_ARGS = ["--use-mock-keychain", "--password-store=basic"];
+
+/**
+ * The hermetic test lane's browser. desktop/test/run-v1.mjs sets
+ * BAO_TEST_BROWSER to Playwright's Chromium. While it is set, every launch
+ * starts that binary with a mock keychain, so a test never opens the user's
+ * Chrome or the login keychain. Product launches never set it.
+ */
+export function testLaneBrowser(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.BAO_TEST_BROWSER?.trim() || undefined;
+}
+
+/** The mock keychain flags in the test lane. Empty for every product launch. */
+export function testLaneKeychainArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  return testLaneBrowser(env) ? [...MOCK_KEYCHAIN_ARGS] : [];
+}
+
+/**
+ * Owned Chrome only. Account Chrome never receives the sandbox opt-in.
+ * Caller arguments never carry a keychain flag. Only the test lane adds one.
+ */
 export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
   const mac = platform === "darwin" ? ["--force-renderer-accessibility"] : [];
   const sandbox = needsLinuxNoSandbox(env, platform) ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
@@ -90,22 +112,42 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     "--enable-automation",
     "--disable-blink-features=AutomationControlled",
     "--disable-extensions",
-    "--use-mock-keychain",
-    "--password-store=basic",
     "--enable-unsafe-swiftshader",
     "--restore-last-session",
   ]);
   const cleaned = extra.filter((arg) => {
-    if (drop.has(arg)) return false;
+    if (drop.has(arg) || isKeychainFlag(arg)) return false;
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned];
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env)];
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
-function ownedLaunchArgs(extra: string[] | undefined): string[] {
-  return ownedChromeLaunchArgs(extra ?? []);
+function ownedLaunchArgs(extra: string[] | undefined, append: string[] | undefined): string[] {
+  return ownedChromeLaunchArgs([...(extra ?? []), ...(append ?? [])]);
+}
+
+const KEYCHAIN_FLAG_NAMES = new Set(["--use-mock-keychain", "--password-store"]);
+
+function chromeFlagName(arg: string): string {
+  const trimmed = arg.trim();
+  const eq = trimmed.indexOf("=");
+  return eq === -1 ? trimmed : trimmed.slice(0, eq);
+}
+
+function isKeychainFlag(arg: string): boolean {
+  return KEYCHAIN_FLAG_NAMES.has(chromeFlagName(arg));
+}
+
+export function chromeExecutable(file: string): boolean {
+  try {
+    if (!statSync(file).isFile()) return false;
+    accessSync(file, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const DAILY_DIR = [
@@ -116,24 +158,38 @@ const DAILY_DIR = [
 ];
 
 /**
- * Installed Google Chrome when it is present, otherwise BAO_BROWSER, otherwise
- * Playwright's Chromium. Never a PATH lookup: wrappers can add automation flags.
+ * The test lane's browser when BAO_TEST_BROWSER is set. Otherwise installed
+ * Google Chrome when it is present, then BAO_BROWSER, then Playwright's
+ * Chromium. Never a PATH lookup: wrappers can add automation flags.
  */
-export function resolveNormalChrome(exists: (file: string) => boolean = existsSync, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+export function resolveNormalChrome(
+  exists: (file: string) => boolean = existsSync,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  playwrightPath: () => string = () => chromium.executablePath(),
+): string {
+  const pinned = testLaneBrowser(env);
+  if (pinned) {
+    if (chromeExecutable(pinned)) return pinned;
+    throw new Error(`BAO_TEST_BROWSER is not an executable file: ${pinned}`);
+  }
   if (platform === "darwin" && exists(ACCOUNT_CHROME_MAC)) return ACCOUNT_CHROME_MAC;
   if (platform === "linux" && exists(LINUX_CHROME)) return LINUX_CHROME;
   const bundled = env.BAO_BROWSER;
-  if (bundled && exists(bundled)) return bundled;
+  if (bundled && chromeExecutable(bundled)) return bundled;
   try {
-    const fallback = chromium.executablePath();
-    if (fallback && exists(fallback)) return fallback;
+    const fallback = playwrightPath();
+    if (fallback && chromeExecutable(fallback)) return fallback;
   } catch { /* Playwright has not downloaded a browser. */ }
   throw new Error("Chrome was not found");
 }
 
-/** Installed Google Chrome when it is present, otherwise the bundled browser. */
-export function resolveAccountChrome(exists: (file: string) => boolean = existsSync, env: NodeJS.ProcessEnv = process.env): string {
-  return resolveNormalChrome(exists, env);
+export function resolveAccountChrome(
+  exists: (file: string) => boolean = existsSync,
+  env: NodeJS.ProcessEnv = process.env,
+  playwrightPath?: () => string,
+): string {
+  return resolveNormalChrome(exists, env, process.platform, playwrightPath);
 }
 
 /** Flags for a normal Chrome window. No automation switch and no Playwright defaults. */
@@ -288,7 +344,7 @@ export async function launchAccountChrome(opts: {
   discardRestoredTabs(opts.userDataDir);
   const exe = resolveAccountChrome();
   const port = await ownedDebugPort();
-  const args = accountLaunchArgs(port);
+  const args = [...accountLaunchArgs(port), ...testLaneKeychainArgs()];
   const child: ChildProcess = spawn(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], { stdio: "ignore" });
   try {
     await waitForCdp(port);
@@ -350,6 +406,8 @@ export async function launchOwnedChrome(opts: {
   videoDir?: string;
   headless?: boolean;
   args?: string[];
+  appendArgs?: string[];
+  executablePath?: string;
   deviceScaleFactor?: number;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
@@ -362,18 +420,20 @@ async function launchNormalChrome(opts: {
   userDataDir: string;
   headless?: boolean;
   args?: string[];
+  appendArgs?: string[];
+  executablePath?: string;
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   mkdirSync(opts.userDataDir, { recursive: true });
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
-  const exe = resolveNormalChrome();
+  const exe = opts.executablePath || resolveNormalChrome();
   const headless = opts.headless ?? true;
   const port = await ownedDebugPort();
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
-    ...ownedLaunchArgs(opts.args),
+    ...ownedLaunchArgs(opts.args, opts.appendArgs),
     `--remote-debugging-port=${port}`,
     ...(headless ? ["--headless=new"] : []),
   ];
@@ -402,15 +462,28 @@ async function launchNormalChrome(opts: {
     context.close = async () => {
       if (closed) return;
       closed = true;
-      const open = context.pages().find((page) => !page.isClosed());
-      if (open) {
+      const open = context.pages().filter((page) => !page.isClosed());
+      let browserClose: ShutdownTrace["browserClose"] = open.length === 0 ? "skipped" : "failed";
+      const page = open[0];
+      if (page) {
         try {
-          const session = await context.newCDPSession(open);
+          const session = await context.newCDPSession(page);
           await session.send("Browser.close");
-        } catch { /* The process may already be gone. */ }
+          browserClose = "sent";
+        } catch {
+          browserClose = "failed";
+        }
       }
-      await releaseProfileProcesses(opts.userDataDir, child);
+      const released = await releaseProfileProcesses(opts.userDataDir, child);
       await browser.close().catch(() => undefined);
+      console.error(formatShutdown({
+        browserClose,
+        openPages: open.length,
+        childExit: released.childExit,
+        signal: released.signal,
+        killedPids: released.killedPids,
+        profile: opts.userDataDir,
+      }));
     };
     return context;
   } catch (err) {
@@ -435,7 +508,21 @@ async function applyDeviceScale(context: BrowserContext, deviceScaleFactor: numb
   for (const page of context.pages()) await apply(page);
 }
 
-async function releaseProfileProcesses(userDataDir: string, child: ChildProcess): Promise<void> {
+export interface ShutdownTrace {
+  browserClose: "sent" | "skipped" | "failed";
+  openPages: number;
+  childExit: number | null;
+  signal: NodeJS.Signals | null;
+  killedPids: number[];
+  profile: string;
+}
+
+export function formatShutdown(trace: ShutdownTrace): string {
+  const killed = trace.killedPids.length ? trace.killedPids.join(",") : "none";
+  return `bao shutdown browserClose=${trace.browserClose} openPages=${trace.openPages} childExit=${trace.childExit ?? "none"} signal=${trace.signal ?? "none"} killedPids=${killed} profile=${trace.profile}`;
+}
+
+async function releaseProfileProcesses(userDataDir: string, child: ChildProcess): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
   const deadline = Date.now() + 4000;
   while (Date.now() < deadline && child.exitCode == null && child.signalCode == null) {
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -447,9 +534,14 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess)
   while (Date.now() < killAt && child.exitCode == null && child.signalCode == null) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+  const killedPids: number[] = [];
   for (const pid of pidsForDataDir(userDataDir)) {
-    try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    try {
+      process.kill(pid, "SIGKILL");
+      killedPids.push(pid);
+    } catch {}
   }
+  return { childExit: child.exitCode, signal: child.signalCode, killedPids };
 }
 
 /** Playwright video only. The pipe and default switches come back with it. */
@@ -458,21 +550,23 @@ async function launchOwnedChromeForVideo(opts: {
   videoDir?: string;
   headless?: boolean;
   args?: string[];
+  appendArgs?: string[];
+  executablePath?: string;
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
-  const exe = resolveNormalChrome();
+  const exe = opts.executablePath || resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,
     headless: opts.headless ?? true,
     viewport: null,
     deviceScaleFactor: opts.deviceScaleFactor,
     chromiumSandbox: true,
-    ignoreDefaultArgs: AUTOMATION_SWITCHES,
+    ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: ownedLaunchArgs(opts.args),
+    args: ownedLaunchArgs(opts.args, opts.appendArgs),
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);
@@ -525,7 +619,11 @@ export function browserPidFromLauncher(userDataDir: string, selfPid: number, row
   return undefined;
 }
 
-export function assessOwnedCommand(cmd: string, userDataDir: string): OwnedVerdict {
+/**
+ * A product command line never carries a keychain flag. A test lane command
+ * line always carries the mock keychain.
+ */
+export function assessOwnedCommand(cmd: string, userDataDir: string, env: NodeJS.ProcessEnv = process.env): OwnedVerdict {
   if (/remote-debugging-port(?:=|\s+)9222/.test(cmd)) {
     return { ok: false, reason: "Chrome was started with remote-debugging-port 9222." };
   }
@@ -535,6 +633,14 @@ export function assessOwnedCommand(cmd: string, userDataDir: string): OwnedVerdi
   }
   if (isDailyProfileDir(dir)) {
     return { ok: false, reason: "Browser cmdline points at the daily profile." };
+  }
+  const tokens = cmd.split(/\s+/);
+  if (testLaneBrowser(env)) {
+    if (!tokens.includes("--use-mock-keychain")) {
+      return { ok: false, reason: "The test lane started Chrome without a mock keychain." };
+    }
+  } else if (tokens.some((token) => isKeychainFlag(token))) {
+    return { ok: false, reason: "Chrome was started with a mock keychain flag." };
   }
   return { ok: true };
 }
