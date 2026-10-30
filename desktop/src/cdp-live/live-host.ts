@@ -13,6 +13,7 @@ import {
   type OpenProfileWindow,
 } from "./live-target";
 import { acquireCdpLock, CDP_LOCK_PATH, rememberLockTarget, releaseCdpLock, takeDeadTarget } from "./lock";
+import { redactLabel } from "./live-record";
 import {
   admit,
   buildView,
@@ -824,7 +825,8 @@ export async function replayLive(target: ReplayTarget, workflow: WorkflowV2, loc
         stopAt(step.id, "needs_human", halt);
         break;
       }
-      const control = read.view.controls.find((item) => item.label === name);
+      const label = redactLabel(name);
+      const control = read.view.controls.find((item) => item.label === label);
       if (!control) {
         stopAt(step.id, "failed", "not_found");
         break;

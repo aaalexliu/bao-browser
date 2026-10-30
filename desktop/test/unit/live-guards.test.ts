@@ -377,6 +377,16 @@ test("live replay skips an Add whose result is already on the page, and runs it 
   assert.equal(empty.clicks.length, 1);
 });
 
+test("live replay finds a saved control whose name has digits the view redacts", async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-live-replay-")), "lock");
+  const name = "Add 1 ct Kirkland Signature Bath Tissue, 380 sheets";
+  const workflow = liveWorkflow([liveStep(0, "click", name)]);
+  const shop = replayTarget([facts([{ index: 0, label: name, kind: "button" }])]);
+  const result = await replayLive(shop.target, workflow, file);
+  assert.equal(result.status, "passed");
+  assert.equal(shop.clicks.length, 1);
+});
+
 test("a click or type plan holds only while the marked control keeps its label and kind", () => {
   const before = buildView(facts([
     { index: 0, label: "Add to cart", kind: "button" },
