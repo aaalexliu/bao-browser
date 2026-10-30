@@ -37,7 +37,8 @@ test("capture login, upload, and drop, then replay with two input sets", async (
     await post(app.port, "/api/sessions/drive", { click: "#login-btn" });
     await post(app.port, "/api/sessions/drive", { upload: { selector: "#file", path: file } });
     await post(app.port, "/api/sessions/drive", { drop: { selector: "#drop", name: "note.txt", path: file } });
-    const workflow = await post(app.port, "/api/sessions/stop") as { id: string; inputs: { name: string; type: string; default?: string }[]; steps: unknown[] };
+    await post(app.port, "/api/sessions/stop");
+    const workflow = await post(app.port, "/api/sessions/commit") as { id: string; inputs: { name: string; type: string; default?: string }[]; steps: unknown[] };
     const blob = JSON.stringify(workflow);
     assert.equal(blob.includes("SuperSecretPassword!"), false);
     assert.equal(blob.includes(file), false);

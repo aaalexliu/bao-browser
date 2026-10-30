@@ -1,5 +1,46 @@
 # Bao
 
+## Agent quickstart
+
+This branch has four deliverables.
+
+1. **Bao.app and the desktop service.** Source is `desktop/`. `npm run bao` serves the app after `npm run build:desktop`.
+2. **Native-messaging extension.** Source is `extension/`. It drives the Chrome already installed on the machine.
+3. **Legacy root extension.** Source is `src/`, built to `dist/`.
+4. **Optional registry.** Source is `web/`.
+
+Run the commands from the repo root. Node is the major version in `.nvmrc` and `mise.toml`. `nvm use` can print that version while an older `node` stays first on PATH. Prepend the bin directory from `nvm which node`.
+
+```sh
+export PATH="$(dirname "$(nvm which node)"):$PATH"
+node scripts/check-node.mjs
+```
+
+`node scripts/check-node.mjs` exits 1 when the running Node is older than `.nvmrc`. MCP setup, the extension load, and `cdp-live` are in [docs/agent-quickstart.md](docs/agent-quickstart.md).
+
+| Step | Command |
+| --- | --- |
+| Prerequisites | `node scripts/check-node.mjs`, then `npm install` and `npm --prefix web install`, then `npx playwright install chromium` before `npm test`. |
+| Desktop dev | `npm run build:desktop`, then `npm run bao`. |
+| Legacy extension dev | `npm run watch` |
+| Registry dev | `npm --prefix web run dev` |
+| Typecheck | `npm run typecheck` checks `src`, `desktop`, `extension`, and `web`. |
+| Unit tests | `npm run test:desktop:unit` for desktop. `npm test` for the root extension. `npm --prefix web test` for the registry. |
+| Aggregate | `npm run check` runs the typecheck and the desktop unit suite. |
+| Local browser integration | `npm run test:desktop:integration` runs the local fixture capture in `browser.test` and `drift.test`. |
+| Mac acceptance | On a Mac, follow [docs/mac-test.md](docs/mac-test.md). `npm run package:mac` writes `Bao.app`. |
+| Install the desktop extension | `./install-extension.sh` |
+| Install the legacy extension | `./install-dev-legacy.sh` |
+| MCP | After `npm run build:desktop`, set `BAO_HOME` to the home `bao serve` printed, then run `./scripts/bao-mcp.sh` or `node desktop/dist/desktop/src/app/cli.js mcp`. |
+
+`./install-dev.sh` prints the two installer names and exits 2.
+
+`npm run bao` runs the compiled CLI. It does not compile. Run `npm run build:desktop` again after desktop TypeScript changes. `npm run test:v1` still runs the desktop unit suite.
+
+The sections below describe the legacy root extension. Its test layout is [TESTING.md](docs/TESTING.md).
+
+## Root extension
+
 **Record a browser workflow once, get human-readable steps, replay it deterministically
 whenever you want.** A Chrome MV3 extension for non-technical users with a repetitive
 browser task ("log in, open the report, download the CSV").
@@ -9,10 +50,6 @@ readable, editable **workflow (IR)**. An LLM is a *compiler* (raw trace → clea
 that runs once at authoring time. Replay is plain deterministic code: free, instant,
 offline, and it fails *cleanly* (a clear "the page changed, re-record" report) instead of
 guessing.
-
-> This README is the single entry point. It states where the project is, links every
-> design doc in reading order, and lays out the path to a public launch. Deep design
-> lives in the docs mapped below; how to run the tests lives in [TESTING.md](docs/TESTING.md).
 
 ---
 
@@ -33,13 +70,13 @@ the packaged build from the [latest release](https://github.com/aaalexliu/bao-br
 > This is a beta distribution mode: Developer-mode unpacked load is fine for early users
 > but is not the intended path for non-technical users (see the thesis in
 > [blocker #5](#blockers-in-priority-order)) - the Chrome Web Store listing is. Building
-> from source instead? See **[Quickstart](#quickstart)** below.
+> from source instead? See the **[Agent quickstart](#agent-quickstart)**.
 
 ---
 
 ## Status at a glance
 
-The risky core is **built and green** (`npm run typecheck` + `npm test` pass): capture →
+The root extension covers capture →
 deterministic replay, across full-document navigations, with a side panel, a full-page
 dashboard, run history, and an audit filmstrip. The engine covers the two target wedges.
 
@@ -115,9 +152,7 @@ distribution — far lighter Chrome Web Store review.
    durable run history, and the record-vs-replay filmstrip.
 7. **`docs/backend-webapp-design.md`** — launch #2: the hosted compiler (M2), accounts + sync,
    and **workflow sharing** — designed local-first so the backend stays additive.
-8. **`docs/desktop-design.md`** — architecture pass for a desktop modality (owned Chrome
-   via CDP, OS accessibility for native dialogs). Exploratory; the extension stays the
-   product. Spike 1 and spike 2 live under `desktop/`.
+8. **`docs/desktop-design.md`**. Architecture pass for the desktop service. The command map is the [Agent quickstart](#agent-quickstart). Spike notes stay in the log below.
 9. **`docs/proxy-design.md`** — design for the desktop app as the harness computer-use
    agents drive. The first spike (`npm run spike-proxy`) is a scripted OpenAI
    computer-call adapter over a vendor-neutral executor.
@@ -380,7 +415,7 @@ is still the source of truth for the extension.
 
 ---
 
-## Quickstart
+## Legacy extension load
 
 ```sh
 npm install && npm run build   # TypeScript in src/ → esbuild bundles to dist/ (npm run watch to iterate)
