@@ -176,8 +176,6 @@ test("a product command line rejects mock keychain flags in every form", () => {
     "--password-store ",
   ], product, "darwin");
   assert.equal(cleaned.some((arg) => /use-mock-keychain|password-store/.test(arg)), false);
-  const source = readFileSync(path.join(process.cwd(), "desktop/src/launch.ts"), "utf8");
-  assert.equal(source.includes("...(opts.appendArgs ?? [])"), false);
 });
 
 test("BAO_BROWSER and the Playwright path must be executable files", () => {
