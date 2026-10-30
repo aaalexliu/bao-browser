@@ -235,6 +235,37 @@ test("an explicit --home or BAO_HOME wins over legacy libraries that hold data",
   }
 });
 
+test("live verbs find the app the same way as bao open", async () => {
+  const dirs = layout();
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  mkdirSync(legacy, { recursive: true });
+  const hits: string[] = [];
+  const server = createServer((req, res) => {
+    hits.push(req.url || "");
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ outcome: { kind: "ok" } }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const port = (server.address() as AddressInfo).port;
+  writeFileSync(path.join(legacy, "server.json"), `${JSON.stringify({ port })}\n`);
+  try {
+    const kept = await runCli(["live_snapshot"], childEnv(dirs.user), dirs.cwdA, "darwin");
+    assert.equal(kept.code, 0, kept.stderr);
+    assert.deepEqual(JSON.parse(kept.stdout), { outcome: { kind: "ok" } });
+    assert.deepEqual(hits, ["/api/live"]);
+
+    const flagged = await runCli(["live_snapshot", "--home", dirs.flagged], childEnv(dirs.user), dirs.cwdA, "darwin");
+    assert.equal(flagged.code, 1);
+    assert.match(flagged.stderr, /bao app is not running/);
+    const fromEnv = await runCli(["live_snapshot"], childEnv(dirs.user, { BAO_HOME: dirs.fromEnv }), dirs.cwdA, "darwin");
+    assert.equal(fromEnv.code, 1);
+    assert.match(fromEnv.stderr, /bao app is not running/);
+    assert.deepEqual(hits, ["/api/live"]);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  }
+});
+
 test("bao open with an explicit home does not reach a server named by a legacy library", async () => {
   const dirs = layout();
   const legacy = path.join(dirs.user, ".local", "share", "bao");
@@ -995,5 +1026,6 @@ test("the Mac launcher asks the shared resolver and does not use /tmp", () => {
   const source = readFileSync(launcherMain, "utf8");
   assert.equal(source.includes(".local/share/bao"), false);
   assert.equal(source.includes('user_home = "/tmp"'), false);
-  assert.match(source, /print-home\.cjs/);
+  // stage-runtime.sh puts the compiled server and both resolver files in Resources/bao/src.
+  assert.match(source, /"%s\/src\/print-home\.cjs", root/);
 });
