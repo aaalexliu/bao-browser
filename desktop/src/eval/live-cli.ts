@@ -333,8 +333,8 @@ function keychainLogin(): string {
  * Codex with a temp CODEX_HOME, so no config.toml, AGENTS.md, hook, skill, plugin, or rule of
  * this Mac reaches the run, and the run writes nothing to ~/.codex. The login is copied from
  * $CODEX_HOME/auth.json, else ~/.codex/auth.json, with an empty refresh token, so the run cannot
- * rotate that login. Codex refreshes a ChatGPT login 8 days after its last refresh; past that,
- * the run is not started.
+ * rotate that login. Codex refreshes a ChatGPT login 8 days after its last refresh, so the run is
+ * not started once the last refresh is 7 days old.
  */
 export function codexAgentAuth(codexHome: string, base: NodeJS.ProcessEnv = process.env, now = Date.now()): AgentAuth {
   const env = agentBaseEnv(base);
@@ -358,7 +358,7 @@ export function codexAgentAuth(codexHome: string, base: NodeJS.ProcessEnv = proc
   return { env };
 }
 
-/** The driver's env: the account's HOME and PATH, with no Bao, Claude, or Codex setting from this shell. */
+/** The driver's env: the account's HOME and PATH, with no Bao, Claude, Codex, Anthropic, or OpenAI setting from this shell. */
 function agentBaseEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env = driverProcessEnv(base);
   for (const key of Object.keys(env)) {
