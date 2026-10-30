@@ -151,11 +151,18 @@ function identity(target: OsTarget): string[] {
   return args;
 }
 
+export const HELPER_SHOT_COMMAND = "shot";
+export const LIVE_CHROME_SHOT_ERROR = "live Chrome does not use screen recording";
+
 export class MacOsHelper {
   readonly calls: string[][] = [];
+  refuseWindowShot = false;
   constructor(readonly bin: string) {}
 
-  private exec(args: string[], timeoutMs?: number): Promise<AxHit> {
+  exec(args: string[], timeoutMs?: number): Promise<AxHit> {
+    if (this.refuseWindowShot && args[0] === HELPER_SHOT_COMMAND) {
+      return Promise.reject(new Error(LIVE_CHROME_SHOT_ERROR));
+    }
     this.calls.push(args);
     return run(this.bin, args, timeoutMs);
   }

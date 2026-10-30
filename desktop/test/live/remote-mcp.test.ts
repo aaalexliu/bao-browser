@@ -15,11 +15,12 @@ import { startApp, type App } from "../../src/app/server";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice } from "../../src/v1/sync";
+import { testArtifacts } from "../artifacts";
 
 const PASSWORD = "fixture-pass-value";
 const COOKIE = "session=super-secret-cookie";
-const SHOTS = "/opt/cursor/artifacts/screenshots";
-const ARTIFACTS = "/opt/cursor/artifacts";
+const ARTIFACTS = testArtifacts("remote-mcp");
+const SHOTS = testArtifacts("remote-mcp-screenshots");
 const CHROME = "/opt/google/chrome/chrome";
 
 let tail: Promise<unknown> = Promise.resolve();

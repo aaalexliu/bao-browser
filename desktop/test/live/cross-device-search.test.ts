@@ -15,6 +15,7 @@ import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
+import { testArtifacts } from "../artifacts";
 
 const WORKFLOW_ID = "span-from-a";
 const LOCAL_ID = "span-here";
@@ -215,7 +216,7 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
         marketplaceRun: { id: LISTING_ID, outcome: installBody.outcome, source: installBody.source, lastGreen: installBody.lastGreen, installed: true },
         macAAfterSync: { id: WORKFLOW_ID, source: macAHit.source, lastGreen: macAHit.lastGreen },
       };
-      const artifact = "/opt/cursor/artifacts/cross-device-mcp.json";
+      const artifact = path.join(testArtifacts("cross-device-search"), "cross-device-mcp.json");
       mkdirSync(path.dirname(artifact), { recursive: true });
       writeFileSync(artifact, JSON.stringify(transcript, null, 2));
       assert.equal(macAHit.lastGreen, runBody.lastGreen);
