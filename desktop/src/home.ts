@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /** A split names a second library with data. A fallback names the empty directory Bao skipped. */
@@ -69,6 +69,21 @@ export function otherLibraries(root: string, argsOrOptions: readonly string[] | 
 
 export function serverHomes(args: readonly string[] = [], env?: NodeJS.ProcessEnv): string[] {
   return call(() => lib.serverHomes(args, env));
+}
+
+/** Port of the running app, from server.json in the first of serverHomes that has one. */
+export function serverPort(args: readonly string[] = [], env?: NodeJS.ProcessEnv): number | undefined {
+  for (const home of serverHomes(args, env)) {
+    const file = path.join(home, "server.json");
+    if (!existsSync(file)) continue;
+    try {
+      const port = Number((JSON.parse(readFileSync(file, "utf8")) as { port?: number }).port);
+      if (port > 0) return port;
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
 
 /** Returns the lines not yet shown from this library and records them in it. */

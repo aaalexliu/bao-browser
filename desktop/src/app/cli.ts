@@ -1,6 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-import { resolveHome, serverHomes } from "../home";
+import { readFileSync } from "node:fs";
+import { resolveHome, serverPort } from "../home";
 import { reviewWorkflow } from "../mcp/catalog";
 import { mcpMain } from "../mcp/server";
 import { mcpBaoMain } from "../proxy/mcp-bao";
@@ -80,7 +79,7 @@ async function main(): Promise<void> {
     if (!parseBaoLink(link)) {
       throw new Error(link.trim().startsWith("bao://run/") ? "inputs must be JSON" : "usage: bao open bao://workflow/<id>");
     }
-    const port = Number(flag(rest, "--port") || process.env.BAO_PORT || readServerPort(rest) || 0);
+    const port = Number(flag(rest, "--port") || process.env.BAO_PORT || serverPort(rest) || 0);
     if (!port) {
       console.error("start Bao first");
       process.exit(1);
@@ -175,7 +174,7 @@ async function importLogin(args: string[]): Promise<void> {
     console.error("usage: bao import-login --from chrome --domain <host> [--profile <name>]");
     process.exit(1);
   }
-  const port = Number(flag(args, "--port") || process.env.BAO_PORT || readServerPort(args) || 4787);
+  const port = Number(flag(args, "--port") || process.env.BAO_PORT || serverPort(args) || 4787);
   const base = `http://127.0.0.1:${port}`;
   let created: { id?: string; message?: string; phase?: string; error?: string };
   try {
@@ -223,25 +222,6 @@ async function importLogin(args: string[]): Promise<void> {
   }
   console.error("timed out waiting for confirm");
   process.exit(1);
-}
-
-function readServerPort(args: readonly string[]): number | undefined {
-  for (const home of serverHomes(args)) {
-    const port = readPortFile(home);
-    if (port) return port;
-  }
-  return undefined;
-}
-
-function readPortFile(home: string): number | undefined {
-  const file = path.join(home, "server.json");
-  if (!existsSync(file)) return undefined;
-  try {
-    const port = Number((JSON.parse(readFileSync(file, "utf8")) as { port?: number }).port);
-    return port > 0 ? port : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function flag(args: string[], name: string): string | undefined {

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { navigationAllowed } from "./allowlist";
 import { checkboxReach } from "./consent";
-import { resolveBaoHome } from "../app/bao-home";
+import { resolveHome } from "../home";
 import { AxUnavailable, checkboxState, chromeHelper, chromeTree } from "./ax";
 import { liveSessionDir, SessionLog } from "./audit";
 import { attachLivePage, openLiveWindow, type CdpLiveDriver, type PageObservation } from "./driver";
@@ -515,7 +515,7 @@ async function runGuarded(
   progress(`socket open; connect-to-Allow ${connectToAllowMs == null ? "not clicked" : `${connectToAllowMs}ms`}`);
   const ids = workflowIdsFromIntent(guard.intent, arg("--workflow-id") || undefined);
   const liveLog = new SessionLog(
-    liveSessionDir(resolveBaoHome({ homeFlag: arg("--home") || undefined })),
+    liveSessionDir(resolveHome(process.argv.slice(2))),
     guard.intent,
     ids.workflowId.slice(0, 40),
   );
@@ -1016,7 +1016,7 @@ async function runGuarded(
     });
     const workflowErrors = validateWorkflow(workflow);
     if (workflowErrors.length === 0) {
-      const library = new Library(resolveBaoHome({ homeFlag: arg("--home") || undefined }));
+      const library = new Library(resolveHome(process.argv.slice(2)));
       library.save(workflow);
       const confirm = workflow.steps.find((step) => step.action === "confirm");
       library.saveRun({
