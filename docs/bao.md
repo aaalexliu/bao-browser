@@ -24,7 +24,7 @@ Permission is `ask` (the default) or `deny`, stored as `remotePermission` on thi
 
 ### Drivers
 
-`workflowDriver` is unchanged. Absent, unknown, and `cdp-live` still mean Playwright there. The remote path picks a driver with `remoteDriverKind`. Extension runs only when the workflow says `extension`, and a missing extension link returns "extension is not connected" instead of falling through. `cdp-live` runs only when the workflow says `cdp-live`. It attaches to an already-open Chrome and does not launch Bao's browser. The default remote run is still the Playwright catalog replay, on the library's throwaway `chrome-profile`.
+`workflowDriver` is unchanged. Absent, unknown, and `cdp-live` still mean Playwright there. The remote path picks a driver with `remoteDriverKind`. Extension runs only when the workflow says `extension`, and a missing extension link returns "extension is not connected" instead of falling through. `cdp-live` runs only when the workflow says `cdp-live`. It goes through `run_workflow` with the app's live runner, `replayLiveWorkflow` in `desktop/src/cdp-live/live-replay.ts`, and does not launch Bao's browser. Without that runner it returns `failed`. The default remote run is still the Playwright catalog replay, on the library's throwaway `chrome-profile`.
 
 ### Jobs
 
