@@ -120,6 +120,20 @@ test("a calculator button wins the tie with its label when the role is button", 
   assert.equal(uniqueNamedRole([button, { ...button }], "gnome-calculator", "button", "7"), undefined);
 });
 
+test("a role or text locator with no price matches a node at any price, and a priced one keeps its price", () => {
+  const name = "Kirkland Signature Organic Blueberries, 3 lbs 3 lb";
+  const nodes = [
+    ident({ role: "link", text: `Current price: $10.49 $1049 ${name}` }),
+    ident({ role: "button", name: "Tip $2" }),
+    ident({ role: "button", name: "Tip $3" }),
+  ];
+  assert.equal(matchLocator({ kind: "role", role: "link", name }, nodes)?.index, 0);
+  assert.equal(matchLocator({ kind: "text", value: name }, nodes)?.index, 0);
+  assert.equal(matchLocator({ kind: "role", role: "link", name: `Current price: $9.89 $989 ${name}` }, nodes), undefined);
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "Tip $3" }, nodes)?.index, 2);
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "Tip" }, nodes), undefined, "two controls that differ only by price stay a miss");
+});
+
 test("a collapsed box is not a locator hit", () => {
   const hidden = ident({ role: "textbox", name: "Search Wikipedia", id: "searchInput" });
   assert.equal(matchLocator(

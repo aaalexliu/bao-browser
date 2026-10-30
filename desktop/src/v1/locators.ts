@@ -1,9 +1,10 @@
 // Ordered locators, tried before the repair tiers.
 // A locator hits only when exactly one node matches. Two matches are a miss,
 // unless they are checkable inputs that share a name and the recorded label
-// picks exactly one of them.
+// picks exactly one of them. A name or text matches a node's text as shown or
+// with its prices dropped, so a price-free name finds a control at any price.
 
-import { normRole, normText } from "./identity";
+import { normRole, normText, withoutPrice } from "./identity";
 import type { Box } from "./repair";
 import type { Identity, StepLocator } from "./schema";
 
@@ -102,12 +103,12 @@ function preferExactControl(locator: StepLocator, hits: number[], nodes: Identit
 
 function exactVisible(node: Identity | undefined, want: string): boolean {
   if (!node) return false;
-  return [node.text, node.name, node.label, node.title].some((value) => !!value && normText(value) === want);
+  return [node.text, node.name, node.label, node.title].some((value) => shownAs(value, want));
 }
 
 function accessibleEquals(node: Identity | undefined, want: string): boolean {
   if (!node) return false;
-  return [node.name, node.label, node.title].some((value) => !!value && normText(value) === want);
+  return [node.name, node.label, node.title].some((value) => shownAs(value, want));
 }
 
 function isControl(node: Identity | undefined): boolean {
@@ -341,7 +342,12 @@ function center(box: Box | undefined): { x: number; y: number } | undefined {
 function same(want: string, ...values: (string | undefined)[]): boolean {
   const left = normText(want);
   if (!left) return false;
-  return values.some((value) => !!value && normText(value) === left);
+  return values.some((value) => shownAs(value, left));
+}
+
+/** A node's text equals `want`, which is already normalized, as shown or once its prices are dropped. */
+function shownAs(value: string | undefined, want: string): boolean {
+  return !!value && (normText(value) === want || normText(withoutPrice(value)) === want);
 }
 
 function shown(node: Identity | undefined): string {

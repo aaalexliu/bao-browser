@@ -25,13 +25,13 @@ import {
   pageItem,
   refusedStepLabels,
   trailIdentity,
-  withoutPrice,
   workflowFromTrail,
   type LiveSide,
 } from "../../src/cdp-live/live-trail";
 import { COMMIT_FLOOR, guardPreset } from "../../src/cdp-live/presets";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { unavailableHeal } from "../../src/v1/heal";
+import { withoutPrice } from "../../src/v1/identity";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { pageShows, replay, type Driver } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
@@ -190,8 +190,12 @@ test("a cart add names its item, and the control it revealed marks the item as i
   assert.equal(cartAddItem("Add Fresh Blueberries to cart"), "Fresh Blueberries");
   assert.equal(cartAddItem("Add"), "");
   assert.equal(cartAddItem("Add to cart"), "");
-  assert.deepEqual([ADD, "Add to cart", "Add", "add  item", "Add to bag"].map(isCartAdd), [true, true, true, true, true]);
-  assert.deepEqual(["Add to list", "Address", "Save", "View Cart. Items in cart: 1"].map(isCartAdd), [false, false, false, false]);
+  assert.deepEqual([ADD, "Add to cart", "add  to cart"].map(isCartAdd), [true, true, true]);
+  assert.deepEqual(
+    ["Add", "Add to bag", "Add item", "Add to list", "Address", "Save", "View Cart. Items in cart: 1"].map(isCartAdd),
+    [false, false, false, false, false, false, false],
+    "a bare Add and Add to bag are not plain cart adds",
+  );
   const before = [dom({ name: ADD }), dom({ name: "View Cart. Items in cart: 0" })];
   const after = [
     dom({ name: "View Cart. Items in cart: 1" }),
@@ -224,7 +228,11 @@ test("a product page's Add to cart takes its item from the page, and is skipped 
 
   const added = [dom({ name: "View Cart. Items in cart: 1" }), heading, page[2]!, dom({ role: "status", tag: "p", text: "1 in cart" }), page[4]!];
   assert.deepEqual(cartAddSkip("Add to cart", page, added, "1 in cart"), { text: "1 in cart", anyCount: true });
-  assert.deepEqual(cartAddSkip("Add to cart", page, added, "2 in your cart"), { text: "2 in your cart", anyCount: true });
+  assert.deepEqual(cartAddSkip("Add to cart", page, added, "2 in cart"), { text: "2 in cart", anyCount: true });
+  assert.equal(cartAddSkip("Add to cart", page, added, "1 in your cart"), undefined, "only the product page's {n} in cart marks it");
+  for (const bare of ["Add", "Add to bag"]) {
+    assert.equal(cartAddSkip(bare, page, added, "1 in cart"), undefined, `${bare} is not a product page's Add to cart`);
+  }
   const stepper = [...added, dom({ name: MARKER })];
   assert.deepEqual(cartAddSkip("Add to cart", page, stepper, "1 in cart"), { text: MARKER, anyCount: false }, "a control that names the item comes first");
   assert.equal(cartAddSkip("Add to cart", page, added, "Added"), undefined, "an effect that is not a count in the cart marks nothing");
@@ -241,10 +249,11 @@ test("a recorded control's name, text, and label drop prices, and keep the href"
     role: "link",
     tag: "a",
     text: `Current price: $9.89 $989 ${TARGET.name} 3 lb`,
-    label: "$9.89",
     href,
   }));
   assert.deepEqual([link?.name, link?.text, link?.label, link?.href], [undefined, `${TARGET.name} 3 lb`, undefined, href]);
+  const tip = trailIdentity(dom({ role: "radio", tag: "input", name: "$5", label: "$5", nameAttr: "tip" }));
+  assert.deepEqual([tip?.name, tip?.label], ["$5", "$5"], "a price that is all a control shows stays its name");
   const workflow = build([{
     id: "live-1",
     ts: 1,
@@ -259,6 +268,49 @@ test("a recorded control's name, text, and label drop prices, and keep the href"
   assert.deepEqual(open?.locators?.find((locator) => locator.kind === "role"), { kind: "role", role: "link", name: `${TARGET.name} 3 lb` });
   assert.ok(open?.locators?.some((locator) => locator.kind === "css" && locator.value === `a[href="${href}"]`));
   assert.equal(JSON.stringify(workflow).includes("$"), false, "no price anywhere in the step");
+});
+
+test("replay finds the recorded product link by its price-free name at a new price, after the results reorder", async () => {
+  const href = "/products/2001-kirkland-signature-organic-blueberries-3-lb-3-lb?retailerSlug=costco";
+  const productUrl = new URL(href, RESULTS).href;
+  const slot = (n: number) => `main > ul > li:nth-of-type(${n}) > a:nth-of-type(2)`;
+  const workflow = build([{
+    id: "live-1",
+    ts: 1,
+    kind: "act",
+    op: "click",
+    identity: trailIdentity(dom({ role: "link", tag: "a", text: `Current price: $9.89 $989 ${TARGET.name} 3 lb`, href, cssPath: slot(1) })),
+    beforeUrl: RESULTS,
+    afterUrl: productUrl,
+  }]);
+  const target = `Current price: $10.49 $1049 ${TARGET.name} 3 lb`;
+  const nodes = [
+    dom({ role: "link", tag: "a", text: "Current price: $4.99 $499 Fresh Blueberries 1 pint", href: "/products/3001-fresh-blueberries", cssPath: slot(1) }),
+    dom({ role: "link", tag: "a", href, cssPath: "main > ul > li:nth-of-type(2) > div > a" }),
+    dom({ role: "link", tag: "a", text: target, href, cssPath: slot(2) }),
+  ];
+  let url = RESULTS;
+  const clicks: string[] = [];
+  const driver: Driver = {
+    tree: async () => ({ nodes: url === RESULTS ? nodes : [], url, texts: [], values: [] }),
+    snapshot: async () => ({ dom: [] }),
+    click: async (node) => {
+      clicks.push(node.text || "");
+      url = new URL(node.href || "", RESULTS).href;
+    },
+    fill: async () => {},
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+  };
+  const result = await replay(workflow, {}, driver, { heal: unavailableHeal(), siteTrust: "allow", holdForPerson: false });
+  assert.equal(result.status, "passed", JSON.stringify(result.failure));
+  assert.deepEqual(clicks, [target]);
+  assert.equal(result.locatorHits.find((hit) => hit.stepId === workflow.steps[0]?.id)?.kind, "role");
 });
 
 test("a click's effect is new page text, else its own text, and a url change is enough by itself", () => {
@@ -278,7 +330,7 @@ test("a click's effect is new page text, else its own text, and a url change is 
   );
 });
 
-test("when.absent is valid alone or with anyCount, and not beside present or a route input", () => {
+test("when.absent is valid alone or with anyCount, and not beside present or a route input, and anyCount needs absent", () => {
   const base = build(blueberryTrail());
   const withWhen = (when: NonNullable<WorkflowV2["steps"][number]["when"]>): WorkflowV2 => ({
     ...base,
@@ -288,6 +340,8 @@ test("when.absent is valid alone or with anyCount, and not beside present or a r
   assert.deepEqual(validateWorkflow(withWhen({ absent: "1 in cart", anyCount: true })), []);
   assert.equal(validateSchema(withWhen({ absent: "1 in cart", anyCount: true })), true, JSON.stringify(validateSchema.errors));
   assert.deepEqual(validateWorkflow(withWhen({ anyCount: true })), [`when ${base.steps[2]?.id}`]);
+  assert.deepEqual(validateWorkflow(withWhen({ present: "1 in cart", anyCount: true })), [`when ${base.steps[2]?.id}`]);
+  assert.equal(validateSchema(withWhen({ present: "1 in cart", anyCount: true })), false, "anyCount does not go with present");
   assert.deepEqual(validateWorkflow(withWhen({ absent: MARKER, present: "Cart" })), [`when ${base.steps[2]?.id}`]);
   assert.deepEqual(validateWorkflow(withWhen({ absent: MARKER, input: "query", value: "x" })), [`when ${base.steps[2]?.id}`]);
   assert.deepEqual(validateWorkflow(withWhen({ absent: "  " })), [`when ${base.steps[2]?.id}`]);

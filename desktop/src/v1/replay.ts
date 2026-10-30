@@ -930,16 +930,15 @@ export interface PageGuard {
 
 /**
  * The page text a step's `when` names. `shown` true runs the step only while the page shows it,
- * false only while it does not. `anyCount` lets each number in the text match any number.
+ * false only while it does not. With `absent`, `anyCount` lets each number in the text match any number.
  * Steps with the same key are decided once, on the first of them.
  */
 export function pageWhen(step: Pick<WorkflowStep, "when">): { key: string; text: string; shown: boolean; anyCount: boolean } | undefined {
-  const anyCount = step.when?.anyCount === true;
-  const mark = anyCount ? "#" : "";
   const present = step.when?.present?.trim();
-  if (present) return { key: `present${mark}:${present}`, text: present, shown: true, anyCount };
+  if (present) return { key: `present:${present}`, text: present, shown: true, anyCount: false };
   const absent = step.when?.absent?.trim();
-  if (absent) return { key: `absent${mark}:${absent}`, text: absent, shown: false, anyCount };
+  const anyCount = step.when?.anyCount === true;
+  if (absent) return { key: `absent${anyCount ? "#" : ""}:${absent}`, text: absent, shown: false, anyCount };
   return undefined;
 }
 

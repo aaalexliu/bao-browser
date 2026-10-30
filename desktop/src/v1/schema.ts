@@ -123,7 +123,7 @@ export interface ReadBack {
  * `present` is visible text or a control's name. Consecutive steps that share it are decided once, on the first of them.
  * `absent` is the same kind of text. The step runs only when the page does not show it,
  * so an Add whose item is already in the cart is skipped.
- * `anyCount` goes with `present` or `absent`. Each number in that text then matches any number,
+ * `anyCount` goes only with `absent`. Each number in that text then matches any number,
  * so `absent` "1 in cart" also skips the step while the page shows "3 in cart".
  */
 export interface StepWhen {
@@ -346,10 +346,10 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.when) {
       const present = step.when.present?.trim();
       const absent = step.when.absent?.trim();
-      if (present || absent) {
-        if (step.when.input || step.when.value || (present && absent)) errors.push(`when ${step.id}`);
-      } else if (step.when.anyCount !== undefined) {
+      if (step.when.anyCount !== undefined && !absent) {
         errors.push(`when ${step.id}`);
+      } else if (present || absent) {
+        if (step.when.input || step.when.value || (present && absent)) errors.push(`when ${step.id}`);
       } else {
         const input = doc.inputs.find((item) => item.name === step.when?.input);
         const value = step.when.value;

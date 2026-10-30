@@ -60,6 +60,15 @@ export function normText(value: string): string {
     .trim();
 }
 
+/** A price and the words that announce it, as in "Current price: $9.89". Also "$989", which "$9<sup>89</sup>" reads as. */
+const PRICE = /(?:\b(?:current|original|regular|sale|unit|list)\s+)?(?:\bprice:?\s*)?[$€£]\s?\d[\d,]*(?:\.\d+)?/gi;
+
+/** Text without its prices, which change between a recording and a replay. */
+export function withoutPrice(text: string): string {
+  const out = text.replace(PRICE, " ");
+  return out === text ? text : out.replace(/\s+/g, " ").trim();
+}
+
 function eq(a?: string, b?: string): boolean {
   if (!a || !b) return false;
   const left = normText(a);

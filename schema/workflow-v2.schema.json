@@ -244,8 +244,7 @@
               "additionalProperties": false,
               "required": ["present"],
               "properties": {
-                "present": { "type": "string", "minLength": 1 },
-                "anyCount": { "type": "boolean" }
+                "present": { "type": "string", "minLength": 1 }
               }
             },
             {

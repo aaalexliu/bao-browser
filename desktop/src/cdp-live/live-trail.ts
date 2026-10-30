@@ -9,6 +9,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { condense } from "../v1/condense";
+import { withoutPrice } from "../v1/identity";
 import type { TrailEvent } from "../v1/interpret";
 import { smallestChange } from "../v1/recorder";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../v1/schema";
@@ -57,19 +58,12 @@ export class LiveTrail {
   }
 }
 
-/** A price and the words that announce it, as in "Current price: $9.89". Also "$989", which "$9<sup>89</sup>" reads as. */
-const PRICE = /(?:\b(?:current|original|regular|sale|unit|list)\s+)?(?:\bprice:?\s*)?[$€£]\s?\d[\d,]*(?:\.\d+)?/gi;
-
-/** Text without its prices, which change between a recording and a replay. */
-export function withoutPrice(text: string): string {
-  const out = text.replace(PRICE, " ");
-  return out === text ? text : out.replace(/\s+/g, " ").trim();
-}
-
 /**
  * The marked control's identity for the trail. A field's current text is not part of who the
- * field is. A price is not part of a control's name either, so a product link that shows one
- * keeps the same label and role locator when the price changes. The href stays.
+ * field is. A price is not part of a control's name either: its name, text, label, and title
+ * drop prices, unless a price is all one of them shows. Replay matches a role or text locator
+ * against a control's text with its prices dropped too, so a product link's step label and
+ * locators carry no price and still find the link at any price. The href stays.
  */
 export function trailIdentity(identity: Identity | undefined): Identity | undefined {
   if (!identity) return undefined;
@@ -77,10 +71,7 @@ export function trailIdentity(identity: Identity | undefined): Identity | undefi
   if (copy.tag === "textarea" || (copy.tag === "input" && copy.role !== "button")) delete copy.value;
   for (const key of ["name", "text", "label", "title"] as const) {
     const shown = copy[key];
-    if (typeof shown !== "string") continue;
-    const clean = withoutPrice(shown);
-    if (clean) copy[key] = clean;
-    else delete copy[key];
+    if (typeof shown === "string") copy[key] = withoutPrice(shown) || shown;
   }
   return copy;
 }
@@ -152,11 +143,11 @@ const CART_ADD = [
   /^add\s+(.+?)\s+to\s+(?:cart|bag|basket)$/i,
 ];
 
-/** An Add that does not name its item, as a product page's "Add to cart". */
-const PLAIN_ADD = /^add(?:\s+item|\s+to\s+(?:cart|bag|basket))?$/i;
+/** A product page's "Add to cart", which does not name its item. */
+const PLAIN_ADD = /^add to cart$/i;
 
 /** What a product page shows once its item is in the cart, as "1 in cart". */
-const IN_CART = /^\d+\s+in\s+(?:your\s+)?(?:cart|bag|basket)$/i;
+const IN_CART = /^\d+ in cart$/i;
 
 function flat(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -172,7 +163,7 @@ export function cartAddItem(label: string): string {
   return "";
 }
 
-/** A control that puts something in the cart: "Add 1 ct {item}", "Add {item} to cart", or a plain Add. */
+/** A control that puts something in the cart: "Add 1 ct {item}", "Add {item} to cart", or a product page's "Add to cart". */
 export function isCartAdd(label: string): boolean {
   return !!cartAddItem(label) || PLAIN_ADD.test(flat(label));
 }
