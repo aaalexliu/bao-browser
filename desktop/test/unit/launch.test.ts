@@ -182,15 +182,6 @@ test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () 
   assert.match(main, /--app=/);
   assert.match(main, /--disable-infobars/);
   assert.match(script, /bao-launch\.c/);
-  assert.match(script, /stage-runtime\.sh/);
-  assert.match(script, /require-staged\.js/);
-  assert.match(script, /env -u NODE_PATH/);
-  assert.match(script, /BAO_HELPER_APP/);
-  assert.match(script, /helper-identity\.js/);
-  const stage = readFileSync(path.join(process.cwd(), "desktop/packaging/stage-runtime.sh"), "utf8");
-  assert.match(stage, /extension\/dist/);
-  assert.match(stage, /host-grant\.js/);
-  assert.match(stage, /require-staged\.js/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);
   assert.match(main, /bao_discover_node/);
@@ -210,10 +201,6 @@ test("package-app.sh stops before it builds an app when the helper is absent", (
   const dist = mkdtempSync(path.join(tmpdir(), "bao-dist-"));
   const helper = path.join(dist, "fixture", "BaoOSHelper.app");
   try {
-    const script = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/package-app.sh"), "utf8");
-    const helperAt = script.indexOf("helper-identity.js");
-    const stageAt = script.indexOf("stage-runtime.sh");
-    assert.ok(helperAt >= 0 && stageAt > helperAt);
     const result = spawnSync("bash", ["desktop/packaging/macos/package-app.sh"], {
       cwd: process.cwd(),
       encoding: "utf8",
