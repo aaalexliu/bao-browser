@@ -24,7 +24,7 @@ The Mac launcher runs `desktop/src/print-home.cjs` before the server starts. [Bu
 
 `bao mcp` is a stdio server. The tools are `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`, then the `live_*` tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point).
 
-Agents start it through `bao-mcp`, a launcher inside the Mac app: `/Applications/Bao.app/Contents/MacOS/bao-mcp`. It finds Node 24 or newer the way the app does ([Build Bao on a Mac](mac-build.md#launch)), then runs the app's own `bao mcp` from `Contents/Resources/bao`. So the agent config names no checkout, `node` need not be on PATH, and the agent's working directory does not pick the library. Arguments after the launcher go to `bao mcp`, such as `--home dir`. The source is `desktop/packaging/macos/bao-mcp.c`.
+Agents start it through `bao-mcp`, a launcher inside the Mac app: `/Applications/Bao.app/Contents/MacOS/bao-mcp`. It finds Node 24 or newer the way the app does ([Build Bao on a Mac](mac-build.md#launch)), then runs the app's own `bao mcp` from `Contents/Resources/bao`. So the agent config names no checkout, `node` need not be on PATH, and the agent's working directory does not pick the library. `bao-mcp` passes any arguments you add after it on to `bao mcp`. The source is `desktop/packaging/macos/bao-mcp.c`.
 
 One command sets up each agent. `bao agent config claude` and `bao agent config codex` print the entry. `--write` puts it in that agent's own config. Without `--write`, nothing is written.
 

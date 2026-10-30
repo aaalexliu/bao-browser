@@ -1,6 +1,6 @@
 import path from "node:path";
 
-/** Where package-app.sh installs Bao. */
+/** Where docs/mac-build.md installs Bao. */
 export const DEFAULT_APP = "/Applications/Bao.app";
 
 /** The Bao.app that holds file, when file is in the server copy staged at Contents/Resources/bao. */

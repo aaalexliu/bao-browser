@@ -43,7 +43,7 @@ function launcherSkip(): string | false {
 
 const MACOS = path.join(process.cwd(), "desktop/packaging/macos");
 
-/** Env for a launcher child: an empty HOME, no node on PATH, and this test's Node named in BAO_NODE. */
+/** Env for a launcher child: a temp HOME, no node on PATH, and this test's Node named in BAO_NODE. */
 function launcherEnv(user: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: user, PATH: "/usr/bin:/bin", BAO_NODE: process.execPath };
   for (const key of Object.keys(env)) {
