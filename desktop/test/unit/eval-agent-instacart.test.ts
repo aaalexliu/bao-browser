@@ -24,17 +24,26 @@ import {
   trapProblems,
   workflowProblems,
   writeProblems,
+  withRow,
   type AgentRow,
 } from "../../src/eval/agent-instacart";
 import { CODEX_DISABLED_FEATURES, claudeAgentArgs, claudeAgentAuth, codexAgentArgs, codexAgentAuth } from "../../src/eval/live-cli";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { search, storeBySlug } from "../instacart/catalog";
 import { TARGET, type CartWrite, type FixtureState, type Hit } from "../instacart/fixture";
 
 const SERVER = { command: "/bin/node", args: ["/abs/cli.js", "mcp", "--home", "/tmp/h"], env: { HOME: "/tmp/u", BAO_HOME: "/tmp/h" } };
 
-test("the mock user's prompt is the plan's, word for word", () => {
-  assert.equal(AGENT_PROMPT, "put costco blueberries into the cart at instacart");
-  assert.equal(CHECKOUT_PROMPT, "put costco blueberries into the cart at instacart and check out");
+const OLD_PROMPT = "put costco blueberries into the cart at instacart";
+
+test("the mock user's prompt names the owner's item, and at Costco only that item matches it", () => {
+  assert.equal(AGENT_PROMPT, "put costco kirkland organic blueberries into the cart at instacart");
+  assert.equal(CHECKOUT_PROMPT, "put costco kirkland organic blueberries into the cart at instacart and check out");
+  const costco = storeBySlug("costco");
+  assert.ok(costco);
+  const item = /^put (.+) into the cart at instacart$/.exec(AGENT_PROMPT)?.[1] || "";
+  assert.deepEqual(search(costco, item).map((found) => found.id), [TARGET.id]);
+  assert.ok(search(costco, "costco blueberries").length > 1, "the old prompt's words match other Costco blueberries too");
 });
 
 test("claude runs with the plan's lock-down flags and a budget cap", () => {
@@ -282,12 +291,28 @@ test("the judge prompt carries the checkout run and the verdict reads its flag",
   assert.equal(parseVerdict("no json", "m").note, "the judge returned no JSON");
 });
 
-test("a run of one driver keeps the other driver's row", () => {
-  const row: AgentRow = { driver: "codex", status: "pass", a: "pass", b: "pass", c: "pass", d: "pass", e: "pass", f: "pass", item: "x | y", baoCalls: "9", otherCalls: "0", tokens: "1", costUsd: "n/a", minutes: "1.0", reason: "" };
-  const before = renderAgentTable(new Map([["claude", "| claude (opus) | fail | ... |"], ["codex", rowLine(row)]]), new Map([["claude", "old note"]]));
+test("a run keeps the other driver's row and the rows of an earlier prompt", () => {
+  const row: AgentRow = { driver: "codex", prompt: AGENT_PROMPT, status: "pass", a: "pass", b: "pass", c: "pass", d: "pass", e: "pass", f: "pass", item: "x | y", baoCalls: "9", otherCalls: "0", tokens: "1", costUsd: "n/a", minutes: "1.0", reason: "" };
+  const oldClaude = `| claude (opus) | ${OLD_PROMPT} | fail | ... |`;
+  const oldCodex = `| codex | ${OLD_PROMPT} | fail | ... |`;
+  const before = renderAgentTable([
+    { driver: "claude", prompt: OLD_PROMPT, line: oldClaude },
+    { driver: "codex", prompt: OLD_PROMPT, line: oldCodex },
+    { driver: "codex", prompt: AGENT_PROMPT, line: rowLine(row) },
+  ], new Map([["claude", "old note"]]));
   const kept = earlierRows(before);
-  assert.deepEqual([...kept.keys()], ["claude", "codex"]);
-  assert.equal(kept.get("claude"), "| claude (opus) | fail | ... |");
+  assert.deepEqual(kept.map((line) => [line.driver, line.prompt]), [["codex", AGENT_PROMPT], ["claude", OLD_PROMPT], ["codex", OLD_PROMPT]], "the current prompt's rows come first");
+  assert.equal(kept[1]?.line, oldClaude);
   assert.ok(rowLine(row).includes("x / y"), "a pipe in a cell is escaped");
   assert.ok(before.includes("- claude: old note"));
+
+  const claude: AgentRow = { ...row, driver: "claude (sonnet)", status: "fail" };
+  const after = withRow(withRow(kept, "claude", claude), "codex", { ...row, tokens: "2" });
+  assert.deepEqual(after.map((line) => [line.driver, line.prompt]), [["claude", OLD_PROMPT], ["codex", OLD_PROMPT], ["claude", AGENT_PROMPT], ["codex", AGENT_PROMPT]]);
+  assert.equal(after[3]?.line, rowLine({ ...row, tokens: "2" }), "a run replaces its driver's row for the same prompt");
+  const table = renderAgentTable(after, new Map()).split("\n").filter((line) => line.startsWith("|"));
+  const columns = (line: string) => line.split("|").length;
+  assert.equal(columns(table[1] || ""), columns(table[0] || ""), "the rule under the header has a cell for every column");
+  assert.equal(columns(rowLine(row)), columns(table[0] || ""), "a row has a cell for every column");
+  assert.deepEqual(table.slice(2), [rowLine(claude), rowLine({ ...row, tokens: "2" }), oldClaude, oldCodex]);
 });
