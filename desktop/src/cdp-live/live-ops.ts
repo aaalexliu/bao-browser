@@ -86,7 +86,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_stop",
-    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, and a search box's text is the input query. Replay skips an Add whose item is already in the cart. Replay of that file uses the open Chrome and does not call a model.",
+    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, and a search box's text is the input query. The workflow replays through replay() on a CdpLiveDriver, which skips an Add whose item is already in the cart. The Bao app's live replay uses the open Chrome and does not call a model, but it does not take inputs yet and stops at the first typed step. Plan W5 wires inputs and typed steps into it.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;
