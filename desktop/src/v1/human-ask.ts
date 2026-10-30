@@ -88,6 +88,11 @@ export function actSurfaceText(ask: Pick<HumanAsk, "kind" | "site" | "button" | 
   return `${actAskLine(ask)}. ${actDeadlineLine(ask.deadline, now)}`;
 }
 
+/** The notification and the Dock tooltip for a live session's idle warning, in the same shape as an act. */
+export function liveIdleSurfaceText(warning: { host: string; saveAt: number }, now = Date.now()): string {
+  return `Press Keep open in the Bao window to keep the live session on ${publicSite(warning.host)}. ${actDeadlineLine(warning.saveAt, now)}`;
+}
+
 export function confirmInstruction(button: string, site = "the site"): string {
   return actAskLine({ kind: "confirm", site, button });
 }
@@ -167,9 +172,12 @@ export function attentionCount(input: {
   importPhase?: string | null;
   pendingHeals: number;
   reviews?: number;
+  /** A live session that saves soon unless the person keeps it open. */
+  liveIdle?: boolean;
 }): number {
   let count = input.pendingHeals + (input.reviews || 0);
   if (input.ask) count += 1;
+  if (input.liveIdle) count += 1;
   const phase = input.importPhase;
   if (phase === "confirm" || phase === "pick" || phase === "running" || phase === "error") count += 1;
   return count;

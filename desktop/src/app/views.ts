@@ -3,6 +3,7 @@
 
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
+import type { LiveIdleWarning } from "../cdp-live/live-ops";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
@@ -14,7 +15,7 @@ import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
-import { controlKey, visibleCopy } from "../v1/visible-copy";
+import { controlKey, publicSite, visibleCopy } from "../v1/visible-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 /** Chromium app mode uses the document title as the window title. */
@@ -183,6 +184,8 @@ export interface ShellState {
   runs?: RunSummary[];
   promotions?: PromotionView[];
   activeAsk?: HumanAsk | null;
+  /** Set from the idle warning until a call, Keep open, or the save clears it. */
+  liveIdle?: LiveIdleWarning | null;
   pendingImport?: ImportPending | null;
   teach?: TeachView;
   guide?: GuideView | null;
@@ -300,6 +303,7 @@ export function rail(state: ShellState): string {
     importPhase: state.pendingImport?.phase,
     pendingHeals: heals,
     reviews: reviews.length,
+    liveIdle: Boolean(state.liveIdle),
   });
   const rec = state.recording ? "on" : "";
   const helper = state.helper?.label || "helper off";
@@ -381,6 +385,18 @@ export function remoteBanner(remote: RemoteView | undefined): string {
     <p class="kicker">Confirm on this Mac</p>
     <p class="instruction">A remote agent cannot approve ${esc(remote.stepLabel || "this step")}. Approve it here.</p>
     <div class="row"><button id="remote-confirm-allow" data-testid="remote-confirm-allow" type="button">Approve on this Mac</button></div>
+  </section>`;
+}
+
+/** Shown before an idle save. Keep open restarts the idle wait, as an agent call does. */
+export function liveIdleBar(warning: LiveIdleWarning | null | undefined, now = Date.now()): string {
+  if (!warning) return "";
+  const effect = "the session saves and closes";
+  return `<section id="live-idle" data-session="${esc(warning.session)}">
+    <p class="kicker">You need to act · live session · ${esc(publicSite(warning.host))}</p>
+    <p class="instruction">The agent has gone quiet. Press Keep open if you still need this session.</p>
+    <p class="timeout" id="live-idle-timeout" data-deadline="${warning.saveAt}" data-effect="${esc(effect)}">${esc(formatWait(now, warning.saveAt, effect))}</p>
+    <div class="row"><button id="live-keep" type="button">Keep open</button></div>
   </section>`;
 }
 

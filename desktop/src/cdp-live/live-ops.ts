@@ -30,10 +30,20 @@ export function isLiveOp(value: string): value is LiveOpName {
 /** An open session with no call for this long saves its workflow and ends. */
 export const LIVE_IDLE_MS = 10 * 60_000;
 
+/** The person is warned this long before an idle save, so one who is there can keep the session open. */
+export const LIVE_IDLE_WARN_MS = 2 * 60_000;
+
+/** The warning before an idle save. The session saves and ends at `saveAt` unless a call or Keep open comes first. */
+export interface LiveIdleWarning {
+  session: string;
+  host: string;
+  saveAt: number;
+}
+
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. The Bao app picks the Chrome, by default this Mac's own Chrome in its Default profile. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart and books.toscrape.com uses books. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. The Bao app picks the Chrome, by default this Mac's own Chrome in its Default profile. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart and books.toscrape.com uses books. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
     inputSchema: {
       type: "object",
       properties: {
