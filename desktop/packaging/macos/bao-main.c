@@ -265,7 +265,7 @@ int main(void) {
   }
 
   char script[4096];
-  int script_wrote = snprintf(script, sizeof script, "%s/desktop/src/print-home.cjs", root);
+  int script_wrote = snprintf(script, sizeof script, "%s/src/print-home.cjs", root);
   char bao_home[4096];
   char split_body[8192];
   char home_error[1024];

@@ -33,9 +33,9 @@ interface LibraryHomeModule {
 const load = createRequire(__filename);
 
 function loadLibraryHome(): LibraryHomeModule {
+  // Staged app: stage-runtime.sh copies it next to home.js. Checkout: desktop/dist/desktop/src -> desktop/src.
   const candidates = [
     path.join(__dirname, "library-home.cjs"),
-    path.join(__dirname, "../desktop/src/library-home.cjs"),
     path.resolve(__dirname, "../../../src/library-home.cjs"),
   ];
   for (const file of candidates) {
