@@ -86,7 +86,7 @@ The hello frame is not a Mac check. `link.ts` stores whatever `extensionId` arri
 
 ## Update a live session
 
-`bao live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_screenshot`, and `live_stop` are CLI verbs. `bao mcp-live` serves the same six names as MCP tools. Both post each call to the running app's `POST /api/live`. `serverPort` in `desktop/src/home.ts` finds the app from `server.json` in the library. The host is `desktop/src/cdp-live/live-host.ts`.
+`bao live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop` are CLI verbs. `bao mcp-live` serves the same eight names as MCP tools. `docs/cdp-live-chrome.md` describes each one, and `LIVE_TOOLS` in `desktop/src/cdp-live/live-ops.ts` defines them. Both post each call to the running app's `POST /api/live`. `serverPort` in `desktop/src/home.ts` finds the app from `server.json` in the library. The host is `desktop/src/cdp-live/live-host.ts`.
 
 **Command.** Run this only when the task names the start URL, the preset, and the Chrome to attach to. Attach to a throwaway Chrome, never the daily profile. `desktop/test/live/live-fixture.test.ts` uses the Chrome for Testing inside the installed app with a temp profile, as here.
 
@@ -97,13 +97,15 @@ PROFILE=$(mktemp -d)
 CLI=/Applications/Bao.app/Contents/Resources/bao/src/app/cli.js
 node "$CLI" live_session_start --home "$LIB" --intent "<intent>" --url "<start url>" --port-file "$PROFILE/DevToolsActivePort" --preset generic
 node "$CLI" live_snapshot --home "$LIB"
+node "$CLI" live_scroll --home "$LIB" --direction down
+node "$CLI" live_snapshot --home "$LIB" --page 2
 node "$CLI" live_screenshot --home "$LIB"
 curl -s "http://127.0.0.1:4787/api/live-session/shots/shot-001.png" -o /tmp/bao-shot-001.png
 ```
 
-**Expected.** Each call prints one JSON reply with `op`, `session`, `outcome`, `view`, and `shot`. `live_session_start` opens one new window in that Chrome and replies with `outcome.kind` `applied` unless the page halts. `view.controls` lists the controls with refs. A label that matches the preset's deny or commit pattern is listed in `view.stopBeforeConfirm` and has no ref. Credential fields are counted in `view.credentialFields` and have no ref. `shot` names a file such as `shot-001.png`. The CLI exits 1 when the reply is `rejected`, and 2 when it is `refused` or `halted`. With the grant off, the start is `rejected` with `BaoOSHelper accessibility is not granted`. Right after Chrome opens, the start can be `rejected` with `BaoOSHelper cannot see a Chrome window`. `live-fixture.test.ts` waits and starts again. A second start while one is open is `rejected` with `busy`.
+**Expected.** Each call prints one JSON reply with `op`, `session`, `outcome`, `view`, and `shot`. `live_session_start` opens one new window in that Chrome and replies with `outcome.kind` `applied` unless the page halts. `view.controls` lists up to 50 controls with refs, in page order. `view.page`, `view.pages`, and `view.controlsTotal` give the paging. `live_snapshot --page 2` returns the second page of the last read without reading the page again, so its refs still work. `live_scroll` replies with a new read plus `scroll`, whose `moved` is false when that edge was already reached. A label that matches the preset's deny or confirm labels is listed in `view.stopBeforeConfirm` and has no ref. Under every preset, so are checkout, place order, pay now, buy now, confirm purchase, submit order, and complete purchase (`COMMIT_FLOOR` in `desktop/src/cdp-live/presets.ts`). A form's submit button is listed there too, unless the form is a search form or the preset allows its label. Credential fields are counted in `view.credentialFields` and have no ref. `shot` names a file such as `shot-001.png`. The CLI exits 1 when the reply is `rejected`, and 2 when it is `refused` or `halted`. With the grant off, the start is `rejected` with `BaoOSHelper accessibility is not granted`. Right after Chrome opens, the start can be `rejected` with `BaoOSHelper cannot see a Chrome window`. `live-fixture.test.ts` waits and starts again. A second start while one is open is `rejected` with `busy`.
 
-After each call, `liveSession` in `/api/state` has a new audit row. `GET /api/live-session/shots/shot-001.png` returns the first shot. A name that is not `shot-NNN.png` returns 404. `shotNameOk` in `desktop/src/cdp-live/live-record.ts` is that rule.
+After each call except `live_snapshot --page`, `liveSession` in `/api/state` has a new audit row. `GET /api/live-session/shots/shot-001.png` returns the first shot. A name that is not `shot-NNN.png` returns 404. `shotNameOk` in `desktop/src/cdp-live/live-record.ts` is that rule.
 
 **Evidence.** `<home>/live-session/session.json` and `<home>/live-session/shots/shot-NNN.png`. `SessionLog` in `desktop/src/cdp-live/audit.ts` writes both. When the helper presses Allow, it appends a row to `<home>/live-session/ax.jsonl`.
 
@@ -117,7 +119,7 @@ node "$CLI" live_stop --home "$LIB"
 curl -s -X POST -H 'content-type: application/json' -d '{"id":"<workflow id>"}' "http://127.0.0.1:4787/api/replay"
 ```
 
-**Expected.** The first `live_stop` replies `outcome.kind` `stopped` with `already` false. The second replies `stopped` with `already` true and writes nothing. `live_stop` saves the workflow, with driver `cdp-live`, in `<home>/workflows/`. `session.json` gets status `passed`, `failed` after a refusal, or `needs_human` after a halt. The stop releases `/tmp/bao-cdp-session.lock`. It keeps the session's window and socket, so the replay uses the same Chrome. The replay reply has `modelCalls` 0. It stops with `needs_human` at a step that is not a click. A replay while a session is open, or after Bao restarts, returns HTTP 409 with an `error`. `bao mcp`'s `run_workflow` refuses a `cdp-live` workflow and says to replay it from the Bao app that recorded it.
+**Expected.** The first `live_stop` replies `outcome.kind` `stopped` with `already` false. The second replies `stopped` with `already` true and writes nothing. `live_stop` saves the workflow, with driver `cdp-live`, in `<home>/workflows/`. `session.json` gets status `passed`, `failed` after a refusal, or `needs_human` after a halt. The stop releases `/tmp/bao-cdp-session.lock`. It keeps the session's window and socket, so the replay uses the same Chrome. The replay reply has `modelCalls` 0. It stops with `needs_human` at a step that is not a click, such as a `key` step that `live_key` saved. A replay while a session is open, or after Bao restarts, returns HTTP 409 with an `error`. `bao mcp`'s `run_workflow` refuses a `cdp-live` workflow and says to replay it from the Bao app that recorded it.
 
 While a session is open, `watchTargets` in `live-host.ts` closes any new page target and halts the session with `new_target`. That covers a tab the page opens and a tab a person opens. Tabs that were open before `live_session_start` stay open. The live host calls `Target.closeTarget` only on its own window and on those new page targets. The next `live_session_start` closes the window a stopped session kept.
 
