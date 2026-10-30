@@ -117,7 +117,7 @@ export function pinTestBrowser(
   return exe;
 }
 
-/** The test browser is never the installed Google Chrome, even through a link. */
+/** Refuses a test browser at a standard installed Google Chrome path, even through a link. */
 function checkedTestBrowser(pinned: string): string {
   if (isInstalledChrome(pinned)) throw new Error(`BAO_TEST_BROWSER is the installed Google Chrome: ${pinned}`);
   if (!chromeExecutable(pinned)) throw new Error(`BAO_TEST_BROWSER is not an executable file: ${pinned}`);
