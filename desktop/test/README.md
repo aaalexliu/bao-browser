@@ -27,3 +27,13 @@ node --test --test-name-pattern "first replay after a fresh launch" desktop/dist
 ```
 
 The second command is the required-suite test, run against installed Chrome. It asserts `document.cookie` in the first session and the Cookie header after relaunch. If the header is missing, that relaunch is a Mac keychain result. The product command line refuses `--use-mock-keychain` and `--password-store`. Do not point either command at a daily Chrome profile.
+
+## Instacart fixture
+
+`desktop/test/instacart/` stands in for `www.instacart.com`, so a live-path test never reaches the real site.
+
+- `startInstacartFixture()` serves HTTPS on `127.0.0.1` with a fresh self-signed certificate for `www.instacart.com` and `instacart.com`. It serves the store list, the Costco storefront, Costco search, the product page at `TARGET_PATH`, a Safeway decoy, and trap pages under `/checkout`, `/login`, `/account` and `/instacart-plus`. Carts live in memory. `state()` returns the carts, each cart write with an `at` time, each trap hit, and every request. `reset(seed)` clears them and can seed cart lines without logging a write. `setVariant("drift")` renames every class and test id and moves blocks. Labels stay the same.
+- `launchFixtureBrowser(fixture)` starts the pinned Playwright Chromium with a temp `--user-data-dir`, `--remote-debugging-port=0` and the mock keychain flags. `--host-resolver-rules` maps both hosts to the fixture and every other host to `~NOTFOUND`. `--ignore-certificate-errors-spki-list` trusts the fixture's key. The result names the `DevToolsActivePort` file that bao's live host reads, and the CDP URL. `close()` stops Chrome and deletes the profile.
+- `desktop/test/unit/instacart-fixture.test.ts` checks the fixture and runs in `npm run test:v1`.
+
+The SPKI flag works with a temp `--user-data-dir` on Playwright's Chrome for Testing 149. Without the flag the same pages fail with `ERR_CERT_AUTHORITY_INVALID`. `MAP * ~NOTFOUND` also fails IP literals and `localhost`, so a page cannot reach `127.0.0.1` by address.
