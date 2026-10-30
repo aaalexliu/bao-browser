@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { artifactsRoot, testArtifacts, tryWriteEvidence } from "../artifacts";
 import { LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs } from "../../src/launch";
-import { classifyStatus, compiledTestPlan, cookieKeyPlan, hermeticChildEnv, laneEnv, liveSkip, mockKeychainArgs, ownApiOutage } from "../runtime";
+import { classifyStatus, compiledTestPlan, cookieKeyPlan, hermeticChildEnv, laneEnv, liveSkip, ownApiOutage } from "../runtime";
 
 test("the required files and dates demo stays on local fixtures", () => {
   const demo = readFileSync("desktop/test/unit/files-dates-demo.test.ts", "utf8");
@@ -78,19 +78,21 @@ test("hermetic env drops inherited launch settings and pins the test browser", (
   assert.equal(env.BAO_HEAL_CURSOR_ACCOUNT, "0");
   assert.equal(env.BAO_LANE, "hermetic");
   assert.equal(env.BAO_TEST_MOCK_KEYCHAIN, undefined);
+  assert.deepEqual(ownedChromeLaunchArgs([], env, "darwin").slice(-2), ["--use-mock-keychain", "--password-store=basic"]);
 });
 
-test("the live lane turns public demos on and stays headless", () => {
-  const env = laneEnv("live", { BAO_BROWSER: "/tmp/bundle", BAO_LIVE_TESTS: "0" }, "/tmp/pin");
+test("the live lane turns public demos on, stays headless, and keeps the installed Chrome", () => {
+  const env = laneEnv("live", { BAO_BROWSER: "/tmp/bundle", BAO_LIVE_TESTS: "0", BAO_TEST_BROWSER: "/tmp/parent-pin" });
   assert.equal(env.BAO_LIVE_TESTS, "1");
   assert.equal(env.BAO_HEADED, "0");
   assert.equal(env.BAO_BROWSER, undefined);
-  assert.equal(env.BAO_TEST_BROWSER, "/tmp/pin");
+  assert.equal(env.BAO_TEST_BROWSER, undefined);
+  assert.equal(ownedChromeLaunchArgs([], env, "darwin").includes("--use-mock-keychain"), false);
 });
 
-test("the test adds the mock keychain flags and the product builder does not", () => {
-  assert.deepEqual(mockKeychainArgs({}), []);
-  assert.deepEqual(mockKeychainArgs({ BAO_TEST_MOCK_KEYCHAIN: "1" }), ["--use-mock-keychain", "--password-store=basic"]);
+test("the required suite stops when the test browser is missing", () => {
+  assert.throws(() => hermeticChildEnv({}, undefined), /npx playwright install chromium/);
+  assert.throws(() => hermeticChildEnv({}, ""), /npx playwright install chromium/);
 });
 
 test("a deleted source is stale and a missing compile is reported", () => {
@@ -189,7 +191,7 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
     CI: "true",
   };
   const pin = "/tmp/bao-lane-pin";
-  const env = laneEnv("hermetic", { ...process.env, ...canaries, LANG: "C" }, pin);
+  const env = hermeticChildEnv({ ...process.env, ...canaries, LANG: "C" }, pin);
   const names = Object.keys(env).filter((key) => /^bao/i.test(key)).sort();
   assert.deepEqual(names, [
     "BAO_HEADED",

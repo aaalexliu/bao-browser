@@ -1,7 +1,8 @@
 // Process and artifact helpers for the macOS spike.
 // Only apps this process launched are quit. Temp files it created are removed.
 
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -11,12 +12,43 @@ export const EDIT_BUNDLE = "com.apple.TextEdit";
 export const HELPER = process.env.BAO_OS_MACOS
   || path.resolve("desktop/os-helper-macos/BaoOSHelper.app");
 
-const STORE = path.join(
-  homedir(),
-  "Library/Application Support/Cursor/AgentStores/cursor_agent_stores/bc-3ac2c7e6-f62e-5a13-88c9-f776315e49c9/files",
-);
+function absoluteDir(label: string, raw: string): string {
+  const value = raw.trim();
+  if (!path.isAbsolute(value)) throw new Error(`${label} must be an absolute path`);
+  if (value.split(/[/\\]/).includes("..")) throw new Error(`${label} must not contain ..`);
+  const normalized = path.resolve(value);
+  if (normalized.split(/[/\\]/).filter(Boolean).length < 2) {
+    throw new Error(`${label} must include two path components`);
+  }
+  return normalized;
+}
 
-export const ARTIFACTS = process.env.BAO_SPIKE_ARTIFACTS || path.join(STORE, "bao-mac-spike");
+export function artifactsDir(): string {
+  const explicit = process.env.BAO_SPIKE_ARTIFACTS?.trim();
+  if (explicit) return absoluteDir("BAO_SPIKE_ARTIFACTS", explicit);
+  const store = process.env.BAO_AGENT_STORE_DIR?.trim();
+  if (store) return path.join(absoluteDir("BAO_AGENT_STORE_DIR", store), "bao-mac-spike");
+  throw new Error("Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR");
+}
+
+const INSTALLED_FFMPEG = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"];
+
+export function ffmpegBin(installed: readonly string[] = INSTALLED_FFMPEG): string {
+  const fromBao = process.env.BAO_FFMPEG?.trim();
+  if (fromBao) {
+    if (!existsSync(fromBao)) throw new Error(`BAO_FFMPEG does not exist: ${fromBao}`);
+    return fromBao;
+  }
+  const fromEnv = process.env.FFMPEG?.trim();
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  const found = spawnSync("/usr/bin/which", ["ffmpeg"], { encoding: "utf8" });
+  const line = (found.stdout || "").trim();
+  if (found.status === 0 && line) return line;
+  for (const candidate of installed) {
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error("Set BAO_FFMPEG or install ffmpeg");
+}
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -119,11 +151,11 @@ export async function cleanupNewAutosave(before: Set<string>): Promise<string[]>
 }
 
 export async function ensureArtifacts(): Promise<void> {
-  await mkdir(ARTIFACTS, { recursive: true });
+  await mkdir(artifactsDir(), { recursive: true });
 }
 
 export async function writeJson(name: string, value: unknown): Promise<string> {
-  const file = path.join(ARTIFACTS, name);
+  const file = path.join(artifactsDir(), name);
   await writeFile(file, JSON.stringify(value, null, 2));
   return file;
 }

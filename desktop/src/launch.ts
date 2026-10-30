@@ -1,7 +1,9 @@
 // Launch an owned browser. Never port 9222, never the daily profile.
 // Capture, replay, login import, and computer-use start the installed Google
 // Chrome and attach over a private debugging port. Playwright's launcher is
-// only used when a caller asks for page.video().
+// only used when a caller asks for page.video(). The hermetic test lane sets
+// BAO_TEST_BROWSER, and then every launch starts that browser with a mock
+// keychain instead.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -82,7 +84,27 @@ export function productHeadless(env: NodeJS.ProcessEnv = process.env, platform: 
   return platform !== "darwin";
 }
 
-/** Owned Chrome only. Account Chrome never receives the sandbox opt-in. */
+const MOCK_KEYCHAIN_ARGS = ["--use-mock-keychain", "--password-store=basic"];
+
+/**
+ * The hermetic test lane's browser. desktop/test/run-v1.mjs sets
+ * BAO_TEST_BROWSER to Playwright's Chromium. While it is set, every launch
+ * starts that binary with a mock keychain, so a test never opens the user's
+ * Chrome or the login keychain. Product launches never set it.
+ */
+export function testLaneBrowser(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.BAO_TEST_BROWSER?.trim() || undefined;
+}
+
+/** The mock keychain flags in the test lane. Empty for every product launch. */
+export function testLaneKeychainArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  return testLaneBrowser(env) ? [...MOCK_KEYCHAIN_ARGS] : [];
+}
+
+/**
+ * Owned Chrome only. Account Chrome never receives the sandbox opt-in.
+ * Caller arguments never carry a keychain flag. Only the test lane adds one.
+ */
 export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
   const mac = platform === "darwin" ? ["--force-renderer-accessibility"] : [];
   const sandbox = needsLinuxNoSandbox(env, platform) ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
@@ -98,7 +120,7 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned];
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env)];
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
@@ -136,8 +158,9 @@ const DAILY_DIR = [
 ];
 
 /**
- * Installed Google Chrome when it is present, otherwise BAO_BROWSER, otherwise
- * Playwright's Chromium. Never a PATH lookup: wrappers can add automation flags.
+ * The test lane's browser when BAO_TEST_BROWSER is set. Otherwise installed
+ * Google Chrome when it is present, then BAO_BROWSER, then Playwright's
+ * Chromium. Never a PATH lookup: wrappers can add automation flags.
  */
 export function resolveNormalChrome(
   exists: (file: string) => boolean = existsSync,
@@ -145,6 +168,11 @@ export function resolveNormalChrome(
   platform: NodeJS.Platform = process.platform,
   playwrightPath: () => string = () => chromium.executablePath(),
 ): string {
+  const pinned = testLaneBrowser(env);
+  if (pinned) {
+    if (chromeExecutable(pinned)) return pinned;
+    throw new Error(`BAO_TEST_BROWSER is not an executable file: ${pinned}`);
+  }
   if (platform === "darwin" && exists(ACCOUNT_CHROME_MAC)) return ACCOUNT_CHROME_MAC;
   if (platform === "linux" && exists(LINUX_CHROME)) return LINUX_CHROME;
   const bundled = env.BAO_BROWSER;
@@ -316,7 +344,7 @@ export async function launchAccountChrome(opts: {
   discardRestoredTabs(opts.userDataDir);
   const exe = resolveAccountChrome();
   const port = await ownedDebugPort();
-  const args = accountLaunchArgs(port);
+  const args = [...accountLaunchArgs(port), ...testLaneKeychainArgs()];
   const child: ChildProcess = spawn(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], { stdio: "ignore" });
   try {
     await waitForCdp(port);
@@ -536,7 +564,7 @@ async function launchOwnedChromeForVideo(opts: {
     viewport: null,
     deviceScaleFactor: opts.deviceScaleFactor,
     chromiumSandbox: true,
-    ignoreDefaultArgs: AUTOMATION_SWITCHES,
+    ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
     args: ownedLaunchArgs(opts.args, opts.appendArgs),
   });
@@ -591,7 +619,11 @@ export function browserPidFromLauncher(userDataDir: string, selfPid: number, row
   return undefined;
 }
 
-export function assessOwnedCommand(cmd: string, userDataDir: string): OwnedVerdict {
+/**
+ * A product command line never carries a keychain flag. A test lane command
+ * line always carries the mock keychain.
+ */
+export function assessOwnedCommand(cmd: string, userDataDir: string, env: NodeJS.ProcessEnv = process.env): OwnedVerdict {
   if (/remote-debugging-port(?:=|\s+)9222/.test(cmd)) {
     return { ok: false, reason: "Chrome was started with remote-debugging-port 9222." };
   }
@@ -602,7 +634,12 @@ export function assessOwnedCommand(cmd: string, userDataDir: string): OwnedVerdi
   if (isDailyProfileDir(dir)) {
     return { ok: false, reason: "Browser cmdline points at the daily profile." };
   }
-  if (cmd.split(/\s+/).some((token) => isKeychainFlag(token))) {
+  const tokens = cmd.split(/\s+/);
+  if (testLaneBrowser(env)) {
+    if (!tokens.includes("--use-mock-keychain")) {
+      return { ok: false, reason: "The test lane started Chrome without a mock keychain." };
+    }
+  } else if (tokens.some((token) => isKeychainFlag(token))) {
     return { ok: false, reason: "Chrome was started with a mock keychain flag." };
   }
   return { ok: true };

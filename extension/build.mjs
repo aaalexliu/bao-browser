@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dist = path.join(here, "dist");
+const dist = process.argv[2] ? path.resolve(process.argv[2]) : path.join(here, "dist");
 mkdirSync(dist, { recursive: true });
 
 await build({
