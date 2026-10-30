@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -188,6 +189,35 @@ int bao_discover_node(const char *bao_node, const char *home, const char *env_sh
   char picked[4096];
   if (!bao_accept_shell_output(raw, picked, sizeof picked)) return -1;
   return try_file(picked, hooks, out, out_n);
+}
+
+/* The passwd directory is copied because getpwuid reuses one buffer. */
+void bao_user_home(char *out, size_t n) {
+  if (!out || n == 0) return;
+  out[0] = '\0';
+  const char *env = getenv("HOME");
+  const char *dir = (env && env[0] == '/') ? env : NULL;
+  if (!dir) {
+    struct passwd *pw = getpwuid(getuid());
+    if (pw && pw->pw_dir && pw->pw_dir[0] == '/') dir = pw->pw_dir;
+  }
+  if (!dir) return;
+  size_t len = strlen(dir);
+  if (len + 1 > n) return;
+  memcpy(out, dir, len + 1);
+}
+
+int bao_find_browser(char *out, size_t n, const char *resources) {
+  if (!out || n == 0 || !resources) return 0;
+  char dir[4096];
+  if (path_join(dir, sizeof dir, resources, "Chromium.app/Contents/MacOS") != 0) return 0;
+  const char *names[] = {"Chromium", "Google Chrome for Testing", "chrome"};
+  for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+    if (path_join(out, n, dir, names[i]) != 0) continue;
+    if (access(out, X_OK) == 0) return 1;
+  }
+  out[0] = '\0';
+  return 0;
 }
 
 int bao_real_is_exec(const char *path, void *ctx) {

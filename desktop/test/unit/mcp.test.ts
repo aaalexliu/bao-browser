@@ -8,6 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { LIVE_DISCONNECT, LIVE_REPLAY, LIVE_TOOL_NAMES } from "../../src/cdp-live/live-ops";
 import { frameRpc } from "../../src/mcp/frame";
+import { resolveHome } from "../../src/home";
 import { serveCommand } from "../../src/mcp/live-proxy";
 import { INSTRUCTIONS, TOOL_NAMES } from "../../src/mcp/server";
 import { Library } from "../../src/v1/store";
@@ -352,6 +353,22 @@ test("the start command quotes a home with a space and names the running program
     "/usr/local/bin/node /opt/bao/cli.js serve --home '/Users/a/Library/Application Support/bao'",
   );
   assert.equal(serveCommand("/tmp/it's", ["bao"], "/usr/local/bin/node"), "bao serve --home '/tmp/it'\\''s'");
+});
+
+test("the server copy inside Bao.app, which bao-mcp runs, names the app instead of node", () => {
+  const user = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-open-")));
+  const env = { HOME: user, BAO_HOME: path.join(user, "from-mcp-env") };
+  const cliInApp = ["node", "/Applications/Bao Test.app/Contents/Resources/bao/src/app/cli.js"];
+  const appHome = resolveHome({ env: { HOME: user }, cwd: "/" });
+  assert.equal(serveCommand(appHome, cliInApp, "/usr/local/bin/node", env), "open '/Applications/Bao Test.app'");
+  assert.equal(
+    serveCommand("/srv/bao lib", cliInApp, "/usr/local/bin/node", env),
+    "open --env 'BAO_HOME=/srv/bao lib' '/Applications/Bao Test.app'",
+  );
+  assert.equal(
+    serveCommand("/srv/lib", ["node", "/Applications/Bao.app/Contents/Resources/Chromium.app/x/cli.js"], "/usr/local/bin/node", env),
+    "/usr/local/bin/node /Applications/Bao.app/Contents/Resources/Chromium.app/x/cli.js serve --home /srv/lib",
+  );
 });
 
 test("a Content-Length request still gets a newline-delimited reply", async () => {

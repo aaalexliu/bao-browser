@@ -227,12 +227,15 @@ test("saved tabs are removed and the cookie store is left in place", () => {
 test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () => {
   const script = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/package-app.sh"), "utf8");
   const main = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/bao-main.c"), "utf8");
+  const launch = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/bao-launch.c"), "utf8");
   assert.equal(script.includes("/Applications/Google Chrome.app"), false);
   assert.match(script, /bao-main\.c/);
   assert.match(script, /Chromium\.app/);
   assert.equal(main.includes("/Applications/Google Chrome.app"), false);
-  assert.match(main, /Google Chrome for Testing/);
-  assert.match(main, /Chromium\.app/);
+  assert.equal(launch.includes("/Applications/Google Chrome.app"), false);
+  assert.match(main, /bao_find_browser\(browser, sizeof browser, resources\)/);
+  assert.match(launch, /Google Chrome for Testing/);
+  assert.match(launch, /Chromium\.app/);
   assert.match(main, /--app=/);
   assert.match(main, /--disable-infobars/);
   assert.match(script, /bao-launch\.c/);

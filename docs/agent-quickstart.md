@@ -14,7 +14,7 @@ export PATH="$(dirname "$(nvm which node)"):$PATH"
 
 The CLI, `bao mcp`, and the installed Mac app pick the library with one resolver, `desktop/src/library-home.cjs`. `--home`, then `BAO_HOME`, is used as given, even when that directory is empty. Without either, the home is `~/Library/Application Support/bao` on macOS and `~/.local/share/bao` elsewhere. When that directory has no workflows or library data, Bao keeps an older library that has them: `~/.local/share/bao` on macOS, or `.bao-mcp` in the working directory. It names both directories on stderr when it does.
 
-So `bao mcp` without `BAO_HOME` reads the library `bao serve` would pick from the same working directory. An MCP client starts the server from its own working directory, and a `.bao-mcp` library there can win. Set `BAO_HOME` to the path `bao serve` printed to pin MCP to that library.
+So `bao mcp` run from a checkout without `BAO_HOME` reads the library `bao serve` would pick from the same working directory, and a `.bao-mcp` library there can win. The `bao-mcp` launcher in the next section runs from inside the app, so it reads the app's library.
 
 The Mac launcher runs `desktop/src/print-home.cjs` before the server starts. [Build Bao on a Mac](mac-build.md) has the installed app's paths.
 
@@ -24,33 +24,48 @@ The Mac launcher runs `desktop/src/print-home.cjs` before the server starts. [Bu
 
 `bao mcp` is a stdio server. The tools are `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`, then the `live_*` tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point).
 
-Point the client at the compiled file, with `BAO_HOME` set to the serve home. Two forms, both after `npm run build:desktop`:
+Agents start it through `bao-mcp`, a launcher inside the Mac app: `/Applications/Bao.app/Contents/MacOS/bao-mcp`. It finds Node 24 or newer the way the app does ([Build Bao on a Mac](mac-build.md#launch)), then runs the app's own `bao mcp` from `Contents/Resources/bao`. So the agent config names no checkout, `node` need not be on PATH, and the agent's working directory does not pick the library. Arguments after the launcher go to `bao mcp`, such as `--home dir`. The source is `desktop/packaging/macos/bao-mcp.c`.
+
+One command sets up each agent. `bao agent config claude` and `bao agent config codex` print the entry. `--write` puts it in that agent's own config. Without `--write`, nothing is written.
+
+```sh
+npm run build:desktop
+node desktop/dist/desktop/src/app/cli.js agent config claude --write
+node desktop/dist/desktop/src/app/cli.js agent config codex --write
+```
+
+Claude Code: `--write` runs `claude mcp remove --scope user bao`, then the printed command. A failed remove only means there was no earlier entry.
+
+```sh
+claude mcp add --scope user bao -- /Applications/Bao.app/Contents/MacOS/bao-mcp
+```
+
+The Claude entry has no timeout. Claude Code 2.1.308 waits up to 100,000,000 ms for an MCP tool call, and 30 minutes for a stdio server that sends nothing. A per-server `timeout` would only shorten that.
+
+Codex: `--write` puts this table in `$CODEX_HOME/config.toml`, or in `~/.codex/config.toml` when `CODEX_HOME` is unset.
+
+```toml
+[mcp_servers.bao]
+command = "/Applications/Bao.app/Contents/MacOS/bao-mcp"
+tool_timeout_sec = 180
+```
+
+Codex stops a tool call after 60 s by default. On the daily Chrome, a live call waits 8 to 50 s for the Allow press ([permissions.md](permissions.md)), and a live replay presses Allow again on its own connection. `codex mcp add` cannot set `tool_timeout_sec`, so bao writes the table itself. It replaces an earlier `[mcp_servers.bao]` table and its sub-tables in place and leaves every other line alone. A bao entry in another form, such as an inline table, is refused, and nothing is written.
+
+`--app` names another Bao.app. `--home dir` adds `--home dir` to the entry. Without `--app`, the launcher is the one in the Bao.app the CLI runs from, else `/Applications/Bao.app`. A missing launcher is named on stderr, and `--write` then writes nothing. A Bao.app built before the launcher has no `bao-mcp`; rebuild it from [Build Bao on a Mac](mac-build.md).
+
+The live tools need the Bao app running. Without it, a live tool returns `Bao is not running. Open the Bao app, or run: open /Applications/Bao.app`. The catalog tools still work.
+
+### MCP from a checkout
+
+To try an MCP change before packaging, run the compiled file with `BAO_HOME` set to the home `bao serve` printed:
 
 ```sh
 export BAO_HOME="/the/home/bao/serve/printed"
-node desktop/dist/desktop/src/app/cli.js mcp
 ./scripts/bao-mcp.sh
 ```
 
-On a Mac with no older library, that path is `~/Library/Application Support/bao`. On Linux it is `~/.local/share/bao`.
-
-`./scripts/bao-mcp.sh` execs that file. If `desktop/dist` is missing it writes one line to stderr and exits 1. If `BAO_HOME` is unset it exits 1 before the CLI picks a library.
-
-`npm run bao -- mcp` still starts the same CLI, and npm writes its script header to stdout before the first JSON-RPC byte. A client that parses stdout as the protocol will fail on that header. The header also used to wait on a full `tsc` run. The compile is gone. The header remains. Use the compiled file or `./scripts/bao-mcp.sh`.
-
-Example client config, with the repo path and the serve home filled in:
-
-```json
-{
-  "mcpServers": {
-    "bao": {
-      "command": "node",
-      "args": ["/ABS/desktop/dist/desktop/src/app/cli.js", "mcp"],
-      "env": { "BAO_HOME": "/ABS/to/the/serve/home" }
-    }
-  }
-}
-```
+`./scripts/bao-mcp.sh` execs `node desktop/dist/desktop/src/app/cli.js mcp`. If `desktop/dist` is missing it writes one line to stderr and exits 1. If `BAO_HOME` is unset it exits 1 before the CLI picks a library. `npm run bao -- mcp` writes npm's script header to stdout before the first JSON-RPC byte, and a client that parses stdout as the protocol fails on that header.
 
 ## Fixture MCP
 

@@ -1,5 +1,7 @@
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { serverHomes, serverPort } from "../home";
+import { appBundleOf } from "../app/bundle";
+import { resolveHome, serverHomes, serverPort } from "../home";
 import type { RunResult } from "../v1/replay";
 import type { LiveReplayer } from "./catalog";
 import { LIVE_REPLAY, publicLiveResult } from "../cdp-live/live-ops";
@@ -40,15 +42,33 @@ export function liveToolResult(result: unknown): { content: { type: "text"; text
   };
 }
 
-function shellWord(word: string): string {
+export function shellWord(word: string): string {
   return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The command that starts the app for this home, from the program that is running now. */
-export function serveCommand(home: string, argv: readonly string[] = process.argv, node: string = process.execPath): string {
+/**
+ * The command that starts the app for this home, from the program that is running now.
+ * The server copy inside Bao.app, which bao-mcp runs, names the app instead of a node command.
+ */
+export function serveCommand(home: string, argv: readonly string[] = process.argv, node: string = process.execPath, env: NodeJS.ProcessEnv = process.env): string {
   const cli = argv[1];
+  const app = cli ? appBundleOf(cli) : undefined;
+  if (app) return openCommand(app, home, env);
   const program = cli && path.basename(cli) === "cli.js" ? `${shellWord(node)} ${shellWord(path.resolve(cli))}` : "bao";
   return `${program} serve --home ${shellWord(home)}`;
+}
+
+/** Opened from Finder, Bao.app serves the home print-home.cjs picks from "/". Any other home goes in BAO_HOME. */
+function openCommand(app: string, home: string, env: NodeJS.ProcessEnv): string {
+  const finder = { ...env };
+  delete finder.BAO_HOME;
+  const picked = resolveHome({ env: finder, cwd: "/", warn: () => undefined });
+  if (canonical(picked) === canonical(home)) return `open ${shellWord(app)}`;
+  return `open --env ${shellWord(`BAO_HOME=${home}`)} ${shellWord(app)}`;
+}
+
+function canonical(file: string): string {
+  return existsSync(file) ? realpathSync(file) : path.resolve(file);
 }
 
 export function notRunningMessage(home: string): string {
