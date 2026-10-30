@@ -186,11 +186,10 @@ export interface CartSkip {
 
 /**
  * What tells replay that a cart add's item is already in the cart, so the add is skipped.
- * The item is the one the Add names, as in "Add 1 ct {item}". A plain "Add to cart" adds the
- * item of the product page it is on. A control the add revealed that names the item is the
- * mark, as on a results page. A product page that revealed none is marked by the add's own
- * effect when it reads "{n} in cart", at any count. Undefined when the add left no mark.
- * `effect` is the text the add made appear, from clickEffect.
+ * An Add that names its item, as "Add 1 ct {item}" on a results page, is marked by a control
+ * the add revealed that names the item. A plain "Add to cart" on a product page, one with a
+ * single h1, is marked only by the add's own effect when it reads "{n} in cart", at any count.
+ * Undefined when the add left no mark. `effect` is the text the add made appear, from clickEffect.
  */
 export function cartAddSkip(
   label: string,
@@ -199,12 +198,12 @@ export function cartAddSkip(
   effect = "",
 ): CartSkip | undefined {
   const named = cartAddItem(label);
-  const item = named || (PLAIN_ADD.test(flat(label)) ? pageItem(before) : "");
-  if (!item) return undefined;
-  const marker = inCartMarker(item, before, after);
-  if (marker) return { text: marker, anyCount: false };
+  if (named) {
+    const marker = inCartMarker(named, before, after);
+    return marker ? { text: marker, anyCount: false } : undefined;
+  }
   const shown = flat(effect);
-  return !named && IN_CART.test(shown) ? { text: shown, anyCount: true } : undefined;
+  return PLAIN_ADD.test(flat(label)) && pageItem(before) && IN_CART.test(shown) ? { text: shown, anyCount: true } : undefined;
 }
 
 /**

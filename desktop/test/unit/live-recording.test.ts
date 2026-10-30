@@ -213,7 +213,7 @@ test("a cart add names its item, and the control it revealed marks the item as i
   assert.equal(cartAddSkip("Save", before, after, "Saved"), undefined);
 });
 
-test("a product page's Add to cart takes its item from the page, and is skipped while the page shows the item in the cart", () => {
+test("a product page's Add to cart, on a page with one h1, is skipped while the page shows {n} in cart", () => {
   const heading = dom({ role: "heading", tag: "h1", text: TARGET.name });
   const page = [
     dom({ name: "View Cart. Items in cart: 0" }),
@@ -233,8 +233,8 @@ test("a product page's Add to cart takes its item from the page, and is skipped 
   for (const bare of ["Add", "Add to bag"]) {
     assert.equal(cartAddSkip(bare, page, added, "1 in cart"), undefined, `${bare} is not a product page's Add to cart`);
   }
-  const stepper = [...added, dom({ name: MARKER })];
-  assert.deepEqual(cartAddSkip("Add to cart", page, stepper, "1 in cart"), { text: MARKER, anyCount: false }, "a control that names the item comes first");
+  const toast = [...added, dom({ role: "status", name: `Added ${TARGET.name} to cart` })];
+  assert.deepEqual(cartAddSkip("Add to cart", page, toast, "1 in cart"), { text: "1 in cart", anyCount: true }, "a toast that names the item is not the mark");
   assert.equal(cartAddSkip("Add to cart", page, added, "Added"), undefined, "an effect that is not a count in the cart marks nothing");
   assert.equal(cartAddSkip("Add to cart", page.filter((node) => node !== heading), added, "1 in cart"), undefined, "a page with no one item marks nothing");
 });
