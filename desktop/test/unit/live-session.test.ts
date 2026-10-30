@@ -20,6 +20,7 @@ import {
   targetVerdict,
   workflowIdsFromIntent,
   LIVE_TOOL_NAMES,
+  LIVE_TOOLS,
 } from "../../src/cdp-live/live-ops";
 import { parseLock } from "../../src/cdp-live/lock";
 import { guardPreset, resolveGuardFlags } from "../../src/cdp-live/presets";
@@ -113,7 +114,7 @@ test("confirm controls are listed and not clicked, and credential fields refuse 
       { index: 3, label: "Search", kind: "field", field: { type: "search", name: "q", autocomplete: "off" } },
       { index: 4, label: "Mystery", kind: "link" },
     ],
-  }, 7, "place order|pay now|checkout");
+  }, 7, { commit: "place order|pay now|checkout", deny: "", submit: "" });
   assert.deepEqual(read.view.stopBeforeConfirm.map((item) => item.label), ["Place order"]);
   assert.equal(read.view.credentialFields, 1);
   assert.equal(read.view.controls.some((control) => control.label === "Place order"), false);
@@ -166,15 +167,18 @@ test("a login wall halts, a new tab opened by the page is blocked, and cookies n
   assert.deepEqual(touched, []);
 });
 
-test("the six live tools stay off the remote relay and a workflow id comes from the intent", () => {
+test("the eight live tools stay off the remote relay and a workflow id comes from the intent", () => {
   assert.deepEqual(LIVE_TOOL_NAMES, [
     "live_session_start",
     "live_snapshot",
     "live_click",
     "live_type",
+    "live_key",
+    "live_scroll",
     "live_screenshot",
     "live_stop",
   ]);
+  assert.deepEqual(LIVE_TOOLS.map((tool) => tool.name), [...LIVE_TOOL_NAMES]);
   const relayNames: readonly string[] = RELAY_TOOLS.map((tool) => tool.name);
   for (const name of LIVE_TOOL_NAMES) {
     assert.equal(relayNames.includes(name), false);

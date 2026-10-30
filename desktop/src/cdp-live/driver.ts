@@ -7,8 +7,8 @@ import { assignSiblingIndex } from "../v1/identity";
 import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
-import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost } from "./allowlist";
-import { focusStillMarked } from "./live-ops";
+import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
+import { focusLiveMark, focusStillMarked } from "./live-ops";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -91,6 +91,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Chrome runs a key's default action only when the event carries its virtual key code. */
+const KEY_EVENTS: Record<string, { code: string; keyCode: number; text: string }> = {
+  Enter: { code: "Enter", keyCode: 13, text: "\r" },
+  Tab: { code: "Tab", keyCode: 9, text: "" },
+  Escape: { code: "Escape", keyCode: 27, text: "" },
+};
+
 function toIdentity(node: DomDump): Identity {
   return {
     surface: "dom",
@@ -115,7 +122,10 @@ export class CdpLiveDriver implements Driver {
   private loadEpoch = 0;
   private offHost = "";
   private blockedNav = "";
+  /** The last top-frame URL that committed on an allowed host and off any stop path. */
+  private lastAllowed = "";
   private origins: readonly string[] = [];
+  private stopPath = "";
   private humanAsk: HumanAsk | undefined;
   private trustEvents: TrustEvent[] = [];
   private trustCursor = 0;
@@ -134,6 +144,11 @@ export class CdpLiveDriver implements Driver {
 
   setOrigins(origins: readonly string[]): void {
     this.origins = origins;
+  }
+
+  /** A page load on a stop path is failed before the request leaves Chrome. */
+  setStopPath(stopPath: string): void {
+    this.stopPath = stopPath;
   }
 
   private allows(url: string): boolean {
@@ -181,11 +196,12 @@ export class CdpLiveDriver implements Driver {
     if (!requestId) return;
     const request = params.request as { url?: string } | undefined;
     const url = request?.url || "";
-    if (params.frameId !== this.targetId || this.allows(url)) {
+    const allowed = this.allows(url);
+    if (params.frameId !== this.targetId || (allowed && !stopPathHit(url, this.stopPath))) {
       void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
       return;
     }
-    this.blockedNav = this.refusal(url);
+    this.blockedNav = allowed ? "stop-path" : this.refusal(url);
     void this.cdp.send("Fetch.failRequest", {
       requestId,
       errorReason: "BlockedByClient",
@@ -196,6 +212,40 @@ export class CdpLiveDriver implements Driver {
     const reason = this.blockedNav;
     this.blockedNav = "";
     return reason;
+  }
+
+  /**
+   * After a load failed on a stop path, takes the tab off Chrome's error page and back to the
+   * last allowed page: one history step when that lands on it, otherwise a load of that URL.
+   */
+  async returnFromBlock(timeoutMs = 10_000): Promise<void> {
+    const target = this.lastAllowed;
+    if (this.preserveTarget || !target) return;
+    type History = { currentIndex: number; entries: { id: number; url: string }[] };
+    const history = () => this.cdp.send<History>("Page.getNavigationHistory", {}, this.sessionId);
+    let now = await history();
+    const settle = Date.now() + 2_000;
+    while (now.entries[now.currentIndex]?.url === target && Date.now() < settle) {
+      await sleep(100);
+      now = await history();
+    }
+    if (now.entries[now.currentIndex]?.url === target) return;
+    const prior = now.entries[now.currentIndex - 1];
+    if (prior?.url === target) {
+      await this.cdp.send("Page.navigateToHistoryEntry", { entryId: prior.id }, this.sessionId);
+    } else {
+      const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url: target }, this.sessionId);
+      if (nav.errorText) throw new Error(nav.errorText);
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const state = await this.evaluate<{ href: string; ready: string }>(
+        "({ href: location.href, ready: document.readyState })",
+      ).catch(() => undefined);
+      if (state && /^https?:/.test(state.href) && this.allows(state.href) && !stopPathHit(state.href, this.stopPath) && state.ready === "complete") return;
+      await sleep(100);
+    }
+    throw new Error("could not return to the last allowed page");
   }
 
   markTrust(): void {
@@ -209,13 +259,16 @@ export class CdpLiveDriver implements Driver {
   }
 
   private onFrame(params: Record<string, unknown>): void {
-    const frame = params.frame as { parentId?: string; url?: string } | undefined;
+    const frame = params.frame as { parentId?: string; url?: string; unreachableUrl?: string } | undefined;
     if (!frame) return;
     if (frame.parentId) {
       this.subframesSeen.count += 1;
       return;
     }
     const url = frame.url || "";
+    if (/^https?:/.test(url) && !frame.unreachableUrl && this.allows(url) && !stopPathHit(url, this.stopPath)) {
+      this.lastAllowed = url;
+    }
     if (url && this.allows(url)) {
       if (this.preserveTarget) this.offHost = "";
       void this.evaluate(TRUST_SOURCE).catch(() => undefined);
@@ -426,16 +479,36 @@ export class CdpLiveDriver implements Driver {
       await this.chord("a", "KeyA", 4, 65);
       return;
     }
-    const enter = key === "Enter" || key === "Return";
-    const name = enter ? "Enter" : key;
+    const name = key === "Return" ? "Enter" : key;
+    const known = KEY_EVENTS[name];
     await this.cdp.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key: name,
-      code: name,
-      windowsVirtualKeyCode: enter ? 13 : 0,
-      text: enter ? "\r" : name.length === 1 ? name : "",
+      code: known?.code || name,
+      windowsVirtualKeyCode: known?.keyCode || 0,
+      text: known ? known.text : name.length === 1 ? name : "",
     }, this.sessionId);
-    await this.cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name }, this.sessionId);
+    await this.cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: name,
+      code: known?.code || name,
+      windowsVirtualKeyCode: known?.keyCode || 0,
+    }, this.sessionId);
+  }
+
+  /**
+   * Presses one key where focus is. With a mark, focus must still be that control.
+   * Focus in a credential field stops the key either way.
+   */
+  async pressMarked(key: string, markIndex: number): Promise<void> {
+    this.assertHost();
+    await this.bringToFront();
+    if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
+    const before = await this.evaluate<string>("location.href").catch(() => "");
+    await this.key(key);
+    await this.waitAfterClick(before, 10_000);
   }
 
   async upload(_node: Identity, _files: FileArg[]): Promise<void> {
