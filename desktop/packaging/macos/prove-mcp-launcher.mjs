@@ -1,6 +1,7 @@
 // Starts Bao.app/Contents/MacOS/bao-mcp the way an agent does and checks one MCP exchange.
-// HOME is an empty temp directory and PATH has no node, so the check reads no one's library
-// and needs no shell profile. Usage: node prove-mcp-launcher.mjs path/to/Bao.app
+// HOME is a temp directory that holds only the test library planted below, and PATH has no
+// node, so the check reads no one's real library and needs no shell profile.
+// Usage: node prove-mcp-launcher.mjs path/to/Bao.app
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
