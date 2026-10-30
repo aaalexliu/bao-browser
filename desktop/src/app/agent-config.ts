@@ -6,7 +6,7 @@ import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSyn
 import path from "node:path";
 import { baoUserHome } from "../home";
 import { shellWord } from "../mcp/live-proxy";
-import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
+import { DEFAULT_APP, mcpLauncher } from "./bundle";
 import { codexServerBlock, upsertCodexServer } from "./codex-config";
 
 export const AGENT_USAGE = "usage: bao agent config claude|codex [--write] [--app /Applications/Bao.app]";
@@ -81,7 +81,7 @@ function parse(argv: readonly string[]): Request {
       i += 1;
     } else throw new Error(`unknown argument: ${arg}`);
   }
-  const bundle = app ? path.resolve(app) : appBundleOf(__filename) || DEFAULT_APP;
+  const bundle = app ? path.resolve(app) : DEFAULT_APP;
   return { agent: agent as Agent, write, launcher: mcpLauncher(bundle) };
 }
 
