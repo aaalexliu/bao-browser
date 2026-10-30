@@ -225,11 +225,14 @@ test("a live tool names the command that starts Bao when the app is not running"
 });
 
 test("the printed start command serves the app from a directory outside the repo", async () => {
-  const home = mkdtempSync(path.join(tmpdir(), "bao-serve-elsewhere-"));
-  const elsewhere = mkdtempSync(path.join(tmpdir(), "bao-cwd-"));
+  const root = mkdtempSync(path.join(tmpdir(), "bao-srv-"));
+  const home = path.join(root, "h");
+  const user = path.join(root, "user");
+  const elsewhere = path.join(root, "cwd");
+  for (const dir of [home, user, elsewhere]) mkdirSync(dir, { recursive: true });
   const app = spawn(process.execPath, [cli, "serve", "--home", home, "--port", "0"], {
     cwd: elsewhere,
-    env: { ...process.env, BAO_HOME: home, BAO_PUBLIC: "" },
+    env: { ...process.env, HOME: user, BAO_HOME: home, BAO_PUBLIC: "", BAO_HEAL_CURSOR_ACCOUNT: "0" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let logs = "";
