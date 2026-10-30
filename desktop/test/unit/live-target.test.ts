@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { after, before, describe, it } from "node:test";
@@ -297,6 +297,28 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
       assert.equal(existsSync(path.join(home, "lock")), false);
     } finally {
       await host.close();
+    }
+  });
+
+  it("accepts a daily profile folder with a name Chrome's own UI does not make", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-live-custom-profile-"));
+    const work = path.join(browser.userDataDir, "Work");
+    mkdirSync(work);
+    const ax = fakeChromeHelper({ accessibility: false });
+    const host = createLiveHost({
+      home,
+      lockFile: path.join(home, "lock"),
+      target: { kind: "daily", portFile: browser.portFile, profile: "Work" },
+      helper: () => ax.helper,
+      openProfile: async () => undefined,
+    });
+    try {
+      const started = await host.call({ op: "live_session_start", intent: "Shop", url: fixture.url("/store/costco/storefront") }) as LiveBody;
+      assert.equal(started.outcome?.reason, "BaoOSHelper accessibility is not granted");
+      assert.deepEqual(ax.calls, ["permissions false"]);
+    } finally {
+      await host.close();
+      rmSync(work, { recursive: true, force: true });
     }
   });
 

@@ -187,18 +187,18 @@ function missingPortReason(target: LiveTarget, err: unknown): string {
   return "the live target has no DevToolsActivePort";
 }
 
-/** Checks before the CDP lock. Only the daily Chrome needs its pid and the helper's Accessibility grant. */
 /** Chrome quietly makes a new, empty profile for a name it does not know, so refuse one that is missing. */
 async function requireProfile(userDataDir: string, profile: string): Promise<void> {
-  const entries = await readdir(userDataDir, { withFileTypes: true }).catch(() => []);
-  const profiles = entries
-    .filter((entry) => entry.isDirectory() && (entry.name === "Default" || /^Profile \d+$/.test(entry.name)))
+  const dirs = (await readdir(userDataDir, { withFileTypes: true }).catch(() => []))
+    .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
-  if (profiles.includes(profile)) return;
+  if (dirs.includes(profile)) return;
+  const profiles = dirs.filter((name) => name === "Default" || /^Profile \d+$/.test(name));
   const known = profiles.length ? profiles.join(", ") : "none";
   throw new Error(`Chrome profile ${profile} does not exist in ${userDataDir}. Profiles there: ${known}`);
 }
 
+/** Checks before the CDP lock. Only the daily Chrome needs its pid and the helper's Accessibility grant. */
 export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx = () => chromeHelper()): Promise<PreparedTarget> {
   let endpoint: DevToolsEndpoint;
   try {
