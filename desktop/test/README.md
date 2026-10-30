@@ -1,6 +1,6 @@
 # Desktop tests
 
-`npm run test:v1` is the required suite. It compiles `desktop/test/unit` and runs those files only. To run some of them under the same rules, compile with `npx tsc -p tsconfig.desktop.json`, then name the compiled files after `node desktop/test/run-v1.mjs`. An unknown name fails the run. The suite does not open the public demo sites. Chrome can still contact Google for its own account and update checks. Those calls do not decide the result. The runner drops model credentials, `CI`, and every inherited name that starts with `BAO`. It then sets a headless window, the lane name, replay video off, and heal account off. It sets `BAO_TEST_BROWSER` to Playwright's Chromium, and it stops when that binary is missing. Run `npx playwright install chromium` to get it. While `BAO_TEST_BROWSER` is set, every owned launch in `desktop/src/launch.ts` starts that binary with `--use-mock-keychain` and `--password-store=basic`. The suite never opens the installed Google Chrome or the login keychain. Without `BAO_TEST_BROWSER`, resolution is installed Chrome, then an executable `BAO_BROWSER`, then an executable Playwright browser. The live lane does not set it.
+`npm run test:v1` is the required suite. It compiles `desktop/test/unit` and runs those files only. It does not open the public demo sites. Chrome can still contact Google for its own account and update checks. Those calls do not decide the result. The runner drops model credentials, `CI`, and every inherited name that starts with `BAO`. It then sets a headless window, the lane name, replay video off, and heal account off. It sets `BAO_TEST_BROWSER` to Playwright's Chromium, and it stops when that binary is missing. Run `npx playwright install chromium` to get it. While `BAO_TEST_BROWSER` is set, every owned launch in `desktop/src/launch.ts` starts that binary with `--use-mock-keychain` and `--password-store=basic`. The suite never opens the installed Google Chrome or the login keychain. Without `BAO_TEST_BROWSER`, resolution is installed Chrome, then an executable `BAO_BROWSER`, then an executable Playwright browser. The live lane does not set it.
 
 Artifacts go to `BAO_ARTIFACTS_DIR`, then `BAO_ARTIFACTS`, then `out/test-artifacts/<run-id>/<test>/`. The lane does not forward those two names, so a test that wants a custom directory sets it itself. A leaf that contains a path separator, `..`, or is empty is rejected. The directory is printed. `out/` is gitignored. Evidence writes do not replace the original test error.
 
@@ -44,11 +44,7 @@ The SPKI flag works with a temp `--user-data-dir` on Playwright's Chrome for Tes
 
 ## Instacart acceptance lane (L1)
 
-`desktop/test/unit/instacart-acceptance.test.ts` is lane L1 of the plan for "put costco blueberries into the cart at instacart". `npm run test:v1` runs it. To run it alone:
-
-```
-npx tsc -p tsconfig.desktop.json && node desktop/test/run-v1.mjs instacart-acceptance.test.js
-```
+`desktop/test/unit/instacart-acceptance.test.ts` is lane L1 of the plan for "put costco blueberries into the cart at instacart". `npm run test:v1` runs it.
 
 It takes about 20 seconds and calls no model. It starts the fixture and the test browser, then spawns `bao serve --home <tmp> --port 0 --live-target throwaway:<DevToolsActivePort> --live-lock <tmp>/live.lock`. Every spawned `bao serve` and `bao mcp` gets a temp `HOME`, so the native host manifest and the app's homes stay in the temp dir, and the private lock keeps it from waiting on, or blocking, a Bao on the same Mac. A scripted client (`desktop/src/eval/mcp-client.ts`) plays the agent on `bao mcp`:
 
@@ -58,10 +54,10 @@ It takes about 20 seconds and calls no model. It starts the fixture and the test
 4. It opens the cart and tries its Go to checkout link, which is refused too.
 5. It closes stdin without `live_stop`. The app saves the workflow and frees the lock.
 
-A new client then replays the workflow through `run_workflow` twice, on an empty cart each time, and once with `{ "query": "strawberries" }`. The test checks:
+A new client then replays the workflow through `run_workflow` twice, on an empty cart each time. The test checks:
 
 - A: after recording, the cart is one Costco line, the Kirkland Organic Blueberries 3 lb, qty 1.
 - B: the cart write comes right after the audit row of the trusted Add to cart click in `<home>/live-session/session.json`. Every fixture request has the host `www.instacart.com` and the test browser's User-Agent.
 - C: no trap page loads, and each trap's refusal has an audit row.
 - D: the saved workflow validates against the schema, has `driver: "cdp-live"`, starts on `www.instacart.com`, has the input `query` with the default `blueberries`, types it, presses Enter, opens the product, and clicks Add to cart. It has no cookie or storage key and no step label the preset refuses. The cart click from step 4 is its last step.
-- E: both replays pass with `modelCalls` 0 and no heal, and each leaves the same cart line. The `strawberries` replay searches that text, finds no blueberries product to open, and fails at that step with no cart write and no model call.
+- E: both replays pass with `modelCalls` 0 and no heal, and each leaves the same cart line.

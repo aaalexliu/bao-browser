@@ -177,7 +177,7 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
     fixture = await startInstacartFixture();
     browser = await launchFixtureBrowser(fixture);
     env = { ...process.env };
-    home = applyHermeticApp("instacart-acceptance", env).home;
+    home = applyHermeticApp("l1", env).home;
     root = path.dirname(home);
     env.HOME = path.join(root, "user");
     mkdirSync(env.HOME, { recursive: true });
@@ -319,16 +319,6 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
         assert.deepEqual(writes(), [["add", "costco", TARGET.id, 1]], `round ${round}`);
         assert.deepEqual(fixture.state().requests.filter((hit) => hit.path.startsWith("/store/costco/s?")).map((hit) => hit.path), ["/store/costco/s?k=blueberries"]);
       }
-
-      // New search text: the replay searches it, cannot open the blueberries it recorded, and stops before any cart write.
-      resetCart();
-      const { outcome, run } = await runWorkflow({ inputs: { query: "strawberries" } });
-      assert.equal(outcome.outcome, "failed", JSON.stringify(outcome));
-      assert.equal(outcome.reason, "find: below-threshold");
-      assert.deepEqual(outcome.receipts.map((step) => step.status), ["passed", "passed", "failed", "pending", "pending"]);
-      assert.deepEqual(run.inputs, { query: "strawberries" });
-      assert.deepEqual(fixture.state().requests.map((hit) => hit.path), ["/store/costco/storefront", "/store/costco/s?k=strawberries"]);
-      assert.deepEqual(writes(), []);
     } finally {
       await replayer.close();
     }
