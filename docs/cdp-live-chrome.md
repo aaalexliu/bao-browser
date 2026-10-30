@@ -190,7 +190,7 @@ The session contract is [cdp-live.md](cdp-live.md).
 | `bao` | Bao's own Chrome | `<home>/chrome-profile/DevToolsActivePort` | No |
 | `throwaway:<path>` | A Chrome started with `--remote-debugging-port` and its own `--user-data-dir`, such as a test browser | That absolute path | No |
 
-A caller can still pass `portFile`. The daily Chrome's own file keeps the Allow press, and any other file is a throwaway target. For a target with no dialog, the host connects with no helper call, so neither the Accessibility grant nor the checkbox is read.
+A caller can still pass `portFile`. The configured target's own file keeps that target, profile included. The daily Chrome's file keeps the Allow press, and any other file is a throwaway target. For a target with no dialog, the host connects with no helper call, so neither the Accessibility grant nor the checkbox is read.
 
 `Target.createTarget` opens a window in whichever profile Chrome used last, and CDP cannot pick another one. So for the daily Chrome the host runs the binary of the Chrome that owns the DevTools port with `--user-data-dir=<the port file's folder> --profile-directory=<profile> --new-window` and a `data:` marker page. Chrome hands that command line to the running browser and exits. The browser opens the window in that profile, and the session drives only the page that shows its own marker. A headless Chrome does not take the hand-off, so the live lane checks it on a headed test browser (`desktop/test/live/live-profile.test.ts`). Chrome quietly makes a new, empty profile for a name it does not know, so the host first refuses a profile with no folder in that user-data dir. The error names the profile and lists the `Default` and `Profile <n>` folders that do exist.
 
