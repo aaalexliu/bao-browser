@@ -229,7 +229,7 @@ test("cdp-live is accepted and does not select Playwright's launcher or the exte
   assert.equal(refusesOwnedBrowser("playwright"), false);
   assert.equal(refusesOwnedBrowser("extension"), false);
   assert.equal(refusesOwnedBrowser("cdp"), false);
-  assert.match(CDP_LIVE_SERVER_REFUSAL, /live attach/);
+  assert.match(CDP_LIVE_SERVER_REFUSAL, /Bao app that recorded it, after live_stop/);
 });
 
 test("a replay refuses cdp-live, and refuses an extension workflow only without a linked extension", () => {

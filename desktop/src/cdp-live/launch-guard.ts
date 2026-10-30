@@ -1,7 +1,8 @@
 /** cdp-live never starts Bao's Chrome. workflowDriver still maps unknown names to Playwright. */
 export const CDP_LIVE_DRIVER = "cdp-live";
 
-export const CDP_LIVE_SERVER_REFUSAL = "cdp-live attaches to the running Chrome; use the live attach";
+export const CDP_LIVE_SERVER_REFUSAL =
+  "replay this cdp-live workflow from the Bao app that recorded it, after live_stop; replay through bao mcp comes in a later step";
 
 export const EXTENSION_NOT_CONNECTED = "extension is not connected";
 
