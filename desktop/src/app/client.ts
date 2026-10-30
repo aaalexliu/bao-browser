@@ -53,6 +53,7 @@ import {
   versionsPanel,
   workflowDetail,
   runDriverField,
+  runHealField,
   type CommandItem,
   type HealView,
   type ImportPending,
@@ -329,11 +330,7 @@ function replayForm(): string {
     ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
     ${runDriverField(current?.driver)}
-    <label>Healing for this workflow <select id="wf-heal">
-      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
-      <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
-      <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
-    </select></label>
+    ${runHealField(current?.driver, mode, globalHeal)}
     <form id="args"></form>
     <p class="mono" data-testid="deeplink">bao://workflow/${esc(selected)}</p>
     <p class="mono" data-testid="import-link">bao://import/${esc(selected)}</p>

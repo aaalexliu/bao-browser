@@ -58,6 +58,20 @@ export function runDriverField(driver: string | undefined): string {
     </select></label>`;
 }
 
+/** The run form's heal line. A live workflow replays with no heal and no approval, so its line offers no choice. */
+export function runHealField(driver: string | undefined, mode: string, globalHeal: string): string {
+  if (driver === "cdp-live") {
+    return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal" disabled>
+      <option value="" selected>None - live replays run without healing or approval</option>
+    </select></label>`;
+  }
+  return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal">
+      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
+      <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
+      <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
+    </select></label>`;
+}
+
 export interface PromotionView {
   healId?: string;
   workflowId?: string;
