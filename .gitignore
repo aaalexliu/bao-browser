@@ -49,3 +49,6 @@ desktop/os-helper-macos/BaoOSHelper.app/
 # Packaged binaries stay out of git. The build writes them under artifacts.
 *.AppImage
 .toolchain/
+
+# Chrome Web Store upload package (regenerate with `npm run package`)
+bao.zip
