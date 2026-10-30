@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { LIVE_TOOL_NAMES } from "../../src/cdp-live/live-ops";
+import { LIVE_DISCONNECT, LIVE_TOOL_NAMES } from "../../src/cdp-live/live-ops";
 import { frameRpc } from "../../src/mcp/frame";
 import { serveCommand } from "../../src/mcp/live-proxy";
 import { INSTRUCTIONS, TOOL_NAMES } from "../../src/mcp/server";
@@ -196,6 +196,44 @@ test("bao mcp-live is the same server as bao mcp", async () => {
     assert.equal((await mcp.tool("live_snapshot")).isError, false);
     assert.deepEqual(app.bodies.map(({ client: _client, ...body }) => body), [{ op: "live_snapshot" }]);
     assert.equal((await mcp.tool("search_workflows", { query: "x" })).isError, false);
+  } finally {
+    mcp.child.kill();
+    await closeServer(app.server);
+  }
+});
+
+function exited(child: ChildProcessWithoutNullStreams): Promise<number | null> {
+  if (child.exitCode !== null) return Promise.resolve(child.exitCode);
+  return new Promise((resolve) => child.once("exit", (code) => resolve(code)));
+}
+
+test("closing stdin answers a queued catalog call and sends no disconnect without a live call", async () => {
+  const mcp = startMcp("bao-mcp-end-catalog-");
+  const app = await fakeApp(mcp.home, () => ({ outcome: { kind: "applied" } }));
+  try {
+    await initialize(mcp);
+    const search = mcp.tool("search_workflows", { query: "x" });
+    mcp.child.stdin.end();
+    assert.equal((await search).isError, false);
+    assert.equal(await exited(mcp.child), 0);
+    assert.deepEqual(app.bodies, []);
+  } finally {
+    mcp.child.kill();
+    await closeServer(app.server);
+  }
+});
+
+test("closing stdin after a live call sends one disconnect with the same client id", async () => {
+  const mcp = startMcp("bao-mcp-end-live-");
+  const app = await fakeApp(mcp.home, () => ({ outcome: { kind: "applied" } }));
+  try {
+    await initialize(mcp);
+    assert.equal((await mcp.tool("live_snapshot")).isError, false);
+    mcp.child.stdin.end();
+    assert.equal(await exited(mcp.child), 0);
+    assert.deepEqual(app.bodies.map((body) => body.op), ["live_snapshot", LIVE_DISCONNECT]);
+    assert.equal(typeof app.bodies[0]?.client, "string");
+    assert.equal(app.bodies[1]?.client, app.bodies[0]?.client);
   } finally {
     mcp.child.kill();
     await closeServer(app.server);

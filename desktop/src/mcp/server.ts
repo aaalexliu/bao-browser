@@ -80,6 +80,10 @@ interface Context {
   /** One id per process. The app saves and ends only this client's session when it goes away. */
   client: string;
   live: LiveReplayer;
+  /** Set once this process sends a live call, so a disconnect is sent only then. */
+  liveUsed: boolean;
+  /** Rejects 15 s after the client goes away. Only live work races it. */
+  liveDeadline: Promise<never>;
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
@@ -92,7 +96,12 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     await liveMcpMain();
     return;
   }
-  const ctx: Context = { library: new Library(home), libraries, args, env, client: randomUUID(), live: appLiveReplay(args, env) };
+  let ending = false;
+  let ended: () => void = () => undefined;
+  const liveDeadline = new Promise<void>((resolve) => { ended = resolve; })
+    .then(() => new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The Bao app did not answer.")), 15_000).unref()));
+  liveDeadline.catch(() => undefined);
+  const ctx: Context = { library: new Library(home), libraries, args, env, client: randomUUID(), live: appLiveReplay(args, env), liveUsed: false, liveDeadline };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -106,21 +115,24 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       });
     }
   });
-  let ending = false;
-  // The client closed stdin or stopped this process: finish queued calls, then save its session.
+  // The client closed stdin or stopped this process: finish queued calls, then save its live session.
+  // A live call stuck in the app must not keep this process alive. The app's idle timeout still saves.
   const end = (): void => {
     if (ending) return;
     ending = true;
-    // A call stuck in the app must not keep this process alive. The app's idle timeout still saves.
-    setTimeout(() => process.exit(0), 15_000).unref();
+    ended();
     void chain
-      .then(() => postLive({ op: LIVE_DISCONNECT, client: ctx.client }, ctx.args, ctx.env))
+      .then(() => ctx.liveUsed ? Promise.race([postLive({ op: LIVE_DISCONNECT, client: ctx.client }, ctx.args, ctx.env), ctx.liveDeadline]) : undefined)
       .catch(() => undefined)
       .finally(() => process.exit(0));
   };
+  const stop = (): void => {
+    setTimeout(() => process.exit(0), 15_000).unref();
+    end();
+  };
   process.stdin.on("end", end);
-  process.once("SIGTERM", end);
-  process.once("SIGINT", end);
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
   await new Promise(() => {});
 }
 
@@ -149,7 +161,7 @@ async function handle(body: string, ctx: Context): Promise<void> {
     const args = msg.params?.arguments || {};
     try {
       const result = isLiveOp(name)
-        ? liveToolResult(await postLive({ ...args, op: name, client: ctx.client }, ctx.args, ctx.env))
+        ? liveToolResult(await liveCall({ ...args, op: name, client: ctx.client }, ctx))
         : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.libraries, ctx.live, name, args)) }], isError: false };
       send({ jsonrpc: "2.0", id: msg.id, result });
     } catch (err) {
@@ -163,6 +175,11 @@ async function handle(body: string, ctx: Context): Promise<void> {
     return;
   }
   if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
+}
+
+function liveCall(body: Record<string, unknown>, ctx: Context): Promise<unknown> {
+  ctx.liveUsed = true;
+  return Promise.race([postLive(body, ctx.args, ctx.env), ctx.liveDeadline]);
 }
 
 async function callTool(library: Library, libraries: string[] | undefined, live: LiveReplayer, name: string, args: Record<string, unknown>): Promise<unknown> {
