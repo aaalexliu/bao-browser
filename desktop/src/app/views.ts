@@ -1099,7 +1099,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
   </article>`;
 }
 
-export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], promotions: PromotionView[] = []): string {
+export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], promotions: PromotionView[] = [], splits: string[] = [], home = ""): string {
   const byWorkflow = new Map<string, RunSummary[]>();
   for (const run of runs) {
     const list = byWorkflow.get(run.workflowId) || [];
@@ -1136,8 +1136,11 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     </article>`;
   }).join("");
   const empty = `<div class="empty" id="library-empty"><strong>No workflows yet</strong>Capture a task, or import a workflow JSON file.</div>`;
+  const split = splits.length ? `<p id="library-split">${splits.map((line) => esc(line)).join("<br>")}</p>` : "";
+  const homeLine = home ? `<p class="meta" id="library-home">${esc(home)}</p>` : "";
   return `<section id="library">
-    <header><h2>Library</h2><p class="lede">Workflows you can run again.</p></header>
+    <header><h2>Library</h2><p class="lede">Workflows you can run again.</p>${homeLine}</header>
+    ${split}
     <div class="tools">
       <input id="library-search" type="search" placeholder="Search workflows" aria-label="Search workflows">
       <button type="button" id="palette-open" class="kbd">⌘K</button>

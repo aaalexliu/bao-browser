@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { resolveBaoHome } from "../app/bao-home";
+import { resolveHome } from "../home";
 import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep } from "./live-record";
 
 export {
@@ -14,7 +14,7 @@ export {
   type LiveStep,
 } from "./live-record";
 
-export function liveSessionDir(home = resolveBaoHome()): string {
+export function liveSessionDir(home = resolveHome()): string {
   return path.join(home, "live-session");
 }
 

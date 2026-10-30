@@ -302,6 +302,18 @@ test("stage-runtime compiles into a temp dir and leaves extension/dist alone", {
     assert.equal(out.startsWith(process.cwd() + path.sep), false, out);
     assert.equal(existsSync(path.join(dest, "extension/src/host-grant.js")), true);
     assert.equal(existsSync(path.join(dest, "extension/dist/manifest.json")), true);
+    const user = path.join(parent, "user");
+    mkdirSync(user);
+    const printed = spawnSync(process.execPath, [path.join(dest, "bao/src/print-home.cjs")], {
+      cwd: user,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH || "", HOME: user },
+    });
+    assert.equal(printed.status, 0, printed.stderr || printed.stdout);
+    const library = process.platform === "darwin"
+      ? path.join(user, "Library", "Application Support", "bao")
+      : path.join(user, ".local", "share", "bao");
+    assert.equal(printed.stdout, `ok\n${library}\n`);
     if (manifestBefore == null) assert.equal(existsSync(manifest), false);
     else assert.equal(statSync(manifest).mtimeMs, manifestBefore);
     if (compiledBefore == null) assert.equal(existsSync(compiled), false);

@@ -225,7 +225,7 @@ async function run(): Promise<void> {
   progress(`socket open; connect-to-Allow ${connectToAllowMs == null ? "not clicked" : `${connectToAllowMs}ms`}`);
 
   const steps: StepNote[] = [];
-  const log = new SessionLog(liveSessionDir(), "Add one cheap Instacart item, then remove it.");
+  const log = new SessionLog(liveSessionDir(process.env.BAO_HOME), "Add one cheap Instacart item, then remove it.");
   let returnUrl = "";
   const record = async (
     live: CdpLiveDriver | undefined,

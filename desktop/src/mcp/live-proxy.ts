@@ -1,4 +1,4 @@
-import { baoServerPort } from "../app/bao-home";
+import { serverPort } from "../home";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { isLiveOp, LIVE_TOOLS, publicLiveResult } from "../cdp-live/live-ops";
 
@@ -39,8 +39,9 @@ export function liveToolResult(result: unknown): { content: { type: "text"; text
   };
 }
 
-export async function postLive(body: unknown, homeFlag?: string): Promise<unknown> {
-  const port = baoServerPort(homeFlag);
+/** args are the CLI arguments, so --home and BAO_HOME pick the app the same way as bao open. */
+export async function postLive(body: unknown, args: readonly string[] = []): Promise<unknown> {
+  const port = serverPort(args);
   if (!port) throw new Error("bao app is not running");
   const response = await fetch(`http://127.0.0.1:${port}/api/live`, {
     method: "POST",
@@ -52,7 +53,7 @@ export async function postLive(body: unknown, homeFlag?: string): Promise<unknow
 }
 
 export async function runLiveCli(cmd: string, args: string[]): Promise<void> {
-  const result = await postLive(liveCliBody(cmd, args), flag(args, "--home")) as { outcome?: { kind?: string } };
+  const result = await postLive(liveCliBody(cmd, args), args) as { outcome?: { kind?: string } };
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   const kind = result.outcome?.kind;
   if (kind === "rejected") process.exitCode = 1;
@@ -60,7 +61,6 @@ export async function runLiveCli(cmd: string, args: string[]): Promise<void> {
 }
 
 export async function liveProxyMain(args: string[] = []): Promise<void> {
-  const home = flag(args, "--home");
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   const send = (msg: unknown): void => {
@@ -88,7 +88,7 @@ export async function liveProxyMain(args: string[] = []): Promise<void> {
         return;
       }
       try {
-        const result = await postLive({ op: name, ...(msg.params?.arguments || {}) }, home);
+        const result = await postLive({ op: name, ...(msg.params?.arguments || {}) }, args);
         send({ jsonrpc: "2.0", id: msg.id, result: liveToolResult(result) });
       } catch (err) {
         const message = err instanceof Error ? err.message : "live call failed";

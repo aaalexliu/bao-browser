@@ -7,6 +7,7 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { FileChooser, Page } from "playwright";
+import { resolveHome } from "../home";
 import { launchOwnedChrome, navigateOwned, productHeadless } from "../launch";
 import { osHit, osNodes } from "../proxy/os";
 import type { TrailEvent } from "../v1/interpret";
@@ -70,7 +71,7 @@ export class LiveSession {
   ) {}
 
   static async start(env: NodeJS.ProcessEnv = process.env): Promise<LiveSession> {
-    const home = env.BAO_HOME || path.join(tmpdir(), "bao-mcp");
+    const home = resolveHome({ env });
     const trailPath = path.join(home, "trail.jsonl");
     const secrets = (env.BAO_SECRETS || "").split(",").map((item) => item.trim()).filter(Boolean);
     const surface = env.BAO_MCP_SURFACE === "desktop" ? "desktop" : "browser";

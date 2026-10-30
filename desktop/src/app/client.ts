@@ -95,6 +95,8 @@ let state: ShellState & {
   runs?: RunSummary[];
   opened?: OpenedState | null;
   liveSession?: LiveSessionRecord | null;
+  librarySplits?: string[];
+  home?: string;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
 let screen: Screen = screenFromQuery(location.search) || "library";
@@ -236,7 +238,7 @@ function render(): void {
       : screen === "replay" ? replayForm()
       : screen === "import" ? importSheet()
       : screen === "workflow" ? `<section id="workflow-host"><p class="meta">Loading workflow…</p></section>`
-      : libraryTable(state.workflows || [], state.runs || [], state.promotions || []);
+      : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "");
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
     mainEl().innerHTML = body;
@@ -356,7 +358,9 @@ function settings(): string {
   const promoteAfter = state.settings?.promoteAfter ?? 3;
   const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
+  const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
   return `<section><h2>Settings</h2>
+    ${libraryHome}
     ${hostAccessPanel(state.settings?.hostAccess)}
     <label>When a step misses <select id="heal">
       <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>

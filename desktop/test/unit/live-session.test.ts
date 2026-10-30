@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { resolveBaoHome } from "../../src/app/bao-home";
 import { captureTrailOwnsSteps, liveSessionView } from "../../src/app/live-view";
 import { SessionLog, readLiveSession } from "../../src/cdp-live/audit";
 import { insertTextRefusal } from "../../src/cdp-live/allowlist";
@@ -185,13 +184,6 @@ test("the six live tools stay off the remote relay and a workflow id comes from 
     runId: "run-find-the-cheapest-mystery",
   });
   assert.equal(workflowIdsFromIntent("Unfreeze credit", "wf-unfreeze-credit").runId, "run-unfreeze-credit");
-});
-
-test("the app home follows the flag, then BAO_HOME, then the platform default", () => {
-  assert.equal(resolveBaoHome({ homeFlag: "/tmp/flag", env: { BAO_HOME: "/tmp/env" }, platform: "darwin", homedir: "/Users/a" }), "/tmp/flag");
-  assert.equal(resolveBaoHome({ env: { BAO_HOME: "/tmp/env" }, platform: "linux", homedir: "/Users/a" }), "/tmp/env");
-  assert.equal(resolveBaoHome({ env: {}, platform: "darwin", homedir: "/Users/a" }), "/Users/a/Library/Application Support/bao");
-  assert.equal(resolveBaoHome({ env: {}, platform: "linux", homedir: "/Users/a" }), "/Users/a/.local/share/bao");
 });
 
 test("a second start is busy, a second stop writes nothing, and a click after stop is closed", () => {

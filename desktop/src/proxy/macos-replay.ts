@@ -2,7 +2,7 @@
 // press and set-value take role and name. They do not take x or y.
 
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { resolveHome } from "../home";
 import type { Workflow } from "../../../src/types";
 import { bundledWindowVideoApp, openOsReplayVideo } from "../v1/replay-video";
 import type { MacOsHelper } from "./os-macos";
@@ -19,7 +19,7 @@ export async function replayOsWorkflow(
   let pressed = 0;
   let skipped = 0;
   const bundle = workflow.steps.find((step) => step.os?.target.app)?.os?.target.app;
-  const dest = path.join(process.env.BAO_HOME || tmpdir(), "videos", `os-${Date.now().toString(36)}.webm`);
+  const dest = path.join(resolveHome(), "videos", `os-${Date.now().toString(36)}.webm`);
   let video: Awaited<ReturnType<typeof openOsReplayVideo>> | undefined;
   let recorded: { wrote: boolean } | undefined;
   if (bundle && bundledWindowVideoApp() && process.env.BAO_REPLAY_VIDEO !== "0") {

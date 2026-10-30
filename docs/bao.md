@@ -436,8 +436,8 @@ The dev server uses PGlite under `web/.data/pglite` and files under `web/.data/b
 Pair a Mac from Devices. The page shows a code. Type it in the Mac app under Settings → Sync. The command line is the other way:
 
 ```bash
-npm run bao -- sync pair CODE --server http://127.0.0.1:3000 --home ~/.local/share/bao
-npm run bao -- sync --home ~/.local/share/bao
+npm run bao -- sync pair CODE --server http://127.0.0.1:3000
+npm run bao -- sync
 ```
 
 A hosted registry also needs the invite secret on that command (`--secret`) or in the Settings → Sync field. Paste it once. It is stored in `sync.json` with the device token and is not sent on later syncs. Local `vercel dev` leaves the owner variables unset, so pairing does not ask for a secret.
