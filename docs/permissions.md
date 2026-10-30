@@ -40,7 +40,7 @@ A live run is given an exact host list. Bao refuses a navigation whose host is n
 
 ## What stays on this Mac
 
-The live run view, its step list, and its audit log are files in Bao's home directory on this machine. Screenshots are taken with Chrome's `Page.captureScreenshot` of the page, not with macOS screen recording. A blur covers the page before the file is written, so names, prices, and cart lines are not readable in the picture. The app serves those files only on `127.0.0.1`, with caching off. They are not uploaded.
+The live run view, its step list, and its audit log are files in Bao's home directory on this machine. Screenshots are taken with Chrome's `Page.captureScreenshot` of the page, not with macOS screen recording. A live session started with `bao live_session_start` or `bao mcp-live`, and the Instacart runner, cover the whole page with a blur before each shot, so names, prices, and cart lines are not readable in the picture. That veil is `redactOverlay`, applied by `captureRedacted` in `desktop/src/cdp-live/driver.ts`. The session script `desktop/src/cdp-live/session.ts` uses `redactForShot` instead. It blurs only the nodes it matches, such as an email or a price. A count of 0 still writes the PNG. A plain name and a Place order button stay readable in those shots. The app serves those files only on `127.0.0.1`, with caching off. They are not uploaded.
 
 ## What each one costs in speed
 
