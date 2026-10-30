@@ -12,12 +12,20 @@ import { launchOwnedChrome } from "../../src/launch";
 import { encryptCookieValue, LINUX_ITERATIONS, LINUX_PEANUTS, plaintextForCookie } from "../../src/login-import/crypto";
 import { indexedDbIdentifier } from "../../src/login-import/storage";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { testArtifacts } from "../artifacts";
+import { cookieKeyPlan } from "../runtime";
 import { assertNoValue, chromeExpiry, tempDir, TINY_PNG, writeCookieDb, writeLocalState } from "../unit/login-import-fixture";
 
 const SESSION = "session-secret-9f3c";
 const DEVICE = "device-secret-9f3c";
 const OTHER = "other-secret-9f3c";
-const ARTIFACTS = "/opt/cursor/artifacts";
+const ARTIFACTS = testArtifacts("login-import");
+
+function loginKeysFor(source: "synthetic-linux" | "browser"): { platform: "linux" } | undefined {
+  const plan = cookieKeyPlan(source, process.platform);
+  if (!plan.injected) return undefined;
+  return { platform: "linux" };
+}
 
 async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
   await page.evaluate((next) => localStorage.setItem("bao-theme", next), theme);
@@ -58,7 +66,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     home,
     chromeUserData: userData,
     baoProfile,
-    loginKeys: { platform: "linux" },
+    loginKeys: loginKeysFor("synthetic-linux"),
   });
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
@@ -230,7 +238,7 @@ test("import a public demo login, then block the run after the cookie is cleared
     home,
     chromeUserData: userData,
     baoProfile,
-    loginKeys: { platform: "linux" },
+    loginKeys: loginKeysFor("browser"),
   });
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
@@ -337,7 +345,7 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
     home,
     chromeUserData: userData,
     baoProfile,
-    loginKeys: { platform: "linux" },
+    loginKeys: loginKeysFor("browser"),
   });
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });

@@ -19,6 +19,16 @@ async function main(): Promise<void> {
     await mcpBaoMain();
     return;
   }
+  if (cmd === "mcp-live") {
+    const { liveProxyMain } = await import("../mcp/live-proxy");
+    await liveProxyMain(rest);
+    return;
+  }
+  if (cmd === "live_session_start" || cmd === "live_snapshot" || cmd === "live_click" || cmd === "live_type" || cmd === "live_screenshot" || cmd === "live_stop") {
+    const { runLiveCli } = await import("../mcp/live-proxy");
+    await runLiveCli(cmd, rest);
+    return;
+  }
   if (cmd === "import-login") {
     await importLogin(rest);
     return;
@@ -153,7 +163,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-ax | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao serve [--home dir] [--port n] | bao status [--home dir] | bao mcp [--home dir] | bao mcp-live [--home dir] | bao mcp-ax | bao live_session_start --intent text --url https://host/ --port-file DevToolsActivePort --preset generic|instacart|books | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 

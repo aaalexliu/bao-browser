@@ -40,6 +40,23 @@ export function liveShotUrl(name: string): string {
   return shotNameOk(name) ? `/api/live-session/shots/${name}` : "";
 }
 
+export const AUDIT_PAGE_SIZE = 40;
+
+/** One window of a log. The file keeps every row; the view asks for a page. */
+export function auditPage<T>(rows: readonly T[], page?: number, size = AUDIT_PAGE_SIZE): {
+  rows: T[];
+  page: number;
+  pages: number;
+  total: number;
+} {
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / size) || 1);
+  const last = pages - 1;
+  const index = page == null ? last : Math.min(Math.max(0, Math.floor(page)), last);
+  const start = index * size;
+  return { rows: rows.slice(start, start + size), page: index, pages, total };
+}
+
 export function redactLabel(text: string): string {
   const clean = text
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "")
@@ -59,7 +76,7 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
   if (status !== "running" && status !== "passed" && status !== "needs_human" && status !== "failed" && status !== "idle") {
     return null;
   }
-  const audit = Array.isArray(raw.audit) ? raw.audit.slice(0, 40).map((row) => ({
+  const audit = Array.isArray(raw.audit) ? raw.audit.map((row) => ({
     action: redactLabel(String(row?.action || "")).slice(0, 40),
     label: redactLabel(String(row?.label || "")),
     path: String(row?.path || "").startsWith("/") ? String(row.path).slice(0, 120) : "",
@@ -69,7 +86,7 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
     shot: shotNameOk(String(row?.shot || "")) ? String(row.shot) : "",
     via: row?.via === "ax" ? "ax" as const : "cdp" as const,
   })) : [];
-  const steps = Array.isArray(raw.steps) ? raw.steps.slice(0, 40).map((step) => ({
+  const steps = Array.isArray(raw.steps) ? raw.steps.map((step) => ({
     name: redactLabel(String(step?.name || "")).slice(0, 40),
     status: String(step?.status || "").slice(0, 20),
     ms: Number.isFinite(step?.ms) ? Math.max(0, Math.round(Number(step.ms))) : 0,

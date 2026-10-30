@@ -1,10 +1,12 @@
+import { INSTACART_DENY } from "./presets";
+
 /** Guards for the one Instacart add-and-remove. The page function runs in the tab. */
 
 export const STAPLE = "bananas";
 
 export function clickForbidden(label: string): boolean {
   const text = label.replace(/\s+/g, " ").trim();
-  return /checkout|place order|review order|free trial|instacart\s*\+|start trial|try plus|add address|change address|edit address|delivery address|confirm address|payment|credit card|\bcvv\b|\bcvc\b|delivery time|delivery window|schedule delivery|\btip\b|settings|log in|sign in|sign up|password|one[- ]time code|verification code|authenticator/i.test(text);
+  return new RegExp(INSTACART_DENY, "i").test(text);
 }
 
 export function stapleNameOk(name: string): boolean {

@@ -7,40 +7,37 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
+export BAO_SIGN_IDENTITY="$IDENTITY"
 DIST="${BAO_DIST:-$ROOT/desktop/packaging/macos/dist}"
 APP="$DIST/Bao.app"
+
+HELPER="${BAO_HELPER_APP:-$ROOT/desktop/os-helper-macos/BaoOSHelper.app}"
+node "$ROOT/desktop/packaging/helper-identity.js" "$HELPER"
+
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bao"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp desktop/packaging/macos/Info.plist "$APP/Contents/Info.plist"
-npx tsc -p tsconfig.desktop.json
-cp -a desktop/dist/desktop/src "$APP/Contents/Resources/bao/src"
-cp -a desktop/src/app/public "$APP/Contents/Resources/bao/public"
-# interpret.js requires ../../../src/mask, which lands at Contents/Resources/src.
-mkdir -p "$APP/Contents/Resources/src"
-cp -a desktop/dist/src/. "$APP/Contents/Resources/src/"
-# sync.js and catalog.js require ../../../web/src/lib, which lands at Contents/Resources/web.
-mkdir -p "$APP/Contents/Resources/web"
-cp -a desktop/dist/web/src "$APP/Contents/Resources/web/src"
-# The window script is bundled from the TypeScript client. cwd is Resources/bao.
-# desktop/src/v1/time.ts imports ../../../web, which is Resources/bao/web from that cwd.
-mkdir -p "$APP/Contents/Resources/bao/desktop"
-cp -a desktop/src "$APP/Contents/Resources/bao/desktop/src"
-mkdir -p "$APP/Contents/Resources/bao/web"
-cp -a web/src "$APP/Contents/Resources/bao/web/src"
-# schema.ts imports ../../../src/mask. From this cwd that file is Resources/bao/src/mask.ts.
-# Without it the window's /app.js bundle fails and the sidebar never renders.
-mkdir -p "$APP/Contents/Resources/bao/src"
-cp -a src/mask.ts "$APP/Contents/Resources/bao/src/mask.ts"
-# The server requires playwright and esbuild. A copy of the app outside this repo cannot see node_modules.
-mkdir -p "$APP/Contents/Resources/bao/node_modules"
-cp -a node_modules/playwright node_modules/playwright-core node_modules/esbuild "$APP/Contents/Resources/bao/node_modules/"
-if [[ -d node_modules/@esbuild ]]; then
-  mkdir -p "$APP/Contents/Resources/bao/node_modules/@esbuild"
-  cp -a node_modules/@esbuild/. "$APP/Contents/Resources/bao/node_modules/@esbuild/"
-fi
-if [[ -d desktop/os-helper-macos/BaoOSHelper.app ]]; then
-  cp -a desktop/os-helper-macos/BaoOSHelper.app "$APP/Contents/Resources/BaoOSHelper.app"
-fi
+bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"
+cp -a "$HELPER" "$APP/Contents/Resources/BaoOSHelper.app"
+
+SMOKE="$(mktemp -d "${TMPDIR:-/tmp}/bao-require.XXXXXX")"
+SMOKE_HOME="$(mktemp -d "${TMPDIR:-/tmp}/bao-home.XXXXXX")"
+cleanup_smoke() { rm -rf "$SMOKE" "$SMOKE_HOME"; }
+trap cleanup_smoke EXIT
+case "$SMOKE" in
+  "$ROOT"|"$ROOT"/*)
+    echo "package-app.sh: smoke directory is inside the checkout" >&2
+    exit 1
+    ;;
+esac
+mkdir -p "$SMOKE"
+cp -a "$APP/Contents/Resources/bao" "$SMOKE/bao"
+cp -a "$APP/Contents/Resources/extension" "$SMOKE/extension"
+cp -a "$APP/Contents/Resources/src" "$SMOKE/src"
+cp -a "$APP/Contents/Resources/web" "$SMOKE/web"
+env -u NODE_PATH -u NODE_OPTIONS HOME="$SMOKE_HOME" node "$ROOT/desktop/packaging/require-staged.js" "$SMOKE/bao"
+rm -rf "$SMOKE"
+
 bash desktop/packaging/macos/build-capture-bar.sh
 cp -a "$ROOT/desktop/packaging/macos/dist/BaoCaptureBar.app" "$APP/Contents/Resources/BaoCaptureBar.app"
 bash desktop/packaging/macos/build-window-video.sh
