@@ -31,12 +31,12 @@ test("preset commit and deny stop Place your order, a search submit, and Delete 
     { index: 2, label: "Delete account", kind: "button" },
     { index: 3, label: "Pay now", kind: "button" },
     { index: 4, label: "Add to cart", kind: "button" },
-  ]), 1, generic.commit, generic.deny);
+  ]), 1, generic);
   assert.equal(read.view.controls.some((control) => /place|delete|pay now/i.test(control.label)), false);
   assert.equal(planClick(read, "e1.c0").ok, false);
   assert.equal(planClick(read, "e1.c1").ok, false);
   assert.equal(planClick(read, "e1.c2").ok, false);
-  const pay = buildView(facts([{ index: 0, label: "Pay now", kind: "button" }]), 1, instacart.commit, instacart.deny);
+  const pay = buildView(facts([{ index: 0, label: "Pay now", kind: "button" }]), 1, instacart);
   assert.equal(pay.view.stopBeforeConfirm.length > 0, true);
   assert.equal(planClick(pay, "e1.c0").ok, false);
   const cart = planClick(read, "e1.c4");
@@ -57,7 +57,7 @@ test("security code, PIN, and verification code are credential fields and halt",
     { index: 0, label: "Security code", kind: "field", field: { type: "text", name: "cvc", autocomplete: "cc-csc" } },
     { index: 1, label: "PIN", kind: "field", field: { type: "text", name: "pin", autocomplete: "" } },
     { index: 2, label: "Note", kind: "field", field: { type: "text", name: "note", autocomplete: "off" } },
-  ]), 2, generic.commit, generic.deny);
+  ]), 2, generic);
   assert.equal(read.view.controls.some((control) => control.label === "Security code" || control.label === "PIN"), false);
   assert.equal(read.view.credentialFields >= 2, true);
   assert.equal(pageHalt({ blocked: "", path: "/pay", passwordFields: read.view.credentialFields, text: "Security code" }), "login_wall");
@@ -74,7 +74,7 @@ test("a hidden password does not halt, and a visible password still refuses typi
   assert.equal(pageHalt({ blocked: "", path: "/fixture", passwordFields: 0, text: "Signed in" }), null);
   const visible = buildView(facts([
     { index: 0, label: "Password", kind: "field", field: { type: "password", name: "password", autocomplete: "current-password" } },
-  ]), 3, generic.commit);
+  ]), 3, generic);
   assert.equal(visible.view.controls.some((control) => control.label === "Password"), false);
 });
 
@@ -246,7 +246,7 @@ function replayTarget(pages: PageFacts[], marked?: PageFacts, blockOnClick = "")
       return reason;
     },
   } as unknown as ReplayTarget["driver"];
-  return { target: { driver, commit: generic.commit, deny: generic.deny, stopPath: generic.stopPath, hosts: ["127.0.0.1"], origins: ["http://127.0.0.1"] }, clicks };
+  return { target: { driver, guard: generic, stopPath: generic.stopPath, hosts: ["127.0.0.1"], origins: ["http://127.0.0.1"] }, clicks };
 }
 
 function addTwice() {
@@ -349,20 +349,20 @@ test("a click or type plan holds only while the marked control keeps its label a
   const before = buildView(facts([
     { index: 0, label: "Add to cart", kind: "button" },
     { index: 1, label: "Instructions", kind: "field", field: { type: "text", name: "note", autocomplete: "" } },
-  ]), 3, generic.commit, generic.deny);
+  ]), 3, generic);
   const same = buildView(facts([
     { index: 0, label: "Add to cart", kind: "button" },
     { index: 1, label: "Instructions", kind: "field", field: { type: "text", name: "note", autocomplete: "" } },
-  ]), 3, generic.commit, generic.deny);
+  ]), 3, generic);
   assert.equal(sameTarget(before, same, "e3.c0"), true);
   assert.equal(sameTarget(before, same, "e3.c1"), true);
   const shifted = buildView(facts([
     { index: 0, label: "Place your order", kind: "button" },
     { index: 1, label: "Card number", kind: "field", field: { type: "text", name: "cc", autocomplete: "cc-number" } },
-  ]), 3, generic.commit, generic.deny);
+  ]), 3, generic);
   assert.equal(sameTarget(before, shifted, "e3.c0"), false);
   assert.equal(sameTarget(before, shifted, "e3.c1"), false);
-  const relabeled = buildView(facts([{ index: 0, label: "Remove", kind: "button" }]), 3, generic.commit, generic.deny);
+  const relabeled = buildView(facts([{ index: 0, label: "Remove", kind: "button" }]), 3, generic);
   assert.equal(sameTarget(before, relabeled, "e3.c0"), false);
 });
 
@@ -406,7 +406,7 @@ function fakeCdp(): { cdp: CdpSocket; sent: { method: string; params: Record<str
   return { cdp, sent, emit: (method, params) => handlers.get(method)?.(params) };
 }
 
-test("the live window blocks only its own main frame, and an attached tab is not intercepted", async () => {
+test("the live window blocks only its own main frame, stops a load on a stop path, and an attached tab is not intercepted", async () => {
   const own = fakeCdp();
   const driver = new CdpLiveDriver(own.cdp, "s", "MAIN", ["127.0.0.1"]);
   driver.setOrigins(["http://127.0.0.1"]);
@@ -417,10 +417,16 @@ test("the live window blocks only its own main frame, and an attached tab is not
   own.emit("Fetch.requestPaused", { requestId: "r2", frameId: "MAIN", request: { url: "https://evil.example/" } });
   assert.equal(driver.takeBlockedNav(), "evil.example");
   own.emit("Fetch.requestPaused", { requestId: "r3", frameId: "MAIN", request: { url: "http://127.0.0.1/shop" } });
+  driver.setStopPath(generic.stopPath);
+  own.emit("Fetch.requestPaused", { requestId: "r4", frameId: "MAIN", request: { url: "http://127.0.0.1/checkout?step=1" } });
+  assert.equal(driver.takeBlockedNav(), "stop-path");
+  own.emit("Fetch.requestPaused", { requestId: "r5", frameId: "MAIN", request: { url: "http://127.0.0.1/cart" } });
   const verdict = (id: string) => own.sent.find((item) => item.params.requestId === id)?.method;
   assert.equal(verdict("r1"), "Fetch.continueRequest");
   assert.equal(verdict("r2"), "Fetch.failRequest");
   assert.equal(verdict("r3"), "Fetch.continueRequest");
+  assert.equal(verdict("r4"), "Fetch.failRequest");
+  assert.equal(verdict("r5"), "Fetch.continueRequest");
   const attached = fakeCdp();
   await new CdpLiveDriver(attached.cdp, "s", "TAB", ["127.0.0.1"], true).start();
   assert.equal(attached.sent.some((item) => item.method === "Fetch.enable"), false);
