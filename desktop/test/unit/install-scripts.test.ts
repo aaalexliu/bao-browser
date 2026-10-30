@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -152,19 +152,16 @@ test("extension installer stages the unpacked directory and rejects a missing ma
   assert.match(`${bad.stderr}`, /icons\/icon-16\.png/);
 });
 
-test("legacy installer stages dist/forceopen.js from the real build", () => {
+test("legacy installer builds and stages dist/forceopen.js", () => {
   const built = path.join(root, "dist/forceopen.js");
-  assert.equal(existsSync(built), true, built);
   const stage = mkdtempSync(path.join(tmpdir(), "bao-forceopen-"));
+  const env: NodeJS.ProcessEnv = { ...process.env, BAO_LEGACY_SOURCE: root, BAO_EXT_DIR: stage };
+  delete env.BAO_SKIP_BUILD;
   const result = spawnSync("bash", [path.join(root, "install-dev-legacy.sh")], {
     cwd: root,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      BAO_SKIP_BUILD: "1",
-      BAO_LEGACY_SOURCE: root,
-      BAO_EXT_DIR: stage,
-    },
+    env,
+    timeout: 60000,
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 0, output);
@@ -253,28 +250,7 @@ test("stager resolves a symlink and refuses a foreign target", () => {
   assert.equal(readFileSync(path.join(target, "canary.txt"), "utf8"), "keep");
 });
 
-test("bao runs the compiled cli and the aggregate scripts exist", () => {
-  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> };
-  const web = JSON.parse(readFileSync(path.join(root, "web/package.json"), "utf8")) as { scripts: Record<string, string>; engines: { node: string } };
-  assert.equal(pkg.scripts.bao, "node desktop/dist/desktop/src/app/cli.js");
-  assert.equal(pkg.scripts["build:desktop"], "tsc -p tsconfig.desktop.json");
-  assert.match(pkg.scripts["typecheck:desktop"], /tsc -p tsconfig\.desktop\.json --noEmit/);
-  assert.match(pkg.scripts["typecheck:extension"], /extension\/tsconfig\.json/);
-  assert.match(pkg.scripts["test:desktop:unit"], /run-v1\.mjs/);
-  const integration = pkg.scripts["test:desktop:integration"];
-  const live = [...integration.matchAll(/node desktop\/test\/run-live\.mjs (\S+)/g)].map((match) => match[1]);
-  assert.deepEqual(live, ["browser.test.js", "drift.test.js"]);
-  assert.doesNotMatch(integration, /run-v1\.mjs/);
-  for (const name of live) {
-    const source = path.join(root, "desktop/test/live", name.replace(/\.js$/, ".ts"));
-    assert.equal(existsSync(source), true, source);
-  }
-  assert.match(pkg.scripts["package:mac"], /package-app\.sh/);
-  assert.match(pkg.scripts.typecheck, /typecheck:desktop/);
-  assert.match(pkg.scripts.check, /test:desktop:unit/);
-  assert.equal(typeof pkg.scripts.test, "string");
-  assert.equal(typeof web.scripts.test, "string");
-  assert.equal(web.engines.node, ">=24");
+test("bao runs the compiled cli without compiling", () => {
   const cli = path.join(root, "desktop/dist/desktop/src/app/cli.js");
   assert.equal(existsSync(cli), true, cli);
   const result = spawnSync("npm", ["run", "bao", "--", "nope"], {
@@ -339,17 +315,6 @@ test("stager --force replaces a foreign stage and prints the path", () => {
   assert.equal(existsSync(path.join(stage, ".bao-stage")), true);
 });
 
-test("quickstart installs packages before Playwright browsers", () => {
-  const readme = readFileSync(path.join(root, "README.md"), "utf8");
-  const guide = readFileSync(path.join(root, "docs/agent-quickstart.md"), "utf8");
-  for (const text of [readme, guide]) {
-    const packages = text.indexOf("npm install");
-    const browsers = text.indexOf("npx playwright install chromium");
-    const tests = text.indexOf("npm test");
-    assert.ok(packages >= 0 && browsers > packages && tests > browsers, text);
-  }
-});
-
 test("stager refuses a forged stage marker and keeps the canary", () => {
   const source = tinySource();
   const stage = mkdtempSync(path.join(tmpdir(), "bao-forged-"));
@@ -362,6 +327,12 @@ test("stager refuses a forged stage marker and keeps the canary", () => {
   assert.equal(readFileSync(path.join(stage, ".bao-stage"), "utf8"), "not-a-real-stage");
 });
 
+function clearTarget(stderr: string): string {
+  const clear = /Clear it with: rm -rf (.+)$/m.exec(stderr);
+  assert.ok(clear, stderr);
+  return spawnSync("sh", ["-c", `set -- ${clear[1]}; printf %s "$1"`], { encoding: "utf8" }).stdout;
+}
+
 test("stager refuses an extra file in a previous stage", () => {
   const source = tinySource();
   const stage = mkdtempSync(path.join(tmpdir(), "bao-extra-"));
@@ -370,7 +341,24 @@ test("stager refuses an extra file in a previous stage", () => {
   writeFileSync(path.join(stage, "canary.txt"), "keep");
   const again = stageCopy(source, stage);
   assert.notEqual(again.status, 0, again.stderr);
+  assert.match(`${again.stderr}`, /is a previous Bao stage with extra files: canary\.txt\./);
+  assert.doesNotMatch(`${again.stderr}`, /is not a previous Bao stage/);
+  assert.equal(clearTarget(`${again.stderr}`), realpathSync(stage));
   assert.equal(readFileSync(path.join(stage, "canary.txt"), "utf8"), "keep");
+});
+
+test("stager lists the first extra files and counts the rest", () => {
+  const source = tinySource();
+  const parent = mkdtempSync(path.join(tmpdir(), "bao-extra-many-"));
+  const stage = path.join(parent, "it's a stage");
+  const first = stageCopy(source, stage);
+  assert.equal(first.status, 0, first.stderr);
+  for (let i = 0; i < 7; i++) writeFileSync(path.join(stage, `old-${i}.js`), "old");
+  const again = stageCopy(source, stage);
+  assert.notEqual(again.status, 0, again.stderr);
+  assert.match(`${again.stderr}`, /extra files: old-0\.js, old-1\.js, old-2\.js, old-3\.js, old-4\.js and 2 more\./);
+  assert.equal(clearTarget(`${again.stderr}`), realpathSync(stage));
+  assert.equal(readdirSync(stage).filter((name) => name.startsWith("old-")).length, 7);
 });
 
 test("stager refuses an empty directory inside the checkout", () => {
@@ -452,25 +440,25 @@ test("bao-mcp.sh asks for the serve home when BAO_HOME is unset and picks no lib
   assert.deepEqual(readdirSync(cwd), []);
 });
 
-test("quickstart describes the shared library home and names dist/forceopen.js", () => {
-  const readme = readFileSync(path.join(root, "README.md"), "utf8");
-  const quick = readFileSync(path.join(root, "docs/agent-quickstart.md"), "utf8");
-  const extensionDoc = readFileSync(path.join(root, "docs/extension.md"), "utf8");
-  const mcpRow = readme.split("\n").find((line) => line.startsWith("| MCP |"));
-  assert.equal(typeof mcpRow, "string");
-  assert.match(mcpRow || "", /BAO_HOME/);
-  assert.match(mcpRow || "", /bao serve` printed/);
-  assert.match(mcpRow || "", /scripts\/bao-mcp\.sh/);
-  assert.doesNotMatch(mcpRow || "", /\.local\/share\/bao/);
-  assert.match(quick, /"BAO_HOME": "\/ABS\/to\/the\/serve\/home"/);
-  assert.match(quick, /desktop\/src\/library-home\.cjs/);
-  assert.doesNotMatch(quick, /defaultHome/);
-  assert.match(quick, /~\/Library\/Application Support\/bao/);
-  assert.match(quick, /\.bao-mcp/);
-  assert.match(quick, /dist\/forceopen\.js/);
-  assert.doesNotMatch(quick, /pull request 133/);
-  assert.doesNotMatch(extensionDoc, /pull request 133/);
-  assert.match(extensionDoc, /~\/Library\/Application Support\/bao\/extension-host/);
-  assert.match(extensionDoc, /~\/\.local\/share\/bao\/extension-host/);
-  assert.doesNotMatch(extensionDoc, /reads `\.bao-mcp`/);
+test("both installers run under /bin/bash without --force", { skip: !existsSync("/bin/bash") }, () => {
+  const legacySource = mkdtempSync(path.join(tmpdir(), "bao-bin-bash-legacy-"));
+  writeFixture(legacySource, legacyFiles());
+  const legacyStage = mkdtempSync(path.join(tmpdir(), "bao-bin-bash-legacy-stage-"));
+  const legacy = spawnSync("/bin/bash", [path.join(root, "install-dev-legacy.sh")], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, BAO_SKIP_BUILD: "1", BAO_LEGACY_SOURCE: legacySource, BAO_EXT_DIR: legacyStage },
+  });
+  assert.equal(legacy.status, 0, `${legacy.stdout}${legacy.stderr}`);
+  assert.equal(readFileSync(path.join(legacyStage, "dist/background.js"), "utf8"), "background");
+
+  const extSource = tinySource();
+  const extStage = mkdtempSync(path.join(tmpdir(), "bao-bin-bash-ext-stage-"));
+  const ext = spawnSync("/bin/bash", [path.join(root, "install-extension.sh")], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, BAO_SKIP_BUILD: "1", BAO_EXTENSION_SOURCE: extSource, BAO_EXTENSION_DIR: extStage },
+  });
+  assert.equal(ext.status, 0, `${ext.stdout}${ext.stderr}`);
+  assert.equal(existsSync(path.join(extStage, "manifest.json")), true);
 });

@@ -9,12 +9,12 @@ if [ -z "${BAO_SKIP_BUILD:-}" ]; then
   ( cd "$ROOT" && npm run --silent build:extension )
 fi
 
-FORCE=()
+FORCE=
 for arg in "$@"; do
-  if [ "$arg" = "--force" ]; then FORCE+=(--force); fi
+  if [ "$arg" = "--force" ]; then FORCE=--force; fi
 done
 
-node "$ROOT/scripts/stage-unpacked.mjs" sync "$SOURCE" "$STAGE" "${FORCE[@]}"
+node "$ROOT/scripts/stage-unpacked.mjs" sync "$SOURCE" "$STAGE" ${FORCE:+"$FORCE"}
 echo "Unpacked extension → $STAGE"
 echo "Extension id jcjcpblcjaakcmbgljdjkfgmmdfdbnfj"
 echo "Load that directory at chrome://extensions, then click Reload on the Bao card."
