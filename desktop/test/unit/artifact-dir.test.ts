@@ -61,8 +61,8 @@ test("artifactsDir keeps an absolute store and lets the explicit path win", () =
 });
 
 test("ffmpegBin uses BAO_FFMPEG, then FFMPEG, which, and Homebrew", () => {
-  withEnv({ BAO_FFMPEG: "/bin/true", FFMPEG: undefined }, () => {
-    assert.equal(ffmpegBin(), "/bin/true");
+  withEnv({ BAO_FFMPEG: process.execPath, FFMPEG: undefined }, () => {
+    assert.equal(ffmpegBin(), process.execPath);
   });
   withEnv({ BAO_FFMPEG: "/no/such/ffmpeg", FFMPEG: undefined }, () => {
     assert.throws(ffmpegBin, /BAO_FFMPEG does not exist/);
@@ -70,7 +70,9 @@ test("ffmpegBin uses BAO_FFMPEG, then FFMPEG, which, and Homebrew", () => {
   const empty = mkdtempSync(path.join(tmpdir(), "bao-ffmpeg-"));
   try {
     withEnv({ BAO_FFMPEG: undefined, FFMPEG: undefined, PATH: empty }, () => {
-      assert.throws(ffmpegBin, /Set BAO_FFMPEG or install ffmpeg/);
+      const missing = path.join(empty, "ffmpeg");
+      assert.equal(ffmpegBin([missing, process.execPath]), process.execPath);
+      assert.throws(() => ffmpegBin([missing]), /Set BAO_FFMPEG or install ffmpeg/);
     });
   } finally {
     rmSync(empty, { recursive: true, force: true });

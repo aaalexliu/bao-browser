@@ -31,7 +31,9 @@ export function artifactsDir(): string {
   throw new Error("Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR");
 }
 
-export function ffmpegBin(): string {
+const INSTALLED_FFMPEG = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"];
+
+export function ffmpegBin(installed: readonly string[] = INSTALLED_FFMPEG): string {
   const fromBao = process.env.BAO_FFMPEG?.trim();
   if (fromBao) {
     if (!existsSync(fromBao)) throw new Error(`BAO_FFMPEG does not exist: ${fromBao}`);
@@ -42,7 +44,7 @@ export function ffmpegBin(): string {
   const found = spawnSync("/usr/bin/which", ["ffmpeg"], { encoding: "utf8" });
   const line = (found.stdout || "").trim();
   if (found.status === 0 && line) return line;
-  for (const candidate of ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) {
+  for (const candidate of installed) {
     if (existsSync(candidate)) return candidate;
   }
   throw new Error("Set BAO_FFMPEG or install ffmpeg");
