@@ -432,34 +432,44 @@ test("legacy installer splits the profile hint by uname and does not launch", ()
   assert.doesNotMatch(macOut, /Could not find a Chrome profile/);
 });
 
-test("bao-mcp.sh exits before creating .bao-mcp when BAO_HOME is unset", () => {
-  const env = { ...process.env };
+test("bao-mcp.sh asks for the serve home when BAO_HOME is unset and picks no library", () => {
+  const user = mkdtempSync(path.join(tmpdir(), "bao-mcp-user-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "bao-mcp-cwd-"));
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: user };
   delete env.BAO_HOME;
   const result = spawnSync("sh", [path.join(root, "scripts/bao-mcp.sh")], {
-    cwd: "/",
+    cwd,
     encoding: "utf8",
     env,
     timeout: 5000,
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 1, output);
-  assert.match(output, /BAO_HOME/);
-  assert.doesNotMatch(output, /EACCES/);
+  assert.match(output, /BAO_HOME is unset\. Set it to the home bao serve printed\./);
+  assert.doesNotMatch(output, /would create/);
+  assert.deepEqual(readdirSync(user), []);
+  assert.deepEqual(readdirSync(cwd), []);
 });
 
-test("quickstart points MCP at the checkout serve home and names dist/forceopen.js", () => {
+test("quickstart describes the shared library home and names dist/forceopen.js", () => {
   const readme = readFileSync(path.join(root, "README.md"), "utf8");
   const quick = readFileSync(path.join(root, "docs/agent-quickstart.md"), "utf8");
   const extensionDoc = readFileSync(path.join(root, "docs/extension.md"), "utf8");
   const mcpRow = readme.split("\n").find((line) => line.startsWith("| MCP |"));
   assert.equal(typeof mcpRow, "string");
-  assert.match(mcpRow || "", /BAO_HOME="\$HOME\/\.local\/share\/bao"/);
+  assert.match(mcpRow || "", /BAO_HOME/);
+  assert.match(mcpRow || "", /bao serve` printed/);
+  assert.match(mcpRow || "", /scripts\/bao-mcp\.sh/);
+  assert.doesNotMatch(mcpRow || "", /\.local\/share\/bao/);
   assert.match(quick, /"BAO_HOME": "\/ABS\/to\/the\/serve\/home"/);
-  assert.match(quick, /defaultHome/);
+  assert.match(quick, /desktop\/src\/library-home\.cjs/);
+  assert.doesNotMatch(quick, /defaultHome/);
+  assert.match(quick, /~\/Library\/Application Support\/bao/);
   assert.match(quick, /\.bao-mcp/);
   assert.match(quick, /dist\/forceopen\.js/);
   assert.doesNotMatch(quick, /pull request 133/);
-  assert.doesNotMatch(quick, /Library\/Application Support\/bao/);
   assert.doesNotMatch(extensionDoc, /pull request 133/);
+  assert.match(extensionDoc, /~\/Library\/Application Support\/bao\/extension-host/);
   assert.match(extensionDoc, /~\/\.local\/share\/bao\/extension-host/);
+  assert.doesNotMatch(extensionDoc, /reads `\.bao-mcp`/);
 });
