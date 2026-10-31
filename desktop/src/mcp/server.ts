@@ -62,9 +62,9 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 export const INSTRUCTIONS = [
   "Bao drives a Chrome window for you and saves what you did as a workflow.",
   "To do a task in the browser:",
-  "1. Start: live_session_start with the user's intent and the start url. The Bao app picks the Chrome to drive. portFile and preset are optional.",
+  "1. Start: live_session_start with the user's intent and the site's start page, such as its home or store page, not a search results url. The Bao app picks the Chrome to drive. portFile and preset are optional.",
   "2. Read: live_snapshot. Use only refs from the latest snapshot. A long page comes in pages; pass page to read the next one.",
-  "3. Act: live_click, live_type, live_key, or live_scroll on one ref, then read again.",
+  "3. Act: live_click, live_type, live_key, or live_scroll on one ref, then read again. To search, use the site's own search box: live_type the query into it, then live_key Enter on it or live_click its search button. Do not put the query in a url. The workflow keeps only the steps you take, so a typed search is a step that replay repeats.",
   "4. End: live_stop. Ending the session saves the workflow in the Bao library. If the client disconnects first, Bao saves it too.",
   "Bao does not click a control listed under stopBeforeConfirm, such as a place order button. For a stale_ref or unknown_ref refusal, read again. For any other refusal or a halted reply, do not try another way: end the session and tell the user what Bao stopped on.",
   "search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows. run_workflow replays a saved live workflow through the running Bao app with no model call. It repeats the recorded search and skips a cart add when the item is already in the cart.",
