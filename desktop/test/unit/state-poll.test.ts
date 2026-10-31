@@ -79,6 +79,71 @@ test("window requests start fast polling before server state changes and stay fa
   assert.equal(calls, 8);
 });
 
+test("a failed guide returns to idle polling even if its last progress still says highlight", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const state = {
+    replaying: true,
+    guide: { workflowId: "wf", runId: "guide", status: "highlight" as const, actions: 0, index: 0, total: 1, stepId: "step", intent: "Type" },
+  };
+  let calls = 0;
+  const poller = createStatePoller({
+    poll: async () => { calls += 1; },
+    active: () => activePolling(state),
+    visible: () => true,
+  });
+  let failGuide: (error: Error) => void = () => {};
+  const guide = poller.track(new Promise<void>((_resolve, reject) => { failGuide = reject; }));
+  const failed = assert.rejects(guide, /page closed/);
+  await setImmediate();
+  assert.equal(calls, 1);
+  await advance(t, 100);
+  assert.equal(calls, 2);
+
+  state.replaying = false;
+  failGuide(new Error("page closed"));
+  await failed;
+  await setImmediate();
+  assert.equal(calls, 3);
+  assert.equal(state.guide.status, "highlight");
+  for (let second = 0; second < 3; second++) {
+    await advance(t, 999);
+    assert.equal(calls, 3 + second);
+    await advance(t, 1);
+    assert.equal(calls, 4 + second);
+  }
+});
+
+test("a stale running live record cannot keep a restarted or closed session polling fast", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const state = { liveSessionOpen: false, liveSession: { status: "running" } };
+  let calls = 0;
+  const poller = createStatePoller({
+    poll: async () => { calls += 1; },
+    active: () => activePolling(state),
+    visible: () => true,
+  });
+  await poller.refresh();
+  await advance(t, 999);
+  assert.equal(calls, 1, "a record left by an earlier process is not active work");
+  await advance(t, 1);
+  assert.equal(calls, 2);
+
+  state.liveSessionOpen = true;
+  await poller.refresh();
+  await advance(t, 99);
+  assert.equal(calls, 3);
+  await advance(t, 1);
+  assert.equal(calls, 4, "a session owned by the current host still polls fast");
+
+  state.liveSessionOpen = false;
+  await poller.refresh();
+  assert.equal(state.liveSession.status, "running");
+  await advance(t, 999);
+  assert.equal(calls, 5);
+  await advance(t, 1);
+  assert.equal(calls, 6, "ending the current session restores idle polling regardless of the record");
+});
+
 test("connection failures back off from 500 ms to 10 seconds and success resets the delay", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let calls = 0;
@@ -280,21 +345,20 @@ test("live work stays fast without treating historical results as active", () =>
   assert.equal(activePolling({ replaying: true }), true);
   assert.equal(activePolling({ teach: { phase: "live" } }), true);
   const guide = { workflowId: "wf", runId: "run", status: "highlight" as const, actions: 0, index: 0, total: 1, stepId: "step", intent: "Click" };
-  assert.equal(activePolling({ guide }), true);
+  assert.equal(activePolling({ guide }), false);
+  assert.equal(activePolling({ guide, replaying: true }), true);
   assert.equal(activePolling({ guide: { ...guide, status: "passed" } }), false);
   assert.equal(activePolling({ activeAsk: {
     kind: "login", workflowId: "wf", workflowName: "Fixture", stepId: "step", stepIndex: 1, stepCount: 1,
     label: "Sign in", site: "localhost", windowName: "Bao", instruction: "Sign in", startedAt: 0, deadline: null, timeoutMs: 1000,
   } }), true);
-  assert.equal(activePolling({ liveSession: { status: "running" } }), true);
+  assert.equal(activePolling({ liveSessionOpen: true }), true);
+  assert.equal(activePolling({ liveSessionOpen: false }), false);
   assert.equal(activePolling({ pendingImport: { phase: "running" } }), true);
   assert.equal(activePolling({ remote: { phase: "running" } }), true);
   assert.equal(activePolling({ remote: { phase: "confirm" } }), true);
   for (const status of ["passed", "failed", "paused", "needs_human", "timed-out", "refused"]) {
     assert.equal(activePolling({ runs: [{ id: "run", workflowId: "workflow", status }] }), false);
-  }
-  for (const status of ["passed", "failed", "needs_human", "idle"] as const) {
-    assert.equal(activePolling({ liveSession: { status } }), false);
   }
   assert.equal(activePolling({ teach: { phase: "review" } }), false);
 });

@@ -1,13 +1,9 @@
 import type { ShellState } from "./views";
-import type { LiveSessionRecord } from "../cdp-live/live-record";
 
-type PollState = ShellState & { liveSession?: Pick<LiveSessionRecord, "status"> | null };
-
-export function activePolling(state: PollState): boolean {
+export function activePolling(state: ShellState): boolean {
   return Boolean(
-    state.recording || state.replaying || state.activeAsk ||
-    state.teach?.phase === "live" || state.guide?.status === "highlight" ||
-    state.liveSession?.status === "running" || state.remote?.phase === "running" || state.remote?.phase === "confirm" ||
+    state.recording || state.replaying || state.liveSessionOpen || state.activeAsk ||
+    state.teach?.phase === "live" || state.remote?.phase === "running" || state.remote?.phase === "confirm" ||
     state.pendingImport?.phase === "running",
   );
 }

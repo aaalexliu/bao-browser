@@ -132,6 +132,7 @@ type EndReason = "stop" | "disconnect" | "idle";
 
 export function createLiveHost(opts: LiveHostOptions): {
   call(raw: unknown): Promise<unknown>;
+  isOpen(): boolean;
   /** Replays a cdp-live workflow in a new window of this host's target. */
   replay(workflow: WorkflowV2, inputs?: ReplayArgs): Promise<RunResult>;
   /** The person's Keep open. False when no session is open. */
@@ -666,5 +667,5 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
   }
 
-  return { call, replay, keepOpen, close };
+  return { call, replay, keepOpen, close, isOpen: () => open !== null };
 }

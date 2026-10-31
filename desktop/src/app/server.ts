@@ -543,6 +543,7 @@ export async function startApp(opts: {
           remote: remote.view(),
           relay: relayStatus(library.root),
           liveSession: readLiveSessionFile(library.root),
+          liveSessionOpen: live.isOpen(),
           liveIdle,
         });
       }

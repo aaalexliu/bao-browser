@@ -860,7 +860,7 @@ function bindRemote(): void {
   const kill = document.getElementById("remote-kill");
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
   const confirm = document.getElementById("remote-confirm-allow");
-  if (confirm) confirm.onclick = () => void statePoller.track(fetch("/api/remote/confirm", { method: "POST" }));
+  if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
   const pair = document.getElementById("relay-pair");
   if (pair) pair.onclick = async () => {
     const code = (document.getElementById("relay-code") as HTMLInputElement | null)?.value || "";
