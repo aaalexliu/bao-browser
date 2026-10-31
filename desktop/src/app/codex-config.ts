@@ -1,8 +1,9 @@
 // Codex reads its MCP servers from ~/.codex/config.toml. `codex mcp add` cannot set a tool
-// timeout, so bao writes its own [mcp_servers.bao] table. bao owns command, args, env, and
-// tool_timeout_sec in that table, and an [mcp_servers.bao.env] sub-table. The edit replaces
-// those, or appends the table, and leaves every other line as it was, including the user's
-// own keys in the table and the tool approvals Codex saves in [mcp_servers.bao.tools.*].
+// timeout or an approval mode, so bao writes its own [mcp_servers.bao] table. bao owns command, args, env,
+// tool_timeout_sec, and default_tools_approval_mode in that table, and an
+// [mcp_servers.bao.env] sub-table. The edit replaces those, or appends the table, and leaves
+// every other line as it was, including the user's own keys in the table and the tool
+// approvals Codex saves in [mcp_servers.bao.tools.*].
 // A bao entry in any other TOML form is refused, not rewritten.
 
 /**
@@ -19,10 +20,23 @@ export class CodexConfigError extends Error {
   }
 }
 
-const OWNED = new Set(["command", "args", "env", "tool_timeout_sec"]);
+/**
+ * Codex asks before each call to a server's tools unless default_tools_approval_mode says
+ * otherwise, and `codex exec` with approval_policy never refuses every call it would ask about.
+ * "approve" covers bao's server only. A per-tool approval_mode in [mcp_servers.bao.tools.*]
+ * still wins, and bao's own refusals, such as a checkout click, still apply.
+ */
+export const CODEX_APPROVAL_MODE = "approve";
+
+const OWNED = new Set(["command", "args", "env", "tool_timeout_sec", "default_tools_approval_mode"]);
 
 function ownedLines(command: string): string {
-  return `command = ${tomlString(command)}\ntool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}\n`;
+  return [
+    `command = ${tomlString(command)}`,
+    `tool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}`,
+    `default_tools_approval_mode = ${tomlString(CODEX_APPROVAL_MODE)}`,
+    "",
+  ].join("\n");
 }
 
 export function codexServerBlock(command: string): string {

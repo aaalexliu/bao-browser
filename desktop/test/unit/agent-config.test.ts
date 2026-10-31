@@ -4,7 +4,8 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import { CODEX_TOOL_TIMEOUT_SEC, codexServerBlock, upsertCodexServer } from "../../src/app/codex-config";
+import { allowBaoTools, CLAUDE_BAO_RULE } from "../../src/app/claude-settings";
+import { CODEX_APPROVAL_MODE, CODEX_TOOL_TIMEOUT_SEC, codexServerBlock, upsertCodexServer } from "../../src/app/codex-config";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 
@@ -75,15 +76,22 @@ function block(launcher: string): string {
   return codexServerBlock(launcher);
 }
 
-test("the Codex entry runs the launcher with the long tool timeout", () => {
+function claudeEntry(l: Lab, settings = path.join(l.user, ".claude", "settings.json")): string {
+  return `claude mcp add --scope user bao -- '${l.launcher}'\n# Then add "mcp__bao" to permissions.allow in ${settings}\n`;
+}
+
+const APPROVE = "default_tools_approval_mode = \"approve\"\n";
+
+test("the Codex entry runs the launcher with the long tool timeout and bao's tools pre-approved", () => {
   assert.equal(CODEX_TOOL_TIMEOUT_SEC, 180);
+  assert.equal(CODEX_APPROVAL_MODE, "approve");
   assert.equal(
     codexServerBlock("/Applications/Bao.app/Contents/MacOS/bao-mcp"),
-    "[mcp_servers.bao]\ncommand = \"/Applications/Bao.app/Contents/MacOS/bao-mcp\"\ntool_timeout_sec = 180\n",
+    `[mcp_servers.bao]\ncommand = "/Applications/Bao.app/Contents/MacOS/bao-mcp"\ntool_timeout_sec = 180\n${APPROVE}`,
   );
   assert.equal(
     codexServerBlock("/A \"q\"\\b\t.app/bao-mcp"),
-    "[mcp_servers.bao]\ncommand = \"/A \\\"q\\\"\\\\b\\u0009.app/bao-mcp\"\ntool_timeout_sec = 180\n",
+    `[mcp_servers.bao]\ncommand = "/A \\"q\\"\\\\b\\u0009.app/bao-mcp"\ntool_timeout_sec = 180\n${APPROVE}`,
   );
 });
 
@@ -112,6 +120,7 @@ test("bao replaces only the keys it owns and keeps the user's keys and tool appr
     "  \"mcp\",",
     "]",
     "tool_timeout_sec = 60",
+    "default_tools_approval_mode = \"prompt\"",
     "tools.run_workflow.approval_mode = \"approve\"",
     "",
     "[mcp_servers.bao.env]",
@@ -138,6 +147,7 @@ test("bao replaces only the keys it owns and keeps the user's keys and tool appr
     "enabled = true",
     "command = \"/L\"",
     `tool_timeout_sec = ${CODEX_TOOL_TIMEOUT_SEC}`,
+    "default_tools_approval_mode = \"approve\"",
     "startup_timeout_sec = 20",
     "tools.run_workflow.approval_mode = \"approve\"",
     "",
@@ -206,8 +216,11 @@ test("bao agent config prints the entries and writes nothing", (t) => {
   const l = lab(t, "bao-agent-print-");
   const claude = run(l, ["config", "claude", "--app", l.app]);
   assert.equal(claude.status, 0, claude.stderr);
-  assert.equal(claude.stdout, `claude mcp add --scope user bao -- '${l.launcher}'\n`);
+  assert.equal(claude.stdout, claudeEntry(l));
   assert.equal(claude.stderr, "");
+  const configDir = path.join(l.root, "claude-config");
+  const moved = run(l, ["config", "claude", "--app", l.app], { CLAUDE_CONFIG_DIR: configDir });
+  assert.equal(moved.stdout, claudeEntry(l, path.join(configDir, "settings.json")));
   const codex = run(l, ["config", "codex", "--app", l.app]);
   assert.equal(codex.status, 0, codex.stderr);
   assert.equal(codex.stdout, block(l.launcher));
@@ -248,20 +261,23 @@ test("bao agent config codex --write keeps the rest of config.toml and runs twic
   assert.deepEqual(readdirSync(path.dirname(file)), ["config.toml"]);
 });
 
-test("bao agent config codex --write keeps saved tool approvals and the user's keys, and a re-run changes no byte", (t) => {
+test("bao agent config codex --write pre-approves bao's tools, keeps saved tool approvals and the user's keys, and a re-run changes no byte", (t) => {
   const l = lab(t, "bao-agent-codex-approvals-");
   const codexHome = path.join(l.root, "codex-home");
   const file = path.join(codexHome, "config.toml");
   mkdirSync(codexHome);
-  const approvals = "[mcp_servers.bao.tools.live_click]\napproval_mode = \"approve\"\n";
-  writeFileSync(file, `[mcp_servers.bao]\ncommand = "node"\nargs = ["/old/cli.js", "mcp"]\nenv = { BAO_HOME = "/old" }\ndefault_tools_approval_mode = "approve"\n\n${approvals}`);
+  const global = "approval_policy = \"on-request\"\n\n[mcp_servers.alpha]\ncommand = \"a\"\ndefault_tools_approval_mode = \"prompt\"\n\n";
+  const approvals = "[mcp_servers.bao.tools.live_click]\napproval_mode = \"prompt\"\n";
+  writeFileSync(file, `${global}[mcp_servers.bao]\ncommand = "node"\nargs = ["/old/cli.js", "mcp"]\nenv = { BAO_HOME = "/old" }\ndefault_tools_approval_mode = "prompt"\nstartup_timeout_sec = 20\n\n${approvals}`);
   const first = run(l, ["config", "codex", "--app", l.app, "--write"], { CODEX_HOME: codexHome });
   assert.equal(first.status, 0, first.stderr);
   const written = readFileSync(file);
+  // Only bao's server is pre-approved. The global policy, alpha, and the saved live_click choice stay.
   assert.equal(
     written.toString("utf8"),
-    `${block(l.launcher)}default_tools_approval_mode = "approve"\n\n${approvals}`,
+    `${global}${block(l.launcher)}startup_timeout_sec = 20\n\n${approvals}`,
   );
+  assert.match(written.toString("utf8"), /\[mcp_servers\.bao\]\ncommand = .*\ntool_timeout_sec = 180\ndefault_tools_approval_mode = "approve"\n/);
   const second = run(l, ["config", "codex", "--app", l.app, "--write"], { CODEX_HOME: codexHome });
   assert.equal(second.status, 0, second.stderr);
   assert.equal(second.stdout, `${file} already has this bao entry. Nothing changed.\n`);
@@ -321,28 +337,112 @@ test("bao agent config codex --write leaves a bao entry it cannot rewrite alone"
   assert.equal(readFileSync(file, "utf8"), mine);
 });
 
-test("bao agent config claude --write runs claude mcp add at user scope, and again replaces it", (t) => {
+test("Claude settings get the bao allow rule and keep everything else", () => {
+  assert.equal(CLAUDE_BAO_RULE, "mcp__bao");
+  const only = "{\n  \"permissions\": {\n    \"allow\": [\n      \"mcp__bao\"\n    ]\n  }\n}\n";
+  assert.equal(allowBaoTools(""), only);
+  assert.equal(allowBaoTools(" \n"), only);
+  assert.equal(allowBaoTools("{}"), only);
+  // Key order, other rules, deny and ask rules, and the file's indent all stay.
+  const mine = {
+    model: "sonnet",
+    permissions: { allow: ["Bash(git status)", "mcp__bao__live_click"], deny: ["WebFetch", "mcp__bao__run_workflow"], ask: ["mcp__other"] },
+    env: { A: "1" },
+  };
+  const tabbed = `${JSON.stringify(mine, null, "\t")}\n`;
+  const after = allowBaoTools(tabbed);
+  assert.equal(after, `${JSON.stringify({ ...mine, permissions: { ...mine.permissions, allow: [...mine.permissions.allow, "mcp__bao"] } }, null, "\t")}\n`);
+  assert.equal(allowBaoTools(after), after);
+  assert.equal(
+    allowBaoTools("{\n    \"model\": \"sonnet\"\n}"),
+    "{\n    \"model\": \"sonnet\",\n    \"permissions\": {\n        \"allow\": [\n            \"mcp__bao\"\n        ]\n    }\n}\n",
+  );
+  // A file that has the rule comes back byte for byte, whatever its layout.
+  const compact = "{\"permissions\":{\"allow\":[\"mcp__bao\"]}}";
+  assert.equal(allowBaoTools(compact), compact);
+  for (const text of ["{\"a\": 1,}", "// c\n{}", "[]", "null", "\"s\"", "{\"permissions\": []}", "{\"permissions\": {\"allow\": \"mcp__bao\"}}"]) {
+    assert.throws(() => allowBaoTools(text), { name: "ClaudeSettingsError" }, text);
+  }
+});
+
+test("bao agent config claude --write adds bao at user scope with its tools pre-approved, and again replaces it", (t) => {
   const l = lab(t, "bao-agent-claude-");
+  const settings = path.join(l.user, ".claude", "settings.json");
   const first = run(l, ["config", "claude", "--app", l.app, "--write"]);
   assert.equal(first.status, 0, first.stderr);
   const add = ["mcp", "add", "--scope", "user", "bao", "--", l.launcher];
   const remove = ["mcp", "remove", "--scope", "user", "bao"];
   assert.deepEqual(claudeCalls(l), [remove, add]);
   assert.match(first.stdout, /Added stdio MCP server bao/);
+  assert.ok(first.stdout.endsWith(`Added mcp__bao to permissions.allow in ${settings}, so Claude Code runs bao's tools without asking.\n`), first.stdout);
   assert.doesNotMatch(first.stdout, /Replaced/);
+  const written = readFileSync(settings);
+  assert.deepEqual(JSON.parse(written.toString("utf8")), { permissions: { allow: ["mcp__bao"] } });
   const second = run(l, ["config", "claude", "--app", l.app, "--write"]);
   assert.equal(second.status, 0, second.stderr);
   assert.deepEqual(claudeCalls(l), [remove, add, remove, add]);
   assert.match(second.stdout, /Replaced the earlier bao entry in Claude Code's user config\./);
+  assert.ok(second.stdout.endsWith(`${settings} already allows mcp__bao.\n`), second.stdout);
+  assert.ok(readFileSync(settings).equals(written));
+  assert.deepEqual(readdirSync(l.user), [".claude"]);
+  assert.deepEqual(readdirSync(path.dirname(settings)), ["settings.json"]);
+});
+
+test("bao agent config claude --write merges into the user's settings under CLAUDE_CONFIG_DIR, and a re-run changes no byte", (t) => {
+  const l = lab(t, "bao-agent-claude-merge-");
+  const configDir = path.join(l.root, "claude-config");
+  const settings = path.join(configDir, "settings.json");
+  mkdirSync(configDir);
+  const mine = "{\n  \"model\": \"sonnet\",\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(git status)\"\n    ],\n    \"deny\": [\n      \"WebFetch\"\n    ],\n    \"defaultMode\": \"default\"\n  },\n  \"hooks\": {}\n}\n";
+  writeFileSync(settings, mine, { mode: 0o644 });
+  const first = run(l, ["config", "claude", "--app", l.app, "--write"], { CLAUDE_CONFIG_DIR: configDir });
+  assert.equal(first.status, 0, first.stderr);
+  const written = readFileSync(settings);
+  assert.equal(written.toString("utf8"), mine.replace("\"Bash(git status)\"\n", "\"Bash(git status)\",\n      \"mcp__bao\"\n"));
+  assert.equal(lstatSync(settings).mode & 0o777, 0o644);
+  const second = run(l, ["config", "claude", "--app", l.app, "--write"], { CLAUDE_CONFIG_DIR: configDir });
+  assert.equal(second.status, 0, second.stderr);
+  assert.ok(readFileSync(settings).equals(written));
+  assert.deepEqual(readdirSync(configDir), ["settings.json"]);
   assert.deepEqual(readdirSync(l.user), []);
+});
+
+test("bao agent config claude --write keeps a linked settings.json linked", (t) => {
+  const l = lab(t, "bao-agent-claude-link-");
+  const dotfiles = path.join(l.root, "dotfiles");
+  const real = path.join(dotfiles, "claude.json");
+  const settings = path.join(l.user, ".claude", "settings.json");
+  mkdirSync(dotfiles);
+  mkdirSync(path.dirname(settings));
+  writeFileSync(real, "{\n  \"model\": \"sonnet\"\n}\n");
+  symlinkSync(real, settings);
+  const wrote = run(l, ["config", "claude", "--app", l.app, "--write"]);
+  assert.equal(wrote.status, 0, wrote.stderr);
+  assert.equal(lstatSync(settings).isSymbolicLink(), true);
+  assert.deepEqual(JSON.parse(readFileSync(real, "utf8")), { model: "sonnet", permissions: { allow: ["mcp__bao"] } });
+  assert.deepEqual(readdirSync(dotfiles), ["claude.json"]);
+});
+
+test("bao agent config claude --write leaves settings it cannot read alone and runs no claude command", (t) => {
+  const l = lab(t, "bao-agent-claude-bad-");
+  const settings = path.join(l.user, ".claude", "settings.json");
+  mkdirSync(path.dirname(settings));
+  const mine = "{\n  // a comment\n  \"model\": \"sonnet\"\n}\n";
+  writeFileSync(settings, mine);
+  const wrote = run(l, ["config", "claude", "--app", l.app, "--write"]);
+  assert.equal(wrote.status, 1);
+  assert.match(wrote.stderr, /settings\.json is not JSON bao can read \(.*\)\. Nothing was written\. Run this yourself:\n/);
+  assert.ok(wrote.stderr.endsWith(claudeEntry(l)), wrote.stderr);
+  assert.equal(readFileSync(settings, "utf8"), mine);
+  assert.deepEqual(claudeCalls(l), []);
 });
 
 test("bao agent config claude --write says when a failed add leaves no bao entry", (t) => {
   const fresh = lab(t, "bao-agent-claude-fail-");
-  const command = `claude mcp add --scope user bao -- '${fresh.launcher}'\n`;
   const none = run(fresh, ["config", "claude", "--app", fresh.app, "--write"], { CLAUDE_ADD_FAIL: "1" });
   assert.equal(none.status, 1);
-  assert.equal(none.stderr, `add broke\nclaude mcp add failed. Run this yourself:\n${command}`);
+  assert.equal(none.stderr, `add broke\nclaude mcp add failed. Run this yourself:\n${claudeEntry(fresh)}`);
+  assert.deepEqual(readdirSync(fresh.user), []);
 
   const l = lab(t, "bao-agent-claude-lost-");
   assert.equal(run(l, ["config", "claude", "--app", l.app, "--write"]).status, 0);
@@ -350,7 +450,7 @@ test("bao agent config claude --write says when a failed add leaves no bao entry
   assert.equal(lost.status, 1);
   assert.equal(
     lost.stderr,
-    `add broke\nclaude mcp add failed. The earlier bao entry was removed, so Claude Code has no bao server now. Run this yourself:\n${command.replace(fresh.launcher, l.launcher)}`,
+    `add broke\nclaude mcp add failed. The earlier bao entry was removed, so Claude Code has no bao server now. Run this yourself:\n${claudeEntry(l)}`,
   );
   assert.doesNotMatch(lost.stdout, /Replaced/);
 });
@@ -359,7 +459,8 @@ test("bao agent config claude --write without claude on PATH prints the command 
   const l = lab(t, "bao-agent-noclaude-");
   const wrote = run(l, ["config", "claude", "--app", l.app, "--write"], { PATH: "/usr/bin:/bin" });
   assert.equal(wrote.status, 1);
-  assert.equal(wrote.stderr, `claude is not on PATH. Nothing was written. Run this yourself:\nclaude mcp add --scope user bao -- '${l.launcher}'\n`);
+  assert.equal(wrote.stderr, `claude is not on PATH. Nothing was written. Run this yourself:\n${claudeEntry(l)}`);
+  assert.deepEqual(readdirSync(l.user), []);
 });
 
 test("bao agent without a known command or agent prints usage", (t) => {
