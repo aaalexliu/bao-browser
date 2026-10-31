@@ -35,8 +35,10 @@ import { FIXTURE_HOSTS, TARGET, type CartWrite, type FixtureState, type Hit } fr
 import { CLI, startLane, until, type Lane } from "../../test/instacart/lane";
 import { laneChildEnv } from "../../test/runtime";
 import {
+  CLAUDE_BIN_ENV,
   claudeAgentArgs,
   claudeAgentAuth,
+  claudeBinOverride,
   claudeMcpConfig,
   codexAgentArgs,
   codexAgentAuth,
@@ -949,6 +951,8 @@ export function renderAgentTable(lines: readonly TableLine[], notes: Map<string,
     "",
     `A mock user runs the logged-in Claude Code or Codex once, with the prompt \`${AGENT_PROMPT}\` and nothing else. The prompt names the owner's item, since grade A counts no other Costco blueberries. The agent's only MCP server is the product \`bao mcp\`, which sends the live tools to a spawned \`bao serve\` with a temp home. The app drives the test browser, which maps www.instacart.com to the Instacart fixture (\`desktop/test/instacart/\`) and every other host to NOTFOUND. Each driver runs with a temp config dir: Claude Code gets the keychain login's access token, and Codex gets a copy of its login with no refresh token, so the run cannot rotate either login. Every bao process gets a temp HOME.`,
     "",
+    "The lane runs `/opt/homebrew/bin/claude`, else `/usr/local/bin/claude`. `BAO_AGENT_CLAUDE_BIN` names another claude binary, such as the native install in `~/.local/bin/claude`, and wins when it is an executable file. The Last run note says when a run used it.",
+    "",
     "Lock-down flags:",
     "",
     "- Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools \"\" --no-chrome --allowedTools \"mcp__bao__*\" --permission-mode dontAsk --max-budget-usd 1`.",
@@ -1037,7 +1041,8 @@ export async function evalAgentInstacart(args: string[] = []): Promise<{ markdow
     const offered = listing
       ? `the lock-down check saw ${listing.tools.length} tools offered (${listing.tools.join(", ")})${listing.sources.length ? `, tool_search sources ${listing.sources.join(", ")}` : ""}${listing.note ? `, ${listing.note}` : ""}`
       : "no lock-down check";
-    notes.set(driver, `${new Date().toISOString().slice(0, 10)}, ${offered}${result.judgeModel ? `, judge ${result.judgeModel}` : ""}.`);
+    const bin = driver === "claude" && claudeBinOverride() ? `, claude binary from ${CLAUDE_BIN_ENV}` : "";
+    notes.set(driver, `${new Date().toISOString().slice(0, 10)}, ${offered}${bin}${result.judgeModel ? `, judge ${result.judgeModel}` : ""}.`);
   }
   const markdown = renderAgentTable(lines, notes);
   mkdirSync(path.dirname(out), { recursive: true });

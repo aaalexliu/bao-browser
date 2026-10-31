@@ -2,7 +2,7 @@
 // for the agent lane. No login command, no --dangerously-* flag, no edit of ~/.codex/config.toml.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { userInfo } from "node:os";
 import { CODEX_TOOL_TIMEOUT_SEC } from "../app/codex-config";
@@ -44,7 +44,28 @@ export function taskPrompt(task: DriverTask, uploadPath: string): string {
   return lines.join("\n");
 }
 
-export function driverBinary(name: LiveDriver): string | null {
+/** Names a claude binary to use instead of the default lookup, such as a native install when the Homebrew one cannot start. */
+export const CLAUDE_BIN_ENV = "BAO_AGENT_CLAUDE_BIN";
+
+function executableFile(file: string): boolean {
+  try {
+    accessSync(file, constants.X_OK);
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** BAO_AGENT_CLAUDE_BIN when it is set and names an executable file. */
+export function claudeBinOverride(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const file = env[CLAUDE_BIN_ENV];
+  return file && executableFile(file) ? file : undefined;
+}
+
+/** For claude, a usable BAO_AGENT_CLAUDE_BIN wins. Otherwise the fixed paths, in order. */
+export function driverBinary(name: LiveDriver, env: NodeJS.ProcessEnv = process.env): string | null {
+  const override = name === "claude" ? claudeBinOverride(env) : undefined;
+  if (override) return override;
   const fallbacks: Record<LiveDriver, string[]> = {
     claude: ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"],
     codex: ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"],
