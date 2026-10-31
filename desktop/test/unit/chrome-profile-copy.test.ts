@@ -20,6 +20,9 @@ async function fixture() {
   await writeFile(path.join(sourceRoot, "Default", "Preferences"), JSON.stringify({ session: { restore_on_startup: 1 } }));
   await writeFile(path.join(sourceRoot, "Default", "Cache", "entry"), "disposable");
   await writeFile(path.join(sourceRoot, "Default", "Sessions", "tab"), "do-not-restore");
+  for (const name of ["Current Session", "Current Tabs", "Last Session", "Last Tabs"]) {
+    await writeFile(path.join(sourceRoot, "Default", name), "do-not-copy-session-data");
+  }
   return { root, sourceRoot, home: path.join(root, "home"), close: () => rm(root, { recursive: true, force: true }) };
 }
 
@@ -61,7 +64,9 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     assert.equal(state.profile.last_used, "Default");
     assert.deepEqual(Object.keys(state.profile.info_cache), ["Default"]);
     assert.equal(state.os_crypt.encrypted_key, "synthetic-not-a-real-key");
-    assert.ok(first.bytes > 0);
+    assert.equal(first.bytes, Buffer.byteLength("synthetic-cookie-file")
+      + Buffer.byteLength(await readFile(path.join(f.sourceRoot, "Default", "Preferences"), "utf8"))
+      + Buffer.byteLength(JSON.stringify(state)));
     assert.ok(first.copyMs >= 0);
     await assert.rejects(copyChromeProfile({ ...f, directory: "Default" }), /still open/);
     await first.close();
@@ -74,6 +79,9 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     assert.deepEqual(await readFile(path.join(f.sourceRoot, "Local State")), before);
     assert.equal(await readFile(path.join(f.sourceRoot, "Default", "Cache", "entry"), "utf8"), "disposable");
     assert.equal(await readFile(path.join(f.sourceRoot, "Default", "Sessions", "tab"), "utf8"), "do-not-restore");
+    for (const name of ["Current Session", "Current Tabs", "Last Session", "Last Tabs"]) {
+      assert.equal(await readFile(path.join(f.sourceRoot, "Default", name), "utf8"), "do-not-copy-session-data");
+    }
   } finally { if (privateRoot) await rm(privateRoot, { recursive: true, force: true }); await f.close(); }
 });
 

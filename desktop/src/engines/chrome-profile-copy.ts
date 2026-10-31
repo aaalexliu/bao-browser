@@ -36,9 +36,10 @@ export async function listChromeProfiles(sourceRoot: string): Promise<ChromeProf
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-const CACHES = new Set([
+const SKIPPED_ENTRIES = new Set([
   "Cache", "Code Cache", "GPUCache", "Media Cache", "CacheStorage", "ShaderCache", "GrShaderCache",
   "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad", "Crash Reports", "BrowserMetrics",
+  "Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs",
 ]);
 const MAGIC = "bao-profile-copy-v1";
 
@@ -91,7 +92,7 @@ export async function copyChromeProfile(options: {
       recursive: true, preserveTimestamps: true, force: false, errorOnExist: true,
       filter: async (file) => {
         const stat = await lstat(file);
-        if (stat.isDirectory() && CACHES.has(path.basename(file))) return false;
+        if (SKIPPED_ENTRIES.has(path.basename(file))) return false;
         if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) throw new Error("profile copy refused a link or special file");
         if (stat.isFile()) bytes += stat.size;
         if (Date.now() - started > 300_000 || bytes > 20 * 1024 ** 3) throw new Error("profile copy exceeded its five-minute or 20 GiB limit");
@@ -104,11 +105,6 @@ export async function copyChromeProfile(options: {
     const encodedState = JSON.stringify(localState);
     bytes += Buffer.byteLength(encodedState);
     await writeFile(path.join(userDataDir, "Local State"), encodedState, { mode: 0o600 });
-    // Never reopen the source profile's saved tabs on unrelated sites.
-    const selectedCopy = path.join(userDataDir, choice.directory);
-    for (const name of ["Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs"]) {
-      await rm(path.join(selectedCopy, name), { recursive: true, force: true });
-    }
     return { userDataDir, profileDirectory: choice.directory, bytes, copyMs: Date.now() - started, close };
   } catch (error) {
     await close();
