@@ -709,6 +709,10 @@ function bind(): void {
     paletteActive = 0;
     paintPalette();
   };
+  const automation = document.getElementById("automation-ask");
+  if (automation) automation.onclick = async () => {
+    await fetch("/api/helper/automation", { method: "POST" });
+  };
   const done = document.getElementById("onboard-done");
   if (done) done.onclick = () => {
     onboarded = true;

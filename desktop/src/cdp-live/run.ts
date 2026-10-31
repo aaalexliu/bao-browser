@@ -119,11 +119,12 @@ async function main(): Promise<void> {
   };
   progress(`accessibility ${permissions.accessibility} screenCapture ${permissions.screenCapture}`);
   progress("reading the remote-debugging checkbox");
-  const enabled = await ensureRemoteDebugging(helper, axLog);
-  const before = enabled.summary.dialog;
+  const tree = await chromeTree(helper);
+  const enabled = await ensureRemoteDebugging(helper, axLog, tree.pid);
+  const before = tree.summary.dialog;
   const dialogPresentBeforeConnect = before.present || before.buttonCount > 0;
   if (dialogPresentBeforeConnect) {
-    throw new AxUnavailable("Allow dialog was already up; not connecting and not clicking", enabled.summary);
+    throw new AxUnavailable("Allow dialog was already up; not connecting and not clicking", tree.summary);
   }
   progress("reading DevToolsActivePort");
   const endpoint = await readDevToolsActivePort();
@@ -160,7 +161,7 @@ async function main(): Promise<void> {
     const after = (await chromeTree(helper, enabled.pid)).summary.banner;
     const body = {
       permissions: { ...permissions, osWindowShot: usesScreenRecording(helper.calls) },
-      checkbox: { value: enabled.summary.checkbox.value, pressed: enabled.pressed },
+      checkbox: { pressed: enabled.pressed },
       port: endpoint.port,
       dialogPresentBeforeConnect,
       allowClicked: clickedAt != null,

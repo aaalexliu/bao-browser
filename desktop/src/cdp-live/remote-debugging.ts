@@ -55,7 +55,6 @@ export interface RemoteDebuggingDeps {
   /** Closes the inspect tab this call opened. Omitted in unit tests. */
   closeOpenedTab?: (pid: number) => Promise<void>;
   /** Clicks the checkbox when it has no AXPress, which Chrome 155's inspect box does not list. */
-  clickCheckbox?: (pid: number) => Promise<void>;
   /** Browser pids of the Chrome on that user-data dir. Default: from ps. */
   findChrome?: (userDataDir: string) => Promise<number[]>;
   /** Pid listening on a port. Default: lsof. */
@@ -79,6 +78,9 @@ export interface RemoteDebuggingResult {
 
 export const SCREEN_LOCKED = "The screen is locked. Unlock it, then try again.";
 export const CHROME_NOT_OPEN = "Chrome is not open. Open Google Chrome, then try again";
+export const AUTOMATION_DENIED = "BaoOSHelper is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome, then try again.";
+export const AUTOMATION_PROMPT = "A macOS prompt is on screen. Allow BaoOSHelper to control Google Chrome.";
+export const HELPER_TOO_OLD = "BaoOSHelper is older than this Bao; rebuild it";
 export const ACCESSIBILITY_MISSING = "BaoOSHelper accessibility is not granted. Turn it on for BaoOSHelper in System Settings > Privacy & Security > Accessibility, then try again.";
 
 /** True when a session that found debugging off should turn it off again at the end. */
@@ -102,14 +104,13 @@ export function explainRemoteDebuggingError(err: unknown): Error {
     return new Error("BaoOSHelper asked for a permission prompt. Grant Accessibility, then try again.");
   }
   if (/Chrome is not open/.test(message)) return new Error(CHROME_NOT_OPEN);
-  if (/not allowed to control Google Chrome/.test(message)) return new Error(message);
-  if (/expected one process/.test(message)) {
-    return new Error(`BaoOSHelper cannot type into Chrome while another Chrome process runs from the same app, such as a headless Chrome a tool started (${message}). Quit that Chrome, then try again`);
-  }
+  if (/not allowed to control Google Chrome/.test(message)) return new Error(AUTOMATION_DENIED);
+  if (/prompt is on screen/.test(message)) return new Error(AUTOMATION_PROMPT);
+  if (/unknown command/.test(message)) return new Error(HELPER_TOO_OLD);
   return err instanceof Error ? err : new Error(message);
 }
 
-type FastHelper = { exec?: (args: string[], timeoutMs?: number) => Promise<{ value?: string; found?: boolean; error?: string }> };
+type FastHelper = { exec?: (args: string[], timeoutMs?: number) => Promise<{ value?: string; found?: boolean; error?: string; permitted?: boolean; denied?: boolean; wouldPrompt?: boolean }> };
 
 function checkboxArgs(pid: number, frame: number[] | undefined, extra: string[]): string[] {
   const args = ["--pid", String(pid), "--name", REMOTE_CHECKBOX, ...extra];
@@ -119,9 +120,17 @@ function checkboxArgs(pid: number, frame: number[] | undefined, extra: string[])
   return args;
 }
 
+export async function ensureAutomation(helper: { exec: (args: string[], timeoutMs?: number) => Promise<{ permitted?: boolean; denied?: boolean; wouldPrompt?: boolean }> }, pid: number): Promise<void> {
+  const gate = await helper.exec(["ae-permission", "--pid", String(pid)], 15_000);
+  if (gate.permitted) return;
+  if (gate.denied) throw new Error(AUTOMATION_DENIED);
+  if (!gate.wouldPrompt) throw new Error(AUTOMATION_DENIED);
+  await helper.exec(["ae-permission", "--pid", String(pid), "--ask"], 180_000);
+}
+
 async function inspectPageOpen(deps: RemoteDebuggingDeps, pid: number): Promise<boolean> {
   const exec = (deps.helper as FastHelper).exec;
-  if (!exec) return (await readCheckbox(deps, pid)).found;
+  if (!exec) throw new Error(HELPER_TOO_OLD);
   try {
     const hit = await exec.call(deps.helper, ["ae-url", "--pid", String(pid)], 8_000) as { url?: string };
     return hit.url === INSPECT_URL;
@@ -143,8 +152,7 @@ async function readCheckbox(deps: RemoteDebuggingDeps, pid: number, frame?: numb
       throw err;
     }
   }
-  const seen = (await chromeTree(deps.helper, pid)).summary.checkbox;
-  return { found: seen.found, value: seen.value };
+  throw new Error(HELPER_TOO_OLD);
 }
 
 async function setCheckbox(deps: RemoteDebuggingDeps, pid: number, on: boolean, frame?: number[]): Promise<void> {
@@ -154,24 +162,7 @@ async function setCheckbox(deps: RemoteDebuggingDeps, pid: number, on: boolean, 
     if (hit.found === false) throw new Error(hit.error || "inspect checkbox was not found");
     return;
   }
-  const sleep = deps.sleep || ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  let last: unknown;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      await deps.helper.press({ platform: "macos", app: CHROME_BUNDLE, role: "AXCheckBox", name: REMOTE_CHECKBOX, path: [] }, pid);
-      return;
-    } catch (err) {
-      last = err;
-      const message = err instanceof Error ? err.message : String(err);
-      if (/no AXPress/.test(message) && deps.clickCheckbox) {
-        await deps.clickCheckbox(pid);
-        return;
-      }
-      if (!/no AXPress|lookup missed|did not become frontmost/.test(message) || attempt === 3) throw err;
-      await sleep(400);
-    }
-  }
-  throw last;
+  throw new Error(HELPER_TOO_OLD);
 }
 
 async function within<T>(deps: RemoteDebuggingDeps, what: string, read: () => Promise<T | undefined>): Promise<T> {
@@ -197,6 +188,15 @@ export async function setRemoteDebugging(on: boolean, deps: RemoteDebuggingDeps)
   if (pids.length === 0) throw new Error(CHROME_NOT_OPEN);
   if (pids.length > 1) throw new Error(`more than one Chrome runs on ${userDataDir}`);
   const pid = pids[0] as number;
+  const exec = (deps.helper as FastHelper).exec;
+  if (exec) {
+    const gate = await exec.call(deps.helper, ["ae-permission", "--pid", String(pid)], 15_000);
+    if (gate.denied) throw new Error(AUTOMATION_DENIED);
+    if (gate.wouldPrompt) {
+      process.stderr.write(`${AUTOMATION_PROMPT}\n`);
+      await exec.call(deps.helper, ["ae-permission", "--pid", String(pid), "--ask"], 180_000);
+    }
+  }
   const listener = deps.listener || listenPid;
   const readPort = deps.readPort || readDevToolsActivePort;
   const listening = async (): Promise<number | null> => {

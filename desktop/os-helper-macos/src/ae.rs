@@ -110,8 +110,10 @@ extern "C" {
 }
 
 fn explain(status: i32) -> String {
-    if status == NOT_PERMITTED || status == WOULD_PROMPT {
+    if status == NOT_PERMITTED {
         "BaoOSHelper is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome, then try again.".into()
+    } else if status == WOULD_PROMPT {
+        "A macOS prompt is on screen. Allow BaoOSHelper to control Google Chrome.".into()
     } else {
         format!("Apple Event failed ({status})")
     }
@@ -219,8 +221,11 @@ fn active_index(pid: i32) -> Result<i32, String> {
     get_i32(pid, &spec).map_err(explain)
 }
 
-fn set_active_index(pid: i32, index: i32) -> Result<(), String> {
-    let window = window_one().map_err(explain)?;
+fn set_active_index(pid: i32, index: i32, window_id: Option<&str>) -> Result<(), String> {
+    let window = match window_id {
+        Some(id) if !id.is_empty() => window_by_id(id).map_err(explain)?,
+        _ => window_one().map_err(explain)?,
+    };
     let spec = property_of(&window, ACTIVE_INDEX).map_err(explain)?;
     send(pid, CORE, SET, |event| {
         let err = unsafe { AEPutParamDesc(event, DIRECT, &spec) };
@@ -388,18 +393,18 @@ fn make_tab(pid: i32, window_id: &str) -> Result<(), i32> {
 
 pub fn active_url(pid: i32) -> Result<Value, String> {
     let index = active_index(pid)?;
-    let url = tab_url(pid, index)?;
+    let url = tab_url(pid, index, None)?;
     Ok(json!({"ok": true, "pid": pid, "index": index, "url": url}))
 }
 
-fn tab_url(pid: i32, index: i32) -> Result<String, String> {
-    let tab = tab_at(index).map_err(explain)?;
+fn tab_url(pid: i32, index: i32, window_id: Option<&str>) -> Result<String, String> {
+    let tab = tab_at(index, window_id).map_err(explain)?;
     let spec = property_of(&tab, URL_KEY).map_err(explain)?;
     get_text(pid, &spec).map_err(explain)
 }
 
-fn set_tab_url(pid: i32, index: i32) -> Result<(), String> {
-    let tab = tab_at(index).map_err(explain)?;
+fn set_tab_url(pid: i32, index: i32, window_id: Option<&str>) -> Result<(), String> {
+    let tab = tab_at(index, window_id).map_err(explain)?;
     let spec = property_of(&tab, URL_KEY).map_err(explain)?;
     send(pid, CORE, SET, |event| {
         let err = unsafe { AEPutParamDesc(event, DIRECT, &spec) };
@@ -410,7 +415,7 @@ fn set_tab_url(pid: i32, index: i32) -> Result<(), String> {
     Ok(())
 }
 
-/// Opens the inspect page as a new tab of window id of this pid. Does not activate Chrome.
+/// Opens the inspect page as a new tab of window id of this pid. Chrome may come forward; Bao puts the previous app back.
 pub fn open_inspect(pid: i32) -> Result<Value, String> {
     let mut ready = false;
     for _ in 0..12 {
@@ -430,24 +435,27 @@ pub fn open_inspect(pid: i32) -> Result<Value, String> {
     let created = active_index(pid)?;
     let mut url = String::new();
     for _ in 0..8 {
-        url = tab_url(pid, created).unwrap_or_default();
+        url = tab_url(pid, created, Some(&window_id)).unwrap_or_default();
         if url == INSPECT { break; }
-        let _ = set_tab_url(pid, created);
-        url = tab_url(pid, created).unwrap_or_default();
+        let _ = set_tab_url(pid, created, Some(&window_id));
+        url = tab_url(pid, created, Some(&window_id)).unwrap_or_default();
         if url == INSPECT { break; }
     }
     if url != INSPECT {
         return Err(format!("the new tab URL is {url:?}, not {INSPECT}"));
     }
-    let id = tab_id(pid, created)?;
+    let id = tab_id(pid, created, Some(&window_id))?;
     let frame = window_frame(pid, &window_id).ok();
     let restored_front = put_front_back(front_before, pid).ok().flatten();
     let flash_ms = if restored_front.is_some() { flash_start.elapsed().as_millis() as u64 } else { 0 };
     Ok(json!({"ok": true, "pid": pid, "windowId": window_id, "tabIndex": created, "tabId": id, "url": url, "restored": previous, "restoredFront": restored_front, "flashMs": flash_ms, "frame": frame, "raised": restored_front.is_some()}))
 }
 
-fn tab_at(index: i32) -> Result<AEDesc, i32> {
-    let window = window_one()?;
+fn tab_at(index: i32, window_id: Option<&str>) -> Result<AEDesc, i32> {
+    let window = match window_id {
+        Some(id) if !id.is_empty() => window_by_id(id)?,
+        _ => window_one()?,
+    };
     let which = desc_i32(index)?;
     let mut spec = AEDesc::null();
     let err = unsafe { CreateObjSpecifier(TAB, &window, INDX, &which, 0, &mut spec) };
@@ -466,11 +474,12 @@ fn get_text(pid: i32, spec: &AEDesc) -> Result<String, i32> {
     let err = unsafe { AEGetParamPtr(&reply, DIRECT, UTF8, &mut actual, buf.as_mut_ptr() as *mut c_void, buf.len() as isize, &mut size) };
     if err != 0 { return Err(err); }
     let n = size.max(0) as usize;
+    let n = n.min(buf.len());
     Ok(String::from_utf8_lossy(&buf[..n]).into_owned())
 }
 
-pub fn tab_id(pid: i32, index: i32) -> Result<String, String> {
-    let tab = tab_at(index).map_err(explain)?;
+pub fn tab_id(pid: i32, index: i32, window_id: Option<&str>) -> Result<String, String> {
+    let tab = tab_at(index, window_id).map_err(explain)?;
     let spec = property_of(&tab, TAB_ID).map_err(explain)?;
     get_text(pid, &spec).map_err(explain)
 }
@@ -484,16 +493,19 @@ pub fn make_window(pid: i32) -> Result<Value, String> {
     Ok(json!({"ok": true, "pid": pid}))
 }
 
-pub fn close_tab_id(pid: i32, id: &str, restore: Option<i32>) -> Result<Value, String> {
+pub fn close_tab_id(pid: i32, id: &str, restore: Option<i32>, window_id: Option<&str>) -> Result<Value, String> {
     let front_before = crate::apps::frontmost_pid().unwrap_or(0);
     let gate = permission(pid, false)?;
     if gate["wouldPrompt"] == true || gate["denied"] == true {
         return Err(explain(if gate["denied"] == true { NOT_PERMITTED } else { WOULD_PROMPT }));
     }
     if let Some(index) = restore {
-        let _ = set_active_index(pid, index);
+        let _ = set_active_index(pid, index, window_id);
     }
-    let window = window_one().map_err(explain)?;
+    let window = match window_id {
+        Some(id) if !id.is_empty() => window_by_id(id).map_err(explain)?,
+        _ => window_one().map_err(explain)?,
+    };
     let key = desc_bytes(UTF8, id.as_bytes()).map_err(explain)?;
     let mut spec = AEDesc::null();
     let err = unsafe { CreateObjSpecifier(TAB, &window, FORM_ID, &key, 0, &mut spec) };

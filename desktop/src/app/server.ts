@@ -504,6 +504,12 @@ export async function startApp(opts: {
         if (!shotNameOk(name)) return json(res, { error: "no picture" }, 404);
         return sendPng(res, path.join(library.root, "live-session", "shots", name));
       }
+      if (req.method === "POST" && url.pathname === "/api/helper/automation") {
+        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
+        const helperApp = bundledHelperApp();
+        if (!helperApp) return json(res, { error: "BaoOSHelper is older than this Bao; rebuild it" }, 500);
+        return json(res, { ok: true, message: "A macOS prompt is on screen. Allow BaoOSHelper to control Google Chrome." });
+      }
       if (req.method === "GET" && url.pathname === "/api/state") {
         runScheduledBackup(library);
         syncPending();

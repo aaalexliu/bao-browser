@@ -208,7 +208,6 @@ export interface TurnOnDeps {
   axLog: string;
   screenLocked?: () => Promise<boolean>;
   closeOpenedTab?: (pid: number) => Promise<void>;
-  clickCheckbox?: (pid: number) => Promise<void>;
 }
 
 /**
@@ -246,7 +245,6 @@ export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx =
       openInspect: turnOn.openInspect,
       screenLocked: turnOn.screenLocked,
       closeOpenedTab: turnOn.closeOpenedTab,
-      clickCheckbox: turnOn.clickCheckbox,
     });
     endpoint = await readDevToolsActivePort(target.portFile);
     chromePid = turned.pid;

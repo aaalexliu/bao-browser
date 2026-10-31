@@ -14,6 +14,10 @@ Each new debugging connection raises **Allow remote debugging?** Chrome does not
 
 macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the product window. macOS enforces it. The helper uses it to see the Allow button and press it. It does not read the web page. The first prompt is once per signed helper. After that, each Allow press is one short accessibility walk, which is most of the time in the paragraph above.
 
+## Automation for Google Chrome
+
+BaoOSHelper sends one Apple Event to the Chrome process, by pid, to open `chrome://inspect/#remote-debugging`. macOS asks once, and the prompt names BaoOSHelper and Google Chrome. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.` A denial is System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome. This grant is not Accessibility, and it is not a grant to control any other app.
+
 ## Which grant each job needs
 
 Four jobs can run on this Mac. A grant for one job does not turn another job off.

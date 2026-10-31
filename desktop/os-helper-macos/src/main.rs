@@ -236,13 +236,13 @@ fn run(args: &[String]) -> Result<Value, String> {
         "ae-id" => {
             let pid = pid_flag(args)?.ok_or("--pid is required")?;
             let index = need(args, "--index")?.parse::<i32>().map_err(|_| "--index is not a number".to_string())?;
-            Ok(json!({"ok": true, "pid": pid, "id": ae::tab_id(pid, index)?}))
+            Ok(json!({"ok": true, "pid": pid, "id": ae::tab_id(pid, index, flag(args, "--window-id").as_deref())?}))
         }
         "ae-close" => {
             let pid = pid_flag(args)?.ok_or("--pid is required")?;
             if let Some(id) = args.iter().position(|a| a == "--id").and_then(|i| args.get(i + 1)) {
                 let restore = flag(args, "--restore").and_then(|raw| raw.parse::<i32>().ok());
-                ae::close_tab_id(pid, id, restore)
+                ae::close_tab_id(pid, id, restore, flag(args, "--window-id").as_deref())
             } else {
                 let index = need(args, "--index")?.parse::<i32>().map_err(|_| "--index is not a number".to_string())?;
                 ae::close_tab(pid, index)

@@ -258,7 +258,7 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
   const want = args[0];
   if (want !== "on" && want !== "off") throw new Error(REMOTE_DEBUGGING_USAGE);
   const path = await import("node:path");
-  const { chromeHelper, clickRemoteCheckbox, closeInspectTab, openInspect } = await import("../cdp-live/ax");
+  const { chromeHelper, closeInspectTab, openInspect } = await import("../cdp-live/ax");
   const { DEVTOOLS_ACTIVE_PORT } = await import("../cdp-live/endpoint");
   const { acquireCdpLock, releaseCdpLock } = await import("../cdp-live/lock");
   const { explainRemoteDebuggingError, setRemoteDebugging } = await import("../cdp-live/remote-debugging");
@@ -278,7 +278,6 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
       openInspect: (pid: number) => openInspect(helper, axLog, pid),
       screenLocked: () => helper.screenLocked(),
       closeOpenedTab: (pid: number) => closeInspectTab(helper, axLog, pid),
-      clickCheckbox: (pid: number) => clickRemoteCheckbox(helper, pid),
     });
   } finally {
     releaseCdpLock(agent);

@@ -2006,6 +2006,7 @@ function permRows(helper?: { accessibility?: boolean; screenCapture?: boolean })
   return `<ul class="perms">
       <li class="perm" data-perm="accessibility" data-ok="${access ? "true" : "false"}"><span class="mark"></span><span><strong>Accessibility</strong> ${access ? "allowed" : "not granted yet"}</span></li>
       <li class="perm" data-perm="screen" data-ok="${screen ? "true" : "false"}"><span class="mark"></span><span><strong>Screen Recording</strong> ${screen ? "allowed" : "not granted yet"}</span></li>
+      <li class="perm" data-perm="automation"><span class="mark"></span><span><strong>Automation: Google Chrome</strong></span> <button type="button" id="automation-ask">Allow</button></li>
     </ul>`;
 }
 

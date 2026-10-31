@@ -66,6 +66,10 @@ export interface AxHit {
   tabId?: string;
   restored?: number;
   found?: boolean;
+  permitted?: boolean;
+  denied?: boolean;
+  wouldPrompt?: boolean;
+  url?: string;
   locked?: boolean;
   windows?: { id: number; layer: number; x: number; y: number; w: number; h: number }[];
 }
@@ -80,9 +84,14 @@ function parseHit(out: string, err: string, code: number | null): AxHit {
     throw new Error(err.trim() || line);
   }
   if (code !== 0 || parsed.ok === false) {
-    throw new Error(parsed.error || err.trim() || `os helper exit ${code}`);
+    throw helperError(parsed.error || err.trim() || `os helper exit ${code}`);
   }
   return parsed;
+}
+
+function helperError(message: string): Error {
+  if (/unknown command/.test(message)) return new Error("BaoOSHelper is older than this Bao; rebuild it");
+  return new Error(message);
 }
 
 function runBin(bin: string, args: string[]): Promise<AxHit> {
@@ -132,11 +141,11 @@ async function runApp(app: string, args: string[], timeoutMs = 45000): Promise<A
       if (out.trim()) {
         try { JSON.parse(out); break; } catch { /* the helper is still writing the result */ }
       }
-      if (typeof closed === "number" && closed !== 0 && out.trim()) break;
+      if (typeof closed === "number" && closed !== 0) break;
       await sleep(80);
     }
     const err = await readFile(stderr, "utf8").catch(() => "");
-    if (!out.trim()) throw new Error(err.trim() || `os helper produced no result for ${args[0]}`);
+    if (!out.trim()) throw helperError(err.trim() || `os helper produced no result for ${args[0]}`);
     return parseHit(out, err, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });

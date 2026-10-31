@@ -1,7 +1,7 @@
 import path from "node:path";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
-import { chromeHelper, clickRemoteCheckbox, closeInspectTab, openInspect, type ChromeAx } from "./ax";
+import { chromeHelper, closeInspectTab, openInspect, type ChromeAx } from "./ax";
 import { type CdpLiveDriver } from "./driver";
 import {
   clickLive,
@@ -152,7 +152,6 @@ export function createLiveHost(opts: LiveHostOptions): {
   const openInspectPage = opts.openInspect || ((pid: number) => openInspect(chromeHelper(), axLog, pid));
   const screenLocked = () => chromeHelper().screenLocked();
   const closeOpenedTab = (pid: number) => closeInspectTab(chromeHelper(), axLog, pid);
-  const clickCheckbox = (pid: number) => clickRemoteCheckbox(chromeHelper(), pid);
   async function restoreOff(portFile: string): Promise<void> {
     const ax = opts.helper ? opts.helper() : chromeHelper();
     await setRemoteDebugging(false, {
@@ -162,7 +161,6 @@ export function createLiveHost(opts: LiveHostOptions): {
       openInspect: openInspectPage,
       screenLocked,
       closeOpenedTab,
-      clickCheckbox,
     });
   }
   const idleMs = opts.idleMs ?? LIVE_IDLE_MS;
@@ -316,11 +314,12 @@ export function createLiveHost(opts: LiveHostOptions): {
     const blocked = navigationGuard(url, hosts, origins, stopPath);
     if (blocked) throw new Error(blocked);
     if (lockFile !== CDP_LOCK_PATH && target !== defaultTarget) throw new Error("this app has its own live lock, so it drives only its configured Chrome");
-    const prepared = await prepareTarget(target, opts.helper, { openInspect: openInspectPage, axLog, screenLocked, closeOpenedTab, clickCheckbox });
+    await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
+    let prepared;
     try {
-      await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
+      prepared = await prepareTarget(target, opts.helper, { openInspect: openInspectPage, axLog, screenLocked, closeOpenedTab });
     } catch (err) {
-      if (prepared.turnedOn) await restoreOff(prepared.target.portFile).catch(() => undefined);
+      releaseCdpLock(AGENT, lockFile);
       throw err;
     }
     let cdp: CdpSocket | undefined;
@@ -659,7 +658,6 @@ export function createLiveHost(opts: LiveHostOptions): {
       openInspect: openInspectPage,
       screenLocked,
       closeOpenedTab,
-      clickCheckbox,
     });
   }
 

@@ -4,20 +4,18 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ChromeAx } from "../../src/cdp-live/ax";
-import { REMOTE_CHECKBOX } from "../../src/cdp-live/consent";
 import {
   ACCESSIBILITY_MISSING,
+  AUTOMATION_DENIED,
   CHROME_NOT_OPEN,
   SCREEN_LOCKED,
   chromePidsFromPs,
   checkboxKnown,
   explainRemoteDebuggingError,
   setRemoteDebugging,
-  shouldRestoreRemoteDebugging,
   type RemoteDebuggingDeps,
 } from "../../src/cdp-live/remote-debugging";
-import type { AxHit, AxNode } from "../../src/proxy/os-macos";
+import type { AxHit } from "../../src/proxy/os-macos";
 
 const DIR = "/Users/me/Library/Application Support/Google/Chrome";
 const PORT_FILE = `${DIR}/DevToolsActivePort`;
@@ -39,24 +37,19 @@ test("the daily Chrome is the browser process on its user-data dir, not a render
 /** A daily Chrome whose inspect page Bao can open, and whose checkbox BaoOSHelper can press. */
 function fakeChrome(start: { on: boolean; inspectOpen: boolean }) {
   const state = { ...start, presses: 0, opened: 0, pids: [7], openError: "" };
-  const node = (role: string, name: string, value = ""): AxNode => ({
-    role, subrole: "", title: "", description: "", identifier: "", name, value, actions: [], frame: null,
-    path: [{ role: "AXWindow", name: "Inspect with Chrome Developer Tools" }], pid: 7, app: "com.google.Chrome", useful: true,
-  });
   const helper = {
-    nodes: async (_bundle: string, pid?: number): Promise<AxHit> => {
-      assert.equal(pid, 7, "the helper reads the daily Chrome by pid");
-      const nodes = [node("AXWindow", "New Tab")];
-      if (state.inspectOpen) nodes.push(node("AXCheckBox", REMOTE_CHECKBOX, state.on ? "1" : "0"));
-      return { ok: true, nodes };
-    },
-    press: async (target: { role: string; name: string }, pid?: number): Promise<AxHit> => {
-      assert.deepEqual([target.role, target.name, pid], ["AXCheckBox", REMOTE_CHECKBOX, 7]);
-      state.presses += 1;
-      state.on = !state.on;
+    exec: async (args: string[]): Promise<AxHit> => {
+      if (args[0] === "ae-permission") return { ok: true, permitted: true, denied: false, wouldPrompt: false };
+      if (args[0] === "ae-url") return { ok: true, url: state.inspectOpen ? "chrome://inspect/#remote-debugging" : "about:blank" };
+      if (args[0] === "checkbox-read") return { ok: true, found: state.inspectOpen, value: state.on ? "1" : "0" };
+      if (args[0] === "checkbox-set") {
+        state.presses += 1;
+        state.on = args.includes("1");
+        return { ok: true, found: true, value: state.on ? "1" : "0" };
+      }
       return { ok: true };
     },
-  } as unknown as Pick<ChromeAx, "nodes" | "press">;
+  } as unknown as RemoteDebuggingDeps["helper"];
   const deps: RemoteDebuggingDeps = {
     helper,
     portFile: PORT_FILE,
@@ -108,13 +101,6 @@ test("Bao refuses when the daily Chrome is not open, or when two browsers share 
   assert.equal(closed.state.presses + two.state.presses, 0);
 });
 
-test("a second Chrome process from the same app gets a plain error, and nothing is pressed", async () => {
-  const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
-  state.openError = "expected one process for com.google.Chrome, found 2 ([74892, 7])";
-  await assert.rejects(setRemoteDebugging(true, deps), /cannot type into Chrome while another Chrome process runs from the same app.*Quit that Chrome/);
-  assert.equal(state.presses, 0);
-});
-
 test("off when the port is already closed changes nothing", async () => {
   const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
   assert.deepEqual(await setRemoteDebugging(false, deps), { pid: 7, pressed: false, opened: false, port: null, already: true });
@@ -134,34 +120,22 @@ test("errors name a locked screen, a missing grant, and Chrome not running", () 
   assert.equal(explainRemoteDebuggingError(new Error("The screen is locked. Unlock it, then try again")).message, SCREEN_LOCKED);
   assert.equal(explainRemoteDebuggingError(new Error("BaoOSHelper accessibility is not granted")).message, ACCESSIBILITY_MISSING);
   assert.equal(explainRemoteDebuggingError(new Error(CHROME_NOT_OPEN)).message, CHROME_NOT_OPEN);
-  assert.equal(shouldRestoreRemoteDebugging(true), false);
-  assert.equal(shouldRestoreRemoteDebugging(false), true);
+  assert.equal(explainRemoteDebuggingError(new Error("unknown command ae-open")).message, "BaoOSHelper is older than this Bao; rebuild it");
+  assert.equal(explainRemoteDebuggingError(new Error("not allowed to control Google Chrome")).message, AUTOMATION_DENIED);
   assert.equal(checkboxKnown("1"), true);
   assert.equal(checkboxKnown("0"), false);
   assert.equal(checkboxKnown(""), null);
 });
 
-test("a checkbox that is not pressable yet is retried", async () => {
-  const { state, deps } = fakeChrome({ on: false, inspectOpen: true });
-  let tries = 0;
-  deps.helper = {
-    ...deps.helper,
-    press: async () => {
-      tries += 1;
-      if (tries === 1) throw new Error('control "Allow remote debugging for this browser instance" has no AXPress action; refusing coordinate fallback');
-      state.on = true;
-      state.presses += 1;
-      return { ok: true };
-    },
-  } as typeof deps.helper;
-  const result = await setRemoteDebugging(true, deps);
-  assert.equal(tries, 2);
-  assert.equal(result.pressed, true);
-  assert.equal(result.port, 9222);
-});
-
 test("a checkbox that does not move times out instead of reporting on", async () => {
   const { deps } = fakeChrome({ on: false, inspectOpen: true });
-  const stuck = { ...deps, helper: { ...deps.helper, press: async (): Promise<AxHit> => ({ ok: true }) } as Pick<ChromeAx, "nodes" | "press"> };
-  await assert.rejects(setRemoteDebugging(true, { ...stuck, timeoutMs: 0 }), /timed out waiting for Chrome to listen on its DevTools port/);
+  deps.helper = {
+    exec: async (args: string[]) => {
+      if (args[0] === "ae-permission") return { ok: true, permitted: true };
+      if (args[0] === "ae-url") return { ok: true, url: "chrome://inspect/#remote-debugging" };
+      if (args[0] === "checkbox-read") return { ok: true, found: true, value: "0" };
+      return { ok: true, found: true, value: "0" };
+    },
+  } as unknown as RemoteDebuggingDeps["helper"];
+  await assert.rejects(setRemoteDebugging(true, { ...deps, timeoutMs: 0 }), /timed out waiting for Chrome to listen on its DevTools port/);
 });

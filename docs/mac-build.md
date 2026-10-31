@@ -231,14 +231,15 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-The product window does not need Accessibility. The nested helper does. On the first launch, macOS asks twice, naming **BaoOSHelper**:
+The product window does not need Accessibility. The nested helper does. On the first launch, macOS asks three times, naming **BaoOSHelper**:
 
 1. Accessibility. The usage string is `BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.`
 2. Screen Recording. The usage string is `BaoOSHelper captures one throwaway window so the spike can show the control it pressed.`
+3. Automation, for Google Chrome only. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.`
 
-Live Chrome needs Accessibility only. It does not capture a window, so it works with Screen Recording on or off. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
+Live Chrome needs Accessibility and that Automation grant. It does not capture a window, so it works with Screen Recording on or off. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
 
-Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Enable it under Screen & System Audio Recording too for window capture and the MCP driver. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it.
+Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Enable it under Screen & System Audio Recording too for window capture and the MCP driver. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it. When the helper source in this tree has changed, rebuild it with the existing `bao dev signing` identity. Do not reuse an older helper whose commands this Bao no longer matches. An old helper answers `unknown command`; Bao then says `BaoOSHelper is older than this Bao; rebuild it`.
 
 Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job:
 

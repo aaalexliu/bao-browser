@@ -107,22 +107,13 @@ export async function openInspect(helper: MacOsHelper, logFile: string, pid?: nu
   return { windowId, frame };
 }
 
-/** Chrome 155's inspect checkbox lists no AXPress. Click the box we already found by name. */
-export async function clickRemoteCheckbox(helper: MacOsHelper, pid: number): Promise<void> {
-  const hit = await helper.nodes(CHROME_BUNDLE, pid);
-  const box = (hit.nodes || []).find((node) => node.role === "AXCheckBox" && node.name === REMOTE_CHECKBOX);
-  if (!box?.frame) throw new Error("BaoOSHelper cannot see the remote-debugging checkbox to click");
-  const x = box.frame.x + box.frame.w / 2;
-  const y = box.frame.y + box.frame.h / 2;
-  await helper.exec(["click", "--pid", String(pid), "--x", String(x), "--y", String(y)]);
-}
-
-/** Closes only the inspect tab this run opened, by tab id. Does not raise Chrome. */
+/** Closes only the inspect tab this run opened, by tab id. Chrome may come forward; Bao gives focus back. */
 export async function closeInspectTab(helper: MacOsHelper, logFile: string, pid: number): Promise<void> {
   const opened = openedTabs.get(pid);
   if (!opened) throw new Error("Bao has no inspect tab id to close for that Chrome");
   const args = ["ae-close", "--pid", String(pid), "--id", opened.tabId];
   if (opened.restored != null) args.push("--restore", String(opened.restored));
+  if (opened.windowId) args.push("--window-id", opened.windowId);
   await helper.exec(args, 20_000);
   await putFrontBack(helper, opened.frontPid, pid);
   openedTabs.delete(pid);
@@ -136,34 +127,15 @@ export async function checkboxState(helper: Pick<ChromeAx, "nodes">, pid?: numbe
   return { pid: tree.pid, summary: tree.summary, on: checkboxOn(tree.summary.checkbox.value) };
 }
 
-export async function ensureRemoteDebugging(helper: MacOsHelper, logFile: string): Promise<{ pid?: number; summary: AxSummary; pressed: boolean }> {
-  let tree = await chromeTree(helper);
-  const reach = checkboxReach(tree.summary);
-  if (reach === "stop") {
-    throw new AxUnavailable("BaoOSHelper cannot see a Chrome window", tree.summary);
-  }
-  if (reach === "open-inspect") {
-    await openInspect(helper, logFile, tree.pid);
-    tree = await chromeTree(helper, tree.pid);
-  }
-  if (!tree.summary.checkbox.found) {
-    throw new AxUnavailable("BaoOSHelper cannot see the remote-debugging checkbox", tree.summary);
-  }
-  if (checkboxOn(tree.summary.checkbox.value)) {
-    return { pid: tree.pid, summary: tree.summary, pressed: false };
-  }
-  const hit = await helper.press(target("AXCheckBox", REMOTE_CHECKBOX), tree.pid);
-  await note(logFile, {
-    what: "AXPress",
-    role: "AXCheckBox",
-    name: REMOTE_CHECKBOX,
-    window: windowOf(hit.element),
-  });
-  tree = await chromeTree(helper, tree.pid);
-  if (!tree.summary.checkbox.found || !checkboxOn(tree.summary.checkbox.value)) {
-    throw new AxUnavailable("remote-debugging checkbox stayed off", tree.summary);
-  }
-  return { pid: tree.pid, summary: tree.summary, pressed: true };
+export async function ensureRemoteDebugging(helper: MacOsHelper, logFile: string, pid?: number): Promise<{ pid?: number; pressed: boolean }> {
+  if (pid == null) throw new Error("Bao needs the Chrome process id to open remote debugging");
+  const before = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 20_000);
+  if (!before.found) await openInspect(helper, logFile, pid);
+  const seen = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 20_000);
+  if (seen.value === "1" || seen.value === "true") return { pid, pressed: false };
+  await helper.exec(["checkbox-set", "--pid", String(pid), "--name", REMOTE_CHECKBOX, "--value", "1"], 20_000);
+  await note(logFile, { what: "checkbox-set", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools" });
+  return { pid, pressed: true };
 }
 
 export async function pressAllow(helper: Pick<ChromeAx, "press">, pid: number | undefined, logFile: string): Promise<{ at: number; window: string }> {
