@@ -246,6 +246,7 @@ export async function startApp(opts: {
     idleMs: opts.liveIdleMs,
     idleWarnMs: opts.liveIdleWarnMs,
     onNotice: (message) => { automationNotice = message; },
+    videoDir: process.env.BAO_RUN_VIDEO === "1" ? path.join(library.root, "videos") : undefined,
     onIdleWarn: (warning) => {
       liveIdle = warning;
       if (warning) raiseLiveIdle(warning);

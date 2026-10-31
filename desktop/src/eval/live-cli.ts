@@ -46,7 +46,9 @@ export function taskPrompt(task: DriverTask, uploadPath: string): string {
 
 export function driverBinary(name: LiveDriver): string | null {
   const fallbacks: Record<LiveDriver, string[]> = {
-    claude: ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"],
+    // Claude Code's own installer puts its launcher in ~/.local/bin. It goes before the Homebrew
+    // cask, whose quarantined binary Gatekeeper can hold at launch with no error.
+    claude: [path.join(userInfo().homedir, ".local/bin/claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"],
     codex: ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"],
     cursor: ["/opt/homebrew/bin/cursor-agent", "/usr/local/bin/cursor-agent"],
   };
@@ -238,12 +240,19 @@ export interface BaoMcpServer {
   env: Record<string, string>;
 }
 
+/** The agent's model, else the CLI's default, and Claude Code's spend cap, default 1 USD. */
+export interface AgentRunOptions {
+  model?: string;
+  budgetUsd?: number;
+}
+
 /**
  * claude -p locked to bao: no built-in tool, no Claude in Chrome, only the --mcp-config server,
  * and only mcp__bao__* calls allowed with no prompt. --max-budget-usd caps one run.
  */
-export function claudeAgentArgs(mcpConfig: string): string[] {
+export function claudeAgentArgs(mcpConfig: string, opts: AgentRunOptions = {}): string[] {
   return [
+    ...(opts.model ? ["--model", opts.model] : []),
     "-p",
     "--output-format", "stream-json",
     "--verbose",
@@ -253,7 +262,7 @@ export function claudeAgentArgs(mcpConfig: string): string[] {
     "--no-chrome",
     "--allowedTools", "mcp__bao__*",
     "--permission-mode", "dontAsk",
-    "--max-budget-usd", "1",
+    "--max-budget-usd", String(opts.budgetUsd ?? 1),
   ];
 }
 
@@ -267,7 +276,7 @@ export function claudeMcpConfig(server: BaoMcpServer): string {
  * Its calls run with no approval prompt, which `codex exec` would otherwise refuse, and get the
  * tool timeout `bao agent config codex` writes. The prompt comes on stdin.
  */
-export function codexAgentArgs(server: BaoMcpServer, workdir: string): string[] {
+export function codexAgentArgs(server: BaoMcpServer, workdir: string, opts: Pick<AgentRunOptions, "model"> = {}): string[] {
   const config: string[] = [
     configPair("web_search", "disabled"),
     configPair("mcp_servers.bao.command", server.command),
@@ -285,6 +294,7 @@ export function codexAgentArgs(server: BaoMcpServer, workdir: string): string[] 
     "--json",
     "--sandbox", "read-only",
     "-C", workdir,
+    ...(opts.model ? ["--model", opts.model] : []),
     ...CODEX_DISABLED_FEATURES.flatMap((feature) => ["--disable", feature]),
     ...config,
     "-",

@@ -150,6 +150,8 @@ export interface LiveHostOptions {
   /** Gets the warning when it comes, and null when a call, Keep open, or the end clears it. */
   onIdleWarn?: (warning: LiveIdleWarning | null) => void;
   onNotice?: (message: string) => void;
+  /** Records each session window as live-<session>-<time>.webm and each replay window as <runId>.webm here. */
+  videoDir?: string;
 }
 
 type EndReason = "stop" | "disconnect" | "idle";
@@ -352,6 +354,9 @@ export function createLiveHost(opts: LiveHostOptions): {
       driver.setOrigins(origins);
       driver.setStopPath(stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
+      if (opts.videoDir && !selected?.artifactRoot) {
+        await driver.recordVideo(path.join(opts.videoDir, `live-${ids.workflowId.slice(0, 40)}-${Date.now().toString(36)}.webm`));
+      }
       const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40));
       const trail = await LiveTrail.open(opts.home);
       open = {
@@ -731,6 +736,7 @@ export function createLiveHost(opts: LiveHostOptions): {
           target: selected?.target ?? defaultTarget,
           engineName: run.pageEngine,
           artifactRoot: selected?.artifactRoot,
+          videoDir: opts.videoDir,
           lockFile,
           helper: opts.helper,
           openProfile,

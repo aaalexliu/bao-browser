@@ -221,6 +221,8 @@ One runner replays a `cdp-live` workflow: `replayLiveWorkflow` in `desktop/src/c
 
 Copied-profile capture and replay also retain Library run evidence as described in [Evidence](agent-browser-engine.md#evidence), including recording status, video limits, and unavailable-evidence reasons.
 
+With `BAO_RUN_VIDEO=1`, the app records each live window through the CDP connection that drives it (`desktop/src/cdp-live/screencast.ts`). `Page.startScreencast` sends a JPEG each time the page paints. When the window ends, ffmpeg joins the frames, each shown until the next one came, into `<home>/videos/live-<session>-<time>.webm` for a session and `<home>/videos/<runId>.webm` for a replay, which the run page plays. This is not a macOS screen recording, so it needs no Screen Recording grant. The frames are not blurred, so the file holds whatever the page showed. Frames painted under an audit screenshot's blur veil are left out. With no ffmpeg, or no frame, no file is written.
+
 `desktop/test/unit/live-replay.test.ts` records the blueberries task on the fixture through the app, then replays it through `/api/replay` and `run_workflow`, skips the Add when the item is in the cart, and refuses checkout.
 
 `desktop/test/unit/instacart-acceptance.test.ts` is the acceptance lane L1. A scripted MCP client records the task through `bao mcp` and a spawned `bao serve`, tries the checkout and login traps, disconnects without `live_stop`, and replays the saved workflow through `run_workflow` four times: twice on an empty cart, then once each on a cart that already holds the item at qty 1 and at qty 2. Those last two skip the Add as `already done` and write nothing. `desktop/test/README.md` says how to run it and what it checks.

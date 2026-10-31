@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   AGENT_PROMPT,
   CHECKOUT_PROMPT,
+  agentDrivers,
   cartShape,
   checkoutProblems,
   earlierRows,
@@ -58,6 +59,16 @@ test("claude runs with the plan's lock-down flags and a budget cap", () => {
   assert.equal(pairs("--permission-mode"), "dontAsk");
   assert.equal(pairs("--max-budget-usd"), "1");
   assert.equal(pairs("--output-format"), "stream-json");
+  assert.ok(!args.includes("--model"), "the CLI's default model");
+  const chosen = claudeAgentArgs("/tmp/mcp.json", { model: "claude-opus-5-5", budgetUsd: 3 });
+  assert.equal(chosen[chosen.indexOf("--model") + 1], "claude-opus-5-5");
+  assert.equal(chosen[chosen.indexOf("--max-budget-usd") + 1], "3");
+  assert.deepEqual(chosen.filter((arg) => arg !== "--model" && arg !== "claude-opus-5-5" && arg !== "3"), args.filter((arg) => arg !== "1"));
+});
+
+test("a model id belongs to one driver", () => {
+  assert.deepEqual(agentDrivers(["--driver", "codex", "--model", "gpt-6-astra"]), ["codex"]);
+  assert.throws(() => agentDrivers(["--model", "gpt-6-astra"]), /usage/);
 });
 
 test("codex runs with no user config, every acting feature off, and bao's calls approved with the configured timeout", () => {
@@ -79,6 +90,10 @@ test("codex runs with no user config, every acting feature off, and bao's calls 
     "mcp_servers.bao.tool_timeout_sec=180",
     'mcp_servers.bao.default_tools_approval_mode="approve"',
   ]);
+  assert.ok(!args.includes("--model"), "the CLI's default model");
+  const chosen = codexAgentArgs(SERVER, "/tmp/work", { model: "gpt-6-astra" });
+  assert.equal(chosen[chosen.indexOf("--model") + 1], "gpt-6-astra");
+  assert.equal(chosen[chosen.length - 1], "-", "the prompt still comes on stdin");
 });
 
 test("codex gets a copy of the login with no refresh token, and a stale login is not used", () => {

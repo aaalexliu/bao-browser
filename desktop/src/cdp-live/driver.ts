@@ -11,6 +11,7 @@ import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
 import { focusLiveMark, focusStillMarked, markedState, type MarkedState } from "./live-ops";
+import { startScreencast, type Screencast } from "./screencast";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -134,6 +135,7 @@ export class CdpLiveDriver implements Driver {
   readonly subframesSeen = { count: 0 };
 
   private scriptId = "";
+  private screencast: Screencast | undefined;
   private pageEngine: AgentBrowserPage | undefined;
   private pageEngineSelected = false;
   private video: CdpVideo | undefined;
@@ -652,10 +654,13 @@ export class CdpLiveDriver implements Driver {
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
     const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
+    const veiled = Date.now() / 1000;
     try {
       await this.evaluateFunction(redactOverlay, label);
       return await this.screenshotPng();
     } finally {
+      // The video shows the page, not the veil. Every veiled paint came before the screenshot returned.
+      this.screencast?.skip(veiled - 0.05, Date.now() / 1000);
       await this.cdp.send("Runtime.evaluate", { expression: 'document.getElementById("bao-redact")?.remove()', returnByValue: true }, this.sessionId).catch(() => undefined);
     }
   }
@@ -670,7 +675,22 @@ export class CdpLiveDriver implements Driver {
     }, this.sessionId);
   }
 
+  /** Records this window into `dest` as a webm until end(). A window that cannot record still runs. */
+  async recordVideo(dest: string): Promise<void> {
+    if (this.screencast) return;
+    this.screencast = await startScreencast(this.cdp, this.sessionId, dest).catch(() => undefined);
+  }
+
+  /** Closes or leaves the window, then writes its video, if one was recording. */
   async end(): Promise<void> {
+    const video = this.screencast;
+    this.screencast = undefined;
+    await video?.stop();
+    await this.release();
+    await video?.write().catch(() => null);
+  }
+
+  private async release(): Promise<void> {
     await this.finishVideo().catch(() => undefined);
     await this.pageEngine?.close();
     this.pageEngine = undefined;

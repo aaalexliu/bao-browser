@@ -292,6 +292,8 @@ export interface LiveReplayDeps {
   axLog: string;
   connectTimeoutMs?: number;
   onNotice?: (message: string) => void;
+  /** Records the replay window here as <runId>.webm. */
+  videoDir?: string;
 }
 
 /**
@@ -333,6 +335,7 @@ export async function replayLiveWorkflow(
     driver = opened.driver;
     driver.setOrigins(scope.origins);
     driver.setStopPath(scope.stopPath);
+    if (deps.videoDir && !deps.artifactRoot) await driver.recordVideo(path.join(deps.videoDir, `${runId}.webm`));
     rememberLockTarget(REPLAY_AGENT, driver.targetId, lockFile);
     const leftover = takeDeadTarget(lockFile);
     if (leftover && leftover !== driver.targetId) {
