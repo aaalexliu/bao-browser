@@ -40,10 +40,16 @@ export interface Settings extends HealSettings {
    * This is not synced. Another machine has its own Chrome grant.
    */
   hostAccess?: "all" | "site" | "none";
+  /** Local run choice. Old remains the default. */
+  pageEngine?: "old" | "agent-browser";
+  /** Chrome profile directory explicitly picked on this Mac. Never synced. */
+  chromeProfile?: string;
 }
 
 export interface StoredRun {
   id: string;
+  pageEngine?: "old" | "agent-browser";
+  traceUnavailable?: string;
   workflowId: string;
   status: string;
   at: number;

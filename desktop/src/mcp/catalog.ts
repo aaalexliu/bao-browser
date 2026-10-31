@@ -641,6 +641,8 @@ function saveWorkflowRun(
   const wall = run.pausedKind === "wall";
   library.saveRun({
     id: run.runId,
+    pageEngine: run.pageEngine,
+    traceUnavailable: run.traceUnavailable,
     workflowId: workflow.id,
     status: wall ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
     at: Date.now(),
@@ -661,7 +663,7 @@ function saveWorkflowRun(
       deadline: outcome.deadline,
       resume_token: outcome.resume_token,
     } : undefined,
-    ...(clip ?? {}),
+    ...(clip ?? (run.video ? { video: run.video, videoStartedAt: run.videoStartedAt } : {})),
   });
 }
 

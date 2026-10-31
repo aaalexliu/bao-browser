@@ -60,6 +60,9 @@ import {
 } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { openReplayVideo } from "../v1/replay-video";
+import { pageEngineName } from "../engines/agent-browser";
+import { AgentBrowserReplayDriver } from "../engines/replay-driver";
+import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles, openCopiedChrome } from "../engines/chrome-profile-copy";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -189,6 +192,8 @@ export async function startApp(opts: {
   home: string;
   port?: number;
   chromeUserData?: string;
+  /** Tests pass a synthetic Local State and profile tree. The chooser never accepts a source path from HTTP. */
+  chromeProfilesRoot?: string;
   baoProfile?: string;
   loginKeys?: KeySources | (() => KeySources | Promise<KeySources>);
   /** Preview copy only. Cookie decryption follows loginKeys.platform. */
@@ -218,10 +223,26 @@ export async function startApp(opts: {
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
   let liveIdle: LiveIdleWarning | null = null;
   let automationNotice = "";
+  const profileSourceRoot = opts.chromeProfilesRoot ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? systemChromeProfilesRoot() : undefined);
+  let profileCopy: { bytes: number; copyMs: number; status: "open" | "deleted" } | undefined;
   const live = createLiveHost({
     home: library.root,
     target: parseLiveTarget(opts.liveTarget, baoProfile),
     lockFile: opts.liveLockFile,
+    selectRun: async () => {
+      const settings = library.settings();
+      const engineName = pageEngineName(settings.pageEngine ?? process.env.BAO_PAGE_ENGINE);
+      if (engineName === "old" || opts.liveTarget?.startsWith("throwaway:")) {
+        return { target: parseLiveTarget(opts.liveTarget, baoProfile), engineName };
+      }
+      if (!profileSourceRoot || !settings.chromeProfile) throw new Error("choose a Chrome profile in Settings before starting agent-browser");
+      const copied = await openCopiedChrome({ sourceRoot: profileSourceRoot, directory: settings.chromeProfile, home: library.root });
+      profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "open" };
+      return {
+        target: copied.target, engineName, artifactRoot: library.root,
+        close: async () => { await copied.close(); profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "deleted" }; },
+      };
+    },
     idleMs: opts.liveIdleMs,
     idleWarnMs: opts.liveIdleWarnMs,
     onNotice: (message) => { automationNotice = message; },
@@ -540,6 +561,7 @@ export async function startApp(opts: {
           home: opts.home,
           librarySplits,
           settings: library.settings(),
+          profileCopy,
           workflows: library.list().map(summary),
           trails: library.listTrails(),
           runs: library.listRuns().map(slimRun),
@@ -820,9 +842,26 @@ export async function startApp(opts: {
         if (timed.filled) library.saveTrail(id, timed.events);
         return json(res, timed.events);
       }
+      if (req.method === "GET" && url.pathname === "/api/chrome-profiles") {
+        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
+        const profiles = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
+        return json(res, { profiles });
+      }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string };
         const patch: Partial<Settings> = {};
+        if (body.pageEngine !== undefined) {
+          if (body.pageEngine !== "old" && body.pageEngine !== "agent-browser") return json(res, { error: "unknown page engine" }, 400);
+          patch.pageEngine = body.pageEngine;
+        }
+        if (body.chromeProfile !== undefined) {
+          const choices = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
+          if (body.chromeProfile && !choices.some((entry) => entry.directory === body.chromeProfile)) return json(res, { error: "choose an existing Chrome profile" }, 400);
+          patch.chromeProfile = body.chromeProfile;
+        }
+        if ((patch.pageEngine ?? library.settings().pageEngine) === "agent-browser" && !(patch.chromeProfile ?? library.settings().chromeProfile)) {
+          return json(res, { error: "choose a Chrome profile for agent-browser" }, 400);
+        }
         if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
           patch.promoteAfter = Math.round(body.promoteAfter);
@@ -2649,6 +2688,8 @@ function persistedRun(
   const wall = result.pausedKind === "wall";
   return JSON.parse(maskText(JSON.stringify({
     id: result.runId,
+    pageEngine: result.pageEngine,
+    traceUnavailable: result.traceUnavailable,
     workflowId: workflow.id,
     status: wall ? "needs_human" : result.status,
     at: Date.now(),
@@ -2677,7 +2718,7 @@ function persistedRun(
         deadline: result.ask?.deadline ? formatClock(result.ask.deadline) : "No timeout",
       },
     } : {}),
-    ...(extra.recorded.wrote ? { video: `${result.runId}.webm`, videoStartedAt: extra.videoStartedAt } : {}),
+    ...(extra.recorded.wrote ? { video: `${result.runId}.webm`, videoStartedAt: extra.videoStartedAt } : result.video ? { video: result.video, videoStartedAt: result.videoStartedAt } : {}),
   }), extra.secretList)) as Parameters<Library["saveRun"]>[0];
 }
 
@@ -2844,14 +2885,31 @@ async function runRecorded(
 ) {
   const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(link) });
   if (refusal) throw new Error(refusal);
-  if (link && workflowDriver(workflow) === "extension") return runExtension(library, workflow, args, notices, prompts, link, fromStep);
+  const engineName = pageEngineName(library.settings().pageEngine ?? process.env.BAO_PAGE_ENGINE);
+  if (engineName === "agent-browser" && library.settings().chromeProfile) {
+    throw new Error("profile-copy runs use a recorded live workflow; start one with Bao's live tools");
+  }
+  if (link && workflowDriver(workflow) === "extension") {
+    if (engineName !== "old") throw new Error("agent-browser trial does not run extension workflows");
+    return runExtension(library, workflow, args, notices, prompts, link, fromStep);
+  }
+  if (engineName === "agent-browser" && workflow.inputs.some((input) => input.type === "secret")) {
+    throw new Error("agent-browser trial does not run secret workflows");
+  }
   const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
-  const driver = new BrowserDriver(page, (notice) => {
+  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const shotDir = path.join(library.root, "shots", "runs", runId);
+  const onNotify = (notice: HealNotice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
-  }, prompts);
+  };
+  const driver = engineName === "agent-browser"
+    ? await AgentBrowserReplayDriver.open({ page, portFile: path.join(session.profile, "DevToolsActivePort"),
+      hosts: [new URL(workflow.startUrl).hostname], artifactDir: shotDir, prompts, onNotify })
+    : new BrowserDriver(page, onNotify, prompts);
+  try {
   driver.markStep("open");
-  if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
+  if (workflow.startUrl.startsWith("http")) await driver.goto(workflow.startUrl);
   const secretList = workflow.inputs.flatMap((input) => {
     if (input.type !== "secret") return [];
     const value = args[input.name];
@@ -2859,10 +2917,8 @@ async function runRecorded(
   });
   const heal = await healProvider(secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
-  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const clip = replayClips.get(session.profile);
   if (clip) clip.runId = runId;
-  const shotDir = path.join(library.root, "shots", "runs", runId);
   const videoStartedAt = Date.now();
   const video = await openReplayVideo(pidsForDataDir(session.profile), path.join(library.root, "videos", `${runId}.webm`));
   const settings = library.settings();
@@ -2904,6 +2960,7 @@ async function runRecorded(
     library.appendTrail(workflow.id, receipt);
   }
   const promotion = recordProvisional(library, workflow, result.heals);
+  result.pageEngine = engineName;
   const saved = persistedRun(result, workflow, args, { promotion, recorded, videoStartedAt, secretList });
   library.saveRun(saved);
   if (result.status !== "paused") clearPendingPrompt(library.root);
@@ -2911,7 +2968,10 @@ async function runRecorded(
   if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
   const bounds = await readOwnedWindow(page).catch(() => null);
   if (bounds) library.writeBounds(workflow.id, bounds);
-  return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds };
+  return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds, pageEngine: engineName };
+  } finally {
+    if (driver instanceof AgentBrowserReplayDriver) await driver.dispose();
+  }
 }
 
 async function openReplay(

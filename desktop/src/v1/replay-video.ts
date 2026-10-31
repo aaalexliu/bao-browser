@@ -112,7 +112,7 @@ async function waitStatus(dir: string): Promise<{ frames?: number } | undefined>
   return undefined;
 }
 
-function ffmpegBin(): string | undefined {
+export function ffmpegBin(): string | undefined {
   const fromEnv = process.env.FFMPEG;
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
   const found = spawnSync("/usr/bin/which", ["ffmpeg"], { encoding: "utf8" });

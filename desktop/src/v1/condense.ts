@@ -8,7 +8,7 @@
 // subtree stays. A JS dialog (Page.javascriptDialogOpening) stays.
 // A login or confirm gate stays. A Help click stays so the hybrid pass can drop it.
 
-import { interpret, type InterpretMeta, type TrailEvent } from "./interpret";
+import { explain, interpret, type InterpretMeta, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
 
 const DROP_OP = new Set([
@@ -18,6 +18,11 @@ const DROP_OP = new Set([
 
 export function condense(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
   return interpret(prepare(events), meta);
+}
+
+/** Condensed step groups use the same events as condense, including its noise drops. */
+export function condenseWithGroups(events: readonly TrailEvent[], meta: InterpretMeta) {
+  return explain(prepare(events), meta);
 }
 
 /** Click ids removed by the effect filter, after the other deterministic drops. */

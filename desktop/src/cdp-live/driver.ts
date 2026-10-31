@@ -1,3 +1,6 @@
+import { startCdpVideo, type CdpVideo } from "../engines/cdp-video";
+import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields } from "../v1/dom-page";
+import type { AgentBrowserPage } from "../engines/agent-browser";
 import { installDataPage } from "../v1/data-page";
 import type { ExtractSpec } from "../v1/data-steps";
 import { dumpPage, type DomDump, type PageDump } from "../v1/dom-page";
@@ -132,6 +135,30 @@ export class CdpLiveDriver implements Driver {
   readonly subframesSeen = { count: 0 };
 
   private scriptId = "";
+  private pageEngine: AgentBrowserPage | undefined;
+  private pageEngineSelected = false;
+  private video: CdpVideo | undefined;
+
+  async startVideo(destination: string): Promise<void> {
+    if (this.video) throw new Error("page video already started");
+    this.video = await startCdpVideo(this.cdp, this.sessionId, destination);
+  }
+
+  async finishVideo(): Promise<{ wrote: boolean; frames: number }> {
+    return this.video ? this.video.stop() : { wrote: false, frames: 0 };
+  }
+
+  pauseCapture(): void { this.video?.pause(); }
+  resumeCapture(): void { this.video?.resume(); }
+  async pageShot(): Promise<Buffer> { return this.captureRedacted("run evidence"); }
+  async shot(): Promise<Buffer> { return this.pageShot(); }
+
+  /** Fixed before the first page operation. The CDP connection retains only guards and ownership. */
+  usePageEngine(engine: AgentBrowserPage): void {
+    if (this.pageEngineSelected) throw new Error("page engine already selected");
+    this.pageEngineSelected = true;
+    this.pageEngine = engine;
+  }
 
   constructor(
     private readonly cdp: CdpSocket,
@@ -271,11 +298,12 @@ export class CdpLiveDriver implements Driver {
     }
     if (url && this.allows(url)) {
       if (this.preserveTarget) this.offHost = "";
-      void this.evaluate(TRUST_SOURCE).catch(() => undefined);
+      // The new-document script already installs trust capture. Do not start a second engine command from a CDP event.
+      if (!this.pageEngine) void this.evaluate(TRUST_SOURCE).catch(() => undefined);
       return;
     }
     if (!url || (url === "about:blank" && openerAllowed(url, this.hosts))) {
-      void this.evaluate(TRUST_SOURCE).catch(() => undefined);
+      if (!this.pageEngine) void this.evaluate(TRUST_SOURCE).catch(() => undefined);
       return;
     }
     this.offHost = this.refusal(url);
@@ -285,6 +313,7 @@ export class CdpLiveDriver implements Driver {
   }
 
   private assertHost(): void {
+    if (this.pageEngineSelected && !this.pageEngine) throw new Error("agent-browser run ended");
     if (this.offHost) throw new Error(`cdp-live allowlist refused ${this.offHost}`);
   }
 
@@ -300,6 +329,7 @@ export class CdpLiveDriver implements Driver {
 
   private async evaluateOnce<T>(expression: string): Promise<T> {
     this.assertHost();
+    if (this.pageEngine) return this.pageEngine.evaluate<T>(expression);
     const payload = await this.cdp.send<{
       result?: { value?: T };
       exceptionDetails?: { text?: string; exception?: { description?: string } };
@@ -320,7 +350,7 @@ export class CdpLiveDriver implements Driver {
       return await this.evaluateOnce<T>(expression);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!/context|destroyed|navigat/i.test(message)) throw err;
+      if (this.pageEngine || !/context|destroyed|navigat/i.test(message)) throw err;
       await sleep(250);
       return this.evaluateOnce<T>(expression);
     }
@@ -407,8 +437,11 @@ export class CdpLiveDriver implements Driver {
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.assertHost();
     const epoch = this.loadEpoch;
-    const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
-    if (nav.errorText) throw new Error(nav.errorText);
+    if (this.pageEngine) await this.pageEngine.goto(url);
+    else {
+      const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
+      if (nav.errorText) throw new Error(nav.errorText);
+    }
     await this.waitForLoad(epoch, timeoutMs);
     const href = await this.evaluate<string>("location.href");
     if (this.allows(href)) return;
@@ -443,7 +476,8 @@ export class CdpLiveDriver implements Driver {
     if (refusal) throw new Error(refusal);
     const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
     if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
-    await this.cdp.send("Input.insertText", { text }, this.sessionId);
+    if (this.pageEngine) await this.pageEngine.insertText(text);
+    else await this.cdp.send("Input.insertText", { text }, this.sessionId);
   }
 
   async click(node: Identity): Promise<void> {
@@ -483,11 +517,22 @@ export class CdpLiveDriver implements Driver {
 
   async fill(node: Identity, text: string, secret: boolean): Promise<void> {
     if (secret) throw new Error("cdp-live does not fill secrets");
-    await this.click(node);
-    await this.cdp.send("Input.insertText", { text }, this.sessionId);
+    if (this.pageEngine) {
+      const handle = this.handles.get(node);
+      if (!handle) throw new Error("element handle expired");
+      await this.pageEngine.fill(`[data-bao-i="${handle}"]`, text);
+    } else {
+      await this.click(node);
+      await this.cdp.send("Input.insertText", { text }, this.sessionId);
+    }
   }
 
   async key(key: string): Promise<void> {
+    this.assertHost();
+    if (this.pageEngine) {
+      await this.pageEngine.key(key.replace(/^cmd\+/i, "Meta+").replace(/^ctrl\+/i, "Control+"));
+      return;
+    }
     if (key === "cmd+a" || key === "Meta+a") {
       await this.chord("a", "KeyA", 4, 65);
       return;
@@ -536,8 +581,19 @@ export class CdpLiveDriver implements Driver {
     throw new Error("cdp-live does not type app digits");
   }
 
-  async check(node: Identity, _checked: boolean): Promise<void> {
-    await this.click(node);
+  async check(node: Identity, checked: boolean): Promise<void> {
+    if (this.pageEngine) {
+      const handle = this.handles.get(node);
+      if (!handle) throw new Error("element handle expired");
+      await this.pageEngine.check(`[data-bao-i="${handle}"]`, checked);
+    } else await this.click(node);
+  }
+
+  async select(node: Identity, value: string): Promise<void> {
+    if (!this.pageEngine) throw new Error("cdp-live does not select options");
+    const handle = this.handles.get(node);
+    if (!handle) throw new Error("element handle expired");
+    await this.pageEngine.select(`[data-bao-i="${handle}"]`, value);
   }
 
   async notify(): Promise<void> {}
@@ -599,6 +655,7 @@ export class CdpLiveDriver implements Driver {
 
   async screenshotPng(): Promise<Buffer> {
     this.assertHost();
+    if (this.pageEngine) return this.pageEngine.screenshot();
     const shot = await this.cdp.send<{ data?: string }>("Page.captureScreenshot", {
       format: "png",
       fromSurface: true,
@@ -610,6 +667,15 @@ export class CdpLiveDriver implements Driver {
   /** Page screenshot after a local blur veil. The PNG stays in this process until the caller writes it. */
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
+    if (this.pageEngine) {
+      await this.evaluateFunction(maskPasswordFields, null);
+      await this.evaluateFunction(blurSensitiveFields, null);
+      try { return await this.screenshotPng(); }
+      finally {
+        await this.evaluateFunction(unmaskPasswordFields, null).catch(() => undefined);
+        await this.evaluateFunction(unblurSensitiveFields, null).catch(() => undefined);
+      }
+    }
     const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
     await this.evaluateFunction(redactOverlay, label);
     try {
@@ -630,6 +696,9 @@ export class CdpLiveDriver implements Driver {
   }
 
   async end(): Promise<void> {
+    await this.finishVideo().catch(() => undefined);
+    await this.pageEngine?.close();
+    this.pageEngine = undefined;
     if (this.preserveTarget) {
       this.offHost = "";
       if (this.scriptId) {
@@ -676,6 +745,11 @@ export class CdpLiveDriver implements Driver {
     })()`);
     if (!point || point.w < 1 || point.h < 1) throw new Error("element has no box");
     if (point.covered) throw new Error("element is covered");
+    if (this.pageEngine) {
+      await this.pageEngine.click(selector);
+      await this.noteTrust();
+      return;
+    }
     const x = point.x;
     const y = point.y;
     await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, this.sessionId);

@@ -1,5 +1,7 @@
 // Which Chrome a live session drives, and how bao connects to it.
 
+import { AgentBrowserPage, pageEngineName, type PageEngineName } from "../engines/agent-browser";
+import { randomUUID } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readdir, readlink } from "node:fs/promises";
@@ -212,7 +214,10 @@ export interface TurnOnDeps {
  * grant. With `turnOn`, a daily Chrome whose remote debugging is off gets it turned on by Bao,
  * as a person would at chrome://inspect/#remote-debugging.
  */
-export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx = () => chromeHelper(), turnOn?: TurnOnDeps): Promise<PreparedTarget> {
+export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx = () => chromeHelper(), turnOn?: TurnOnDeps, engineName: PageEngineName = pageEngineName()): Promise<PreparedTarget> {
+  if (engineName === "agent-browser" && target.kind === "daily") {
+    throw new Error("agent-browser trial does not attach to daily Chrome");
+  }
   if (!asksToAllow(target)) {
     try {
       return { target, endpoint: await readDevToolsActivePort(target.portFile), chromePid: 0, helper: null, turnedOn: false };
@@ -254,9 +259,11 @@ export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx =
 export async function connectTarget(
   prepared: PreparedTarget,
   hosts: readonly string[],
-  deps: { openProfile: OpenProfileWindow; axLog: string; connectTimeoutMs?: number },
+  deps: { openProfile: OpenProfileWindow; axLog: string; connectTimeoutMs?: number; engineName?: PageEngineName },
 ): Promise<{ cdp: CdpSocket; driver: CdpLiveDriver }> {
   const { target, endpoint } = prepared;
+  const engineName = deps.engineName ?? pageEngineName();
+  if (engineName === "agent-browser" && target.kind === "daily") throw new Error("agent-browser trial does not attach to daily Chrome");
   let cdp: CdpSocket | undefined;
   try {
     if (target.kind === "daily") {
@@ -291,7 +298,21 @@ export async function connectTarget(
         }
         throw err;
       });
-    return { cdp, driver: await openLiveWindow(cdp, hosts) };
+    const driver = await openLiveWindow(cdp, hosts);
+    try {
+      if (engineName === "agent-browser") {
+        const engine = await AgentBrowserPage.open({
+          endpoint: `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
+          targetId: driver.targetId, ownership: "external",
+          artifactDir: path.join(path.dirname(deps.axLog), "engine-artifacts", randomUUID()),
+        });
+        driver.usePageEngine(engine);
+      }
+      return { cdp, driver };
+    } catch (error) {
+      await driver.end().catch(() => undefined);
+      throw error;
+    }
   } catch (err) {
     cdp?.close();
     throw err;

@@ -79,7 +79,8 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none" };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string };
+  profileCopy?: { bytes: number; copyMs: number; status: "open" | "deleted" };
   relay?: { paired?: boolean; deviceId?: string };
   sync?: {
     server?: string;
@@ -142,8 +143,15 @@ const railEl = () => document.getElementById("rail")!;
 const actEl = () => document.getElementById("act")!;
 const mainEl = () => document.getElementById("main")!;
 
+let chromeProfiles: { directory: string; name: string; email: string }[] = [];
+
 async function loadHostAccess(): Promise<void> {
-  await fetch("/api/extension/host-access").catch(() => undefined);
+  await Promise.all([
+    fetch("/api/extension/host-access").catch(() => undefined),
+    fetch("/api/chrome-profiles").then(async (response) => {
+      if (response.ok) chromeProfiles = (await response.json()).profiles || [];
+    }).catch(() => undefined),
+  ]);
   renderKey = "";
   await refresh();
 }
@@ -186,6 +194,7 @@ async function refreshState(): Promise<void> {
     notices: state.notices,
     workflows: state.workflows,
     settings: state.settings,
+    profileCopy: state.profileCopy,
     runs: (state.runs || []).map((run) => ({ id: run.id, status: run.status, decisions: run.decisions, heals: (run.heals || []).map((heal) => heal.id) })),
     reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
     helper: state.helper,
@@ -223,7 +232,7 @@ async function refreshState(): Promise<void> {
 function render(): void {
   applyTheme();
   if (screen === "logins") readLoginForm();
-  const missing = macPermissionMissing(state.helper);
+  const missing = state.settings?.pageEngine !== "agent-browser" && macPermissionMissing(state.helper);
   const showCard = missing && !onboarded && screen === "library";
   railEl().innerHTML = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard });
   const importAsk = screen === "logins" ? loginAct(login) : "";
@@ -368,6 +377,21 @@ function settings(): string {
   const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
   return `<section><h2>Settings</h2>
     ${libraryHome}
+    <div class="card" id="page-engine-settings">
+      <h3>Page engine</h3>
+      <label>Run engine <select id="page-engine">
+        <option value="old" ${state.settings?.pageEngine !== "agent-browser" ? "selected" : ""}>Current engine (default)</option>
+        <option value="agent-browser" ${state.settings?.pageEngine === "agent-browser" ? "selected" : ""}>agent-browser (trial)</option>
+      </select></label>
+      <label>Chrome profile for agent-browser <select id="chrome-profile" ${state.settings?.pageEngine !== "agent-browser" ? "disabled" : ""}>
+        <option value="">Choose a Chrome profile</option>
+        ${chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${state.settings?.chromeProfile === profile.directory ? "selected" : ""}>${esc(profile.name)}${profile.email ? ` - ${esc(profile.email)}` : ""} (${esc(profile.directory)})</option>`).join("")}
+      </select></label>
+      <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the run ends. No remote-debugging switch, Accessibility, or Automation is needed.</p>
+      ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
+      <button id="save-engine" type="button">Save engine choice</button>
+      <p id="engine-feedback" role="status"></p>
+    </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
     <label>When a step misses <select id="heal">
       <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
@@ -396,7 +420,7 @@ function settings(): string {
     <div class="card">
       <h3>Mac</h3>
       <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
-      ${helperJobList(state.helper)}
+      ${state.settings?.pageEngine === "agent-browser" ? `<p class="quiet">The selected profile-copy engine does not need the helper or OS permission grants.</p>` : helperJobList(state.helper)}
     </div>
   </section>`;
 }
@@ -651,6 +675,28 @@ function bind(): void {
     await fetch("/api/extension/host-access/revoke", { method: "POST" });
     renderKey = "";
     await refresh();
+  };
+  const engineChoice = document.getElementById("page-engine") as HTMLSelectElement | null;
+  if (engineChoice) engineChoice.onchange = () => {
+    const profile = document.getElementById("chrome-profile") as HTMLSelectElement | null;
+    if (profile) profile.disabled = engineChoice.value !== "agent-browser";
+  };
+  const saveEngine = document.getElementById("save-engine");
+  if (saveEngine) saveEngine.onclick = async () => {
+    const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({
+      pageEngine: engineChoice?.value || "old",
+      chromeProfile: (document.getElementById("chrome-profile") as HTMLSelectElement | null)?.value || "",
+    }) });
+    if (!response.ok) {
+      const body = await response.json();
+      const feedback = document.getElementById("engine-feedback");
+      if (feedback) feedback.textContent = body.error || "Could not save engine choice.";
+      return;
+    }
+    renderKey = "";
+    await refresh();
+    const feedback = document.getElementById("engine-feedback");
+    if (feedback) feedback.textContent = "Engine choice saved. It applies to the next run.";
   };
   const save = document.getElementById("save-settings");
   if (save) save.onclick = async () => {
