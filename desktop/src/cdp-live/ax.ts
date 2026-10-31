@@ -53,10 +53,6 @@ export async function logAx(file: string, event: AxClick): Promise<void> {
   await appendFile(file, `${JSON.stringify(event)}\n`);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function target(role: string, name: string): OsTarget {
   return { platform: "macos", app: CHROME_BUNDLE, role, name, path: [] };
 }
@@ -75,24 +71,62 @@ async function note(file: string, event: Omit<AxClick, "at" | "via">): Promise<v
   await logAx(file, { ...event, at: new Date().toISOString(), via: "BaoOSHelper" });
 }
 
-export async function openInspect(helper: MacOsHelper, logFile: string): Promise<void> {
-  await helper.cgKey(CHROME_BUNDLE, "cmd+t");
-  await note(logFile, { what: "cg-key", name: "cmd+t", window: "New Tab" });
-  await sleep(700);
-  await helper.raiseWindow(CHROME_BUNDLE, "New Tab - Google Chrome");
-  await note(logFile, { what: "raise-window", name: "New Tab - Google Chrome", window: "New Tab" });
-  await helper.cgKey(CHROME_BUNDLE, "cmd+l");
-  await note(logFile, { what: "cg-key", name: "cmd+l", window: "New Tab" });
-  await sleep(250);
-  await helper.cgType(CHROME_BUNDLE, "chrome://inspect/");
-  await note(logFile, { what: "cg-type", name: "chrome://inspect/", window: "New Tab" });
-  await helper.cgKey(CHROME_BUNDLE, "shift+3");
-  await note(logFile, { what: "cg-key", name: "shift+3", window: "New Tab" });
-  await helper.cgType(CHROME_BUNDLE, "remote-debugging");
-  await note(logFile, { what: "cg-type", name: "remote-debugging", window: "New Tab" });
-  await helper.cgKey(CHROME_BUNDLE, "return");
-  await note(logFile, { what: "cg-key", name: "return", window: "New Tab" });
-  await sleep(900);
+export const INSPECT_URL = "chrome://inspect/#remote-debugging";
+
+const openedTabs = new Map<number, { tabId: string; windowId?: string; frame?: number[]; restored?: number; frontPid?: number }>();
+
+async function frontPid(helper: MacOsHelper): Promise<number | undefined> {
+  const hit = await helper.exec(["frontmost"], 10_000).catch(() => undefined);
+  return typeof hit?.pid === "number" ? hit.pid : undefined;
+}
+
+async function putFrontBack(helper: MacOsHelper, front: number | undefined, chrome: number): Promise<void> {
+  const now = await frontPid(helper);
+  if (front && now === chrome && front !== chrome) {
+    await helper.exec(["activate", "--pid", String(front)], 10_000);
+  }
+}
+
+/**
+ * Opens chrome://inspect/#remote-debugging in a new tab of this Chrome pid.
+ * An Apple Event inside BaoOSHelper, addressed by pid, not by bundle id.
+ * Remembers the new tab id so closeInspectTab closes only that tab.
+ */
+export async function openInspect(helper: MacOsHelper, logFile: string, pid?: number): Promise<{ windowId?: string; frame?: number[] }> {
+  if (pid == null) throw new Error("Bao needs the Chrome process id to open remote debugging");
+  const front = await frontPid(helper);
+  const hit = await helper.exec(["ae-open", "--pid", String(pid)], 20_000);
+  const tabId = hit.tabId;
+  if (!tabId) throw new Error("Bao opened the inspect page but Chrome did not return a tab id");
+  const raw = hit as unknown as { windowId?: unknown; frame?: number[] };
+  const windowId = typeof raw.windowId === "string" ? raw.windowId : undefined;
+  const frame = Array.isArray(raw.frame) && raw.frame.length === 4 ? raw.frame : undefined;
+  await putFrontBack(helper, front, pid);
+  openedTabs.set(pid, { tabId, windowId, frame, restored: hit.restored, frontPid: front });
+  await note(logFile, { what: "ae-open", name: INSPECT_URL, window: "Inspect with Chrome Developer Tools" });
+  return { windowId, frame };
+}
+
+/** Chrome 155's inspect checkbox lists no AXPress. Click the box we already found by name. */
+export async function clickRemoteCheckbox(helper: MacOsHelper, pid: number): Promise<void> {
+  const hit = await helper.nodes(CHROME_BUNDLE, pid);
+  const box = (hit.nodes || []).find((node) => node.role === "AXCheckBox" && node.name === REMOTE_CHECKBOX);
+  if (!box?.frame) throw new Error("BaoOSHelper cannot see the remote-debugging checkbox to click");
+  const x = box.frame.x + box.frame.w / 2;
+  const y = box.frame.y + box.frame.h / 2;
+  await helper.exec(["click", "--pid", String(pid), "--x", String(x), "--y", String(y)]);
+}
+
+/** Closes only the inspect tab this run opened, by tab id. Does not raise Chrome. */
+export async function closeInspectTab(helper: MacOsHelper, logFile: string, pid: number): Promise<void> {
+  const opened = openedTabs.get(pid);
+  if (!opened) throw new Error("Bao has no inspect tab id to close for that Chrome");
+  const args = ["ae-close", "--pid", String(pid), "--id", opened.tabId];
+  if (opened.restored != null) args.push("--restore", String(opened.restored));
+  await helper.exec(args, 20_000);
+  await putFrontBack(helper, opened.frontPid, pid);
+  openedTabs.delete(pid);
+  await note(logFile, { what: "ae-close", name: opened.tabId, window: "Inspect with Chrome Developer Tools" });
 }
 
 /** Read the checkbox. Does not type and does not press. */
@@ -109,8 +143,8 @@ export async function ensureRemoteDebugging(helper: MacOsHelper, logFile: string
     throw new AxUnavailable("BaoOSHelper cannot see a Chrome window", tree.summary);
   }
   if (reach === "open-inspect") {
-    await openInspect(helper, logFile);
-    tree = await chromeTree(helper);
+    await openInspect(helper, logFile, tree.pid);
+    tree = await chromeTree(helper, tree.pid);
   }
   if (!tree.summary.checkbox.found) {
     throw new AxUnavailable("BaoOSHelper cannot see the remote-debugging checkbox", tree.summary);
@@ -125,7 +159,7 @@ export async function ensureRemoteDebugging(helper: MacOsHelper, logFile: string
     name: REMOTE_CHECKBOX,
     window: windowOf(hit.element),
   });
-  tree = await chromeTree(helper);
+  tree = await chromeTree(helper, tree.pid);
   if (!tree.summary.checkbox.found || !checkboxOn(tree.summary.checkbox.value)) {
     throw new AxUnavailable("remote-debugging checkbox stayed off", tree.summary);
   }

@@ -63,6 +63,10 @@ export interface AxHit {
   width?: number;
   height?: number;
   pid?: number;
+  tabId?: string;
+  restored?: number;
+  found?: boolean;
+  locked?: boolean;
   windows?: { id: number; layer: number; x: number; y: number; w: number; h: number }[];
 }
 
@@ -125,8 +129,10 @@ async function runApp(app: string, args: string[], timeoutMs = 45000): Promise<A
     while (Date.now() - started < timeoutMs) {
       out = await readFile(result, "utf8").catch(() => "");
       if (!out.trim()) out = await readFile(stdout, "utf8").catch(() => "");
-      if (out.trim()) break;
-      if (typeof closed === "number" && closed !== 0) break;
+      if (out.trim()) {
+        try { JSON.parse(out); break; } catch { /* the helper is still writing the result */ }
+      }
+      if (typeof closed === "number" && closed !== 0 && out.trim()) break;
       await sleep(80);
     }
     const err = await readFile(stderr, "utf8").catch(() => "");
@@ -185,10 +191,21 @@ export class MacOsHelper {
     return this.exec(["focus", "--allow-bundle", bundle]);
   }
 
-  press(target: OsTarget, pid?: number): Promise<AxHit> {
+  press(target: OsTarget, pid?: number, valuePrefix?: string): Promise<AxHit> {
     const args = ["press", ...identity(target)];
     if (pid) args.push("--pid", String(pid));
+    if (valuePrefix) args.push("--value-prefix", valuePrefix);
     return this.exec(args, 90_000);
+  }
+
+  showMenu(target: OsTarget, pid?: number): Promise<AxHit> {
+    const args = ["show-menu", ...identity(target)];
+    if (pid) args.push("--pid", String(pid));
+    return this.exec(args, 90_000);
+  }
+
+  screenLocked(): Promise<boolean> {
+    return this.exec(["screen-locked"]).then((hit) => hit.locked === true);
   }
 
   key(bundle: string, combo: string): Promise<AxHit> {
@@ -203,16 +220,23 @@ export class MacOsHelper {
     return this.exec(["read", ...identity(target)], 90_000);
   }
 
-  cgKey(bundle: string, combo: string): Promise<AxHit> {
-    return this.exec(["cg-key", "--bundle", bundle, "--combo", combo]);
+  cgKey(bundle: string, combo: string, pid?: number, tap?: "hid" | "session" | "pid"): Promise<AxHit> {
+    const args = ["cg-key", "--bundle", bundle, "--combo", combo];
+    if (pid) args.push("--pid", String(pid));
+    if (tap && tap !== "hid") args.push("--tap", tap);
+    return this.exec(args);
   }
 
-  cgType(bundle: string, text: string): Promise<AxHit> {
-    return this.exec(["cg-type", "--bundle", bundle, "--text", text]);
+  cgType(bundle: string, text: string, pid?: number): Promise<AxHit> {
+    const args = ["cg-type", "--bundle", bundle, "--text", text];
+    if (pid) args.push("--pid", String(pid));
+    return this.exec(args);
   }
 
-  raiseWindow(bundle: string, title: string): Promise<AxHit> {
-    return this.exec(["raise-window", "--bundle", bundle, "--title", title]);
+  raiseWindow(bundle: string, title: string, pid?: number): Promise<AxHit> {
+    const args = ["raise-window", "--bundle", bundle, "--title", title];
+    if (pid) args.push("--pid", String(pid));
+    return this.exec(args);
   }
 
   focusRole(bundle: string, role: string, name = ""): Promise<AxHit> {

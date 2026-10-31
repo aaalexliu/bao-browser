@@ -6,11 +6,12 @@
 // hosts, labels, and stop paths come from the preset of the workflow's start url.
 
 import { navigationGuard, originsFor } from "./allowlist";
-import type { ChromeAx } from "./ax";
+import { chromeHelper, clickRemoteCheckbox, closeInspectTab, type ChromeAx } from "./ax";
 import type { CdpLiveDriver } from "./driver";
 import { clickLive, pressLiveKey, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
 import { buildView, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
+import { setRemoteDebugging } from "./remote-debugging";
 import { acquireCdpLock, CDP_LOCK_PATH, releaseCdpLock, rememberLockTarget, takeDeadTarget } from "./lock";
 import { guardPreset, presetForUrl, type PresetName } from "./presets";
 import { unavailableHeal, type FailureSnapshot } from "../v1/heal";
@@ -275,6 +276,11 @@ export interface LiveReplayDeps {
   /** Where the Allow press logs what the helper saw. */
   axLog: string;
   connectTimeoutMs?: number;
+  /** Opens chrome://inspect/#remote-debugging in the daily Chrome when its remote debugging is off. */
+  openInspect?: (pid: number) => Promise<void | { windowId?: string }>;
+  screenLocked?: () => Promise<boolean>;
+  closeOpenedTab?: (pid: number) => Promise<void>;
+  clickCheckbox?: (pid: number) => Promise<void>;
 }
 
 /**
@@ -294,8 +300,30 @@ export async function replayLiveWorkflow(
   const blocked = navigationGuard(workflow.startUrl, scope.hosts, scope.origins, scope.stopPath);
   if (blocked) throw new Error(blocked);
   const lockFile = deps.lockFile || CDP_LOCK_PATH;
-  const prepared = await prepareTarget(deps.target, deps.helper);
-  await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
+  const prepared = await prepareTarget(deps.target, deps.helper, deps.openInspect ? {
+    openInspect: deps.openInspect,
+    axLog: deps.axLog,
+    screenLocked: deps.screenLocked,
+    closeOpenedTab: deps.closeOpenedTab,
+    clickCheckbox: deps.clickCheckbox,
+  } : undefined);
+  try {
+    await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
+  } catch (err) {
+    if (prepared.turnedOn && deps.openInspect) {
+      const ax = deps.helper ? deps.helper() : chromeHelper();
+      await setRemoteDebugging(false, {
+        helper: ax,
+        portFile: prepared.target.portFile,
+        axLog: deps.axLog,
+        openInspect: deps.openInspect,
+        screenLocked: deps.screenLocked,
+        closeOpenedTab: deps.closeOpenedTab,
+        clickCheckbox: deps.clickCheckbox,
+      }).catch(() => undefined);
+    }
+    throw err;
+  }
   let cdp: Awaited<ReturnType<typeof connectTarget>>["cdp"] | undefined;
   let driver: CdpLiveDriver | undefined;
   try {
@@ -322,6 +350,18 @@ export async function replayLiveWorkflow(
   } finally {
     await driver?.end().catch(() => undefined);
     cdp?.close();
+    if (prepared.turnedOn && deps.openInspect) {
+      const ax = deps.helper ? deps.helper() : chromeHelper();
+      await setRemoteDebugging(false, {
+        helper: ax,
+        portFile: prepared.target.portFile,
+        axLog: deps.axLog,
+        openInspect: deps.openInspect,
+        screenLocked: deps.screenLocked,
+        closeOpenedTab: deps.closeOpenedTab || ((pid) => closeInspectTab(chromeHelper(), deps.axLog, pid)),
+        clickCheckbox: deps.clickCheckbox || ((pid) => clickRemoteCheckbox(chromeHelper(), pid)),
+      }).catch(() => undefined);
+    }
     releaseCdpLock(REPLAY_AGENT, lockFile);
   }
 }

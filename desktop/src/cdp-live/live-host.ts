@@ -1,7 +1,7 @@
 import path from "node:path";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
-import type { ChromeAx } from "./ax";
+import { chromeHelper, clickRemoteCheckbox, closeInspectTab, openInspect, type ChromeAx } from "./ax";
 import { type CdpLiveDriver } from "./driver";
 import {
   clickLive,
@@ -23,6 +23,7 @@ import {
   type OpenProfileWindow,
 } from "./live-target";
 import { acquireCdpLock, CDP_LOCK_PATH, rememberLockTarget, releaseCdpLock, takeDeadTarget } from "./lock";
+import { setRemoteDebugging } from "./remote-debugging";
 import {
   admit,
   buildView,
@@ -87,6 +88,9 @@ interface OpenState {
   trail: LiveTrail;
   startedAt: number;
   steps: { name: string; status: string; ms: number }[];
+  /** Debugging was off before this session, so stop turns it off again. */
+  turnedOn: boolean;
+  portFile: string;
 }
 
 /** The marked control and the page around it, read after every check and before the act. */
@@ -126,6 +130,8 @@ export interface LiveHostOptions {
   idleWarnMs?: number;
   /** Gets the warning when it comes, and null when a call, Keep open, or the end clears it. */
   onIdleWarn?: (warning: LiveIdleWarning | null) => void;
+  /** Opens chrome://inspect/#remote-debugging in the daily Chrome when its remote debugging is off. Tests pass a fake. */
+  openInspect?: (pid: number) => Promise<void | { windowId?: string }>;
 }
 
 type EndReason = "stop" | "disconnect" | "idle";
@@ -142,6 +148,23 @@ export function createLiveHost(opts: LiveHostOptions): {
   const lockFile = opts.lockFile || CDP_LOCK_PATH;
   const defaultTarget = opts.target || parseLiveTarget("daily", "");
   const openProfile = opts.openProfile || openChromeProfileWindow;
+  const axLog = path.join(opts.home, "live-session", "ax.jsonl");
+  const openInspectPage = opts.openInspect || ((pid: number) => openInspect(chromeHelper(), axLog, pid));
+  const screenLocked = () => chromeHelper().screenLocked();
+  const closeOpenedTab = (pid: number) => closeInspectTab(chromeHelper(), axLog, pid);
+  const clickCheckbox = (pid: number) => clickRemoteCheckbox(chromeHelper(), pid);
+  async function restoreOff(portFile: string): Promise<void> {
+    const ax = opts.helper ? opts.helper() : chromeHelper();
+    await setRemoteDebugging(false, {
+      helper: ax,
+      portFile,
+      axLog,
+      openInspect: openInspectPage,
+      screenLocked,
+      closeOpenedTab,
+      clickCheckbox,
+    });
+  }
   const idleMs = opts.idleMs ?? LIVE_IDLE_MS;
   const warnMs = Math.min(opts.idleWarnMs ?? LIVE_IDLE_WARN_MS, idleMs);
   let slot: SlotState = { phase: "idle" };
@@ -293,8 +316,13 @@ export function createLiveHost(opts: LiveHostOptions): {
     const blocked = navigationGuard(url, hosts, origins, stopPath);
     if (blocked) throw new Error(blocked);
     if (lockFile !== CDP_LOCK_PATH && target !== defaultTarget) throw new Error("this app has its own live lock, so it drives only its configured Chrome");
-    const prepared = await prepareTarget(target, opts.helper);
-    await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
+    const prepared = await prepareTarget(target, opts.helper, { openInspect: openInspectPage, axLog, screenLocked, closeOpenedTab, clickCheckbox });
+    try {
+      await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
+    } catch (err) {
+      if (prepared.turnedOn) await restoreOff(prepared.target.portFile).catch(() => undefined);
+      throw err;
+    }
     let cdp: CdpSocket | undefined;
     let driver: CdpLiveDriver | undefined;
     try {
@@ -331,6 +359,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         trail,
         startedAt: Date.now(),
         steps: [],
+        turnedOn: prepared.turnedOn,
+        portFile: prepared.target.portFile,
       };
       slot = { phase: "open", id: open.id };
       rememberLockTarget(AGENT, driver.targetId, lockFile);
@@ -353,6 +383,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       }
       await driver?.end().catch(() => undefined);
       cdp?.close();
+      if (prepared.turnedOn) await restoreOff(prepared.target.portFile).catch(() => undefined);
       releaseCdpLock(AGENT, lockFile);
       open = null;
       slot = { phase: "idle" };
@@ -607,6 +638,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     // A replay opens its own connection, so the session closes its window and socket before it frees the lock.
     await ending.driver.end().catch(() => undefined);
     ending.cdp.close();
+    if (ending.turnedOn) await restoreOff(ending.portFile).catch(() => undefined);
     releaseCdpLock(AGENT, lockFile);
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });
@@ -622,8 +654,12 @@ export function createLiveHost(opts: LiveHostOptions): {
       lockFile,
       helper: opts.helper,
       openProfile,
-      axLog: path.join(opts.home, "live-session", "ax.jsonl"),
+      axLog,
       connectTimeoutMs: opts.connectTimeoutMs,
+      openInspect: openInspectPage,
+      screenLocked,
+      closeOpenedTab,
+      clickCheckbox,
     });
   }
 

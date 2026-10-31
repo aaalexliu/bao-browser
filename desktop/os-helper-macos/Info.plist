@@ -22,6 +22,8 @@
   <string>14.0</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Bao opens Chrome's remote-debugging page so your agent can use your Chrome.</string>
   <key>NSAccessibilityUsageDescription</key>
   <string>BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.</string>
   <key>NSScreenCaptureUsageDescription</key>

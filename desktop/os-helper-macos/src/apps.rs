@@ -42,6 +42,27 @@ pub fn activate_pid(pid: i32) -> Result<(), String> {
     }
 }
 
+pub fn frontmost_pid() -> Result<i32, String> {
+    unsafe {
+        let Some(cls) = AnyClass::get(c"NSWorkspace") else {
+            return Err("NSWorkspace is missing".into());
+        };
+        let workspace: Option<Retained<AnyObject>> = msg_send![cls, sharedWorkspace];
+        let Some(workspace) = workspace else {
+            return Err("NSWorkspace is missing".into());
+        };
+        let app: Option<Retained<AnyObject>> = msg_send![&*workspace, frontmostApplication];
+        let Some(app) = app else {
+            return Err("no frontmost application".into());
+        };
+        let pid: i32 = msg_send![&*app, processIdentifier];
+        if pid <= 0 {
+            return Err("frontmost application has no pid".into());
+        }
+        Ok(pid)
+    }
+}
+
 pub fn pids_for_bundle(bundle: &str) -> Vec<i32> {
     unsafe {
         let Some(cls) = AnyClass::get(c"NSRunningApplication") else {

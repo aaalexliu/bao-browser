@@ -29,6 +29,33 @@ pub fn screen_trusted() -> bool {
     unsafe { CGPreflightScreenCaptureAccess() }
 }
 
+/// True when the login session reports the screen is locked. A missing key means unlocked.
+pub fn screen_locked() -> Result<bool, String> {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGSessionCopyCurrentDictionary() -> *const c_void;
+    }
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFDictionaryGetValue(dict: *const c_void, key: *const c_void) -> *const c_void;
+        fn CFRelease(cf: *const c_void);
+        fn CFGetTypeID(cf: *const c_void) -> usize;
+        fn CFBooleanGetTypeID() -> usize;
+        fn CFBooleanGetValue(value: *const c_void) -> bool;
+    }
+    unsafe {
+        let raw = CGSessionCopyCurrentDictionary();
+        if raw.is_null() {
+            return Err("cannot read the login session".into());
+        }
+        let key = CFString::new("CGSSessionScreenIsLocked");
+        let value = CFDictionaryGetValue(raw, key.as_concrete_TypeRef() as *const c_void);
+        let locked = !value.is_null() && CFGetTypeID(value) == CFBooleanGetTypeID() && CFBooleanGetValue(value);
+        CFRelease(raw);
+        Ok(locked)
+    }
+}
+
 /// Shows the system prompt at most once per call. A denial is not retried.
 pub fn screen_prompt_once() -> bool {
     unsafe { CGRequestScreenCaptureAccess() }

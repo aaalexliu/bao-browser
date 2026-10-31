@@ -152,12 +152,12 @@ async function main(): Promise<void> {
       if (report.needsHuman) break;
     }
     progress("reading the automation banner");
-    const during = (await chromeTree(helper)).summary.banner;
+    const during = (await chromeTree(helper, enabled.pid)).summary.banner;
     await sleep(300);
     cdp.close();
     await sleep(500);
     progress("reading the banner after the socket closed");
-    const after = (await chromeTree(helper)).summary.banner;
+    const after = (await chromeTree(helper, enabled.pid)).summary.banner;
     const body = {
       permissions: { ...permissions, osWindowShot: usesScreenRecording(helper.calls) },
       checkbox: { value: enabled.summary.checkbox.value, pressed: enabled.pressed },
