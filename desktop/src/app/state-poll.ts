@@ -8,7 +8,7 @@ export function activePolling(state: PollState): boolean {
     state.recording || state.replaying || state.activeAsk ||
     state.teach?.phase === "live" || state.guide?.status === "highlight" ||
     state.liveSession?.status === "running" || state.remote?.phase === "running" || state.remote?.phase === "confirm" ||
-    state.pendingImport?.phase === "running" || state.runs?.some((run) => run.status === "running"),
+    state.pendingImport?.phase === "running",
   );
 }
 
@@ -16,12 +16,12 @@ export function createStatePoller(options: {
   poll(): Promise<void>;
   active(): boolean;
   visible(): boolean;
-}): { refresh(): Promise<void>; visibilityChanged(): void; stop(): void } {
+}): { refresh(): Promise<void>; visibilityChanged(): void; track<T>(request: Promise<T>): Promise<T> } {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: Promise<void> | undefined;
   let queued: Promise<void> | undefined;
   let retryMs = 0;
-  let stopped = false;
+  let activeRequests = 0;
 
   function clearTimer(): void {
     if (timer !== undefined) clearTimeout(timer);
@@ -29,15 +29,15 @@ export function createStatePoller(options: {
   }
 
   function schedule(): void {
-    if (stopped || queued || !options.visible()) return;
+    if (queued) return;
+    const delay = retryMs || (activeRequests || options.active() ? 100 : 1000);
     timer = setTimeout(() => {
       timer = undefined;
       void refresh().catch(() => undefined);
-    }, retryMs || (options.active() ? 100 : 1000));
+    }, options.visible() ? delay : Math.max(delay, 5000));
   }
 
   function refresh(): Promise<void> {
-    if (stopped) return Promise.resolve();
     if (pending) {
       queued ??= pending.catch(() => undefined).then(() => {
         queued = undefined;
@@ -64,10 +64,17 @@ export function createStatePoller(options: {
     visibilityChanged(): void {
       clearTimer();
       if (options.visible()) void refresh().catch(() => undefined);
+      else if (!pending) schedule();
     },
-    stop(): void {
-      stopped = true;
-      clearTimer();
+    async track<T>(request: Promise<T>): Promise<T> {
+      activeRequests += 1;
+      void refresh().catch(() => undefined);
+      try {
+        return await request;
+      } finally {
+        activeRequests -= 1;
+        void refresh().catch(() => undefined);
+      }
     },
   };
 }

@@ -1118,14 +1118,11 @@ export async function startApp(opts: {
         if (refusesOwnedBrowser(workflow.driver)) {
           const liveArgs = liveReplayArgs(workflow, body.args || {});
           let run: RunResult;
-          replaying = true;
           try {
             run = await live.replay(workflow, liveArgs);
           } catch (err) {
             const message = err instanceof Error ? err.message : "live replay failed";
             return json(res, { error: message, modelCalls: 0 }, 409);
-          } finally {
-            replaying = false;
           }
           library.saveRun(persistedRun(run, workflow, liveArgs, {
             promotion: undefined,

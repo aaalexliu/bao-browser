@@ -88,8 +88,17 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     app.library.save(workflow(app.port, "wf-open", "fixture open", "/fixture", []));
     await post(app.port, "/api/replay", { id: "wf-open", args: {} });
 
+    await page.click(`[data-screen=replay][data-workflow="${confirmWf.id}"]`);
+    await page.waitForSelector("#run");
+    const pending = page.waitForResponse((response) =>
+      response.url() === `http://127.0.0.1:${app.port}/api/replay` && response.request().method() === "POST",
+    ).then(async (response) => {
+      const result = await response.json();
+      assert.ok(response.ok(), JSON.stringify(result));
+      return result;
+    });
     const started = Date.now();
-    const pending = post(app.port, "/api/replay", { id: confirmWf.id, args: {} });
+    await page.click("#run");
     await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });
     assert.ok(Date.now() - started < 1000, "login bar was late");
     assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, true);

@@ -854,13 +854,13 @@ function bindTeachFix(root: ParentNode): void {
 
 function bindRemote(): void {
   const allow = document.getElementById("remote-allow");
-  if (allow) allow.onclick = () => void fetch("/api/remote/allow", { method: "POST" });
+  if (allow) allow.onclick = () => void statePoller.track(fetch("/api/remote/allow", { method: "POST" }));
   const deny = document.getElementById("remote-deny");
   if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" });
   const kill = document.getElementById("remote-kill");
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
   const confirm = document.getElementById("remote-confirm-allow");
-  if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
+  if (confirm) confirm.onclick = () => void statePoller.track(fetch("/api/remote/confirm", { method: "POST" }));
   const pair = document.getElementById("relay-pair");
   if (pair) pair.onclick = async () => {
     const code = (document.getElementById("relay-code") as HTMLInputElement | null)?.value || "";
@@ -1428,11 +1428,11 @@ function openTokenEditor(token: HTMLButtonElement, id: string): void {
 
 async function startGuide(id: string): Promise<void> {
   lastWf = id;
-  const res = await fetch("/api/replay", {
+  const res = await statePoller.track(fetch("/api/replay", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, args: {}, guide: true }),
-  });
+  }));
   const run = await res.json() as { status?: string; actions?: number; error?: string };
   const live = document.getElementById("guide-actions");
   if (live && typeof run.actions === "number") live.textContent = `${run.actions} automated actions`;
@@ -1462,11 +1462,11 @@ async function runReplay(): Promise<void> {
   if (live) live.textContent = "Running…";
   gateNote = "";
   const fromStep = debugStepId;
-  const res = await fetch("/api/replay", {
+  const res = await statePoller.track(fetch("/api/replay", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, args, fromStep: fromStep || undefined }),
-  });
+  }));
   const run = await res.json() as RunSummary & { runId?: string; error?: string; message?: string; signInUrl?: string };
   if (run.status === "needs-sign-in") {
     gateNote = run.message || "Needs sign-in. The session is not live, so Bao did not start the run.";

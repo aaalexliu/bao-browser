@@ -17,7 +17,6 @@ test("idle state polls once a second and live work keeps the 100 ms cadence", as
     active: () => active,
     visible: () => true,
   });
-  t.after(poller.stop);
   await poller.refresh();
   for (let second = 0; second < 60; second++) await advance(t, 1000);
   assert.equal(calls, 61);
@@ -37,6 +36,49 @@ test("idle state polls once a second and live work keeps the 100 ms cadence", as
   assert.equal(calls, idleStart + 1);
 });
 
+test("window requests start fast polling before server state changes and stay fast until all settle", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let calls = 0;
+  const poller = createStatePoller({
+    poll: async () => { calls += 1; },
+    active: () => false,
+    visible: () => true,
+  });
+  await poller.refresh();
+  await advance(t, 900);
+  let finishReplay: (result: string) => void = () => {};
+  const replay = poller.track(new Promise<string>((resolve) => { finishReplay = resolve; }));
+  await setImmediate();
+  assert.equal(calls, 2, "starting a request refreshes immediately, without waiting for the idle tick");
+  await advance(t, 99);
+  assert.equal(calls, 2);
+  await advance(t, 1);
+  assert.equal(calls, 3, "pending requests poll fast even if the server still reports idle");
+
+  let failGuide: (error: Error) => void = () => {};
+  const guide = poller.track(new Promise<void>((_resolve, reject) => { failGuide = reject; }));
+  const failed = assert.rejects(guide, /guide refused/);
+  await setImmediate();
+  assert.equal(calls, 4);
+  finishReplay("passed");
+  assert.equal(await replay, "passed");
+  await setImmediate();
+  assert.equal(calls, 5, "completed requests refresh the result");
+  await advance(t, 99);
+  assert.equal(calls, 5);
+  await advance(t, 1);
+  assert.equal(calls, 6, "one finished request must not slow another pending request");
+
+  failGuide(new Error("guide refused"));
+  await failed;
+  await setImmediate();
+  assert.equal(calls, 7);
+  await advance(t, 999);
+  assert.equal(calls, 7, "failed requests release their fast-poll count");
+  await advance(t, 1);
+  assert.equal(calls, 8);
+});
+
 test("connection failures back off from 500 ms to 10 seconds and success resets the delay", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let calls = 0;
@@ -49,7 +91,6 @@ test("connection failures back off from 500 ms to 10 seconds and success resets 
     active: () => false,
     visible: () => true,
   });
-  t.after(poller.stop);
   await assert.rejects(poller.refresh(), /connection refused/);
   for (const delay of [500, 1000, 2000, 4000, 8000, 10000, 10000]) {
     const before = calls;
@@ -79,32 +120,96 @@ test("connection failures back off from 500 ms to 10 seconds and success resets 
   assert.equal(calls, afterFailure + 1, "the next failure starts at 500 ms again");
 });
 
-test("hidden windows stop polling, then refresh immediately when visible", async (t) => {
+test("hidden windows keep a five-second poll for idle and active work, then refresh on return", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let visible = true;
+  let active = true;
   let calls = 0;
   const poller = createStatePoller({
     poll: async () => { calls += 1; },
+    active: () => active,
+    visible: () => visible,
+  });
+  await poller.refresh();
+  visible = false;
+  poller.visibilityChanged();
+  for (let tick = 0; tick < 12; tick++) {
+    active = tick < 6;
+    await advance(t, 4999);
+    assert.equal(calls, tick + 1);
+    await advance(t, 1);
+    assert.equal(calls, tick + 2, "hidden windows still drive server housekeeping");
+  }
+  active = true;
+  visible = true;
+  poller.visibilityChanged();
+  await setImmediate();
+  assert.equal(calls, 14);
+  await advance(t, 99);
+  assert.equal(calls, 14);
+  await advance(t, 1);
+  assert.equal(calls, 15);
+});
+
+test("hidden connection failures retain the retry cap and reset to the hidden cadence", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let calls = 0;
+  let refused = true;
+  const poller = createStatePoller({
+    poll: async () => {
+      calls += 1;
+      if (refused) throw new Error("connection refused");
+    },
+    active: () => true,
+    visible: () => false,
+  });
+  await assert.rejects(poller.refresh(), /connection refused/);
+  for (const delay of [5000, 5000, 5000, 5000, 8000, 10000, 10000]) {
+    const before = calls;
+    await advance(t, delay - 1);
+    assert.equal(calls, before);
+    await advance(t, 1);
+    assert.equal(calls, before + 1);
+  }
+  refused = false;
+  await advance(t, 10000);
+  const afterSuccess = calls;
+  await advance(t, 4999);
+  assert.equal(calls, afterSuccess);
+  await advance(t, 1);
+  assert.equal(calls, afterSuccess + 1);
+});
+
+test("hiding during a request schedules a slow poll when that request settles", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let visible = true;
+  let calls = 0;
+  let release: () => void = () => {};
+  const poller = createStatePoller({
+    poll: () => {
+      calls += 1;
+      return new Promise<void>((resolve) => { release = resolve; });
+    },
     active: () => true,
     visible: () => visible,
   });
-  t.after(poller.stop);
-  await poller.refresh();
+  const first = poller.refresh();
+  await setImmediate();
   visible = false;
   poller.visibilityChanged();
   await advance(t, 60000);
   assert.equal(calls, 1);
-  visible = true;
-  poller.visibilityChanged();
-  await setImmediate();
-  assert.equal(calls, 2);
-  await advance(t, 99);
-  assert.equal(calls, 2);
+  release();
+  await first;
+  await advance(t, 4999);
+  assert.equal(calls, 1);
   await advance(t, 1);
-  assert.equal(calls, 3);
+  assert.equal(calls, 2);
+  release();
+  await setImmediate();
 });
 
-test("slow requests never overlap and stopped requests cannot restart polling", async (t) => {
+test("slow requests never overlap and polling resumes only after they settle", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let calls = 0;
   let release: () => void = () => {};
@@ -116,7 +221,6 @@ test("slow requests never overlap and stopped requests cannot restart polling", 
     active: () => true,
     visible: () => true,
   });
-  t.after(poller.stop);
   const first = poller.refresh();
   await advance(t, 60000);
   assert.equal(calls, 1);
@@ -126,11 +230,16 @@ test("slow requests never overlap and stopped requests cannot restart polling", 
   assert.equal(calls, 1);
   await advance(t, 1);
   assert.equal(calls, 2);
-  poller.stop();
+  await advance(t, 60000);
+  assert.equal(calls, 2);
   release();
   await setImmediate();
-  await advance(t, 60000);
-  assert.equal(calls, 2, "a settled request cannot restart a stopped poller");
+  await advance(t, 99);
+  assert.equal(calls, 2);
+  await advance(t, 1);
+  assert.equal(calls, 3);
+  release();
+  await setImmediate();
 });
 
 test("manual refreshes and visibility changes coalesce into a fresh read after an in-flight request", async (t) => {
@@ -145,7 +254,6 @@ test("manual refreshes and visibility changes coalesce into a fresh read after a
     active: () => false,
     visible: () => true,
   });
-  t.after(poller.stop);
   const first = poller.refresh();
   const fresh = poller.refresh();
   assert.equal(poller.refresh(), fresh);
@@ -182,10 +290,11 @@ test("live work stays fast without treating historical results as active", () =>
   assert.equal(activePolling({ pendingImport: { phase: "running" } }), true);
   assert.equal(activePolling({ remote: { phase: "running" } }), true);
   assert.equal(activePolling({ remote: { phase: "confirm" } }), true);
-  const run = { id: "run", workflowId: "workflow", status: "running" };
-  assert.equal(activePolling({ runs: [run] }), true);
+  for (const status of ["passed", "failed", "paused", "needs_human", "timed-out", "refused"]) {
+    assert.equal(activePolling({ runs: [{ id: "run", workflowId: "workflow", status }] }), false);
+  }
   for (const status of ["passed", "failed", "needs_human", "idle"] as const) {
-    assert.equal(activePolling({ runs: [{ ...run, status }], liveSession: { status } }), false);
+    assert.equal(activePolling({ liveSession: { status } }), false);
   }
   assert.equal(activePolling({ teach: { phase: "review" } }), false);
 });
