@@ -27,7 +27,7 @@ function headerFrame(msg: unknown): Buffer {
 interface Reply {
   id?: number;
   result?: {
-    tools?: { name: string }[];
+    tools?: { name: string; description?: string }[];
     instructions?: string;
     serverInfo?: { name?: string };
     content?: { text?: string }[];
@@ -153,6 +153,22 @@ test("initialize tells the agent to start, read, act, and end, and that ending s
     assert.deepEqual(order, [...order].sort((a, b) => a - b));
     assert.match(text, /live_stop\. Ending the session saves the workflow/);
     assert.match(text, /Bao app running/);
+  } finally {
+    mcp.child.kill();
+  }
+});
+
+test("the agent is told to type a search into the site's search box, not to start on a results url", async () => {
+  const mcp = startMcp("bao-mcp-search-");
+  try {
+    const text = (await initialize(mcp)).result?.instructions || "";
+    assert.match(text, /live_session_start with the user's intent and the site's start page, such as its home or store page, not a search results url\./);
+    assert.match(text, /To search, use the site's own search box: live_type the query into it, then live_key Enter on it or live_click its search button\. Do not put the query in a url\./);
+    assert.doesNotMatch(text, /instacart/i, "the shared instructions name no site");
+    const tools = (await mcp.request("tools/list")).result?.tools || [];
+    const described = (name: string) => tools.find((tool) => tool.name === name)?.description || "";
+    assert.match(described("live_session_start"), /not a search results url: type the search with live_type, so the saved workflow has the search step\./);
+    assert.match(described("live_type"), /To search, type the query into the site's search box, then press Enter on that box with live_key\./);
   } finally {
     mcp.child.kill();
   }

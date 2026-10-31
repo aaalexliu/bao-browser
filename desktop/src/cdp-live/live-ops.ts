@@ -43,7 +43,7 @@ export interface LiveIdleWarning {
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. The Bao app picks the Chrome, by default this Mac's own Chrome in its Default profile. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart and books.toscrape.com uses books. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome, by default this Mac's own Chrome in its Default profile. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart and books.toscrape.com uses books. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -68,7 +68,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_type",
-    description: "Type into one non-credential field from the latest snapshot. Passwords, security codes, card numbers, SSNs, and secret-looking text are refused. Typing stops if focus is no longer that field.",
+    description: "Type into one non-credential field from the latest snapshot. Passwords, security codes, card numbers, SSNs, and secret-looking text are refused. Typing stops if focus is no longer that field. To search, type the query into the site's search box, then press Enter on that box with live_key.",
     inputSchema: { type: "object", properties: { ref: { type: "string" }, text: { type: "string" } }, required: ["ref", "text"] },
   },
   {
