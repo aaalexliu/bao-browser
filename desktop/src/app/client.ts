@@ -79,7 +79,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean> };
   profileCopy?: { bytes: number; copyMs: number; status: "open" | "deleted" };
   relay?: { paired?: boolean; deviceId?: string };
   sync?: {
@@ -387,6 +387,8 @@ function settings(): string {
         <option value="">Choose a Chrome profile</option>
         ${chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${state.settings?.chromeProfile === profile.directory ? "selected" : ""}>${esc(profile.name)}${profile.email ? ` - ${esc(profile.email)}` : ""} (${esc(profile.directory)})</option>`).join("")}
       </select></label>
+      <label class="extensions-choice"><input id="chrome-profile-extensions" type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
+      <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
       <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the run ends. No remote-debugging switch, Accessibility, or Automation is needed.</p>
       ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
       <button id="save-engine" type="button">Save engine choice</button>
@@ -677,15 +679,23 @@ function bind(): void {
     await refresh();
   };
   const engineChoice = document.getElementById("page-engine") as HTMLSelectElement | null;
+  const profileChoice = document.getElementById("chrome-profile") as HTMLSelectElement | null;
+  const extensionsChoice = document.getElementById("chrome-profile-extensions") as HTMLInputElement | null;
   if (engineChoice) engineChoice.onchange = () => {
-    const profile = document.getElementById("chrome-profile") as HTMLSelectElement | null;
-    if (profile) profile.disabled = engineChoice.value !== "agent-browser";
+    if (profileChoice) profileChoice.disabled = engineChoice.value !== "agent-browser";
+    if (extensionsChoice) extensionsChoice.disabled = engineChoice.value !== "agent-browser" || !profileChoice?.value;
+  };
+  if (profileChoice) profileChoice.onchange = () => {
+    if (!extensionsChoice) return;
+    extensionsChoice.checked = state.settings?.chromeProfileExtensions?.[profileChoice.value] === true;
+    extensionsChoice.disabled = engineChoice?.value !== "agent-browser" || !profileChoice.value;
   };
   const saveEngine = document.getElementById("save-engine");
   if (saveEngine) saveEngine.onclick = async () => {
     const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({
       pageEngine: engineChoice?.value || "old",
-      chromeProfile: (document.getElementById("chrome-profile") as HTMLSelectElement | null)?.value || "",
+      chromeProfile: profileChoice?.value || "",
+      ...(profileChoice?.value ? { chromeProfileExtensions: { [profileChoice.value]: extensionsChoice?.checked === true } } : {}),
     }) });
     if (!response.ok) {
       const body = await response.json();

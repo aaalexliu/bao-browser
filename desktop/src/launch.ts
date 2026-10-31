@@ -434,6 +434,7 @@ export async function launchOwnedChrome(opts: {
   deviceScaleFactor?: number;
   /** Only Chrome gets this HOME. Bao keeps its own isolated state and native-host paths. */
   childHome?: string;
+  loadExtensions?: boolean;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
 }): Promise<BrowserContext> {
@@ -444,6 +445,7 @@ export async function launchOwnedChrome(opts: {
 async function launchNormalChrome(opts: {
   userDataDir: string;
   childHome?: string;
+  loadExtensions?: boolean;
   headless?: boolean;
   args?: string[];
   appendArgs?: string[];
@@ -460,6 +462,7 @@ async function launchNormalChrome(opts: {
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args, opts.appendArgs),
     `--remote-debugging-port=${OWNED_DEBUG_PORT}`,
+    ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
   ];
   const { child, port } = await spawnOwnedChrome(exe, args, opts.userDataDir, opts.childHome);
@@ -567,6 +570,7 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess)
 async function launchOwnedChromeForVideo(opts: {
   userDataDir: string;
   childHome?: string;
+  loadExtensions?: boolean;
   videoDir?: string;
   headless?: boolean;
   args?: string[];
@@ -587,7 +591,7 @@ async function launchOwnedChromeForVideo(opts: {
     chromiumSandbox: true,
     ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: ownedLaunchArgs(opts.args, opts.appendArgs),
+    args: [...ownedLaunchArgs(opts.args, opts.appendArgs), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);

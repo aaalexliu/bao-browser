@@ -6,9 +6,11 @@ Bao keeps its workflow, Capture, Library, replay, MCP, and site-policy layers. T
 
 In Settings, choose **agent-browser (trial)** and a Chrome profile, then save the engine choice. The profile list comes from Chrome's `Local State`, with each profile's display name, account email, and directory. It contains no cookie or storage values. The choice applies to the next live session or recorded live-workflow replay and stays fixed for that whole run.
 
-Bao reads the selected profile and creates a fresh private copy outside the checkout. It does not launch, write to, or lock the original. Chrome runs on the copy with sync disabled. The copy keeps the selected profile's files and Chrome's encryption metadata; disposable cache directories are excluded. Bao clears saved tab/session files in the copy before launch so unrelated tabs do not reopen. The source stays unchanged. The copy has mode `0700`; its files never become run evidence. Settings reports bytes copied and elapsed time. Bao removes the copy after Chrome stops and removes marked stale copies on the next start. It refuses an active copy or a symlink rather than deleting or following it.
+Bao reads the selected profile and creates a fresh private copy outside the checkout. It does not launch, write to, or lock the original. Chrome runs on the copy with sync disabled. The copy keeps the selected profile's files and Chrome's encryption metadata; disposable cache directories are excluded. Bao excludes saved tab/session files while copying so unrelated tabs do not reopen. The source stays unchanged. The copy has mode `0700`; its files never become run evidence. Settings reports bytes copied and elapsed time. Bao removes the copy after Chrome stops and removes marked stale copies on the next start. It refuses an active copy or a symlink rather than deleting or following it.
 
-This route needs no remote-debugging toggle, Accessibility, Automation, or Screen Recording. Chrome still uses its own macOS keychain identity. If macOS shows a keychain or other permission prompt, stop. Do not approve it to keep a run going. Starting the server in the GUI session avoids attributing Chrome's prompts to an SSH session.
+The copy includes extension files, but copied Chrome starts with `--disable-extensions` by default. **Load my Chrome extensions**, next to the profile chooser, opts back in. Bao remembers that choice per profile on this Mac. Shopping and coupon extensions can cover pages and block the agent. This changes only the copy, not the owner's running Chrome or its extensions.
+
+This route needs no remote-debugging toggle, Accessibility, Automation, or Screen Recording. Chrome still uses its own macOS keychain identity. Only the Chrome child gets the passwd home so it can find the login keychain; Bao keeps its isolated HOME and state. If macOS shows a keychain or other permission prompt, stop. Do not approve it to keep a run going. Starting the server in the GUI session avoids attributing Chrome's prompts to an SSH session.
 
 Profile-copy runs currently require a recorded `cdp-live` workflow. Selecting the trial for an extension workflow, a secret-input workflow, or another browser workflow with a selected profile fails with a clear error. It does not run the old engine instead.
 
@@ -51,7 +53,7 @@ The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `de
 | Console/network trace | Refuses clearly | Run metadata reports that trace collection is unavailable. |
 | Nested-frame and shadow-root actions | Gap | Not full browser-driver parity; unsupported focus/select targets refuse rather than acting on another element. |
 | Human handoff and assertions | Gap | Existing replay logic remains; full interactive parity is not yet proved. |
-| Copied-profile chooser and lifecycle | Gap | Synthetic-profile and settings-API tests pass. Real-profile launch proof remains pending. |
+| Copied-profile chooser and lifecycle | Works | Synthetic/API tests and selected-profile native launch passed. Copies close and delete; extension loading is opt-in per profile. Real-cart proof remains separate. |
 | Live capture step shots and CDP video | Works | Expanded local fixture passed: Library step PNGs, replay before/after PNGs, and nonempty CDP videos. Real-site proof remains separate. |
 
 ## Local proof

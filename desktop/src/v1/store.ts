@@ -44,6 +44,8 @@ export interface Settings extends HealSettings {
   pageEngine?: "old" | "agent-browser";
   /** Chrome profile directory explicitly picked on this Mac. Never synced. */
   chromeProfile?: string;
+  /** Local extension choice by Chrome profile directory. Off unless explicitly enabled. */
+  chromeProfileExtensions?: Record<string, boolean>;
 }
 
 export interface StoredRun {

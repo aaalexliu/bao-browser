@@ -100,6 +100,16 @@ test("settings chooser persists a whole-run choice and rejects paths and unknown
     assert.equal((await put({ pageEngine: "agent-browser", chromeProfile: "Default" })).status, 200);
     assert.equal(app.library.settings().pageEngine, "agent-browser");
     assert.equal(app.library.settings().chromeProfile, "Default");
+    assert.equal(app.library.settings().chromeProfileExtensions?.Default ?? false, false);
+    assert.equal((await put({ chromeProfileExtensions: { Default: true } })).status, 200);
+    assert.equal((await put({ chromeProfile: "Profile 1", chromeProfileExtensions: { "Profile 1": false } })).status, 200);
+    assert.deepEqual(app.library.settings().chromeProfileExtensions, { Default: true, "Profile 1": false });
+    assert.equal((await put({ chromeProfile: "Default" })).status, 200);
+    assert.equal(app.library.settings().chromeProfileExtensions?.Default, true);
+    assert.equal((await put({ chromeProfileExtensions: { Default: "yes" } })).status, 400);
+    assert.equal((await put({ chromeProfileExtensions: { "../outside": true } })).status, 400);
+    assert.equal((await put({ chromeProfileExtensions: [] })).status, 400);
+    assert.equal((await put({ chromeProfileExtensions: null })).status, 400);
     assert.equal((await fetch(`${base}/api/chrome-profiles`, { headers: { origin: "https://other.example.test" } })).status, 403);
     assert.equal((await put({ pageEngine: "old" })).status, 200);
     assert.equal(app.library.settings().pageEngine, "old");
@@ -130,6 +140,26 @@ test("only the copied Chrome child gets the passwd HOME; Bao's isolated HOME sta
     assert.equal(observed.HOME, userInfo().homedir);
     assert.equal(observed.BAO_HEAL_CURSOR_ACCOUNT, process.env.BAO_HEAL_CURSOR_ACCOUNT);
     assert.equal(process.env.HOME, parentHome);
+  } finally { await f.close(); }
+});
+
+test("copied Chrome disables extensions by default and loads them only on explicit opt-in", async (t) => {
+  const f = await fixture();
+  const processes = require("node:child_process") as typeof import("node:child_process");
+  await mkdir(path.join(f.sourceRoot, "Default", "Extensions", "test-addon"), { recursive: true });
+  await writeFile(path.join(f.sourceRoot, "Default", "Extensions", "test-addon", "manifest.json"), "synthetic-extension-files");
+  const calls: string[][] = [];
+  t.mock.method(processes, "spawn", (_file: string, args: readonly string[]) => {
+    calls.push([...args]);
+    const dir = args.find((arg) => arg.startsWith("--user-data-dir="))!.slice("--user-data-dir=".length);
+    assert.equal(require("node:fs").readFileSync(path.join(dir, "Default", "Extensions", "test-addon", "manifest.json"), "utf8"), "synthetic-extension-files");
+    throw new Error("observed extension flags without launching Chrome");
+  });
+  try {
+    for (const loadExtensions of [undefined, false, true]) {
+      await assert.rejects(openCopiedChrome({ ...f, directory: "Default", loadExtensions }), /observed extension flags/);
+    }
+    assert.deepEqual(calls.map((args) => args.includes("--disable-extensions")), [true, true, false]);
   } finally { await f.close(); }
 });
 

@@ -236,7 +236,8 @@ export async function startApp(opts: {
         return { target: parseLiveTarget(opts.liveTarget, baoProfile), engineName };
       }
       if (!profileSourceRoot || !settings.chromeProfile) throw new Error("choose a Chrome profile in Settings before starting agent-browser");
-      const copied = await openCopiedChrome({ sourceRoot: profileSourceRoot, directory: settings.chromeProfile, home: library.root });
+      const copied = await openCopiedChrome({ sourceRoot: profileSourceRoot, directory: settings.chromeProfile, home: library.root,
+        loadExtensions: settings.chromeProfileExtensions?.[settings.chromeProfile] === true });
       profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "open" };
       return {
         target: copied.target, engineName, artifactRoot: library.root,
@@ -848,7 +849,7 @@ export async function startApp(opts: {
         return json(res, { profiles });
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown };
         const patch: Partial<Settings> = {};
         if (body.pageEngine !== undefined) {
           if (body.pageEngine !== "old" && body.pageEngine !== "agent-browser") return json(res, { error: "unknown page engine" }, 400);
@@ -858,6 +859,15 @@ export async function startApp(opts: {
           const choices = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
           if (body.chromeProfile && !choices.some((entry) => entry.directory === body.chromeProfile)) return json(res, { error: "choose an existing Chrome profile" }, 400);
           patch.chromeProfile = body.chromeProfile;
+        }
+        if (body.chromeProfileExtensions !== undefined) {
+          const entries = body.chromeProfileExtensions;
+          if (!entries || typeof entries !== "object" || Array.isArray(entries)) return json(res, { error: "invalid Chrome extension choices" }, 400);
+          const choices = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
+          if (Object.entries(entries).some(([directory, enabled]) => typeof enabled !== "boolean" || !choices.some((choice) => choice.directory === directory))) {
+            return json(res, { error: "choose an existing Chrome profile and an extension checkbox value" }, 400);
+          }
+          patch.chromeProfileExtensions = { ...library.settings().chromeProfileExtensions, ...entries as Record<string, boolean> };
         }
         if ((patch.pageEngine ?? library.settings().pageEngine) === "agent-browser" && !(patch.chromeProfile ?? library.settings().chromeProfile)) {
           return json(res, { error: "choose a Chrome profile for agent-browser" }, 400);

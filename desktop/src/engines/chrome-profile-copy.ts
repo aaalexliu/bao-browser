@@ -114,12 +114,13 @@ export async function copyChromeProfile(options: {
 
 /** The installed Chrome keeps its keychain identity; no helper, toggle, or native input is used. */
 export async function openCopiedChrome(options: {
-  sourceRoot: string; directory: string; home: string;
+  sourceRoot: string; directory: string; home: string; loadExtensions?: boolean;
 }): Promise<{ target: LiveTarget; close(): Promise<void>; bytes: number; copyMs: number }> {
   const copy = await copyChromeProfile(options);
   try {
     const context = await launchOwnedChrome({
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
+      loadExtensions: options.loadExtensions === true,
       args: [`--profile-directory=${copy.profileDirectory}`, "--disable-sync"],
     });
     return {
