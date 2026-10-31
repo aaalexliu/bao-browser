@@ -237,11 +237,11 @@ The product window does not need these grants. The nested helper does. The permi
 2. Screen Recording. The usage string is `BaoOSHelper captures one throwaway window so the spike can show the control it pressed.`
 Automation for Google Chrome is a third grant. Bao requests it when a remote-debugging toggle first needs it, or when you press **Allow** beside **Automation: Google Chrome** in Bao. If Chrome is closed, that button opens it normally before asking. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.` A toggle that is already in the requested state does not ask.
 
-Live Chrome needs Accessibility and that Automation grant. It does not capture a window, so it works with Screen Recording on or off. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
+Live Chrome reports **live Chrome ready** when Accessibility is granted and either Automation for Google Chrome is granted or that Chrome is already listening with remote debugging on. A closed Chrome leaves the Automation check neutral. With debugging off, Automation not yet asked or denied shows **live Chrome needs one more permission**: use **Allow** beside **Automation: Google Chrome**, or System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome for denied. An unavailable check shows its real error and does not claim readiness unless Chrome is already listening. Live Chrome does not capture a window, so Screen Recording never blocks it. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
 
 Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Enable it under Screen & System Audio Recording too for window capture and the MCP driver. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it. When the helper source in this tree has changed, rebuild it with the existing `bao dev signing` identity. Do not reuse an older helper whose commands this Bao no longer matches. An old helper answers `unknown command`; Bao then says `BaoOSHelper is older than this Bao; rebuild it`.
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job:
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job. These examples assume Automation is granted or Chrome is already listening; a closed Chrome leaves Automation neutral:
 
 - With Accessibility alone: **helper needs permission**, then **AX press ready**, **window capture needs Screen Recording**, **live Chrome ready**, and **MCP driver needs Accessibility and Screen Recording**.
 - With both grants: **helper ok**, then **AX press ready**, **window capture ready**, **live Chrome ready**, and **MCP driver ready**.
@@ -252,7 +252,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` is true, and the `live-chrome` row in `helper.capabilities` has status `live Chrome ready`. `helper.screenCapture` is true only with Screen Recording on. `helper.label` is `helper ok` only when both grants are on, and `helper needs permission` otherwise. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` follows the readiness rule above. `helper.screenCapture` is true only with Screen Recording on. `helper.label` is `helper ok` only when both grants are on, and `helper needs permission` otherwise. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 

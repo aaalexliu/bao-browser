@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, macPermissionMissing, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, macPermissionMissing, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { attentionCount, formatWait, liveIdleSurfaceText, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
@@ -492,14 +492,35 @@ test("only known missing Automation grants bring back the permission card and ne
         for (const html of [dot, ...(missing ? [card] : [])]) {
           const mark = state === "granted" ? "true" : automationMissing ? "false" : "unknown";
           assert.ok(html.includes(`data-perm="automation" data-ok="${mark}"`), context);
-          if (state === "closed" || state === "unavailable") {
+          if (state === "closed") {
             assert.match(html, /Chrome isn&#39;t running, so Bao can&#39;t check this right now/);
+          } else if (state === "unavailable") {
+            assert.ok(html.includes("unavailable report"), context);
           }
         }
         assert.equal(macPermissionMissing({ ...helper, platform: "linux" }), false);
         assert.equal(onboarding({ ...helper, platform: "linux" }), "");
         assert.equal(permissionDot({ ...helper, platform: "linux" }), "");
       }
+    }
+  }
+});
+
+test("unavailable Automation rows keep the real error without marking a missing grant", () => {
+  for (const message of [
+    "BaoOSHelper is older than this Bao; rebuild it",
+    "Apple Event failed (-600)",
+    "os helper produced no result for ae-permission",
+    "Could not read Automation permission for Google Chrome.",
+    "more than one Chrome runs on the dir",
+  ]) {
+    const helper = { platform: "darwin", accessibility: true, screenCapture: true, automation: { state: "unavailable" as const, message } };
+    assert.equal(macPermissionMissing(helper), false);
+    assert.equal(onboarding(helper), "");
+    for (const html of [permissionDot(helper), onboarding({ ...helper, screenCapture: false })]) {
+      assert.ok(html.includes(htmlEsc(message)), message);
+      assert.ok(html.includes('data-perm="automation" data-ok="unknown"'), message);
+      assert.doesNotMatch(html, /Chrome isn&#39;t running/);
     }
   }
 });

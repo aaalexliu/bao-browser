@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { AUTOMATION_DENIED, AUTOMATION_PROMPT, dailyChromePids } from "./remote-debugging";
-import { DEVTOOLS_ACTIVE_PORT } from "./endpoint";
+import { DEVTOOLS_ACTIVE_PORT, listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
 
 export type AutomationState = "granted" | "not-asked" | "denied" | "closed" | "unavailable";
 
@@ -13,6 +13,7 @@ export interface AutomationReport {
   message: string;
   pid?: number;
   opened?: boolean;
+  remoteDebugging?: boolean;
 }
 
 export interface AutomationDeps {
@@ -23,6 +24,8 @@ export interface AutomationDeps {
   portFile?: string;
   onNotice?: (message: string) => void;
   timeoutMs?: number;
+  readPort?: (file: string) => Promise<DevToolsEndpoint>;
+  listener?: (port: number) => Promise<number | undefined>;
 }
 
 const CHROME_APP = "/Applications/Google Chrome.app";
@@ -50,8 +53,13 @@ export async function readAutomation(deps: AutomationDeps): Promise<AutomationRe
   const found = await chromePid(deps);
   if (found.error) return { state: "unavailable", message: found.error };
   if (found.pid == null) return { state: "closed", message: CLOSED };
-  const hit = await deps.helper.exec(["ae-permission", "--pid", String(found.pid)], 15_000);
-  return report(hit, found.pid, false);
+  const pid = found.pid;
+  const automation = await deps.helper.exec(["ae-permission", "--pid", String(pid)], 15_000)
+    .then((hit) => report(hit, pid, false))
+    .catch((err): AutomationReport => ({ state: "unavailable", message: err instanceof Error ? err.message : String(err), pid }));
+  const endpoint = await (deps.readPort || readDevToolsActivePort)(deps.portFile || DEVTOOLS_ACTIVE_PORT).catch(() => null);
+  const remoteDebugging = endpoint !== null && (await (deps.listener || listenPid)(endpoint.port)) === pid;
+  return { ...automation, remoteDebugging };
 }
 
 /** Opens Google Chrome with LaunchServices and no flags when it is closed, then asks that pid. */

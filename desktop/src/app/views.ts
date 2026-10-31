@@ -2014,7 +2014,7 @@ function permRows(helper?: PermissionState): string {
   const automation = helper?.automation;
   const automationOk = automation?.state === "granted";
   const automationMissing = automationPermissionMissing(automation);
-  const automationMessage = automation && !automationOk && !automationMissing
+  const automationMessage = automation?.state === "closed"
     ? "Chrome isn't running, so Bao can't check this right now"
     : automation?.message || "BaoOSHelper is unavailable.";
   return `<ul class="perms">

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { helperJobList, rail } from "../../src/app/views";
+import { helperJobList, htmlEsc, rail } from "../../src/app/views";
+import type { AutomationReport } from "../../src/cdp-live/automation";
+import { AUTOMATION_DENIED } from "../../src/cdp-live/remote-debugging";
 import { chromeHelper } from "../../src/cdp-live/ax";
 import {
   capabilityReport,
@@ -83,6 +85,7 @@ test("helper status names each job and keeps the old label", () => {
     helperPresent: true,
     accessibility: true,
     screenCapture: false,
+    automation: { state: "granted", message: "allowed" },
   });
   assert.equal(axOnly.label, "helper needs permission");
   assert.equal(axOnly.accessibility, true);
@@ -100,6 +103,7 @@ test("helper status names each job and keeps the old label", () => {
     helperPresent: true,
     accessibility: true,
     screenCapture: true,
+    automation: { state: "granted", message: "allowed" },
   });
   assert.equal(both.label, "helper ok");
   assert.deepEqual(both.capabilities.map((row) => row.status), [
@@ -140,6 +144,45 @@ test("helper status names each job and keeps the old label", () => {
   assert.deepEqual(noBundle.capabilities, []);
 });
 
+test("live Chrome readiness counts Automation or an existing listener without counting Screen Recording", () => {
+  const reports: (AutomationReport | undefined)[] = [
+    { state: "granted", message: "allowed" },
+    { state: "closed", message: "Chrome is not open" },
+    { state: "not-asked", message: "not yet asked" },
+    { state: "denied", message: AUTOMATION_DENIED },
+    { state: "unavailable", message: "BaoOSHelper is older than this Bao; rebuild it" },
+    undefined,
+  ];
+  for (const report of reports) {
+    for (const remoteDebugging of [false, true]) {
+      for (const accessibility of [false, true]) {
+        for (const screenCapture of [false, true]) {
+          const automation = report ? { ...report, remoteDebugging } : undefined;
+          const helper = capabilityReport({ platform: "darwin", helperPresent: true, accessibility, screenCapture, automation });
+          const live = helper.capabilities.find((row) => row.id === "live-chrome")?.status;
+          const ready = accessibility && !!automation && (automation.state === "granted" || automation.state === "closed" || remoteDebugging);
+          const context = JSON.stringify({ automation, accessibility, screenCapture });
+          assert.equal(live === "live Chrome ready", ready, context);
+          if (!accessibility) {
+            assert.equal(live, "live Chrome needs Accessibility", context);
+          } else if (!ready && automation?.state === "not-asked") {
+            assert.equal(live, "live Chrome needs one more permission: use Allow beside Automation: Google Chrome", context);
+          } else if (!ready && automation?.state === "denied") {
+            assert.equal(live, `live Chrome needs one more permission: ${AUTOMATION_DENIED}`, context);
+          } else if (!ready) {
+            assert.ok(live?.startsWith("live Chrome Automation status unavailable:"), context);
+            if (automation) assert.ok(live?.includes(automation.message), context);
+          }
+          assert.ok(helperJobList(helper).includes(htmlEsc(live)), context);
+          assert.ok(rail({ helper }).includes(htmlEsc(live)), context);
+          assert.equal(helper.label, accessibility && screenCapture ? "helper ok" : "helper needs permission");
+          assert.equal(helper.capabilities.find((row) => row.id === "window-capture")?.status, screenCapture ? "window capture ready" : "window capture needs Screen Recording");
+        }
+      }
+    }
+  }
+});
+
 function helperLine(html: string): string | undefined {
   return html.match(/<div class="channel" id="helper-status">([^<]*)<\/div>/)?.[1];
 }
@@ -155,6 +198,7 @@ test("the footer shows each job on its own line and still says helper ok", () =>
     helperPresent: true,
     accessibility: true,
     screenCapture: true,
+    automation: { state: "granted", message: "allowed" },
   });
   assert.deepEqual(jobRows(helperJobList(both)), [
     "AX press ready",
@@ -171,6 +215,7 @@ test("the footer shows each job on its own line and still says helper ok", () =>
     helperPresent: true,
     accessibility: true,
     screenCapture: false,
+    automation: { state: "granted", message: "allowed" },
   });
   const axHtml = rail({ helper: axOnly });
   assert.equal(helperLine(axHtml), "helper needs permission");
