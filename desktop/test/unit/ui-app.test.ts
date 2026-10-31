@@ -92,6 +92,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     const pending = post(app.port, "/api/replay", { id: confirmWf.id, args: {} });
     await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });
     assert.ok(Date.now() - started < 1000, "login bar was late");
+    assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, true);
     const loginBar = await page.locator("#act-bar").innerText();
     assert.match(loginBar, /Sign in to the fixture in the Bao window/);
     assert.match(await page.locator("#attention").getAttribute("data-count") || "", /[1-9]/);
@@ -114,6 +115,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     const confirmRun = await pending as { runId: string; status: string; modelCalls: number; failure?: { reason: string } };
     assert.equal(confirmRun.status, "passed", JSON.stringify(confirmRun.failure));
     assert.equal(confirmRun.modelCalls, 0);
+    assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, false);
     await page.click("button[data-screen=runs]");
     await page.click(`[data-open-run="${confirmRun.runId}"]`);
     await page.waitForSelector("#model-calls");

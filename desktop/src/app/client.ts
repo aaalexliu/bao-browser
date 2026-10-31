@@ -1,6 +1,7 @@
 // Desktop window. Talks only to this machine's bao server.
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
+import { activePolling, createStatePoller } from "./state-poll";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
@@ -147,12 +148,18 @@ async function loadHostAccess(): Promise<void> {
   await refresh();
 }
 
-async function refresh(): Promise<void> {
+function refresh(): Promise<void> {
+  return statePoller.refresh();
+}
+
+async function refreshState(): Promise<void> {
   try {
     const stored = localStorage.getItem("bao-theme");
     if (stored === "dark" || stored === "light") theme = stored;
   } catch { /* private mode */ }
-  state = await (await fetch("/api/state")).json();
+  const response = await fetch("/api/state");
+  if (!response.ok) throw new Error(`state request failed: ${response.status}`);
+  state = await response.json();
   const opened = state.opened;
   if (opened) {
     const token = `${opened.kind}:${opened.id}:${opened.saved}:${JSON.stringify(opened.inputs || {})}`;
@@ -2245,12 +2252,11 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-void refresh();
-// The login bar has to be on screen within a second of replay. This poll is what paints it.
-let polling = false;
-setInterval(() => {
-  if (polling) return;
-  polling = true;
-  refresh().catch(() => undefined).finally(() => { polling = false; });
-}, 100);
+const statePoller = createStatePoller({
+  poll: refreshState,
+  active: () => activePolling(state),
+  visible: () => document.visibilityState === "visible",
+});
+document.addEventListener("visibilitychange", statePoller.visibilityChanged);
+void refresh().catch(() => undefined);
 setInterval(tickClock, 250);

@@ -168,6 +168,7 @@ export interface ImportPending {
 
 export interface ShellState {
   recording?: boolean;
+  replaying?: boolean;
   capturePaused?: boolean;
   recordingSince?: number;
   helper?: {
