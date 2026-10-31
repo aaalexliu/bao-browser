@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { setImmediate } from "node:timers/promises";
 import { activePolling, createStatePoller } from "../../src/app/state-poll";
+import type { ShellState } from "../../src/app/views";
 
 async function advance(t: TestContext, ms: number): Promise<void> {
   t.mock.timers.tick(ms);
@@ -78,6 +79,56 @@ test("window requests start fast polling before server state changes and stay fa
   await advance(t, 1);
   assert.equal(calls, 8);
 });
+
+for (const kind of ["login", "confirm", "wall"] as const) {
+  test(`orphan ${kind} asks poll at the idle rate while genuine waits stay fast`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const startedAt = Date.now();
+    const timeoutMs = kind === "wall" ? 0 : 7200000;
+    const state: ShellState = {
+      replaying: false,
+      activeAsk: {
+        kind, workflowId: "wf", workflowName: "Fixture", stepId: "step", stepIndex: 1, stepCount: 1,
+        label: "Waiting", site: "localhost", windowName: "Bao", instruction: "Waiting for you", startedAt,
+        deadline: timeoutMs ? startedAt + timeoutMs : null, timeoutMs,
+      },
+    };
+    let calls = 0;
+    const poller = createStatePoller({
+      poll: async () => { calls += 1; },
+      active: () => activePolling(state),
+      visible: () => true,
+    });
+    await poller.refresh();
+    await advance(t, 999);
+    assert.equal(calls, 1, "an ask without a waiting run must not keep fast polling alive");
+    await advance(t, 1);
+    assert.equal(calls, 2);
+
+    state.replaying = true;
+    await poller.refresh();
+    await advance(t, 99);
+    assert.equal(calls, 3);
+    await advance(t, 1);
+    assert.equal(calls, 4, "a replay waiting for the person still polls at 100 ms");
+
+    state.replaying = false;
+    state.remote = { phase: "running" };
+    await poller.refresh();
+    await advance(t, 99);
+    assert.equal(calls, 5);
+    await advance(t, 1);
+    assert.equal(calls, 6, "a remote run waiting for the person still polls at 100 ms");
+
+    state.remote = { phase: "idle" };
+    await poller.refresh();
+    assert.ok(state.activeAsk);
+    await advance(t, 999);
+    assert.equal(calls, 7);
+    await advance(t, 1);
+    assert.equal(calls, 8, "an ask left after the run ends returns to the idle rate");
+  });
+}
 
 test("a failed guide returns to idle polling even if its last progress still says highlight", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -351,7 +402,7 @@ test("live work stays fast without treating historical results as active", () =>
   assert.equal(activePolling({ activeAsk: {
     kind: "login", workflowId: "wf", workflowName: "Fixture", stepId: "step", stepIndex: 1, stepCount: 1,
     label: "Sign in", site: "localhost", windowName: "Bao", instruction: "Sign in", startedAt: 0, deadline: null, timeoutMs: 1000,
-  } }), true);
+  } }), false);
   assert.equal(activePolling({ liveSessionOpen: true }), true);
   assert.equal(activePolling({ liveSessionOpen: false }), false);
   assert.equal(activePolling({ pendingImport: { phase: "running" } }), true);

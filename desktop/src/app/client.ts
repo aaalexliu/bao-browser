@@ -856,7 +856,7 @@ function bindRemote(): void {
   const allow = document.getElementById("remote-allow");
   if (allow) allow.onclick = () => void statePoller.track(fetch("/api/remote/allow", { method: "POST" }));
   const deny = document.getElementById("remote-deny");
-  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" });
+  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" }).then(() => refresh());
   const kill = document.getElementById("remote-kill");
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
   const confirm = document.getElementById("remote-confirm-allow");
@@ -884,7 +884,7 @@ function bindAsk(): void {
   const show = document.getElementById("act-show");
   if (show) show.onclick = () => void fetch("/api/replay/show", { method: "POST" });
   const cancel = document.getElementById("act-cancel");
-  if (cancel) cancel.onclick = () => void fetch("/api/replay/cancel", { method: "POST" });
+  if (cancel) cancel.onclick = () => void fetch("/api/replay/cancel", { method: "POST" }).then(() => refresh());
   const cont = document.getElementById("act-continue");
   if (cont) cont.onclick = () => void fetch("/api/prompt/continue", { method: "POST" });
   const keep = document.getElementById("live-keep") as HTMLButtonElement | null;
