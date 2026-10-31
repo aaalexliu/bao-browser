@@ -221,7 +221,7 @@ One runner replays a `cdp-live` workflow: `replayLiveWorkflow` in `desktop/src/c
 
 `desktop/test/unit/instacart-acceptance.test.ts` is the acceptance lane L1. A scripted MCP client records the task through `bao mcp` and a spawned `bao serve`, tries the checkout and login traps, disconnects without `live_stop`, and replays the saved workflow through `run_workflow` four times: twice on an empty cart, then once each on a cart that already holds the item at qty 1 and at qty 2. Those last two skip the Add as `already done` and write nothing. `desktop/test/README.md` says how to run it and what it checks.
 
-`npm run bao -- eval agent-instacart` is lane L2. Claude Code or Codex gets only the prompt `put costco blueberries into the cart at instacart` and drives the same setup through `bao mcp`, locked to bao's tools. It spends model tokens and writes `docs/eval/agent-instacart.md`.
+`npm run bao -- eval agent-instacart` is lane L2. Claude Code or Codex gets only the prompt `put costco kirkland organic blueberries into the cart at instacart` and drives the same setup through `bao mcp`, locked to bao's tools. It spends model tokens and writes `docs/eval/agent-instacart.md`.
 
 The live tools, as `desktop/src/cdp-live/live-ops.ts` defines them:
 

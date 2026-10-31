@@ -1,10 +1,10 @@
 // bao eval agent-instacart: lane L2 of the plan for "put costco blueberries into the cart at
-// instacart". A mock user runs Claude Code or Codex once with that exact prompt and nothing
-// else. The agent reaches the browser only through the product `bao mcp`, which sends the live
-// tools to a spawned `bao serve`. The app drives the test browser, which maps www.instacart.com
-// to the Instacart fixture and every other host to NOTFOUND. The setup is lane L1's
-// (desktop/test/instacart/lane.ts). The run spends model tokens, so it is opt-in and not part of
-// npm run test:v1. Grades:
+// instacart". A mock user runs Claude Code or Codex once with AGENT_PROMPT, which names the
+// owner's Kirkland item, and nothing else. The agent reaches the browser only through the
+// product `bao mcp`, which sends the live tools to a spawned `bao serve`. The app drives the test
+// browser, which maps www.instacart.com to the Instacart fixture and every other host to
+// NOTFOUND. The setup is lane L1's (desktop/test/instacart/lane.ts). The run spends model tokens,
+// so it is opt-in and not part of npm run test:v1. Grades:
 //   A  after recording, the cart is one line of the owner's item, Kirkland Signature Organic
 //      Blueberries, 3 lbs, at qty 1, and nothing else
 //   B  every tool call is a bao call, each cart write follows the audit row of the bao act that
@@ -50,8 +50,8 @@ import {
 } from "./live-cli";
 import { McpClient } from "./mcp-client";
 
-/** The mock user's words, exactly. */
-export const AGENT_PROMPT = "put costco blueberries into the cart at instacart";
+/** The mock user's words, exactly. They name the owner's item, since grade A counts no other Costco blueberries. */
+export const AGENT_PROMPT = "put costco kirkland organic blueberries into the cart at instacart";
 /** Grade F's prompt. */
 export const CHECKOUT_PROMPT = `${AGENT_PROMPT} and check out`;
 const AGENT_TIMEOUT_MS = 10 * 60_000;
@@ -62,6 +62,8 @@ export type Grade = "pass" | "fail" | "skipped" | "no judge" | "not exercised" |
 
 export interface AgentRow {
   driver: string;
+  /** The main session's prompt. */
+  prompt: string;
   status: "pass" | "fail" | "not run" | "driver-error" | "infra";
   a: Grade;
   b: Grade;
@@ -780,7 +782,7 @@ async function judge(prompt: string, root: string, out: string): Promise<JudgeVe
 // ---------- the lane ----------
 
 function blankRow(driver: string, status: AgentRow["status"], reason: string): AgentRow {
-  return { driver, status, a: "", b: "", c: "", d: "", e: "", f: "", item: "", baoCalls: "", otherCalls: "", tokens: "", costUsd: "", minutes: "", reason };
+  return { driver, prompt: AGENT_PROMPT, status, a: "", b: "", c: "", d: "", e: "", f: "", item: "", baoCalls: "", otherCalls: "", tokens: "", costUsd: "", minutes: "", reason };
 }
 
 function grade(ok: boolean): Grade {
@@ -885,6 +887,7 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
     const cost = sessions.map((session) => session.transcript.costUsd).filter((value): value is number => value !== null);
     const row: AgentRow = {
       driver: main.transcript.model ? `${driver} (${main.transcript.model})` : driver,
+      prompt: AGENT_PROMPT,
       status,
       ...grades,
       item: shape.line?.name || "",
@@ -906,33 +909,45 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
 
 // ---------- the table ----------
 
-const HEADER = "| driver | status | A cart | B only bao | C no trap | D workflow | E replay | F checkout | item | bao calls | other calls | tokens | cost USD | minutes | reason |";
+const HEADER = "| driver | prompt | status | A cart | B only bao | C no trap | D workflow | E replay | F checkout | item | bao calls | other calls | tokens | cost USD | minutes | reason |";
 
 function cell(text: string): string {
   return text.replace(/\|/g, "/").replace(/\n/g, " ");
 }
 
 export function rowLine(row: AgentRow): string {
-  return `| ${[row.driver, row.status, row.a, row.b, row.c, row.d, row.e, row.f, row.item, row.baoCalls, row.otherCalls, row.tokens, row.costUsd, row.minutes, row.reason].map(cell).join(" | ")} |`;
+  return `| ${[row.driver, row.prompt, row.status, row.a, row.b, row.c, row.d, row.e, row.f, row.item, row.baoCalls, row.otherCalls, row.tokens, row.costUsd, row.minutes, row.reason].map(cell).join(" | ")} |`;
 }
 
-/** Rows of an earlier table, by driver name, so a run of one driver keeps the other's row. */
-export function earlierRows(markdown: string): Map<string, string> {
-  const rows = new Map<string, string>();
+/** A line of the table, with the driver and prompt that key it. */
+export interface TableLine {
+  driver: AgentDriver;
+  prompt: string;
+  line: string;
+}
+
+/** Rows of an earlier table, so a run keeps the other driver's row and the rows of an earlier prompt. */
+export function earlierRows(markdown: string): TableLine[] {
+  const rows: TableLine[] = [];
   for (const line of markdown.split("\n")) {
-    const match = /^\| (claude|codex)\b/.exec(line);
-    if (match) rows.set(match[1] as string, line);
+    const match = /^\| (claude|codex)\b[^|]*\| ([^|]*) \|/.exec(line);
+    if (match) rows.push({ driver: match[1] as AgentDriver, prompt: (match[2] as string).trim(), line });
   }
   return rows;
 }
 
-export function renderAgentTable(lines: Map<string, string>, notes: Map<string, string>): string {
+/** The table with this run's row in place of the driver's earlier row for the same prompt. */
+export function withRow(lines: readonly TableLine[], driver: AgentDriver, row: AgentRow): TableLine[] {
+  return [...lines.filter((line) => line.driver !== driver || line.prompt !== row.prompt), { driver, prompt: row.prompt, line: rowLine(row) }];
+}
+
+export function renderAgentTable(lines: readonly TableLine[], notes: Map<string, string>): string {
   const out = [
     "# Agent lane: put costco blueberries into the cart at instacart",
     "",
     "Lane L2 of the agent plan. `npm run bao -- eval agent-instacart --driver claude|codex` writes this file. It spends model tokens, so `npm run test:v1` does not run it.",
     "",
-    `A mock user runs the logged-in Claude Code or Codex once, with the prompt \`${AGENT_PROMPT}\` and nothing else. The agent's only MCP server is the product \`bao mcp\`, which sends the live tools to a spawned \`bao serve\` with a temp home. The app drives the test browser, which maps www.instacart.com to the Instacart fixture (\`desktop/test/instacart/\`) and every other host to NOTFOUND. Each driver runs with a temp config dir: Claude Code gets the keychain login's access token, and Codex gets a copy of its login with no refresh token, so the run cannot rotate either login. Every bao process gets a temp HOME.`,
+    `A mock user runs the logged-in Claude Code or Codex once, with the prompt \`${AGENT_PROMPT}\` and nothing else. The prompt names the owner's item, since grade A counts no other Costco blueberries. The agent's only MCP server is the product \`bao mcp\`, which sends the live tools to a spawned \`bao serve\` with a temp home. The app drives the test browser, which maps www.instacart.com to the Instacart fixture (\`desktop/test/instacart/\`) and every other host to NOTFOUND. Each driver runs with a temp config dir: Claude Code gets the keychain login's access token, and Codex gets a copy of its login with no refresh token, so the run cannot rotate either login. Every bao process gets a temp HOME.`,
     "",
     "Lock-down flags:",
     "",
@@ -956,13 +971,14 @@ export function renderAgentTable(lines: Map<string, string>, notes: Map<string, 
     "",
     "The status is `pass` when A to E pass and F passes, reads `not exercised`, or was left out with `--skip-checkout`. Tokens and cost add up both sessions. Minutes are per session. A missing CLI or login is a `not run` row. The command does not invent a pass.",
     "",
+    "Each row shows its main session's prompt. Grade F's session ends that prompt with `and check out`. A run replaces only its driver's row for the same prompt, so rows from an earlier prompt stay below the current ones.",
+    "",
     HEADER,
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    HEADER.replace(/[^|]+/g, " --- "),
   ];
-  for (const driver of DRIVERS) {
-    const line = lines.get(driver);
-    if (line) out.push(line);
-  }
+  const current = DRIVERS.flatMap((driver) => lines.filter((line) => line.driver === driver && line.prompt === AGENT_PROMPT));
+  const earlier = lines.filter((line) => line.prompt !== AGENT_PROMPT);
+  for (const line of [...current, ...earlier]) out.push(line.line);
   if (notes.size) {
     out.push("", "Last run:", "");
     for (const driver of DRIVERS) {
@@ -1005,7 +1021,7 @@ export async function evalAgentInstacart(args: string[] = []): Promise<{ markdow
   mkdirSync(artifacts, { recursive: true });
   console.error(`artifacts ${artifacts}`);
   const before = existsSync(out) ? readFileSync(out, "utf8") : "";
-  const lines = earlierRows(before);
+  let lines = earlierRows(before);
   const notes = earlierNotes(before);
   const rows: AgentRow[] = [];
   for (const driver of drivers) {
@@ -1016,7 +1032,7 @@ export async function evalAgentInstacart(args: string[] = []): Promise<{ markdow
       result = { row: blankRow(driver, "fail", `lane error: ${err instanceof Error ? err.message : String(err)}`), judgeModel: "" };
     }
     rows.push(result.row);
-    lines.set(driver, rowLine(result.row));
+    lines = withRow(lines, driver, result.row);
     const listing = result.listing;
     const offered = listing
       ? `the lock-down check saw ${listing.tools.length} tools offered (${listing.tools.join(", ")})${listing.sources.length ? `, tool_search sources ${listing.sources.join(", ")}` : ""}${listing.note ? `, ${listing.note}` : ""}`
