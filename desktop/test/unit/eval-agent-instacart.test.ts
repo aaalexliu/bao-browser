@@ -2,7 +2,7 @@
 // logins, the transcript readers, and the grades. `bao eval agent-instacart` runs the lane.
 
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -27,7 +27,7 @@ import {
   withRow,
   type AgentRow,
 } from "../../src/eval/agent-instacart";
-import { CLAUDE_BIN_ENV, CODEX_DISABLED_FEATURES, claudeAgentArgs, claudeAgentAuth, codexAgentArgs, codexAgentAuth, driverBinary } from "../../src/eval/live-cli";
+import { CODEX_DISABLED_FEATURES, claudeAgentArgs, claudeAgentAuth, codexAgentArgs, codexAgentAuth } from "../../src/eval/live-cli";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { search, storeBySlug } from "../instacart/catalog";
 import { TARGET, type CartWrite, type FixtureState, type Hit } from "../instacart/fixture";
@@ -58,28 +58,6 @@ test("claude runs with the plan's lock-down flags and a budget cap", () => {
   assert.equal(pairs("--permission-mode"), "dontAsk");
   assert.equal(pairs("--max-budget-usd"), "1");
   assert.equal(pairs("--output-format"), "stream-json");
-});
-
-test("BAO_AGENT_CLAUDE_BIN picks the claude binary when it is an executable file, and the default lookup stays the same", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "bao-claude-bin-"));
-  try {
-    const bin = path.join(dir, "claude");
-    writeFileSync(bin, "#!/bin/sh\n");
-    chmodSync(bin, 0o755);
-    const plain = path.join(dir, "plain");
-    writeFileSync(plain, "");
-    chmodSync(plain, 0o644);
-    const fallback = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"].find((file) => existsSync(file)) || null;
-    assert.equal(CLAUDE_BIN_ENV, "BAO_AGENT_CLAUDE_BIN");
-    assert.equal(driverBinary("claude", { [CLAUDE_BIN_ENV]: bin }), bin);
-    assert.equal(driverBinary("claude", {}), fallback);
-    for (const unusable of ["", plain, dir, path.join(dir, "missing")]) {
-      assert.equal(driverBinary("claude", { [CLAUDE_BIN_ENV]: unusable }), fallback, unusable);
-    }
-    assert.equal(driverBinary("codex", { [CLAUDE_BIN_ENV]: bin }), driverBinary("codex", {}));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 test("codex runs with no user config, every acting feature off, and bao's calls approved with the configured timeout", () => {

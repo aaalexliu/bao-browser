@@ -4,8 +4,6 @@ Lane L2 of the agent plan. `npm run bao -- eval agent-instacart --driver claude|
 
 A mock user runs the logged-in Claude Code or Codex once, with the prompt `put costco kirkland organic blueberries into the cart at instacart` and nothing else. The prompt names the owner's item, since grade A counts no other Costco blueberries. The agent's only MCP server is the product `bao mcp`, which sends the live tools to a spawned `bao serve` with a temp home. The app drives the test browser, which maps www.instacart.com to the Instacart fixture (`desktop/test/instacart/`) and every other host to NOTFOUND. Each driver runs with a temp config dir: Claude Code gets the keychain login's access token, and Codex gets a copy of its login with no refresh token, so the run cannot rotate either login. Every bao process gets a temp HOME.
 
-The lane runs `/opt/homebrew/bin/claude`, else `/usr/local/bin/claude`. `BAO_AGENT_CLAUDE_BIN` names another claude binary, such as the native install in `~/.local/bin/claude`, and wins when it is an executable file. The Last run note says when a run used it.
-
 Lock-down flags:
 
 - Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools "" --no-chrome --allowedTools "mcp__bao__*" --permission-mode dontAsk --max-budget-usd 1`.
@@ -39,5 +37,5 @@ Each row shows its main session's prompt. Grade F's session ends that prompt wit
 
 Last run:
 
-- claude: 2026-10-31, the lock-down check saw 13 tools offered (mcp__bao__describe_workflow, mcp__bao__get_run, mcp__bao__live_click, mcp__bao__live_key, mcp__bao__live_screenshot, mcp__bao__live_scroll, mcp__bao__live_session_start, mcp__bao__live_snapshot, mcp__bao__live_stop, mcp__bao__live_type, mcp__bao__run_workflow, DeferredToolPlaceholder, mcp__bao__search_workflows), claude binary from BAO_AGENT_CLAUDE_BIN.
+- claude: 2026-10-31, the lock-down check saw 13 tools offered (mcp__bao__describe_workflow, mcp__bao__get_run, mcp__bao__live_click, mcp__bao__live_key, mcp__bao__live_screenshot, mcp__bao__live_scroll, mcp__bao__live_session_start, mcp__bao__live_snapshot, mcp__bao__live_stop, mcp__bao__live_type, mcp__bao__run_workflow, DeferredToolPlaceholder, mcp__bao__search_workflows), run on the native Claude Code 2.1.310 because macOS blocked the Homebrew copy.
 - codex: 2026-10-30, the lock-down check saw 16 tools offered (exec, apply_patch, list_mcp_resource_templates, list_mcp_resources, read_mcp_resource, clock__curr_time, wait, request_user_input, request_user_input_async, sleep, followup_task, interrupt_agent, list_agents, send_message, spawn_agent, wait_agent).
