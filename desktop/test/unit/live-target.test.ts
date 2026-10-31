@@ -172,6 +172,7 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
       }) as LiveBody;
       assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
       assert.deepEqual(ax.calls, []);
+      assert.equal(host.isOpen(), true);
       assert.equal(labels(started).includes("Checkout"), false);
       assert.ok(stops(started).includes("Checkout"), stops(started).join(", "));
       assert.ok(stops(started).includes("Try Instacart+ free"), stops(started).join(", "));
@@ -192,6 +193,7 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
       assert.equal(record.status, "passed");
       assert.equal(record.note, "Saved after the agent went quiet.");
       await until(() => (existsSync(lockFile) ? undefined : true), "the lock release");
+      assert.equal(host.isOpen(), false);
       const late = await host.call({ op: "live_snapshot" }) as LiveBody;
       assert.equal(late.outcome?.kind, "rejected");
     } finally {
@@ -304,7 +306,7 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
       liveIdleWarnMs: 4_000,
     });
     const base = `http://127.0.0.1:${app.port}`;
-    type State = { liveIdle?: LiveIdleWarning | null; notifications?: { title: string }[] };
+    type State = { liveIdle?: LiveIdleWarning | null; liveSessionOpen?: boolean; notifications?: { title: string }[] };
     const state = async () => await (await fetch(`${base}/api/state`)).json() as State;
     const live = async (body: Record<string, unknown>) => await (await fetch(`${base}/api/live`, {
       method: "POST",
@@ -313,8 +315,10 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
     })).json() as LiveBody;
     const keep = async () => await (await fetch(`${base}/api/live/keep`, { method: "POST" })).json() as { open?: boolean };
     try {
+      assert.equal((await state()).liveSessionOpen, false);
       const started = await live({ op: "live_session_start", intent: "Shop", url: fixture.url("/store/costco/storefront") });
       assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
+      assert.equal((await state()).liveSessionOpen, true);
       assert.equal((await state()).liveIdle, null);
       let warned: State = {};
       const deadline = Date.now() + 10_000;
@@ -341,6 +345,7 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
       }
       assert.equal((await live({ op: "live_stop" })).outcome?.kind, "stopped");
       assert.deepEqual(await keep(), { open: false });
+      assert.equal((await state()).liveSessionOpen, false);
     } finally {
       await app.close();
       delete process.env.BAO_NOTIFY_SOCK;

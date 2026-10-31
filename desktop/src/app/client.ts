@@ -1,6 +1,7 @@
 // Desktop window. Talks only to this machine's bao server.
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
+import { activePolling, createStatePoller } from "./state-poll";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
@@ -147,12 +148,18 @@ async function loadHostAccess(): Promise<void> {
   await refresh();
 }
 
-async function refresh(): Promise<void> {
+function refresh(): Promise<void> {
+  return statePoller.refresh();
+}
+
+async function refreshState(): Promise<void> {
   try {
     const stored = localStorage.getItem("bao-theme");
     if (stored === "dark" || stored === "light") theme = stored;
   } catch { /* private mode */ }
-  state = await (await fetch("/api/state")).json();
+  const response = await fetch("/api/state");
+  if (!response.ok) throw new Error(`state request failed: ${response.status}`);
+  state = await response.json();
   const opened = state.opened;
   if (opened) {
     const token = `${opened.kind}:${opened.id}:${opened.saved}:${JSON.stringify(opened.inputs || {})}`;
@@ -847,9 +854,9 @@ function bindTeachFix(root: ParentNode): void {
 
 function bindRemote(): void {
   const allow = document.getElementById("remote-allow");
-  if (allow) allow.onclick = () => void fetch("/api/remote/allow", { method: "POST" });
+  if (allow) allow.onclick = () => void statePoller.track(fetch("/api/remote/allow", { method: "POST" }));
   const deny = document.getElementById("remote-deny");
-  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" });
+  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" }).then(() => refresh());
   const kill = document.getElementById("remote-kill");
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
   const confirm = document.getElementById("remote-confirm-allow");
@@ -877,7 +884,7 @@ function bindAsk(): void {
   const show = document.getElementById("act-show");
   if (show) show.onclick = () => void fetch("/api/replay/show", { method: "POST" });
   const cancel = document.getElementById("act-cancel");
-  if (cancel) cancel.onclick = () => void fetch("/api/replay/cancel", { method: "POST" });
+  if (cancel) cancel.onclick = () => void fetch("/api/replay/cancel", { method: "POST" }).then(() => refresh());
   const cont = document.getElementById("act-continue");
   if (cont) cont.onclick = () => void fetch("/api/prompt/continue", { method: "POST" });
   const keep = document.getElementById("live-keep") as HTMLButtonElement | null;
@@ -1421,11 +1428,11 @@ function openTokenEditor(token: HTMLButtonElement, id: string): void {
 
 async function startGuide(id: string): Promise<void> {
   lastWf = id;
-  const res = await fetch("/api/replay", {
+  const res = await statePoller.track(fetch("/api/replay", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, args: {}, guide: true }),
-  });
+  }));
   const run = await res.json() as { status?: string; actions?: number; error?: string };
   const live = document.getElementById("guide-actions");
   if (live && typeof run.actions === "number") live.textContent = `${run.actions} automated actions`;
@@ -1455,11 +1462,11 @@ async function runReplay(): Promise<void> {
   if (live) live.textContent = "Running…";
   gateNote = "";
   const fromStep = debugStepId;
-  const res = await fetch("/api/replay", {
+  const res = await statePoller.track(fetch("/api/replay", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, args, fromStep: fromStep || undefined }),
-  });
+  }));
   const run = await res.json() as RunSummary & { runId?: string; error?: string; message?: string; signInUrl?: string };
   if (run.status === "needs-sign-in") {
     gateNote = run.message || "Needs sign-in. The session is not live, so Bao did not start the run.";
@@ -2245,12 +2252,11 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-void refresh();
-// The login bar has to be on screen within a second of replay. This poll is what paints it.
-let polling = false;
-setInterval(() => {
-  if (polling) return;
-  polling = true;
-  refresh().catch(() => undefined).finally(() => { polling = false; });
-}, 100);
+const statePoller = createStatePoller({
+  poll: refreshState,
+  active: () => activePolling(state),
+  visible: () => document.visibilityState === "visible",
+});
+document.addEventListener("visibilitychange", statePoller.visibilityChanged);
+void refresh().catch(() => undefined);
 setInterval(tickClock, 250);
