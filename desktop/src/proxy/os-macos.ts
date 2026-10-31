@@ -223,18 +223,6 @@ export class MacOsHelper {
     return this.exec(["read", ...identity(target)], 90_000);
   }
 
-  cgKey(bundle: string, combo: string): Promise<AxHit> {
-    return this.exec(["cg-key", "--bundle", bundle, "--combo", combo]);
-  }
-
-  cgType(bundle: string, text: string): Promise<AxHit> {
-    return this.exec(["cg-type", "--bundle", bundle, "--text", text]);
-  }
-
-  raiseWindow(bundle: string, title: string): Promise<AxHit> {
-    return this.exec(["raise-window", "--bundle", bundle, "--title", title]);
-  }
-
   focusRole(bundle: string, role: string, name = ""): Promise<AxHit> {
     const args = ["focus-role", "--bundle", bundle, "--role", role];
     if (name) args.push("--name", name);

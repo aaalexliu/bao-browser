@@ -19,7 +19,7 @@ import {
   setRemoteDebugging,
   type RemoteDebuggingDeps,
 } from "../../src/cdp-live/remote-debugging";
-import type { AxHit } from "../../src/proxy/os-macos";
+import { MacOsHelper, type AxHit } from "../../src/proxy/os-macos";
 
 const DIR = "/Users/me/Library/Application Support/Google/Chrome";
 const PORT_FILE = `${DIR}/DevToolsActivePort`;
@@ -133,11 +133,20 @@ test("errors name a locked screen, a missing grant, and Chrome not running", () 
   assert.equal(explainRemoteDebuggingError(new Error("The screen is locked. Unlock it, then try again")).message, SCREEN_LOCKED);
   assert.equal(explainRemoteDebuggingError(new Error("BaoOSHelper accessibility is not granted")).message, ACCESSIBILITY_MISSING);
   assert.equal(explainRemoteDebuggingError(new Error(CHROME_NOT_OPEN)).message, CHROME_NOT_OPEN);
-  assert.equal(explainRemoteDebuggingError(new Error("unknown command ae-open")).message, "BaoOSHelper is older than this Bao; rebuild it");
   assert.equal(explainRemoteDebuggingError(new Error("not allowed to control Google Chrome")).message, AUTOMATION_DENIED);
   assert.equal(checkboxKnown("1"), true);
   assert.equal(checkboxKnown("0"), false);
   assert.equal(checkboxKnown(""), null);
+});
+
+test("unknown helper commands are explained once at the process boundary", async () => {
+  const helper = new MacOsHelper(process.execPath);
+  await assert.rejects(helper.exec(["-e", 'process.stdout.write(JSON.stringify({ ok: false, error: "unknown command ae-open" }))']), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    assert.equal(err.message, "BaoOSHelper is older than this Bao; rebuild it");
+    assert.equal(explainRemoteDebuggingError(err), err);
+    return true;
+  });
 });
 
 test("a checkbox that does not move times out instead of reporting on", async () => {

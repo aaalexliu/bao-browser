@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, macPermissionMissing, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { attentionCount, formatWait, liveIdleSurfaceText, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
@@ -469,6 +469,39 @@ test("the record bar and the permission card follow live state", () => {
   assert.equal(quiet.includes("not granted yet"), false);
   assert.equal(quiet.includes("perm-dot"), false);
   assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
+});
+
+test("only known missing Automation grants bring back the permission card and need dot", () => {
+  for (const state of ["granted", "closed", "unavailable", "not-asked", "denied", undefined] as const) {
+    for (const accessibility of [true, false]) {
+      for (const screenCapture of [true, false]) {
+        const helper = {
+          platform: "darwin",
+          accessibility,
+          screenCapture,
+          automation: state ? { state, message: `${state} report` } : undefined,
+        };
+        const automationMissing = state === "not-asked" || state === "denied";
+        const missing = !accessibility || !screenCapture || automationMissing;
+        const context = JSON.stringify(helper);
+        assert.equal(macPermissionMissing(helper), missing, context);
+        const card = onboarding(helper);
+        const dot = permissionDot(helper);
+        assert.equal(card !== "", missing, context);
+        assert.equal(dot.includes('class="dot need"'), missing, context);
+        for (const html of [dot, ...(missing ? [card] : [])]) {
+          const mark = state === "granted" ? "true" : automationMissing ? "false" : "unknown";
+          assert.ok(html.includes(`data-perm="automation" data-ok="${mark}"`), context);
+          if (state === "closed" || state === "unavailable") {
+            assert.match(html, /Chrome isn&#39;t running, so Bao can&#39;t check this right now/);
+          }
+        }
+        assert.equal(macPermissionMissing({ ...helper, platform: "linux" }), false);
+        assert.equal(onboarding({ ...helper, platform: "linux" }), "");
+        assert.equal(permissionDot({ ...helper, platform: "linux" }), "");
+      }
+    }
+  }
 });
 
 test("a target clip is the element rect, padded and centered, and stays inside the viewport", () => {

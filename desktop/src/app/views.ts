@@ -2000,8 +2000,12 @@ export function liveStepList(events: { id?: string; op?: string; kind?: string }
 
 type PermissionState = { label?: string; platform?: string; accessibility?: boolean; screenCapture?: boolean; automation?: AutomationReport };
 
+function automationPermissionMissing(automation?: AutomationReport): boolean {
+  return automation?.state === "not-asked" || automation?.state === "denied";
+}
+
 export function macPermissionMissing(helper?: PermissionState): boolean {
-  return helper?.platform === "darwin" && (!helper.accessibility || !helper.screenCapture || helper.automation?.state !== "granted");
+  return helper?.platform === "darwin" && (!helper.accessibility || !helper.screenCapture || automationPermissionMissing(helper.automation));
 }
 
 function permRows(helper?: PermissionState): string {
@@ -2009,10 +2013,14 @@ function permRows(helper?: PermissionState): string {
   const screen = !!helper?.screenCapture;
   const automation = helper?.automation;
   const automationOk = automation?.state === "granted";
+  const automationMissing = automationPermissionMissing(automation);
+  const automationMessage = automation && !automationOk && !automationMissing
+    ? "Chrome isn't running, so Bao can't check this right now"
+    : automation?.message || "BaoOSHelper is unavailable.";
   return `<ul class="perms">
       <li class="perm" data-perm="accessibility" data-ok="${access ? "true" : "false"}"><span class="mark"></span><span><strong>Accessibility</strong> ${access ? "allowed" : "not granted yet"}</span></li>
       <li class="perm" data-perm="screen" data-ok="${screen ? "true" : "false"}"><span class="mark"></span><span><strong>Screen Recording</strong> ${screen ? "allowed" : "not granted yet"}</span></li>
-      <li class="perm" data-perm="automation" data-ok="${automationOk ? "true" : "false"}"><span class="mark"></span><span><strong>Automation: Google Chrome</strong> ${esc(automation?.message || "BaoOSHelper is unavailable.")}</span> <button type="button" id="automation-ask">${automationOk ? "Check" : "Allow"}</button></li>
+      <li class="perm" data-perm="automation" data-ok="${automationOk ? "true" : automationMissing ? "false" : "unknown"}"><span class="mark"></span><span><strong>Automation: Google Chrome</strong> ${esc(automationMessage)}</span> <button type="button" id="automation-ask">${automationOk ? "Check" : "Allow"}</button></li>
     </ul>`;
 }
 

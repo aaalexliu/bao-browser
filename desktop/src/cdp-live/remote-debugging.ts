@@ -80,7 +80,6 @@ export const SCREEN_LOCKED = "The screen is locked. Unlock it, then try again.";
 export const CHROME_NOT_OPEN = "Chrome is not open. Open Google Chrome, then try again";
 export const AUTOMATION_DENIED = "BaoOSHelper is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome, then try again.";
 export const AUTOMATION_PROMPT = "A macOS prompt is on screen. Allow BaoOSHelper to control Google Chrome.";
-export const HELPER_TOO_OLD = "BaoOSHelper is older than this Bao; rebuild it";
 export const ACCESSIBILITY_MISSING = "BaoOSHelper accessibility is not granted. Turn it on for BaoOSHelper in System Settings > Privacy & Security > Accessibility, then try again.";
 
 /** Null when the checkbox value does not say on or off. An empty value is not off. */
@@ -101,7 +100,6 @@ export function explainRemoteDebuggingError(err: unknown): Error {
   if (/Chrome is not open/.test(message)) return new Error(CHROME_NOT_OPEN);
   if (/not allowed to control Google Chrome/.test(message)) return new Error(AUTOMATION_DENIED);
   if (/prompt is on screen/.test(message)) return new Error(AUTOMATION_PROMPT);
-  if (/unknown command/.test(message)) return new Error(HELPER_TOO_OLD);
   return err instanceof Error ? err : new Error(message);
 }
 

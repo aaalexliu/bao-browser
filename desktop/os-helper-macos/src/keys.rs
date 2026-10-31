@@ -12,12 +12,12 @@ use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use foreign_types::ForeignType;
 
 use crate::element::{ax_ok, copy_attr, element_list, set_bool, string_attr, El};
-use crate::walk::app_element;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
     fn CGEventSourceSetLocalEventsSuppressionInterval(source: *mut std::ffi::c_void, seconds: f64);
 }
+use crate::walk::app_element;
 
 const CMD: u16 = 0x37;
 const SHIFT: u16 = 0x38;
@@ -158,24 +158,16 @@ fn cg_key(src: &CGEventSource, code: u16, down: bool, flags: CGEventFlags) -> Re
     Ok(())
 }
 
-fn focus_for_cg(bundle: &str, what: &str) -> Result<El, String> {
-    if matches!(crate::perms::screen_locked(), Ok(true)) {
-        return Err("The screen is locked. Unlock it, then try again".into());
-    }
-    let (_pid, app) = app_element(bundle)?;
-    raise(&app);
-    thread::sleep(Duration::from_millis(150));
-    if !frontmost(&app) {
-        return Err(format!("app did not become frontmost; {what} was not posted"));
-    }
-    Ok(app)
-}
-
 /// Posts a combo through CGEvent only after the target app is frontmost.
 /// A key is not posted when AXFrontmost stays false.
 pub fn post_cg_combo(bundle: &str, combo: &str) -> Result<(), String> {
     let (key, mods) = parse_combo(combo)?;
-    let _app = focus_for_cg(bundle, "key")?;
+    let (_pid, app) = app_element(bundle)?;
+    raise(&app);
+    thread::sleep(Duration::from_millis(150));
+    if !frontmost(&app) {
+        return Err("app did not become frontmost; key was not posted".into());
+    }
     let src = cg_source()?;
     let flags = cg_flags(&mods);
     for modifier in &mods {
@@ -190,7 +182,12 @@ pub fn post_cg_combo(bundle: &str, combo: &str) -> Result<(), String> {
 }
 
 pub fn post_cg_text(bundle: &str, text: &str) -> Result<(), String> {
-    let _app = focus_for_cg(bundle, "text")?;
+    let (_pid, app) = app_element(bundle)?;
+    raise(&app);
+    thread::sleep(Duration::from_millis(150));
+    if !frontmost(&app) {
+        return Err("app did not become frontmost; text was not posted".into());
+    }
     let src = cg_source()?;
     for ch in text.chars() {
         let (code, shift) = text_key(ch)?;
