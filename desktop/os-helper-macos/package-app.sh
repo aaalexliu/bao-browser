@@ -4,7 +4,7 @@
 # is read or written here. CC is /usr/bin/clang so the build does not call
 # a shell alias named cc.
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/dev/bao-mac-toolchain/rustup}"
 export CARGO_HOME="${CARGO_HOME:-$HOME/dev/bao-mac-toolchain/cargo}"
 export CC=/usr/bin/clang
