@@ -29,8 +29,13 @@ type Data = Record<string, unknown>;
 const MAX_OUTPUT = 16 * 1024 * 1024;
 const PNG = Buffer.from("89504e470d0a1a0a", "hex");
 
+type StopCause = "deadline" | "socket-error" | "socket-ended" | "output-limit" | "invalid-json" | "response-shape"
+  | "response-id" | "dialog" | "tab-gone" | "renderer-revived" | "warning" | "browser-relaunch" | "action-result";
+
 export class EngineUncertain extends Error {
-  constructor(action = "command") { super(`agent-browser ${action} outcome uncertain; run stopped; do not retry the action`); }
+  constructor(action = "command", cause: StopCause = "response-shape") {
+    super(`agent-browser ${action} outcome uncertain (${cause}); run stopped; do not retry the action`);
+  }
 }
 
 /** One native process, private Unix socket, fixed browser and tab. Never respawns or retries. */
@@ -114,48 +119,53 @@ export class AgentBrowserPage {
           socket.destroy();
           if (error) reject(error); else resolve(data!);
         };
-        const uncertain = () => {
+        const uncertain = (cause: StopCause) => {
           if (finished) return;
-          this.stopReason = `uncertain ${action}`;
+          this.stopReason = `uncertain ${action} (${cause})`;
           this.stopped = true;
           this.child?.kill("SIGKILL");
-          finish(new EngineUncertain(action));
+          finish(new EngineUncertain(action, cause));
         };
         // Native navigation waits up to 25 seconds even when its general wait env is shorter.
-        const timer = setTimeout(uncertain, this.options.commandMs ?? (action === "navigate" ? 30_000 : 12_000));
-        socket.once("error", uncertain);
-        socket.once("end", () => { if (!finished) uncertain(); });
+        const timer = setTimeout(() => uncertain("deadline"), this.options.commandMs ?? (action === "navigate" ? 30_000 : 12_000));
+        socket.once("error", () => uncertain("socket-error"));
+        socket.once("end", () => { if (!finished) uncertain("socket-ended"); });
         socket.once("connect", () => socket.write(JSON.stringify({ ...fields, id, action }) + "\n"));
         socket.on("data", (chunk) => {
           bytes = Buffer.concat([bytes, chunk]);
-          if (bytes.length > MAX_OUTPUT) return uncertain();
+          if (bytes.length > MAX_OUTPUT) return uncertain("output-limit");
           const newline = bytes.indexOf(10);
           if (newline < 0) return;
           try {
             const reply: unknown = JSON.parse(bytes.subarray(0, newline).toString("utf8"));
-            if (!reply || typeof reply !== "object") return uncertain();
+            if (!reply || typeof reply !== "object") return uncertain("response-shape");
             const value = reply as Data;
-            if (value.id !== id || typeof value.success !== "boolean") return uncertain();
+            if (value.id !== id) return uncertain("response-id");
+            if (typeof value.success !== "boolean") return uncertain("response-shape");
             if (!value.success) {
               // Upstream errors can echo page text or typed values. Never include them in Bao logs.
               this.stopped = true;
+              this.stopReason = `${action} failed`;
               this.child?.kill("SIGKILL");
               return finish(new Error(`agent-browser ${action} failed; run stopped (no retry)`));
             }
-            if (!value.data || typeof value.data !== "object" || Array.isArray(value.data)) return uncertain();
+            if (!value.data || typeof value.data !== "object" || Array.isArray(value.data)) return uncertain("response-shape");
             const data = value.data as Data;
             const lifecycle = data.lifecycle as Data | undefined;
-            if (data.dialogOpened === true || data.dialogBlocked === true || data.tabGone === true || data.revived === true || value.warnings
-              || (action !== "launch" && (lifecycle?.launched === true || lifecycle?.relaunchedBrowser === true))) return uncertain();
+            if (data.dialogOpened === true || data.dialogBlocked === true) return uncertain("dialog");
+            if (data.tabGone === true) return uncertain("tab-gone");
+            if (data.revived === true) return uncertain("renderer-revived");
+            if (value.warnings) return uncertain("warning");
+            if (action !== "launch" && (lifecycle?.launched === true || lifecycle?.relaunchedBrowser === true)) return uncertain("browser-relaunch");
             const expected: Record<string, string> = { click: "clicked", fill: "filled", press: "pressed", check: "checked", uncheck: "unchecked", screenshot: "path" };
             const field = expected[action];
             if ((action === "tab_switch" && data.targetId !== this.options.targetId)
               || (field && typeof data[field] !== "string")
               || (action === "evaluate" && !("result" in data))
               || (action === "keyboard" && data.inserted !== true)
-              || (action === "select" && (!Array.isArray(data.selected) || !data.selected.every((item) => typeof item === "string")))) return uncertain();
+              || (action === "select" && (!Array.isArray(data.selected) || !data.selected.every((item) => typeof item === "string")))) return uncertain("action-result");
             finish(undefined, data);
-          } catch { uncertain(); }
+          } catch { uncertain("invalid-json"); }
         });
       });
     } finally { this.busy = false; }

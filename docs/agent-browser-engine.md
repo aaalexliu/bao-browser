@@ -21,7 +21,7 @@ A saved UI choice takes precedence over the environment. For local fixture work 
 - Version and platform checksums live in `desktop/packaging/agent-browser-pin.json`. The pinned release is **0.41.0**.
 - `desktop/packaging/stage-agent-browser.mjs` checks the archive and executable, stages the platform binary, sets its execute bit, and includes its license and skill data. The app signs the bundled executable. The npm launcher is not a runtime dependency.
 - Bao starts one native daemon with a private state directory, a fixed loopback CDP endpoint, and one exact pinned tab. It strips model keys, remote-provider settings, proxy settings, config homes, and inherited executable paths from the child environment. WebMCP is off.
-- Structured NDJSON travels over a private Unix socket. Page values never enter argv. Raw engine output and upstream error text are not logged because they can contain typed values.
+- Structured NDJSON travels over a private Unix socket. Page values never enter argv. Raw engine output and upstream error text are not logged because they can contain typed values. Fixed stop-cause codes distinguish deadlines, socket loss, invalid responses, and lifecycle changes without exposing those values.
 - Commands have deadlines and a response-size bound. The process has a lifetime bound. A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
 - Bao tracks browser ownership itself. Killing the native child only disconnects it. The adapter never sends `Browser.close`; the owner of a Bao-launched browser handles shutdown. An attached browser survives adapter disposal.
 - Live tools keep the host/origin, credential, stale-ref, submit, commit-label, popup, and stop-path guards. The trial does not expose arbitrary evaluation or upstream browser commands through MCP.
@@ -54,7 +54,18 @@ The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `de
 | Nested-frame and shadow-root actions | Gap | Not full browser-driver parity; unsupported focus/select targets refuse rather than acting on another element. |
 | Human handoff and assertions | Gap | Existing replay logic remains; full interactive parity is not yet proved. |
 | Copied-profile chooser and lifecycle | Works | Synthetic/API tests and selected-profile native launch passed. Copies close and delete; extension loading is opt-in per profile. Real-cart proof remains separate. |
-| Live capture step shots and CDP video | Works | Expanded local fixture passed: Library step PNGs, replay before/after PNGs, and nonempty CDP videos. Real-site proof remains separate. |
+| Live capture step shots and CDP video | Works | Expanded local fixture passed: Library step PNGs, replay before/after PNGs, and nonempty CDP videos. The real agent recording also saved its workflow, four step PNGs, and video. |
+| Real copied-profile replay | Gap | The real replay stopped during startup with uncertain evaluation, before any workflow step or cart write. No retry or fallback ran. |
+
+## Real-site checkpoint
+
+With extensions off, the read-only preflight opened the empty Costco cart. One Opus 5.5 agent run then used only product Bao MCP: 18 tool calls, 55.6 seconds, USD 0.4706854. It added the approved Kirkland Signature Organic Blueberries, 3 lbs, product 19232694, once. The cart screenshot showed exactly one line at quantity 1.
+
+Bao saved `wf-real-kirkland-blueberries`, four kept steps, their PNGs, and the CDP recording. All four recorded steps passed. The capture run's overall status is still `failed` because the agent encountered one stale-ref refusal, refreshed, and continued. That status needs review; it is not a replay pass.
+
+The single model-free replay failed during startup, before step 0, with `agent-browser run stopped: uncertain evaluate`. It added nothing. Restoration used `removeLabelOk` and `cartRestored(0, 1, 0)` to remove only the agent's actual addition. The final cart screenshot showed the empty starting cart. Other carts were not opened or changed. Owned Chrome stopped and its profile copy was deleted.
+
+Private evidence is under the task's `real-run/` directory: `extensions-off/baseline.json`, `claude-main/summary.json`, `claude-main/session/`, `replay.json`, and `restore/restored.json`. This is partial real-site proof, not a passed real-cart replay gate or grounds to change the default engine.
 
 ## Local proof
 

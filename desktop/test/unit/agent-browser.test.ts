@@ -24,6 +24,8 @@ net.createServer(socket => {
     if (cmd.action === 'fill' && ${JSON.stringify(mode)} === 'hang') return;
     if (cmd.action === 'fill' && ${JSON.stringify(mode)} === 'malformed') { socket.end('not-json\\n'); return; }
     if (cmd.action === 'fill' && ${JSON.stringify(mode)} === 'error') { socket.end(JSON.stringify({ id: cmd.id, success: false, error: cmd.value }) + '\\n'); return; }
+    if (cmd.action === 'fill' && ${JSON.stringify(mode)} === 'missing-result') { socket.end(JSON.stringify({ id: cmd.id, success: true, data: {} }) + '\\n'); return; }
+    if (cmd.action === 'fill' && ${JSON.stringify(mode)} === 'ended') { socket.end(); return; }
     const data = cmd.action === 'evaluate' ? { result: {count: ${mode === "ambiguous" ? 2 : 1}, credential: false} } : cmd.action === 'fill' ? {filled: cmd.selector} : cmd.action === 'tab_switch' ? {targetId: ${mode === "wrongtab" ? "'WRONG'" : "cmd.tabId"}} : {};
     socket.end(JSON.stringify({id: cmd.id, success: true, data}) + '\\n');
   });
@@ -63,14 +65,18 @@ test("native transport keeps option-shaped text and secrets out of argv and envi
   } finally { await fake.close(); }
 });
 
-for (const mode of ["hang", "malformed", "error"]) {
+for (const mode of ["hang", "malformed", "error", "missing-result", "ended"]) {
   test(`${mode} stops the run without repeating an uncertain mutation or leaking upstream error text`, async () => {
     const fake = await fakeEngine(mode);
     try {
       const secret = "private-value-that-must-not-be-logged";
       await assert.rejects(fake.page.fill("#field", secret), (error: Error) => {
         assert.equal(error.message.includes(secret), false);
-        if (mode !== "error") assert.ok(error instanceof EngineUncertain);
+        if (mode !== "error") {
+          assert.ok(error instanceof EngineUncertain);
+          const cause = mode === "hang" ? "deadline" : mode === "malformed" ? "invalid-json" : mode === "ended" ? "socket-ended" : "action-result";
+          assert.ok(error.message.includes(`(${cause})`));
+        }
         return true;
       });
       await assert.rejects(fake.page.fill("#field", "second"), /stopped/);
@@ -98,7 +104,7 @@ test("navigation allows the native 25-second wait to finish within a bounded 30-
 });
 
 test("a mismatched native tab response stops startup before any page action", async () => {
-  await assert.rejects(fakeEngine("wrongtab"), EngineUncertain);
+  await assert.rejects(fakeEngine("wrongtab"), (error: Error) => error instanceof EngineUncertain && error.message.includes("(action-result)"));
 });
 
 test("a missing native executable and remote endpoint cannot cause a browser launch", async () => {
