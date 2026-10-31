@@ -50,7 +50,7 @@ export interface RemoteDebuggingDeps {
   axLog: string;
   /** Opens the inspect page in the Chrome pid. Returns the script window id when it has one. */
   openInspect: (pid: number) => Promise<void | { windowId?: string; frame?: number[] }>;
-  /** True when the screen is locked. Checked before any key, so a lock does not hang. */
+  /** True when the screen is locked. Checked before Automation or checkbox actions. */
   screenLocked?: () => Promise<boolean>;
   /** Closes the inspect tab this call opened. Omitted in unit tests. */
   closeOpenedTab?: (pid: number) => Promise<void>;
@@ -216,37 +216,37 @@ export async function setRemoteDebugging(on: boolean, deps: RemoteDebuggingDeps)
     opened = true;
   }
   try {
-  const box = await within(deps, "the remote-debugging checkbox", async () => {
-    const seen = await readCheckbox(deps, pid, frame);
-    return seen.found ? seen : undefined;
-  });
-  let pressed = false;
-  const known = checkboxKnown(box.value);
-  const sleep = deps.sleep || ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  const portState = async (): Promise<number | null | undefined> => {
-    const now = await listening();
-    if (on) return now ?? undefined;
-    return now === null ? null : undefined;
-  };
-  let port: number | null | undefined;
-  if (known !== on) {
-    for (let attempt = 0; attempt < 4 && port === undefined; attempt++) {
-      await setCheckbox(deps, pid, on, frame);
-      pressed = true;
-      for (let beat = 0; beat < 8 && port === undefined; beat++) {
-        port = await portState();
-        if (port !== undefined) break;
-        await sleep(200);
+    const box = await within(deps, "the remote-debugging checkbox", async () => {
+      const seen = await readCheckbox(deps, pid, frame);
+      return seen.found ? seen : undefined;
+    });
+    let pressed = false;
+    const known = checkboxKnown(box.value);
+    const sleep = deps.sleep || ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    const portState = async (): Promise<number | null | undefined> => {
+      const now = await listening();
+      if (on) return now ?? undefined;
+      return now === null ? null : undefined;
+    };
+    let port: number | null | undefined;
+    if (known !== on) {
+      for (let attempt = 0; attempt < 4 && port === undefined; attempt++) {
+        await setCheckbox(deps, pid, on, frame);
+        pressed = true;
+        for (let beat = 0; beat < 8 && port === undefined; beat++) {
+          port = await portState();
+          if (port !== undefined) break;
+          await sleep(200);
+        }
       }
-    }
-    await logAx(deps.axLog, { what: "AXPress", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools", at: new Date().toISOString(), via: "BaoOSHelper" });
-    if (port === undefined) {
+      await logAx(deps.axLog, { what: "AXPress", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools", at: new Date().toISOString(), via: "BaoOSHelper" });
+      if (port === undefined) {
+        port = await within(deps, on ? "Chrome to listen on its DevTools port" : "Chrome to close its DevTools port", portState);
+      }
+    } else {
       port = await within(deps, on ? "Chrome to listen on its DevTools port" : "Chrome to close its DevTools port", portState);
     }
-  } else {
-    port = await within(deps, on ? "Chrome to listen on its DevTools port" : "Chrome to close its DevTools port", portState);
-  }
-  return { pid, pressed, opened, port, already: false };
+    return { pid, pressed, opened, port, already: false };
   } finally {
     if (opened) await deps.closeOpenedTab?.(pid);
   }

@@ -73,7 +73,7 @@ Run `xcode-select --install` only when `xcode-select -p` fails. When the tools a
 
 ### Rust, for a helper rebuild
 
-`desktop/os-helper-macos/package-app.sh` runs cargo from `~/dev/bao-mac-toolchain/cargo` unless `CARGO_HOME` is already set. Skip the installer when `"$HOME/dev/bao-mac-toolchain/cargo/bin/cargo" --version` already prints `cargo 1.`. A Mac that already has the helper grant uses [Rebuild with an existing grant](#rebuild-with-an-existing-grant) and does not run this script. A machine without that signed helper uses [Fresh setup](#fresh-setup).
+`desktop/os-helper-macos/package-app.sh` runs cargo from `~/dev/bao-mac-toolchain/cargo` unless `CARGO_HOME` is already set. Skip the installer when `"$HOME/dev/bao-mac-toolchain/cargo/bin/cargo" --version` already prints `cargo 1.`. A Mac that already has the helper grant follows [Rebuild with an existing grant](#rebuild-with-an-existing-grant), which explains when the helper can be reused. A machine without that signed helper uses [Fresh setup](#fresh-setup).
 
 ```sh
 mkdir -p "$HOME/dev/bao-mac-toolchain"
@@ -162,7 +162,7 @@ It copies Playwright Chromium to `Contents/Resources/Chromium.app` and signs tha
 
 ## Rebuild with an existing grant
 
-Use this when this Mac already has the helper grant. Do not run `desktop/os-helper-macos/package-app.sh`. Do not pass `--deep` to `codesign`. Do not replace the helper with an ad-hoc signature or a raw binary. A new certificate is a different app, and the grant does not follow it.
+Use this when this Mac already has the helper grant. Reuse the signed helper only when its commands match this Bao. If its source has changed, rebuild it with `desktop/os-helper-macos/package-app.sh` and the existing `bao dev signing` identity before packaging. That script includes the Automation entitlement from `desktop/os-helper-macos/entitlements.plist`. Do not pass `--deep` to `codesign` or replace the helper with an ad-hoc signature or a raw binary. A new certificate is a different app, and the grant does not follow it. An old helper answers `unknown command`; Bao then says `BaoOSHelper is older than this Bao; rebuild it`.
 
 ```sh
 npm install
@@ -208,7 +208,7 @@ open /Applications/Bao.app
 
 Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 
-Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With both privacy grants on, the footer reads **helper ok**.
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With Accessibility and Screen Recording on, the footer reads **helper ok**.
 
 ## Logs
 
@@ -231,20 +231,14 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-The product window does not need these grants. The nested helper does. The permission check on first launch requests two grants, naming **BaoOSHelper**:
+The product window does not need these grants. The nested helper does. Bao's status checks read Accessibility, Screen Recording, and Automation for Google Chrome without prompting. See [What Bao asks permission for](permissions.md) for grant requirements, Automation prompt timing, and live Chrome readiness. The helper's prompt text is defined in [`Info.plist`](../desktop/os-helper-macos/Info.plist), not in the product window.
 
-1. Accessibility. The usage string is `BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.`
-2. Screen Recording. The usage string is `BaoOSHelper captures one throwaway window so the spike can show the control it pressed.`
-Automation for Google Chrome is a third grant. Bao requests it when a remote-debugging toggle first needs it, or when you press **Allow** beside **Automation: Google Chrome** in Bao. If Chrome is closed, that button opens it normally before asking. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.` A toggle that is already in the requested state does not ask.
+Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Enable it under Screen & System Audio Recording too for window capture and the MCP driver. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
 
-Live Chrome reports **live Chrome ready** when Accessibility is granted and either Automation for Google Chrome is granted or that Chrome is already listening with remote debugging on. A closed Chrome leaves the Automation check neutral. With debugging off, Automation not yet asked or denied shows **live Chrome needs one more permission**: use **Allow** beside **Automation: Google Chrome**, or System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome for denied. An unavailable check shows its real error and does not claim readiness unless Chrome is already listening. Live Chrome does not capture a window, so Screen Recording never blocks it. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job. These examples assume the [live Chrome permission check](permissions.md#which-grant-each-job-needs) is satisfied:
 
-Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Enable it under Screen & System Audio Recording too for window capture and the MCP driver. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the row is missing. The grant is for bundle id `dev.bao.oshelper` signed by `bao dev signing`. A rebuild of the helper with a new certificate, or an ad-hoc signature, is a different app and the grant does not follow it. When the helper source in this tree has changed, rebuild it with the existing `bao dev signing` identity. Do not reuse an older helper whose commands this Bao no longer matches. An old helper answers `unknown command`; Bao then says `BaoOSHelper is older than this Bao; rebuild it`.
-
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job. These examples assume Automation is granted or Chrome is already listening; a closed Chrome leaves Automation neutral:
-
-- With Accessibility alone: **helper needs permission**, then **AX press ready**, **window capture needs Screen Recording**, **live Chrome ready**, and **MCP driver needs Accessibility and Screen Recording**.
-- With both grants: **helper ok**, then **AX press ready**, **window capture ready**, **live Chrome ready**, and **MCP driver ready**.
+- With Accessibility on and Screen Recording off: **helper needs permission**, then **AX press ready**, **window capture needs Screen Recording**, **live Chrome ready**, and **MCP driver needs Accessibility and Screen Recording**.
+- With Accessibility and Screen Recording on: **helper ok**, then **AX press ready**, **window capture ready**, **live Chrome ready**, and **MCP driver ready**.
 
 An agent can check the local server. This is not a page to open:
 
@@ -252,7 +246,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` follows the readiness rule above. `helper.screenCapture` is true only with Screen Recording on. `helper.label` is `helper ok` only when both grants are on, and `helper needs permission` otherwise. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` and `helper.label` follow [Which grant each job needs](permissions.md#which-grant-each-job-needs). `helper.screenCapture` is true only with Screen Recording on. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 
