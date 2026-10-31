@@ -5,9 +5,10 @@ import type { OutputTable } from "../v1/data-steps";
 import { unavailableHeal } from "../v1/heal";
 import { replay, type RunResult } from "../v1/replay";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
-import { readDevToolsActivePort } from "./endpoint";
+import { DEVTOOLS_ACTIVE_PORT, readDevToolsActivePort } from "./endpoint";
 import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
-import { AxUnavailable, chromeHelper, chromeTree, ensureRemoteDebugging } from "./ax";
+import { AxUnavailable, chromeHelper, chromeTree } from "./ax";
+import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import { CdpLiveDriver, openLiveWindow, type PageObservation } from "./driver";
 import { connectAndAllow } from "./connect";
 import type { CdpSocket } from "./socket";
@@ -119,8 +120,8 @@ async function main(): Promise<void> {
   };
   progress(`accessibility ${permissions.accessibility} screenCapture ${permissions.screenCapture}`);
   progress("reading the remote-debugging checkbox");
-  const tree = await chromeTree(helper);
-  const enabled = await ensureRemoteDebugging(helper, axLog, tree.pid);
+  const enabled = await setRemoteDebugging(true, remoteDebuggingDeps(helper, DEVTOOLS_ACTIVE_PORT, axLog, progress));
+  const tree = await chromeTree(helper, enabled.pid);
   const before = tree.summary.dialog;
   const dialogPresentBeforeConnect = before.present || before.buttonCount > 0;
   if (dialogPresentBeforeConnect) {

@@ -56,54 +56,6 @@ pub fn bottom_left_y(screen_h: f64, top_y: f64) -> f64 {
     screen_h - top_y
 }
 
-/// A left click posted to one pid. Does not move the cursor and does not raise the app.
-pub fn click_pid(pid: i32, x: f64, y: f64) -> Result<(), String> {
-    let src = source()?;
-    for (px, py) in [(x, y)] {
-        for kind in [CGEventType::LeftMouseDown, CGEventType::LeftMouseUp] {
-            let event = CGEvent::new_mouse_event(src.clone(), kind, CGPoint::new(px, py), CGMouseButton::Left)
-                .map_err(|_| "CGEventCreateMouseEvent failed".to_string())?;
-            event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
-            unsafe { CGEventPostToPid(pid, event.as_ptr() as *mut _) };
-            thread::sleep(Duration::from_millis(30));
-        }
-    }
-    Ok(())
-}
-
-#[link(name = "CoreGraphics", kind = "framework")]
-extern "C" {
-    fn CGEventPostToPid(pid: i32, event: *mut std::ffi::c_void);
-}
-
-/// One left click at a top-left screen point. Restores the cursor. Refuses if the pointer cannot reach the point.
-pub fn click(x: f64, y: f64) -> Result<(), String> {
-    let (_screen_w, screen_h) = screen_size();
-    let src = source()?;
-    let before = cursor(&src)?;
-    post_mouse(&src, CGEventType::MouseMoved, x, y, false)?;
-    thread::sleep(Duration::from_millis(40));
-    let after_top = cursor(&src)?;
-    let (px, py) = if dist(after_top, (x, y)) < 24.0 {
-        (x, y)
-    } else {
-        let flipped = (x, bottom_left_y(screen_h, y));
-        post_mouse(&src, CGEventType::MouseMoved, flipped.0, flipped.1, false)?;
-        thread::sleep(Duration::from_millis(40));
-        let after = cursor(&src)?;
-        if dist(after, flipped) >= 24.0 {
-            let _ = post_mouse(&src, CGEventType::MouseMoved, before.0, before.1, false);
-            return Err("cursor did not move to the checkbox".into());
-        }
-        flipped
-    };
-    post_mouse(&src, CGEventType::LeftMouseDown, px, py, true)?;
-    thread::sleep(Duration::from_millis(30));
-    post_mouse(&src, CGEventType::LeftMouseUp, px, py, false)?;
-    let _ = post_mouse(&src, CGEventType::MouseMoved, before.0, before.1, false);
-    Ok(())
-}
-
 pub fn drag(from_x: f64, from_y: f64, to_x: f64, to_y: f64) -> Result<Value, String> {
     let (screen_w, screen_h) = screen_size();
     let src = source()?;

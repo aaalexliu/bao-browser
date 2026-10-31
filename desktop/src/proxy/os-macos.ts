@@ -59,7 +59,8 @@ export interface AxHit {
   after?: AxFrame;
   resized?: boolean;
   sizeError?: string | null;
-  windowId?: number;
+  windowId?: number | string;
+  frame?: number[];
   width?: number;
   height?: number;
   pid?: number;
@@ -200,15 +201,8 @@ export class MacOsHelper {
     return this.exec(["focus", "--allow-bundle", bundle]);
   }
 
-  press(target: OsTarget, pid?: number, valuePrefix?: string): Promise<AxHit> {
+  press(target: OsTarget, pid?: number): Promise<AxHit> {
     const args = ["press", ...identity(target)];
-    if (pid) args.push("--pid", String(pid));
-    if (valuePrefix) args.push("--value-prefix", valuePrefix);
-    return this.exec(args, 90_000);
-  }
-
-  showMenu(target: OsTarget, pid?: number): Promise<AxHit> {
-    const args = ["show-menu", ...identity(target)];
     if (pid) args.push("--pid", String(pid));
     return this.exec(args, 90_000);
   }
@@ -229,23 +223,16 @@ export class MacOsHelper {
     return this.exec(["read", ...identity(target)], 90_000);
   }
 
-  cgKey(bundle: string, combo: string, pid?: number, tap?: "hid" | "session" | "pid"): Promise<AxHit> {
-    const args = ["cg-key", "--bundle", bundle, "--combo", combo];
-    if (pid) args.push("--pid", String(pid));
-    if (tap && tap !== "hid") args.push("--tap", tap);
-    return this.exec(args);
+  cgKey(bundle: string, combo: string): Promise<AxHit> {
+    return this.exec(["cg-key", "--bundle", bundle, "--combo", combo]);
   }
 
-  cgType(bundle: string, text: string, pid?: number): Promise<AxHit> {
-    const args = ["cg-type", "--bundle", bundle, "--text", text];
-    if (pid) args.push("--pid", String(pid));
-    return this.exec(args);
+  cgType(bundle: string, text: string): Promise<AxHit> {
+    return this.exec(["cg-type", "--bundle", bundle, "--text", text]);
   }
 
-  raiseWindow(bundle: string, title: string, pid?: number): Promise<AxHit> {
-    const args = ["raise-window", "--bundle", bundle, "--title", title];
-    if (pid) args.push("--pid", String(pid));
-    return this.exec(args);
+  raiseWindow(bundle: string, title: string): Promise<AxHit> {
+    return this.exec(["raise-window", "--bundle", bundle, "--title", title]);
   }
 
   focusRole(bundle: string, role: string, name = ""): Promise<AxHit> {

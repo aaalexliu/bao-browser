@@ -1,7 +1,7 @@
 import path from "node:path";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
-import { chromeHelper, closeInspectTab, openInspect, type ChromeAx } from "./ax";
+import { chromeHelper, type ChromeAx } from "./ax";
 import { type CdpLiveDriver } from "./driver";
 import {
   clickLive,
@@ -23,7 +23,7 @@ import {
   type OpenProfileWindow,
 } from "./live-target";
 import { acquireCdpLock, CDP_LOCK_PATH, rememberLockTarget, releaseCdpLock, takeDeadTarget } from "./lock";
-import { setRemoteDebugging } from "./remote-debugging";
+import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import {
   admit,
   buildView,
@@ -130,8 +130,7 @@ export interface LiveHostOptions {
   idleWarnMs?: number;
   /** Gets the warning when it comes, and null when a call, Keep open, or the end clears it. */
   onIdleWarn?: (warning: LiveIdleWarning | null) => void;
-  /** Opens chrome://inspect/#remote-debugging in the daily Chrome when its remote debugging is off. Tests pass a fake. */
-  openInspect?: (pid: number) => Promise<void | { windowId?: string }>;
+  onNotice?: (message: string) => void;
 }
 
 type EndReason = "stop" | "disconnect" | "idle";
@@ -149,19 +148,9 @@ export function createLiveHost(opts: LiveHostOptions): {
   const defaultTarget = opts.target || parseLiveTarget("daily", "");
   const openProfile = opts.openProfile || openChromeProfileWindow;
   const axLog = path.join(opts.home, "live-session", "ax.jsonl");
-  const openInspectPage = opts.openInspect || ((pid: number) => openInspect(chromeHelper(), axLog, pid));
-  const screenLocked = () => chromeHelper().screenLocked();
-  const closeOpenedTab = (pid: number) => closeInspectTab(chromeHelper(), axLog, pid);
   async function restoreOff(portFile: string): Promise<void> {
     const ax = opts.helper ? opts.helper() : chromeHelper();
-    await setRemoteDebugging(false, {
-      helper: ax,
-      portFile,
-      axLog,
-      openInspect: openInspectPage,
-      screenLocked,
-      closeOpenedTab,
-    });
+    await setRemoteDebugging(false, remoteDebuggingDeps(ax, portFile, axLog, opts.onNotice));
   }
   const idleMs = opts.idleMs ?? LIVE_IDLE_MS;
   const warnMs = Math.min(opts.idleWarnMs ?? LIVE_IDLE_WARN_MS, idleMs);
@@ -317,7 +306,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
     let prepared;
     try {
-      prepared = await prepareTarget(target, opts.helper, { openInspect: openInspectPage, axLog, screenLocked, closeOpenedTab });
+      prepared = await prepareTarget(target, opts.helper, { axLog, onNotice: opts.onNotice });
     } catch (err) {
       releaseCdpLock(AGENT, lockFile);
       throw err;
@@ -655,9 +644,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       openProfile,
       axLog,
       connectTimeoutMs: opts.connectTimeoutMs,
-      openInspect: openInspectPage,
-      screenLocked,
-      closeOpenedTab,
+      onNotice: opts.onNotice,
     });
   }
 

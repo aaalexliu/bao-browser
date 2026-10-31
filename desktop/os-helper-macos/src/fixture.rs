@@ -16,7 +16,7 @@ use crate::element::{
 };
 use crate::model::{Frame, Node};
 use crate::sample::element_at_point;
-use crate::walk::{app_element, app_element_opts, app_target, best_name, harvest_filtered};
+use crate::walk::{app_element, app_element_opts, best_name, harvest_filtered};
 
 const SIDEBAR: &[&str] = &[
     "Desktop", "Documents", "Downloads", "Applications", "iCloud Drive", "AirDrop", "Recents",
@@ -464,11 +464,8 @@ pub fn confirm_containing(bundle: &str, title: &str, needle: &str) -> Result<Val
     Ok(json!({"ok": true, "confirmed": true}))
 }
 
-pub fn raise_matching(bundle: &str, title: &str, pid: Option<i32>) -> Result<Value, String> {
-    let (resolved, app) = app_target(bundle, pid)?;
-    if pid.is_some() {
-        let _ = crate::apps::activate_pid(resolved);
-    }
+pub fn raise_matching(bundle: &str, title: &str) -> Result<Value, String> {
+    let (_pid, app) = app_element(bundle)?;
     let win = matching_window(&app, title)?;
     let _ = set_front(&app);
     let action = CFString::new("AXRaise");

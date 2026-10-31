@@ -105,15 +105,13 @@ fn named(el: &El) -> String {
     string_attr(el, "AXValue")
 }
 
-fn find_named(el: &El, role: &str, name: &str, depth: i32, seen: &mut std::collections::HashSet<usize>) -> Option<El> {
-    if depth > 30 || seen.len() > 1500 { return None; }
-    let ptr = el.0 as usize;
-    if !seen.insert(ptr) { return None; }
+fn find_named(el: &El, role: &str, name: &str, depth: i32) -> Option<El> {
+    if depth > 30 { return None; }
     if role_of(el) == role && named(el) == name {
         return El::retain(el.0);
     }
     for child in child_list(el) {
-        if let Some(found) = find_named(&child, role, name, depth + 1, seen) {
+        if let Some(found) = find_named(&child, role, name, depth + 1) {
             return Some(found);
         }
     }
@@ -173,7 +171,7 @@ fn inspect_checkbox(pid: i32, name: &str, frame: Option<(f64, f64, f64, f64)>) -
         let areas = web_areas(window);
         let roots: Vec<&El> = if areas.is_empty() { vec![window] } else { areas.iter().collect() };
         for root in roots {
-            if let Some(found) = find_named(root, "AXCheckBox", name, 0, &mut std::collections::HashSet::new()) {
+            if let Some(found) = find_named(root, "AXCheckBox", name, 0) {
                 return Ok(found);
             }
         }

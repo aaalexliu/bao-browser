@@ -42,7 +42,17 @@ pub fn activate_pid(pid: i32) -> Result<(), String> {
     }
 }
 
+/// NSWorkspace keeps a stale front app until this process runs its loop.
+fn pump_workspace() {
+    let _ = core_foundation::runloop::CFRunLoop::run_in_mode(
+        unsafe { core_foundation::runloop::kCFRunLoopDefaultMode },
+        std::time::Duration::from_millis(50),
+        true,
+    );
+}
+
 pub fn frontmost_pid() -> Result<i32, String> {
+    pump_workspace();
     unsafe {
         let Some(cls) = AnyClass::get(c"NSWorkspace") else {
             return Err("NSWorkspace is missing".into());

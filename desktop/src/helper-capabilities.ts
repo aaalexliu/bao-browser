@@ -1,4 +1,5 @@
 import { HELPER_SHOT_COMMAND, LIVE_CHROME_SHOT_ERROR, MacOsHelper } from "./proxy/os-macos";
+import type { AutomationReport } from "./cdp-live/automation";
 
 export type HelperGrant = "accessibility" | "screen-recording";
 
@@ -41,6 +42,7 @@ export interface HelperStatus {
   platform: string;
   accessibility: boolean;
   screenCapture: boolean;
+  automation?: AutomationReport;
   capabilities: { id: Capability["id"]; status: string }[];
 }
 
@@ -49,6 +51,7 @@ export function capabilityReport(input: {
   helperPresent: boolean;
   accessibility?: boolean;
   screenCapture?: boolean;
+  automation?: AutomationReport;
 }): HelperStatus {
   const platform = input.platform;
   if (platform !== "darwin" || !input.helperPresent) {
@@ -65,6 +68,7 @@ export function capabilityReport(input: {
     platform,
     accessibility,
     screenCapture,
+    automation: input.automation,
     capabilities: CAPABILITIES.map((cap) => ({
       id: cap.id,
       status: cap.grants.every((grant) => held[grant]) ? cap.ready : cap.blocked,

@@ -231,11 +231,11 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-The product window does not need Accessibility. The nested helper does. On the first launch, macOS asks three times, naming **BaoOSHelper**:
+The product window does not need these grants. The nested helper does. The permission check on first launch requests two grants, naming **BaoOSHelper**:
 
 1. Accessibility. The usage string is `BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.`
 2. Screen Recording. The usage string is `BaoOSHelper captures one throwaway window so the spike can show the control it pressed.`
-3. Automation, for Google Chrome only. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.`
+Automation for Google Chrome is a third grant. Bao requests it when a remote-debugging toggle first needs it, or when you press **Allow** beside **Automation: Google Chrome** in Bao. If Chrome is closed, that button opens it normally before asking. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.` A toggle that is already in the requested state does not ask.
 
 Live Chrome needs Accessibility and that Automation grant. It does not capture a window, so it works with Screen Recording on or off. Screen Recording is for window capture, and the MCP driver (`bao mcp-ax`) needs both grants. [What Bao asks permission for](permissions.md) lists the grant each job needs.
 

@@ -10,7 +10,7 @@ import { checkboxReach } from "./consent";
 import { connectAndAllow } from "./connect";
 import { adoptLiveWindow, openLiveWindow, type CdpLiveDriver } from "./driver";
 import { DEVTOOLS_ACTIVE_PORT, listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
-import { setRemoteDebugging } from "./remote-debugging";
+import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import { connectCdp, type CdpSocket } from "./socket";
 
 /** The daily Chrome profile directory a session opens in. Chrome names its first profile Default. */
@@ -203,15 +203,12 @@ async function requireProfile(userDataDir: string, profile: string): Promise<voi
 
 /** What prepareTarget needs to turn the daily Chrome's remote debugging on when it is off. */
 export interface TurnOnDeps {
-  /** Opens chrome://inspect/#remote-debugging in the daily Chrome: openInspect in ax.ts. */
-  openInspect: (pid: number) => Promise<void | { windowId?: string }>;
   axLog: string;
-  screenLocked?: () => Promise<boolean>;
-  closeOpenedTab?: (pid: number) => Promise<void>;
+  onNotice?: (message: string) => void;
 }
 
 /**
- * Checks before the CDP lock. Only the daily Chrome needs its pid and the helper's Accessibility
+ * Runs under the CDP lock. Only the daily Chrome needs its pid and the helper's Accessibility
  * grant. With `turnOn`, a daily Chrome whose remote debugging is off gets it turned on by Bao,
  * as a person would at chrome://inspect/#remote-debugging.
  */
@@ -238,14 +235,7 @@ export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx =
   const block = liveChromeBlock(await ax.permissions(false));
   if (block) throw new Error(block);
   if (!chromePid && turnOn && target.kind === "daily") {
-    const turned = await setRemoteDebugging(true, {
-      helper: ax,
-      portFile: target.portFile,
-      axLog: turnOn.axLog,
-      openInspect: turnOn.openInspect,
-      screenLocked: turnOn.screenLocked,
-      closeOpenedTab: turnOn.closeOpenedTab,
-    });
+    const turned = await setRemoteDebugging(true, remoteDebuggingDeps(ax, target.portFile, turnOn.axLog, turnOn.onNotice));
     endpoint = await readDevToolsActivePort(target.portFile);
     chromePid = turned.pid;
     if (!endpoint || !chromePid) throw new Error("no Chrome is listening on the DevTools port");

@@ -85,9 +85,13 @@ fn target(pid: i32) -> Result<AEDesc, i32> {
     desc_bytes(KPID, &pid.to_ne_bytes())
 }
 
+fn permission_status(pid: i32, ask: bool) -> Result<i32, i32> {
+    let target = target(pid)?;
+    Ok(unsafe { AEDeterminePermissionToAutomateTarget(&target, WILD, WILD, if ask { 1 } else { 0 }) })
+}
+
 pub fn permission(pid: i32, ask: bool) -> Result<Value, String> {
-    let target = target(pid).map_err(explain)?;
-    let status = unsafe { AEDeterminePermissionToAutomateTarget(&target, WILD, WILD, if ask { 1 } else { 0 }) };
+    let status = permission_status(pid, ask).map_err(explain)?;
     let permitted = status == 0;
     let would_prompt = status == WOULD_PROMPT;
     if status != 0 && !would_prompt && status != NOT_PERMITTED {
@@ -113,7 +117,7 @@ fn explain(status: i32) -> String {
     if status == NOT_PERMITTED {
         "BaoOSHelper is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome, then try again.".into()
     } else if status == WOULD_PROMPT {
-        "A macOS prompt is on screen. Allow BaoOSHelper to control Google Chrome.".into()
+        "Automation permission for Google Chrome has not yet been asked.".into()
     } else {
         format!("Apple Event failed ({status})")
     }
@@ -164,13 +168,8 @@ fn property_of(container: &AEDesc, prop: u32) -> Result<AEDesc, i32> {
 /// Every Apple Event goes through this. The no-prompt check uses the same pid target as the send.
 /// A would-prompt or denied result refuses before AESendMessage, so a wrong target cannot raise a prompt.
 fn send(pid: i32, class: u32, id: u32, fill: impl FnOnce(&mut AEDesc) -> Result<(), i32>) -> Result<AEDesc, i32> {
-    match permission(pid, false) {
-        Ok(gate) if gate["permitted"] == true => {}
-        Ok(gate) if gate["wouldPrompt"] == true => return Err(WOULD_PROMPT),
-        Ok(gate) if gate["denied"] == true => return Err(NOT_PERMITTED),
-        Ok(gate) => return Err(gate["status"].as_i64().unwrap_or(-1) as i32),
-        Err(_) => return Err(NOT_PERMITTED),
-    }
+    let status = permission_status(pid, false)?;
+    if status != 0 { return Err(status); }
     let target = target(pid)?;
     let mut event = AEDesc::null();
     let err = unsafe { AECreateAppleEvent(class, id, &target, -1, 0, &mut event) };
@@ -202,19 +201,6 @@ fn get_i32(pid: i32, spec: &AEDesc) -> Result<i32, i32> {
     Ok(value)
 }
 
-pub fn spec_hex() -> Result<String, String> {
-    let spec = window_one().map_err(explain)?;
-    let mut buf = [0u8; 512];
-    let mut actual = 0isize;
-    let err = unsafe { AEFlattenDesc(&spec, buf.as_mut_ptr() as *mut c_void, buf.len() as isize, &mut actual) };
-    if err != 0 { return Err(explain(err)); }
-    Ok(buf[..actual as usize].iter().map(|b| format!("{b:02x}")).collect())
-}
-
-pub fn active_index_public(pid: i32) -> Result<i32, String> {
-    active_index(pid)
-}
-
 fn active_index(pid: i32) -> Result<i32, String> {
     let window = window_one().map_err(explain)?;
     let spec = property_of(&window, ACTIVE_INDEX).map_err(explain)?;
@@ -234,24 +220,6 @@ fn set_active_index(pid: i32, index: i32, window_id: Option<&str>) -> Result<(),
         if err != 0 { Err(err) } else { Ok(()) }
     }).map_err(explain)?;
     Ok(())
-}
-
-pub fn tab_count(pid: i32) -> Result<i32, String> {
-    let window = window_one().map_err(explain)?;
-    let all = desc_bytes(u32::from_be_bytes(*b"abso"), &u32::from_be_bytes(*b"all ").to_be_bytes()).map_err(explain)?;
-    let mut spec = AEDesc::null();
-    let err = unsafe { CreateObjSpecifier(TAB, &window, INDX, &all, 0, &mut spec) };
-    if err != 0 { return Err(explain(err)); }
-    let reply = send(pid, CORE, u32::from_be_bytes(*b"cnte"), |event| {
-        let err = unsafe { AEPutParamDesc(event, DIRECT, &spec) };
-        if err != 0 { Err(err) } else { Ok(()) }
-    }).map_err(explain)?;
-    let mut actual = 0u32;
-    let mut size = 0isize;
-    let mut value = 0i32;
-    let err = unsafe { AEGetParamPtr(&reply, DIRECT, LONG, &mut actual, &mut value as *mut i32 as *mut c_void, 4, &mut size) };
-    if err != 0 { return Err(explain(err)); }
-    Ok(value)
 }
 
 fn window_uid(pid: i32) -> Result<String, String> {
@@ -279,36 +247,6 @@ pub fn window_frame(pid: i32, id: &str) -> Result<(f64, f64, f64, f64), String> 
     let bottom = rect[2] as f64;
     let right = rect[3] as f64;
     Ok((left, top, (right - left).abs(), (bottom - top).abs()))
-}
-
-pub fn window_bounds_raw(pid: i32, id: &str) -> Result<Value, String> {
-    let window = window_by_id(id).map_err(explain)?;
-    let spec = property_of(&window, u32::from_be_bytes(*b"pbnd")).map_err(explain)?;
-    let reply = send(pid, CORE, GET, |event| {
-        let err = unsafe { AEPutParamDesc(event, DIRECT, &spec) };
-        if err != 0 { Err(err) } else { Ok(()) }
-    }).map_err(explain)?;
-    let mut rect = [0i16; 4];
-    let mut actual = 0u32;
-    let mut size = 0isize;
-    let err = unsafe { AEGetParamPtr(&reply, DIRECT, u32::from_be_bytes(*b"qdrt"), &mut actual, rect.as_mut_ptr() as *mut c_void, 8, &mut size) };
-    if err != 0 { return Err(explain(err)); }
-    Ok(json!({
-        "ok": true,
-        "raw": rect,
-        "asLeftTopRightBottom": {"x": rect[0], "y": rect[1], "w": (rect[2] as i32 - rect[0] as i32).abs(), "h": (rect[3] as i32 - rect[1] as i32).abs()},
-        "asTopLeftBottomRight": {"x": rect[1], "y": rect[0], "w": (rect[3] as i32 - rect[1] as i32).abs(), "h": (rect[2] as i32 - rect[0] as i32).abs()},
-    }))
-}
-
-pub fn window_uid_public(pid: i32) -> Result<Value, String> {
-    let id = window_uid(pid)?;
-    Ok(json!({"ok": true, "pid": pid, "windowId": id}))
-}
-
-pub fn make_tab_public(pid: i32, window_id: &str) -> Result<Value, String> {
-    make_tab(pid, window_id).map_err(explain)?;
-    Ok(json!({"ok": true, "pid": pid, "windowId": window_id}))
 }
 
 fn window_by_id(id: &str) -> Result<AEDesc, i32> {
@@ -353,6 +291,7 @@ fn properties_url() -> Result<AEDesc, i32> {
 }
 
 /// The pid to activate again when `make` or `close` left Chrome in front of another app.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn front_to_restore(before: i32, chrome: i32, after: i32) -> Option<i32> {
     if before > 0 && before != chrome && after == chrome { Some(before) } else { None }
 }
@@ -417,16 +356,8 @@ fn set_tab_url(pid: i32, index: i32, window_id: Option<&str>) -> Result<(), Stri
 
 /// Opens the inspect page as a new tab of window id of this pid. Chrome may come forward; Bao puts the previous app back.
 pub fn open_inspect(pid: i32) -> Result<Value, String> {
-    let mut ready = false;
-    for _ in 0..12 {
-        match permission(pid, false) {
-            Ok(gate) if gate["permitted"] == true => { ready = true; break; }
-            Ok(gate) if gate["wouldPrompt"] == true => return Err(explain(WOULD_PROMPT)),
-            Ok(gate) if gate["denied"] == true => return Err(explain(NOT_PERMITTED)),
-            Ok(_) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(250)),
-        }
-    }
-    if !ready { return Err(explain(NOT_PERMITTED)); }
+    let status = permission_status(pid, false).map_err(explain)?;
+    if status != 0 { return Err(explain(status)); }
     let previous = active_index(pid)?;
     let window_id = window_uid(pid)?;
     let front_before = crate::apps::frontmost_pid().unwrap_or(0);
@@ -446,8 +377,22 @@ pub fn open_inspect(pid: i32) -> Result<Value, String> {
     }
     let id = tab_id(pid, created, Some(&window_id))?;
     let frame = window_frame(pid, &window_id).ok();
+    let ready = std::time::Instant::now();
+    let mut found = false;
+    while ready.elapsed() < std::time::Duration::from_secs(10) {
+        if let Ok(value) = crate::act::checkbox_read(pid, "Allow remote debugging for this browser instance", frame) {
+            if value.get("found").and_then(|v| v.as_bool()) == Some(true) {
+                found = true;
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
     let restored_front = put_front_back(front_before, pid).ok().flatten();
     let flash_ms = if restored_front.is_some() { flash_start.elapsed().as_millis() as u64 } else { 0 };
+    if !found {
+        return Err("inspect checkbox was not found before focus was handed back".into());
+    }
     Ok(json!({"ok": true, "pid": pid, "windowId": window_id, "tabIndex": created, "tabId": id, "url": url, "restored": previous, "restoredFront": restored_front, "flashMs": flash_ms, "frame": frame, "raised": restored_front.is_some()}))
 }
 
@@ -484,15 +429,6 @@ pub fn tab_id(pid: i32, index: i32, window_id: Option<&str>) -> Result<String, S
     get_text(pid, &spec).map_err(explain)
 }
 
-pub fn make_window(pid: i32) -> Result<Value, String> {
-    send(pid, CORE, MAKE, |event| {
-        let class = desc_type(WINDOW)?;
-        let err = unsafe { AEPutParamDesc(event, KOCL, &class) };
-        if err != 0 { Err(err) } else { Ok(()) }
-    }).map_err(explain)?;
-    Ok(json!({"ok": true, "pid": pid}))
-}
-
 pub fn close_tab_id(pid: i32, id: &str, restore: Option<i32>, window_id: Option<&str>) -> Result<Value, String> {
     let front_before = crate::apps::frontmost_pid().unwrap_or(0);
     let gate = permission(pid, false)?;
@@ -514,31 +450,13 @@ pub fn close_tab_id(pid: i32, id: &str, restore: Option<i32>, window_id: Option<
         let err = unsafe { AEPutParamDesc(event, DIRECT, &spec) };
         if err != 0 { Err(err) } else { Ok(()) }
     }).map_err(explain)?;
-    let restored_front = put_front_back(front_before, pid).ok().flatten();
+    let restored_front = put_front_back(front_before, pid)?;
     Ok(json!({"ok": true, "pid": pid, "tabId": id, "restoredFront": restored_front}))
-}
-
-pub fn close_tab(pid: i32, index: i32) -> Result<Value, String> {
-    let gate = permission(pid, false)?;
-    if gate["wouldPrompt"] == true || gate["denied"] == true {
-        return Err(explain(if gate["denied"] == true { NOT_PERMITTED } else { WOULD_PROMPT }));
-    }
-    let window = window_one().map_err(explain)?;
-    let which = desc_i32(index).map_err(explain)?;
-    let mut spec = AEDesc::null();
-    let err = unsafe { CreateObjSpecifier(TAB, &window, INDX, &which, 0, &mut spec) };
-    if err != 0 { return Err(explain(err)); }
-    send(pid, CORE, CLOSE, |event| {
-        let err = unsafe { AEPutParamDesc(event, DIRECT, &spec) };
-        if err != 0 { Err(err) } else { Ok(()) }
-    }).map_err(explain)?;
-    Ok(json!({"ok": true, "pid": pid, "tabIndex": index}))
 }
 
 extern "C" {
     fn AECreateList(factor: *const c_void, size: isize, is_record: u8, result: *mut AEDesc) -> i32;
     fn AECoerceDesc(from: *const AEDesc, to: u32, result: *mut AEDesc) -> i32;
-    fn AEFlattenDesc(desc: *const AEDesc, buffer: *mut c_void, size: isize, actual: *mut isize) -> i32;
 }
 
 #[cfg(test)]
@@ -555,6 +473,8 @@ mod tests {
     fn denied_automation_names_the_settings_path() {
         let text = super::explain(-1743);
         assert!(text.contains("System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome"));
-        assert!(super::explain(-1744).contains("BaoOSHelper"));
+        assert_eq!(super::explain(-1744), "Automation permission for Google Chrome has not yet been asked.");
+        assert_eq!(super::explain(-600), "Apple Event failed (-600)");
+        assert_eq!(super::explain(-1708), "Apple Event failed (-1708)");
     }
 }

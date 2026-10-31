@@ -446,11 +446,11 @@ test("the record bar and the permission card follow live state", () => {
   const linux = onboarding({ label: "helper off", platform: "linux", accessibility: false, screenCapture: false });
   assert.equal(linux, "");
   assert.equal(permissionDot({ platform: "linux", accessibility: false, screenCapture: false }), "");
-  const granted = onboarding({ label: "helper ok", platform: "darwin", accessibility: true, screenCapture: true });
+  const granted = onboarding({ label: "helper ok", platform: "darwin", accessibility: true, screenCapture: true, automation: { state: "granted", message: "granted" } });
   assert.equal(granted, "");
   const missing = onboarding({ label: "helper needs permission", platform: "darwin", accessibility: false, screenCapture: true });
   assert.match(missing, /<details>/);
-  assert.match(missing, /<summary>Two permissions on the Mac<\/summary>/);
+  assert.match(missing, /<summary>Three permissions on the Mac<\/summary>/);
   assert.match(missing, /data-perm="accessibility" data-ok="false"/);
   assert.match(missing, /data-perm="screen" data-ok="true"/);
   assert.match(missing, /not granted yet/);

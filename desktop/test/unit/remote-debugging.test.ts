@@ -3,10 +3,14 @@
 // BaoOSHelper, Chrome, ps, and lsof are fakes here, so nothing touches the daily Chrome.
 
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   ACCESSIBILITY_MISSING,
   AUTOMATION_DENIED,
+  AUTOMATION_PROMPT,
   CHROME_NOT_OPEN,
   SCREEN_LOCKED,
   chromePidsFromPs,
@@ -19,6 +23,8 @@ import type { AxHit } from "../../src/proxy/os-macos";
 
 const DIR = "/Users/me/Library/Application Support/Google/Chrome";
 const PORT_FILE = `${DIR}/DevToolsActivePort`;
+const logDir = mkdtempSync(path.join(tmpdir(), "bao-remote-debugging-"));
+after(() => rmSync(logDir, { recursive: true, force: true }));
 
 test("the daily Chrome is the browser process on its user-data dir, not a renderer, a headless Chrome, or another profile dir", () => {
   const ps = [
@@ -36,36 +42,43 @@ test("the daily Chrome is the browser process on its user-data dir, not a render
 
 /** A daily Chrome whose inspect page Bao can open, and whose checkbox BaoOSHelper can press. */
 function fakeChrome(start: { on: boolean; inspectOpen: boolean }) {
-  const state = { ...start, presses: 0, opened: 0, pids: [7], openError: "" };
-  const helper = {
+  const state = { ...start, presses: 0, opened: 0, closed: 0, pids: [7], openError: "", reads: 0, missingReads: 0, boxMissing: false, portStuck: false, gate: { ok: true, permitted: true } as AxHit, asked: { ok: true, permitted: true } as AxHit, calls: [] as string[][] };
+  const helper: RemoteDebuggingDeps["helper"] = {
     exec: async (args: string[]): Promise<AxHit> => {
-      if (args[0] === "ae-permission") return { ok: true, permitted: true, denied: false, wouldPrompt: false };
+      state.calls.push(args);
+      if (args[0] === "ae-permission") return args.includes("--ask") ? state.asked : state.gate;
       if (args[0] === "ae-url") return { ok: true, url: state.inspectOpen ? "chrome://inspect/#remote-debugging" : "about:blank" };
-      if (args[0] === "checkbox-read") return { ok: true, found: state.inspectOpen, value: state.on ? "1" : "0" };
+      if (args[0] === "checkbox-read") return { ok: true, found: state.inspectOpen && !state.boxMissing && state.reads++ >= state.missingReads, value: state.on ? "1" : "0" };
       if (args[0] === "checkbox-set") {
+        if (state.boxMissing) return { ok: true, found: false };
         state.presses += 1;
         state.on = args.includes("1");
         return { ok: true, found: true, value: state.on ? "1" : "0" };
       }
       return { ok: true };
     },
-  } as unknown as RemoteDebuggingDeps["helper"];
+  };
   const deps: RemoteDebuggingDeps = {
     helper,
     portFile: PORT_FILE,
-    axLog: "/dev/null",
+    axLog: path.join(logDir, "ax.jsonl"),
     openInspect: async (pid: number) => {
       assert.equal(pid, 7);
       if (state.openError) throw new Error(state.openError);
       state.opened += 1;
       state.inspectOpen = true;
     },
+    closeOpenedTab: async (pid) => {
+      assert.equal(pid, 7);
+      state.closed += 1;
+      state.inspectOpen = false;
+    },
     findChrome: async (dir) => {
       assert.equal(dir, DIR);
       return state.pids;
     },
     readPort: async () => ({ port: 9222, browserPath: "/devtools/browser/x" }),
-    listener: async (port) => (state.on && port === 9222 ? 7 : undefined),
+    listener: async (port) => (state.on && !state.portStuck && port === 9222 ? 7 : undefined),
     sleep: async () => undefined,
     timeoutMs: 1_000,
   };
@@ -75,7 +88,7 @@ function fakeChrome(start: { on: boolean; inspectOpen: boolean }) {
 test("Bao opens the inspect page, presses the checkbox on, and waits for Chrome to listen", async () => {
   const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
   assert.deepEqual(await setRemoteDebugging(true, deps), { pid: 7, pressed: true, opened: true, port: 9222, already: false });
-  assert.deepEqual([state.opened, state.presses], [1, 1]);
+  assert.deepEqual([state.opened, state.presses, state.closed], [1, 1, 1]);
 });
 
 test("a Chrome that already listens is left as it is", async () => {
@@ -136,6 +149,65 @@ test("a checkbox that does not move times out instead of reporting on", async ()
       if (args[0] === "checkbox-read") return { ok: true, found: true, value: "0" };
       return { ok: true, found: true, value: "0" };
     },
-  } as unknown as RemoteDebuggingDeps["helper"];
+  };
   await assert.rejects(setRemoteDebugging(true, { ...deps, timeoutMs: 0 }), /timed out waiting for Chrome to listen on its DevTools port/);
+});
+
+for (const on of [true, false]) {
+  test(`${on ? "on" : "off"} skips Automation when the port already matches`, async () => {
+    const { state, deps } = fakeChrome({ on, inspectOpen: false });
+    state.gate = { ok: true, wouldPrompt: true };
+    assert.equal((await setRemoteDebugging(on, deps)).already, true);
+    assert.deepEqual(state.calls, []);
+  });
+
+  for (const asked of [{ ok: true, denied: true }, { ok: true, wouldPrompt: true }]) {
+    test(`${on ? "on" : "off"} stops at a refused or unanswered Automation prompt`, async () => {
+      const { state, deps } = fakeChrome({ on: !on, inspectOpen: false });
+      state.gate = { ok: true, wouldPrompt: true };
+      state.asked = asked;
+      const notices: string[] = [];
+      deps.onNotice = (message) => notices.push(message);
+      await assert.rejects(setRemoteDebugging(on, deps), asked.denied ? /System Settings > Privacy & Security > Automation/ : /still undetermined/);
+      assert.deepEqual(state.calls, [
+        ["ae-permission", "--pid", "7"],
+        ["ae-permission", "--pid", "7", "--ask"],
+      ]);
+      assert.deepEqual(notices, [AUTOMATION_PROMPT, ""]);
+      assert.deepEqual([state.opened, state.presses], [0, 0]);
+    });
+  }
+}
+
+test("a granted prompt resumes the toggle and clears the app notice", async () => {
+  const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
+  state.gate = { ok: true, wouldPrompt: true };
+  const notices: string[] = [];
+  deps.onNotice = (message) => notices.push(message);
+  assert.equal((await setRemoteDebugging(true, deps)).port, 9222);
+  assert.deepEqual(notices, [AUTOMATION_PROMPT, ""]);
+  assert.equal(state.closed, 1);
+});
+
+test("a new inspect tab waits for its AX checkbox instead of claiming a missing press succeeded", async () => {
+  const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
+  state.missingReads = 2;
+  assert.equal((await setRemoteDebugging(true, deps)).pressed, true);
+  assert.equal(state.reads, 3);
+  assert.equal(state.closed, 1);
+});
+
+test("a missing checkbox fails and closes only the tab Bao opened", async () => {
+  const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
+  state.boxMissing = true;
+  await assert.rejects(setRemoteDebugging(true, { ...deps, timeoutMs: 0 }), /timed out waiting for the remote-debugging checkbox/);
+  assert.equal(state.presses, 0);
+  assert.equal(state.closed, 1);
+});
+
+test("failure to listen closes the owned inspect tab without claiming success", async () => {
+  const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
+  state.portStuck = true;
+  await assert.rejects(setRemoteDebugging(true, { ...deps, timeoutMs: 0 }), /timed out waiting for Chrome to listen/);
+  assert.equal(state.closed, 1);
 });

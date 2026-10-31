@@ -16,7 +16,7 @@ macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the p
 
 ## Automation for Google Chrome
 
-BaoOSHelper sends one Apple Event to the Chrome process, by pid, to open `chrome://inspect/#remote-debugging`. macOS asks once, and the prompt names BaoOSHelper and Google Chrome. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.` A denial is System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome. This grant is not Accessibility, and it is not a grant to control any other app.
+BaoOSHelper sends several Apple Events to one Chrome process, by pid, to open `chrome://inspect/#remote-debugging`, confirm the URL, read the tab and window ids and bounds, and later restore the tab selection and close its tab. It never uses Apple Events to run JavaScript. macOS asks once, when a toggle first needs Automation or when you press **Allow** beside **Automation: Google Chrome** in Bao. If Chrome is closed, that button opens it normally before asking. The prompt names BaoOSHelper and Google Chrome. The usage string is `Bao opens Chrome's remote-debugging page so your agent can use your Chrome.` A denial is System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome. This grant is not Accessibility, and it is not a grant to control any other app.
 
 ## Which grant each job needs
 

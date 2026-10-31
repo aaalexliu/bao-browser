@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import type { LiveIdleWarning } from "../cdp-live/live-ops";
+import type { AutomationReport } from "../cdp-live/automation";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
@@ -177,10 +178,12 @@ export interface ShellState {
     platform?: string;
     accessibility?: boolean;
     screenCapture?: boolean;
+    automation?: AutomationReport;
     capabilities?: { id: string; status: string }[];
   };
   /** Sidebar dot after the Library card has been dismissed, or on any other screen. */
   permDot?: boolean;
+  automationNotice?: string;
   model?: { label: string };
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
@@ -1995,27 +1998,30 @@ export function liveStepList(events: { id?: string; op?: string; kind?: string }
   }).join("")}</ol>`;
 }
 
-/** Mac only, and only while Accessibility or Screen Recording is still missing. */
-export function macPermissionMissing(helper?: { platform?: string; accessibility?: boolean; screenCapture?: boolean }): boolean {
-  return helper?.platform === "darwin" && (!helper.accessibility || !helper.screenCapture);
+type PermissionState = { label?: string; platform?: string; accessibility?: boolean; screenCapture?: boolean; automation?: AutomationReport };
+
+export function macPermissionMissing(helper?: PermissionState): boolean {
+  return helper?.platform === "darwin" && (!helper.accessibility || !helper.screenCapture || helper.automation?.state !== "granted");
 }
 
-function permRows(helper?: { accessibility?: boolean; screenCapture?: boolean }): string {
+function permRows(helper?: PermissionState): string {
   const access = !!helper?.accessibility;
   const screen = !!helper?.screenCapture;
+  const automation = helper?.automation;
+  const automationOk = automation?.state === "granted";
   return `<ul class="perms">
       <li class="perm" data-perm="accessibility" data-ok="${access ? "true" : "false"}"><span class="mark"></span><span><strong>Accessibility</strong> ${access ? "allowed" : "not granted yet"}</span></li>
       <li class="perm" data-perm="screen" data-ok="${screen ? "true" : "false"}"><span class="mark"></span><span><strong>Screen Recording</strong> ${screen ? "allowed" : "not granted yet"}</span></li>
-      <li class="perm" data-perm="automation"><span class="mark"></span><span><strong>Automation: Google Chrome</strong></span> <button type="button" id="automation-ask">Allow</button></li>
+      <li class="perm" data-perm="automation" data-ok="${automationOk ? "true" : "false"}"><span class="mark"></span><span><strong>Automation: Google Chrome</strong> ${esc(automation?.message || "BaoOSHelper is unavailable.")}</span> <button type="button" id="automation-ask">${automationOk ? "Check" : "Allow"}</button></li>
     </ul>`;
 }
 
-export function onboarding(helper?: { label?: string; platform?: string; accessibility?: boolean; screenCapture?: boolean }): string {
+export function onboarding(helper?: PermissionState): string {
   if (!macPermissionMissing(helper)) return "";
   return `<section id="onboarding">
     <details>
-      <summary>Two permissions on the Mac</summary>
-      <p>Accessibility lets bao see the control you used. Screen Recording lets bao keep a picture of each step. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper needs permission")}”.</p>
+      <summary>Three permissions on the Mac</summary>
+      <p>Accessibility lets bao see the control you used. Screen Recording lets bao keep a picture of each step. Automation lets bao open Chrome's remote-debugging page. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper needs permission")}”.</p>
       ${permRows(helper)}
       <button type="button" id="onboard-done">Continue</button>
     </details>
@@ -2023,7 +2029,7 @@ export function onboarding(helper?: { label?: string; platform?: string; accessi
 }
 
 /** Collapsed sidebar mark. The Library card is the other place this list appears. */
-export function permissionDot(helper?: { platform?: string; accessibility?: boolean; screenCapture?: boolean }): string {
-  if (!macPermissionMissing(helper)) return "";
-  return `<details id="perm-dot"><summary title="Mac permissions still missing"><span class="dot need" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
+export function permissionDot(helper?: PermissionState): string {
+  if (helper?.platform !== "darwin") return "";
+  return `<details id="perm-dot"><summary title="Mac permissions"><span class="dot${macPermissionMissing(helper) ? " need" : ""}" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
 }

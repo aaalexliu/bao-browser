@@ -258,10 +258,10 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
   const want = args[0];
   if (want !== "on" && want !== "off") throw new Error(REMOTE_DEBUGGING_USAGE);
   const path = await import("node:path");
-  const { chromeHelper, closeInspectTab, openInspect } = await import("../cdp-live/ax");
+  const { chromeHelper } = await import("../cdp-live/ax");
   const { DEVTOOLS_ACTIVE_PORT } = await import("../cdp-live/endpoint");
   const { acquireCdpLock, releaseCdpLock } = await import("../cdp-live/lock");
-  const { explainRemoteDebuggingError, setRemoteDebugging } = await import("../cdp-live/remote-debugging");
+  const { explainRemoteDebuggingError, remoteDebuggingDeps, setRemoteDebugging } = await import("../cdp-live/remote-debugging");
   const { liveChromeBlock } = await import("../helper-capabilities");
   const helper = chromeHelper();
   const block = liveChromeBlock(await helper.permissions(false));
@@ -271,14 +271,7 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
   const axLog = path.join(resolveHome(args), "live-session", "ax.jsonl");
   await acquireCdpLock(agent, { timeoutMs: 5_000 });
   try {
-    return await setRemoteDebugging(want === "on", {
-      helper,
-      portFile: DEVTOOLS_ACTIVE_PORT,
-      axLog,
-      openInspect: (pid: number) => openInspect(helper, axLog, pid),
-      screenLocked: () => helper.screenLocked(),
-      closeOpenedTab: (pid: number) => closeInspectTab(helper, axLog, pid),
-    });
+    return await setRemoteDebugging(want === "on", remoteDebuggingDeps(helper, DEVTOOLS_ACTIVE_PORT, axLog));
   } finally {
     releaseCdpLock(agent);
   }
