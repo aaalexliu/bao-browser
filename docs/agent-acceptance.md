@@ -21,7 +21,7 @@ Set `BAO_HEAL_CURSOR_ACCOUNT` to `0` before a checkout `bao serve`, a replay, or
 
 **Expected.** The window title is **Bao**. There is no address bar. The second double-click focuses that window and does not start a second server. `desktop/packaging/macos/bao-main.c` calls `bao_focus_pid` when the instance lock is already held. When the launcher finds a second library with data, it shows one alert that names both directories. `print-home.cjs` records that line in `<home>/shown-notices.json`, so the second double-click and later launches do not show it again.
 
-Record `helper.accessibility` and `helper.screenCapture` from `/api/state`. Stop this pass only when `helper.accessibility` is false. Do not change the grant. Live Chrome needs Accessibility only, so the live-session checks below run with Screen Recording on or off.
+Record `helper.accessibility` and `helper.screenCapture` from `/api/state`. Stop this pass only when `helper.accessibility` is false. Do not change the grant. Screen Recording does not block the live-session checks below. Check Automation readiness in the `live-chrome` row as described below.
 
 **Evidence.** Save the body of these commands next to your notes. They are not files the app writes for you.
 
@@ -31,7 +31,7 @@ lsof -nP -iTCP:4787 -sTCP:LISTEN
 lsof -nP "$LIB/instance.lock"
 ```
 
-`helper.label` is `helper ok`, `helper needs permission`, or `helper off`. `helper ok` means both Accessibility and Screen Recording are granted. `helper.capabilities` has four rows: `ax-press`, `window-capture`, `live-chrome`, and `mcp-ax`. The `live-chrome` row has status `live Chrome ready` when Accessibility is on. `capabilityReport` in `desktop/src/helper-capabilities.ts` sets the label and the rows. While Bao is open, expect one listener on port 4787 and one `lsof` holder of `instance.lock`. `bao_instance_acquire` creates that file with `O_CREAT`. `bao_instance_release` only closes the fd. The file can remain after quit, so its presence is not evidence that Bao is running.
+`helper.label` is `helper ok`, `helper needs permission`, or `helper off`. `helper.capabilities` has four rows: `ax-press`, `window-capture`, `live-chrome`, and `mcp-ax`. Compare the label and rows with [Which grant each job needs](permissions.md#which-grant-each-job-needs), including the Automation and existing-listener cases for live Chrome. `capabilityReport` in `desktop/src/helper-capabilities.ts` sets the label and the rows. While Bao is open, expect one listener on port 4787 and one `lsof` holder of `instance.lock`. `bao_instance_acquire` creates that file with `O_CREAT`. `bao_instance_release` only closes the fd. The file can remain after quit, so its presence is not evidence that Bao is running.
 
 ## Show that the running app is the installed bundle
 

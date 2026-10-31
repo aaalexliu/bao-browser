@@ -6,11 +6,12 @@
 // hosts, labels, and stop paths come from the preset of the workflow's start url.
 
 import { navigationGuard, originsFor } from "./allowlist";
-import type { ChromeAx } from "./ax";
+import { chromeHelper, type ChromeAx } from "./ax";
 import type { CdpLiveDriver } from "./driver";
 import { clickLive, pressLiveKey, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
 import { buildView, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
+import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import { acquireCdpLock, CDP_LOCK_PATH, releaseCdpLock, rememberLockTarget, takeDeadTarget } from "./lock";
 import { guardPreset, presetForUrl, type PresetName } from "./presets";
 import { unavailableHeal, type FailureSnapshot } from "../v1/heal";
@@ -275,6 +276,7 @@ export interface LiveReplayDeps {
   /** Where the Allow press logs what the helper saw. */
   axLog: string;
   connectTimeoutMs?: number;
+  onNotice?: (message: string) => void;
 }
 
 /**
@@ -294,8 +296,14 @@ export async function replayLiveWorkflow(
   const blocked = navigationGuard(workflow.startUrl, scope.hosts, scope.origins, scope.stopPath);
   if (blocked) throw new Error(blocked);
   const lockFile = deps.lockFile || CDP_LOCK_PATH;
-  const prepared = await prepareTarget(deps.target, deps.helper);
   await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
+  let prepared;
+  try {
+    prepared = await prepareTarget(deps.target, deps.helper, { axLog: deps.axLog, onNotice: deps.onNotice });
+  } catch (err) {
+    releaseCdpLock(REPLAY_AGENT, lockFile);
+    throw err;
+  }
   let cdp: Awaited<ReturnType<typeof connectTarget>>["cdp"] | undefined;
   let driver: CdpLiveDriver | undefined;
   try {
@@ -322,6 +330,10 @@ export async function replayLiveWorkflow(
   } finally {
     await driver?.end().catch(() => undefined);
     cdp?.close();
+    if (prepared.turnedOn) {
+      const ax = deps.helper ? deps.helper() : chromeHelper();
+      await setRemoteDebugging(false, remoteDebuggingDeps(ax, prepared.target.portFile, deps.axLog, deps.onNotice)).catch(() => undefined);
+    }
     releaseCdpLock(REPLAY_AGENT, lockFile);
   }
 }

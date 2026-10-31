@@ -1,6 +1,7 @@
 import { HELPER_SHOT_COMMAND, LIVE_CHROME_SHOT_ERROR, MacOsHelper } from "./proxy/os-macos";
+import type { AutomationReport } from "./cdp-live/automation";
 
-export type HelperGrant = "accessibility" | "screen-recording";
+export type HelperGrant = "accessibility" | "screen-recording" | "automation";
 
 export interface Capability {
   id: "ax-press" | "window-capture" | "live-chrome" | "mcp-ax";
@@ -26,7 +27,7 @@ export const CAPABILITIES: readonly Capability[] = [
     id: "live-chrome",
     ready: "live Chrome ready",
     blocked: "live Chrome needs Accessibility",
-    grants: ["accessibility"],
+    grants: ["accessibility", "automation"],
   },
   {
     id: "mcp-ax",
@@ -41,6 +42,7 @@ export interface HelperStatus {
   platform: string;
   accessibility: boolean;
   screenCapture: boolean;
+  automation?: AutomationReport;
   capabilities: { id: Capability["id"]; status: string }[];
 }
 
@@ -49,6 +51,7 @@ export function capabilityReport(input: {
   helperPresent: boolean;
   accessibility?: boolean;
   screenCapture?: boolean;
+  automation?: AutomationReport;
 }): HelperStatus {
   const platform = input.platform;
   if (platform !== "darwin" || !input.helperPresent) {
@@ -56,18 +59,28 @@ export function capabilityReport(input: {
   }
   const accessibility = input.accessibility === true;
   const screenCapture = input.screenCapture === true;
+  const automation = input.automation;
   const held: Record<HelperGrant, boolean> = {
     accessibility,
     "screen-recording": screenCapture,
+    automation: automation?.state === "granted" || automation?.state === "closed" || automation?.remoteDebugging === true,
   };
+  const automationBlocked = automation?.state === "not-asked"
+    ? "live Chrome needs one more permission: use Allow beside Automation: Google Chrome"
+    : automation?.state === "denied"
+      ? `live Chrome needs one more permission: ${automation.message}`
+      : `live Chrome Automation status unavailable: ${automation?.message || "Could not read Automation permission for Google Chrome."}`;
   return {
     label: accessibility && screenCapture ? "helper ok" : "helper needs permission",
     platform,
     accessibility,
     screenCapture,
+    automation: input.automation,
     capabilities: CAPABILITIES.map((cap) => ({
       id: cap.id,
-      status: cap.grants.every((grant) => held[grant]) ? cap.ready : cap.blocked,
+      status: cap.id === "live-chrome" && accessibility && !held.automation
+        ? automationBlocked
+        : cap.grants.every((grant) => held[grant]) ? cap.ready : cap.blocked,
     })),
   };
 }

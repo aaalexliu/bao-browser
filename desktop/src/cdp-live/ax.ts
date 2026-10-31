@@ -6,9 +6,7 @@ import { forbidScreenRecording } from "../helper-capabilities";
 import { MacOsHelper, type AxNode } from "../proxy/os-macos";
 import {
   ALLOW_BUTTON,
-  REMOTE_CHECKBOX,
   checkboxOn,
-  checkboxReach,
   publishWindow,
   summarizeAx,
   type AxSummary,
@@ -27,7 +25,7 @@ export interface AxClick {
 }
 
 /** The BaoOSHelper calls a live session makes on the daily Chrome. Tests pass a fake. */
-export type ChromeAx = Pick<MacOsHelper, "permissions" | "nodes" | "press">;
+export type ChromeAx = Pick<MacOsHelper, "permissions" | "nodes" | "press" | "exec" | "screenLocked">;
 
 export class AxUnavailable extends Error {
   constructor(message: string, readonly summary: AxSummary) {
@@ -53,10 +51,6 @@ export async function logAx(file: string, event: AxClick): Promise<void> {
   await appendFile(file, `${JSON.stringify(event)}\n`);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function target(role: string, name: string): OsTarget {
   return { platform: "macos", app: CHROME_BUNDLE, role, name, path: [] };
 }
@@ -75,24 +69,36 @@ async function note(file: string, event: Omit<AxClick, "at" | "via">): Promise<v
   await logAx(file, { ...event, at: new Date().toISOString(), via: "BaoOSHelper" });
 }
 
-export async function openInspect(helper: MacOsHelper, logFile: string): Promise<void> {
-  await helper.cgKey(CHROME_BUNDLE, "cmd+t");
-  await note(logFile, { what: "cg-key", name: "cmd+t", window: "New Tab" });
-  await sleep(700);
-  await helper.raiseWindow(CHROME_BUNDLE, "New Tab - Google Chrome");
-  await note(logFile, { what: "raise-window", name: "New Tab - Google Chrome", window: "New Tab" });
-  await helper.cgKey(CHROME_BUNDLE, "cmd+l");
-  await note(logFile, { what: "cg-key", name: "cmd+l", window: "New Tab" });
-  await sleep(250);
-  await helper.cgType(CHROME_BUNDLE, "chrome://inspect/");
-  await note(logFile, { what: "cg-type", name: "chrome://inspect/", window: "New Tab" });
-  await helper.cgKey(CHROME_BUNDLE, "shift+3");
-  await note(logFile, { what: "cg-key", name: "shift+3", window: "New Tab" });
-  await helper.cgType(CHROME_BUNDLE, "remote-debugging");
-  await note(logFile, { what: "cg-type", name: "remote-debugging", window: "New Tab" });
-  await helper.cgKey(CHROME_BUNDLE, "return");
-  await note(logFile, { what: "cg-key", name: "return", window: "New Tab" });
-  await sleep(900);
+export const INSPECT_URL = "chrome://inspect/#remote-debugging";
+
+const openedTabs = new Map<number, { tabId: string; windowId?: string; restored?: number }>();
+
+/**
+ * Opens chrome://inspect/#remote-debugging in a new tab of this Chrome pid.
+ * An Apple Event inside BaoOSHelper, addressed by pid, not by bundle id.
+ * Remembers the new tab id so closeInspectTab closes only that tab.
+ */
+export async function openInspect(helper: Pick<MacOsHelper, "exec">, logFile: string, pid: number): Promise<{ windowId?: string; frame?: number[] }> {
+  const hit = await helper.exec(["ae-open", "--pid", String(pid)], 40_000);
+  const tabId = hit.tabId;
+  if (!tabId) throw new Error("Bao opened the inspect page but Chrome did not return a tab id");
+  const windowId = typeof hit.windowId === "string" ? hit.windowId : undefined;
+  const frame = Array.isArray(hit.frame) && hit.frame.length === 4 ? hit.frame : undefined;
+  openedTabs.set(pid, { tabId, windowId, restored: hit.restored });
+  await note(logFile, { what: "ae-open", name: INSPECT_URL, window: "Inspect with Chrome Developer Tools" });
+  return { windowId, frame };
+}
+
+/** Closes only the inspect tab this run opened, by tab id. Chrome may come forward; Bao gives focus back. */
+export async function closeInspectTab(helper: Pick<MacOsHelper, "exec">, logFile: string, pid: number): Promise<void> {
+  const opened = openedTabs.get(pid);
+  if (!opened) throw new Error("Bao has no inspect tab id to close for that Chrome");
+  const args = ["ae-close", "--pid", String(pid), "--id", opened.tabId];
+  if (opened.restored != null) args.push("--restore", String(opened.restored));
+  if (opened.windowId) args.push("--window-id", opened.windowId);
+  await helper.exec(args, 20_000);
+  openedTabs.delete(pid);
+  await note(logFile, { what: "ae-close", name: opened.tabId, window: "Inspect with Chrome Developer Tools" });
 }
 
 /** Read the checkbox. Does not type and does not press. */
@@ -100,36 +106,6 @@ export async function checkboxState(helper: Pick<ChromeAx, "nodes">, pid?: numbe
   const tree = await chromeTree(helper, pid);
   if (!tree.summary.checkbox.found) return { pid: tree.pid, summary: tree.summary, on: null };
   return { pid: tree.pid, summary: tree.summary, on: checkboxOn(tree.summary.checkbox.value) };
-}
-
-export async function ensureRemoteDebugging(helper: MacOsHelper, logFile: string): Promise<{ pid?: number; summary: AxSummary; pressed: boolean }> {
-  let tree = await chromeTree(helper);
-  const reach = checkboxReach(tree.summary);
-  if (reach === "stop") {
-    throw new AxUnavailable("BaoOSHelper cannot see a Chrome window", tree.summary);
-  }
-  if (reach === "open-inspect") {
-    await openInspect(helper, logFile);
-    tree = await chromeTree(helper);
-  }
-  if (!tree.summary.checkbox.found) {
-    throw new AxUnavailable("BaoOSHelper cannot see the remote-debugging checkbox", tree.summary);
-  }
-  if (checkboxOn(tree.summary.checkbox.value)) {
-    return { pid: tree.pid, summary: tree.summary, pressed: false };
-  }
-  const hit = await helper.press(target("AXCheckBox", REMOTE_CHECKBOX), tree.pid);
-  await note(logFile, {
-    what: "AXPress",
-    role: "AXCheckBox",
-    name: REMOTE_CHECKBOX,
-    window: windowOf(hit.element),
-  });
-  tree = await chromeTree(helper);
-  if (!tree.summary.checkbox.found || !checkboxOn(tree.summary.checkbox.value)) {
-    throw new AxUnavailable("remote-debugging checkbox stayed off", tree.summary);
-  }
-  return { pid: tree.pid, summary: tree.summary, pressed: true };
 }
 
 export async function pressAllow(helper: Pick<ChromeAx, "press">, pid: number | undefined, logFile: string): Promise<{ at: number; window: string }> {

@@ -189,6 +189,7 @@ async function refreshState(): Promise<void> {
     runs: (state.runs || []).map((run) => ({ id: run.id, status: run.status, decisions: run.decisions, heals: (run.heals || []).map((heal) => heal.id) })),
     reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
     helper: state.helper,
+    automationNotice: state.automationNotice,
     model: state.model,
     paused: state.capturePaused,
     since: state.recordingSince,
@@ -224,9 +225,9 @@ function render(): void {
   if (screen === "logins") readLoginForm();
   const missing = macPermissionMissing(state.helper);
   const showCard = missing && !onboarded && screen === "library";
-  railEl().innerHTML = rail({ ...state, permDot: missing && !showCard });
+  railEl().innerHTML = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard });
   const importAsk = screen === "logins" ? loginAct(login) : "";
-  actEl().innerHTML = remoteBanner(state.remote) + liveIdleBar(state.liveIdle) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
+  actEl().innerHTML = (state.automationNotice ? `<p role="status" id="automation-notice">${esc(state.automationNotice)}</p>` : "") + remoteBanner(state.remote) + liveIdleBar(state.liveIdle) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
   if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
   const float = document.getElementById("float");
@@ -708,6 +709,18 @@ function bind(): void {
     paletteQuery = "";
     paletteActive = 0;
     paintPalette();
+  };
+  const automation = document.getElementById("automation-ask");
+  if (automation) automation.onclick = async () => {
+    try {
+      const res = await fetch("/api/helper/automation", { method: "POST" });
+      const reply = await res.json() as { message?: string; error?: string };
+      banner = { id: `automation-${Date.now()}`, title: "Automation: Google Chrome", body: reply.message || reply.error || "Could not check Automation permission." };
+    } catch (err) {
+      banner = { id: `automation-${Date.now()}`, title: "Automation: Google Chrome", body: err instanceof Error ? err.message : String(err) };
+    }
+    renderKey = "";
+    await refresh();
   };
   const done = document.getElementById("onboard-done");
   if (done) done.onclick = () => {

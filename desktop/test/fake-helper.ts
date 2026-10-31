@@ -27,7 +27,15 @@ function axNode(role: string, name: string, value = "", window = ""): AxNode {
 export function fakeChromeHelper(opts: { accessibility?: boolean } = {}): { helper: ChromeAx; calls: string[] } {
   const calls: string[] = [];
   let reads = 0;
-  const helper = {
+  const helper: ChromeAx = {
+    exec: async (args) => {
+      calls.push(args.join(" "));
+      throw new Error("unexpected Automation call");
+    },
+    screenLocked: async () => {
+      calls.push("screen-locked");
+      return false;
+    },
     permissions: async (prompt: boolean): Promise<AxHit> => {
       calls.push(`permissions ${prompt}`);
       return { ok: true, accessibility: opts.accessibility ?? true };
@@ -45,6 +53,6 @@ export function fakeChromeHelper(opts: { accessibility?: boolean } = {}): { help
       calls.push(`press ${target.role} ${target.name}`);
       return { ok: true, element: axNode(target.role, target.name, "", ALLOW_DIALOG_TITLE) };
     },
-  } as unknown as ChromeAx;
+  };
   return { helper, calls };
 }

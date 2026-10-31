@@ -16,6 +16,7 @@ import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
 import { createLiveHost } from "../cdp-live/live-host";
+import { askAutomation, readAutomation, type AutomationReport } from "../cdp-live/automation";
 import type { LiveIdleWarning } from "../cdp-live/live-ops";
 import { liveReplayArgs } from "../cdp-live/live-replay";
 import { parseLiveTarget } from "../cdp-live/live-target";
@@ -216,12 +217,14 @@ export async function startApp(opts: {
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
   let liveIdle: LiveIdleWarning | null = null;
+  let automationNotice = "";
   const live = createLiveHost({
     home: library.root,
     target: parseLiveTarget(opts.liveTarget, baoProfile),
     lockFile: opts.liveLockFile,
     idleMs: opts.liveIdleMs,
     idleWarnMs: opts.liveIdleWarnMs,
+    onNotice: (message) => { automationNotice = message; },
     onIdleWarn: (warning) => {
       liveIdle = warning;
       if (warning) raiseLiveIdle(warning);
@@ -405,12 +408,19 @@ export async function startApp(opts: {
   const sessions = new Map<string, FreezeSession>();
   const pendings = new Map<string, { user: string; exp: number }>();
   let applyClicks = 0;
-  let helperReport: unknown;
-  if (process.platform === "darwin" && bundledHelperApp()) {
-    helperReport = await new MacOsHelper(bundledHelperApp()!).permissions(false).catch((err) => ({
+  async function readHelperReport(): Promise<unknown> {
+    const app = bundledHelperApp();
+    if (process.platform !== "darwin" || !app) return undefined;
+    const helper = new MacOsHelper(app);
+    const permissions = await helper.permissions(false).catch((err) => ({
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     }));
+    const automation = await readAutomation({ helper }).catch((err): AutomationReport => ({
+      state: "unavailable",
+      message: err instanceof Error ? err.message : String(err),
+    }));
+    return { ...permissions, automation };
   }
 
   function localWorkflow(link: string): WorkflowV2 | null {
@@ -504,6 +514,17 @@ export async function startApp(opts: {
         if (!shotNameOk(name)) return json(res, { error: "no picture" }, 404);
         return sendPng(res, path.join(library.root, "live-session", "shots", name));
       }
+      if (req.method === "POST" && url.pathname === "/api/helper/automation") {
+        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
+        const helperApp = bundledHelperApp();
+        if (!helperApp) return json(res, { error: "BaoOSHelper is older than this Bao; rebuild it" }, 500);
+        try {
+          const automation = await askAutomation({ helper: new MacOsHelper(helperApp), onNotice: (message) => { automationNotice = message; } });
+          return json(res, { ok: automation.state === "granted", message: automation.message, automation });
+        } finally {
+          automationNotice = "";
+        }
+      }
       if (req.method === "GET" && url.pathname === "/api/state") {
         runScheduledBackup(library);
         syncPending();
@@ -522,7 +543,8 @@ export async function startApp(opts: {
           workflows: library.list().map(summary),
           trails: library.listTrails(),
           runs: library.listRuns().map(slimRun),
-          helper: helperStatus(helperReport),
+          helper: helperStatus(await readHelperReport()),
+          automationNotice,
           helperApp: bundledHelperApp() || null,
           model: modelStatus(),
           pendingImport: pending ? publicPending(pending) : null,
@@ -684,7 +706,7 @@ export async function startApp(opts: {
           const pid = pidsForDataDir(session.profile)[0];
           if (pid) replay[id] = pid;
         }
-        return json(res, { helper: bundledHelperApp() || null, helperReport, product, capture, replay });
+        return json(res, { helper: bundledHelperApp() || null, helperReport: await readHelperReport(), product, capture, replay });
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.includes("/shots/")) {
         const parts = url.pathname.split("/");
@@ -3431,12 +3453,13 @@ function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, st
 
 function helperStatus(report: unknown): HelperStatus {
   const platform = process.platform;
-  const row = report as { accessibility?: boolean; screenCapture?: boolean } | undefined;
+  const row = report as { accessibility?: boolean; screenCapture?: boolean; automation?: AutomationReport } | undefined;
   return capabilityReport({
     platform,
     helperPresent: platform === "darwin" && !!bundledHelperApp(),
     accessibility: row?.accessibility === true,
     screenCapture: row?.screenCapture === true,
+    automation: row?.automation,
   });
 }
 

@@ -3,6 +3,7 @@
 //! by role and name. They do not click a stored coordinate.
 
 mod act;
+mod ae;
 mod apps;
 mod drag;
 mod element;
@@ -37,6 +38,14 @@ fn pid_flag(args: &[String]) -> Result<Option<i32>, String> {
         None => Ok(None),
         Some(raw) => raw.parse::<i32>().map(Some).map_err(|_| "--pid is not a number".to_string()),
     }
+}
+
+fn frame_flag(args: &[String]) -> Option<(f64, f64, f64, f64)> {
+    let x = flag(args, "--frame-x")?.parse::<f64>().ok()?;
+    let y = flag(args, "--frame-y")?.parse::<f64>().ok()?;
+    let w = flag(args, "--frame-w")?.parse::<f64>().ok()?;
+    let h = flag(args, "--frame-h")?.parse::<f64>().ok()?;
+    Some((x, y, w, h))
 }
 
 fn bundle_or_pid(args: &[String]) -> Result<String, String> {
@@ -91,9 +100,13 @@ fn run(args: &[String]) -> Result<Value, String> {
             Ok(hit_json(useful, reason, node))
         }
         "press" => {
-            let node = act::press(&bundle_or_pid(args)?, pid_flag(args)?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?)?;
+            let node = act::press(&bundle_or_pid(args)?, pid_flag(args)?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?, &flag(args, "--value-prefix").unwrap_or_default())?;
             eprintln!("STRATEGY=ax-press");
             Ok(json!({"ok": true, "strategy": "ax-press", "pid": pid_flag(args)?, "element": node}))
+        }
+        "screen-locked" => {
+            let locked = perms::screen_locked()?;
+            Ok(json!({"ok": true, "locked": locked}))
         }
         "set-value" => {
             let node = act::set_value(&bundle_or_pid(args)?, pid_flag(args)?, &need(args, "--role")?, &need(args, "--name")?, &flag(args, "--subrole").unwrap_or_default(), &path_arg(args)?, &need(args, "--value")?)?;
@@ -154,6 +167,37 @@ fn run(args: &[String]) -> Result<Value, String> {
         "raise-window" => fixture::raise_matching(&need(args, "--bundle")?, &need(args, "--title")?),
         "set-window-text" => fixture::set_window_text(&need(args, "--bundle")?, &need(args, "--title")?, &need(args, "--text")?),
         "confirm-text" => fixture::confirm_containing(&need(args, "--bundle")?, &need(args, "--title")?, &need(args, "--text")?),
+        "ae-permission" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            ae::permission(pid, args.iter().any(|a| a == "--ask"))
+        }
+        "ae-url" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            ae::active_url(pid)
+        }
+        "ae-open" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            ae::open_inspect(pid)
+        }
+        "ae-close" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            let id = need(args, "--id")?;
+            let restore = flag(args, "--restore").and_then(|raw| raw.parse::<i32>().ok());
+            ae::close_tab_id(pid, &id, restore, flag(args, "--window-id").as_deref())
+        }
+        "checkbox-read" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            act::checkbox_read(pid, &need(args, "--name")?, frame_flag(args))
+        }
+        "checkbox-set" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            let on = match flag(args, "--value").as_deref() {
+                Some("1") | Some("true") => true,
+                Some("0") | Some("false") => false,
+                _ => return Err("--value 1 or 0 is required".into()),
+            };
+            act::checkbox_set(pid, &need(args, "--name")?, on, frame_flag(args))
+        }
         "drag" => drag::drag(num(args, "--from-x")?, num(args, "--from-y")?, num(args, "--to-x")?, num(args, "--to-y")?),
         "drag-file" => Ok(drag::file_drag_fallback(&need(args, "--path")?)),
         "shot" => {
@@ -195,6 +239,45 @@ fn main() {
         Err(err) => {
             emit(&args, &json!({"ok": false, "error": err}));
             std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run;
+
+    fn args(parts: &[&str]) -> Vec<String> {
+        parts.iter().copied().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn removed_commands_are_unknown() {
+        for command in [
+            "show-menu", "ae-spec", "ae-index", "ae-tabs", "ae-window", "ae-bounds",
+            "ae-window-id", "ae-make", "ae-id", "click", "click-pid", "set-checked",
+            "frontmost", "activate",
+        ] {
+            assert_eq!(run(&args(&[command])).unwrap_err(), format!("unknown command {command}"));
+        }
+    }
+
+    #[test]
+    fn cg_and_raise_commands_require_a_bundle_even_with_a_pid() {
+        for command in ["cg-key", "cg-type", "raise-window"] {
+            assert_eq!(run(&args(&[command, "--pid", "4242"])).unwrap_err(), "--bundle is required");
+        }
+    }
+
+    #[test]
+    fn ae_close_requires_an_id_instead_of_an_index() {
+        assert_eq!(run(&args(&["ae-close", "--pid", "4242", "--index", "1"])).unwrap_err(), "--id is required");
+    }
+
+    #[test]
+    fn remote_debug_commands_require_a_pid() {
+        for command in ["ae-permission", "ae-url", "ae-open", "ae-close", "checkbox-read", "checkbox-set"] {
+            assert_eq!(run(&args(&[command])).unwrap_err(), "--pid is required");
         }
     }
 }

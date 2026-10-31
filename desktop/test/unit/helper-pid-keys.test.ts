@@ -1,0 +1,31 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { openInspect, closeInspectTab } from "../../src/cdp-live/ax";
+import type { AxHit } from "../../src/proxy/os-macos";
+
+test("inspect open and close leave focus ownership to the pid-addressed helper", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "bao-open-inspect-"));
+  try {
+    const calls: string[][] = [];
+    const helper = {
+      exec: async (args: string[]): Promise<AxHit> => {
+        calls.push(args);
+        if (args[0] === "ae-open") return { ok: true, tabId: "tab-9", restored: 1, windowId: "window-4", frame: [10, 20, 800, 600] };
+        if (args[0] === "ae-close") return { ok: true };
+        throw new Error(`unexpected focus command ${args[0]}`);
+      },
+    };
+    assert.deepEqual(await openInspect(helper, path.join(dir, "ae.jsonl"), 5151), { windowId: "window-4", frame: [10, 20, 800, 600] });
+    await closeInspectTab(helper, path.join(dir, "ae.jsonl"), 5151);
+    assert.deepEqual(calls, [
+      ["ae-open", "--pid", "5151"],
+      ["ae-close", "--pid", "5151", "--id", "tab-9", "--restore", "1", "--window-id", "window-4"],
+    ]);
+    await assert.rejects(closeInspectTab(helper, path.join(dir, "ae.jsonl"), 5151), /no inspect tab id/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

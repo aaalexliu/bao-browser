@@ -26,6 +26,10 @@ async function main(): Promise<void> {
     await mcpBaoMain();
     return;
   }
+  if (cmd === "remote-debugging") {
+    console.log(JSON.stringify(await remoteDebugging(rest)));
+    return;
+  }
   if (cmd && isLiveOp(cmd)) {
     const { runLiveCli } = await import("../mcp/live-proxy");
     await runLiveCli(cmd, rest);
@@ -185,7 +189,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval agent-instacart [--driver claude|codex] [--skip-checkout] [--out file] [--artifacts dir] [--check] | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao remote-debugging on|off | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books] | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval agent-instacart [--driver claude|codex] [--skip-checkout] [--out file] [--artifacts dir] [--check] | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 
@@ -245,6 +249,32 @@ async function importLogin(args: string[]): Promise<void> {
   }
   console.error("timed out waiting for confirm");
   process.exit(1);
+}
+
+const REMOTE_DEBUGGING_USAGE = "usage: bao remote-debugging on|off [--home dir]";
+
+/** The daily Chrome's remote-debugging checkbox, set by BaoOSHelper as a person would set it. */
+async function remoteDebugging(args: string[]): Promise<unknown> {
+  const want = args[0];
+  if (want !== "on" && want !== "off") throw new Error(REMOTE_DEBUGGING_USAGE);
+  const path = await import("node:path");
+  const { chromeHelper } = await import("../cdp-live/ax");
+  const { DEVTOOLS_ACTIVE_PORT } = await import("../cdp-live/endpoint");
+  const { acquireCdpLock, releaseCdpLock } = await import("../cdp-live/lock");
+  const { explainRemoteDebuggingError, remoteDebuggingDeps, setRemoteDebugging } = await import("../cdp-live/remote-debugging");
+  const { liveChromeBlock } = await import("../helper-capabilities");
+  const helper = chromeHelper();
+  const block = liveChromeBlock(await helper.permissions(false));
+  if (block) throw new Error(explainRemoteDebuggingError(new Error(block)).message);
+  // The CDP lock means no live session or replay is driving Chrome, so turning it off cuts nothing.
+  const agent = "bao-remote-debugging";
+  const axLog = path.join(resolveHome(args), "live-session", "ax.jsonl");
+  await acquireCdpLock(agent, { timeoutMs: 5_000 });
+  try {
+    return await setRemoteDebugging(want === "on", remoteDebuggingDeps(helper, DEVTOOLS_ACTIVE_PORT, axLog));
+  } finally {
+    releaseCdpLock(agent);
+  }
 }
 
 function flag(args: string[], name: string): string | undefined {

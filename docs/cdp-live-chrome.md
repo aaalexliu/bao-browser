@@ -44,7 +44,7 @@ Hit tests through the same helper:
 
 The same shape came back after the display was woken in the earlier attempt. The session stayed locked, which is when macOS hides app windows from accessibility. This later read was taken with the display asleep and the session still locked.
 
-One earlier `cg-key` of `cmd+t` was attempted while that tree was empty. The helper refused it (`app did not become frontmost; key was not posted`). No character was sent. The driver now stops before any key when the tree has no window.
+One earlier `cg-key` of `cmd+t` was attempted while that tree was empty. The helper refused it (`app did not become frontmost; key was not posted`). No character was sent. The current toggle uses the pid-targeted path in [Agent entry point](#agent-entry-point), not keyboard events.
 
 CoreGraphics still listed two on-screen Chrome windows, both 1728×1084. Chrome pid 1497 was listening on `127.0.0.1:9222`. That listen was checked with `lsof`. During the locked attempt the port file's contents were not read, and nothing else under the Chrome profile directory was listed or read.
 
@@ -191,10 +191,12 @@ The live names are also CLI verbs, for example `bao live_session_start --intent 
 
 | Target | Chrome | Port file | Allow dialog |
 | --- | --- | --- | --- |
-| `daily` (default) | The person's own Chrome, window in the `Default` profile | `~/Library/Application Support/Google/Chrome/DevToolsActivePort` | Yes. BaoOSHelper reads the checkbox and presses Allow. |
+| `daily` (default) | The person's own Chrome, window in the `Default` profile | `~/Library/Application Support/Google/Chrome/DevToolsActivePort` | Yes. BaoOSHelper turns the checkbox on when it is off, and presses Allow. |
 | `daily:<profile directory>` | The same Chrome, window in that profile, such as `Profile 2` | Same | Yes |
 | `bao` | Bao's own Chrome | `<home>/chrome-profile/DevToolsActivePort` | No |
 | `throwaway:<path>` | A Chrome started with `--remote-debugging-port` and its own `--user-data-dir`, such as a test browser | That absolute path | No |
+
+When the daily Chrome is open but does not listen on its DevTools port, a session or replay start turns remote debugging on the way a person does (`desktop/src/cdp-live/remote-debugging.ts`). BaoOSHelper reuses the active tab when it already shows `chrome://inspect/#remote-debugging`; otherwise it opens a new tab in that Chrome with Apple Events addressed to its pid (`typeKernelProcessID`), not its bundle id or app name. It sets **Allow remote debugging for this browser instance** through Accessibility by pid, without raising or activating Chrome, then waits for Chrome to listen. It closes only a tab it opened, by its tab id, and leaves a reused tab open. Creating the tab can make Chrome bring itself forward. The helper records the frontmost app pid just before creating it, confirms the URL, and waits up to 10 seconds for the checkbox before handing focus back; if the checkbox does not appear, Bao reports an error. Closing the tab also hands focus back if Chrome came forward, using the app that was frontmost just before close. Chrome drops `chrome://` urls given on its command line, so the profile-window handoff below cannot open that page. `bao remote-debugging on|off [--home dir]` does the same on its own, and `off` clears the checkbox and waits for the port to close. A request whose port state already matches opens no tab and asks for no Automation grant. `--home` selects the audit-log home, not a different Chrome. It takes the CDP lock first, so it never cuts a session or replay. The daily Chrome is the one browser process of Google Chrome on the port file's folder; a headless Chrome or one on another `--user-data-dir` does not count. The Apple Event goes to that pid, so another `com.google.Chrome` process does not receive it. If debugging was already on, Bao leaves it on when the session ends. If Bao turned it on, Bao turns it off at the end. A locked screen, a missing Accessibility grant, or Chrome not running fails at once with that reason.
 
 A caller can still pass `portFile`. The configured target's own file keeps that target, profile included. The daily Chrome's file keeps the Allow press, and any other file is a throwaway target. For a target with no dialog, the host connects with no helper call, so neither the Accessibility grant nor the checkbox is read.
 

@@ -59,10 +59,19 @@ export interface AxHit {
   after?: AxFrame;
   resized?: boolean;
   sizeError?: string | null;
-  windowId?: number;
+  windowId?: number | string;
+  frame?: number[];
   width?: number;
   height?: number;
   pid?: number;
+  tabId?: string;
+  restored?: number;
+  found?: boolean;
+  permitted?: boolean;
+  denied?: boolean;
+  wouldPrompt?: boolean;
+  url?: string;
+  locked?: boolean;
   windows?: { id: number; layer: number; x: number; y: number; w: number; h: number }[];
 }
 
@@ -76,9 +85,14 @@ function parseHit(out: string, err: string, code: number | null): AxHit {
     throw new Error(err.trim() || line);
   }
   if (code !== 0 || parsed.ok === false) {
-    throw new Error(parsed.error || err.trim() || `os helper exit ${code}`);
+    throw helperError(parsed.error || err.trim() || `os helper exit ${code}`);
   }
   return parsed;
+}
+
+function helperError(message: string): Error {
+  if (/unknown command/.test(message)) return new Error("BaoOSHelper is older than this Bao; rebuild it");
+  return new Error(message);
 }
 
 function runBin(bin: string, args: string[]): Promise<AxHit> {
@@ -125,12 +139,14 @@ async function runApp(app: string, args: string[], timeoutMs = 45000): Promise<A
     while (Date.now() - started < timeoutMs) {
       out = await readFile(result, "utf8").catch(() => "");
       if (!out.trim()) out = await readFile(stdout, "utf8").catch(() => "");
-      if (out.trim()) break;
+      if (out.trim()) {
+        try { JSON.parse(out); break; } catch { /* the helper is still writing the result */ }
+      }
       if (typeof closed === "number" && closed !== 0) break;
       await sleep(80);
     }
     const err = await readFile(stderr, "utf8").catch(() => "");
-    if (!out.trim()) throw new Error(err.trim() || `os helper produced no result for ${args[0]}`);
+    if (!out.trim()) throw helperError(err.trim() || `os helper produced no result for ${args[0]}`);
     return parseHit(out, err, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -191,6 +207,10 @@ export class MacOsHelper {
     return this.exec(args, 90_000);
   }
 
+  screenLocked(): Promise<boolean> {
+    return this.exec(["screen-locked"]).then((hit) => hit.locked === true);
+  }
+
   key(bundle: string, combo: string): Promise<AxHit> {
     return this.exec(["key", "--bundle", bundle, "--combo", combo]);
   }
@@ -201,18 +221,6 @@ export class MacOsHelper {
 
   read(target: OsTarget): Promise<AxHit> {
     return this.exec(["read", ...identity(target)], 90_000);
-  }
-
-  cgKey(bundle: string, combo: string): Promise<AxHit> {
-    return this.exec(["cg-key", "--bundle", bundle, "--combo", combo]);
-  }
-
-  cgType(bundle: string, text: string): Promise<AxHit> {
-    return this.exec(["cg-type", "--bundle", bundle, "--text", text]);
-  }
-
-  raiseWindow(bundle: string, title: string): Promise<AxHit> {
-    return this.exec(["raise-window", "--bundle", bundle, "--title", title]);
   }
 
   focusRole(bundle: string, role: string, name = ""): Promise<AxHit> {

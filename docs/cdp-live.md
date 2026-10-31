@@ -2,7 +2,7 @@
 
 `driver` set to `cdp-live` attaches to Chrome that is already running. The measured session is [cdp-live-chrome.md](cdp-live-chrome.md).
 
-1. In that Chrome, open `chrome://inspect/#remote-debugging` and allow remote debugging for this browser.
+1. Open Google Chrome. App sessions, app replays, and the books runner can enable remote debugging; the standalone generic session still needs it enabled first. See [Agent entry point](cdp-live-chrome.md#agent-entry-point) for the toggle and [permissions](permissions.md) for the grants.
 2. From the repo root, run `npm run build:desktop`.
 3. Replay uses the live attach. `refusesOwnedBrowser` in `desktop/src/cdp-live/launch-guard.ts` is true for `cdp-live`, so Bao's own Chrome stays closed.
 4. `node desktop/dist/desktop/src/cdp-live/run.js` is the books runner. It is Mac-only. It creates `.evidence`, then checks the BaoOSHelper grant, and it exits 1 on a non-Mac host before it reads `DevToolsActivePort`.
@@ -22,7 +22,7 @@ The driver:
 - Returns `needs_human` when the page classifier reports a bot wall or a login wall (`holdForPerson` is off for this runner). It does not solve a captcha.
 - Presses the Allow button only when `mayClickAllow` is true. This process opened the socket, the dialog was absent before the handshake, the dialog title is present, and exactly one `AXButton` is named "Allow". "Allow sites" does not count. A dialog that was already up is not clicked.
 
-The p5 runner is `desktop/src/cdp-live/run.ts`. Click `isTrusted` is stored in `sessionStorage` so a navigation does not wipe it before the run is read. The runner stops before typing when the accessibility tree has no window.
+The p5 runner is `desktop/src/cdp-live/run.ts`. Click `isTrusted` is stored in `sessionStorage` so a navigation does not wipe it before the run is read. The runner checks for a locked screen before opening or pressing the remote-debugging controls.
 
 ## Session
 

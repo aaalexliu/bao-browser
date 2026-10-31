@@ -1,10 +1,10 @@
 # What Bao asks permission for
 
-Four grants come up around a live Chrome session. They are different switches, enforced by different programs. Turning one on does not turn the others on.
+Chrome and macOS enforce separate permissions. Turning one on does not turn the others on.
 
 ## The Chrome remote-debugging toggle
 
-This is the checkbox **Allow remote debugging for this browser instance** at `chrome://inspect/#remote-debugging`. You flip it in Chrome. Chrome is the one that enforces it: while it is off, no local program can open a debugging connection to that browser. While it is on, Chrome listens on this Mac only (`127.0.0.1`) and will still ask before each connection. The checkbox is a Chrome preference. It stays as you left it across restarts until you clear it. Leaving it on costs nothing by itself. The automation banner appears only while a connection is actually open.
+This is the checkbox **Allow remote debugging for this browser instance** at `chrome://inspect/#remote-debugging`. You can flip it in Chrome, or let Bao manage it as described in [Agent entry point](cdp-live-chrome.md#agent-entry-point). Chrome enforces it: while it is off, no local program can open a debugging connection to that browser. While it is on, Chrome listens on this Mac only (`127.0.0.1`) and will still ask before each connection. The checkbox is a Chrome preference. It stays as you left it across restarts until you clear it. Leaving it on costs nothing by itself. The automation banner appears only while a connection is actually open.
 
 ## The Allow dialog, once per connection
 
@@ -12,21 +12,25 @@ Each new debugging connection raises **Allow remote debugging?** Chrome does not
 
 ## BaoOSHelper Accessibility
 
-macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the product window. macOS enforces it. The helper uses it to see the Allow button and press it. It does not read the web page. The first prompt is once per signed helper. After that, each Allow press is one short accessibility walk, which is most of the time in the paragraph above.
+macOS grants this to the helper app, BaoOSHelper, not to `node` and not to the product window. macOS enforces it. The helper uses it to read and set the remote-debugging checkbox and press Allow, all by Chrome pid. It does not read site content. The first prompt is once per signed helper. After that, each Allow press is one short accessibility walk, which is most of the time in the paragraph above.
+
+## Automation for Google Chrome
+
+Status checks do not ask for Automation or open Chrome. BaoOSHelper sends several Apple Events to one Chrome process, by pid, to open `chrome://inspect/#remote-debugging`, confirm the URL, read the tab and window ids and bounds, and later restore the tab selection and close its tab. It never uses Apple Events to run JavaScript. macOS asks once, when a toggle first needs Automation or when you press **Allow** beside **Automation: Google Chrome** in Bao. If Chrome is closed, that button opens it normally before asking. The prompt names BaoOSHelper and Google Chrome. The prompt text comes from `NSAppleEventsUsageDescription` in [`desktop/os-helper-macos/Info.plist`](../desktop/os-helper-macos/Info.plist). A toggle that already matches the requested state does not ask. If you deny Automation, enable it in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome. This grant is not Accessibility, and it is not a grant to control any other app.
 
 ## Which grant each job needs
 
-Four jobs can run on this Mac. A grant for one job does not turn another job off.
+The helper reports four jobs. Extension replay has its own site grant. A grant for one job does not turn another job off.
 
 - **AX press** reads and presses a control by its name. It needs Accessibility. The footer reads **AX press ready**.
 - **Window capture** saves one window. It needs Screen Recording. The footer reads **window capture ready**.
-- **Live Chrome** reads Chrome's controls through Accessibility. It needs Accessibility. It does not capture the window. The Screen Recording grant is no longer a start blocker for live Chrome. The footer reads **live Chrome ready**.
+- **Live Chrome** reads Chrome's controls through Accessibility. The footer reads **live Chrome ready** when Accessibility is granted and either Automation for Google Chrome is granted or that Chrome is already listening with remote debugging on. If Chrome is closed, the Automation check stays neutral. If debugging is off and Automation is not yet asked or denied, the footer reads **live Chrome needs one more permission**. Use **Allow** beside **Automation: Google Chrome** for not yet asked, or System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome for denied. An unavailable check shows its error and does not claim readiness unless Chrome is already listening. Live Chrome does not capture the window; Screen Recording never blocks it.
 - **MCP driver** (`bao mcp-ax`) takes a picture before it observes, clicks, types, or presses a key. It needs Accessibility and Screen Recording. The footer reads **MCP driver ready** only when both are on.
 - **Extension replay** uses the extension's site grant. The helper status does not report it.
 
-`helper.label` stays `helper ok` when both grants are on, and `helper needs permission` when either grant is off.
+`helper.label` stays `helper ok` when Accessibility and Screen Recording are both on, and `helper needs permission` when either is off. The live Chrome row also counts Automation as described above.
 
-Leave Screen Recording on for window capture and the MCP driver. Live Chrome stays ready with Accessibility alone. If the footer reads **helper needs permission**, allow the missing grant and open Bao again.
+Leave Screen Recording on for window capture and the MCP driver. If the footer reads **helper needs permission**, allow the missing grant and open Bao again.
 
 A second BaoOSHelper, or `open -a BaoOSHelper --args shot`, can still capture a window during a live Chrome session while Screen Recording is granted. The live session's own helper does not send `shot`.
 
