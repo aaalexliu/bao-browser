@@ -9,12 +9,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
+import { pinTestBrowser } from "../../src/launch";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
 import { testArtifacts } from "../artifacts";
 
 process.env.TZ = "America/New_York";
 process.env.BAO_CHROME_NO_SANDBOX = "1";
+const TEST_BROWSER = pinTestBrowser();
 
 const shots = testArtifacts("import-gate");
 
@@ -45,7 +47,7 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
   });
   web.stdout?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
   web.stderr?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
-  const browser = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  const browser = await chromium.launch({ executablePath: TEST_BROWSER, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   try {
     await waitHealth(origin, logs);
     const author = await signIn(origin, "author@bao.local");

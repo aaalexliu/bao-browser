@@ -1,4 +1,4 @@
-// Throwaway Chrome for Testing profile under tmp. This does not read a daily Chrome profile.
+// The pinned test Chromium on a throwaway profile under tmp. This does not read a daily Chrome profile.
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
@@ -8,9 +8,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createLiveHost } from "../../src/cdp-live/live-host";
+import { pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
-
-const CHROME = "/Applications/Bao.app/Contents/Resources/Chromium.app/Contents/MacOS/Google Chrome for Testing";
 
 interface LiveBody {
   outcome?: { kind?: string; reason?: string };
@@ -109,7 +108,7 @@ async function waitForPort(file: string): Promise<void> {
   throw new Error("DevToolsActivePort was not written");
 }
 
-test("live fixture refuses the reviewed traps, then replays a shop with no model call", { skip: process.env.BAO_LIVE_TESTS !== "1" || !existsSync(CHROME), timeout: 240_000 }, async () => {
+test("live fixture refuses the reviewed traps, then replays a shop with no model call", { skip: process.env.BAO_LIVE_TESTS !== "1", timeout: 240_000 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-live-fixture-"));
   const userData = path.join(root, "chrome");
   const other = await listen(() => "off");
@@ -134,13 +133,15 @@ test("live fixture refuses the reviewed traps, then replays a shop with no model
   });
   let chrome: ChildProcess | undefined;
   try {
-    chrome = spawn(CHROME, [
+    chrome = spawn(pinTestBrowser(), [
       `--user-data-dir=${userData}`,
       "--remote-debugging-port=0",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-sync",
       "--disable-extensions",
+      "--use-mock-keychain",
+      "--password-store=basic",
       "about:blank",
     ], { stdio: "ignore" });
     const portFile = path.join(userData, "DevToolsActivePort");

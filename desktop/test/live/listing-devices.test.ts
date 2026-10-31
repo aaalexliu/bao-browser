@@ -12,6 +12,7 @@ import { chromium, type Page } from "playwright";
 import { isElementCrop } from "../../../web/src/lib/png";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
+import { pinTestBrowser } from "../../src/launch";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
@@ -19,6 +20,7 @@ import { pairDevice, syncAll } from "../../src/v1/sync";
 import { testArtifacts } from "../artifacts";
 
 const shots = testArtifacts("listing-devices");
+const TEST_BROWSER = pinTestBrowser();
 
 test("listing page and devices against local vercel dev", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";
@@ -49,7 +51,7 @@ test("listing page and devices against local vercel dev", { timeout: 600_000 }, 
   web.stdout?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
   web.stderr?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
 
-  const browser = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  const browser = await chromium.launch({ executablePath: TEST_BROWSER, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   try {
     const health = await waitHealth(origin, logs);
     assert.equal(health.driver, "pglite");

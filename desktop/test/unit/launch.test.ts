@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -152,6 +152,40 @@ test("the test lane launches BAO_TEST_BROWSER with a mock keychain", () => {
   const bare = assessOwnedCommand(fixture, owned, lane);
   assert.equal(bare.ok, false);
   assert.match(bare.reason || "", /without a mock keychain/);
+});
+
+test("pinTestBrowser pins Playwright's Chromium and keeps an existing pin", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-pin-"));
+  const playwright = path.join(root, "playwright-chromium");
+  const other = path.join(root, "other-chromium");
+  for (const file of [playwright, other]) {
+    writeFileSync(file, "");
+    chmodSync(file, 0o755);
+  }
+  const env: NodeJS.ProcessEnv = {};
+  assert.equal(pinTestBrowser(env, () => playwright), playwright);
+  assert.equal(env.BAO_TEST_BROWSER, playwright);
+  assert.equal(pinTestBrowser(env, () => other), playwright);
+  const installed = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME;
+  assert.equal(resolveNormalChrome(installed, env, "darwin"), playwright);
+  assert.deepEqual(testLaneKeychainArgs(env), ["--use-mock-keychain", "--password-store=basic"]);
+  assert.throws(() => pinTestBrowser({}, () => path.join(root, "missing")), /npx playwright install chromium/);
+  assert.throws(() => pinTestBrowser({}, () => { throw new Error("not downloaded"); }), /npx playwright install chromium/);
+});
+
+test("a test path that resolves to the installed Google Chrome fails", () => {
+  const installed = () => true;
+  for (const chrome of [ACCOUNT_CHROME_MAC, LINUX_CHROME, `${path.dirname(ACCOUNT_CHROME_MAC)}/../MacOS/Google Chrome`]) {
+    const lane: NodeJS.ProcessEnv = { BAO_TEST_BROWSER: chrome };
+    assert.throws(() => resolveNormalChrome(installed, lane, "darwin"), /BAO_TEST_BROWSER is the installed Google Chrome/);
+    assert.throws(() => resolveNormalChrome(installed, lane, "linux"), /BAO_TEST_BROWSER is the installed Google Chrome/);
+    assert.throws(() => pinTestBrowser(lane), /BAO_TEST_BROWSER is the installed Google Chrome/);
+  }
+  const real = [ACCOUNT_CHROME_MAC, LINUX_CHROME].find((file) => existsSync(file));
+  if (!real) return;
+  const link = path.join(mkdtempSync(path.join(tmpdir(), "bao-pin-link-")), "chrome");
+  symlinkSync(real, link);
+  assert.throws(() => pinTestBrowser({ BAO_TEST_BROWSER: link }), /BAO_TEST_BROWSER is the installed Google Chrome/);
 });
 
 test("a product command line rejects mock keychain flags in every form", () => {

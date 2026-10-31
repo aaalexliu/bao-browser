@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import test from "node:test";
-import { userInfo } from "node:os";
-import { driverProcessEnv, taskPrompt, tokenCount, unavailableReason } from "../../src/eval/live-cli";
+import { tmpdir, userInfo } from "node:os";
+import path from "node:path";
+import { driverProcessEnv, liveMcpServerEnv, taskPrompt, tokenCount, unavailableReason } from "../../src/eval/live-cli";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, resolveNormalChrome } from "../../src/launch";
 import { frameRpc, takeRpcChunk } from "../../src/eval/live-mcp";
 import { CAPTURE_SECRET, DRIVER_TASKS } from "../../src/eval/tasks";
 
@@ -29,6 +32,26 @@ test("driver env keeps the account home and drops a trail CODEX_HOME", () => {
   assert.equal("BAO_HEADED" in env, false);
   assert.equal("AGENT_CLI_CREDENTIAL_STORE" in env, false);
   assert.equal(env.PATH, "/usr/bin");
+});
+
+test("the live evaluator launches the test browser, not the installed Chrome", () => {
+  const pin = path.join(mkdtempSync(path.join(tmpdir(), "bao-eval-pin-")), "Google Chrome for Testing");
+  writeFileSync(pin, "");
+  chmodSync(pin, 0o755);
+  const env = liveMcpServerEnv("/tmp/bao-eval-home", "http://127.0.0.1:1/t/form", { BAO_TEST_BROWSER: pin });
+  assert.deepEqual(env, {
+    BAO_MCP_LIVE: "1",
+    BAO_HOME: "/tmp/bao-eval-home",
+    BAO_FIXTURE_URL: "http://127.0.0.1:1/t/form",
+    BAO_HEADED: "0",
+    BAO_TEST_BROWSER: pin,
+  });
+  const installed = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME;
+  assert.equal(resolveNormalChrome(installed, env, "darwin"), pin);
+  assert.throws(
+    () => liveMcpServerEnv("/tmp/bao-eval-home", "http://127.0.0.1:1/t/form", { BAO_TEST_BROWSER: ACCOUNT_CHROME_MAC }),
+    /BAO_TEST_BROWSER is the installed Google Chrome/,
+  );
 });
 
 test("stdio accepts a claude json line and a content-length frame", () => {

@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium } from "playwright";
+import { pinTestBrowser } from "../src/launch";
+import type { KeySources } from "../src/login-import/keys";
 
 const SECRET_KEYS = [
   "OPENAI_API_KEY",
@@ -28,7 +29,7 @@ export interface CompiledPlan {
   missing: string[];
 }
 
-export function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...parent };
   for (const key of Object.keys(env)) {
     if (/^bao/i.test(key)) delete env[key];
@@ -45,26 +46,14 @@ export function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.Proce
 }
 
 /**
- * The required suite. BAO_TEST_BROWSER makes every owned launch start this
- * browser with a mock keychain. Without it the suite would open the user's
- * Chrome, so a missing browser stops the run. The live lane keeps the
- * installed Chrome.
+ * Both lanes. BAO_TEST_BROWSER makes every owned launch start Playwright's
+ * Chromium with a mock keychain. Without it a test would open the user's
+ * Chrome, so a missing browser stops the run.
  */
-export function hermeticChildEnv(parent: NodeJS.ProcessEnv, testBrowser: string | undefined): NodeJS.ProcessEnv {
-  if (!testBrowser) throw new Error("Playwright Chromium is missing. Run: npx playwright install chromium");
-  const env = laneEnv("hermetic", parent);
-  env.BAO_TEST_BROWSER = testBrowser;
+export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, playwrightPath?: () => string): NodeJS.ProcessEnv {
+  const env = laneEnv(lane, parent);
+  pinTestBrowser(env, playwrightPath);
   return env;
-}
-
-export function pinnedTestBrowser(): string | undefined {
-  try {
-    const exe = chromium.executablePath();
-    if (exe && existsSync(exe)) return exe;
-  } catch {
-    return undefined;
-  }
-  return undefined;
 }
 
 export function compiledTestPlan(sourceDir: string, distDir: string): CompiledPlan {
@@ -196,11 +185,19 @@ export async function probeSite(url: string): Promise<SiteProbe> {
   return { url, status, result };
 }
 
-export function cookieKeyPlan(source: CookieSource, platform: NodeJS.Platform): { platform: "linux" | "darwin" | "win32"; injected: boolean } {
-  if (source === "synthetic-linux") return { platform: "linux", injected: true };
-  if (platform === "darwin") return { platform: "darwin", injected: false };
-  if (platform === "win32") return { platform: "win32", injected: false };
-  return { platform: "linux", injected: false };
+/** The Safe Storage password Chromium's mock keychain returns on macOS. */
+export const MAC_MOCK_KEYCHAIN_PASSWORD = "mock_password";
+
+/**
+ * Keys for the login-import test's cookies. Synthetic cookies use the Linux
+ * v10 key. Browser cookies come from the test browser, whose mock keychain
+ * key is fixed, so the test never reads the login keychain.
+ */
+export function cookieKeys(source: CookieSource, platform: NodeJS.Platform): KeySources {
+  if (source === "synthetic-linux") return { platform: "linux" };
+  if (platform === "darwin") return { platform: "darwin", secret: MAC_MOCK_KEYCHAIN_PASSWORD };
+  if (platform === "win32") return { platform: "win32" };
+  return { platform: "linux" };
 }
 
 export function freshAppDirs(name: string): { home: string; chromeUserData: string; nativeHostHome: string } {

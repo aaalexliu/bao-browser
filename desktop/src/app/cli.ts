@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { isLiveOp } from "../cdp-live/live-ops";
 import { resolveHome, serverPort } from "../home";
+import { pinTestBrowser } from "../launch";
 import { reviewWorkflow } from "../mcp/catalog";
 import { mcpMain } from "../mcp/server";
 import { mcpBaoMain } from "../proxy/mcp-bao";
@@ -104,6 +105,9 @@ async function main(): Promise<void> {
     console.log("use the app replay screen, or POST /api/replay");
     return;
   }
+  // The browser evals start the test browser with a mock keychain, never the user's Chrome.
+  const judgeOnly = rest[0] === "heldout" && rest[1] !== "capture" && rest.includes("--judge");
+  if (cmd === "eval" && ["drivers", "heldout", "nightly"].includes(rest[0] || "") && !judgeOnly) pinTestBrowser();
   if (cmd === "eval" && rest[0] === "drivers") {
     const { evalDrivers } = await import("../eval/drivers");
     const result = await evalDrivers(rest.slice(1));

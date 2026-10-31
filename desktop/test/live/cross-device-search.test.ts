@@ -11,11 +11,14 @@ import path from "node:path";
 import test from "node:test";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
+import { pinTestBrowser } from "../../src/launch";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 import { testArtifacts } from "../artifacts";
+
+pinTestBrowser();
 
 const WORKFLOW_ID = "span-from-a";
 const LOCAL_ID = "span-here";

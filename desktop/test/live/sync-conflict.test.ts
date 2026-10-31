@@ -10,6 +10,7 @@ import path from "node:path";
 import test from "node:test";
 import { chromium, type Page } from "playwright";
 import { startApp } from "../../src/app/server";
+import { pinTestBrowser } from "../../src/launch";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { loadState, pairDevice, syncAll } from "../../src/v1/sync";
@@ -17,6 +18,7 @@ import { loadState, pairDevice, syncAll } from "../../src/v1/sync";
 import { testArtifacts } from "../artifacts";
 
 const shots = testArtifacts("sync-conflict");
+const TEST_BROWSER = pinTestBrowser();
 
 test("two Macs conflict on one workflow, and an offline edit pushes on reconnect", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";
@@ -26,7 +28,7 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
   const logs: string[] = [];
   const env = devEnv(root);
   let web = startWeb(port, env, logs);
-  const browser = await chromium.launch({ channel: "chrome", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  const browser = await chromium.launch({ executablePath: TEST_BROWSER, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   let app: { port: number; close(): Promise<void> } | undefined;
   try {
     const health = await waitHealth(origin, logs);

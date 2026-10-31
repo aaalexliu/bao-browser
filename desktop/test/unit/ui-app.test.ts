@@ -84,6 +84,10 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(rail, /helper off|helper ok|helper needs permission/);
     assert.match(rail, /no model|fixture model|model ready|cursor account/);
 
+    // Open the replay window first, so the one-second bound below times the act bar, not a cold Chrome start.
+    app.library.save(workflow(app.port, "wf-open", "fixture open", "/fixture", []));
+    await post(app.port, "/api/replay", { id: "wf-open", args: {} });
+
     const started = Date.now();
     const pending = post(app.port, "/api/replay", { id: confirmWf.id, args: {} });
     await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });

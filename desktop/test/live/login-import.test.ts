@@ -1,6 +1,7 @@
-// Real Chrome, synthetic profile only. The cookie values and storage values
+// The test Chromium, synthetic profile only. The cookie values and storage values
 // below are fixtures. Assertions must not include them in failure text.
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -8,23 +9,27 @@ import path from "node:path";
 import test from "node:test";
 import { chromium, type Page } from "playwright";
 import { startApp } from "../../src/app/server";
-import { launchOwnedChrome } from "../../src/launch";
+import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
 import { encryptCookieValue, LINUX_ITERATIONS, LINUX_PEANUTS, plaintextForCookie } from "../../src/login-import/crypto";
 import { indexedDbIdentifier } from "../../src/login-import/storage";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
-import { cookieKeyPlan } from "../runtime";
+import { cookieKeys } from "../runtime";
 import { assertNoValue, chromeExpiry, tempDir, TINY_PNG, writeCookieDb, writeLocalState } from "../unit/login-import-fixture";
 
 const SESSION = "session-secret-9f3c";
 const DEVICE = "device-secret-9f3c";
 const OTHER = "other-secret-9f3c";
 const ARTIFACTS = testArtifacts("login-import");
+const TEST_BROWSER = pinTestBrowser();
 
-function loginKeysFor(source: "synthetic-linux" | "browser"): { platform: "linux" } | undefined {
-  const plan = cookieKeyPlan(source, process.platform);
-  if (!plan.injected) return undefined;
-  return { platform: "linux" };
+/**
+ * The test Chromium applies Chromium's field-trial testing config, which keeps
+ * IndexedDB in SQLite. The import copies the LevelDB layout, so the profiles
+ * that write or read IndexedDB here turn the SQLite store off.
+ */
+function launchLevelDbProfile(userDataDir: string): ReturnType<typeof launchOwnedChrome> {
+  return launchOwnedChrome({ userDataDir, headless: true, args: ["--disable-features=IdbSqliteBackingStore,IdbSqliteOnDiskRollout"] });
 }
 
 async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
@@ -66,9 +71,9 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     home,
     chromeUserData: userData,
     baoProfile,
-    loginKeys: loginKeysFor("synthetic-linux"),
+    loginKeys: cookieKeys("synthetic-linux", process.platform),
   });
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const browser = await chromium.launch({ executablePath: TEST_BROWSER, headless: true });
   const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
   try {
     await ui.goto(`http://127.0.0.1:${app.port}/`);
@@ -166,7 +171,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     loginPlatform: "darwin",
     loginKeys: { platform: "darwin", secretError: "prompt-missed" },
   });
-  const keyBrowser = await chromium.launch({ channel: "chrome", headless: true });
+  const keyBrowser = await chromium.launch({ executablePath: TEST_BROWSER, headless: true });
   const keyUi = await keyBrowser.newPage({ viewport: { width: 1100, height: 1100 } });
   try {
     await keyUi.goto(`http://127.0.0.1:${keyApp.port}/`);
@@ -200,7 +205,7 @@ test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 },
   const port = (server.address() as { port: number }).port;
   const origin = `http://127.0.0.1:${port}`;
   const baoProfile = tempDir("bao-session-profile-");
-  const first = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
+  const first = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
   try {
     const page = first.pages()[0] || await first.newPage();
     await page.goto(`${origin}/login`, { waitUntil: "domcontentloaded" });
@@ -214,7 +219,7 @@ test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 },
   const onDisk = sessionCookieOnDisk(baoProfile);
   if (!onDisk) throw new Error("session cookie was not on disk after Chrome exited");
   if (onDisk.expires !== "0") throw new Error("Chrome stored an expiry on the session cookie");
-  const again = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
+  const again = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
   try {
     const page = again.pages()[0] || await again.newPage();
     await page.goto(`${origin}/account`, { waitUntil: "domcontentloaded" });
@@ -238,9 +243,9 @@ test("import a public demo login, then block the run after the cookie is cleared
     home,
     chromeUserData: userData,
     baoProfile,
-    loginKeys: loginKeysFor("browser"),
+    loginKeys: cookieKeys("browser", process.platform),
   });
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const browser = await chromium.launch({ executablePath: TEST_BROWSER, headless: true });
   const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
   const probe = "https://the-internet.herokuapp.com/secure";
   try {
@@ -317,7 +322,7 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
   const home = tempDir("bao-public-storage-home-");
   const baoProfile = path.join(home, "chrome-profile");
   const origin = "https://the-internet.herokuapp.com";
-  const writer = await launchOwnedChrome({ userDataDir: userData, headless: true, channel: "chrome" });
+  const writer = await launchLevelDbProfile(userData);
   try {
     const page = writer.pages()[0] || await writer.newPage();
     await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -345,9 +350,9 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
     home,
     chromeUserData: userData,
     baoProfile,
-    loginKeys: loginKeysFor("browser"),
+    loginKeys: cookieKeys("browser", process.platform),
   });
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const browser = await chromium.launch({ executablePath: TEST_BROWSER, headless: true });
   const ui = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
   try {
     await ui.goto(`http://127.0.0.1:${app.port}/`);
@@ -375,7 +380,7 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
 });
 
 async function readBackPublicStorage(baoProfile: string, origin: string, expected: string): Promise<void> {
-  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
+  const ctx = await launchLevelDbProfile(baoProfile);
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -404,7 +409,7 @@ async function readBackPublicStorage(baoProfile: string, origin: string, expecte
 }
 
 async function signIntoDemo(userData: string): Promise<void> {
-  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true, channel: "chrome" });
+  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     let reached = false;
@@ -433,7 +438,7 @@ async function signIntoDemo(userData: string): Promise<void> {
 }
 
 async function clearBaoCookies(baoProfile: string): Promise<void> {
-  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
+  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true });
   try {
     await ctx.clearCookies();
   } finally {
@@ -531,7 +536,7 @@ async function startSite(): Promise<Server> {
 }
 
 async function writeChromeStorage(userData: string, port: number): Promise<void> {
-  const ctx = await launchOwnedChrome({ userDataDir: userData, headless: true, channel: "chrome" });
+  const ctx = await launchLevelDbProfile(userData);
   try {
     assertNoStealth(userData);
     const page = ctx.pages()[0] || await ctx.newPage();
@@ -579,7 +584,7 @@ async function assertRestored(baoProfile: string, origin: string, port: number):
   for (const name of names) {
     if (existsSync(path.join(idbRoot, name, "LOCK"))) throw new Error("LOCK was copied into an IndexedDB directory");
   }
-  const ctx = await launchOwnedChrome({ userDataDir: baoProfile, headless: true, channel: "chrome" });
+  const ctx = await launchLevelDbProfile(baoProfile);
   try {
     assertNoStealth(baoProfile);
     const page = ctx.pages()[0] || await ctx.newPage();
@@ -665,12 +670,9 @@ async function assertNeedsSignIn(port: number, library: { save(doc: WorkflowV2):
 function assertNoStealth(userDataDir: string): void {
   let cmdline = "";
   try {
-    for (const pid of readdirSync("/proc")) {
-      if (!/^\d+$/.test(pid)) continue;
-      try {
-        const cmd = readFileSync(`/proc/${pid}/cmdline`).toString("utf8").replace(/\0/g, " ");
-        if (cmd.includes(userDataDir) && /chrome/i.test(cmd)) cmdline = cmd;
-      } catch { /* process exited */ }
+    const listed = execFileSync("ps", ["-axww", "-o", "command="], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    for (const cmd of listed.split("\n")) {
+      if (cmd.includes(userDataDir) && /chrome/i.test(cmd) && !cmd.includes("--type=")) cmdline = cmd;
     }
   } catch {
     throw new Error("could not inspect the Chrome command line");
