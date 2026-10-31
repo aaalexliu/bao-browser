@@ -130,6 +130,8 @@
     .lede { font-size: var(--text-md); margin: 0.35rem 0 var(--space-4); }
     .crumb { margin: 0 0 0.7rem; color: var(--quiet); font-size: var(--text-sm); display: flex; gap: 0.35rem; align-items: center; }
     .wf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.4rem; }
+    .wf-head > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .wf-head > button { flex: none; white-space: nowrap; }
     .wf-head .chips { margin-top: 0.45rem; }
     #app { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
     #rail {
@@ -451,7 +453,7 @@
     .step em.recovered { color: var(--ok); font-style: normal; }
     .step em.ask { color: var(--need); font-style: normal; margin-left: 0.3rem; }
     .step-list { display: flex; flex-direction: column; gap: 0.25rem; }
-    .step { text-align: left; background: transparent; width: 100%; }
+    .step { text-align: left; background: transparent; width: 100%; height: auto; min-height: 32px; padding: 6px 12px; overflow-wrap: anywhere; }
     .step.on { background: var(--select); }
     .step em { color: var(--quiet); font-style: normal; margin-left: 0.3rem; }
     .bar { display: flex; gap: 3px; align-items: center; margin: 0.7rem 0; }
