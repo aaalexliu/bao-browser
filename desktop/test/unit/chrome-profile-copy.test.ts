@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { copyChromeProfile, listChromeProfiles } from "../../src/engines/chrome-profile-copy";
+import { copyChromeProfile, listChromeProfiles, openCopiedChrome } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 
 async function fixture() {
@@ -113,6 +113,24 @@ test("test-browser lane never lists the owner's real Chrome profiles", { skip: !
     const response = await fetch(`http://127.0.0.1:${app.port}/api/chrome-profiles`);
     assert.deepEqual(await response.json(), { profiles: [] });
   } finally { await app.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("only the copied Chrome child gets the passwd HOME; Bao's isolated HOME stays unchanged", async (t) => {
+  const f = await fixture();
+  const parentHome = process.env.HOME;
+  const processes = require("node:child_process") as typeof import("node:child_process");
+  let observed: NodeJS.ProcessEnv | undefined;
+  t.mock.method(processes, "spawn", (_file: string, _args: readonly string[], options: { env?: NodeJS.ProcessEnv }) => {
+    observed = options.env;
+    throw new Error("observed child environment without launching Chrome");
+  });
+  try {
+    await assert.rejects(openCopiedChrome({ ...f, directory: "Default" }), /observed child environment/);
+    assert.ok(observed);
+    assert.equal(observed.HOME, userInfo().homedir);
+    assert.equal(observed.BAO_HEAL_CURSOR_ACCOUNT, process.env.BAO_HEAL_CURSOR_ACCOUNT);
+    assert.equal(process.env.HOME, parentHome);
+  } finally { await f.close(); }
 });
 
 test("copy refuses links rather than following them into another profile", async () => {

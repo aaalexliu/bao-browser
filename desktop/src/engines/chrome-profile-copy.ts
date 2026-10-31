@@ -119,7 +119,7 @@ export async function openCopiedChrome(options: {
   const copy = await copyChromeProfile(options);
   try {
     const context = await launchOwnedChrome({
-      userDataDir: copy.userDataDir, headless: false,
+      userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
       args: [`--profile-directory=${copy.profileDirectory}`, "--disable-sync"],
     });
     return {

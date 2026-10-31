@@ -264,10 +264,12 @@ function readActivePort(file: string): string | undefined {
  * left by an earlier Chrome on this profile is skipped: each start writes a new
  * browser id on its second line. A Chrome that bound 9222 is stopped.
  */
-async function spawnOwnedChrome(exe: string, args: string[], userDataDir: string): Promise<{ child: ChildProcess; port: number }> {
+async function spawnOwnedChrome(exe: string, args: string[], userDataDir: string, childHome?: string): Promise<{ child: ChildProcess; port: number }> {
   const file = path.join(userDataDir, "DevToolsActivePort");
   const stale = readActivePort(file);
-  const child: ChildProcess = spawn(exe, args, { stdio: "ignore" });
+  const child: ChildProcess = spawn(exe, args, {
+    stdio: "ignore", env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
+  });
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     if (child.exitCode != null || child.signalCode != null) {
@@ -430,6 +432,8 @@ export async function launchOwnedChrome(opts: {
   appendArgs?: string[];
   executablePath?: string;
   deviceScaleFactor?: number;
+  /** Only Chrome gets this HOME. Bao keeps its own isolated state and native-host paths. */
+  childHome?: string;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
 }): Promise<BrowserContext> {
@@ -439,6 +443,7 @@ export async function launchOwnedChrome(opts: {
 
 async function launchNormalChrome(opts: {
   userDataDir: string;
+  childHome?: string;
   headless?: boolean;
   args?: string[];
   appendArgs?: string[];
@@ -457,7 +462,7 @@ async function launchNormalChrome(opts: {
     `--remote-debugging-port=${OWNED_DEBUG_PORT}`,
     ...(headless ? ["--headless=new"] : []),
   ];
-  const { child, port } = await spawnOwnedChrome(exe, args, opts.userDataDir);
+  const { child, port } = await spawnOwnedChrome(exe, args, opts.userDataDir, opts.childHome);
   const stop = () => {
     if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
   };
@@ -561,6 +566,7 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess)
 /** Playwright video only. The pipe and default switches come back with it. */
 async function launchOwnedChromeForVideo(opts: {
   userDataDir: string;
+  childHome?: string;
   videoDir?: string;
   headless?: boolean;
   args?: string[];
@@ -574,6 +580,7 @@ async function launchOwnedChromeForVideo(opts: {
   const exe = opts.executablePath || resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,
+    env: opts.childHome === undefined ? undefined : { ...process.env, HOME: opts.childHome },
     headless: opts.headless ?? true,
     viewport: null,
     deviceScaleFactor: opts.deviceScaleFactor,
