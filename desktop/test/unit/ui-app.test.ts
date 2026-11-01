@@ -84,44 +84,58 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(rail, /helper off|helper ok|helper needs permission/);
     assert.match(rail, /no model|fixture model|model ready|cursor account/);
 
-    // Open the replay window first, so the one-second bound below times the act bar, not a cold Chrome start.
+    // Open the replay window before exercising the handoffs.
     app.library.save(workflow(app.port, "wf-open", "fixture open", "/fixture", []));
     await post(app.port, "/api/replay", { id: "wf-open", args: {} });
 
     await page.click(`[data-screen=replay][data-workflow="${confirmWf.id}"]`);
     await page.waitForSelector("#run");
-    const pending = page.waitForResponse((response) =>
-      response.url() === `http://127.0.0.1:${app.port}/api/replay` && response.request().method() === "POST",
-    ).then(async (response) => {
-      const result = await response.json();
-      assert.ok(response.ok(), JSON.stringify(result));
-      return result;
+    const waitForAsk = (kind: "login" | "confirm") => page.waitForResponse(async (response) => {
+      if (response.url() !== `http://127.0.0.1:${app.port}/api/state`) return false;
+      const state = await response.json() as { activeAsk?: { kind: string; workflowId: string } };
+      return state.activeAsk?.kind === kind && state.activeAsk.workflowId === confirmWf.id;
     });
-    const started = Date.now();
-    await page.click("#run");
-    await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });
-    assert.ok(Date.now() - started < 1000, "login bar was late");
-    assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, true);
-    const loginBar = await page.locator("#act-bar").innerText();
-    assert.match(loginBar, /Sign in to the fixture in the Bao window/);
-    assert.match(await page.locator("#attention").getAttribute("data-count") || "", /[1-9]/);
-    assert.ok(app.notifications.some((item) => item.title.includes("Sign in to the fixture in the Bao window") && item.title === item.body && item.title === item.tooltip));
+    const [confirmRun] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.url() === `http://127.0.0.1:${app.port}/api/replay` && response.request().method() === "POST",
+      ).then(async (response) => {
+        const run = await response.json() as { runId: string; status: string; modelCalls: number; failure?: { reason: string } };
+        assert.ok(response.ok(), JSON.stringify(run));
+        return run;
+      }),
+      (async () => {
+        await Promise.all([waitForAsk("login"), page.click("#run")]);
+        // Time rendering after the handoff arrives, not navigation, pictures, or browser startup.
+        const loginRenderStarted = Date.now();
+        await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });
+        assert.ok(Date.now() - loginRenderStarted < 1000, "login bar was late");
+        assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, true);
+        const loginBar = await page.locator("#act-bar").innerText();
+        assert.match(loginBar, /Sign in to the fixture in the Bao window/);
+        assert.match(await page.locator("#attention").getAttribute("data-count") || "", /[1-9]/);
+        assert.ok(app.notifications.some((item) => item.title.includes("Sign in to the fixture in the Bao window") && item.title === item.body && item.title === item.tooltip));
 
-    const pressedLogin = Date.now();
-    await post(app.port, "/api/replay/press", { fill: { selector: "#username", value: "ada" } });
-    await post(app.port, "/api/replay/press", { fill: { selector: "#password", value: "not-a-real-password" } });
-    await post(app.port, "/api/replay/press", { name: "Log in" });
-    await page.waitForSelector("#act-bar[data-ask=confirm]", { timeout: 2000 });
-    assert.ok(Date.now() - pressedLogin < 2000);
-    const confirmBar = await page.locator("#act-bar").innerText();
-    assert.match(confirmBar, /Press Apply on the fixture in the Bao window/);
-    assert.match(confirmBar, /nothing applied/);
-    assert.equal(await page.locator("#act-bar button", { hasText: "Approve" }).count(), 0);
-    assert.equal(await page.locator("#act-continue").count(), 0);
-    assert.ok(app.notifications.some((item) => item.body.includes("Press Apply")));
+        await Promise.all([
+          waitForAsk("confirm"),
+          (async () => {
+            await post(app.port, "/api/replay/press", { fill: { selector: "#username", value: "ada" } });
+            await post(app.port, "/api/replay/press", { fill: { selector: "#password", value: "not-a-real-password" } });
+            await post(app.port, "/api/replay/press", { name: "Log in" });
+          })(),
+        ]);
+        const confirmRenderStarted = Date.now();
+        await page.waitForSelector("#act-bar[data-ask=confirm]", { timeout: 2000 });
+        assert.ok(Date.now() - confirmRenderStarted < 2000, "confirm bar was late");
+        const confirmBar = await page.locator("#act-bar").innerText();
+        assert.match(confirmBar, /Press Apply on the fixture in the Bao window/);
+        assert.match(confirmBar, /nothing applied/);
+        assert.equal(await page.locator("#act-bar button", { hasText: "Approve" }).count(), 0);
+        assert.equal(await page.locator("#act-continue").count(), 0);
+        assert.ok(app.notifications.some((item) => item.body.includes("Press Apply")));
 
-    await post(app.port, "/api/replay/press", { name: "Apply" });
-    const confirmRun = await pending as { runId: string; status: string; modelCalls: number; failure?: { reason: string } };
+        await post(app.port, "/api/replay/press", { name: "Apply" });
+      })(),
+    ]);
     assert.equal(confirmRun.status, "passed", JSON.stringify(confirmRun.failure));
     assert.equal(confirmRun.modelCalls, 0);
     assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, false);

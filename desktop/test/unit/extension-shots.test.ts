@@ -9,7 +9,9 @@ import { testChromium } from "../../src/test-browser.js";
 import { shotFormat } from "../../src/v1/shots";
 import { applyHermeticApp } from "../runtime";
 
-test("an extension Library run saves six rapid page pictures without a captureVisibleTab rate limit", { timeout: 90_000 }, async () => {
+test("an extension Library run saves six rapid page pictures without a captureVisibleTab rate limit", { timeout: 90_000 }, async (t) => {
+  const started = Date.now();
+  const stage = (label: string) => t.diagnostic(`${label} after ${Date.now() - started}ms`);
   const dirs = applyHermeticApp("ext-shots");
   const root = path.dirname(dirs.home);
   const extension = path.join(root, "extension");
@@ -23,6 +25,7 @@ test("an extension Library run saves six rapid page pictures without a captureVi
   writeFileSync(manifestPath, JSON.stringify(manifest));
   const app = await startApp({ home: dirs.home, extensionHost: true, extensionConfigHome: dirs.nativeHostHome,
     extensionHostDirs: [path.join(profile, "NativeMessagingHosts")] });
+  stage("app ready");
   let context: BrowserContext | undefined;
   try {
     context = await testChromium.launchPersistentContext(profile, {
@@ -32,7 +35,14 @@ test("an extension Library run saves six rapid page pictures without a captureVi
         `--load-extension=${extension}`, `--disable-extensions-except=${extension}`,
         "--disable-features=DisableLoadExtensionCommandLineSwitch"],
     });
+    stage("browser launched");
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
+    stage("worker reported");
+    // Chromium can report the worker before it creates its execution context under suite load.
+    await worker.evaluate(() => true);
+    stage("worker context ready");
     await app.extensionLink!.waitForHello(0, 30_000);
+    stage("native hello ready");
     const base = `http://127.0.0.1:${app.port}`;
     app.library.save({ schema: "bao.workflow/v2", version: 2, id: "wf-extension-shots", name: "Rapid pictures", driver: "extension",
       startUrl: `${base}/fixture?signedin=1`, inputs: [], createdAt: 1,
@@ -40,6 +50,7 @@ test("an extension Library run saves six rapid page pictures without a captureVi
     const response = await fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "wf-extension-shots", args: {} }) });
     const result = await response.json() as { runId: string; status: string; error?: string };
+    stage("replay returned");
     assert.equal(response.status, 200, result.error);
     assert.equal(result.status, "passed");
     const run = app.library.readRun(result.runId);
@@ -60,9 +71,13 @@ test("an extension Library run saves six rapid page pictures without a captureVi
         });
       }
     }
+    stage("gallery checked");
   } finally {
+    stage("closing browser");
     await context?.close();
+    stage("closing app");
     await app.close();
+    stage("app closed");
     rmSync(root, { recursive: true, force: true });
   }
 });
