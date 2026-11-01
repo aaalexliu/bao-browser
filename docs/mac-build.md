@@ -235,7 +235,7 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 The product window does not need these grants. The nested helper does. Bao's status checks read Accessibility, Screen Recording, and Automation for Google Chrome without prompting. See [What Bao asks permission for](permissions.md) for grant requirements, Automation prompt timing, and live Chrome readiness. The helper's prompt text is defined in [`Info.plist`](../desktop/os-helper-macos/Info.plist), not in the product window.
 
-Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Bao never needs Screen Recording to drive Chrome; leave it off. Only the explicit legacy `shot` window capture uses that grant, including calls from `bao mcp-ax`. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the Accessibility row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
+Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the Accessibility row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
 
 Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job. These examples assume the [live Chrome permission check](permissions.md#which-grant-each-job-needs) is satisfied:
 

@@ -9,16 +9,17 @@ APIs do not build on Linux.
 - `nodes` walks one app and reports role, subrole, title, description, identifier,
   ancestor path, and a top-left frame.
 - `hit` calls `AXUIElementCopyElementAtPosition` on the system-wide element, then
-  climbs to a named pressable control. A point outside `--allow-bundle` is
-  unresolved and the foreign title is not stored.
+  climbs to a named pressable control. If that hit is missing or outside
+  `--allow-bundle`, it tries the allowed app's tree without storing a foreign title.
 - `press` and `set-value` look the element up again by role, name, and path.
   They do not click a stored coordinate.
-- `permissions` reports `AXIsProcessTrustedWithOptions` and
-  `CGPreflightScreenCaptureAccess`. `--prompt` shows the system prompt once.
+- For permission commands and the live Chrome restrictions, see
+  [What Bao asks permission for](../../docs/permissions.md#which-grant-each-job-needs).
 
-Frames in the JSON are top-left points, which is the space the hit test expects.
-If an AX window frame is the vertical flip of the CoreGraphics window, the helper
-converts before the JSON leaves the process.
+Frames in the JSON are top-left screen points, not Retina pixels. Geometry uses
+AX window bounds without comparing them to CoreGraphics windows or flipping y.
+`geometry.flip_y` stays false and `geometry.cg_window` stays null. Screen size
+still comes from `CGDisplay::main().bounds()`, which does not need Screen Recording.
 
 Window captures use `screencapture -l <window id>`. That crops to the test window.
 `CGWindowListCreateImage` is obsolete on this OS.
