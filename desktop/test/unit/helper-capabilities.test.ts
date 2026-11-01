@@ -147,7 +147,7 @@ test("live entries keep the shared gate", () => {
   }
 });
 
-test("helper status names each job and keeps the old label", () => {
+test("helper status requires Accessibility and Automation, not Screen Recording", () => {
   const axOnly = capabilityReport({
     platform: "darwin",
     helperPresent: true,
@@ -155,16 +155,17 @@ test("helper status names each job and keeps the old label", () => {
     screenCapture: false,
     automation: { state: "granted", message: "allowed" },
   });
-  assert.equal(axOnly.label, "helper needs permission");
+  assert.equal(axOnly.label, "helper ok");
   assert.equal(axOnly.accessibility, true);
   assert.equal(axOnly.screenCapture, false);
   const axStatus = axOnly.capabilities.map((row) => row.status);
   assert.deepEqual(axStatus, [
     "AX press ready",
-    "window capture needs Screen Recording",
+    "optional window capture needs Screen Recording (not needed for Chrome)",
     "live Chrome ready",
-    "MCP driver needs Accessibility and Screen Recording",
+    "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)",
   ]);
+  assert.deepEqual(axOnly.capabilities.filter((row) => row.optional).map((row) => row.id), ["window-capture", "mcp-ax"]);
 
   const both = capabilityReport({
     platform: "darwin",
@@ -243,8 +244,9 @@ test("live Chrome readiness counts Automation or an existing listener without co
           }
           assert.ok(helperJobList(helper).includes(htmlEsc(live)), context);
           assert.ok(rail({ helper }).includes(htmlEsc(live)), context);
-          assert.equal(helper.label, accessibility && screenCapture ? "helper ok" : "helper needs permission");
-          assert.equal(helper.capabilities.find((row) => row.id === "window-capture")?.status, screenCapture ? "window capture ready" : "window capture needs Screen Recording");
+          const labelReady = accessibility && (automation?.state === "granted" || automation?.state === "closed");
+          assert.equal(helper.label, labelReady ? "helper ok" : "helper needs permission", context);
+          assert.equal(helper.capabilities.find((row) => row.id === "window-capture")?.status, screenCapture ? "window capture ready" : "optional window capture needs Screen Recording (not needed for Chrome)");
         }
       }
     }
@@ -260,7 +262,7 @@ function jobRows(html: string): string[] {
   return [...list.matchAll(/<li>([^<]*)<\/li>/g)].map((row) => row[1]);
 }
 
-test("the footer shows each job on its own line and still says helper ok", () => {
+test("the footer shows Chrome readiness and one quiet line for optional native capture", () => {
   const both = capabilityReport({
     platform: "darwin",
     helperPresent: true,
@@ -270,13 +272,11 @@ test("the footer shows each job on its own line and still says helper ok", () =>
   });
   assert.deepEqual(jobRows(helperJobList(both)), [
     "AX press ready",
-    "window capture ready",
     "live Chrome ready",
-    "MCP driver ready",
   ]);
   const html = rail({ helper: both });
   assert.equal(helperLine(html), "helper ok");
-  assert.deepEqual(jobRows(html), both.capabilities.map((row) => row.status));
+  assert.deepEqual(jobRows(html), both.capabilities.filter((row) => !row.optional).map((row) => row.status));
 
   const axOnly = capabilityReport({
     platform: "darwin",
@@ -286,13 +286,13 @@ test("the footer shows each job on its own line and still says helper ok", () =>
     automation: { state: "granted", message: "allowed" },
   });
   const axHtml = rail({ helper: axOnly });
-  assert.equal(helperLine(axHtml), "helper needs permission");
+  assert.equal(helperLine(axHtml), "helper ok");
   assert.deepEqual(jobRows(axHtml), [
     "AX press ready",
-    "window capture needs Screen Recording",
     "live Chrome ready",
-    "MCP driver needs Accessibility and Screen Recording",
   ]);
+  assert.match(axHtml, /<p class="quiet">Native-app capture is optional and not needed for Chrome\.<\/p>/);
+  assert.doesNotMatch(axHtml, /Screen Recording|MCP driver needs|window capture needs/);
   assert.doesNotMatch(axHtml, /helper needs permission AX press ready/);
   assert.doesNotMatch(axHtml, /BaoOSHelper screen recording is granted/);
 

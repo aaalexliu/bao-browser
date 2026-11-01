@@ -210,7 +210,7 @@ open /Applications/Bao.app
 
 Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 
-Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With Accessibility and Screen Recording on, the footer reads **helper ok**.
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer reads **helper ok**, even with Screen Recording off.
 
 ## Logs
 
@@ -233,14 +233,11 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-The product window does not need these grants. The nested helper does. Bao's status checks read Accessibility, Screen Recording, and Automation for Google Chrome without prompting. See [What Bao asks permission for](permissions.md) for grant requirements, Automation prompt timing, and live Chrome readiness. The helper's prompt text is defined in [`Info.plist`](../desktop/os-helper-macos/Info.plist), not in the product window.
+The product window does not need these grants. The nested helper does. Bao's status checks read Accessibility and Automation for Google Chrome without prompting or checking Screen Recording. See [What Bao asks permission for](permissions.md) for grant requirements, Automation prompt timing, and live Chrome readiness. The helper's prompt text is defined in [`Info.plist`](../desktop/os-helper-macos/Info.plist), not in the product window.
 
 Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the Accessibility row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job. These examples assume the [live Chrome permission check](permissions.md#which-grant-each-job-needs) is satisfied:
-
-- With Accessibility on and Screen Recording off: **helper needs permission**, then **AX press ready**, **window capture needs Screen Recording**, **live Chrome ready**, and **MCP driver needs Accessibility and Screen Recording**.
-- With Accessibility and Screen Recording on: **helper ok**, then **AX press ready**, **window capture ready**, **live Chrome ready**, and **MCP driver ready**.
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer shows **helper ok**, **AX press ready**, and **live Chrome ready**. Screen Recording on or off makes no difference. A quiet note says native-app capture is optional and not needed for Chrome. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for API capability rows.
 
 An agent can check the local server. This is not a page to open:
 
@@ -248,7 +245,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` and `helper.label` follow [Which grant each job needs](permissions.md#which-grant-each-job-needs). `helper.screenCapture` is true only with Screen Recording on. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` and `helper.label` follow [Which grant each job needs](permissions.md#which-grant-each-job-needs). `helper.screenCapture` stays false because app status does not check Screen Recording. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 
