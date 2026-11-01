@@ -235,6 +235,8 @@ export interface RunResult {
   modelCalls: number;
   /** Filled from workflow.outputs. Absent when the workflow declares none. */
   outputs?: OutputValue[];
+  /** A live replay detached and left its final page in Chrome. */
+  pageLeftOpen?: boolean;
   /** Download files from this run. Paths live only here. */
   files?: Record<string, FileOutput>;
 }

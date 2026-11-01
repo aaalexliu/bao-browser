@@ -25,6 +25,7 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
     const page = flag(args, "--page");
     return page ? { op: cmd, page: Number(page) } : { op: cmd };
   }
+  if (cmd === "live_read") return { op: cmd, name: flag(args, "--name") || "", selector: flag(args, "--selector") ?? "body" };
   if (cmd === "live_click") return { op: cmd, ref: flag(args, "--ref") || "" };
   if (cmd === "live_type") return { op: cmd, ref: flag(args, "--ref") || "", text: flag(args, "--text") || "" };
   if (cmd === "live_key") return { op: cmd, key: flag(args, "--key") || "", ref: flag(args, "--ref") || "" };
@@ -98,8 +99,8 @@ export async function postLive(body: unknown, args: readonly string[] = [], env:
  * CDP lock, so a recording and its replay drive the same Chrome. The reply is the engine's run.
  */
 export function appLiveReplay(args: readonly string[] = [], env: NodeJS.ProcessEnv = process.env): LiveReplayer {
-  return async (workflow, inputs) => {
-    const reply = await postLive({ op: LIVE_REPLAY, workflow, inputs }, args, env) as { run?: RunResult; outcome?: { reason?: string } };
+  return async (workflow, inputs, options) => {
+    const reply = await postLive({ op: LIVE_REPLAY, workflow, inputs, leaveOpen: options?.leaveOpen }, args, env) as { run?: RunResult; outcome?: { reason?: string } };
     if (reply.run) return reply.run;
     throw new Error(reply.outcome?.reason || "live replay failed");
   };

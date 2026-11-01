@@ -76,6 +76,7 @@ export interface StoredRun {
   trajectory?: unknown[];
   /** Declared workflow outputs for this run. */
   outputs?: OutputValue[];
+  pageLeftOpen?: boolean;
   /** Classifier decisions for this run, including the evidence. */
   pageClasses?: {
     stepId: string;

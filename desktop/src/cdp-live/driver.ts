@@ -674,22 +674,23 @@ export class CdpLiveDriver implements Driver {
   }
 
   /** Stops recording and closes or leaves the window. */
-  async end(): Promise<void> {
-    await this.video?.endCapture();
-    await this.release();
+  async end(options: { leaveOpen?: boolean } = {}): Promise<void> {
+    try { await this.video?.endCapture(); }
+    finally { await this.release(options.leaveOpen); }
   }
 
-  private async release(): Promise<void> {
+  private async release(leaveOpen = false): Promise<void> {
     await this.pageEngine?.close();
     this.pageEngine = undefined;
-    if (this.preserveTarget) {
+    if (this.preserveTarget || leaveOpen) {
+      if (!this.preserveTarget) await this.cdp.send("Fetch.disable", {}, this.sessionId);
       this.offHost = "";
       if (this.scriptId) {
         await this.cdp.send("Page.removeScriptToEvaluateOnNewDocument", {
           identifier: this.scriptId,
         }, this.sessionId).catch(() => undefined);
       }
-      await this.evaluate(TRUST_CLEANUP).catch(() => undefined);
+      await this.cdp.send("Runtime.evaluate", { expression: TRUST_CLEANUP, returnByValue: true }, this.sessionId).catch(() => undefined);
       await this.cdp.send("Target.detachFromTarget", { sessionId: this.sessionId }).catch(() => undefined);
       return;
     }

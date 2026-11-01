@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { replayRefusal } from "../cdp-live/launch-guard";
-import { liveReplayArgs } from "../cdp-live/live-replay";
+import { liveReplayArgs, type LiveReplayOptions } from "../cdp-live/live-replay";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
@@ -75,6 +75,7 @@ export interface WorkflowOutcome {
   resume_token?: string;
   /** Declared workflow outputs filled by this run. */
   outputs?: import("../v1/data-steps").OutputValue[];
+  pageLeftOpen?: boolean;
   /** The page class that stopped this run, with the evidence that named it. */
   pageClass?: {
     class: string;
@@ -187,7 +188,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
 }
 
 /** Replays a cdp-live workflow in the live Chrome and returns the engine's run. */
-export type LiveReplayer = (workflow: WorkflowV2, inputs: ReplayArgs) => Promise<RunResult>;
+export type LiveReplayer = (workflow: WorkflowV2, inputs: ReplayArgs, options?: LiveReplayOptions) => Promise<RunResult>;
 
 export interface RunControl {
   prompts?: PersonPrompts;
@@ -198,7 +199,7 @@ export interface RunControl {
 
 export async function runWorkflow(
   library: Library,
-  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; startUrl?: string; document?: WorkflowV2 },
+  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2 },
   auth?: RemoteAuth,
   control?: RunControl,
 ): Promise<WorkflowOutcome> {
@@ -262,7 +263,7 @@ export async function runWorkflow(
   const secrets = secretStrings(workflow, inputs);
   try {
     const played = liveRun
-      ? await replayLive(library, workflow, inputs, secrets, liveRun)
+      ? await replayLive(library, workflow, inputs, secrets, liveRun, { leaveOpen: request.leaveOpen })
       : await replayInBrowser(library, workflow, inputs, secrets, control);
     if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
@@ -456,8 +457,9 @@ async function replayLive(
   args: ReplayArgs,
   secrets: string[],
   live: LiveReplayer,
+  options: LiveReplayOptions,
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: false; clip?: undefined }> {
-  const run = await live(workflow, args);
+  const run = await live(workflow, args, options);
   return { run, outcome: rememberRun(library, workflow, run, args, secrets), held: false };
 }
 
@@ -655,6 +657,7 @@ function saveWorkflowRun(
     trail: run.trail,
     inputs: Object.fromEntries(Object.entries(publicInputs(workflow, inputs)).map(([key, value]) => [key, String(value)])),
     ...(run.outputs ? { outputs: run.outputs } : {}),
+    ...(run.pageLeftOpen ? { pageLeftOpen: true } : {}),
     envelope: outcome.status && outcome.status !== "ok" ? {
       status: outcome.status,
       run_id: outcome.run_id || run.runId,
@@ -715,6 +718,7 @@ function baseOutcome(
     stops: outcome === "ok" ? [] : [{ stepId, outcome, reason }],
     link: linkFor(workflow.id),
     ...(run?.outputs ? { outputs: run.outputs } : {}),
+    ...(run?.pageLeftOpen ? { pageLeftOpen: true } : {}),
   };
 }
 

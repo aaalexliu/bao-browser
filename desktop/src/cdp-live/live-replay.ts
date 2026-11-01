@@ -7,6 +7,8 @@
 
 import path from "node:path";
 import { type PageEngineName } from "../engines/agent-browser";
+import type { ExtractSpec, ListRead } from "../v1/data-steps";
+import { LIVE_READ_LIMIT, liveReadRows, liveReadSelector, readLiveRegion, type RegionRead } from "./live-read";
 import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
 import type { CdpLiveDriver } from "./driver";
@@ -101,6 +103,16 @@ export class GuardedLiveDriver implements Driver {
 
   pageSignals(): Promise<PageSignals> {
     return this.inner.pageSignals();
+  }
+
+  async readList(spec: ExtractSpec): Promise<ListRead> {
+    if (this.halted) throw this.stop(this.halted, true);
+    const selector = liveReadSelector(spec);
+    const { read, facts } = await this.read("");
+    const halt = pageHalt({ blocked: facts.blocked, path: facts.path, passwordFields: read.view.credentialFields, text: facts.text, stopPath: this.scope.stopPath });
+    if (halt) throw this.stop(halt, true);
+    const region = await this.inner.evaluateFunction<RegionRead>(readLiveRegion, { selector, limit: LIVE_READ_LIMIT });
+    return liveReadRows(region);
   }
 
   async notify(): Promise<void> {}
@@ -279,9 +291,15 @@ export async function replayGuarded(workflow: WorkflowV2, inputs: ReplayArgs, gu
   return settle(workflow, run, guarded);
 }
 
-export interface LiveReplayDeps {
+export interface LiveReplayOptions {
+  /** Keep a passed or paused final page open. */
+  leaveOpen?: boolean;
+}
+
+export interface LiveReplayDeps extends LiveReplayOptions {
   /** The target selected for this replay, fixed until teardown. */
   target: LiveTarget;
+  parkedTargetId?: string;
   engineName?: PageEngineName;
   artifactRoot?: string;
   /** Run-local page pictures, independent of video recording. */
@@ -359,7 +377,17 @@ export async function replayLiveWorkflow(
     run.pageEngine = engineName;
     return run;
   } finally {
-    await driver?.end().catch(() => undefined);
+    const leaveOpen = deps.leaveOpen === true && !!run && run.status !== "failed";
+    const ended = await driver?.end({ leaveOpen }).then(() => true, () => false);
+    if (run && leaveOpen && ended) {
+      if (cdp && deps.parkedTargetId && deps.parkedTargetId !== driver?.targetId) {
+        await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets").then(async ({ targetInfos }) => {
+          const parked = targetInfos.find((target) => target.targetId === deps.parkedTargetId && target.type === "page" && target.url === "about:blank");
+          if (parked) await cdp!.send("Target.closeTarget", { targetId: parked.targetId });
+        }).catch(() => undefined);
+      }
+      run.pageLeftOpen = true;
+    }
     cdp?.close();
     if (prepared.turnedOn) {
       const ax = deps.helper ? deps.helper() : chromeHelper();

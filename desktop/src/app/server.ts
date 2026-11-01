@@ -240,7 +240,7 @@ export async function startApp(opts: {
         loadExtensions: settings.chromeProfileExtensions?.[settings.chromeProfile] === true });
       profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "open" };
       return {
-        target: copied.target, engineName, artifactRoot: library.root,
+        target: copied.target, engineName, artifactRoot: library.root, closed: copied.closed, parkedTargetId: copied.parkedTargetId,
         close: async () => { await copied.close(); profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "deleted" }; },
       };
     },
@@ -1188,14 +1188,14 @@ export async function startApp(opts: {
         return json(res, { saved: false });
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
-        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean };
+        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean; leaveOpen?: boolean };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         if (refusesOwnedBrowser(workflow.driver)) {
           const liveArgs = liveReplayArgs(workflow, body.args || {});
           let run: RunResult;
           try {
-            run = await live.replay(workflow, liveArgs);
+            run = await live.replay(workflow, liveArgs, { leaveOpen: body.leaveOpen === true });
           } catch (err) {
             const message = err instanceof Error ? err.message : "live replay failed";
             return json(res, { error: message, modelCalls: 0 }, 409);
@@ -2725,6 +2725,7 @@ function persistedRun(
     pageClasses: result.pageClasses,
     inputs: maskedInputs(workflow, args),
     ...(result.outputs ? { outputs: result.outputs } : {}),
+    ...(result.pageLeftOpen ? { pageLeftOpen: true } : {}),
     ...(wall ? {
       envelope: {
         status: "needs_human",

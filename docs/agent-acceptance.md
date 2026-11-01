@@ -86,7 +86,7 @@ The hello frame is not a Mac check. `link.ts` stores whatever `extensionId` arri
 
 ## Update a live session
 
-`bao live_session_start`, `live_snapshot`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop` are CLI verbs. `bao mcp` serves the same eight names as MCP tools. `docs/cdp-live-chrome.md` describes each one, and `LIVE_TOOLS` in `desktop/src/cdp-live/live-ops.ts` defines them. Both post each call to the running app's `POST /api/live`. `serverPort` in `desktop/src/home.ts` finds the app from `server.json` in the library. The host is `desktop/src/cdp-live/live-host.ts`.
+The live tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point) are also CLI verbs. `LIVE_TOOLS` in `desktop/src/cdp-live/live-ops.ts` defines them. Both interfaces post each call to the running app's `POST /api/live`. `serverPort` in `desktop/src/home.ts` finds the app from `server.json` in the library. The host is `desktop/src/cdp-live/live-host.ts`.
 
 **Command.** Run this only when the task names the start URL, the preset, and the Chrome to attach to. Attach to a throwaway Chrome, never the daily profile. This manual check uses the installed app's Chrome for Testing with a temp profile and [test media isolation](../desktop/test/README.md#camera-and-microphone-isolation). The automated equivalent is `desktop/test/live/live-fixture.test.ts`.
 
@@ -108,7 +108,7 @@ curl -s "http://127.0.0.1:4787/api/live-session/shots/shot-001.png" -o /tmp/bao-
 
 In Bao, open **Live** and check the [step and audit view](cdp-live-chrome.md#agent-entry-point) against `liveSession` in `/api/state`. `GET /api/live-session/shots/shot-001.png` returns the first shot. A name that is not `shot-NNN.png` returns 404. `shotNameOk` in `desktop/src/cdp-live/live-record.ts` is that rule.
 
-**Evidence.** `<home>/live-session/session.json` and `<home>/live-session/shots/shot-NNN.png`. `SessionLog` in `desktop/src/cdp-live/audit.ts` writes both. Each `live_click`, `live_type`, `live_key`, and `live_scroll` that goes through appends a line to `<home>/live-session/trail.jsonl`. When the helper presses Allow, it appends a row to `<home>/live-session/ax.jsonl`.
+**Evidence.** `<home>/live-session/session.json` and `<home>/live-session/shots/shot-NNN.png`. `SessionLog` in `desktop/src/cdp-live/audit.ts` writes both. [Agent entry point](cdp-live-chrome.md#agent-entry-point) defines which calls append to the saved step trail. When the helper presses Allow, it appends a row to `<home>/live-session/ax.jsonl`.
 
 ## Stop a live session and replay it
 
@@ -140,7 +140,7 @@ While a session or a replay is open, `watchNewTargets` in `live-act.ts` closes a
 
 **Command.** After an authorized session, inspect `<home>/live-session/session.json`, and `.evidence/session-run.json` when the session script ran. With no profile, `npm run test:v1` already asserts `redactText`, `redactLabel`, and `shotNameOk` in `desktop/test/unit/cdp-live.test.ts`, and the live guards in `desktop/test/unit/live-guards.test.ts` and `desktop/test/unit/live-session.test.ts`.
 
-**Expected.** An email is removed. A greeting is stored as `[greeting]` in the session-script output. `redactLabel` drops a password word. It also drops `$1.29`. The same pattern leaves `,.56` from `$1,234.56`. Paths in the public session keep a pathname, not a full URL with a query. Audit labels follow the [live-session label rule](permissions.md#what-stays-on-this-mac). `readSurface` does not read `document.cookie`. A live reply does not carry cookie or storage keys. `publicLiveResult` in `desktop/src/cdp-live/live-ops.ts` strips them. The report contains no extension token, no Chrome profile listing, and no `DevToolsActivePort` browser-path secret.
+**Expected.** `redactLabel` removes emails from audit labels; named region reads follow the separate [live-read contract](cdp-live-chrome.md#agent-entry-point). A greeting is stored as `[greeting]` in the session-script output. `redactLabel` drops a password word. It also drops `$1.29`. The same pattern leaves `,.56` from `$1,234.56`. Paths in the public session keep a pathname, not a full URL with a query. Audit labels follow the [live-session label rule](permissions.md#what-stays-on-this-mac). `readSurface` does not read `document.cookie`. A live reply does not carry cookie or storage keys. `publicLiveResult` in `desktop/src/cdp-live/live-ops.ts` strips them. The report contains no extension token, no Chrome profile listing, and no `DevToolsActivePort` browser-path secret.
 
 The live host and `desktop/src/cdp-live/instacart-run.ts` take each shot with `captureRedacted` in `desktop/src/cdp-live/driver.ts`. That lays the full-page veil `redactOverlay` over the page first. The session script uses `redactForShot` in `desktop/src/cdp-live/attach.ts` instead. It blurs only the nodes it matches, such as an email or a price. A count of 0 still writes the PNG. A plain name and a Place order button stay readable in those shots.
 

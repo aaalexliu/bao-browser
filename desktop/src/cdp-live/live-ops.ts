@@ -5,6 +5,7 @@ import { COMMIT_FLOOR, type GuardPreset } from "./presets";
 export const LIVE_TOOL_NAMES = [
   "live_session_start",
   "live_snapshot",
+  "live_read",
   "live_click",
   "live_type",
   "live_key",
@@ -62,6 +63,18 @@ export const LIVE_TOOLS = [
     inputSchema: { type: "object", properties: { page: { type: "integer", minimum: 1 } } },
   },
   {
+    name: "live_read",
+    description: "Read and record visible text from one CSS region or element. name is a unique output name, such as freeze_status. selector defaults to body; prefer a stable id or a named region, such as [aria-label='Freeze status']. Missing, hidden, sensitive, or ambiguous regions are refused. Text is capped at 4000 characters with a truncation marker. Fields and editable content are excluded. Redaction covers credential-label values, SSNs, Luhn-valid 13-19-digit card numbers, JWTs, and keys with sk-, ghp_, gho_, xoxb-, xoxp-, or AKIA prefixes. Scores, dates, amounts, and freeze status stay readable. The saved workflow reads the region again on replay and returns its fresh text in run_workflow and get_run outputs. Text and run pictures stay on this Mac; do not read a region that contains secrets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$" },
+        selector: { type: "string", maxLength: 500 },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "live_click",
     description: "Click one ref from the latest snapshot. A confirm button or a denied label is refused and not clicked. A control covered by another element is refused and not clicked.",
     inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
@@ -96,7 +109,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_stop",
-    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, except a search box's text, which replay types again as recorded. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay repeats the recorded steps, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
+    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, scroll, and named read that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, except a search box's text, which replay types again as recorded. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay repeats the recorded steps, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;

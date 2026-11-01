@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
+import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome, pidsForDataDir } from "../launch";
 import type { LiveTarget } from "../cdp-live/live-target";
 
@@ -115,18 +116,29 @@ export async function copyChromeProfile(options: {
 /** The installed Chrome keeps its keychain identity; no helper, toggle, or native input is used. */
 export async function openCopiedChrome(options: {
   sourceRoot: string; directory: string; home: string; loadExtensions?: boolean;
-}): Promise<{ target: LiveTarget; close(): Promise<void>; bytes: number; copyMs: number }> {
+}): Promise<{ target: LiveTarget; parkedTargetId: string; close(): Promise<void>; closed: Promise<void>; bytes: number; copyMs: number }> {
   const copy = await copyChromeProfile(options);
+  let context: BrowserContext | undefined;
+  const close = async (): Promise<void> => { try { await context?.close(); } finally { await copy.close(); } };
   try {
-    const context = await launchOwnedChrome({
+    context = await launchOwnedChrome({
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
       loadExtensions: options.loadExtensions === true,
       args: [`--profile-directory=${copy.profileDirectory}`, "--disable-sync"],
     });
+    const closed = new Promise<void>((resolve) => context!.once("close", () => resolve()));
+    const watch = (page: Page): void => { page.once("close", () => {
+      if (context?.pages().length === 0) void context.close().catch(() => undefined);
+    }); };
+    context.pages().forEach(watch);
+    context.on("page", watch);
+    const session = await context.newCDPSession(context.pages()[0]!);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
     return {
       target: { kind: "bao", portFile: path.join(copy.userDataDir, "DevToolsActivePort") },
-      bytes: copy.bytes, copyMs: copy.copyMs,
-      async close() { try { await context.close(); } finally { await copy.close(); } },
+      parkedTargetId: targetInfo.targetId,
+      bytes: copy.bytes, copyMs: copy.copyMs, closed, close,
     };
-  } catch (error) { await copy.close(); throw error; }
+  } catch (error) { await close(); throw error; }
 }
