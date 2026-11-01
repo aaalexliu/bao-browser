@@ -248,9 +248,10 @@ function commitRefusal(control: LiveControlFact, guard: LabelGuard, facts: PageF
   if (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label)) return "stop_before_confirm";
   if (control.form === "search") return "";
   const inFreezeFlow = freezeFlow(facts, guard);
-  const finalFreeze = /^(?:unfreeze|freeze|lift|thaw)\b/i.test(control.label) && (control.kind === "submit" || inFreezeFlow);
-  const finalConfirm = inFreezeFlow && /^(?:confirm|submit)\b/i.test(control.label);
-  if (guard.freezeCommit && control.kind !== "link" && (finalFreeze || finalConfirm)) {
+  const finalFreeze = inFreezeFlow
+    && /\b(?:review|confirm(?:ation)?)\b/i.test(`${facts.path} ${facts.title} ${facts.headings.join(" ")}`)
+    && /^(?:unfreeze|freeze|lift|thaw|confirm|submit)\b/i.test(control.label);
+  if (control.kind !== "link" && finalFreeze) {
     return guard.allowCommit === true ? "" : "experian_commit";
   }
   if (inFreezeFlow && /^(?:continue|next|review)\b/i.test(control.label)) return "";

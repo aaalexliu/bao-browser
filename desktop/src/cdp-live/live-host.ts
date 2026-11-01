@@ -191,6 +191,10 @@ export function createLiveHost(opts: LiveHostOptions): {
   let warning: LiveIdleWarning | null = null;
 
   function reply(body: Record<string, unknown>): unknown {
+    const outcome = body.outcome as { kind?: string; reason?: string; instruction?: string } | undefined;
+    if (outcome?.kind === "halted" && outcome.reason === "login_wall" && !outcome.instruction) {
+      return publicLiveResult({ ...body, outcome: { ...outcome, instruction: "Sign in again in Chrome, then start a new live session." } });
+    }
     return publicLiveResult(body);
   }
 
@@ -493,7 +497,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       open.halted = halt;
       open.refused = true;
     }
-    const reached = !halt && open.read.view.reached;
+    const reached = action !== "start" && !halt && open.read.view.reached;
     const shot = await record(action, open.read.view.title || action, Date.now() - started, halt || reached ? "needs_human" : "passed", null);
     if (open.guard.freezeCommit) await open.log.flush(reached || halt ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_MESSAGE : halt || "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
@@ -584,6 +588,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         await note("click", outcome.reason, "needs_human", null);
         return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
       }
+      if (outcome.kind === "halted") state.halted = outcome.reason;
       if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) {
         if (!covered) state.covered.set(control, []);
       }
@@ -684,7 +689,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const library = new Library(opts.home);
     library.save(workflow);
     if (open.artifactRoot || open.guard.freezeCommit) {
-      const { groups } = liveTrailSteps(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl });
+      const { groups } = liveTrailSteps(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl }, open.guard);
       const workflowShots = path.join(library.root, "shots", "workflows", workflow.id);
       const runShots = path.join(library.root, "shots", "runs", open.runId);
       mkdirSync(workflowShots, { recursive: true });

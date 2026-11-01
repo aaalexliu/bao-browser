@@ -615,6 +615,12 @@ test("the live window blocks only its own main frame, stops a load on a stop pat
   assert.equal(verdict("r3"), "Fetch.continueRequest");
   assert.equal(verdict("r4"), "Fetch.failRequest");
   assert.equal(verdict("r5"), "Fetch.continueRequest");
+  for (const pathname of ["/login", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
+    own.emit("Fetch.requestPaused", { requestId: `login-${pathname}`, frameId: "MAIN", request: { url: `http://127.0.0.1${pathname}` } });
+    assert.equal(driver.takeBlockedNav(), "login_wall", pathname);
+    assert.equal(driver.takeBlockedNav(), "", "the blocked halt is consumed once");
+    assert.equal(verdict(`login-${pathname}`), "Fetch.failRequest");
+  }
   const attached = fakeCdp();
   await new CdpLiveDriver(attached.cdp, "s", "TAB", ["127.0.0.1"], true).start();
   assert.equal(attached.sent.some((item) => item.method === "Fetch.enable"), false);

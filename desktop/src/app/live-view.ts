@@ -11,12 +11,11 @@ function trustedWord(value: boolean | null, via: string): string {
   return "—";
 }
 
-/** Local links open live status, Settings, or a saved run without replaying it. */
-export function screenFromQuery(search: string): "live" | "settings" | "run" | "" {
+export function screenFromQuery(search: string): "live" | "settings" | "" {
   const query = new URLSearchParams(search);
   const screen = query.get("screen");
   if (screen === "live" || screen === "settings") return screen;
-  return screen === "run" && query.get("run") ? "run" : "";
+  return "";
 }
 
 /** `?screen=live&page=0` selects an audit window. An absent page lets the view choose. */

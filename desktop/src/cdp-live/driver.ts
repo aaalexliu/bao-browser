@@ -131,7 +131,6 @@ export class CdpLiveDriver implements Driver {
   private loadEpoch = 0;
   private offHost = "";
   private blockedNav = "";
-  private blockedNavUrl = "";
   /** The last top-frame URL that committed on an allowed host and off any stop path. */
   private lastAllowed = "";
   private origins: readonly string[] = [];
@@ -237,8 +236,9 @@ export class CdpLiveDriver implements Driver {
       void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
       return;
     }
-    this.blockedNav = allowed ? "stop-path" : this.refusal(url);
-    this.blockedNavUrl = url;
+    this.blockedNav = allowed
+      ? stopPathHit(url, "/(?:login|signin|sign-in)(?:/|$|[?#])") ? "login_wall" : "stop-path"
+      : this.refusal(url);
     void this.cdp.send("Fetch.failRequest", {
       requestId,
       errorReason: "BlockedByClient",
@@ -248,7 +248,6 @@ export class CdpLiveDriver implements Driver {
   takeBlockedNav(): string {
     const reason = this.blockedNav;
     this.blockedNav = "";
-    this.blockedNavUrl = "";
     return reason;
   }
 
@@ -457,13 +456,8 @@ export class CdpLiveDriver implements Driver {
       }
       await this.waitForLoad(epoch, timeoutMs);
     } catch (error) {
-      const blockedUrl = this.blockedNavUrl;
       const blocked = this.takeBlockedNav();
-      if (blocked === "stop-path") {
-        const stopped = new URL(blockedUrl);
-        const login = /\/(?:login|signin|sign-in)(?:\/|$|[?#])/i.test(stopped.pathname + stopped.hash);
-        throw new LiveNavigationHalt(login ? "login_wall" : "stop-path");
-      }
+      if (blocked === "login_wall" || blocked === "stop-path") throw new LiveNavigationHalt(blocked);
       if (blocked) throw new Error(blocked);
       throw error;
     }

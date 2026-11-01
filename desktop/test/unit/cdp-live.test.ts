@@ -362,7 +362,7 @@ test("a live session view stays on this machine and blurs the page shot", () => 
   assert.equal(screenFromQuery("?screen=live"), "live");
   assert.equal(screenFromQuery("?screen=library"), "");
   assert.equal(screenFromQuery("?screen=settings"), "settings");
-  assert.equal(screenFromQuery("?screen=run&run=run-fixture"), "run");
+  assert.equal(screenFromQuery("?screen=run&run=run-fixture"), "");
   assert.equal(screenFromQuery("?screen=run"), "");
   assert.equal(shotNameOk("shot-001.png"), true);
   assert.equal(shotNameOk("../session.json"), false);

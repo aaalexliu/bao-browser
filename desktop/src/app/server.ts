@@ -2707,7 +2707,7 @@ function persistedRun(
     secretList: string[];
   },
 ): Parameters<Library["saveRun"]>[0] {
-  const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm" && result.failure?.reason === "experian_commit";
+  const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm";
   return JSON.parse(maskText(JSON.stringify({
     id: result.runId,
     pageEngine: result.pageEngine,

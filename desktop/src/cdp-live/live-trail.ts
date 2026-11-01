@@ -6,6 +6,7 @@
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { condenseWithGroups } from "../v1/condense";
 import { explain, type InterpretMeta } from "../v1/interpret";
 import { normText, withoutPrice } from "../v1/identity";
 import type { TrailEvent } from "../v1/interpret";
@@ -14,7 +15,7 @@ import { validateWorkflow, type Identity, type WorkflowV2 } from "../v1/schema";
 import { liveSessionDir } from "./audit";
 import type { LabelGuard } from "./live-ops";
 import { redactLabel } from "./live-record";
-import { COMMIT_FLOOR } from "./presets";
+import { COMMIT_FLOOR, presetForUrl } from "./presets";
 
 export const LIVE_TRAIL_SOURCE = { agent: "live-model", vendor: "bao", adapter: "cdp-live" } as const;
 
@@ -257,8 +258,11 @@ export function refusedStepLabels(workflow: Pick<WorkflowV2, "steps">, guard: La
     .map((step) => step.label);
 }
 
-export function liveTrailSteps(events: readonly TrailEvent[], meta: InterpretMeta) {
-  return explain(events.filter((event) => event.op !== "scroll"), { ...meta, preserveActions: true });
+export function liveTrailSteps(events: readonly TrailEvent[], meta: InterpretMeta, guard?: Pick<LabelGuard, "freezeCommit">) {
+  const policy = { ...meta, preserveActions: guard?.freezeCommit ?? presetForUrl(meta.startUrl) === "experian" };
+  return policy.preserveActions
+    ? explain(events.filter((event) => event.op !== "scroll"), policy)
+    : condenseWithGroups(events, policy);
 }
 
 /** Keep the live session's false starts for review instead of condensing them. */
@@ -272,7 +276,7 @@ export function workflowFromTrail(input: {
   events: readonly TrailEvent[];
   guard: LabelGuard;
 }): WorkflowV2 {
-  const built = liveTrailSteps(input.events, { id: input.id, name: input.name, startUrl: input.startUrl }).workflow;
+  const built = liveTrailSteps(input.events, { id: input.id, name: input.name, startUrl: input.startUrl }, input.guard).workflow;
   const workflow: WorkflowV2 = {
     ...built,
     createdAt: input.createdAt,

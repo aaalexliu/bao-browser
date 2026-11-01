@@ -62,6 +62,7 @@ async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guar
 
 /** A load the window failed on a stop path goes back to the last allowed page, and the refusal reads that page again. */
 async function refuseBlocked(target: LiveActTarget, reason: string): Promise<LiveActOutcome> {
+  if (reason === "login_wall") return { kind: "halted", reason };
   if (reason === "stop-path") {
     await target.driver.returnFromBlock();
     await target.reread();

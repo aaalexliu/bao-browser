@@ -638,14 +638,14 @@ function saveWorkflowRun(
   clip?: { video: string; videoStartedAt: number },
 ): void {
   const paused = outcome.status === "needs_signin" || outcome.status === "needs_human";
-  const wall = run.pausedKind === "wall";
+  const needsHuman = run.pausedKind === "wall" || run.pausedKind === "confirm";
   library.saveRun({
     id: run.runId,
     pageEngine: run.pageEngine,
     traceUnavailable: run.traceUnavailable,
     videoTruncated: run.videoTruncated,
     workflowId: workflow.id,
-    status: wall ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
+    status: needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
     at: Date.now(),
     heals: run.heals,
     failure: run.failure,
