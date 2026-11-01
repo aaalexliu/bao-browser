@@ -7,6 +7,7 @@ import { navigationGuard } from "./allowlist";
 import type { CdpLiveDriver } from "./driver";
 import {
   buildView,
+  EXPERIAN_COMMIT_INSTRUCTION,
   focusLiveMark,
   markedFieldValue,
   planClick,
@@ -44,7 +45,14 @@ export interface LiveActTarget {
 
 export type LiveActOutcome =
   | { kind: "refused" | "halted"; reason: string }
+  | { kind: "reached"; reason: "experian_commit"; instruction: string }
   | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
+
+function planRefusal(reason: string): LiveActOutcome {
+  return reason === "experian_commit"
+    ? { kind: "reached", reason, instruction: EXPERIAN_COMMIT_INSTRUCTION }
+    : { kind: "refused", reason };
+}
 
 /** Marks the control again and keeps the plan only if the mark is still the control the plan named. */
 async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guard">, ref: string, index: number): Promise<boolean> {
@@ -68,7 +76,7 @@ function controlOf(read: LiveRead, ref: string) {
 /** One trusted click on a listed control. A confirm, denied, or credential control, an off-list link, and a covered control are refused. */
 export async function clickLive(target: LiveActTarget, ref: string): Promise<LiveActOutcome> {
   const plan = planClick(target.read, ref);
-  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
+  if (!plan.ok) return planRefusal(plan.refusal);
   const entry = target.read.targets.byRef.get(ref);
   if (entry?.href) {
     const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
@@ -124,7 +132,7 @@ export async function typeLive(target: LiveActTarget, ref: string, text: string,
 /** Enter, Tab, or Escape, on the same guards as a click. */
 export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
   const plan = planKey(target.read, key, ref);
-  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
+  if (!plan.ok) return planRefusal(plan.refusal);
   const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
   const control = controlOf(target.read, ref);
   if (key === "Enter" && entry?.href) {

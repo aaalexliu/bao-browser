@@ -43,7 +43,15 @@ export async function startExperianFixture() {
       res.writeHead(302, { location: `/login/index?refUrl=${encodeURIComponent(url.pathname)}` });
       res.end();
     } else if (url.pathname === "/member") {
-      send("Dashboard", `${header}<p>Your score: 742.</p><a href="https://www.experian.com/">Public site</a><a href="/member/accounts/summary">Accounts summary</a><a href="/member/security-help">Security help</a>${buttons}`);
+      send("Dashboard", `${header}<p>Your score: 742.</p><a href="https://www.experian.com/">Public site</a><a href="/member/accounts/summary">Accounts summary</a><a href="/member/security-help">Security help</a>${buttons}<a href="/member/freeze">Manage freeze</a>`);
+    } else if (url.pathname === "/member/freeze") {
+      send("Manage credit freeze", '<a href="/member/unfreeze">Unfreeze my credit</a>');
+    } else if (url.pathname === "/member/unfreeze") {
+      send("Choose a lift", '<form action="/member/unfreeze/review"><label>Duration <input name="duration" value="7 days"></label><button type="submit">Continue</button></form>');
+    } else if (url.pathname === "/member/unfreeze/review") {
+      send("Review unfreeze", '<form onsubmit="event.preventDefault();fetch(\'/commit-unfreeze\', {method:\'POST\'}).then(() => {document.querySelector(\'main\').innerHTML=\'<h1>Credit unfrozen</h1>\'})"><label>Note <input name="note"></label><button type="submit">Confirm</button></form>');
+    } else if (url.pathname === "/commit-unfreeze") {
+      send("Done", "Credit unfrozen");
     } else if (url.pathname === "/member/security-help") {
       send("Security help", `${header}<p>Your freeze PIN is stored safely. Learn about security code, verification code, one-time code, two-factor, 2fa, SSO and sign in with Google or sign in with Apple.</p><input type="hidden" name="pin"><input style="display:none" name="otp" aria-label="OTP">`);
     } else if (url.pathname === "/member/verify") {

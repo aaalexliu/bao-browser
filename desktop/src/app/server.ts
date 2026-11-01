@@ -2709,14 +2709,14 @@ function persistedRun(
     secretList: string[];
   },
 ): Parameters<Library["saveRun"]>[0] {
-  const wall = result.pausedKind === "wall";
+  const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm" && result.failure?.reason === "experian_commit";
   return JSON.parse(maskText(JSON.stringify({
     id: result.runId,
     pageEngine: result.pageEngine,
     traceUnavailable: result.traceUnavailable,
     videoTruncated: result.videoTruncated,
     workflowId: workflow.id,
-    status: wall ? "needs_human" : result.status,
+    status: needsHuman ? "needs_human" : result.status,
     at: Date.now(),
     heals: result.heals,
     failure: result.failure,
@@ -2734,7 +2734,7 @@ function persistedRun(
     inputs: maskedInputs(workflow, args),
     ...(result.outputs ? { outputs: result.outputs } : {}),
     ...(result.pageLeftOpen ? { pageLeftOpen: true } : {}),
-    ...(wall ? {
+    ...(needsHuman ? {
       envelope: {
         status: "needs_human",
         run_id: result.runId,
