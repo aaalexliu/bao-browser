@@ -11,6 +11,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { startApp, type App } from "../../src/app/server";
+import { replayLiveWorkflow } from "../../src/cdp-live/live-replay";
 import { frameRpc } from "../../src/mcp/frame";
 import type { WorkflowOutcome } from "../../src/mcp/catalog";
 import type { RunResult } from "../../src/v1/replay";
@@ -251,5 +252,71 @@ describe("a recorded live workflow replays through the one live runner", { timeo
     assert.equal(busy.body.modelCalls, 0);
     assert.equal((await live({ op: "live_stop" })).outcome?.kind, "stopped");
     assert.equal(existsSync(lockFile), false);
+  });
+
+  it("keeps startup failures in Library Runs through both the app and product MCP", async () => {
+    const failedHome = applyHermeticApp("live-replay-startup-failure").home;
+    const failedLock = path.join(failedHome, "live.lock");
+    const failed = await startApp({
+      home: failedHome, port: 0, liveTarget: `throwaway:${path.join(failedHome, "missing", "DevToolsActivePort")}`, liveLockFile: failedLock,
+    });
+    const workflow: WorkflowV2 = {
+      schema: "bao.workflow/v2", id: "wf-startup-failure", name: "Startup failure", intent: "Read-only startup",
+      version: 2, createdAt: Date.now(), driver: "cdp-live", startUrl: fixture.url("/store/costco/storefront"), inputs: [],
+      steps: [{ id: "startup-note", index: 0, action: "note", label: "No cart action", surface: "dom", timeoutMs: 4000 }],
+    };
+    failed.library.save(workflow);
+    try {
+      const response = await fetch(`http://127.0.0.1:${failed.port}/api/replay`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: workflow.id, args: {} }),
+      });
+      assert.equal(response.status, 200);
+      const run = await response.json() as ReplayBody;
+      assert.equal(run.status, "failed");
+      assert.equal(run.modelCalls, 0);
+      assert.deepEqual(run.steps.map((step) => step.status), ["pending"]);
+      assert.match(run.failure?.reason || "", /DevToolsActivePort|missing|ENOENT/);
+      assert.deepEqual(failed.library.readRun(run.runId).failure, run.failure);
+      const state = await (await fetch(`http://127.0.0.1:${failed.port}/api/state`)).json() as { runs: { id: string; failure?: { reason: string } }[] };
+      assert.equal(state.runs.find((item) => item.id === run.runId)?.failure?.reason, run.failure?.reason);
+      const mcp = mcpClient(failedHome);
+      try {
+        const outcome = await mcp.tool("run_workflow", { id: workflow.id });
+        assert.equal(outcome.outcome, "failed");
+        assert.ok(outcome.reason?.includes(run.failure!.reason));
+        assert.notEqual(outcome.runId, run.runId);
+        const stored = failed.library.readRun(outcome.runId!);
+        assert.equal(stored.status, "failed");
+        assert.deepEqual(stored.failure, run.failure);
+        assert.equal(stored.modelCalls, 0);
+        assert.deepEqual(stored.steps, run.steps);
+        assert.equal(failed.library.listRuns().length, 2);
+      } finally { await mcp.close(); }
+      assert.equal(existsSync(failedLock), false);
+    } finally { await failed.close(); }
+  });
+
+  it("keeps completed step results when video encoding fails after replay", async () => {
+    const previous = process.env.FFMPEG;
+    process.env.FFMPEG = process.execPath;
+    try {
+      const run = await replayLiveWorkflow({
+        schema: "bao.workflow/v2", id: "wf-video-failure", name: "Video failure", intent: "Read-only video failure",
+        version: 2, createdAt: Date.now(), driver: "cdp-live", startUrl: fixture.url("/store/costco/storefront"), inputs: [],
+        steps: [{ id: "video-note", index: 0, action: "note", label: "No cart action", surface: "dom", timeoutMs: 4000 }],
+      }, {}, {
+        target: { kind: "throwaway", portFile: browser.portFile }, artifactRoot: home, lockFile, engineName: "old",
+        axLog: path.join(home, "video-failure-ax.jsonl"),
+        openProfile: async () => { throw new Error("a throwaway fixture must not open the daily Chrome"); },
+      });
+      passedNoModel(run);
+      assert.deepEqual(run.steps.map((step) => step.status), ["passed"]);
+      assert.equal(run.video, undefined);
+      assert.match(run.traceUnavailable || "", /replay video unavailable: CDP video/);
+      assert.equal(existsSync(lockFile), false);
+    } finally {
+      if (previous === undefined) delete process.env.FFMPEG;
+      else process.env.FFMPEG = previous;
+    }
   });
 });

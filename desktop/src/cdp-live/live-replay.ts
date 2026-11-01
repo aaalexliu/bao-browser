@@ -347,8 +347,13 @@ export async function replayLiveWorkflow(
     await driver.goto(workflow.startUrl);
     const run = await replayGuarded(workflow, inputs, guarded, runId, deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined);
     run.pageEngine = engineName;
-    const recorded = await driver.finishVideo();
-    if (recorded.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; }
+    try {
+      const recorded = await driver.finishVideo();
+      if (recorded.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "video capture failed";
+      run.traceUnavailable = [run.traceUnavailable, `replay video unavailable: ${reason}`].filter(Boolean).join("; ");
+    }
     return run;
   } finally {
     await driver?.end().catch(() => undefined);

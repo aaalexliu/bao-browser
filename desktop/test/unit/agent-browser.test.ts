@@ -3,7 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { AgentBrowserPage, EngineUncertain, pageEngineName } from "../../src/engines/agent-browser";
+import { AgentBrowserPage, EngineUncertain, pageEngineName, type EvaluationPhase } from "../../src/engines/agent-browser";
+import { CdpLiveDriver } from "../../src/cdp-live/driver";
+import type { CdpSocket } from "../../src/cdp-live/socket";
 
 async function fakeEngine(mode = "ok", commandMs: number | null = 150) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-engine-unit-"));
@@ -100,6 +102,48 @@ test("navigation allows the native 25-second wait to finish within a bounded 30-
     await fake.page.goto("https://example.test/");
     assert.ok(timer.mock.calls.some((call) => call.arguments[1] === 30_000));
     timer.mock.restore();
+  } finally { await fake.close(); }
+});
+
+test("startup evaluation allows the upstream 30-second wait plus a response budget; ordinary reads keep 12 seconds", async (t) => {
+  const fake = await fakeEngine("ok", null);
+  const timer = t.mock.method(globalThis, "setTimeout");
+  try {
+    await fake.page.evaluate("document.readyState", "startup");
+    assert.ok(timer.mock.calls.some((call) => call.arguments[1] === 35_000));
+    const start = timer.mock.calls.length;
+    await fake.page.evaluate("document.title");
+    const reads = timer.mock.calls.slice(start);
+    assert.ok(reads.some((call) => call.arguments[1] === 12_000));
+    assert.equal(reads.some((call) => call.arguments[1] === 35_000), false);
+  } finally { timer.mock.restore(); await fake.close(); }
+});
+
+test("native navigation uses startup evaluation for both readiness and final location", async (t) => {
+  const fake = await fakeEngine();
+  const phases: EvaluationPhase[] = [];
+  t.mock.method(fake.page, "evaluate", async <T>(expression: string, phase: EvaluationPhase = "page"): Promise<T> => {
+    phases.push(phase);
+    return (expression === "location.href" ? "https://example.test/" : { href: "https://example.test/", ready: "complete" }) as T;
+  });
+  try {
+    const driver = new CdpLiveDriver({} as CdpSocket, "session", "ABC123", ["example.test"]);
+    driver.usePageEngine(fake.page);
+    await driver.goto("https://example.test/");
+    assert.deepEqual(phases, ["startup", "startup"]);
+    assert.equal((await fake.records()).filter((cmd) => cmd.action === "navigate").length, 1);
+  } finally { await fake.close(); }
+});
+
+test("an uncertain native startup read propagates immediately without another probe", async (t) => {
+  const fake = await fakeEngine();
+  const failure = new EngineUncertain("evaluate", "deadline");
+  const evaluate = t.mock.method(fake.page, "evaluate", async () => { throw failure; });
+  try {
+    const driver = new CdpLiveDriver({} as CdpSocket, "session", "ABC123", ["example.test"]);
+    driver.usePageEngine(fake.page);
+    await assert.rejects(driver.goto("https://example.test/", 20), (error) => error === failure);
+    assert.equal(evaluate.mock.calls.length, 1);
   } finally { await fake.close(); }
 });
 

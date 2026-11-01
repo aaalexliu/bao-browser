@@ -22,7 +22,8 @@ A saved UI choice takes precedence over the environment. For local fixture work 
 - `desktop/packaging/stage-agent-browser.mjs` checks the archive and executable, stages the platform binary, sets its execute bit, and includes its license and skill data. The app signs the bundled executable. The npm launcher is not a runtime dependency.
 - Bao starts one native daemon with a private state directory, a fixed loopback CDP endpoint, and one exact pinned tab. It strips model keys, remote-provider settings, proxy settings, config homes, and inherited executable paths from the child environment. WebMCP is off.
 - Structured NDJSON travels over a private Unix socket. Page values never enter argv. Raw engine output and upstream error text are not logged because they can contain typed values. Fixed stop-cause codes distinguish deadlines, socket loss, invalid responses, and lifecycle changes without exposing those values.
-- Commands have deadlines and a response-size bound. The process has a lifetime bound. A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
+- Ordinary commands have a 12-second deadline; navigation has 30 seconds. Startup trust/readiness/location evaluation has 35 seconds because upstream CDP can wait 30 seconds before responding. Native startup errors propagate at once rather than polling a stopped engine. These bounds do not retry an action.
+- Commands have a response-size bound, and the process has a lifetime bound. A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
 - Bao tracks browser ownership itself. Killing the native child only disconnects it. The adapter never sends `Browser.close`; the owner of a Bao-launched browser handles shutdown. An attached browser survives adapter disposal.
 - Live tools keep the host/origin, credential, stale-ref, submit, commit-label, popup, and stop-path guards. The trial does not expose arbitrary evaluation or upstream browser commands through MCP.
 
@@ -30,7 +31,9 @@ A saved UI choice takes precedence over the environment. For local fixture work 
 
 Copied-profile sessions save the live workflow, a Library run record, page screenshots for its kept steps, and page video. Recorded live-workflow replays save before/after step screenshots and video through the same run-evidence paths. Screenshots use CDP with field masking. Video uses `Page.startScreencast` on the run's exact page, not an OS capture API. Video capture pauses for human handoff. It has frame, byte, and encoder-time limits and needs `ffmpeg` on the host. A video failure does not discard an already recorded workflow.
 
-Run records state the selected page engine. Unsupported console/network traces carry `traceUnavailable`; empty arrays do not claim that tracing succeeded. A real agent's model cost is separate from replay's `modelCalls`, which counts Bao heal calls.
+Run records state the selected page engine. Operational failures before step 0 return a failed run with pending steps and the reason, so the UI and MCP save them in Library Runs. Request validation and an already-open live session still reject the request. Video encoding failure after replay keeps the completed step results and reports unavailable video in `traceUnavailable`; it does not turn completed actions into pending steps.
+
+Unsupported console/network traces also carry `traceUnavailable`; empty arrays do not claim that tracing succeeded. A real agent's model cost is separate from replay's `modelCalls`, which counts Bao heal calls.
 
 ## Capability contract and parity status
 
@@ -55,7 +58,7 @@ The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `de
 | Human handoff and assertions | Gap | Existing replay logic remains; full interactive parity is not yet proved. |
 | Copied-profile chooser and lifecycle | Works | Synthetic/API tests and selected-profile native launch passed. Copies close and delete; extension loading is opt-in per profile. Real-cart proof remains separate. |
 | Live capture step shots and CDP video | Works | Expanded local fixture passed: Library step PNGs, replay before/after PNGs, and nonempty CDP videos. The real agent recording also saved its workflow, four step PNGs, and video. |
-| Real copied-profile replay | Gap | The real replay stopped during startup with uncertain evaluation, before any workflow step or cart write. No retry or fallback ran. |
+| Real copied-profile replay | One flow proved | The approved four-step Costco replay passed on a fresh profile copy, extensions off, with zero model calls. This is not full feature parity. |
 
 ## Real-site checkpoint
 
@@ -63,9 +66,13 @@ With extensions off, the read-only preflight opened the empty Costco cart. One O
 
 Bao saved `wf-real-kirkland-blueberries`, four kept steps, their PNGs, and the CDP recording. All four recorded steps passed. The capture run's overall status is still `failed` because the agent encountered one stale-ref refusal, refreshed, and continued. That status needs review; it is not a replay pass.
 
-The single model-free replay failed during startup, before step 0, with `agent-browser run stopped: uncertain evaluate`. It added nothing. Restoration used `removeLabelOk` and `cartRestored(0, 1, 0)` to remove only the agent's actual addition. The final cart screenshot showed the empty starting cart. Other carts were not opened or changed. Owned Chrome stopped and its profile copy was deleted.
+The first model-free replay failed during startup, before step 0, with `agent-browser run stopped: uncertain evaluate`. It added nothing. Restoration removed only the agent's actual addition and returned the cart to empty. That historical failure and the capture's refused status have not been rewritten.
 
-Private evidence is under the task's `real-run/` directory: `extensions-off/baseline.json`, `claude-main/summary.json`, `claude-main/session/`, `replay.json`, and `restore/restored.json`. This is partial real-site proof, not a passed real-cart replay gate or grounds to change the default engine.
+Code review found that post-DOMContentLoaded startup probes used Bao's 12-second ordinary deadline while upstream CDP allowed 30 seconds. The readiness loop also swallowed the first fatal native error. Startup probes now get 35 seconds and propagate the first error. The old report lacks a cause code, so this is a supported explanation, not proof of the historical cause. Startup failures now follow the existing Library save paths through the UI and MCP.
+
+After that fix, one explicitly authorized extra model-free replay passed all four steps through product Bao MCP: `run-mvx3dt73-lo2e`, 44,221 ms, zero model calls, eight before/after PNGs, and an 18.84-second CDP clip. Its fresh profile copy had extensions off. All 68 prompt-monitor samples were clear. A fresh empty-cart baseline preceded it. The replay added exactly the approved single quantity. Restoration verified that line at 1 ct, removed only that replay's actual addition, and checked `cartRestored(0, 1, 0)`. The final screenshot showed zero lines and quantity. Other carts were not opened or changed. All copies, owned Chrome processes, and native processes were gone before the cart handoff. No further cart access is authorized.
+
+Private evidence is under the task's `real-run/` directory: the earlier `claude-main/` and `replay.json`, plus `final-attempt/{baseline/,replay.json,restore/,cleanup.json}`. `agent-replay-library.mp4` contains the actual earlier agent clip, the final replay, running Bao Library/workflow/step-screen stills, and the empty restored-cart still. It is 65.76 seconds at 1920 x 1080. The approved real-cart flow is proved; the other capability gaps still block a default-engine change.
 
 ## Local proof
 

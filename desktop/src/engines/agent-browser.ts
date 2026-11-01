@@ -29,6 +29,8 @@ type Data = Record<string, unknown>;
 const MAX_OUTPUT = 16 * 1024 * 1024;
 const PNG = Buffer.from("89504e470d0a1a0a", "hex");
 
+export type EvaluationPhase = "page" | "startup";
+
 type StopCause = "deadline" | "socket-error" | "socket-ended" | "output-limit" | "invalid-json" | "response-shape"
   | "response-id" | "dialog" | "tab-gone" | "renderer-revived" | "warning" | "browser-relaunch" | "action-result";
 
@@ -102,7 +104,7 @@ export class AgentBrowserPage {
 
   private get socketPath(): string { return path.join(this.stateDir, "bao.sock"); }
 
-  private async request(action: string, fields: Data = {}): Promise<Data> {
+  private async request(action: string, fields: Data = {}, deadlineMs?: number): Promise<Data> {
     if (this.stopped) throw new Error(`agent-browser run stopped: ${this.stopReason}`);
     if (this.busy) throw new Error(`agent-browser concurrent ${action} command refused`);
     this.busy = true;
@@ -127,7 +129,7 @@ export class AgentBrowserPage {
           finish(new EngineUncertain(action, cause));
         };
         // Native navigation waits up to 25 seconds even when its general wait env is shorter.
-        const timer = setTimeout(() => uncertain("deadline"), this.options.commandMs ?? (action === "navigate" ? 30_000 : 12_000));
+        const timer = setTimeout(() => uncertain("deadline"), this.options.commandMs ?? deadlineMs ?? (action === "navigate" ? 30_000 : 12_000));
         socket.once("error", () => uncertain("socket-error"));
         socket.once("end", () => { if (!finished) uncertain("socket-ended"); });
         socket.once("connect", () => socket.write(JSON.stringify({ ...fields, id, action }) + "\n"));
@@ -171,8 +173,9 @@ export class AgentBrowserPage {
     } finally { this.busy = false; }
   }
 
-  async evaluate<T>(script: string): Promise<T> {
-    const data = await this.request("evaluate", { script });
+  async evaluate<T>(script: string, phase: EvaluationPhase = "page"): Promise<T> {
+    // Upstream CDP waits 30 seconds; allow five more for its response during startup.
+    const data = await this.request("evaluate", { script }, phase === "startup" ? 35_000 : undefined);
     return data.result as T;
   }
 

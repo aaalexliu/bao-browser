@@ -1,6 +1,6 @@
 import { startCdpVideo, type CdpVideo } from "../engines/cdp-video";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields } from "../v1/dom-page";
-import type { AgentBrowserPage } from "../engines/agent-browser";
+import type { AgentBrowserPage, EvaluationPhase } from "../engines/agent-browser";
 import { installDataPage } from "../v1/data-page";
 import type { ExtractSpec } from "../v1/data-steps";
 import { dumpPage, type DomDump, type PageDump } from "../v1/dom-page";
@@ -214,7 +214,7 @@ export class CdpLiveDriver implements Driver {
       added = await this.cdp.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", { source: TRUST_SOURCE }, this.sessionId);
     }
     this.scriptId = added.identifier || "";
-    await this.evaluate(TRUST_SOURCE).catch(() => undefined);
+    await this.evaluate(TRUST_SOURCE, "startup").catch((error) => { if (this.pageEngineSelected) throw error; });
     await this.bringToFront();
   }
 
@@ -327,9 +327,9 @@ export class CdpLiveDriver implements Driver {
     await this.bringToFront();
   }
 
-  private async evaluateOnce<T>(expression: string): Promise<T> {
+  private async evaluateOnce<T>(expression: string, phase: EvaluationPhase): Promise<T> {
     this.assertHost();
-    if (this.pageEngine) return this.pageEngine.evaluate<T>(expression);
+    if (this.pageEngine) return this.pageEngine.evaluate<T>(expression, phase);
     const payload = await this.cdp.send<{
       result?: { value?: T };
       exceptionDetails?: { text?: string; exception?: { description?: string } };
@@ -345,14 +345,14 @@ export class CdpLiveDriver implements Driver {
     return payload.result?.value as T;
   }
 
-  private async evaluate<T>(expression: string): Promise<T> {
+  private async evaluate<T>(expression: string, phase: EvaluationPhase = "page"): Promise<T> {
     try {
-      return await this.evaluateOnce<T>(expression);
+      return await this.evaluateOnce<T>(expression, phase);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (this.pageEngine || !/context|destroyed|navigat/i.test(message)) throw err;
       await sleep(250);
-      return this.evaluateOnce<T>(expression);
+      return this.evaluateOnce<T>(expression, phase);
     }
   }
 
@@ -443,7 +443,7 @@ export class CdpLiveDriver implements Driver {
       if (nav.errorText) throw new Error(nav.errorText);
     }
     await this.waitForLoad(epoch, timeoutMs);
-    const href = await this.evaluate<string>("location.href");
+    const href = await this.evaluate<string>("location.href", "startup");
     if (this.allows(href)) return;
     if (!href || href === "about:blank") throw new Error("navigation did not finish");
     await this.end().catch(() => undefined);
@@ -767,8 +767,11 @@ export class CdpLiveDriver implements Driver {
     while (Date.now() < deadline) {
       this.assertHost();
       const state = await this.evaluate<{ href: string; ready: string }>(
-        "({ href: location.href, ready: document.readyState })",
-      ).catch(() => undefined);
+        "({ href: location.href, ready: document.readyState })", "startup",
+      ).catch((error) => {
+        if (this.pageEngineSelected) throw error;
+        return undefined;
+      });
       const loaded = !!state && this.allows(state.href) && (state.ready === "complete" || state.ready === "interactive");
       if (loaded && (this.loadEpoch > epoch || state?.ready === "complete")) return;
       await sleep(100);

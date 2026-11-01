@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { condenseWithGroups } from "../v1/condense";
 import { workflowShotName } from "../v1/shots";
@@ -123,6 +123,13 @@ function shown(read: LiveRead | null | undefined): LiveViewPage | null {
   return read ? viewPage(read.view) : null;
 }
 
+interface LiveRunSelection {
+  target: LiveTarget;
+  engineName: PageEngineName;
+  artifactRoot?: string;
+  close?: () => Promise<void>;
+}
+
 export interface LiveHostOptions {
   home: string;
   lockFile?: string;
@@ -130,7 +137,7 @@ export interface LiveHostOptions {
   /** The Chrome a start drives when the caller names no port file. Default: the daily Chrome. */
   target?: LiveTarget;
   /** Runs once per session or replay. The chosen engine and private profile stay fixed until it ends. */
-  selectRun?: () => Promise<{ target: LiveTarget; engineName: PageEngineName; artifactRoot?: string; close?: () => Promise<void> }>;
+  selectRun?: () => Promise<LiveRunSelection>;
   /** BaoOSHelper, for the daily Chrome's Allow dialog. Tests pass a fake. */
   helper?: () => ChromeAx;
   /** Asks the daily Chrome to open a window in the target's profile. Tests pass a fake. */
@@ -691,20 +698,39 @@ export function createLiveHost(opts: LiveHostOptions): {
   /** Runs inside the call chain. The session must be closed, and the replay takes the CDP lock itself. */
   async function runReplay(workflow: WorkflowV2, inputs: ReplayArgs): Promise<RunResult> {
     if (slot.phase === "open") throw new Error("stop the live session before replay");
-    const selected = await opts.selectRun?.();
+    const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    let selected: LiveRunSelection | undefined;
+    let run: RunResult = {
+      runId, status: "failed", steps: workflow.steps.map((step) => ({ id: step.id, status: "pending" })),
+      heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
+    };
     try {
-      return await replayLiveWorkflow(workflow, inputs, {
-        target: selected?.target ?? defaultTarget,
-        engineName: selected?.engineName ?? pageEngineName(),
-        artifactRoot: selected?.artifactRoot,
-        lockFile,
-        helper: opts.helper,
-        openProfile,
-        axLog,
-        connectTimeoutMs: opts.connectTimeoutMs,
-        onNotice: opts.onNotice,
-      });
-    } finally { await selected?.close?.(); }
+      selected = await opts.selectRun?.();
+      run.pageEngine = selected?.engineName ?? pageEngineName();
+      try {
+        run = await replayLiveWorkflow(workflow, inputs, {
+          target: selected?.target ?? defaultTarget,
+          engineName: run.pageEngine,
+          artifactRoot: selected?.artifactRoot,
+          lockFile,
+          helper: opts.helper,
+          openProfile,
+          axLog,
+          connectTimeoutMs: opts.connectTimeoutMs,
+          onNotice: opts.onNotice,
+        }, runId);
+      } finally { await selected?.close?.(); }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "live replay failed";
+      run.status = "failed";
+      run.failure = run.failure ? { ...run.failure, reason: `${run.failure.reason}; ${reason}` } : {
+        stepId: workflow.steps[0]?.id || workflow.id, index: 0, intent: workflow.intent || workflow.name,
+        phase: "action", reason, snapshot: {},
+      };
+      const clip = selected?.artifactRoot ? path.join(selected.artifactRoot, "videos", `${runId}.webm`) : "";
+      if (clip && existsSync(clip) && statSync(clip).size > 1000) run.video = `${runId}.webm`;
+    }
+    return run;
   }
 
   /** bao mcp's run_workflow sends the workflow it found and the inputs. The reply carries the run, or why it did not start. */
