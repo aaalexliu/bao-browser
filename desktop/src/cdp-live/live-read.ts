@@ -75,20 +75,24 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
   const ownField = /^[A-Za-z][A-Za-z ]{0,39}:/;
   const inlineValue = new RegExp(`(${credentialLabel.source}[ \\t]*(?:(?:[:#]|is\\b)[ \\t]*)?)([^\\n;]*?)(?=\\. |;|\\n|$)`, "gi");
   const text = chunks.map((chunk, index) => {
-    let safe = chunk.replace(/(?<![A-Za-z0-9_-])(?:(?:sk-|ghp_|gho_|xoxb-|xoxp-|AKIA)[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?![A-Za-z0-9_-])/g, "[redacted]");
+    let safe = chunk.replace(/(?<![A-Za-z0-9_-])(?:(?:sk-|ghp_|gho_|xoxb-|xoxp-|AKIA)[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})(?![A-Za-z0-9_-])/g, "[redacted]");
     if (index > 0 && bareLabel.test(chunks[index - 1]!) && !ownField.test(chunk)) safe = "[redacted]";
     else safe = safe.replace(inlineValue, (match, prefix: string, value: string) => value ? `${prefix}[redacted]` : match);
     return safe
-      .replace(/\b\d(?:[ -]?\d){12,}\b/g, (number) => {
-        const digits = number.replace(/[ -]/g, "");
-        if (digits.length > 19) return number;
-        let sum = 0;
-        for (let index = digits.length - 1; index >= 0; index -= 1) {
-          let digit = Number(digits[index]);
-          if ((digits.length - 1 - index) % 2) { digit *= 2; if (digit > 9) digit -= 9; }
-          sum += digit;
+      .replace(/\b\d(?:[ -]?\d){12,18}\b/g, (number) => {
+        for (let end = number.length; end >= 13; end -= 1) {
+          if (end < number.length && number[end] !== " " && number[end] !== "-") continue;
+          const digits = number.slice(0, end).replace(/[ -]/g, "");
+          if (digits.length < 13) break;
+          let sum = 0;
+          for (let index = digits.length - 1; index >= 0; index -= 1) {
+            let digit = Number(digits[index]);
+            if ((digits.length - 1 - index) % 2) { digit *= 2; if (digit > 9) digit -= 9; }
+            sum += digit;
+          }
+          if (sum % 10 === 0) return `[redacted]${number.slice(end)}`;
         }
-        return sum % 10 === 0 ? "[redacted]" : number;
+        return number;
       })
       .replace(/\b\d{3}[- ]\d{2}[- ]\d{4}\b/g, "[redacted]");
   }).join("\n").trim();

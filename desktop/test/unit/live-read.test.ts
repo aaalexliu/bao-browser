@@ -33,6 +33,8 @@ test("live reads record a safe region and return fresh output through MCP and th
       <p>SSN: 123-45-6789</p><p>Card number: 4111 1111 1111 1111</p><p>Email: demo@example.com</p>
       <p>(415) 555-0134; 1-800-555-0199; 94110-1234; 4111111111111112</p>
       <p>123 45 6789</p><p>${jwt}</p><p>sk-abc123</p><p>ghp_abc123</p>
+      <p>www.experian.com; usa.experian.com/mfe/member; version 1.2.3; report.pdf</p>
+      <p>4111 1111 1111 1111 12/26</p><p>4111-1111-1111-1111 12/26</p><p>4111111111111111 12/26</p>
       <input value="field-secret"><textarea>textarea-secret</textarea><span contenteditable>editable-secret</span>
       <p hidden>hidden-secret</p><p style="display:none">display-secret</p><p aria-hidden="true">aria-secret</p>
       <script>window.secret = 'script-secret'</script></section>
@@ -100,7 +102,8 @@ test("live reads record a safe region and return fresh output through MCP and th
     assert.match(read.read!.text, /Status: Frozen\./);
     assert.match(read.read!.text, /Balance\n\$412\nScore\n742/);
     assert.match(read.read!.text, /Your score is 742\nBalance \$412/);
-    for (const value of ["demo@example.com", "(415) 555-0134", "1-800-555-0199", "94110-1234", "4111111111111112"]) assert.ok(read.read!.text.includes(value), value);
+    for (const value of ["demo@example.com", "(415) 555-0134", "1-800-555-0199", "94110-1234", "4111111111111112", "www.experian.com", "usa.experian.com/mfe/member", "version 1.2.3", "report.pdf"]) assert.ok(read.read!.text.includes(value), value);
+    assert.equal(read.read!.text.match(/\[redacted\] 12\/26/g)?.length, 3);
     for (const secret of ["6789", "123-45-6789", "4111 1111 1111 1111", "correct horse battery", "123 45 6789", jwt, "sk-abc123", "ghp_abc123", "field-secret", "textarea-secret", "editable-secret", "hidden-secret", "display-secret", "aria-secret", "script-secret"]) {
       assert.equal(read.read!.text.includes(secret), false, secret);
     }
@@ -130,7 +133,9 @@ test("live reads record a safe region and return fresh output through MCP and th
         <p>Your score is ${score}</p><p>Balance $412</p>
         <p>SSN: 123-45-6789</p><p>Card number: 4111 1111 1111 1111</p><p>Email: demo@example.com</p>
         <p>(415) 555-0134; 1-800-555-0199; 94110-1234; 4111111111111112</p>
-        <p>123 45 6789</p><p>${jwt}</p><p>sk-abc123</p><p>ghp_abc123</p></section></main>`);
+        <p>123 45 6789</p><p>${jwt}</p><p>sk-abc123</p><p>ghp_abc123</p>
+        <p>www.experian.com; usa.experian.com/mfe/member; version 1.2.3; report.pdf</p>
+        <p>4111 1111 1111 1111 12/26</p><p>4111-1111-1111-1111 12/26</p><p>4111111111111111 12/26</p></section></main>`);
     });
     const outcome = await tool<WorkflowOutcome>("run_workflow", { id: workflow.id, leaveOpen: true });
     assert.equal(outcome.outcome, "ok", JSON.stringify(outcome));
@@ -141,7 +146,8 @@ test("live reads record a safe region and return fresh output through MCP and th
     assert.match(text, /Balance\n\$412\nScore\n756/);
     assert.match(text, /Your score is 756\nBalance \$412/);
     assert.match(text, /\[redacted\]/);
-    for (const value of ["demo@example.com", "(415) 555-0134", "1-800-555-0199", "94110-1234", "4111111111111112"]) assert.ok(text.includes(value), value);
+    for (const value of ["demo@example.com", "(415) 555-0134", "1-800-555-0199", "94110-1234", "4111111111111112", "www.experian.com", "usa.experian.com/mfe/member", "version 1.2.3", "report.pdf"]) assert.ok(text.includes(value), value);
+    assert.equal(text.match(/\[redacted\] 12\/26/g)?.length, 3);
     for (const secret of ["6789", "correct horse battery", "4111 1111 1111 1111", "123 45 6789", jwt, "sk-abc123", "ghp_abc123"]) assert.equal(text.includes(secret), false, secret);
     await pageSet(1);
     assert.equal(existsSync(path.join(dirs.home, "live.lock")), false);
@@ -233,6 +239,12 @@ test("live reads apply only the two node-local credential rules and three secret
       { nodes: ["4111 1111 1111 1111", "4111-1111-1111-1111", "4222222222222", "422 22 2222 2222", "378282246310005", "4000000000000000006"], expected: Array(6).fill("[redacted]") },
       { nodes: ["eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.c2lnbmF0dXJl", "eyJhbGciOiJIUzI1NiJ9.4111111111111111.signature", "sk-token-secret"], expected: Array(3).fill("[redacted]") },
       { nodes: ["sk-abc123..."], expected: ["[redacted]..."] },
+      { nodes: ["www.experian.com", "usa.experian.com/mfe/member", "version 1.2.3", "report.pdf", "file.name.txt", "a.b.c", "abcdefgh.abcdefgh.abcdefgh"], expected: ["www.experian.com", "usa.experian.com/mfe/member", "version 1.2.3", "report.pdf", "file.name.txt", "a.b.c", "abcdefgh.abcdefgh.abcdefgh"] },
+      { nodes: ["eyJabcd.abcdefgh.abcdefgh", "eyJabcde.abcdefg.abcdefgh", "eyJabcde.abcdefgh.abcdefg"], expected: ["eyJabcd.abcdefgh.abcdefgh", "eyJabcde.abcdefg.abcdefgh", "eyJabcde.abcdefgh.abcdefg"] },
+      { nodes: ["eyJabcde.abcdefgh.abcdefgh"], expected: ["[redacted]"] },
+      { nodes: ["4111 1111 1111 1111 1234", "4111-1111-1111-1111-12/26"], expected: ["[redacted] 1234", "[redacted]-12/26"] },
+      { nodes: ["4111111111111111/12/26", "4222 2222 2222 2/12"], expected: ["[redacted]/12/26", "[redacted]/12"] },
+      { nodes: ["4111 1111 1111 1112 12/26"], expected: ["4111 1111 1111 1112 12/26"] },
     ];
     for (const label of ["PIN", "Password", "Passcode", "SSN", "Social security number", "Account number", "Routing number", "Token", "Authorization"]) {
       for (const separator of [" ", ": ", "# ", " is "]) {
@@ -240,6 +252,12 @@ test("live reads apply only the two node-local credential rules and three secret
       }
       cases.push({ nodes: [label, "correct horse battery", "Score: 742"], expected: [label, "[redacted]", "Score: 742"] });
       cases.push({ nodes: [label, "Available balance: $412"], expected: [label, "Available balance: $412"] });
+    }
+    for (const number of ["4222222222222", "378282246310005", "4111111111111111", "4000000000000000006"]) {
+      for (const separator of ["", " ", "-"]) {
+        const card = number.match(/.{1,4}/g)!.join(separator);
+        for (const expiry of ["01/29", "12/26", "12/2026"]) cases.push({ nodes: [`${card} ${expiry}`], expected: [`[redacted] ${expiry}`] });
+      }
     }
     for (const prefix of ["sk-", "ghp_", "gho_", "xoxb-", "xoxp-", "AKIA"]) cases.push({ nodes: [`${prefix}abc123`, `${prefix}abc123-_`], expected: ["[redacted]", "[redacted]"] });
     for (const { nodes, expected } of cases) {
