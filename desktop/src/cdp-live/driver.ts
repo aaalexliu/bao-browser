@@ -1,5 +1,4 @@
 import { startCdpVideo, type CdpVideo } from "../engines/cdp-video";
-import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields } from "../v1/dom-page";
 import type { AgentBrowserPage, EvaluationPhase } from "../engines/agent-browser";
 import { installDataPage } from "../v1/data-page";
 import type { ExtractSpec } from "../v1/data-steps";
@@ -138,14 +137,35 @@ export class CdpLiveDriver implements Driver {
   private pageEngine: AgentBrowserPage | undefined;
   private pageEngineSelected = false;
   private video: CdpVideo | undefined;
+  private videoScriptId = "";
+
+  touch(): void { this.pageEngine?.touch(); }
 
   async startVideo(destination: string): Promise<void> {
     if (this.video) throw new Error("page video already started");
-    this.video = await startCdpVideo(this.cdp, this.sessionId, destination);
+    const added = await this.cdp.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", {
+      source: `(${redactOverlay.toString()})("run evidence")`,
+    }, this.sessionId);
+    this.videoScriptId = added.identifier;
+    try {
+      await this.evaluateFunction(redactOverlay, "run evidence");
+      this.video = await startCdpVideo(this.cdp, this.sessionId, destination);
+    } catch (error) {
+      await this.finishVideo();
+      throw error;
+    }
   }
 
-  async finishVideo(): Promise<{ wrote: boolean; frames: number }> {
-    return this.video ? this.video.stop() : { wrote: false, frames: 0 };
+  async finishVideo(): Promise<{ wrote: boolean; frames: number; truncated: boolean }> {
+    try {
+      return this.video ? await this.video.stop() : { wrote: false, frames: 0, truncated: false };
+    } finally {
+      if (this.videoScriptId) {
+        await this.cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: this.videoScriptId }, this.sessionId).catch(() => undefined);
+        this.videoScriptId = "";
+        await this.evaluate(`document.getElementById("bao-redact")?.remove()`).catch(() => undefined);
+      }
+    }
   }
 
   pauseCapture(): void { this.video?.pause(); }
@@ -517,14 +537,8 @@ export class CdpLiveDriver implements Driver {
 
   async fill(node: Identity, text: string, secret: boolean): Promise<void> {
     if (secret) throw new Error("cdp-live does not fill secrets");
-    if (this.pageEngine) {
-      const handle = this.handles.get(node);
-      if (!handle) throw new Error("element handle expired");
-      await this.pageEngine.fill(`[data-bao-i="${handle}"]`, text);
-    } else {
-      await this.click(node);
-      await this.cdp.send("Input.insertText", { text }, this.sessionId);
-    }
+    await this.click(node);
+    await this.cdp.send("Input.insertText", { text }, this.sessionId);
   }
 
   async key(key: string): Promise<void> {
@@ -581,19 +595,8 @@ export class CdpLiveDriver implements Driver {
     throw new Error("cdp-live does not type app digits");
   }
 
-  async check(node: Identity, checked: boolean): Promise<void> {
-    if (this.pageEngine) {
-      const handle = this.handles.get(node);
-      if (!handle) throw new Error("element handle expired");
-      await this.pageEngine.check(`[data-bao-i="${handle}"]`, checked);
-    } else await this.click(node);
-  }
-
-  async select(node: Identity, value: string): Promise<void> {
-    if (!this.pageEngine) throw new Error("cdp-live does not select options");
-    const handle = this.handles.get(node);
-    if (!handle) throw new Error("element handle expired");
-    await this.pageEngine.select(`[data-bao-i="${handle}"]`, value);
+  async check(node: Identity, _checked: boolean): Promise<void> {
+    await this.click(node);
   }
 
   async notify(): Promise<void> {}
@@ -667,21 +670,12 @@ export class CdpLiveDriver implements Driver {
   /** Page screenshot after a local blur veil. The PNG stays in this process until the caller writes it. */
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
-    if (this.pageEngine) {
-      await this.evaluateFunction(maskPasswordFields, null);
-      await this.evaluateFunction(blurSensitiveFields, null);
-      try { return await this.screenshotPng(); }
-      finally {
-        await this.evaluateFunction(unmaskPasswordFields, null).catch(() => undefined);
-        await this.evaluateFunction(unblurSensitiveFields, null).catch(() => undefined);
-      }
-    }
     const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
     await this.evaluateFunction(redactOverlay, label);
     try {
       return await this.screenshotPng();
     } finally {
-      await this.evaluate(`document.getElementById("bao-redact")?.remove()`).catch(() => undefined);
+      if (!this.videoScriptId) await this.evaluate(`document.getElementById("bao-redact")?.remove()`).catch(() => undefined);
     }
   }
 
@@ -808,11 +802,21 @@ export interface LiveWindowOptions {
 
 /** Runs in the page. Covers the viewport so a CDP screenshot does not keep readable page text. */
 export function redactOverlay(caption: string): void {
+  if (!document.documentElement) {
+    const observer = new MutationObserver(() => {
+      if (!document.documentElement) return;
+      observer.disconnect();
+      redactOverlay(caption);
+    });
+    observer.observe(document, { childList: true });
+    return;
+  }
   document.getElementById("bao-redact")?.remove();
   const veil = document.createElement("div");
   veil.id = "bao-redact";
   veil.setAttribute("data-bao-redact", "1");
-  veil.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(245,245,247,0.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)";
+  veil.setAttribute("aria-hidden", "true");
+  veil.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483646;background:rgba(245,245,247,0.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)";
   const cap = document.createElement("div");
   cap.textContent = String(caption || "").slice(0, 80);
   cap.style.cssText = "position:absolute;left:16px;bottom:16px;max-width:70%;background:#1d1d1f;color:#f5f5f7;padding:8px 12px;border-radius:8px;font:13px/1.3 -apple-system,sans-serif";

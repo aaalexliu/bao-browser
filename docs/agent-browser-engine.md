@@ -14,7 +14,7 @@ This route needs no remote-debugging toggle, Accessibility, Automation, or Scree
 
 Profile-copy runs currently require a recorded `cdp-live` workflow. Selecting the trial for an extension workflow, a secret-input workflow, or another browser workflow with a selected profile fails with a clear error. It does not run the old engine instead.
 
-A saved UI choice takes precedence over the environment. For local fixture work without a saved choice, `BAO_PAGE_ENGINE=old|agent-browser` selects the engine and `BAO_AGENT_BROWSER` names the staged native executable. An explicit throwaway target does not read a real profile. Do not point a throwaway target at daily Chrome.
+Settings is the only product engine selector. UI and MCP refuse ordinary browser and extension workflows when agent-browser is selected. Local fixtures pass an explicit engine choice at the live boundary; `BAO_AGENT_BROWSER` names the staged native executable. An explicit throwaway target does not read a real profile. Do not point a throwaway target at daily Chrome.
 
 ## Native process contract
 
@@ -23,13 +23,15 @@ A saved UI choice takes precedence over the environment. For local fixture work 
 - Bao starts one native daemon with a private state directory, a fixed loopback CDP endpoint, and one exact pinned tab. It strips model keys, remote-provider settings, proxy settings, config homes, and inherited executable paths from the child environment. WebMCP is off.
 - Structured NDJSON travels over a private Unix socket. Page values never enter argv. Raw engine output and upstream error text are not logged because they can contain typed values. Fixed stop-cause codes distinguish deadlines, socket loss, invalid responses, and lifecycle changes without exposing those values.
 - Ordinary commands have a 12-second deadline; navigation has 30 seconds. Startup trust/readiness/location evaluation has 35 seconds because upstream CDP can wait 30 seconds before responding. Native startup errors propagate at once rather than polling a stopped engine. These bounds do not retry an action.
-- Commands have a response-size bound, and the process has a lifetime bound. A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
+- Commands have a response-size bound. The process stops after 10 idle minutes, reset by every live operation, or after an absolute two-hour safety cap. A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
 - Bao tracks browser ownership itself. Killing the native child only disconnects it. The adapter never sends `Browser.close`; the owner of a Bao-launched browser handles shutdown. An attached browser survives adapter disposal.
 - Live tools keep the host/origin, credential, stale-ref, submit, commit-label, popup, and stop-path guards. The trial does not expose arbitrary evaluation or upstream browser commands through MCP.
 
 ## Evidence
 
-Copied-profile sessions save the live workflow, a Library run record, page screenshots for its kept steps, and page video. Recorded live-workflow replays save before/after step screenshots and video through the same run-evidence paths. Screenshots use CDP with field masking. Video uses `Page.startScreencast` on the run's exact page, not an OS capture API. Video capture pauses for human handoff. It has frame, byte, and encoder-time limits and needs `ffmpeg` on the host. A video failure does not discard an already recorded workflow.
+Copied-profile sessions save the live workflow, a Library run record with `kind: "capture"`, page screenshots for its kept steps, and page video. The Library labels these runs as recordings. They do not count toward local last-green, sync run uploads, or replay failure/heal history. Only passed replays establish green status. Condensed steps use the last shot in their original trail interval, including merged typing and digit clicks.
+
+Recorded live-workflow replays save before/after step screenshots and video through the same run-evidence paths. Both engines apply the full-page `redactOverlay` veil to saved live screenshots. CDP video keeps that veil across navigation, with pointer events passing through to the page. Video uses `Page.startScreencast` on the run's exact page, not an OS capture API, and pauses for human handoff. At 6000 frames or 512 MiB it finalizes the clip recorded so far and marks it `videoTruncated`; reaching a capture limit is not a rejected run. Encoder failures remain errors. Video needs `ffmpeg` on the host. A video failure does not discard an already recorded workflow. Temporary native screenshots live in the engine's private state directory and disappear with it.
 
 Run records state the selected page engine. Operational failures before step 0 return a failed run with pending steps and the reason, so the UI and MCP save them in Library Runs. Request validation and an already-open live session still reject the request. Video encoding failure after replay keeps the completed step results and reports unavailable video in `traceUnavailable`; it does not turn completed actions into pending steps.
 
@@ -48,20 +50,23 @@ The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `de
 | DOM tree, failure snapshot | Works | Bao identities and guards; reads use native evaluation. |
 | Unique match, stale live refs | Works | Count before action; missing, ambiguous, and expired refs refuse. |
 | Click, fill, key, navigation | Works | Local two-engine Instacart cart and recorded replay passed. Credentials and off-host/commit actions still refuse. |
-| Check and select | Gap | Native page adapter implements both. Guarded live tools retain their stricter checkbox/select policy. Broader fixtures still need proof. |
-| Page screenshots | Works | Native CDP PNG, fixed page, field masks, Bao artifact paths. |
+| Check and select | Gap | Guarded live tools retain their stricter checkbox/select policy. Broader support and fixtures still need proof. |
+| Page screenshots | Works | Native CDP PNG, fixed page, full-page veil, Bao artifact paths. Local fixture PNGs were saved and opened. |
 | Scoped tabs | Works | Exact target id and pinning; popup guard halts. No active-tab following. |
 | Files, uploads, file drops | Refuses clearly | Existing live-driver refusals remain. |
-| Downloads | Refuses clearly | Trial replay adapter rejects download capture. |
-| Dialogs | Refuses clearly | Trial adapter does not answer dialogs; unexpected dialogs stop the native run. |
-| List extraction | Refuses clearly | Trial replay adapter reports unsupported list extraction. |
-| Dates and date drag | Refuses clearly | Trial replay adapter rejects date picking and date drag. |
+| Downloads | Refuses clearly | Guarded live replay has no download capture. |
+| Dialogs | Refuses clearly | Unexpected dialogs stop the native run. |
+| List extraction | Refuses clearly | Guarded live replay has no list extraction. |
+| Dates and date drag | Refuses clearly | Guarded live replay has no date picking or date drag. |
 | OS digits and other drag/drop | Refuses clearly | No OS driving or desktop engine is selected. |
 | Console/network trace | Refuses clearly | Run metadata reports that trace collection is unavailable. |
-| Nested-frame and shadow-root actions | Gap | Not full browser-driver parity; unsupported focus/select targets refuse rather than acting on another element. |
+| Nested-frame and shadow-root actions | Gap | Not full browser-driver parity; broader fixtures still need proof. |
 | Human handoff and assertions | Gap | Existing replay logic remains; full interactive parity is not yet proved. |
 | Copied-profile chooser and lifecycle | Works | Synthetic/API tests and selected-profile native launch passed. Copies close and delete; extension loading is opt-in per profile. Real-cart proof remains separate. |
-| Live capture step shots and CDP video | Works | Expanded local fixture passed: Library step PNGs, replay before/after PNGs, and nonempty CDP videos. The real agent recording also saved its workflow, four step PNGs, and video. |
+| Live capture step shots and CDP video | Works on the local fixture | Saved veiled capture and replay PNGs and videos; decoded frames were opened. Merged typing uses the final event's shot. The historical private clear film stays unchanged. |
+| Session lifetime | Implemented | Ten-minute idle timeout resets on live operations; absolute native-process cap is two hours. |
+| Video capture limits | Implemented | Frame/byte limits finalize a retained clip marked truncated; encoder failures still report unavailable evidence. |
+| Recording versus replay status | Implemented | Capture-kind records stay visible as recordings but never establish green or upload as replays. |
 | Successful guarded-live identity scores, DOM, and AX snapshots | Shared limit | The same five local steps lack all three fields with old and native engines. No scores or snapshots are invented. Ordinary browser replay uses a separate capture path. |
 | Library step-image fit | Works | The frame follows the captured viewport or target-crop ratio at full pane width. Before/after switching keeps the full image visible. |
 | Real copied-profile replay | One flow proved | The approved four-step Costco replay passed on a fresh profile copy, extensions off, with zero model calls. This is not full feature parity. |
@@ -88,10 +93,15 @@ Private evidence is under the task's `real-run/` directory: the earlier `claude-
 - Review overall capture status after a recoverable stale-ref refusal. Preserve the historical failed capture until that policy is settled.
 - Diagnose the black Library video surface separately. The raw replay clip decodes; the cause could be playback or screenshot rendering.
 - Add successful-step identity, DOM, and accessibility evidence to guarded-live capture for both engines if the product needs it. These fields are absent with the old engine too.
-- Review ordinary trial replay's separate step-capture implementation before widening the supported copied-profile workflow types.
+- Prove parity before adding ordinary native browser replay or widening supported copied-profile workflow types. The unused environment-only replay adapter has been removed.
+- An opt-in clear-evidence setting needs separate approval. All new live evidence stays veiled; the accepted historical private clear film is not relabelled.
 
 ## Local proof
 
 The first old/native Instacart fixture proof passed with the same cart, cart-write count, guarded checkout view, stale-ref refusal, saved workflow, and model-free replay. The external fixture Chrome survived engine shutdown. The native startup failure was an unpacked executable without its execute bit, not a CDP or socket timeout; the staging script fixes that. This local proof is not the owner's real-cart check.
 
-The opt-in test is `desktop/test/live/agent-browser-parity.test.ts`. Set `BAO_LIVE_TESTS=1`, `AGENT_BROWSER_PARITY_BINARY` to the staged executable, and optionally `AGENT_BROWSER_PARITY_ARTIFACTS` to a private evidence directory. Use a throwaway Bao home and test browser, unset vendor keys, and set `BAO_HEAL_CURSOR_ACCOUNT=0`. Run it through the live runner or compile it outside the checkout with the required non-TypeScript runtime files. Do not run it against a daily profile.
+The review fix pass compiled the desktop package and passed 42 focused tests in `agent-browser`, `cdp-video`, `engine-review`, `catalog`, `chrome-profile-copy`, `startup-nav`, and `shot-stage`, then passed the old/native local fixture serially. This was not another full desktop suite or the pipeline's Test gate. The frame-limit unit test uses a fake encoder to test finalization and retained metadata; the local fixture uses real ffmpeg to record and decode media. Shortened timer tests cover idle reset and the absolute cap.
+
+Private review proof is under `/Users/alexliu/.no-mistakes/evidence/01M6ACG20XJG5KR1Q1XXP554SQ/review-008/`: `agent-browser-cart.png`, `agent-browser-recording.webm`, `agent-browser-recording-frame.png`, `agent-browser-replay.webm`, `agent-browser-replay-frame.png`, `library-recording-{before,after}.png`, and both fixture libraries. The opened screenshot and decoded frames show the full-page veil. The running-app UI comparison shows the same synthetic capture before and after its kind marker, not a component preview or a change to historical real evidence.
+
+The opt-in test is `desktop/test/live/agent-browser-parity.test.ts`. Set `BAO_LIVE_TESTS=1`, `AGENT_BROWSER_PARITY_BINARY` to the staged executable, and optionally `AGENT_BROWSER_PARITY_ARTIFACTS` to a private evidence directory. Use a throwaway Bao home and test browser, unset vendor keys, and set `BAO_HEAL_CURSOR_ACCOUNT=0`. Compile with `npm run build:desktop`, then run the compiled live test directly or through the live runner. Do not run it against a daily profile.

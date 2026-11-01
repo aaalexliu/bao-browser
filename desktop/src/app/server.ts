@@ -61,7 +61,6 @@ import {
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
-import { AgentBrowserReplayDriver } from "../engines/replay-driver";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles, openCopiedChrome } from "../engines/chrome-profile-copy";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
@@ -231,7 +230,7 @@ export async function startApp(opts: {
     lockFile: opts.liveLockFile,
     selectRun: async () => {
       const settings = library.settings();
-      const engineName = pageEngineName(settings.pageEngine ?? process.env.BAO_PAGE_ENGINE);
+      const engineName = pageEngineName(settings.pageEngine);
       if (engineName === "old" || opts.liveTarget?.startsWith("throwaway:")) {
         return { target: parseLiveTarget(opts.liveTarget, baoProfile), engineName };
       }
@@ -1205,6 +1204,8 @@ export async function startApp(opts: {
           library.savePublicInputs(workflow.id, keptInputs(workflow, liveArgs));
           return json(res, { ...run, id: run.runId });
         }
+        const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
+        if (refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(body.args || {});
         if (body.fresh) {
           const existing = replays.get(saved.id);
@@ -2700,6 +2701,7 @@ function persistedRun(
     id: result.runId,
     pageEngine: result.pageEngine,
     traceUnavailable: result.traceUnavailable,
+    videoTruncated: result.videoTruncated,
     workflowId: workflow.id,
     status: wall ? "needs_human" : result.status,
     at: Date.now(),
@@ -2893,19 +2895,10 @@ async function runRecorded(
   fromStep?: string,
   link?: ExtensionLink,
 ) {
-  const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(link) });
+  const engineName = pageEngineName(library.settings().pageEngine);
+  const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(link), pageEngine: engineName });
   if (refusal) throw new Error(refusal);
-  const engineName = pageEngineName(library.settings().pageEngine ?? process.env.BAO_PAGE_ENGINE);
-  if (engineName === "agent-browser" && library.settings().chromeProfile) {
-    throw new Error("profile-copy runs use a recorded live workflow; start one with Bao's live tools");
-  }
-  if (link && workflowDriver(workflow) === "extension") {
-    if (engineName !== "old") throw new Error("agent-browser trial does not run extension workflows");
-    return runExtension(library, workflow, args, notices, prompts, link, fromStep);
-  }
-  if (engineName === "agent-browser" && workflow.inputs.some((input) => input.type === "secret")) {
-    throw new Error("agent-browser trial does not run secret workflows");
-  }
+  if (link && workflowDriver(workflow) === "extension") return runExtension(library, workflow, args, notices, prompts, link, fromStep);
   const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
   const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -2913,13 +2906,9 @@ async function runRecorded(
   const onNotify = (notice: HealNotice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
   };
-  const driver = engineName === "agent-browser"
-    ? await AgentBrowserReplayDriver.open({ page, portFile: path.join(session.profile, "DevToolsActivePort"),
-      hosts: [new URL(workflow.startUrl).hostname], artifactDir: shotDir, prompts, onNotify })
-    : new BrowserDriver(page, onNotify, prompts);
-  try {
+  const driver = new BrowserDriver(page, onNotify, prompts);
   driver.markStep("open");
-  if (workflow.startUrl.startsWith("http")) await driver.goto(workflow.startUrl);
+  if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
   const secretList = workflow.inputs.flatMap((input) => {
     if (input.type !== "secret") return [];
     const value = args[input.name];
@@ -2979,9 +2968,6 @@ async function runRecorded(
   const bounds = await readOwnedWindow(page).catch(() => null);
   if (bounds) library.writeBounds(workflow.id, bounds);
   return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds, pageEngine: engineName };
-  } finally {
-    if (driver instanceof AgentBrowserReplayDriver) await driver.dispose();
-  }
 }
 
 async function openReplay(

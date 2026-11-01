@@ -50,6 +50,7 @@ export interface Settings extends HealSettings {
 
 export interface StoredRun {
   id: string;
+  kind?: "replay" | "capture";
   pageEngine?: "old" | "agent-browser";
   traceUnavailable?: string;
   workflowId: string;
@@ -66,6 +67,7 @@ export interface StoredRun {
   inputs?: Record<string, string>;
   video?: string;
   videoStartedAt?: number;
+  videoTruncated?: boolean;
   repairs?: unknown[];
   receipts?: unknown[];
   promotion?: unknown;

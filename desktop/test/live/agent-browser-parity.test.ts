@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { copyFile, cp, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { chromium } from "playwright";
+import { startApp } from "../../src/app/server";
+import { pageEngineName } from "../../src/engines/agent-browser";
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
@@ -22,17 +25,22 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
   pinTestBrowser();
   const fixture = await startInstacartFixture();
   const browser = await launchFixtureBrowser(fixture);
-  const savedEnv = { engine: process.env.BAO_PAGE_ENGINE, binary: process.env.BAO_AGENT_BROWSER };
+  const savedBinary = process.env.BAO_AGENT_BROWSER;
   const comparisons: unknown[] = [];
   try {
     for (const engine of ["old", "agent-browser"] as const) {
       const home = await mkdtemp(path.join(tmpdir(), "bao-engine-parity-"));
-      process.env.BAO_PAGE_ENGINE = engine;
       process.env.BAO_AGENT_BROWSER = process.env.AGENT_BROWSER_PARITY_BINARY;
       fixture.reset();
       const target = { kind: "throwaway" as const, portFile: browser.portFile };
+      const profiles = path.join(home, "synthetic-profiles");
+      await mkdir(path.join(profiles, "Default"), { recursive: true });
+      await writeFile(path.join(profiles, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
+      const app = await startApp({ home, port: 0, chromeProfilesRoot: profiles, liveTarget: `throwaway:${browser.portFile}`, liveLockFile: path.join(home, "app.lock") });
+      const setting = await fetch(`http://127.0.0.1:${app.port}/api/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ pageEngine: engine, chromeProfile: "Default" }) });
+      assert.equal(setting.status, 200);
       const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target, idleMs: 0,
-        selectRun: async () => ({ target, engineName: engine, artifactRoot: home }),
+        selectRun: async () => ({ target, engineName: pageEngineName(app.library.settings().pageEngine), artifactRoot: home }),
       });
       const call = async (body: Record<string, unknown>, expected = "applied") => {
         const reply = await host.call(body) as Reply;
@@ -46,7 +54,8 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
       };
       try {
         const started = await call({ op: "live_session_start", intent: "put costco blueberries into the cart at instacart", url: fixture.url("/store/costco/storefront") });
-        const typed = await call({ op: "live_type", ref: ref(started, "Search Costco"), text: "blueberries" });
+        const partial = await call({ op: "live_type", ref: ref(started, "Search Costco"), text: "blue" });
+        const typed = await call({ op: "live_type", ref: ref(partial, "Search Costco"), text: "berries" });
         const found = await call({ op: "live_key", ref: ref(typed, "Search Costco"), key: "Enter" });
         await call({ op: "live_click", ref: ref(started, "Search Costco") }, "refused");
         assert.ok(found.view?.stopBeforeConfirm.some((item) => item.label === "Checkout"));
@@ -73,13 +82,35 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
           const captured = library.listRuns().find((run) => run.workflowId === workflow.id);
           assert.ok(captured?.video, "captured live run has page video");
           assert.equal(captured.pageEngine, engine);
+          assert.equal(captured.kind, "capture");
+          assert.equal(workflow.steps[0]?.value, "blueberries");
+          const merged = captured.steps[0] as { afterShot: string };
+          assert.deepEqual(await readFile(path.join(home, "shots", "runs", captured.id, merged.afterShot)), await readFile(path.join(home, "live-session", "shots", typed.shot!)));
+          assert.notDeepEqual(await readFile(path.join(home, "live-session", "shots", partial.shot!)), await readFile(path.join(home, "live-session", "shots", typed.shot!)));
           assert.equal(captured.steps.length, workflow.steps.length);
           for (const step of captured.steps as { afterShot?: string }[]) {
             assert.ok(step.afterShot, "captured workflow step has a screenshot");
             assert.ok((await stat(path.join(home, "shots", "runs", captured.id, step.afterShot))).size > 1000);
           }
           assert.ok((await stat(path.join(home, "videos", captured.video))).size > 1000);
-          if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await copyFile(path.join(home, "videos", captured.video), path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, "agent-browser-recording.webm"));
+          if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) {
+            const artifacts = process.env.AGENT_BROWSER_PARITY_ARTIFACTS;
+            await copyFile(path.join(home, "videos", captured.video), path.join(artifacts, "agent-browser-recording.webm"));
+            const ui = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+            try {
+              const page = await ui.newPage({ viewport: { width: 1400, height: 1000 } });
+              library.saveRun({ ...captured, kind: undefined });
+              await page.goto(`http://127.0.0.1:${app.port}/`);
+              await page.locator('#rail [data-screen="runs"]').click();
+              assert.ok((await page.locator("#runs").innerText()).includes(captured.id));
+              await page.screenshot({ path: path.join(artifacts, "library-recording-before.png"), fullPage: true });
+              library.saveRun(captured);
+              await page.reload();
+              await page.locator('#rail [data-screen="runs"]').click();
+              assert.ok((await page.locator("#runs").innerText()).includes("recording"));
+              await page.screenshot({ path: path.join(artifacts, "library-recording-after.png"), fullPage: true });
+            } finally { library.saveRun(captured); await ui.close(); }
+          }
         }
         fixture.reset();
         const replayed = await host.replay(workflow);
@@ -113,13 +144,12 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
         const image = await readFile(path.join(home, "live-session", "shots", shot.shot!));
         assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
         if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await writeFile(path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, `${engine}-cart.png`), image);
-      } finally { await host.close(); await rm(home, { recursive: true, force: true }); }
+      } finally { await host.close(); await app.close(); await rm(home, { recursive: true, force: true }); }
     }
     assert.deepEqual({ ...comparisons[0] as object, engine: "same" }, { ...comparisons[1] as object, engine: "same" });
     if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await writeFile(path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, "parity.json"), JSON.stringify(comparisons, null, 2));
   } finally {
-    if (savedEnv.engine === undefined) delete process.env.BAO_PAGE_ENGINE; else process.env.BAO_PAGE_ENGINE = savedEnv.engine;
-    if (savedEnv.binary === undefined) delete process.env.BAO_AGENT_BROWSER; else process.env.BAO_AGENT_BROWSER = savedEnv.binary;
+    if (savedBinary === undefined) delete process.env.BAO_AGENT_BROWSER; else process.env.BAO_AGENT_BROWSER = savedBinary;
     await browser.close();
     await fixture.close();
   }

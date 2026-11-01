@@ -11,8 +11,9 @@ export function refusesOwnedBrowser(driver: string | null | undefined): boolean 
 }
 
 /** Why a replay must not run this workflow, or null. An extension workflow runs only through a linked extension. */
-export function replayRefusal(driver: string | null | undefined, opts: { extensionLinked: boolean }): string | null {
+export function replayRefusal(driver: string | null | undefined, opts: { extensionLinked: boolean; pageEngine?: "old" | "agent-browser" }): string | null {
   if (refusesOwnedBrowser(driver)) return CDP_LIVE_SERVER_REFUSAL;
+  if (opts.pageEngine === "agent-browser") return "profile-copy runs use a recorded live workflow; start one with Bao's live tools";
   if (driver === "extension" && !opts.extensionLinked) return EXTENSION_NOT_CONNECTED;
   return null;
 }

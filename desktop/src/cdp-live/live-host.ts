@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { condenseWithGroups } from "../v1/condense";
 import { workflowShotName } from "../v1/shots";
-import { pageEngineName, type PageEngineName } from "../engines/agent-browser";
+import { type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
@@ -242,6 +242,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   async function dispatch(raw: unknown): Promise<unknown> {
+    open?.driver.touch();
     const body = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const op = typeof body.op === "string" ? body.op : "";
     if (op === LIVE_DISCONNECT) return disconnect(body);
@@ -326,7 +327,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
     const configured = selected?.target ?? defaultTarget;
     const target = portFile ? targetForPortFile(portFile, configured) : configured;
-    const engineName = selected?.engineName ?? pageEngineName();
+    const engineName = selected?.engineName ?? "old";
     if (lockFile !== CDP_LOCK_PATH && target !== configured) throw new Error("this app has its own live lock, so it drives only its configured Chrome");
     await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 }).catch(async (error) => { await selected?.close?.(); throw error; });
     let prepared;
@@ -622,7 +623,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
-  function saveWorkflow(status: string, video: boolean): void {
+  function saveWorkflow(status: string, video: boolean, videoTruncated: boolean): void {
     if (!open) return;
     const events = open.trail.list();
     if (!events.length) return;
@@ -645,8 +646,11 @@ export function createLiveHost(opts: LiveHostOptions): {
       const runShots = path.join(library.root, "shots", "runs", open.runId);
       mkdirSync(workflowShots, { recursive: true });
       mkdirSync(runShots, { recursive: true });
+      const starts = groups.map((group) => events.findIndex((event) => event.id === group[0]?.id));
       const steps = workflow.steps.map((step, index) => {
-        const event = groups[index]?.find((entry) => entry.op !== "note") || groups[index]?.[0];
+        const start = starts[index] ?? -1;
+        const end = starts[index + 1] ?? events.length;
+        const event = start < 0 ? undefined : events.slice(start, end).reverse().find((entry) => open!.eventShots.has(entry.id));
         const shot = event ? open!.eventShots.get(event.id) : undefined;
         const src = shot ? path.join(liveSessionDir(opts.home), "shots", shot) : undefined;
         const afterShot = `${step.index}-after.png`;
@@ -657,7 +661,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         }
         return { id: step.id, status: "passed" };
       });
-      library.saveRun({ id: open.runId, pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0,
+      library.saveRun({ id: open.runId, kind: "capture", pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated,
         ...(video ? { video: `${open.runId}.webm`, videoStartedAt: open.startedAt } : {}) });
     }
   }
@@ -676,9 +680,14 @@ export function createLiveHost(opts: LiveHostOptions): {
     const status = open.halted ? "needs_human" : open.refused ? "failed" : "passed";
     let saveError = "";
     let videoWrote = false;
-    try { videoWrote = (await open.driver.finishVideo()).wrote; }
+    let videoTruncated = false;
+    try {
+      const recorded = await open.driver.finishVideo();
+      videoWrote = recorded.wrote;
+      videoTruncated = recorded.truncated;
+    }
     catch (error) { saveError = error instanceof Error ? error.message : "video save failed"; }
-    try { saveWorkflow(status, videoWrote); }
+    try { saveWorkflow(status, videoWrote, videoTruncated); }
     catch (error) { saveError = error instanceof Error ? error.message : "workflow save failed"; }
     const ending = open;
     await ending.log.flush(saveError ? "failed" : status, saveError || noteText, ending.host);
@@ -706,7 +715,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     };
     try {
       selected = await opts.selectRun?.();
-      run.pageEngine = selected?.engineName ?? pageEngineName();
+      run.pageEngine = selected?.engineName ?? "old";
       try {
         run = await replayLiveWorkflow(workflow, inputs, {
           target: selected?.target ?? defaultTarget,
@@ -758,6 +767,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   async function keepOpen(): Promise<boolean> {
     const run = chain.then(() => {
       if (!open) return false;
+      open.driver.touch();
       armIdle();
       return true;
     });

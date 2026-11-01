@@ -25,6 +25,7 @@ export const DEFAULT_CIRCUIT_LIMIT = 3;
 export const DEFAULT_CIRCUIT_WINDOW_MS = 10 * 60 * 1000;
 
 export interface RunStamp {
+  kind?: "replay" | "capture";
   status: string;
   at: number;
 }
@@ -32,6 +33,7 @@ export interface RunStamp {
 export const STEP_REVIEW_LIMIT = 3;
 
 export interface HealStamp {
+  kind?: "replay" | "capture";
   at?: number;
   workflowId: string;
   heals?: { failedStep?: { id?: string; label?: string } }[];
@@ -54,6 +56,7 @@ export function consecutiveHeals(runs: HealStamp[], stepId: string): number {
   const ordered = [...runs].sort((a, b) => (b.at || 0) - (a.at || 0));
   let count = 0;
   for (const run of ordered) {
+    if (run.kind === "capture") continue;
     const healed = (run.heals || []).some((heal) => heal.failedStep?.id === stepId);
     if (healed) {
       count += 1;
@@ -99,6 +102,6 @@ export function circuitOpen(
   const limit = opts.limit ?? DEFAULT_CIRCUIT_LIMIT;
   const windowMs = opts.windowMs ?? DEFAULT_CIRCUIT_WINDOW_MS;
   if (limit <= 0) return false;
-  const failed = runs.filter((run) => run.status === "failed" && now - run.at <= windowMs && now >= run.at);
+  const failed = runs.filter((run) => run.kind !== "capture" && run.status === "failed" && now - run.at <= windowMs && now >= run.at);
   return failed.length >= limit;
 }

@@ -6,7 +6,7 @@
 // hosts, labels, and stop paths come from the preset of the workflow's start url.
 
 import path from "node:path";
-import { pageEngineName, type PageEngineName } from "../engines/agent-browser";
+import { type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
 import type { CdpLiveDriver } from "./driver";
@@ -311,7 +311,7 @@ export async function replayLiveWorkflow(
   const blocked = navigationGuard(workflow.startUrl, scope.hosts, scope.origins, scope.stopPath);
   if (blocked) throw new Error(blocked);
   const lockFile = deps.lockFile || CDP_LOCK_PATH;
-  const engineName = deps.engineName ?? pageEngineName();
+  const engineName = deps.engineName ?? "old";
   await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
   let prepared;
   try {
@@ -349,7 +349,7 @@ export async function replayLiveWorkflow(
     run.pageEngine = engineName;
     try {
       const recorded = await driver.finishVideo();
-      if (recorded.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; }
+      if (recorded.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; run.videoTruncated = recorded.truncated; }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "video capture failed";
       run.traceUnavailable = [run.traceUnavailable, `replay video unavailable: ${reason}`].filter(Boolean).join("; ");

@@ -195,6 +195,7 @@ export interface RunResult {
   /** Run-local CDP video, when the selected live engine recorded one. */
   video?: string;
   videoStartedAt?: number;
+  videoTruncated?: boolean;
   status: "passed" | "failed" | "paused";
   steps: {
     id: string;

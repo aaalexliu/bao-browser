@@ -99,6 +99,14 @@ test("settings chooser persists a whole-run choice and rejects paths and unknown
     assert.equal((await put({ pageEngine: "unknown" })).status, 400);
     assert.equal((await put({ pageEngine: "agent-browser", chromeProfile: "Default" })).status, 200);
     assert.equal(app.library.settings().pageEngine, "agent-browser");
+    for (const driver of ["playwright", "extension"] as const) {
+      app.library.save({ schema: "bao.workflow/v2", version: 2, id: `wf-${driver}`, name: "Fixture", driver, startUrl: "https://example.test/", createdAt: 1, inputs: [], steps: [{ id: "s0", index: 0, action: "key", key: "Enter", label: "Enter", surface: "dom", timeoutMs: 1000 }] });
+      for (const guide of [false, true]) {
+        const response = await fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: `wf-${driver}`, guide }) });
+        assert.equal(response.status, 409);
+        assert.equal((await response.json()).error, "profile-copy runs use a recorded live workflow; start one with Bao's live tools");
+      }
+    }
     assert.equal(app.library.settings().chromeProfile, "Default");
     assert.equal(app.library.settings().chromeProfileExtensions?.Default ?? false, false);
     assert.equal((await put({ chromeProfileExtensions: { Default: true } })).status, 200);

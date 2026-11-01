@@ -74,6 +74,30 @@ test("a passed run stamps last green for search and describe", async () => {
   assert.equal(hits[0]?.lastGreen, described.lastGreen);
 });
 
+test("a capture-only workflow is not green in search, describe, or run_workflow", async () => {
+  const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
+  const doc = { ...workflow("wf-recorded", "Recorded workflow"), driver: "cdp-live" as const };
+  library.save(doc);
+  library.saveRun({ id: "recording", kind: "capture", workflowId: doc.id, status: "passed", at: Date.now(), heals: [], steps: [] });
+  assert.equal((await describeWorkflow(library, doc.id)).lastGreen, "Not replayed yet");
+  assert.equal((await searchWorkflows(library, "Recorded"))[0]?.lastGreen, "Not replayed yet");
+  const outcome = await runWorkflow(library, { id: doc.id }, undefined, { live: async () => { throw new Error("fixture failure"); } });
+  assert.equal(outcome.lastGreen, "Not replayed yet");
+  assert.equal(library.readRun("recording").kind, "capture");
+});
+
+for (const driver of ["playwright", "extension"] as const) {
+  test(`the selected native engine refuses ordinary ${driver} MCP replay before launching Chrome`, async () => {
+    const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
+    library.save({ ...workflow("wf-native", "Native workflow"), driver });
+    library.updateSettings({ pageEngine: "agent-browser", chromeProfile: "Default" });
+    const outcome = await runWorkflow(library, { id: "wf-native", inputs: { query: "ada" } });
+    assert.equal(outcome.outcome, "failed");
+    assert.equal(outcome.reason, "profile-copy runs use a recorded live workflow; start one with Bao's live tools");
+    assert.equal(existsSync(path.join(library.root, "chrome-profile")), false);
+  });
+}
+
 test("describe omits secret defaults and a missing secret does not launch a browser", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
   const doc = workflow("sign-in", "Sign in");
