@@ -271,8 +271,11 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
       assert.equal(reached.outcome.kind, "reached", JSON.stringify(reached));
       assert.equal(reached.outcome.reason, "experian_commit");
       assert.match(reached.outcome.instruction || "", /owner|confirm/i);
+      assert.match(reached.outcome.instruction || "", /allowCommit: true/);
       assert.equal(reached.view?.path, "/member/unfreeze/review");
       assert.equal(reached.view?.reached?.label, "Confirm");
+      const state = await fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json()) as { liveSession?: { note?: string } };
+      assert.equal(state.liveSession?.note, "The final unfreeze button is on screen. Bao stopped before clicking it.");
       assert.equal(commits(), 0);
       const enter = await live("live_key", { key: "Enter", ref: refOf(reached, "Note") });
       assert.equal(enter.outcome.kind, "reached", "Enter cannot bypass the final button");
@@ -286,7 +289,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     assert.equal(previewRun?.status, "needs_human");
     assert.equal(previewRun?.allowCommit, false);
     assert.equal(previewRun?.envelope?.reason, "experian_commit");
-    assert.match(previewRun?.envelope?.ask || "", /owner/);
+    assert.equal(previewRun?.envelope?.ask, "The final unfreeze button is on screen. Bao stopped before clicking it.");
     const final = await reach(true);
     try {
       assert.equal(final.outcome.kind, "applied", JSON.stringify(final));
@@ -304,7 +307,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     assert.equal(replay.pausedKind, "confirm");
     const replayRun = app.library.readRun(replay.runId);
     assert.equal(replayRun.status, "needs_human");
-    assert.match(replayRun.envelope?.ask || "", /owner/);
+    assert.equal(replayRun.envelope?.ask, "The final unfreeze button is on screen. Bao stopped before clicking it.");
     assert.equal(commits(), 1, "recording permission does not silently authorize a replay");
     const again = await reach(false);
     try { assert.equal(again.outcome.kind, "reached", "opt-in never carries to the next session"); }
