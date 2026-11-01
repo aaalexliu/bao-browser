@@ -427,6 +427,21 @@ test("a key press or scroll whose load is failed on a stop path goes back and re
   assert.deepEqual(scroll.log.calls.slice(-2), ["returnFromBlock", "reread"]);
 });
 
+test("click, Enter and scroll halt on a blocked login redirect without returning to an expired page", async () => {
+  const shop = facts([{ index: 0, label: "Search deals", kind: "field", field: { type: "search", name: "d", autocomplete: "" }, form: "search" }]);
+  const read = buildView(shop, 1, instacart);
+  for (const act of [
+    (target: LiveActTarget) => clickLive(target, "e1.c0"),
+    (target: LiveActTarget) => pressLiveKey(target, "Enter", "e1.c0"),
+    (target: LiveActTarget) => scrollLive(target, "down", ""),
+  ]) {
+    const { target, log } = fakeTarget(read, { marked: shop, blockedAfter: "login_wall" });
+    assert.deepEqual(await act(target), { kind: "halted", reason: "login_wall" });
+    assert.equal(log.calls.includes("returnFromBlock"), false);
+    assert.equal(log.calls.includes("reread"), false);
+  }
+});
+
 test("a scroll checks its ref before it moves anything and reports whether the page moved", async () => {
   const shop = facts([
     { index: 0, label: "Item 1", kind: "link", href: "http://127.0.0.1/products/1" },

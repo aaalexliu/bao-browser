@@ -9,7 +9,7 @@ import { liveCliBody } from "../../src/mcp/live-proxy";
 import { navigationGuard } from "../../src/cdp-live/allowlist";
 import { buildView, pageHalt, planClick, planKey } from "../../src/cdp-live/live-ops";
 import { liveScope } from "../../src/cdp-live/live-replay";
-import { liveTrailSteps } from "../../src/cdp-live/live-trail";
+import { liveTrailSteps, workflowFromTrail } from "../../src/cdp-live/live-trail";
 import * as targets from "../../src/cdp-live/live-target";
 import { guardPreset, presetForUrl } from "../../src/cdp-live/presets";
 import { McpClient } from "../../src/eval/mcp-client";
@@ -70,7 +70,9 @@ test("Experian final freeze commits stop by default; session opt-in never widens
     assert.deepEqual(planKey(stopped, "Enter", "e1.c1"), { ok: false, refusal: "experian_commit" }, label);
     if (label === "Unfreeze") {
       const dashboard = buildView({ ...facts, path: "/member", title: "Dashboard", headings: [] }, 1, scope.guard);
-      assert.deepEqual(planClick(dashboard, "e1.c0"), { ok: false, refusal: "experian_commit" }, "a named final submit stays guarded without freeze page text");
+      assert.equal(dashboard.view.reached, undefined);
+      assert.equal(planClick(dashboard, "e1.c0").ok, true);
+      assert.equal(planKey(dashboard, "Enter", "e1.c1").ok, true);
     }
     assert.equal(planClick(stopped, "e1.c4").ok, true, "navigation stays allowed");
     const optIn = { ...scope.guard, allowCommit: true };
@@ -88,7 +90,22 @@ test("Experian final freeze commits stop by default; session opt-in never widens
   assert.match(runViewer({ id: "run-opt-in", kind: "capture", allowCommit: true, workflowId: "wf-freeze", status: "passed", steps: [] }, { name: "Unfreeze credit", steps: [] }), /Experian commit opt-in was on/);
 });
 
-test("live workflows retain repeated clicks, typed corrections and keys in order", () => {
+test("Experian flow starters stay ordinary clicks and Enter submissions", () => {
+  const guard = guardPreset("experian");
+  for (const route of ["/member", "/member/freeze", "/member/unfreeze"]) {
+    for (const label of ["Unfreeze", "Freeze", "Lift freeze", "Thaw", "Continue", "Next", "Review"]) {
+      const read = buildView({ path: route, title: "Manage credit freeze", headings: [], blocked: "", controls: [
+        { index: 0, kind: "submit", label },
+        { index: 1, kind: "field", label: "Note", field: { type: "text", name: "note", autocomplete: "" }, formSubmit: label },
+      ] }, 1, guard);
+      assert.equal(read.view.reached, undefined, `${route} ${label}`);
+      assert.equal(planClick(read, "e1.c0").ok, true, `${route} ${label}`);
+      assert.equal(planKey(read, "Enter", "e1.c1").ok, true, `${route} ${label}`);
+    }
+  }
+});
+
+test("Experian workflows retain repeated clicks, typed corrections and keys in order", () => {
   const identity = { surface: "dom" as const, role: "textbox", name: "Search", path: [] };
   const events = [
     { id: "a", ts: 1, kind: "act" as const, op: "click", identity },
@@ -101,6 +118,20 @@ test("live workflows retain repeated clicks, typed corrections and keys in order
   assert.deepEqual(built.workflow.steps.map(s => s.action), ["click", "click", "type", "type", "key"]);
   assert.deepEqual(built.workflow.steps.filter(s => s.action === "type").map(s => s.value), ["wrong", "correct"]);
   assert.deepEqual(built.groups.map(g => g.map(e => e.id)), [["a"], ["b"], ["c"], ["d"], ["e"]]);
+});
+
+test("other live presets condense repeated Add clicks and keep their step groups aligned", () => {
+  const startUrl = "https://www.instacart.com/store/costco/storefront";
+  const identity = { surface: "dom" as const, role: "button", name: "Add to cart", path: [] };
+  const events = [1, 2].map(n => ({ id: `add-${n}`, ts: n, kind: "act" as const, op: "click", identity, beforeUrl: startUrl, afterUrl: startUrl, subtreeBefore: "", subtreeAfter: "1 in cart" }));
+  const built = liveTrailSteps(events, { id: "wf-add", startUrl });
+  assert.equal(built.workflow.steps.length, 1);
+  assert.deepEqual(built.groups.map(group => group.map(event => event.id)), [["add-1"]]);
+  const explicit = liveTrailSteps(events, { id: "wf-add", startUrl: "https://credit.test/member" }, guardPreset("experian"));
+  assert.equal(explicit.workflow.steps.length, 2);
+  assert.deepEqual(explicit.groups.map(group => group.map(event => event.id)), [["add-1"], ["add-2"]]);
+  const saved = workflowFromTrail({ id: "wf-add", name: "Add item", intent: "Add item", startUrl, createdAt: 1, savedAt: 2, events, guard: guardPreset("instacart") });
+  assert.deepEqual(saved.steps, built.workflow.steps);
 });
 
 test("generic refuses sign out and log out before a click", () => {
@@ -144,6 +175,14 @@ test("Settings lists real profile folders, saves the live choice and reads it at
     assert.equal((seen.at(-1) as { profile: string }).profile, "Profile 2", "launch override wins over saved Default");
     assert.equal((await fetch(`http://127.0.0.1:${app.port}/api/state`).then(r => r.json())).settings.liveChromeProfile, "Default");
     assert.match(await readFile(path.join(home, "settings.json"), "utf8"), /liveChromeProfile/);
+    app.library.save({ schema: "bao.workflow/v2", version: 2, id: "wf-query-disabled", name: "Query route check", startUrl: "https://credit.test/member", createdAt: 1, inputs: [], steps: [{ id: "note", index: 0, action: "note", surface: "dom", label: "Read member page", timeoutMs: 1000 }] });
+    app.library.saveRun({ id: "run-query-disabled", workflowId: "wf-query-disabled", status: "passed", at: 1, heals: [], steps: [] });
+    await page.goto(`http://127.0.0.1:${app.port}/?screen=run&run=run-query-disabled`);
+    await page.waitForSelector("#library-search");
+    assert.equal(await page.locator("#run-viewer").count(), 0);
+    await page.click("button[data-screen=runs]");
+    await page.click('[data-open-run="run-query-disabled"]');
+    await page.waitForSelector('#run-viewer[data-run="run-query-disabled"]');
   } finally { await ui.close(); await app.close(); await rm(root, { recursive: true, force: true }); }
 });
 
@@ -207,6 +246,61 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     assert.equal(replayed.outcome, "needs_human", JSON.stringify(replayed));
   });
 
+  it("click and Enter sign-in redirects halt the live session and pause MCP replay", async () => {
+    for (const login of ["/login", "/login/index", "/signin", "/sign-in"]) {
+      for (const op of ["click", "key"] as const) {
+        const startUrl = fixture.url(`/member/session-links?login=${encodeURIComponent(login)}`);
+        let reply = await live("live_session_start", { intent: "Read member actions", url: startUrl });
+        try {
+          assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+          const ref = refOf(reply, op === "click" ? "Continue" : "Search");
+          reply = await live(`live_${op}`, { ref, ...(op === "key" ? { key: "Enter" } : {}) });
+          assert.equal(reply.outcome.kind, "halted", `${login} ${op}: ${JSON.stringify(reply)}`);
+          assert.equal(reply.outcome.reason, "login_wall");
+          assert.match(reply.outcome.instruction || "", /sign in again.*Chrome/i);
+          const again = await live("live_snapshot");
+          assert.equal(again.outcome.kind, "halted");
+          assert.equal(again.outcome.reason, "login_wall");
+          assert.match(again.outcome.instruction || "", /sign in again.*Chrome/i);
+        } finally { await live("live_stop"); }
+        const workflow = workflowFromTrail({
+          id: `wf-expired-${login.replace(/\W/g, "")}-${op}`, name: "Read member actions", intent: "Read member actions", startUrl, createdAt: 1, savedAt: 2,
+          guard: liveScope(startUrl).guard,
+          events: [{ id: "continue", ts: 1, kind: "act", op, ...(op === "key" ? { key: "Enter" } : {}), identity: { surface: "dom", role: op === "click" ? "link" : "input", name: op === "click" ? "Continue" : "Search", tag: op === "click" ? "a" : "input", path: [] } }],
+        });
+        app.library.save(workflow);
+        const replayed = JSON.parse((await mcp.call("run_workflow", { id: workflow.id })).text);
+        assert.equal(replayed.outcome, "needs_human", `${login} ${op}: ${JSON.stringify(replayed)}`);
+        const saved = app.library.readRun(replayed.run_id);
+        assert.equal(saved.status, "needs_human");
+        assert.equal((saved.failure as RunResult["failure"])?.reason, "login_wall");
+        assert.equal((saved.steps as RunResult["steps"])[0]?.status, "paused");
+        assert.match(saved.envelope?.ask || "", /Sign in to .* in Chrome/);
+        assert.equal(saved.modelCalls, 0);
+      }
+      assert.equal(fixture.requests.some(request => request.path === login), false, `${login} must never load`);
+    }
+  });
+
+  it("saves ordinary confirm pauses as needing the owner through the app and MCP", async () => {
+    const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: "wf-owner-confirm", name: "Confirm credit change", createdAt: 1, driver: "cdp-live", startUrl: fixture.url("/member/freeze"), inputs: [], steps: [{ id: "confirm", index: 0, action: "confirm", human: true, surface: "dom", timeoutMs: 1000, label: "Confirm credit change" }] };
+    app.library.save(workflow);
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: workflow.id, args: {} }) });
+    const run = await response.json() as RunResult;
+    assert.equal(run.status, "paused", JSON.stringify(run));
+    assert.equal(run.pausedKind, "confirm");
+    assert.equal(run.failure, undefined);
+    const saved = app.library.readRun(run.runId);
+    assert.equal(saved.status, "needs_human");
+    assert.equal(saved.envelope?.ask, run.ask?.instruction);
+    const replayed = JSON.parse((await mcp.call("run_workflow", { id: workflow.id })).text);
+    assert.equal(replayed.outcome, "needs_human", JSON.stringify(replayed));
+    const stored = app.library.readRun(replayed.run_id);
+    assert.equal(stored.status, "needs_human");
+    assert.equal(stored.envelope?.ask, replayed.ask);
+    assert.equal(stored.failure, undefined);
+  });
+
   it("security copy does not halt, real OTP does, and Imperva still halts", async () => {
     for (const [pathname, expected] of [["/member/security-help", "applied"], ["/member/verify", "halted"], ["/member/bot", "halted"], ["/member/account-redirect", "halted"]]) {
       const reply = await live("live_session_start", { intent: "Read security help", url: fixture.url(pathname) });
@@ -219,7 +313,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     }
   });
 
-  it("crosses both Experian hosts, records false starts and permits a final freeze submit with opt-in", async () => {
+  it("crosses both Experian hosts and records false starts in order", async () => {
     let reply = await live("live_session_start", { intent: "Unfreeze credit", url: fixture.url("/", "www.experian.com"), allowCommit: true });
     try {
       assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
@@ -228,7 +322,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
       reply = await live("live_click", { ref: refOf(reply, "Accounts summary") });
       assert.equal(reply.view?.path, "/member/accounts/summary");
       reply = await live("live_click", { ref: refOf(reply, "Dashboard") });
-      for (const label of ["Freeze", "Freeze", "Unfreeze", "Lock", "Unlock"]) {
+      for (const label of ["Freeze", "Freeze", "Lock", "Unlock"]) {
         reply = await live("live_click", { ref: refOf(reply, label) });
         assert.equal(reply.outcome.kind, "applied", label);
       }
@@ -238,10 +332,13 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         assert.equal(refused.outcome.kind, "refused", label);
         assert.equal(refused.outcome.reason, "denied", label);
       }
-      assert.equal(fixture.requests.filter(r => r.path === "/write").length, 5, "only the five allowed clicks wrote");
+      assert.equal(fixture.requests.filter(r => r.path === "/write").length, 4, "only the four allowed clicks wrote");
+      reply = await live("live_click", { ref: refOf(reply, "Unfreeze") });
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      assert.equal(reply.view?.path, "/member/freeze");
       await live("live_stop");
       const saved = app.library.read(reply.session || "");
-      assert.deepEqual(saved.steps.map(s => s.identity?.name || s.identity?.text || s.identity?.label), ["Member center", "Accounts summary", "Dashboard", "Freeze", "Freeze", "Unfreeze", "Lock", "Unlock"]);
+      assert.deepEqual(saved.steps.map(s => s.identity?.name || s.identity?.text || s.identity?.label), ["Member center", "Accounts summary", "Dashboard", "Freeze", "Freeze", "Lock", "Unlock", "Unfreeze"]);
       assert.equal(saved.driver, "cdp-live");
     } finally { await live("live_stop"); }
   });
@@ -250,8 +347,11 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     const commits = () => fixture.requests.filter(r => r.path === "/commit-unfreeze").length;
     const reach = async (allowCommit: boolean) => {
       try {
-        let reply = await live("live_session_start", { intent: `Unfreeze credit ${allowCommit ? "authorized" : "preview"}`, url: fixture.url("/member/freeze"), ...(allowCommit ? { allowCommit: true } : {}) });
+        let reply = await live("live_session_start", { intent: `Unfreeze credit ${allowCommit ? "authorized" : "preview"}`, url: fixture.url("/member"), ...(allowCommit ? { allowCommit: true } : {}) });
         assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+        reply = await live("live_click", { ref: refOf(reply, "Unfreeze") });
+        assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+        assert.equal(reply.view?.path, "/member/freeze");
         reply = await live("live_click", { ref: refOf(reply, "Unfreeze my credit") });
         assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
         return await live("live_click", { ref: refOf(reply, "Continue") });
@@ -260,9 +360,11 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     const wrongPreset = await live("live_session_start", { intent: "Invalid opt-in site", url: fixture.url("/member/freeze", "credit.test"), allowCommit: true });
     assert.equal(wrongPreset.outcome.kind, "rejected");
     assert.match(wrongPreset.outcome.reason || "", /only.*Experian/);
-    const dashboard = await live("live_session_start", { intent: "Preview direct freeze actions", url: fixture.url("/member") });
-    try { assert.equal(dashboard.outcome.kind, "reached", "direct final submits also need confirmation"); }
-    finally { await live("live_stop"); }
+    const reviewStart = await live("live_session_start", { intent: "Preview final freeze action", url: fixture.url("/member/unfreeze/review") });
+    try {
+      assert.equal(reviewStart.outcome.kind, "applied", "session start never reports reached");
+      assert.equal((await live("live_snapshot")).outcome.kind, "reached");
+    } finally { await live("live_stop"); }
     const invalid = await live("live_session_start", { intent: "Invalid opt-in", url: fixture.url("/member/freeze"), allowCommit: "true" });
     assert.equal(invalid.outcome.kind, "rejected");
     assert.match(invalid.outcome.reason || "", /boolean/);
@@ -284,7 +386,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
       assert.equal(commits(), 0);
     } finally { await live("live_stop"); }
     const preview = app.library.read(reached.session!);
-    assert.equal(preview.steps.length, 2, "all navigation before the final button stays recorded");
+    assert.equal(preview.steps.length, 3, "all navigation before the final button stays recorded");
     const previewRun = app.library.listRuns().find(run => run.workflowId === preview.id);
     assert.equal(previewRun?.status, "needs_human");
     assert.equal(previewRun?.allowCommit, false);
@@ -298,7 +400,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
       assert.equal(commits(), 1);
     } finally { await live("live_stop"); }
     const saved = app.library.read(final.session!);
-    assert.equal(saved.steps.length, 3);
+    assert.equal(saved.steps.length, 4);
     const capture = app.library.listRuns().find(run => run.workflowId === saved.id);
     assert.equal(capture?.allowCommit, true, "capture run keeps the explicit opt-in");
     const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: saved.id, args: {} }) });
@@ -309,6 +411,12 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     assert.equal(replayRun.status, "needs_human");
     assert.equal(replayRun.envelope?.ask, "The final unfreeze button is on screen. Bao stopped before clicking it.");
     assert.equal(commits(), 1, "recording permission does not silently authorize a replay");
+    const replayed = JSON.parse((await mcp.call("run_workflow", { id: saved.id })).text);
+    assert.equal(replayed.outcome, "needs_human", JSON.stringify(replayed));
+    const mcpRun = app.library.readRun(replayed.run_id);
+    assert.equal(mcpRun.status, "needs_human");
+    assert.equal(mcpRun.envelope?.ask, "The final unfreeze button is on screen. Bao stopped before clicking it.");
+    assert.equal(commits(), 1, "MCP replay also needs fresh owner consent");
     const again = await reach(false);
     try { assert.equal(again.outcome.kind, "reached", "opt-in never carries to the next session"); }
     finally { await live("live_stop"); }

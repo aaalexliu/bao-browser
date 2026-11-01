@@ -112,7 +112,7 @@ let argsWorkflow = "";
 let openWorkflow = "";
 let healFilter: "pending" | "kept" | "reverted" = "pending";
 let openHeal: { runId: string; healId: string } | null = null;
-let openRun = screen === "run" ? new URLSearchParams(location.search).get("run") || "" : "";
+let openRun = "";
 let selectedStep = "";
 let banner: { id: string; title: string; body: string } | null = null;
 const dismissed = new Set<string>();

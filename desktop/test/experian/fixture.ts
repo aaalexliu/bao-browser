@@ -8,7 +8,7 @@ const page = (title: string, body: string) => `<!doctype html><html><head><meta 
 const header = `<nav><a href="/member">Dashboard</a><a href="/member/credit-report">View full credit report</a><a href="/member/alerts">See alerts</a></nav>`;
 const traps = ["Freeze", "Unfreeze", "Lock", "Unlock", "Dispute", "Sign out", "Log out", "Cancel"];
 const buttons = traps.map((label) => label === "Unfreeze"
-  ? `<form onsubmit="event.preventDefault();fetch('/write', {method:'POST'})"><button type="submit">${label}</button></form>`
+  ? `<form action="/member/freeze"><button type="submit">${label}</button></form>`
   : `<button type="button" onclick="fetch('/write', {method:'POST'})">${label}</button>`).join("");
 
 export async function startExperianFixture() {
@@ -26,7 +26,7 @@ export async function startExperianFixture() {
       res.setHeader("set-cookie", ["incap_ses_standin=ok; Path=/; HttpOnly; SameSite=Lax", "sid=standin-session; Path=/; HttpOnly; SameSite=Lax"]);
       send("Signed in (stand-in)", "");
     } else if (url.pathname === "/member/expired") {
-      res.writeHead(302, { location: "/login/index?refUrl=%2Fmember" });
+      res.writeHead(302, { location: url.searchParams.get("login") || "/login/index?refUrl=%2Fmember" });
       res.end();
     } else if (url.pathname === "/member/account-redirect") {
       res.writeHead(302, { location: "/account" });
@@ -42,6 +42,9 @@ export async function startExperianFixture() {
     } else if (url.pathname.startsWith("/member") && !req.headers.cookie?.includes("sid=standin-session")) {
       res.writeHead(302, { location: `/login/index?refUrl=${encodeURIComponent(url.pathname)}` });
       res.end();
+    } else if (url.pathname === "/member/session-links") {
+      const login = encodeURIComponent(url.searchParams.get("login") || "/login");
+      send("Member actions", `<a href="/member/expired?login=${login}">Continue</a><form action="/member/expired"><input type="hidden" name="login" value="${decodeURIComponent(login)}"><label>Search <input type="search" name="q"></label><button type="submit">Search</button></form>`);
     } else if (url.pathname === "/member") {
       send("Dashboard", `${header}<p>Your score: 742.</p><a href="https://www.experian.com/">Public site</a><a href="/member/accounts/summary">Accounts summary</a><a href="/member/security-help">Security help</a>${buttons}<a href="/member/freeze">Manage freeze</a>`);
     } else if (url.pathname === "/member/freeze") {
