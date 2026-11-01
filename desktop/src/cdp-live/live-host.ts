@@ -301,10 +301,21 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
   }
 
+  function updateStep(action: string, status: string, ms: number): void {
+    if (!open) return;
+    const name = Object.keys(LOOK_OPS).find((key) => LOOK_OPS[key] === action) || action;
+    const last = open.steps.at(-1);
+    if (status !== "running" && last?.name === name && last.status === "running") {
+      Object.assign(last, { status, ms });
+    } else {
+      open.steps.push({ name, status, ms });
+    }
+    open.log.setSteps(open.steps);
+  }
+
   async function note(action: string, label: string, status: string, isTrusted: boolean | null): Promise<void> {
     if (!open) return;
-    open.steps.push({ name: action, status, ms: 0 });
-    open.log.setSteps(open.steps);
+    updateStep(action, status, 0);
     await open.log.add({
       action,
       label: label.slice(0, 80),
@@ -634,8 +645,7 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function record(action: string, label: string, ms: number, status: string, isTrusted: boolean | null): Promise<string> {
     if (!open) return "";
-    open.steps.push({ name: action, status, ms });
-    open.log.setSteps(open.steps);
+    updateStep(action, status, ms);
     const png = await open.driver.captureRedacted(`${action} ${open.read?.view.path || ""}`).catch(() => undefined);
     return open.log.add({
       action,

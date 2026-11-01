@@ -16,7 +16,7 @@ import {
   redactForShot,
   workflowFromAudit,
 } from "../../src/cdp-live/attach";
-import { liveShotUrl, redactLabel, shotNameOk } from "../../src/cdp-live/live-record";
+import { liveShotUrl, publicLiveSession, redactLabel, shotNameOk } from "../../src/cdp-live/live-record";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
 import { loginDiffConclusion, pageLooksSignedIn } from "../../src/cdp-live/login-diff";
 import { liveSessionView, screenFromQuery } from "../../src/app/live-view";
@@ -356,6 +356,28 @@ test("an attach run picks one open page and does not create or close a target", 
   assert.equal(lines?.startedAt, 1793154442761);
   assert.equal(attachLockIsStale(1_000, 1_000 + 20 * 60 * 1000), false);
   assert.equal(attachLockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
+});
+
+test("start audit URLs keep host and port digits without exposing private URL parts", () => {
+  const urls = [
+    ["http://127.0.0.1:47811/member", "http://127.0.0.1:47811/member"],
+    ["http://[::1]:47811/member", "http://[::1]:47811/member"],
+    ["https://www3.example123.com:8443/member", "https://www3.example123.com:8443/member"],
+    ["https://person:secret@example.com/member?token=123456#private", "https://example.com/member"],
+    ["https://example.com/report/123456", "https://example.com/report/"],
+  ];
+  for (const [label, expected] of urls) {
+    const session = publicLiveSession({ status: "running", audit: [{ action: "start", label }] });
+    assert.equal(session?.audit[0]?.label, expected);
+    assert.equal(publicLiveSession(session)?.audit[0]?.label, expected, "redaction survives repeated log writes");
+  }
+  const session = publicLiveSession({ status: "running", audit: [
+    { action: "start", label: "Member dashboard" },
+    { action: "click", label: "Credit score 742" },
+    { action: "type", label: "user@example.com" },
+  ] });
+  assert.deepEqual(session?.audit.map((row) => row.label), ["Member dashboard", "Credit score", ""]);
+  assert.equal(redactLabel("Credit score 742"), "Credit score");
 });
 
 test("a live session view stays on this machine and blurs the page shot", () => {

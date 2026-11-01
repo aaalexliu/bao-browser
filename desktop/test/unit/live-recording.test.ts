@@ -576,6 +576,8 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
       });
       assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
       assert.equal(started.session, "wf-put-costco-blueberries-into-the-cart");
+      const sessionSteps = () => JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")).steps as { name: string; status: string }[];
+      assert.deepEqual(sessionSteps().map(({ name, status }) => [name, status]), [["start", "passed"]]);
       const typed = await call({ op: "live_type", ref: refOf(started, "Search Costco"), text: "blueberries" });
       assert.equal(typed.outcome?.kind, "applied", JSON.stringify(typed.outcome));
       const searched = await call({ op: "live_key", key: "Enter", ref: refOf(typed, "Search Costco") });
@@ -592,11 +594,19 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
       const added = await call({ op: "live_click", ref: refOf(scrolled, ADD) });
       assert.equal(added.outcome?.kind, "applied", JSON.stringify(added.outcome));
       assert.ok(added.view?.controls.some((item) => item.label === MARKER));
+      const firstScroll = await call({ op: "live_scroll", direction: "down" });
+      assert.equal(firstScroll.outcome?.kind, "applied");
+      const scrolledAgain = await call({ op: "live_scroll", direction: "down" });
+      assert.equal(scrolledAgain.outcome?.kind, "applied");
+      assert.deepEqual(sessionSteps().map(({ name, status }) => [name, status]), [
+        ["start", "passed"], ["type", "passed"], ["key", "passed"], ["scroll", "passed"],
+        ["click", "failed"], ["click", "passed"], ["scroll", "passed"], ["scroll", "passed"],
+      ], "each call has one step, including two consecutive calls with the same action");
       const ended = await call({ op: "live_disconnect", client: "mock-user" });
       assert.equal(ended.outcome?.kind, "stopped", JSON.stringify(ended.outcome));
 
       const lines = readFileSync(liveTrailFile(home), "utf8").trim().split("\n").map((line) => JSON.parse(line) as TrailEvent);
-      assert.deepEqual(lines.map((event) => event.op), ["type", "key", "scroll", "click"], "one line per act, none for the refused click");
+      assert.deepEqual(lines.map((event) => event.op), ["type", "key", "scroll", "click", "scroll", "scroll"], "one line per act, none for the refused click");
       assert.equal(lines.every((event) => event.kind === "act" && event.source?.agent === "live-model" && event.source.adapter === "cdp-live"), true);
       const [type, key, scroll, click] = lines;
       assert.equal(type?.value, "blueberries");

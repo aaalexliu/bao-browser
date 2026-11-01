@@ -57,8 +57,8 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
     <ol id="live-steps">${steps || `<li class="quiet">No steps yet.</li>`}</ol>
     <h3 class="section">Audit</h3>
     <p id="live-audit-page" class="quiet" data-total="${audit.total}" data-page="${audit.page + 1}">Audit page ${audit.page + 1} of ${audit.pages}. ${audit.total} rows.</p>
-    <nav id="live-pager"><a href="?screen=live&amp;page=${Math.max(0, audit.page - 1)}">Previous</a> <a href="?screen=live&amp;page=${Math.min(audit.pages - 1, audit.page + 1)}">Next</a></nav>
-    <table id="live-audit">
+    <nav id="live-pager" class="row" aria-label="Audit pages"><a class="button" href="?screen=live&amp;page=${Math.max(0, audit.page - 1)}">Previous</a> <a class="button" href="?screen=live&amp;page=${Math.min(audit.pages - 1, audit.page + 1)}">Next</a></nav>
+    <table id="live-audit" class="grid">
       <thead><tr><th>Action</th><th>Target</th><th>Path</th><th>Trusted</th><th>Time</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>

@@ -69,6 +69,18 @@ export function redactLabel(text: string): string {
   return clean.slice(0, 80);
 }
 
+function auditLabel(action: string, label: string): string {
+  if (action === "start") {
+    try {
+      const url = new URL(label);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        return `${url.origin}${redactLabel(url.pathname)}`.slice(0, 80);
+      }
+    } catch { /* A start result can be a page title rather than a URL. */ }
+  }
+  return redactLabel(label);
+}
+
 export function publicLiveSession(value: unknown): LiveSessionRecord | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Partial<LiveSessionRecord>;
@@ -78,7 +90,7 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
   }
   const audit = Array.isArray(raw.audit) ? raw.audit.map((row) => ({
     action: redactLabel(String(row?.action || "")).slice(0, 40),
-    label: redactLabel(String(row?.label || "")),
+    label: auditLabel(String(row?.action || ""), String(row?.label || "")),
     path: String(row?.path || "").startsWith("/") ? String(row.path).slice(0, 120) : "",
     isTrusted: row?.isTrusted === true ? true : row?.isTrusted === false ? false : null,
     ms: Number.isFinite(row?.ms) ? Math.max(0, Math.round(Number(row.ms))) : 0,
