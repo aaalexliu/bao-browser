@@ -11,11 +11,15 @@ import { redactedPng } from "../../src/v1/redacted-png";
 
 function frameSource() {
   let emit = (_params: Record<string, unknown>) => {};
+  let latest: Buffer | undefined;
   const cdp = {
     on(_method: string, _session: string, handler: typeof emit) { emit = handler; },
-    async send() { return {}; },
+    async send(method: string) {
+      if (method === "Page.startScreencast" && latest) emit({ data: latest.toString("base64"), sessionId: 1 });
+      return {};
+    },
   } as unknown as CdpSocket;
-  return { cdp, emit(data: Buffer) { emit({ data: data.toString("base64"), sessionId: 1 }); } };
+  return { cdp, emit(data: Buffer) { latest = data; emit({ data: data.toString("base64"), sessionId: 1 }); } };
 }
 
 const ffmpeg = ffmpegBin();
@@ -101,12 +105,33 @@ test("explicit no-blur recording preserves source pixels in temporary frames and
     assert.deepEqual(await readFile(frameFile), jpeg);
     await video.endCapture();
     await assert.rejects(readFile(destination), /ENOENT/);
-    assert.deepEqual(await video.stop(), { wrote: true, frames: 1, truncated: false });
+    assert.deepEqual(await video.stop(), { wrote: true, frames: 2, truncated: false });
     const decoded = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", destination, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { maxBuffer: 16 * 1024 * 1024 });
     assert.equal(decoded.status, 0, decoded.stderr.toString());
     assert.equal(decoded.stdout.length, 96 * 54 * 3);
     assert.ok(Math.min(...decoded.stdout) < 80, "encoding must not add the blur veil back");
     assert.ok(Math.abs(decoded.stdout[(27 * 96 + 10) * 3]! - decoded.stdout[(27 * 96 + 14) * 3]!) > 100, "source stripe edges stay sharp");
+  } finally {
+    await video.stop().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a missing final screencast frame fails instead of saving only startup frames", { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-final-frame-"));
+  const destination = path.join(root, "clip.webm");
+  const source = frameSource();
+  const jpeg = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"], { input: redactedPng(3), maxBuffer: 16 * 1024 * 1024 }).stdout;
+  const video = await startCdpVideo(source.cdp, "page", destination, { noBlur: true });
+  try {
+    source.emit(jpeg);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    t.mock.method(source.cdp, "send", async (method: string) => {
+      if (method === "Page.startScreencast") t.mock.timers.tick(5000);
+      return {};
+    });
+    await assert.rejects(video.stop(), /final frame timed out/);
+    await assert.rejects(readFile(destination), /ENOENT/);
   } finally {
     await video.stop().catch(() => undefined);
     await rm(root, { recursive: true, force: true });

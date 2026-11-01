@@ -48,11 +48,39 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   let stopping: ReturnType<CdpVideo["stop"]> | undefined;
   let endedAt = 0;
   let ending: Promise<void> | undefined;
+  let finalFrame: (() => void) | undefined;
+  const startCapture = () => cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 }, sessionId);
   const endCapture = (): Promise<void> => {
     ending ??= (async () => {
       active = false;
-      endedAt = Date.now();
       await cdp.send("Page.stopScreencast", {}, sessionId).catch(() => undefined);
+      await pending;
+      if (pauses === 0 && !failure && !truncated) {
+        // Let the last action paint before requesting a fresh screencast frame.
+        // A short or static page may not send another sample on its own.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await cdp.send("Runtime.evaluate", {
+            expression: "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))",
+            awaitPromise: true,
+          }, sessionId, 5000);
+          active = true;
+          last = 0;
+          const captured = new Promise<void>((resolve, reject) => {
+            finalFrame = resolve;
+            timer = setTimeout(() => reject(new Error("CDP video final frame timed out")), 5000);
+          });
+          await Promise.all([startCapture(), captured]);
+        }
+        catch (error) { failure ??= error instanceof Error ? error : new Error("CDP video final frame failed"); }
+        finally {
+          clearTimeout(timer);
+          finalFrame = undefined;
+          active = false;
+          await cdp.send("Page.stopScreencast", {}, sessionId).catch(() => undefined);
+        }
+      }
+      endedAt = Date.now();
       await pending;
     })();
     return ending;
@@ -120,13 +148,14 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
       failure = new Error("CDP video frame could not be veiled or saved");
       void stop().catch(() => undefined);
     }).finally(() => { writing = false; });
+    finalFrame?.();
     if (frames.length >= 6000) {
       truncated = true;
       void stop().catch(() => undefined);
     }
   });
   try {
-    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 }, sessionId);
+    await startCapture();
   } catch (error) { active = false; await pending; await rm(dir, { recursive: true, force: true }); throw error; }
   return {
     pause() { pauses += 1; },
