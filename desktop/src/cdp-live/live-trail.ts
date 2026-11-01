@@ -253,7 +253,7 @@ function matches(source: string, label: string): boolean {
   }
 }
 
-/** Step labels that match the preset's deny or confirm labels, or the commit floor. A saved workflow has none. */
+/** A read's output name does not imply a click; only action labels can block saving. */
 export function refusedStepLabels(workflow: Pick<WorkflowV2, "steps">, guard: LabelGuard): string[] {
   return workflow.steps
     .filter((step) => step.action !== "extract" && [guard.deny, guard.commit, COMMIT_FLOOR].some((source) => matches(source, step.label)))
