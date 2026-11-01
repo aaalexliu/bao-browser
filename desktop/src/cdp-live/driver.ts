@@ -444,7 +444,7 @@ export class CdpLiveDriver implements Driver {
 
   async goto(url: string, timeoutMs = 20_000): Promise<void> {
     if (this.preserveTarget) throw new Error("cdp-live will not navigate an attached tab");
-    if (navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall") throw new LiveNavigationHalt("login_wall");
+    if (stopPathHit(url, this.stopPath) && navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall") throw new LiveNavigationHalt("login_wall");
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.assertHost();
     const epoch = this.loadEpoch;
