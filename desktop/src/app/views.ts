@@ -297,11 +297,9 @@ function icon(name: string): string {
 }
 
 export function helperJobList(helper?: { capabilities?: { status: string; optional?: boolean }[] }): string {
-  const jobs = helper?.capabilities ?? [];
-  const rows = jobs.filter((row) => !row.optional).map((row) => row.status).filter((status) => status.length > 0);
-  const optional = jobs.some((row) => row.optional) ? `<p class="quiet">Native-app capture is optional and not needed for Chrome.</p>` : "";
-  if (!rows.length) return optional;
-  return `<ul class="helper-jobs">${rows.map((status) => `<li>${esc(status)}</li>`).join("")}</ul>${optional}`;
+  const rows = (helper?.capabilities ?? []).filter((row) => !row.optional).map((row) => row.status).filter((status) => status.length > 0);
+  if (!rows.length) return "";
+  return `<ul class="helper-jobs">${rows.map((status) => `<li>${esc(status)}</li>`).join("")}</ul>`;
 }
 
 export function rail(state: ShellState): string {
@@ -2044,6 +2042,5 @@ export function onboarding(helper?: PermissionState): string {
 /** Collapsed sidebar mark. The Library card is the other place this list appears. */
 export function permissionDot(helper?: PermissionState): string {
   if (helper?.platform !== "darwin") return "";
-  const mark = macPermissionMissing(helper) ? " need" : helper.label === "helper ok" ? " ok" : "";
-  return `<details id="perm-dot"><summary title="Mac permissions"><span class="dot${mark}" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
+  return `<details id="perm-dot"><summary title="Mac permissions"><span class="dot${macPermissionMissing(helper) ? " need" : ""}" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
 }

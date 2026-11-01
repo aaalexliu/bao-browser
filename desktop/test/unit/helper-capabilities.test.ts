@@ -262,7 +262,7 @@ function jobRows(html: string): string[] {
   return [...list.matchAll(/<li>([^<]*)<\/li>/g)].map((row) => row[1]);
 }
 
-test("the footer shows Chrome readiness and one quiet line for optional native capture", () => {
+test("the footer shows Chrome readiness without optional native capture", () => {
   const both = capabilityReport({
     platform: "darwin",
     helperPresent: true,
@@ -291,7 +291,6 @@ test("the footer shows Chrome readiness and one quiet line for optional native c
     "AX press ready",
     "live Chrome ready",
   ]);
-  assert.match(axHtml, /<p class="quiet">Native-app capture is optional and not needed for Chrome\.<\/p>/);
   assert.doesNotMatch(axHtml, /Screen Recording|MCP driver needs|window capture needs/);
   assert.doesNotMatch(axHtml, /helper needs permission AX press ready/);
   assert.doesNotMatch(axHtml, /BaoOSHelper screen recording is granted/);

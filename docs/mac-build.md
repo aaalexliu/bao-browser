@@ -237,7 +237,7 @@ The product window does not need these grants. The nested helper does. Bao's sta
 
 Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the Accessibility row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer shows **helper ok**, **AX press ready**, and **live Chrome ready**. Screen Recording on or off makes no difference. A quiet note says native-app capture is optional and not needed for Chrome. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for API capability rows.
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer shows **helper ok**, **AX press ready**, and **live Chrome ready**. Screen Recording on or off makes no difference. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for API capability rows.
 
 An agent can check the local server. This is not a page to open:
 
