@@ -95,6 +95,55 @@ test("MP4 clips use QuickTime-safe H.264 with square pixels and a 30 fps timelin
   }
 });
 
+test("an hour-long MP4 handoff retains a bounded truncated clip past the old encoder deadline", { skip: !ffmpeg || !hasFfprobe, timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-long-handoff-"));
+  const destination = path.join(root, "clip.mp4");
+  const source = frameSource();
+  const fs = require("node:fs/promises") as typeof import("node:fs/promises");
+  const original = fs.writeFile;
+  let saved: () => void = () => {};
+  t.mock.method(fs, "writeFile", async (...args: Parameters<typeof writeFile>) => {
+    await original(...args);
+    if (typeof args[0] === "string" && path.basename(args[0]).startsWith("frame-")) saved();
+  });
+  const jpeg = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"], { input: redactedPng(3) }).stdout;
+  assert.ok(jpeg.length);
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  const video = await startCdpVideo(source.cdp, "page", destination, { noBlur: true });
+  try {
+    for (const gap of [0, 60 * 60 * 1000]) {
+      video.pause();
+      video.pause();
+      now += gap;
+      video.resume();
+      source.emit(jpeg);
+      video.resume();
+      const persisted = new Promise<void>((resolve) => { saved = resolve; });
+      source.emit(jpeg);
+      await persisted;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    video.pause();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const stopped = video.stop();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(120_000);
+    assert.deepEqual(await stopped, { wrote: true, frames: 2, truncated: true });
+    const probe = spawnSync("ffprobe", ["-v", "error", "-show_streams", "-of", "json", destination], { encoding: "utf8" });
+    assert.equal(probe.status, 0, probe.stderr);
+    const stream = JSON.parse(probe.stdout).streams[0];
+    assert.equal(Number(stream.nb_frames), 27_000, "wall-clock gaps cannot expand the encoder's work without bound");
+    assert.equal(Number(stream.duration), 900);
+    assert.equal(stream.avg_frame_rate, "30/1");
+    assert.ok((await readFile(destination)).length > 1000);
+    assert.deepEqual(await video.stop(), { wrote: true, frames: 2, truncated: true });
+  } finally {
+    await video.stop().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("an MP4 encoder failure rejects stop and removes the incomplete clip", { skip: !ffmpeg, timeout: 30_000 }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-encoder-failure-"));
   const destination = path.join(root, "clip.mp4");

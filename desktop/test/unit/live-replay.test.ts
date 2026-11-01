@@ -188,7 +188,7 @@ describe("a recorded live workflow replays through the one live runner", { timeo
         assert.equal(shotFormat(readFileSync(path.join(shots, ref))), "png");
       }
     }
-    assert.equal(existsSync(path.join(home, "videos", `${first.body.runId}.webm`)), false);
+    for (const extension of ["mp4", "webm"]) assert.equal(existsSync(path.join(home, "videos", `${first.body.runId}.${extension}`)), false);
     assert.equal(existsSync(lockFile), false, "the replay frees the CDP lock");
 
     // Again: the item is already in the cart.

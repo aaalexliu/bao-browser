@@ -652,7 +652,7 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
   }
   const videoDir = path.join(lane.home, "videos");
   if (record && existsSync(videoDir)) {
-    for (const file of readdirSync(videoDir).filter((name) => name.startsWith(`live-${record.id}-`) && name.endsWith(".webm"))) copyFileSync(path.join(videoDir, file), path.join(dir, file));
+    for (const file of readdirSync(videoDir).filter((name) => name.startsWith(`live-${record.id}-`) && /\.(mp4|webm)$/.test(name))) copyFileSync(path.join(videoDir, file), path.join(dir, file));
   }
   const transcript = readTranscript(driver, run.stdout);
   const state = lane.fixture.state();
@@ -686,7 +686,7 @@ async function replayTwice(lane: Lane, workflowId: string, recorded: CartLine, o
         status = run.status;
         if (run.video) {
           mkdirSync(out, { recursive: true });
-          copyFileSync(path.join(lane.home, "videos", run.video), path.join(out, `replay-${round}.webm`));
+          copyFileSync(path.join(lane.home, "videos", run.video), path.join(out, `replay-${round}${path.extname(run.video)}`));
         }
       } catch {
         problems.push(`replay ${round}: no run record`);

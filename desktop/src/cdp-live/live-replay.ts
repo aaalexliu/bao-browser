@@ -294,7 +294,7 @@ export interface LiveReplayDeps {
   axLog: string;
   connectTimeoutMs?: number;
   onNotice?: (message: string) => void;
-  /** Records the replay window here as <runId>.webm. */
+  /** Records the replay window here as <runId>.mp4. */
   videoDir?: string;
   evalVideoNoBlur?: true;
 }
@@ -343,7 +343,7 @@ export async function replayLiveWorkflow(
     const videoDir = deps.artifactRoot ? path.join(deps.artifactRoot, "videos") : deps.videoDir;
     if (videoDir) {
       videoStartedAt = Date.now();
-      await driver.startVideo(path.join(videoDir, `${runId}.webm`), { noBlur: deps.evalVideoNoBlur });
+      await driver.startVideo(path.join(videoDir, `${runId}.mp4`), { noBlur: deps.evalVideoNoBlur });
     }
     rememberLockTarget(REPLAY_AGENT, driver.targetId, lockFile);
     const leftover = takeDeadTarget(lockFile);
@@ -368,7 +368,7 @@ export async function replayLiveWorkflow(
     releaseCdpLock(REPLAY_AGENT, lockFile);
     try {
       const recorded = await driver?.finishVideo();
-      if (run && recorded?.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; run.videoTruncated = recorded.truncated; }
+      if (run && recorded?.wrote) { run.video = `${runId}.mp4`; run.videoStartedAt = videoStartedAt; run.videoTruncated = recorded.truncated; }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "video capture failed";
       if (run) run.traceUnavailable = [run.traceUnavailable, `replay video unavailable: ${reason}`].filter(Boolean).join("; ");

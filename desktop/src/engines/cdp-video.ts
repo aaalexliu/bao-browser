@@ -8,20 +8,13 @@ import { ffmpegBin } from "../v1/replay-video";
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
 const MP4_FPS = 30;
+const MAX_MP4_FRAMES = 15 * 60 * MP4_FPS;
 
-async function* cfrFrames(frames: readonly { file: string; at: number }[], endedAt: number): AsyncGenerator<Buffer> {
-  let duration = 0;
-  const timeline = frames.map((frame, index) => {
-    const at = duration;
-    duration += Math.max(40, (frames[index + 1]?.at ?? endedAt) - frame.at);
-    return { file: frame.file, at };
-  });
-  // Match the concat recorder's final 40 ms sample without relying on its timebase.
-  duration += 40;
+async function* cfrFrames(timeline: readonly { file: string; at: number }[], ticks: number): AsyncGenerator<Buffer> {
   let index = 0;
   let loaded = -1;
   let data = Buffer.alloc(0);
-  for (let tick = 0; tick * 1000 < duration * MP4_FPS; tick++) {
+  for (let tick = 0; tick < ticks; tick++) {
     while (index + 1 < timeline.length && timeline[index + 1]!.at * MP4_FPS <= tick * 1000) index++;
     if (loaded !== index) {
       data = await readFile(timeline[index]!.file);
@@ -116,6 +109,14 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
         if (failure) throw failure;
         if (!frames.length) throw new Error("CDP video recorded no frames");
         const mp4 = path.extname(destination) === ".mp4";
+        let duration = 0;
+        const timeline = mp4 ? frames.map((frame, index) => {
+          const at = duration;
+          duration += Math.max(40, (frames[index + 1]?.at ?? endedAt) - frame.at);
+          return { file: frame.file, at };
+        }) : [];
+        const ticks = Math.ceil((duration + 40) * MP4_FPS / 1000);
+        if (mp4 && ticks > MAX_MP4_FRAMES) truncated = true;
         const manifest = path.join(dir, "frames.txt");
         if (!mp4) {
           const list = frames.map((frame, index) => {
@@ -137,12 +138,12 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
         const child = spawn(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...input, ...encoding, destination],
           { stdio: ["pipe", "ignore", "ignore"], env: { PATH: "/usr/bin:/bin" } });
         const encoded = new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("CDP video encoding timed out")); }, 120_000);
+          const timer = mp4 ? undefined : setTimeout(() => { child.kill("SIGKILL"); reject(new Error("CDP video encoding timed out")); }, 120_000);
           child.once("error", () => { clearTimeout(timer); reject(new Error("CDP video encoder did not start")); });
           child.once("exit", (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error("CDP video encoding failed")); });
         });
         try {
-          if (mp4) await Promise.all([encoded, pipeline(cfrFrames(frames, endedAt), child.stdin)]);
+          if (mp4) await Promise.all([encoded, pipeline(cfrFrames(timeline, Math.min(ticks, MAX_MP4_FRAMES)), child.stdin)]);
           else { child.stdin.end(); await encoded; }
         } catch (error) { child.kill("SIGKILL"); throw error; }
         if ((await stat(destination)).size < 1000) throw new Error("CDP video output was empty");
