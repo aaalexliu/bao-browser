@@ -1,0 +1,77 @@
+import assert from "node:assert/strict";
+import { mkdirSync, rmSync } from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { chromium } from "playwright";
+import { startApp } from "../../src/app/server";
+import { applyHermeticApp } from "../runtime";
+
+test("Library step frame fits the captured viewport without letterboxing or cropping", { timeout: 30_000 }, async () => {
+  const previousHome = process.env.BAO_HOME;
+  const dirs = applyHermeticApp("shot-stage");
+  const app = await startApp({ home: dirs.home });
+  const browser = await chromium.launch({ headless: true, args: ["--use-mock-keychain", "--password-store=basic"] });
+  const page = await browser.newPage();
+  const runId = "run-shot-stage";
+  const shots = path.join(dirs.home, "shots", "runs", runId);
+  mkdirSync(shots, { recursive: true });
+  try {
+    await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());
+    for (const [name, viewport] of [
+      ["before.png", { width: 1280, height: 720 }],
+      ["after.png", { width: 320, height: 720 }],
+    ] as const) {
+      await page.setViewportSize(viewport);
+      await page.goto(`http://127.0.0.1:${app.port}/fixture`);
+      await page.screenshot({ path: path.join(shots, name) });
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.screenshot({ path: path.join(shots, "crop.png"), clip: { x: 0, y: 0, width: 1280, height: 80 } });
+    app.library.save({ schema: "bao.workflow/v2", version: 2, id: "wf-shot-stage", name: "Step screenshot fixture",
+      startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
+      steps: [
+        { id: "shot", index: 0, action: "note", label: "Fixture page", surface: "dom", timeoutMs: 1000 },
+        { id: "crop", index: 1, action: "note", label: "Target crop", surface: "dom", timeoutMs: 1000 },
+        { id: "missing", index: 2, action: "note", label: "No shot", surface: "dom", timeoutMs: 1000 },
+      ] });
+    app.library.saveRun({ id: runId, workflowId: "wf-shot-stage", at: 1, status: "passed", modelCalls: 0, heals: [],
+      steps: [
+        { id: "shot", status: "passed", beforeShot: "before.png", afterShot: "after.png" },
+        { id: "crop", status: "passed", afterShot: "crop.png" },
+        { id: "missing", status: "passed" },
+      ] });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.click("[data-screen=runs]");
+    await page.click(`[data-open-run=${runId}]`);
+    for (const [step, which, width, height] of [
+      ["shot", "after", 320, 720], ["shot", "before", 1280, 720], ["shot", "after", 320, 720], ["crop", "after", 1280, 80],
+    ] as const) {
+      await page.click(`#step-list [data-select-step=${step}]`);
+      await page.click(`[data-frame=${which}]`);
+      await page.waitForFunction(([w, h]) => {
+        const image = document.querySelector<HTMLImageElement>("#shot-stage img");
+        return !!image && image.naturalWidth === w && image.naturalHeight === h;
+      }, [width, height]);
+      const fit = await page.locator("#shot-stage").evaluate((stage) => {
+        const image = stage.querySelector<HTMLImageElement>("img")!;
+        const rect = stage.getBoundingClientRect();
+        const style = getComputedStyle(stage);
+        return { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
+          height: rect.height - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth),
+          ratio: image.naturalWidth / image.naturalHeight, objectFit: getComputedStyle(image).objectFit };
+      });
+      assert.ok(Math.abs(fit.width - fit.height * fit.ratio) < 2, `${which}: frame ${fit.width}x${fit.height} does not match captured ratio ${fit.ratio}`);
+      assert.equal(fit.objectFit, "contain", "keep every part of the captured page visible");
+    }
+    await page.click("#step-list [data-select-step=missing]");
+    await page.waitForSelector("#shot-stage:not(.has-shot)");
+    assert.equal(await page.locator("#shot-stage img").count(), 0);
+    assert.ok((await page.locator("#shot-stage").boundingBox())!.height >= 200, "missing-image placeholder keeps its height");
+  } finally {
+    await browser.close();
+    await app.close();
+    rmSync(path.dirname(dirs.home), { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.BAO_HOME; else process.env.BAO_HOME = previousHome;
+  }
+});

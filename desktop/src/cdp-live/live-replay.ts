@@ -5,6 +5,8 @@
 // model. Every act goes through the live session's guards in live-act.ts. The
 // hosts, labels, and stop paths come from the preset of the workflow's start url.
 
+import path from "node:path";
+import { type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
 import type { CdpLiveDriver } from "./driver";
@@ -72,7 +74,7 @@ class LiveStop extends Error {
 export type LiveWindow = LiveActTarget["driver"] & Pick<
   CdpLiveDriver,
   "tree" | "snapshot" | "pageSignals" | "waitIdle" | "goto" | "handleOf" | "upload" | "drop" | "digits"
->;
+> & Partial<Pick<CdpLiveDriver, "pageShot" | "pauseCapture" | "resumeCapture">>;
 
 /**
  * The replay engine's driver for a live window. It reads and waits through the
@@ -102,6 +104,16 @@ export class GuardedLiveDriver implements Driver {
   }
 
   async notify(): Promise<void> {}
+
+  async pageShot(): Promise<Buffer> {
+    if (!this.inner.pageShot) throw new Error("this live engine cannot take page screenshots");
+    return this.inner.pageShot();
+  }
+
+  async shot(): Promise<Buffer> { return this.pageShot(); }
+  trace() { return { console: [], network: [], unavailable: "guarded live replay does not collect console or network traces" }; }
+  pauseCapture(): void { this.inner.pauseCapture?.(); }
+  resumeCapture(): void { this.inner.resumeCapture?.(); }
 
   sleep(ms: number): Promise<void> {
     return this.inner.sleep(ms);
@@ -254,9 +266,10 @@ function settle(workflow: WorkflowV2, run: RunResult, driver: GuardedLiveDriver)
 }
 
 /** replay() on a guarded live window, with no heal provider and no approval step. A guard halt pauses the run. */
-export async function replayGuarded(workflow: WorkflowV2, inputs: ReplayArgs, guarded: GuardedLiveDriver, runId: string): Promise<RunResult> {
+export async function replayGuarded(workflow: WorkflowV2, inputs: ReplayArgs, guarded: GuardedLiveDriver, runId: string, shotDir?: string): Promise<RunResult> {
   const run = await replay(workflow, liveReplayArgs(workflow, inputs), guarded, {
     runId,
+    shotDir,
     now: () => Date.now(),
     heal: unavailableHeal(),
     siteTrust: "allow",
@@ -267,8 +280,10 @@ export async function replayGuarded(workflow: WorkflowV2, inputs: ReplayArgs, gu
 }
 
 export interface LiveReplayDeps {
-  /** The Chrome to drive: the serve-level live target. */
+  /** The target selected for this replay, fixed until teardown. */
   target: LiveTarget;
+  engineName?: PageEngineName;
+  artifactRoot?: string;
   lockFile?: string;
   /** BaoOSHelper, for the daily Chrome's Allow dialog. Tests pass a fake. */
   helper?: () => ChromeAx;
@@ -296,10 +311,11 @@ export async function replayLiveWorkflow(
   const blocked = navigationGuard(workflow.startUrl, scope.hosts, scope.origins, scope.stopPath);
   if (blocked) throw new Error(blocked);
   const lockFile = deps.lockFile || CDP_LOCK_PATH;
+  const engineName = deps.engineName ?? "old";
   await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
   let prepared;
   try {
-    prepared = await prepareTarget(deps.target, deps.helper, { axLog: deps.axLog, onNotice: deps.onNotice });
+    prepared = await prepareTarget(deps.target, deps.helper, { axLog: deps.axLog, onNotice: deps.onNotice }, engineName);
   } catch (err) {
     releaseCdpLock(REPLAY_AGENT, lockFile);
     throw err;
@@ -311,6 +327,7 @@ export async function replayLiveWorkflow(
       openProfile: deps.openProfile,
       axLog: deps.axLog,
       connectTimeoutMs: deps.connectTimeoutMs,
+      engineName,
     });
     cdp = opened.cdp;
     driver = opened.driver;
@@ -325,8 +342,19 @@ export async function replayLiveWorkflow(
     await watchNewTargets(cdp, driver.targetId, () => true, () => {
       guarded.halted = "new_target";
     });
+    const videoStartedAt = Date.now();
+    if (deps.artifactRoot) await driver.startVideo(path.join(deps.artifactRoot, "videos", `${runId}.webm`));
     await driver.goto(workflow.startUrl);
-    return await replayGuarded(workflow, inputs, guarded, runId);
+    const run = await replayGuarded(workflow, inputs, guarded, runId, deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined);
+    run.pageEngine = engineName;
+    try {
+      const recorded = await driver.finishVideo();
+      if (recorded.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; run.videoTruncated = recorded.truncated; }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "video capture failed";
+      run.traceUnavailable = [run.traceUnavailable, `replay video unavailable: ${reason}`].filter(Boolean).join("; ");
+    }
+    return run;
   } finally {
     await driver?.end().catch(() => undefined);
     cdp?.close();

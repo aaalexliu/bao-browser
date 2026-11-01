@@ -1,4 +1,9 @@
+import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import path from "node:path";
+import { condenseWithGroups } from "../v1/condense";
+import { workflowShotName } from "../v1/shots";
+import { type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
@@ -91,6 +96,11 @@ interface OpenState {
   /** Debugging was off before this session, so stop turns it off again. */
   turnedOn: boolean;
   portFile: string;
+  closeTarget?: () => Promise<void>;
+  artifactRoot?: string;
+  engineName: PageEngineName;
+  runId: string;
+  eventShots: Map<string, string>;
 }
 
 /** The marked control and the page around it, read after every check and before the act. */
@@ -114,12 +124,21 @@ function shown(read: LiveRead | null | undefined): LiveViewPage | null {
   return read ? viewPage(read.view) : null;
 }
 
+interface LiveRunSelection {
+  target: LiveTarget;
+  engineName: PageEngineName;
+  artifactRoot?: string;
+  close?: () => Promise<void>;
+}
+
 export interface LiveHostOptions {
   home: string;
   lockFile?: string;
   connectTimeoutMs?: number;
   /** The Chrome a start drives when the caller names no port file. Default: the daily Chrome. */
   target?: LiveTarget;
+  /** Runs once per session or replay. The chosen engine and private profile stay fixed until it ends. */
+  selectRun?: () => Promise<LiveRunSelection>;
   /** BaoOSHelper, for the daily Chrome's Allow dialog. Tests pass a fake. */
   helper?: () => ChromeAx;
   /** Asks the daily Chrome to open a window in the target's profile. Tests pass a fake. */
@@ -224,6 +243,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   async function dispatch(raw: unknown): Promise<unknown> {
+    open?.driver.touch();
     const body = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const op = typeof body.op === "string" ? body.op : "";
     if (op === LIVE_DISCONNECT) return disconnect(body);
@@ -297,18 +317,25 @@ export function createLiveHost(opts: LiveHostOptions): {
     const client = typeof body.client === "string" ? body.client.slice(0, 80) : "";
     if (!intent) throw new Error("intent is required");
     if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
-    const target = portFile ? targetForPortFile(portFile, defaultTarget) : defaultTarget;
     const { guard, stopPath, hosts, origins } = liveScope(url, asked);
     const host = new URL(url).hostname;
     const blocked = navigationGuard(url, hosts, origins, stopPath);
     if (blocked) throw new Error(blocked);
-    if (lockFile !== CDP_LOCK_PATH && target !== defaultTarget) throw new Error("this app has its own live lock, so it drives only its configured Chrome");
-    await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 });
+    const selected = await opts.selectRun?.();
+    if (portFile && selected?.close) {
+      await selected.close();
+      throw new Error("a copied-profile run cannot override its target with portFile");
+    }
+    const configured = selected?.target ?? defaultTarget;
+    const target = portFile ? targetForPortFile(portFile, configured) : configured;
+    const engineName = selected?.engineName ?? "old";
+    if (lockFile !== CDP_LOCK_PATH && target !== configured) throw new Error("this app has its own live lock, so it drives only its configured Chrome");
+    await acquireCdpLock(AGENT, { file: lockFile, timeoutMs: 5_000 }).catch(async (error) => { await selected?.close?.(); throw error; });
     let prepared;
     try {
-      prepared = await prepareTarget(target, opts.helper, { axLog, onNotice: opts.onNotice });
+      prepared = await prepareTarget(target, opts.helper, { axLog, onNotice: opts.onNotice }, engineName);
     } catch (err) {
-      releaseCdpLock(AGENT, lockFile);
+      try { await selected?.close?.(); } finally { releaseCdpLock(AGENT, lockFile); }
       throw err;
     }
     let cdp: CdpSocket | undefined;
@@ -318,6 +345,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         openProfile,
         axLog: path.join(opts.home, "live-session", "ax.jsonl"),
         connectTimeoutMs: opts.connectTimeoutMs,
+        engineName,
       });
       cdp = opened.cdp;
       driver = opened.driver;
@@ -349,7 +377,13 @@ export function createLiveHost(opts: LiveHostOptions): {
         steps: [],
         turnedOn: prepared.turnedOn,
         portFile: prepared.target.portFile,
+        closeTarget: selected?.close,
+        artifactRoot: selected?.artifactRoot,
+        engineName,
+        runId: `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        eventShots: new Map(),
       };
+      if (open.artifactRoot) await driver.startVideo(path.join(open.artifactRoot, "videos", `${open.runId}.webm`));
       slot = { phase: "open", id: open.id };
       rememberLockTarget(AGENT, driver.targetId, lockFile);
       const leftover = takeDeadTarget(lockFile);
@@ -365,6 +399,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await driver.goto(url);
       return await look("start");
     } catch (err) {
+      const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.webm`) : "";
       if (open?.log) {
         const reason = err instanceof Error ? err.message : "live call failed";
         await open.log.flush("failed", reason.slice(0, 160), host).catch(() => undefined);
@@ -372,9 +407,12 @@ export function createLiveHost(opts: LiveHostOptions): {
       await driver?.end().catch(() => undefined);
       cdp?.close();
       if (prepared.turnedOn) await restoreOff(prepared.target.portFile).catch(() => undefined);
-      releaseCdpLock(AGENT, lockFile);
-      open = null;
-      slot = { phase: "idle" };
+      try { await selected?.close?.(); } finally {
+        releaseCdpLock(AGENT, lockFile);
+        open = null;
+        slot = { phase: "idle" };
+        if (clip) await rm(clip, { force: true });
+      }
       throw err;
     }
   }
@@ -429,10 +467,15 @@ export function createLiveHost(opts: LiveHostOptions): {
       stopPath: open.stopPath,
     });
     if (halt) {
+      open.driver.pauseCapture();
       open.halted = halt;
       open.refused = true;
     }
     const shot = await record(action, open.read.view.title || action, Date.now() - started, halt ? "needs_human" : "passed", null);
+    if (["click", "type", "key", "scroll"].includes(action)) {
+      const event = open.trail.list().at(-1);
+      if (event && shot) open.eventShots.set(event.id, shot);
+    }
     return reply({
       op: LOOK_OPS[action] || "live_screenshot",
       session: open.id,
@@ -583,10 +626,10 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
-  function saveWorkflow(): void {
-    if (!open) return;
+  function saveWorkflow(status: string, video: boolean, videoTruncated: boolean, traceUnavailable?: string): boolean {
+    if (!open) return false;
     const events = open.trail.list();
-    if (!events.length) return;
+    if (!events.length) return false;
     const workflow = workflowFromTrail({
       id: open.id,
       name: open.intent.slice(0, 80),
@@ -597,8 +640,34 @@ export function createLiveHost(opts: LiveHostOptions): {
       events,
       guard: open.guard,
     });
-    if (!workflow.steps.length) return;
-    new Library(opts.home).save(workflow);
+    if (!workflow.steps.length) return false;
+    const library = new Library(opts.home);
+    library.save(workflow);
+    if (open.artifactRoot) {
+      const { groups } = condenseWithGroups(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl });
+      const workflowShots = path.join(library.root, "shots", "workflows", workflow.id);
+      const runShots = path.join(library.root, "shots", "runs", open.runId);
+      mkdirSync(workflowShots, { recursive: true });
+      mkdirSync(runShots, { recursive: true });
+      const starts = groups.map((group) => events.findIndex((event) => event.id === group[0]?.id));
+      const steps = workflow.steps.map((step, index) => {
+        const start = starts[index] ?? -1;
+        const end = starts[index + 1] ?? events.length;
+        const event = start < 0 ? undefined : events.slice(start, end).reverse().find((entry) => open!.eventShots.has(entry.id));
+        const shot = event ? open!.eventShots.get(event.id) : undefined;
+        const src = shot ? path.join(liveSessionDir(opts.home), "shots", shot) : undefined;
+        const afterShot = `${step.index}-after.png`;
+        if (src && existsSync(src)) {
+          copyFileSync(src, path.join(workflowShots, workflowShotName(step.id)));
+          copyFileSync(src, path.join(runShots, afterShot));
+          return { id: step.id, status: "passed", afterShot };
+        }
+        return { id: step.id, status: "passed" };
+      });
+      library.saveRun({ id: open.runId, kind: "capture", pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
+        ...(video ? { video: `${open.runId}.webm`, videoStartedAt: open.startedAt } : {}) });
+    }
+    return true;
   }
 
   async function stop(reason: EndReason = "stop"): Promise<unknown> {
@@ -614,38 +683,73 @@ export function createLiveHost(opts: LiveHostOptions): {
     const noteText = open.halted ? open.halted : open.refused ? "Refused." : ended;
     const status = open.halted ? "needs_human" : open.refused ? "failed" : "passed";
     let saveError = "";
+    let videoError = "";
+    let saved = false;
+    let videoWrote = false;
+    let videoTruncated = false;
     try {
-      saveWorkflow();
-    } catch (err) {
-      saveError = err instanceof Error ? err.message : "workflow save failed";
+      const recorded = await open.driver.finishVideo();
+      videoWrote = recorded.wrote;
+      videoTruncated = recorded.truncated;
     }
+    catch (error) { videoError = `video unavailable: ${error instanceof Error ? error.message : "video save failed"}`; }
+    try { saved = saveWorkflow(status, videoWrote, videoTruncated, videoError || undefined); }
+    catch (error) { saveError = error instanceof Error ? error.message : "workflow save failed"; }
+    const videoNote = videoError ? `${saved ? "Workflow saved; " : ""}${videoError}` : "";
     const ending = open;
-    await ending.log.flush(saveError ? "failed" : status, saveError || noteText, ending.host);
+    await ending.log.flush(saveError ? "failed" : status, saveError || [noteText, videoNote].filter(Boolean).join(" "), ending.host);
     slot = { phase: "closed", id, status: saveError ? "failed" : status };
     open = null;
     // A replay opens its own connection, so the session closes its window and socket before it frees the lock.
     await ending.driver.end().catch(() => undefined);
     ending.cdp.close();
     if (ending.turnedOn) await restoreOff(ending.portFile).catch(() => undefined);
-    releaseCdpLock(AGENT, lockFile);
+    try { await ending.closeTarget?.(); } finally {
+      releaseCdpLock(AGENT, lockFile);
+      if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.webm`), { force: true });
+    }
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });
     }
-    return reply({ op: "live_stop", session: id, outcome: { kind: "stopped", already: false }, view, shot: "" });
+    return reply({ op: "live_stop", session: id, outcome: { kind: "stopped", already: false, ...(videoNote ? { reason: videoNote } : {}) }, view, shot: "" });
   }
 
   /** Runs inside the call chain. The session must be closed, and the replay takes the CDP lock itself. */
   async function runReplay(workflow: WorkflowV2, inputs: ReplayArgs): Promise<RunResult> {
     if (slot.phase === "open") throw new Error("stop the live session before replay");
-    return replayLiveWorkflow(workflow, inputs, {
-      target: defaultTarget,
-      lockFile,
-      helper: opts.helper,
-      openProfile,
-      axLog,
-      connectTimeoutMs: opts.connectTimeoutMs,
-      onNotice: opts.onNotice,
-    });
+    const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    let selected: LiveRunSelection | undefined;
+    let run: RunResult = {
+      runId, status: "failed", steps: workflow.steps.map((step) => ({ id: step.id, status: "pending" })),
+      heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
+    };
+    try {
+      selected = await opts.selectRun?.();
+      run.pageEngine = selected?.engineName ?? "old";
+      try {
+        run = await replayLiveWorkflow(workflow, inputs, {
+          target: selected?.target ?? defaultTarget,
+          engineName: run.pageEngine,
+          artifactRoot: selected?.artifactRoot,
+          lockFile,
+          helper: opts.helper,
+          openProfile,
+          axLog,
+          connectTimeoutMs: opts.connectTimeoutMs,
+          onNotice: opts.onNotice,
+        }, runId);
+      } finally { await selected?.close?.(); }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "live replay failed";
+      run.status = "failed";
+      run.failure = run.failure ? { ...run.failure, reason: `${run.failure.reason}; ${reason}` } : {
+        stepId: workflow.steps[0]?.id || workflow.id, index: 0, intent: workflow.intent || workflow.name,
+        phase: "action", reason, snapshot: {},
+      };
+      const clip = selected?.artifactRoot ? path.join(selected.artifactRoot, "videos", `${runId}.webm`) : "";
+      if (clip && existsSync(clip) && statSync(clip).size > 1000) run.video = `${runId}.webm`;
+    }
+    return run;
   }
 
   /** bao mcp's run_workflow sends the workflow it found and the inputs. The reply carries the run, or why it did not start. */
@@ -673,6 +777,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   async function keepOpen(): Promise<boolean> {
     const run = chain.then(() => {
       if (!open) return false;
+      open.driver.touch();
       armIdle();
       return true;
     });

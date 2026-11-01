@@ -19,6 +19,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp desktop/packaging/macos/Info.plist "$APP/Contents/Info.plist"
 bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"
 cp -a "$HELPER" "$APP/Contents/Resources/BaoOSHelper.app"
+codesign --force --sign "$IDENTITY" --identifier dev.bao.agent-browser "$APP/Contents/Resources/agent-browser/agent-browser"
+codesign --verify --strict "$APP/Contents/Resources/agent-browser/agent-browser"
 
 SMOKE="$(mktemp -d "${TMPDIR:-/tmp}/bao-require.XXXXXX")"
 SMOKE_HOME="$(mktemp -d "${TMPDIR:-/tmp}/bao-home.XXXXXX")"

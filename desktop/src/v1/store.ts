@@ -40,10 +40,19 @@ export interface Settings extends HealSettings {
    * This is not synced. Another machine has its own Chrome grant.
    */
   hostAccess?: "all" | "site" | "none";
+  /** Local run choice. Old remains the default. */
+  pageEngine?: "old" | "agent-browser";
+  /** Chrome profile directory explicitly picked on this Mac. Never synced. */
+  chromeProfile?: string;
+  /** Local extension choice by Chrome profile directory. Off unless explicitly enabled. */
+  chromeProfileExtensions?: Record<string, boolean>;
 }
 
 export interface StoredRun {
   id: string;
+  kind?: "replay" | "capture";
+  pageEngine?: "old" | "agent-browser";
+  traceUnavailable?: string;
   workflowId: string;
   status: string;
   at: number;
@@ -58,6 +67,7 @@ export interface StoredRun {
   inputs?: Record<string, string>;
   video?: string;
   videoStartedAt?: number;
+  videoTruncated?: boolean;
   repairs?: unknown[];
   receipts?: unknown[];
   promotion?: unknown;

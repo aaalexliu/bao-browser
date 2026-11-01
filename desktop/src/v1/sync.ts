@@ -470,7 +470,7 @@ function syncBuckets(library: Library, state: SyncState): SyncBucket[] {
 function localSyncCounts(library: Library): Record<SyncCategory, number> {
   return {
     workflows: library.list().length,
-    "run history": library.listRuns().length,
+    "run history": library.listRuns().filter((run) => run.kind !== "capture").length,
     "heal records": countJson(path.join(library.root, "heals")),
     settings: existsSync(path.join(library.root, "settings.json")) ? 1 : 0,
   };
@@ -585,7 +585,7 @@ async function pushDocument(
 
 async function pushRuns(library: Library, state: SyncState): Promise<void> {
   for (const run of library.listRuns()) {
-    if (state.pushedRuns.includes(run.id)) continue;
+    if (run.kind === "capture" || state.pushedRuns.includes(run.id)) continue;
     const steps = (run.steps as { id?: string; status?: string }[]) ?? [];
     const body = buildRunBody({
       id: run.id,

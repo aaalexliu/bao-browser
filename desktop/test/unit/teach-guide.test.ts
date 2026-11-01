@@ -136,7 +136,8 @@ test("a note lands on the step within a second and a fix is a labelled correctio
   }
 });
 
-test("guide me highlights the fixture and takes no automated actions", { timeout: 120000 }, async () => {
+for (const driver of ["playwright", "extension"] as const) {
+test(`old-engine guide me highlights the ${driver} fixture without an extension link`, { timeout: 120000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-guide-"));
   const app = await startApp({ home, port: 0 });
   try {
@@ -146,6 +147,7 @@ test("guide me highlights the fixture and takes no automated actions", { timeout
       schema: "bao.workflow/v2",
       version: 2,
       id: "wf-guide-me",
+      driver,
       name: "Guide me fixture",
       startUrl: `http://127.0.0.1:${app.port}/fixture`,
       inputs: [],
@@ -157,6 +159,11 @@ test("guide me highlights the fixture and takes no automated actions", { timeout
       ],
     };
     app.library.save(doc);
+    if (driver === "extension") {
+      const refused = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: doc.id }) });
+      assert.equal(refused.status, 409);
+      assert.equal((await refused.json()).error, "extension is not connected");
+    }
     const pending = post(app.port, "/api/replay", { id: doc.id, args: {}, guide: true });
     const focus = await until(() => readState(app.port), (state) => state.guide?.stepId === "focus-user" && state.guide.status === "highlight", "username highlight");
     assert.equal(focus.guide?.actions, 0);
@@ -178,3 +185,4 @@ test("guide me highlights the fixture and takes no automated actions", { timeout
     await app.close();
   }
 });
+}

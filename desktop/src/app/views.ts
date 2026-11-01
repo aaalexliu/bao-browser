@@ -87,6 +87,7 @@ export interface PromotionView {
 
 export interface RunSummary {
   id: string;
+  kind?: "replay" | "capture";
   workflowId: string;
   status: string;
   at?: number;
@@ -98,6 +99,8 @@ export interface RunSummary {
   inputs?: Record<string, string>;
   video?: string;
   videoStartedAt?: number;
+  videoTruncated?: boolean;
+  traceUnavailable?: string;
   repairs?: { stepId?: string; repair: string; detail?: string }[];
   receipts?: { stepId?: string; source?: string; expected?: string; actual?: string; pass?: boolean }[];
   trajectory?: TrajectoryStep[];
@@ -608,8 +611,8 @@ export function runViewer(
         reason: failed.reason || failure?.reason,
         brokenAttr: failure?.brokenAttr,
       })
-      : `${esc(workflow.name)} passed`;
-  const statusWord = run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
+      : `${esc(workflow.name)} ${run.kind === "capture" ? "recorded" : "passed"}`;
+  const statusWord = run.kind === "capture" ? `recording (${run.status})` : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
   const badge = modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
@@ -672,6 +675,7 @@ export function runViewer(
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
+      ${run.traceUnavailable ? `<p class="quiet" id="trace-unavailable">${esc(run.traceUnavailable)}</p>` : ""}
     </header>
     ${outputsHtml(run.id, run.outputs)}
     ${video}
@@ -887,8 +891,8 @@ export function identityTable(identity: IdentityView | undefined): string {
 
 export function videoBar(run: RunSummary, steps: StepView[]): string {
   const timed = steps.filter((step) => typeof step.startedAt === "number");
-  if (timed.length === 0) return `<div id="video-bar" hidden></div>`;
-  const origin = run.videoStartedAt || timed[0]!.startedAt || 0;
+  if (timed.length === 0 && !run.video) return `<div id="video-bar" hidden></div>`;
+  const origin = run.videoStartedAt || timed[0]?.startedAt || 0;
   const spans = filmstripSpans(steps);
   const total = spans.reduce((sum, span) => sum + span.flex, 0) || 1;
   let cursor = 0;
@@ -908,6 +912,7 @@ export function videoBar(run: RunSummary, steps: StepView[]): string {
   return `<div id="video-bar" data-origin="${origin}">
     <video id="run-video" src="${esc(src)}" poster="/api/runs/${encodeURIComponent(run.id)}/poster" data-skips="${skipData}" controls preload="auto" style="display:block;width:100%;height:240px;object-fit:contain;background:#1c1915"></video>
     <div class="timeline">${markers}</div>
+    ${run.videoTruncated ? `<p class="quiet">Video truncated at the capture limit.</p>` : ""}
     <p id="skip-live" class="quiet"></p>
     <div class="row"><button type="button" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button></div>
   </div>`;
@@ -1206,6 +1211,7 @@ export function healWorkflowName(
 }
 
 export function runKind(run: RunSummary, promotion?: PromotionView): string {
+  if (run.kind === "capture") return "recording";
   if (run.status === "timed-out") return "timed-out";
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
   if (run.status === "needs_human" || run.status === "paused") return "paused";

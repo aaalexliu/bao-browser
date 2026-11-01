@@ -103,6 +103,10 @@
     .sync-cats li { padding: 0.45rem 0; border-top: 1px solid var(--line); }
     .sync-cats label { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-weight: 600; }
     .sync-cats input { width: auto; }
+    #remote-mcp-setting label:has(#remote-mcp) { display: flex; align-items: center; }
+    #remote-mcp { width: auto; }
+    #page-engine-settings .extensions-choice { display: flex; align-items: center; gap: 8px; }
+    #chrome-profile-extensions { width: auto; }
     .sync-cats p { margin: 0.2rem 0 0; color: var(--quiet); font-size: var(--text-sm); }
     .versions { list-style: none; padding: 0; margin: 0.4rem 0 0; display: grid; gap: 0.7rem; }
     .versions li { padding-top: 0.55rem; border-top: 1px solid var(--line); }
@@ -126,6 +130,8 @@
     .lede { font-size: var(--text-md); margin: 0.35rem 0 var(--space-4); }
     .crumb { margin: 0 0 0.7rem; color: var(--quiet); font-size: var(--text-sm); display: flex; gap: 0.35rem; align-items: center; }
     .wf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.4rem; }
+    .wf-head > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .wf-head > button { flex: none; white-space: nowrap; }
     .wf-head .chips { margin-top: 0.45rem; }
     #app { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
     #rail {
@@ -447,7 +453,7 @@
     .step em.recovered { color: var(--ok); font-style: normal; }
     .step em.ask { color: var(--need); font-style: normal; margin-left: 0.3rem; }
     .step-list { display: flex; flex-direction: column; gap: 0.25rem; }
-    .step { text-align: left; background: transparent; width: 100%; }
+    .step { text-align: left; background: transparent; width: 100%; height: auto; min-height: 32px; padding: 6px 12px; overflow-wrap: anywhere; }
     .step.on { background: var(--select); }
     .step em { color: var(--quiet); font-style: normal; margin-left: 0.3rem; }
     .bar { display: flex; gap: 3px; align-items: center; margin: 0.7rem 0; }
@@ -457,6 +463,8 @@
     .seg.paused { background: var(--need); }
     .bar-count { color: var(--quiet); margin-left: 0.4rem; }
     .shot-stage, .compare { position: relative; height: 220px; border-radius: 10px; overflow: hidden; background: var(--select); border: 1px solid var(--line); }
+    .shot-stage.has-shot { height: auto; }
+    .shot-stage img { position: static; display: block; height: auto; }
     .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; border: 0; }
     #shot-slider { position: absolute; left: 12px; right: 12px; bottom: 10px; width: auto; }
     .filmstrip { display: flex; gap: 8px; overflow: auto; padding: 4px 0 10px; align-items: center; }

@@ -169,6 +169,7 @@ export interface Driver {
   pauseCapture?(): void;
   resumeCapture?(): void;
   trace?(): {
+    unavailable?: string;
     console: { stepId?: string; type?: string; text: string; ts?: number }[];
     network: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
   };
@@ -189,6 +190,12 @@ export interface ShotTarget {
 
 export interface RunResult {
   runId: string;
+  pageEngine?: "old" | "agent-browser";
+  traceUnavailable?: string;
+  /** Run-local CDP video, when the selected live engine recorded one. */
+  video?: string;
+  videoStartedAt?: number;
+  videoTruncated?: boolean;
   status: "passed" | "failed" | "paused";
   steps: {
     id: string;
@@ -332,6 +339,7 @@ export async function replay(
       pageClasses,
       console: trace?.console || [],
       network: trace?.network || [],
+      ...(trace?.unavailable ? { traceUnavailable: trace.unavailable } : {}),
       ...partial,
       ...(outputs ? { outputs } : {}),
       ...(Object.keys(downloaded).length ? { files: downloaded } : {}),

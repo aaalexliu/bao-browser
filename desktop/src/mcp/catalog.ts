@@ -221,7 +221,7 @@ export async function runWorkflow(
   // A cdp-live workflow runs only through the live runner. Anything else opens Bao's own Chrome, and no extension links to it.
   const driver = (request.document ?? placed!.document).driver;
   const liveRun = driver === "cdp-live" ? control?.live : undefined;
-  const refusal = liveRun ? null : replayRefusal(driver, { extensionLinked: false });
+  const refusal = liveRun ? null : replayRefusal(driver, { extensionLinked: false, pageEngine: library.settings().pageEngine });
   if (refusal) return emptyOutcome(id, "failed", refusal);
   if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
     const listingId = placed.forkedFrom || placed.document.id;
@@ -641,6 +641,9 @@ function saveWorkflowRun(
   const wall = run.pausedKind === "wall";
   library.saveRun({
     id: run.runId,
+    pageEngine: run.pageEngine,
+    traceUnavailable: run.traceUnavailable,
+    videoTruncated: run.videoTruncated,
     workflowId: workflow.id,
     status: wall ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
     at: Date.now(),
@@ -661,7 +664,7 @@ function saveWorkflowRun(
       deadline: outcome.deadline,
       resume_token: outcome.resume_token,
     } : undefined,
-    ...(clip ?? {}),
+    ...(clip ?? (run.video ? { video: run.video, videoStartedAt: run.videoStartedAt } : {})),
   });
 }
 
@@ -946,7 +949,7 @@ function localGreenAt(library: Library, id: string): number | undefined {
   let latest = 0;
   for (const run of library.listRuns()) {
     if (run.workflowId !== id) continue;
-    if (run.status !== "passed" && run.status !== "ok") continue;
+    if (run.kind === "capture" || (run.status !== "passed" && run.status !== "ok")) continue;
     if (run.at > latest) latest = run.at;
   }
   return latest || undefined;

@@ -36,6 +36,7 @@ cp -a "$OUT/extension-dist/." "$DEST/extension/dist/"
   --outfile="$DEST/bao/src/app/app.js"
 test -s "$DEST/bao/src/app/app.js"
 
+node "$ROOT/desktop/packaging/stage-agent-browser.mjs" "$DEST/agent-browser"
 node "$ROOT/desktop/packaging/stage-deps.mjs" "$DEST/bao"
 env -u NODE_PATH -u NODE_OPTIONS HOME="$SMOKE_HOME" node "$ROOT/desktop/packaging/require-staged.js" "$DEST/bao"
 # The launcher reads ok and a home from print-home. A cwd with no .bao-mcp keeps the smoke away from the checkout.

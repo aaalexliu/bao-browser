@@ -1,6 +1,6 @@
 # Accept an installed Bao on a Mac
 
-This is the engineering pass for an installed app. The short human card is [Test Bao on a Mac](mac-test.md). Do not lengthen that card. Build steps stay in [Build Bao on a Mac](mac-build.md). Permission switches stay in [What Bao asks permission for](permissions.md).
+This is the engineering pass for an installed app with Settings → Page engine set to **Current engine (default)**. The separate trial contract and proof are in [agent-browser trial](agent-browser-engine.md). The short human card is [Test Bao on a Mac](mac-test.md). Do not lengthen that card. Build steps stay in [Build Bao on a Mac](mac-build.md). Permission switches stay in [What Bao asks permission for](permissions.md).
 
 Every check in this file needs a Mac with `/Applications/Bao.app` already installed from this tree, except `npm run typecheck` and `npm run test:v1` at the end. Those two also run on Linux. Do not rebuild BaoOSHelper, re-sign it, reset privacy permissions, or grant Accessibility or Screen Recording while you run these checks.
 
