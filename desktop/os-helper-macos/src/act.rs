@@ -68,20 +68,12 @@ pub fn press(bundle: &str, pid: Option<i32>, role: &str, name: &str, subrole: &s
     if !node.actions.iter().any(|a| a == kAXPressAction) {
         return Err(format!("control {:?} has no AXPress action; refusing coordinate fallback", node.name));
     }
+    let frame = node.frame.as_ref().filter(|frame| frame.w > 0.0 && frame.h > 0.0)
+        .ok_or("control has no visible frame; refusing to press")?;
+    crate::query::require_uncovered_point(frame.x + frame.w / 2.0, frame.y + frame.h / 2.0, node.pid)?;
     raise_window(&el);
     let action = CFString::new(kAXPressAction);
     crate::element::ax_ok(unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) }, "AXPress")?;
-    Ok(node)
-}
-
-pub fn show_menu(bundle: &str, pid: Option<i32>, role: &str, name: &str, subrole: &str, path: &[Seg], value_prefix: &str) -> Result<Node, String> {
-    let (node, el) = take_one(bundle, pid, role, name, subrole, path, value_prefix)?;
-    if !node.actions.iter().any(|a| a == "AXShowMenu") {
-        return Err(format!("control {:?} has no AXShowMenu action", node.name));
-    }
-    raise_window(&el);
-    let action = CFString::new("AXShowMenu");
-    crate::element::ax_ok(unsafe { AXUIElementPerformAction(el.0, action.as_concrete_TypeRef()) }, "AXShowMenu")?;
     Ok(node)
 }
 
@@ -210,12 +202,6 @@ pub fn checkbox_set(pid: i32, name: &str, on: bool, frame: Option<(f64, f64, f64
     Ok(json!({"ok": true, "found": true, "value": string_attr(&el, "AXValue"), "pressed": !already}))
 }
 
-pub fn set_checked(bundle: &str, pid: Option<i32>, role: &str, name: &str, on: bool) -> Result<Node, String> {
-    let (node, el) = take_one(bundle, pid, role, name, "", &[], "")?;
-    set_bool(&el, "AXValue", on)?;
-    Ok(node)
-}
-
 pub fn set_value(bundle: &str, pid: Option<i32>, role: &str, name: &str, subrole: &str, path: &[Seg], value: &str) -> Result<Node, String> {
     let (node, el) = take_one(bundle, pid, role, name, subrole, path, "")?;
     let _ = set_bool(&el, "AXFocused", true);
@@ -253,8 +239,16 @@ pub fn move_window(bundle: &str, pid: Option<i32>, frontmost: bool, x: f64, y: f
     };
     if frontmost {
         crate::apps::activate_pid(pid)?;
+        // Activation is asynchronous. A background Chrome ignores AXPosition.
+        let started = std::time::Instant::now();
+        while crate::apps::frontmost_pid()? != pid {
+            if started.elapsed() > std::time::Duration::from_secs(2) {
+                return Err("target app did not become frontmost; refusing to move its window".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
     }
-    let geom = detect_geom(pid, &app);
+    let geom = detect_geom(&app);
     let wins = crate::element::copy_attr(&app, "AXWindows").map(|v| crate::element::element_list(&v)).unwrap_or_default();
     let win = wins.into_iter().max_by(|a, b| {
         let af = raw_frame(a).map(|f| f.w * f.h).unwrap_or(0.0);

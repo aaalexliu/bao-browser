@@ -68,6 +68,40 @@ test("live Chrome rejects window capture without calling it", async () => {
   assert.equal(other.refuseWindowShot, false);
 });
 
+test("live Chrome helper refuses foreign walks and presses before launching the helper", async () => {
+  const live = chromeHelper();
+  const target = { platform: "macos" as const, app: "com.apple.UserNotificationCenter", role: "AXButton", name: "Allow", path: [] };
+  for (const bundle of [target.app, "", "com.google.Chrome.helper", "com.google.Chrome.evil"]) {
+    await assert.rejects(live.nodes(bundle), /target bundle must be Google Chrome/);
+    await assert.rejects(live.press({ ...target, app: bundle }), /target bundle must be Google Chrome/);
+    await assert.rejects(live.hit(10, 20, bundle), /target bundle must be Google Chrome/);
+    await assert.rejects(live.focused(bundle), /target bundle must be Google Chrome/);
+  }
+  await assert.rejects(live.exec(["nodes", "--pid", "123"]), /target bundle must be Google Chrome/);
+  await assert.rejects(live.exec(["nodes", "--bundle", target.app]), /target bundle must be Google Chrome/);
+  await assert.rejects(live.exec(["press", "--bundle", "com.google.Chrome", "--bundle", target.app]), /target bundle must be Google Chrome/);
+  await assert.rejects(live.windows("com.google.Chrome"), /Screen Recording is not used/);
+  await assert.rejects(live.permissions(true), /Screen Recording is not used/);
+  assert.deepEqual(live.calls, []);
+});
+
+test("live Chrome helper accepts Chrome channels and skips ScreenCapture preflight", async (t) => {
+  const sent: string[][] = [];
+  t.mock.method(MacOsHelper.prototype, "exec", async (args: string[]) => {
+    sent.push(args);
+    return { ok: true };
+  });
+  const live = chromeHelper();
+  for (const bundle of ["com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary", "com.google.chrome.for.testing"]) {
+    await live.nodes(bundle, 42);
+    await live.press({ platform: "macos", app: bundle, role: "AXButton", name: "Allow", path: [] }, 42);
+    assert.deepEqual(sent.at(-2), ["nodes", "--bundle", bundle, "--pid", "42"]);
+    assert.deepEqual(sent.at(-1), ["press", "--bundle", bundle, "--role", "AXButton", "--name", "Allow", "--pid", "42"]);
+  }
+  await live.permissions(false);
+  assert.deepEqual(sent.at(-1), ["permissions-ax"]);
+});
+
 test("live entries keep the shared gate", () => {
   for (const name of LIVE_ENTRIES) {
     const src = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live", name), "utf8");

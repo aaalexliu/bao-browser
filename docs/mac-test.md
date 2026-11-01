@@ -8,7 +8,7 @@ Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
 
 The window title is **Bao**, without an address bar. Library opens first. Sidebar: Library, Capture, Teach, Runs, Heals, Replay, Logins, Settings. With Accessibility and Screen Recording, the footer reads **helper ok**, **AX press ready**, **window capture ready**, and **MCP driver ready**.
 
-For **live Chrome ready**: Accessibility plus Automation or Chrome already listening. Closed Chrome leaves Automation neutral. Screen Recording stays on for capture and MCP. **Live Chrome needs one more permission** points to **Allow** beside **Automation: Google Chrome**, or its System Settings path.
+For **live Chrome ready**: Accessibility plus Automation or Chrome already listening. Closed Chrome leaves Automation neutral. Leave Screen Recording off; live screenshots use CDP. **Live Chrome needs one more permission** points to **Allow** beside **Automation: Google Chrome**, or its System Settings path.
 
 ## Record
 

@@ -70,27 +70,30 @@ fn pid_path(pid: i32) -> String {
     String::from_utf8_lossy(&buf[..n as usize]).trim_end_matches('\0').to_string()
 }
 
-pub fn report(prompt: bool) -> Value {
-    let accessibility = if prompt { ax_trusted(true) } else { ax_trusted(false) };
-    let screen_before = screen_trusted();
-    let screen_capture = if prompt && !screen_before {
-        let _ = screen_prompt_once();
-        screen_trusted()
-    } else {
-        screen_before
-    };
+pub fn report(prompt: bool, accessibility_only: bool) -> Value {
+    let accessibility = ax_trusted(prompt);
     let pid = std::process::id() as i32;
     let ppid = unsafe { libc::getppid() };
     let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
     let parent = pid_path(ppid);
-    json!({
+    let mut report = json!({
         "ok": true,
         "prompted": prompt,
         "accessibility": accessibility,
-        "screenCapture": screen_capture,
         "exe": exe,
         "pid": pid,
         "ppid": ppid,
         "parentExe": parent,
-    })
+    });
+    if !accessibility_only {
+        let screen_before = screen_trusted();
+        let screen_capture = if prompt && !screen_before {
+            let _ = screen_prompt_once();
+            screen_trusted()
+        } else {
+            screen_before
+        };
+        report["screenCapture"] = json!(screen_capture);
+    }
+    report
 }

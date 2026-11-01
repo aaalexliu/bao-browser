@@ -6,7 +6,10 @@ use accessibility_sys::{
 };
 use core_foundation::base::TCFType;
 use core_foundation::string::CFString;
-use core_graphics::display::CGDisplay;
+use objc2::msg_send;
+use objc2::rc::Retained;
+use objc2::runtime::AnyClass;
+use objc2_foundation::{NSArray, NSRect};
 
 use crate::apps::{bundle_id_for_pid, pids_for_bundle};
 use crate::element::{
@@ -15,7 +18,6 @@ use crate::element::{
 };
 use crate::sample::{ancestor_chain, hits_in_window};
 use crate::model::{Frame, Geom, Geometry, Node, Seg};
-use crate::win::main_window;
 
 const MAX_NODES: i32 = 1500;
 const MAX_DEPTH: i32 = 30;
@@ -51,8 +53,15 @@ fn useful(role: &str, name: &str, acts: &[String]) -> bool {
 }
 
 pub fn screen_size() -> (f64, f64) {
-    let b = CGDisplay::main().bounds();
-    (b.size.width, b.size.height)
+    // The first NSScreen is the primary display. Use points, not Retina pixels.
+    unsafe {
+        let Some(cls) = AnyClass::get(c"NSScreen") else { return (0.0, 0.0) };
+        let screens: Retained<NSArray<objc2::runtime::AnyObject>> = msg_send![cls, screens];
+        if screens.len() == 0 { return (0.0, 0.0) }
+        let screen = screens.objectAtIndex_unchecked(0);
+        let frame: NSRect = msg_send![screen, frame];
+        (frame.size.width, frame.size.height)
+    }
 }
 
 pub fn app_element(bundle: &str) -> Result<(i32, El), String> {
@@ -109,21 +118,16 @@ pub fn app_target(bundle: &str, pid: Option<i32>) -> Result<(i32, El), String> {
     }
 }
 
-pub fn detect_geom(pid: i32, app: &El) -> Geom {
+pub fn detect_geom(app: &El) -> Geom {
     let (screen_w, screen_h) = screen_size();
-    let mut geom = Geom { screen_w, screen_h, flip_y: false, ax_window: None, cg_window: None };
-    let cg = main_window(pid).ok();
-    let ax = ax_windows(app).into_iter().filter_map(|el| raw_frame(&el))
-        .max_by(|a, b| (a.w * a.h).partial_cmp(&(b.w * b.h)).unwrap_or(std::cmp::Ordering::Equal));
-    if let (Some(ax), Some(cg)) = (ax, cg) {
-        let same = (ax.y - cg.frame.y).abs();
-        let flipped = (screen_h - ax.y - ax.h - cg.frame.y).abs();
-        let size_ok = (ax.w - cg.frame.w).abs() < 30.0 && (ax.h - cg.frame.h).abs() < 80.0;
-        geom.flip_y = size_ok && flipped < 12.0 && same > 40.0;
-        geom.ax_window = Some(ax);
-        geom.cg_window = Some(cg.frame);
-    }
-    geom
+    ax_geometry(screen_w, screen_h, ax_windows(app).into_iter().filter_map(|el| raw_frame(&el)))
+}
+
+fn ax_geometry(screen_w: f64, screen_h: f64, windows: impl Iterator<Item = Frame>) -> Geom {
+    let ax_window = windows.max_by(|a, b| (a.w * a.h).partial_cmp(&(b.w * b.h)).unwrap_or(std::cmp::Ordering::Equal));
+    // AX already uses top-left screen points. WindowServer enumeration can ask
+    // for Screen Recording even without reading titles, so never use it here.
+    Geom { screen_w, screen_h, flip_y: false, ax_window, cg_window: None }
 }
 
 fn ax_windows(app: &El) -> Vec<El> {
@@ -334,12 +338,13 @@ pub fn harvest_filtered(bundle: &str, manual: bool, title: &str, skip_menu: bool
 
 pub fn harvest_filtered_pid(bundle: &str, forced: Option<i32>, manual: bool, title: &str, skip_menu: bool) -> Result<LiveTree, String> {
     let (pid, app) = match forced {
-        Some(pid) => app_from_pid(pid, manual)?,
+        Some(pid) if manual => app_target(bundle, Some(pid))?,
+        Some(pid) => app_from_pid(pid, false)?,
         None => app_element_opts(bundle, manual)?,
     };
     let bundle_name = if bundle.is_empty() { crate::apps::bundle_id_for_pid(pid) } else { bundle.to_string() };
     let bundle = bundle_name.as_str();
-    let mut geom = detect_geom(pid, &app);
+    let mut geom = detect_geom(&app);
     let mut out = Vec::new();
     let mut elems = Vec::new();
     let mut seen = Seen { ptrs: HashSet::new(), elems: Vec::new(), shapes: HashSet::new() };
@@ -398,6 +403,23 @@ pub fn tree_pid(bundle: &str, pid: Option<i32>) -> Result<(Vec<Node>, Geometry, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ax_only_geometry_keeps_offset_window_and_retina_points() {
+        // A 3024 x 1964 Retina panel exposes a 1512 x 982 point desktop.
+        let window = Frame { x: 143.0, y: 117.0, w: 1000.0, h: 700.0 };
+        let small = Frame { x: 200.0, y: 140.0, w: 300.0, h: 200.0 };
+        let geom = ax_geometry(1512.0, 982.0, vec![small, window].into_iter());
+        assert!(!geom.flip_y);
+        assert!(geom.cg_window.is_none());
+        let frame = geom.ax_window.as_ref().unwrap();
+        assert_eq!((frame.x, frame.y, frame.w, frame.h), (143.0, 117.0, 1000.0, 700.0));
+        assert_eq!(geom.to_top_left(263.0, 297.0, 32.0), (263.0, 297.0));
+        assert_eq!(geom.to_ax_origin(263.0, 297.0, 32.0), (263.0, 297.0));
+        let empty = ax_geometry(1512.0, 982.0, std::iter::empty());
+        assert!(empty.ax_window.is_none());
+        assert_eq!(empty.to_top_left(-80.0, 1100.0, 24.0), (-80.0, 1100.0));
+    }
 
     #[test]
     fn depth_cap_and_group_descent() {

@@ -40,10 +40,45 @@ export function helperBin(): string {
   return HELPER_APP;
 }
 
+const CHROME_BUNDLES = new Set([
+  CHROME_BUNDLE,
+  "com.google.Chrome.beta",
+  "com.google.Chrome.dev",
+  "com.google.Chrome.canary",
+  "com.google.chrome.for.testing",
+]);
+
+const BUNDLE_COMMANDS = new Set([
+  "nodes", "press", "read", "set-value", "focus-role", "move-window",
+  "key", "type-keys", "cg-key", "cg-type", "fixture", "windows-brief",
+  "close-window", "raise-window", "set-window-text", "confirm-text",
+]);
+
+class LiveChromeHelper extends MacOsHelper {
+  override exec(args: string[], timeoutMs?: number) {
+    const command = args[0];
+    const bundleFlag = command === "hit" || command === "focus" ? "--allow-bundle"
+      : BUNDLE_COMMANDS.has(command) ? "--bundle" : undefined;
+    if (bundleFlag) {
+      const flags = args.filter((arg) => arg === bundleFlag);
+      const bundle = args[args.indexOf(bundleFlag) + 1];
+      if (flags.length !== 1 || !CHROME_BUNDLES.has(bundle)) {
+        return Promise.reject(new Error(`live Chrome helper refuses ${command}: target bundle must be Google Chrome or Chrome for Testing`));
+      }
+    }
+    if (command === "windows" || (command === "permissions" && args.includes("--prompt"))) {
+      return Promise.reject(new Error(`live Chrome helper refuses ${command}: Screen Recording is not used`));
+    }
+    // A distinct command makes old helpers fail closed instead of ignoring a new flag.
+    if (command === "permissions") args = ["permissions-ax"];
+    return super.exec(args, timeoutMs);
+  }
+}
+
 export function chromeHelper(): MacOsHelper {
   const bin = helperBin();
   if (!bin.endsWith(".app")) throw new Error("BaoOSHelper must be launched as an app bundle");
-  return forbidScreenRecording(new MacOsHelper(bin));
+  return forbidScreenRecording(new LiveChromeHelper(bin));
 }
 
 export async function logAx(file: string, event: AxClick): Promise<void> {
