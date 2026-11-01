@@ -35,7 +35,7 @@ export async function startExperianFixture() {
       send("Request unsuccessful", "<p>Incapsula incident ID: 000000000-0000000000000000</p>", 403);
     } else if (url.pathname === "/") {
       send("Credit Stand-in", '<a href="https://usa.experian.com/member">Member center</a>');
-    } else if (url.pathname === "/login/index") {
+    } else if (["/login", "/login/index", "/member/login/index", "/signin", "/sign-in"].includes(url.pathname)) {
       send("Sign in", '<form><label>Email <input name="email" autocomplete="username"></label><label>Password <input type="password" autocomplete="current-password"></label></form>');
     } else if (url.pathname.startsWith("/member") && !req.headers.cookie?.includes("incap_ses_standin=ok")) {
       send("Request unsuccessful", "<p>Powered by Imperva. Incapsula incident ID</p>", 403);

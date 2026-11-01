@@ -310,6 +310,10 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function note(action: string, label: string, status: string, isTrusted: boolean | null): Promise<void> {
     if (!open) return;
+    if (open.halted === "login_wall" && label === "login_wall") {
+      label = LIVE_LOGIN_INSTRUCTION;
+      status = "needs_human";
+    }
     open.steps.push({ name: action, status, ms: 0 });
     open.log.setSteps(open.steps);
     await open.log.add({
@@ -481,6 +485,13 @@ export function createLiveHost(opts: LiveHostOptions): {
     return { url, leaves: leafMap, text: mark.text, value: mark.value, missing: mark.missing };
   }
 
+  async function haltSession(state: OpenState, reason: string): Promise<void> {
+    state.driver.pauseCapture();
+    state.halted = reason;
+    state.refused = true;
+    await state.log.flush("needs_human", reason === "login_wall" ? LIVE_LOGIN_INSTRUCTION : reason, state.host);
+  }
+
   async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
     if (!open) throw new Error("no live session");
     const started = Date.now();
@@ -493,14 +504,10 @@ export function createLiveHost(opts: LiveHostOptions): {
       text: facts.text,
       stopPath: open.stopPath,
     });
-    if (halt) {
-      open.driver.pauseCapture();
-      open.halted = halt;
-      open.refused = true;
-    }
+    if (halt) await haltSession(open, halt);
     const reached = action !== "start" && !halt && open.read.view.reached;
     const shot = await record(action, open.read.view.title || action, Date.now() - started, halt || reached ? "needs_human" : "passed", null);
-    if (open.guard.freezeCommit) await open.log.flush(reached || halt ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_MESSAGE : halt === "login_wall" ? LIVE_LOGIN_INSTRUCTION : halt || "", open.host);
+    if (open.guard.freezeCommit && !halt) await open.log.flush(reached ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_MESSAGE : "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);
       if (event && shot) open.eventShots.set(event.id, shot);
@@ -542,8 +549,8 @@ export function createLiveHost(opts: LiveHostOptions): {
       reread: async () => (await reread(state)).read,
     });
     if (outcome.kind !== "applied") {
-      if (outcome.kind !== "reached") state.refused = true;
-      if (outcome.kind === "halted") state.halted = outcome.reason;
+      if (outcome.kind === "halted") await haltSession(state, outcome.reason);
+      else if (outcome.kind !== "reached") state.refused = true;
       await note(action, outcome.reason, outcome.kind === "reached" ? "needs_human" : "failed", null);
       return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
@@ -589,8 +596,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         await note("click", outcome.reason, "needs_human", null);
         return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
       }
-      if (outcome.kind === "halted") state.halted = outcome.reason;
-      if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) {
+      if (outcome.kind === "halted") await haltSession(state, outcome.reason);
+      else if (outcome.reason === "element is covered" && control) {
         if (!covered) state.covered.set(control, []);
       }
       else state.refused = true;
@@ -636,9 +643,11 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note("type", label, "running", null);
     }), ref, text);
     if (outcome.kind !== "applied") {
-      state.refused = true;
-      if (outcome.kind === "halted") state.halted = outcome.reason;
-      else await note("type", outcome.reason, "failed", null);
+      if (outcome.kind === "halted") await haltSession(state, outcome.reason);
+      else {
+        state.refused = true;
+        await note("type", outcome.reason, "failed", null);
+      }
       return reply({ op: "live_type", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     const after = await readAfter(state, index);

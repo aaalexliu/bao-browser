@@ -6,8 +6,11 @@ import { after, before, describe, it, test } from "node:test";
 import { startApp, type App } from "../../src/app/server";
 import { runViewer } from "../../src/app/views";
 import { liveCliBody } from "../../src/mcp/live-proxy";
-import { navigationGuard } from "../../src/cdp-live/allowlist";
-import { buildView, pageHalt, planClick, planKey } from "../../src/cdp-live/live-ops";
+import { navigationGuard, stopPathHit } from "../../src/cdp-live/allowlist";
+import { LiveNavigationHalt, openLiveWindow } from "../../src/cdp-live/driver";
+import { buildView, pageHalt, planClick, planKey, readLivePage, type PageFacts } from "../../src/cdp-live/live-ops";
+import { signedOutSurface } from "../../src/cdp-live/session";
+import { connectCdp } from "../../src/cdp-live/socket";
 import { liveScope } from "../../src/cdp-live/live-replay";
 import { liveTrailSteps, workflowFromTrail } from "../../src/cdp-live/live-trail";
 import * as targets from "../../src/cdp-live/live-target";
@@ -41,7 +44,13 @@ test("generic stop paths use whole segments, including hash routes", () => {
     assert.equal(navigationGuard(`https://credit.test${pathname}`, ["credit.test"], ["https://credit.test"], generic.stopPath), "stop-path", pathname);
   }
   for (const pathname of ["/login", "/login/index", "/member/login/index", "/#/login", "/#/signin", "/signin", "/sign-in"]) {
-    assert.equal(navigationGuard(`https://credit.test${pathname}`, ["credit.test"], ["https://credit.test"], generic.stopPath), "login_wall", pathname);
+    const url = `https://credit.test${pathname}`;
+    assert.equal(stopPathHit(url), false, pathname);
+    assert.equal(stopPathHit(url, ""), false, pathname);
+    assert.equal(stopPathHit(url, "/checkout"), false, pathname);
+    assert.equal(stopPathHit(url, "["), false, pathname);
+    assert.equal(stopPathHit(url, generic.stopPath), true, pathname);
+    assert.equal(navigationGuard(url, ["credit.test"], ["https://credit.test"], generic.stopPath), "login_wall", pathname);
     assert.equal(pageHalt({ path: pathname, stopPath: generic.stopPath, blocked: "", passwordFields: 0 }), "login_wall", pathname);
   }
   assert.equal(navigationGuard("https://other.test/login", ["credit.test"], ["https://credit.test"], generic.stopPath), "url is not on the host list");
@@ -235,6 +244,48 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
   });
   after(async () => { await mcp?.close(); await app?.close(); await browser?.close(); await fixture?.close(); if (root) await rm(root, { recursive: true, force: true }); });
 
+  it("drivers enforce only installed stop paths and leave sign-in recovery usable", async () => {
+    const cdp = await connectCdp(browser.cdpPort, new URL(browser.wsEndpoint).pathname);
+    try {
+      for (const stopPath of [undefined, "/checkout(?:/|$)"]) {
+        for (const login of ["/login", "/login/index", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
+          for (const redirect of [false, true]) {
+            const driver = await openLiveWindow(cdp, ["credit.test"]);
+            if (stopPath !== undefined) driver.setStopPath(stopPath);
+            const url = fixture.url(login, "credit.test");
+            try {
+              await driver.goto(redirect ? fixture.url(`/member/expired?login=${encodeURIComponent(login)}`, "credit.test") : url);
+              const facts = await driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
+              assert.equal(await driver.locationHref(), url);
+              assert.equal(signedOutSurface(facts), true, JSON.stringify({ stopPath, login, redirect, facts }));
+              assert.equal(driver.takeBlockedNav(), "");
+              if (login === "/login/index" && !redirect) {
+                driver.setStopPath("/checkout(?:/|$)");
+                await driver.evaluateFunction(() => { history.pushState({}, "", "/checkout"); }, undefined);
+                await driver.returnFromBlock();
+                assert.equal(await driver.locationHref(), url, "the login page is the last allowed recovery page");
+              }
+              await driver.goto(fixture.url("/member/security-help", "credit.test"));
+              assert.equal((await driver.pageSignals()).title, "Security help");
+            } finally { await driver.end(); }
+          }
+        }
+      }
+      for (const login of ["/login/index", "/signin", "/sign-in"]) {
+        for (const redirect of [false, true]) {
+          const driver = await openLiveWindow(cdp, ["credit.test"]);
+          driver.setStopPath(generic.stopPath);
+          const requests = () => fixture.requests.filter(request => request.host === "credit.test" && request.path === login).length;
+          const before = requests();
+          try {
+            await assert.rejects(driver.goto(fixture.url(redirect ? `/member/expired?login=${encodeURIComponent(login)}` : login, "credit.test")), error => error instanceof LiveNavigationHalt && error.reason === "login_wall");
+            assert.equal(requests(), before, "an installed login stop prevents the document request");
+          } finally { await driver.end(); }
+        }
+      }
+    } finally { cdp.close(); }
+  });
+
   it("expired session start returns a login halt and replay saves a paused run", async () => {
     const started = await live("live_session_start", { intent: "Read credit", url: fixture.url("/member/expired") });
     assert.equal(started.outcome.kind, "halted", JSON.stringify(started));
@@ -250,7 +301,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     assert.match(run.ask?.instruction || "", /Sign in to .* in Chrome/);
     assert.equal(run.modelCalls, 0);
     assert.equal(app.library.readRun(run.runId).status, "needs_human");
-    assert.equal(fixture.requests.some(r => r.path === "/login/index"), false, "blocked login page never loads");
+    assert.equal(fixture.requests.some(r => r.host === "usa.experian.com" && r.path === "/login/index"), false, "blocked login page never loads");
     const replayed = JSON.parse((await mcp.call("run_workflow", { id: workflow.id })).text);
     assert.equal(replayed.outcome, "needs_human", JSON.stringify(replayed));
   });
@@ -267,6 +318,11 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
           assert.equal(reply.outcome.kind, "halted", `${login} ${op}: ${JSON.stringify(reply)}`);
           assert.equal(reply.outcome.reason, "login_wall");
           assert.match(reply.outcome.instruction || "", /sign in again.*Chrome/i);
+          const state = await fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json());
+          assert.equal(state.liveSessionOpen, true);
+          assert.equal(state.liveSession.status, "needs_human");
+          assert.equal(state.liveSession.note, reply.outcome.instruction);
+          assert.equal(state.liveSession.audit.some((row: { label: string }) => row.label === "login_wall"), false);
           const again = await live("live_snapshot");
           assert.equal(again.outcome.kind, "halted");
           assert.equal(again.outcome.reason, "login_wall");
@@ -287,7 +343,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         assert.match(saved.envelope?.ask || "", /Sign in to .* in Chrome/);
         assert.equal(saved.modelCalls, 0);
       }
-      assert.equal(fixture.requests.some(request => request.path === login), false, `${login} must never load`);
+      assert.equal(fixture.requests.some(request => request.host === "usa.experian.com" && request.path === login), false, `${login} must never load`);
     }
   });
 
@@ -307,6 +363,12 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
           assert.equal(reply.outcome.kind, "halted", `${login} ${op}: ${JSON.stringify(reply)}`);
           assert.equal(reply.outcome.reason, "login_wall");
           assert.match(reply.outcome.instruction || "", /Sign in again in Chrome/);
+          const state = await fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json());
+          assert.equal(state.liveSessionOpen, true);
+          assert.equal(state.liveSession.status, "needs_human");
+          assert.equal(state.liveSession.note, reply.outcome.instruction);
+          assert.equal(state.liveSession.audit.at(-1)?.label, reply.outcome.instruction);
+          assert.equal(state.liveSession.steps.at(-1)?.status, "needs_human");
         } finally { await live("live_stop"); }
         const record = JSON.parse(await readFile(path.join(root, "bao", "live-session", "session.json"), "utf8"));
         assert.equal(record.status, "needs_human");
@@ -329,6 +391,23 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         assert.equal(saved.modelCalls, 0);
         assert.equal(requests(), before, `${login} must never load`);
       }
+    }
+  });
+
+  it("generic sessions also persist login halts before click or Enter returns", async () => {
+    for (const op of ["click", "key"] as const) {
+      let reply = await live("live_session_start", { intent: "Read member actions", url: fixture.url("/member/session-links?login=%2Flogin%2Findex", "credit.test") });
+      try {
+        reply = await live(`live_${op}`, { ref: refOf(reply, "Resume"), ...(op === "key" ? { key: "Enter" } : {}) });
+        assert.equal(reply.outcome.kind, "halted", JSON.stringify(reply));
+        assert.equal(reply.outcome.reason, "login_wall");
+        assert.equal(reply.outcome.instruction, "Sign in again in Chrome, then start a new live session.");
+        const state = await fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json());
+        assert.equal(state.liveSessionOpen, true);
+        assert.equal(state.liveSession.status, "needs_human");
+        assert.equal(state.liveSession.note, reply.outcome.instruction);
+        assert.equal(state.liveSession.audit.at(-1)?.label, reply.outcome.instruction);
+      } finally { await live("live_stop"); }
     }
   });
 

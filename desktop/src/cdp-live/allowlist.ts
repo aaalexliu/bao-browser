@@ -63,14 +63,15 @@ export function navigationRefusal(url: string, hosts: readonly string[] = BOOKS_
 }
 
 /** Pathname and hash, so `#/checkout` is the same stop as `/checkout`. */
-export function stopPathHit(url: string, stopPath: string): boolean {
+export function stopPathHit(url: string, stopPath = ""): boolean {
+  if (!stopPath) return false;
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return false;
   }
-  return pathHalt(`${parsed.pathname}${parsed.hash}`, stopPath) !== null;
+  return stopPathMatch(`${parsed.pathname}${parsed.hash}`, stopPath);
 }
 
 /** `path` is a pathname plus hash, as a page reports it. */
