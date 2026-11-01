@@ -211,6 +211,7 @@ export async function startApp(opts: {
   /** Idle save and its warning lead, for a test. Default LIVE_IDLE_MS and LIVE_IDLE_WARN_MS. */
   liveIdleMs?: number;
   liveIdleWarnMs?: number;
+  evalVideoNoBlur?: true;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
   process.env.BAO_HOME = opts.home;
@@ -246,6 +247,8 @@ export async function startApp(opts: {
     idleMs: opts.liveIdleMs,
     idleWarnMs: opts.liveIdleWarnMs,
     onNotice: (message) => { automationNotice = message; },
+    videoDir: process.env.BAO_RUN_VIDEO === "1" || opts.evalVideoNoBlur ? path.join(library.root, "videos") : undefined,
+    evalVideoNoBlur: opts.evalVideoNoBlur,
     onIdleWarn: (warning) => {
       liveIdle = warning;
       if (warning) raiseLiveIdle(warning);

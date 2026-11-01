@@ -91,6 +91,17 @@ function build(events: TrailEvent[], guard = instacart): WorkflowV2 {
   });
 }
 
+test("an optional dismiss does not absorb a later required click on the same control", () => {
+  const identity = dom({ name: "Close", tag: "button", testId: "popup-close" });
+  const first: TrailEvent = { id: "dismiss-1", ts: 1, kind: "act", op: "click", identity, optional: "dismiss", subtreeBefore: "Welcome", subtreeAfter: "" };
+  const second: TrailEvent = { ...first, id: "dismiss-2", ts: 2, optional: undefined, subtreeBefore: "Details" };
+  const workflow = build([first, second]);
+  assertClean(workflow);
+  assert.deepEqual(workflow.steps.map((step) => step.optional), ["dismiss", undefined]);
+  assert.equal(workflow.steps[0]?.expect?.kind, "settled");
+  assert.equal(workflow.steps[0]?.confidence, "low");
+});
+
 /** Keys anywhere in a JSON document. */
 function keysOf(value: unknown, out = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((item) => keysOf(item, out));

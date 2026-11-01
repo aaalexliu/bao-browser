@@ -210,6 +210,7 @@
         "input": { "type": "string" },
         "key": { "type": "string" },
         "checked": { "type": "boolean" },
+        "optional": { "const": "dismiss" },
         "sensitive": { "type": "boolean" },
         "human": { "type": "boolean" },
         "intent": { "type": "string" },
@@ -280,7 +281,36 @@
           "required": ["reason"],
           "properties": { "reason": { "type": "string" } }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["optional"] },
+          "then": {
+            "required": ["identity"],
+            "properties": {
+              "action": { "const": "click" },
+              "surface": { "const": "dom" },
+              "identity": {
+                "properties": {
+                  "surface": { "const": "dom" },
+                  "role": { "const": "button" }
+                },
+                "if": { "required": ["name"] },
+                "then": { "properties": { "name": { "$ref": "#/$defs/popupDismissName" } } },
+                "else": {
+                  "if": { "required": ["text"] },
+                  "then": { "properties": { "text": { "$ref": "#/$defs/popupDismissName" } } },
+                  "else": { "required": ["label"], "properties": { "label": { "$ref": "#/$defs/popupDismissName" } } }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "popupDismissName": {
+      "type": "string",
+      "pattern": "^(?:[Cc][Ll][Oo][Ss][Ee]|[Xx]|[Nn][Oo] [Tt][Hh][Aa][Nn][Kk][Ss]|[Nn][Oo][Tt] [Nn][Oo][Ww]|[Dd][Ii][Ss][Mm][Ii][Ss][Ss])$"
     },
     "extractColumn": {
       "type": "object",

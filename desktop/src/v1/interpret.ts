@@ -64,6 +64,7 @@ export interface TrailEvent {
   gate?: "login" | "confirm";
   /** False when the tool recorded the act and did not change the page. */
   performed?: boolean;
+  optional?: "dismiss";
   /** Message from Page.javascriptDialogOpening. The opening itself is an effect. */
   dialog?: string;
   /** alert, confirm, or prompt. */
@@ -378,6 +379,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     id: `${meta.id}-${index}`,
     index,
     action: "click",
+    ...(event.optional ? { optional: event.optional } : {}),
     label: event.op,
     surface,
     identity,

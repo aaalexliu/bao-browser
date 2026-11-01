@@ -20,7 +20,7 @@
 //      Opus judge says the agent told the user it did not check out. When bao refuses no checkout
 //      attempt, F is not exercised, which is neither a pass nor a fail
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { brotliDecompressSync, gunzipSync, zstdDecompressSync } from "node:zlib";
@@ -31,6 +31,7 @@ import { COMMIT_FLOOR, guardPreset } from "../cdp-live/presets";
 import type { WorkflowOutcome } from "../mcp/catalog";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
+import { ffmpegBin } from "../v1/replay-video";
 import { FIXTURE_HOSTS, TARGET, type CartWrite, type FixtureState, type Hit } from "../../test/instacart/fixture";
 import { CLI, startLane, until, type Lane } from "../../test/instacart/lane";
 import { laneChildEnv } from "../../test/runtime";
@@ -45,6 +46,7 @@ import {
   runAgentCli,
   type AgentAuth,
   type AgentDriver,
+  type AgentRunOptions,
   type BaoMcpServer,
   type LiveCliResult,
 } from "./live-cli";
@@ -487,7 +489,7 @@ function decoded(body: Buffer, encoding: string): Buffer {
  * Run the driver once against a stand-in model API on 127.0.0.1 and read the tools it offers.
  * No model runs and no token is spent. The stand-in answers with an error, so the CLI exits.
  */
-async function checkLockdown(driver: AgentDriver, bin: string, server: BaoMcpServer, auth: AgentAuth, root: string): Promise<ToolListing> {
+async function checkLockdown(driver: AgentDriver, bin: string, server: BaoMcpServer, auth: AgentAuth, root: string, opts: AgentRunOptions): Promise<ToolListing> {
   let first: ToolListing | undefined;
   const catalog = driver === "codex" ? codexCatalog() : undefined;
   const api: Server = createServer((req, res) => {
@@ -531,13 +533,13 @@ async function checkLockdown(driver: AgentDriver, bin: string, server: BaoMcpSer
       env.ANTHROPIC_API_KEY = "lockdown-check";
       const config = path.join(dir, "mcp.json");
       writeFileSync(config, claudeMcpConfig(server));
-      args = claudeAgentArgs(config);
+      args = claudeAgentArgs(config, opts);
     } else {
       env.CODEX_HOME = path.join(dir, "codex");
       mkdirSync(env.CODEX_HOME, { recursive: true });
       env.BAO_LOCKDOWN_KEY = "lockdown-check";
       const provider = `{ name = "check", base_url = "http://127.0.0.1:${port}/v1", wire_api = "responses", env_key = "BAO_LOCKDOWN_KEY", request_max_retries = 0, stream_max_retries = 0 }`;
-      const base = codexAgentArgs(server, dir);
+      const base = codexAgentArgs(server, dir, opts);
       args = [...base.slice(0, -1), "-c", 'model_provider="check"', "-c", `model_providers.check=${provider}`, "-"];
     }
     const run = await runAgentCli({ bin, args, env, cwd: dir, prompt: "lock-down check", timeoutMs: 90_000 });
@@ -555,7 +557,7 @@ function baoServer(home: string, userHome = path.join(home, "user")): BaoMcpServ
 }
 
 /** The lock-down check alone, with no browser and no model: what each driver would offer. */
-export async function checkAgentLockdown(drivers: readonly AgentDriver[]): Promise<{ driver: AgentDriver; listing?: ToolListing; problems: string[] }[]> {
+export async function checkAgentLockdown(drivers: readonly AgentDriver[], opts: AgentRunOptions = {}): Promise<{ driver: AgentDriver; listing?: ToolListing; problems: string[] }[]> {
   const results: { driver: AgentDriver; listing?: ToolListing; problems: string[] }[] = [];
   for (const driver of drivers) {
     const bin = driverBinary(driver);
@@ -566,7 +568,7 @@ export async function checkAgentLockdown(drivers: readonly AgentDriver[]): Promi
     const scratch = mkdtempSync(path.join(tmpdir(), `bao-agent-check-${driver}-`));
     try {
       const auth = driver === "claude" ? claudeAgentAuth(path.join(scratch, "claude")) : codexAgentAuth(path.join(scratch, "codex"));
-      const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch);
+      const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch, opts);
       results.push({ driver, listing, problems: [...lockdownProblems(driver, listing), ...(auth.missing ? [auth.missing] : [])] });
     } finally {
       rmSync(scratch, { recursive: true, force: true });
@@ -590,7 +592,7 @@ interface Session {
   saveNote: string;
 }
 
-interface Driven {
+interface Driven extends AgentRunOptions {
   driver: AgentDriver;
   bin: string;
   auth: AgentAuth;
@@ -619,9 +621,9 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
   if (driver === "claude") {
     const config = path.join(work, "mcp.json");
     writeFileSync(config, claudeMcpConfig(ctx.server));
-    args = claudeAgentArgs(config);
+    args = claudeAgentArgs(config, ctx);
   } else {
-    args = codexAgentArgs(ctx.server, work);
+    args = codexAgentArgs(ctx.server, work, ctx);
   }
   console.error(`bao eval agent-instacart ${driver} ${label}: ${prompt}`);
   const started = Date.now();
@@ -632,7 +634,7 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
   // The CLI closed bao mcp's stdin when it exited. The app saves the open session and then frees the lock.
   let saveNote = "";
   try {
-    await until(() => (existsSync(lane.lockFile) ? undefined : true), "the live lock to be freed", 60_000);
+    await until(() => (existsSync(lane.lockFile) || readSession(lane.home)?.status === "running" ? undefined : true), "the live session to finish saving", 150_000);
   } catch (err) {
     saveNote = err instanceof Error ? err.message : String(err);
   }
@@ -648,6 +650,10 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
       workflow = undefined;
     }
   }
+  const videoDir = path.join(lane.home, "videos");
+  if (record && existsSync(videoDir)) {
+    for (const file of readdirSync(videoDir).filter((name) => name.startsWith(`live-${record.id}-`) && name.endsWith(".webm"))) copyFileSync(path.join(videoDir, file), path.join(dir, file));
+  }
   const transcript = readTranscript(driver, run.stdout);
   const state = lane.fixture.state();
   writeFileSync(path.join(dir, "fixture.json"), `${JSON.stringify({ carts: state.carts, writes: state.writes, traps: state.traps, requests: state.requests.length }, null, 2)}\n`);
@@ -656,7 +662,7 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
 
 // ---------- replay ----------
 
-async function replayTwice(lane: Lane, workflowId: string, recorded: CartLine): Promise<string[]> {
+async function replayTwice(lane: Lane, workflowId: string, recorded: CartLine, out: string): Promise<string[]> {
   const problems: string[] = [];
   const library = new Library(lane.home);
   const client = McpClient.start(lane.env);
@@ -678,6 +684,10 @@ async function replayTwice(lane: Lane, workflowId: string, recorded: CartLine): 
         modelCalls = run.modelCalls ?? 0;
         heals = run.heals.length;
         status = run.status;
+        if (run.video) {
+          mkdirSync(out, { recursive: true });
+          copyFileSync(path.join(lane.home, "videos", run.video), path.join(out, `replay-${round}.webm`));
+        }
       } catch {
         problems.push(`replay ${round}: no run record`);
       }
@@ -796,7 +806,8 @@ interface LaneResult {
   judgeModel: string;
 }
 
-async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifacts: string }): Promise<LaneResult> {
+async function runDriver(driver: AgentDriver, opts: AgentRunOptions & { checkout: boolean; artifacts: string }): Promise<LaneResult> {
+  if (!ffmpegBin()) return { row: blankRow(driver, "not run", "not run: ffmpeg not found"), judgeModel: "" };
   const bin = driverBinary(driver);
   if (!bin) return { row: blankRow(driver, "not run", `not run: the ${driver} CLI is not installed`), judgeModel: "" };
   const out = path.join(opts.artifacts, driver);
@@ -806,20 +817,20 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
   try {
     const auth = driver === "claude" ? claudeAgentAuth(path.join(scratch, "claude")) : codexAgentAuth(path.join(scratch, "codex"));
     if (auth.missing) return { row: blankRow(driver, "not run", auth.missing), judgeModel: "" };
-    const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch);
+    const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch, opts);
     writeFileSync(path.join(out, "lockdown.json"), `${JSON.stringify(listing, null, 2)}\n`);
     const locked = lockdownProblems(driver, listing);
     if (locked.length) {
       return { row: blankRow(driver, "fail", `lock-down check: ${locked.join("; ")}. No agent run.`), listing, judgeModel: "" };
     }
     // Keep lane names short: bao serve binds <lane root>/home/extension-host/bridge.sock, and macOS caps a socket path at 104 bytes.
-    lane = await startLane(`l2-${driver}`, laneChildEnv("hermetic", process.env));
+    lane = await startLane(`l2-${driver}`, laneChildEnv("hermetic", process.env), true);
     const agentHome = path.join(scratch, "home");
     mkdirSync(agentHome, { recursive: true });
     const server = baoServer(lane.home, lane.env.HOME);
     const version = await (await fetch(`${lane.browser.cdpUrl}/json/version`)).json() as { "User-Agent"?: string };
     const browserAgent = version["User-Agent"] || "";
-    const ctx: Driven = { driver, bin, auth, lane, server, agentHome, out };
+    const ctx: Driven = { driver, bin, auth, lane, server, agentHome, out, model: opts.model, budgetUsd: opts.budgetUsd };
 
     const main = await runSession(ctx, "main", AGENT_PROMPT);
     const reasons: string[] = [];
@@ -840,14 +851,14 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
     const dProblems = workflowProblems(main.workflow);
 
     const replayable = !!(main.workflow && shape.line && !dProblems.length);
-    const eProblems = replayable && main.workflow && shape.line ? await replayTwice(lane, main.workflow.id, shape.line) : [];
+    const eProblems = replayable && main.workflow && shape.line ? await replayTwice(lane, main.workflow.id, shape.line, path.join(out, "replays")) : [];
 
     // F starts from a fresh lane, so the library has no saved workflow to replay and the agent drives the live tools.
     let checkout: Session | undefined;
     if (opts.checkout) {
       await lane.close();
       lane = undefined;
-      const fresh = await startLane(`f-${driver}`, laneChildEnv("hermetic", process.env));
+      const fresh = await startLane(`f-${driver}`, laneChildEnv("hermetic", process.env), true);
       lane = fresh;
       checkout = await runSession({ ...ctx, lane: fresh, server: baoServer(fresh.home, fresh.env.HOME) }, "checkout", CHECKOUT_PROMPT);
     }
@@ -951,7 +962,7 @@ export function renderAgentTable(lines: readonly TableLine[], notes: Map<string,
     "",
     "Lock-down flags:",
     "",
-    "- Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools \"\" --no-chrome --allowedTools \"mcp__bao__*\" --permission-mode dontAsk --max-budget-usd 1`.",
+    "- Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools \"\" --no-chrome --allowedTools \"mcp__bao__*\" --permission-mode dontAsk --max-budget-usd <n>`, where `--budget-usd n` sets the per-session cap (default 1 USD). `--model id` selects the driver's model.",
     "- Codex: `exec --ignore-user-config --ignore-rules --ephemeral --skip-git-repo-check --json --sandbox read-only`, `--disable` for `shell_tool`, `browser_use`, `browser_use_external`, `browser_use_full_cdp_access`, `computer_use`, `in_app_browser`, `view_image`, `goals`, `multi_agent`, `apps`, and `plugins`, `web_search=\"disabled\"`, and `mcp_servers.bao` with `tool_timeout_sec = 180` and `default_tools_approval_mode = \"approve\"`. Without that approval mode, `codex exec` refuses every bao call.",
     "",
     "Every flag the plan named exists in Claude Code 2.1.308 and codex-cli 0.164.0, so none was dropped. Codex refuses an unknown feature name, so a renamed feature fails the run. Of the plan's five Codex features, only `shell_tool` removes a tool from `codex exec`; the lane also turns off `view_image`, `goals`, and `multi_agent`, which do, and the browser, computer use, apps, and plugins features in case a login or a later Codex adds a tool.",
@@ -1005,16 +1016,28 @@ function flag(args: string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-export const AGENT_EVAL_USAGE = "usage: bao eval agent-instacart [--driver claude|codex] [--skip-checkout] [--out file] [--artifacts dir] [--check]";
+export const AGENT_EVAL_USAGE = "usage: bao eval agent-instacart [--driver claude|codex] [--model id] [--budget-usd n] [--skip-checkout] [--out file] [--artifacts dir] [--check]";
+
+export function agentRunOptions(args: string[]): AgentRunOptions {
+  const model = flag(args, "--model");
+  if (args.includes("--model") && (!model || model.startsWith("--"))) throw new Error(AGENT_EVAL_USAGE);
+  if (!args.includes("--budget-usd")) return { model };
+  const budgetUsd = Number(flag(args, "--budget-usd"));
+  if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) throw new Error(AGENT_EVAL_USAGE);
+  return { model, budgetUsd };
+}
 
 export function agentDrivers(args: string[]): readonly AgentDriver[] {
   const only = flag(args, "--driver");
   if (only && !(DRIVERS as readonly string[]).includes(only)) throw new Error(AGENT_EVAL_USAGE);
+  // A model id belongs to one CLI.
+  if (flag(args, "--model") && !only) throw new Error(AGENT_EVAL_USAGE);
   return only ? [only as AgentDriver] : DRIVERS;
 }
 
 export async function evalAgentInstacart(args: string[] = []): Promise<{ markdown: string; rows: AgentRow[] }> {
   const drivers = agentDrivers(args);
+  const options = agentRunOptions(args);
   const out = flag(args, "--out") || path.join("docs", "eval", "agent-instacart.md");
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const artifacts = path.resolve(flag(args, "--artifacts") || path.join("out", "agent-instacart", stamp));
@@ -1027,7 +1050,7 @@ export async function evalAgentInstacart(args: string[] = []): Promise<{ markdow
   for (const driver of drivers) {
     let result: LaneResult;
     try {
-      result = await runDriver(driver, { checkout: !args.includes("--skip-checkout"), artifacts });
+      result = await runDriver(driver, { ...options, checkout: !args.includes("--skip-checkout"), artifacts });
     } catch (err) {
       result = { row: blankRow(driver, "fail", `lane error: ${err instanceof Error ? err.message : String(err)}`), judgeModel: "" };
     }

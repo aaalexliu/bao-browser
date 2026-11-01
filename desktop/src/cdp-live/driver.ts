@@ -140,9 +140,9 @@ export class CdpLiveDriver implements Driver {
 
   touch(): void { this.pageEngine?.touch(); }
 
-  async startVideo(destination: string): Promise<void> {
+  async startVideo(destination: string, opts: { noBlur?: true } = {}): Promise<void> {
     if (this.video) throw new Error("page video already started");
-    this.video = await startCdpVideo(this.cdp, this.sessionId, destination);
+    this.video = await startCdpVideo(this.cdp, this.sessionId, destination, opts);
   }
 
   async finishVideo(): Promise<{ wrote: boolean; frames: number; truncated: boolean }> {
@@ -652,11 +652,14 @@ export class CdpLiveDriver implements Driver {
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
     const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
+    this.pauseCapture();
     try {
       await this.evaluateFunction(redactOverlay, label);
       return await this.screenshotPng();
     } finally {
       await this.cdp.send("Runtime.evaluate", { expression: 'document.getElementById("bao-redact")?.remove()', returnByValue: true }, this.sessionId).catch(() => undefined);
+      if (this.video) await sleep(100);
+      this.resumeCapture();
     }
   }
 
@@ -670,8 +673,13 @@ export class CdpLiveDriver implements Driver {
     }, this.sessionId);
   }
 
+  /** Stops recording and closes or leaves the window. */
   async end(): Promise<void> {
-    await this.finishVideo().catch(() => undefined);
+    await this.video?.endCapture();
+    await this.release();
+  }
+
+  private async release(): Promise<void> {
     await this.pageEngine?.close();
     this.pageEngine = undefined;
     if (this.preserveTarget) {

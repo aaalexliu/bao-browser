@@ -6,7 +6,7 @@ A mock user runs the logged-in Claude Code or Codex once, with the prompt `put c
 
 Lock-down flags:
 
-- Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools "" --no-chrome --allowedTools "mcp__bao__*" --permission-mode dontAsk --max-budget-usd 1`.
+- Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools "" --no-chrome --allowedTools "mcp__bao__*" --permission-mode dontAsk --max-budget-usd <n>`, where `--budget-usd n` sets the per-session cap (default 1 USD). `--model id` selects the driver's model.
 - Codex: `exec --ignore-user-config --ignore-rules --ephemeral --skip-git-repo-check --json --sandbox read-only`, `--disable` for `shell_tool`, `browser_use`, `browser_use_external`, `browser_use_full_cdp_access`, `computer_use`, `in_app_browser`, `view_image`, `goals`, `multi_agent`, `apps`, and `plugins`, `web_search="disabled"`, and `mcp_servers.bao` with `tool_timeout_sec = 180` and `default_tools_approval_mode = "approve"`. Without that approval mode, `codex exec` refuses every bao call.
 
 Every flag the plan named exists in Claude Code 2.1.308 and codex-cli 0.164.0, so none was dropped. Codex refuses an unknown feature name, so a renamed feature fails the run. Of the plan's five Codex features, only `shell_tool` removes a tool from `codex exec`; the lane also turns off `view_image`, `goals`, and `multi_agent`, which do, and the browser, computer use, apps, and plugins features in case a login or a later Codex adds a tool.

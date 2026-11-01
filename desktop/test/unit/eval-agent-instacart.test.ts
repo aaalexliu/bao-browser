@@ -9,9 +9,13 @@ import test from "node:test";
 import {
   AGENT_PROMPT,
   CHECKOUT_PROMPT,
+  agentDrivers,
+  agentRunOptions,
   cartShape,
   checkoutProblems,
+  checkAgentLockdown,
   earlierRows,
+  evalAgentInstacart,
   judgePrompt,
   liveReplyFacts,
   lockdownProblems,
@@ -28,6 +32,8 @@ import {
   type AgentRow,
 } from "../../src/eval/agent-instacart";
 import { CODEX_DISABLED_FEATURES, claudeAgentArgs, claudeAgentAuth, codexAgentArgs, codexAgentAuth } from "../../src/eval/live-cli";
+import * as liveCli from "../../src/eval/live-cli";
+import * as replayVideo from "../../src/v1/replay-video";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { search, storeBySlug } from "../instacart/catalog";
 import { TARGET, type CartWrite, type FixtureState, type Hit } from "../instacart/fixture";
@@ -58,6 +64,72 @@ test("claude runs with the plan's lock-down flags and a budget cap", () => {
   assert.equal(pairs("--permission-mode"), "dontAsk");
   assert.equal(pairs("--max-budget-usd"), "1");
   assert.equal(pairs("--output-format"), "stream-json");
+  assert.ok(!args.includes("--model"), "the CLI's default model");
+  const chosen = claudeAgentArgs("/tmp/mcp.json", { model: "claude-opus-5-5", budgetUsd: 3 });
+  assert.equal(chosen[chosen.indexOf("--model") + 1], "claude-opus-5-5");
+  assert.equal(chosen[chosen.indexOf("--max-budget-usd") + 1], "3");
+  assert.deepEqual(chosen.filter((arg) => arg !== "--model" && arg !== "claude-opus-5-5" && arg !== "3"), args.filter((arg) => arg !== "1"));
+});
+
+test("a model id belongs to one driver", () => {
+  assert.deepEqual(agentDrivers(["--driver", "codex", "--model", "gpt-6-astra"]), ["codex"]);
+  assert.throws(() => agentDrivers(["--model", "gpt-6-astra"]), /usage/);
+});
+
+test("the lane parses Claude's budget and model into the emitted agent flags", () => {
+  const chosen = agentRunOptions(["--driver", "claude", "--model", "claude-opus-5-5", "--budget-usd", "3"]);
+  assert.deepEqual(chosen, { model: "claude-opus-5-5", budgetUsd: 3 });
+  const args = claudeAgentArgs("/tmp/mcp.json", chosen);
+  assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
+  assert.equal(args[args.indexOf("--max-budget-usd") + 1], "3");
+  const defaults = claudeAgentArgs("/tmp/mcp.json", agentRunOptions([]));
+  assert.equal(defaults[defaults.indexOf("--max-budget-usd") + 1], "1");
+  for (const value of [undefined, "0", "-1", "NaN", "Infinity", "--check"]) {
+    assert.throws(() => agentRunOptions(["--budget-usd", ...(value === undefined ? [] : [value])]), /usage/);
+  }
+  assert.throws(() => agentRunOptions(["--model", "--check"]), /usage/);
+});
+
+test("the lock-down check passes the lane's chosen model and budget to Claude", async (t) => {
+  t.mock.method(liveCli, "driverBinary", () => process.execPath);
+  t.mock.method(liveCli, "claudeAgentAuth", () => ({ env: {} }));
+  const calls: string[][] = [];
+  t.mock.method(liveCli, "runAgentCli", async (opts: Parameters<typeof liveCli.runAgentCli>[0]) => {
+    calls.push(opts.args);
+    await fetch(`${opts.env.ANTHROPIC_BASE_URL}/v1/messages`, {
+      method: "POST",
+      body: JSON.stringify({ tools: [{ name: "mcp__bao__live_snapshot" }] }),
+    });
+    return { code: 1, tokens: "n/a", timedOut: false, stderr: "", stdout: "" };
+  });
+  const checked = await checkAgentLockdown(["claude"], agentRunOptions(["--budget-usd", "3", "--model", "claude-opus-5-5"]));
+  assert.deepEqual(checked[0]?.problems, []);
+  assert.equal(calls.length, 1);
+  const args = calls[0]!;
+  assert.equal(args[args.indexOf("--max-budget-usd") + 1], "3");
+  assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
+});
+
+test("missing ffmpeg reports both drivers not run before login, lock-down, or agent work", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-agent-preflight-"));
+  const probe = t.mock.method(replayVideo, "ffmpegBin", () => undefined);
+  const unexpected = () => { throw new Error("agent work must not start without ffmpeg"); };
+  const binary = t.mock.method(liveCli, "driverBinary", unexpected);
+  const claude = t.mock.method(liveCli, "claudeAgentAuth", unexpected);
+  const codex = t.mock.method(liveCli, "codexAgentAuth", unexpected);
+  const agent = t.mock.method(liveCli, "runAgentCli", unexpected);
+  try {
+    for (const extra of [[], ["--skip-checkout"]]) {
+      const { rows } = await evalAgentInstacart(["--out", path.join(root, "table.md"), "--artifacts", path.join(root, "artifacts"), ...extra]);
+      assert.deepEqual(rows.map((row) => [row.driver, row.status, row.reason]), [
+        ["claude", "not run", "not run: ffmpeg not found"],
+        ["codex", "not run", "not run: ffmpeg not found"],
+      ]);
+      assert.deepEqual(earlierRows(readFileSync(path.join(root, "table.md"), "utf8")).map((row) => row.driver), ["claude", "codex"]);
+    }
+    assert.equal(probe.mock.callCount(), 4);
+    for (const mocked of [binary, claude, codex, agent]) assert.equal(mocked.mock.callCount(), 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("codex runs with no user config, every acting feature off, and bao's calls approved with the configured timeout", () => {
@@ -79,6 +151,10 @@ test("codex runs with no user config, every acting feature off, and bao's calls 
     "mcp_servers.bao.tool_timeout_sec=180",
     'mcp_servers.bao.default_tools_approval_mode="approve"',
   ]);
+  assert.ok(!args.includes("--model"), "the CLI's default model");
+  const chosen = codexAgentArgs(SERVER, "/tmp/work", { model: "gpt-6-astra" });
+  assert.equal(chosen[chosen.indexOf("--model") + 1], "gpt-6-astra");
+  assert.equal(chosen[chosen.length - 1], "-", "the prompt still comes on stdin");
 });
 
 test("codex gets a copy of the login with no refresh token, and a stale login is not used", () => {

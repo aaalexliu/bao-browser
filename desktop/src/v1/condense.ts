@@ -47,7 +47,7 @@ function dropNoEffect(events: TrailEvent[]): TrailEvent[] {
   for (let i = 0; i < events.length; i++) {
     const event = events[i]!;
     if (event.op !== "click") continue;
-    if (event.gate === "login" || event.gate === "confirm") continue;
+    if (event.gate === "login" || event.gate === "confirm" || event.optional === "dismiss") continue;
     if (isHelp(event)) continue;
     if (clickChangedState(event)) continue;
     if (!observedStill(event)) continue;
@@ -186,7 +186,7 @@ function collapseRetries(events: TrailEvent[]): TrailEvent[] {
   const out: TrailEvent[] = [];
   for (const event of events) {
     const prev = out[out.length - 1];
-    if (prev && prev.op === "click" && event.op === "click" && sameTarget(prev, event)) continue;
+    if (prev && prev.op === "click" && event.op === "click" && !prev.optional && !event.optional && sameTarget(prev, event)) continue;
     out.push(event);
   }
   return out;

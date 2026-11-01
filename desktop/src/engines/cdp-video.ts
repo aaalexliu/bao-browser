@@ -25,11 +25,12 @@ async function veilFrame(ffmpeg: string, data: Buffer): Promise<Buffer> {
 export interface CdpVideo {
   pause(): void;
   resume(): void;
+  endCapture(): Promise<void>;
   stop(): Promise<{ wrote: boolean; frames: number; truncated: boolean }>;
 }
 
 /** Records only the run's page. No OS screenshot or Screen Recording permission is used. */
-export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destination: string): Promise<CdpVideo> {
+export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destination: string, opts: { noBlur?: true } = {}): Promise<CdpVideo> {
   const ffmpeg = ffmpegBin();
   if (!ffmpeg) throw new Error("CDP video needs ffmpeg; the run has not started");
   await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
@@ -37,7 +38,7 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   await chmod(dir, 0o700);
   const frames: { file: string; at: number }[] = [];
   let active = true;
-  let paused = false;
+  let pauses = 0;
   let writing = false;
   let truncated = false;
   let failure: Error | undefined;
@@ -45,12 +46,48 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   let last = 0;
   let bytes = 0;
   let stopping: ReturnType<CdpVideo["stop"]> | undefined;
-  const stop = (): ReturnType<CdpVideo["stop"]> => {
-    stopping ??= (async () => {
+  let endedAt = 0;
+  let ending: Promise<void> | undefined;
+  let finalFrame: (() => void) | undefined;
+  const startCapture = () => cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 }, sessionId);
+  const endCapture = (): Promise<void> => {
+    ending ??= (async () => {
       active = false;
-      const endedAt = Date.now();
       await cdp.send("Page.stopScreencast", {}, sessionId).catch(() => undefined);
       await pending;
+      if (pauses === 0 && !failure && !truncated) {
+        // Let the last action paint before requesting a fresh screencast frame.
+        // A short or static page may not send another sample on its own.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await cdp.send("Runtime.evaluate", {
+            expression: "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))",
+            awaitPromise: true,
+          }, sessionId, 5000);
+          active = true;
+          last = 0;
+          const captured = new Promise<void>((resolve, reject) => {
+            finalFrame = resolve;
+            timer = setTimeout(() => reject(new Error("CDP video final frame timed out")), 5000);
+          });
+          await Promise.all([startCapture(), captured]);
+        }
+        catch (error) { failure ??= error instanceof Error ? error : new Error("CDP video final frame failed"); }
+        finally {
+          clearTimeout(timer);
+          finalFrame = undefined;
+          active = false;
+          await cdp.send("Page.stopScreencast", {}, sessionId).catch(() => undefined);
+        }
+      }
+      endedAt = Date.now();
+      await pending;
+    })();
+    return ending;
+  };
+  const stop = (): ReturnType<CdpVideo["stop"]> => {
+    stopping ??= (async () => {
+      await endCapture();
       try {
         if (failure) throw failure;
         if (!frames.length) throw new Error("CDP video recorded no frames");
@@ -80,7 +117,7 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   };
   cdp.on("Page.screencastFrame", sessionId, (params) => {
     void cdp.send("Page.screencastFrameAck", { sessionId: params.sessionId }, sessionId).catch(() => undefined);
-    if (!active || paused || writing || Date.now() - last < 150) return;
+    if (!active || pauses > 0 || writing || Date.now() - last < 150) return;
     const data = typeof params.data === "string" && params.data.length <= Math.ceil(MAX_FRAME_BYTES / 3) * 4 ? Buffer.from(params.data, "base64") : undefined;
     if (!data || data.length > MAX_FRAME_BYTES) {
       failure = new Error("CDP video frame was invalid or too large");
@@ -97,7 +134,7 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
     last = Date.now();
     frames.push({ file, at: last });
     writing = true;
-    pending = veilFrame(ffmpeg, data).then(async (veiled) => {
+    pending = (opts.noBlur ? Promise.resolve(data) : veilFrame(ffmpeg, data)).then(async (veiled) => {
       const extra = Math.max(0, veiled.length - data.length);
       if (bytes + extra > MAX_VIDEO_BYTES) {
         frames.pop();
@@ -111,17 +148,19 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
       failure = new Error("CDP video frame could not be veiled or saved");
       void stop().catch(() => undefined);
     }).finally(() => { writing = false; });
+    finalFrame?.();
     if (frames.length >= 6000) {
       truncated = true;
       void stop().catch(() => undefined);
     }
   });
   try {
-    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 }, sessionId);
+    await startCapture();
   } catch (error) { active = false; await pending; await rm(dir, { recursive: true, force: true }); throw error; }
   return {
-    pause() { paused = true; },
-    resume() { paused = false; },
+    pause() { pauses += 1; },
+    resume() { pauses = Math.max(0, pauses - 1); },
+    endCapture,
     stop,
   };
 }
