@@ -255,7 +255,7 @@ A chooser and a Finder drop each add a `file` input. The secret string is absent
 
 Replay sets a file input with `DOM.setFileInputFiles`, and a drop zone with a synthetic `DataTransfer`. Run again after moving the replay window. The next run reuses that window. Chrome for Testing is moved with CDP `Browser.setWindowBounds`. The helper is also tried with the replay pid. A size row can stay `n/a-harness` when `AXSize` is rejected (`-25200`). A step failure counts only after the requested bounds landed.
 
-Each headed ordinary browser replay writes `videos/<runId>.webm`. On macOS the picture is that replay's window: a ScreenCaptureKit filter (`SCContentFilter`, desktop-independent window), not a display crop. Copied-profile live capture and replay use the separate [CDP evidence path](agent-browser-engine.md#evidence).
+On macOS, the optional native-window recorder can save an ordinary browser replay to `videos/<runId>.webm` only with explicit `BAO_REPLAY_VIDEO=1`, `BAO_HEADED=1`, a `BaoWindowVideo.app`, a passing Screen Recording probe, and ffmpeg. The picture is that replay's window: a ScreenCaptureKit filter (`SCContentFilter`, desktop-independent window), not a display crop. Without the opt-in, Bao does not probe Screen Recording or start this recorder. Copied-profile live capture and replay use the separate [CDP evidence path](agent-browser-engine.md#evidence).
 
 A `login` step waits. Replay does not type the password and does not press Log in. The bar says to sign in in the Bao window. `Bao.app` posts that sentence with `UNUserNotificationCenter` (category `bao.act`). The Dock badge is `!`. `osascript` is not used, and BaoOSHelper does not post the notification.
 
