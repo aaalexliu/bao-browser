@@ -9,6 +9,7 @@ import path from "node:path";
 import test from "node:test";
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { pinTestBrowser } from "../../src/launch";
+import { TEST_MEDIA_ARGS } from "../../src/test-browser.js";
 import { Library } from "../../src/v1/store";
 
 interface LiveBody {
@@ -136,6 +137,7 @@ test("live fixture refuses the reviewed traps, then replays a shop with no model
     chrome = spawn(pinTestBrowser(), [
       `--user-data-dir=${userData}`,
       "--remote-debugging-port=0",
+      ...TEST_MEDIA_ARGS,
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-sync",

@@ -13,6 +13,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { pinTestBrowser } from "../../src/launch";
+import { TEST_MEDIA_ARGS } from "../../src/test-browser.js";
 import { assertNotDailyChrome } from "../../src/profile";
 import { fakeChromeHelper } from "../fake-helper";
 
@@ -48,6 +49,7 @@ test("the daily target opens its window in the Default profile when another prof
     chrome = spawn(pinTestBrowser(), [
       `--user-data-dir=${userData}`,
       "--remote-debugging-port=0",
+      ...TEST_MEDIA_ARGS,
       "--profile-directory=Profile 1",
       "--no-first-run",
       "--no-default-browser-check",

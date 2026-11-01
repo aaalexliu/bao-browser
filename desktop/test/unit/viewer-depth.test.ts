@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import Ajv from "ajv/dist/2020";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { BrowserDriver, clipBox } from "../../src/v1/browser-driver";
 import { consolePane, identityTable, networkPane, runViewer, snapshotPane, workflowDetail } from "../../src/app/views";
 import { filmstripSpans, idleSkippedMs } from "../../src/v1/filmstrip";

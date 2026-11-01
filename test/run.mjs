@@ -2,7 +2,7 @@
 //   node test/run.mjs <steps.json> <url>
 // Loads the unpacked extension, navigates to <url>, replays <steps.json> through the
 // real content script, prints a per-step ✓/✗ table, and exits 0 (all passed) or 1.
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

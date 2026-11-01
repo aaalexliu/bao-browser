@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { launchOwnedChrome, needsLinuxNoSandbox } from "../launch";
+import { launchOwnedChrome, needsLinuxNoSandbox, pinTestBrowser } from "../launch";
 
 const ARTIFACTS = process.env.BAO_MARKER_OUT || "/opt/cursor/artifacts/automation-markers";
 
@@ -58,6 +58,7 @@ function grab(file: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  pinTestBrowser();
   mkdirSync(ARTIFACTS, { recursive: true });
   const home = await mkdtemp(path.join(tmpdir(), "bao-markers-"));
   const profile = path.join(home, "chrome-profile");

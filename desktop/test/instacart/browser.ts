@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { needsLinuxNoSandbox, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
+import { TEST_MEDIA_ARGS } from "../../src/test-browser.js";
 import { FIXTURE_HOSTS } from "./fixture";
 
 export interface FixtureTarget {
@@ -55,6 +56,7 @@ export function fixtureBrowserArgs(
     "--disable-sync",
     "--use-mock-keychain",
     "--password-store=basic",
+    ...TEST_MEDIA_ARGS,
     `--host-resolver-rules=${hostResolverRules(target.port)}`,
     `--ignore-certificate-errors-spki-list=${target.spki}`,
     ...sandbox,

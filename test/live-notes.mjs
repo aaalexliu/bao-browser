@@ -10,7 +10,7 @@
 // Then:
 //   node test/live-notes.mjs [targetIndex]     # default index 2 (NOT the first note)
 //   node test/live-notes.mjs --headed          # watch it run (-H works too)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 

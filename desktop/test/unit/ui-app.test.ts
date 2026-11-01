@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { applyHermeticApp } from "../runtime";

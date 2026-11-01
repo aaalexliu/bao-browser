@@ -10,7 +10,7 @@
 // bot-block / missing structure is a SKIP; a FAIL means the site loaded and exhibited
 // its structure but record→replay produced the wrong effect — i.e. a shipped capability
 // regressed.
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 

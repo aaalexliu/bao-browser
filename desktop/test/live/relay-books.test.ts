@@ -12,6 +12,7 @@ import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
 import { replayLiveWorkflow } from "../../src/cdp-live/live-replay";
 import { pinTestBrowser } from "../../src/launch";
+import { TEST_MEDIA_ARGS } from "../../src/test-browser.js";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
@@ -84,6 +85,7 @@ test("a paired relay replays books.toscrape.com from a throwaway profile", { tim
     chrome = spawn(TEST_BROWSER, [
       `--user-data-dir=${userData}`,
       "--remote-debugging-port=0",
+      ...TEST_MEDIA_ARGS,
       "--headless=new",
       "--no-sandbox",
       "--disable-gpu",

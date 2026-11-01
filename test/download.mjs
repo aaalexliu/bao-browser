@@ -5,7 +5,7 @@
 // (state:complete) before the run reports done, with the filename in the run history.
 //
 // Run: npm run test:download   (or: node test/download.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { createServer } from "node:http";
 import { readFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -7,7 +7,7 @@
 // re-dispatch and close the modal.
 //
 // Run: npm run test:keyboard   (or: node test/keyboard.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

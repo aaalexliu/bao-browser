@@ -7,7 +7,7 @@
 // replay time differs from the recorded one.
 //
 // Run: npm run test:spa   (or: node test/spa.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

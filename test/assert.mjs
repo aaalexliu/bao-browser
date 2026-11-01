@@ -7,7 +7,7 @@
 //     ?title= change makes one assertion fail — asserting the CI contract.
 //
 // Run: npm run test:assert   (or: node test/assert.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";

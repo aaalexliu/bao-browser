@@ -7,6 +7,7 @@
     "outDir": "desktop/dist",
     "rootDir": ".",
     "strict": true,
+    "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

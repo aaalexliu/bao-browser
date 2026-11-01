@@ -55,6 +55,8 @@ describe("instacart fixture without a browser", () => {
       "--disable-sync",
       "--use-mock-keychain",
       "--password-store=basic",
+      "--deny-permission-prompts",
+      "--use-fake-device-for-media-stream",
       `--host-resolver-rules=${rules}`,
       `--ignore-certificate-errors-spki-list=${fixture.spki}`,
       "--headless=new",

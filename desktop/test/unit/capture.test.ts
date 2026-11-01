@@ -108,7 +108,7 @@ test("blur runs before the screenshot and clears after", async () => {
 });
 
 test("a password field is blurred while the screenshot is taken", async () => {
-  const { chromium } = await import("playwright");
+  const { testChromium: chromium } = await import("../../src/test-browser.js");
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();

@@ -3,7 +3,7 @@ import { copyFile, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { pageEngineName } from "../../src/engines/agent-browser";
 import { createLiveHost } from "../../src/cdp-live/live-host";

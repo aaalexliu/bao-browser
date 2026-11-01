@@ -10,7 +10,7 @@ import path from "node:path";
 import type { BrowserContext, Page, Request } from "playwright";
 import type { Workflow } from "../../../src/types";
 import { omitSecret, redactPayload } from "../../../src/mask";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { AuditTrail, deriveWorkflow, trimTrail } from "./audit";
 import {
   CLAUDE_MEMBERS,
@@ -362,6 +362,7 @@ async function replayOne(
 }
 
 async function main(): Promise<void> {
+  pinTestBrowser();
   installNodeGuard();
   const work = await mkdtemp(path.join(tmpdir(), "bao-claude-"));
   const outDir = path.join(work, "out");

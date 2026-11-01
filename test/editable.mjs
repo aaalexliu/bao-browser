@@ -6,7 +6,7 @@
 // and replay on a reset page must land the text in both.
 //
 // Run: npm run test:editable   (or: node test/editable.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

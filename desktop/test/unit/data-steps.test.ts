@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { dataCases } from "../../src/eval/data/cases";
 import { installDataPage } from "../../src/v1/data-page";
 import {

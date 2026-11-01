@@ -1,7 +1,7 @@
 // Render the Chrome Web Store small promo tile (440x280) from the bao mark.
 // Reuses the already-installed Playwright Chromium (no new deps). Output -> assets/store/.
 //   node assets/gen-promo.mjs
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

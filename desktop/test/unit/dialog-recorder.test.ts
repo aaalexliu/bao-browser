@@ -15,7 +15,7 @@ test("a new leaf outranks a longer change", () => {
 });
 
 test("a password cover does not become the text that appeared", async () => {
-  const { chromium } = await import("playwright");
+  const { testChromium: chromium } = await import("../../src/test-browser.js");
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const events: TrailEvent[] = [];
   try {
@@ -50,7 +50,7 @@ test("a password cover does not become the text that appeared", async () => {
 });
 
 test("the recorder stores the dialog and the text that appears after it closes", async () => {
-  const { chromium } = await import("playwright");
+  const { testChromium: chromium } = await import("../../src/test-browser.js");
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const events: TrailEvent[] = [];
   try {
@@ -103,7 +103,7 @@ test("the recorder stores the dialog and the text that appears after it closes",
 });
 
 test("a second driver on the same page supplies the prompt text", async () => {
-  const { chromium } = await import("playwright");
+  const { testChromium: chromium } = await import("../../src/test-browser.js");
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   try {
     const page = await browser.newPage();

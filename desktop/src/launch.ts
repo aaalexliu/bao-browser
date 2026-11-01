@@ -3,7 +3,7 @@
 // Chrome and attach over a private debugging port. Playwright's launcher is
 // only used when a caller asks for page.video(). Both test lanes and the
 // browser evals set BAO_TEST_BROWSER, and then every launch starts that
-// browser with a mock keychain instead.
+// browser with a mock keychain and camera and microphone denied in Chrome.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -11,6 +11,7 @@ import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { parseDevToolsActivePort } from "./cdp-live/endpoint";
 import { assertNotDailyChrome } from "./profile";
+import { TEST_MEDIA_ARGS } from "./test-browser.js";
 
 export const ACCOUNT_CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 /** The real binary. A PATH wrapper in this environment injects --no-sandbox and port 9222. */
@@ -91,16 +92,17 @@ const MOCK_KEYCHAIN_ARGS = ["--use-mock-keychain", "--password-store=basic"];
  * BAO_TEST_BROWSER to Playwright's Chromium, and pinTestBrowser sets it for
  * the browser evals. While it is set, every launch starts that binary with a
  * mock keychain, so a test never opens the user's Chrome or the login
- * keychain. Product launches never set it.
+ * keychain. Test media denial also keeps camera and microphone access inside
+ * Chrome. Product launches never set it.
  */
 export function testLaneBrowser(env: NodeJS.ProcessEnv = process.env): string | undefined {
   return env.BAO_TEST_BROWSER?.trim() || undefined;
 }
 
 /**
- * Tests and evals only. Returns BAO_TEST_BROWSER, and sets it to Playwright's
- * Chromium when it is unset, so every later launch in this process, and in a
- * child that inherits the env, starts the test browser with a mock keychain.
+ * Test and tooling launches only. Returns BAO_TEST_BROWSER, and sets it to
+ * Playwright's Chromium when it is unset, so later launches in this process
+ * and children that inherit the env use the test lane described above.
  */
 export function pinTestBrowser(
   env: NodeJS.ProcessEnv = process.env,
@@ -138,6 +140,11 @@ export function testLaneKeychainArgs(env: NodeJS.ProcessEnv = process.env): stri
   return testLaneBrowser(env) ? [...MOCK_KEYCHAIN_ARGS] : [];
 }
 
+/** Tests and evals deny media prompts and use synthetic capture devices. */
+export function testLaneMediaArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  return testLaneBrowser(env) ? [...TEST_MEDIA_ARGS] : [];
+}
+
 /**
  * Owned Chrome only. Account Chrome never receives the sandbox opt-in.
  * Caller arguments never carry a keychain flag. Only the test lane adds one.
@@ -157,7 +164,7 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env)];
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env), ...testLaneMediaArgs(env)];
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
@@ -373,7 +380,7 @@ export async function launchAccountChrome(opts: {
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
   const exe = resolveAccountChrome();
-  const args = [...accountLaunchArgs(OWNED_DEBUG_PORT), ...testLaneKeychainArgs()];
+  const args = [...accountLaunchArgs(OWNED_DEBUG_PORT), ...testLaneKeychainArgs(), ...testLaneMediaArgs()];
   const { child, port } = await spawnOwnedChrome(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], opts.userDataDir);
   const stop = () => {
     if (child.exitCode == null) child.kill("SIGTERM");

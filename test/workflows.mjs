@@ -5,7 +5,7 @@
 // workflow's startUrl first, then drive its steps. Delete removes one.
 //
 // Run: npm run test:workflows   (or: node test/workflows.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

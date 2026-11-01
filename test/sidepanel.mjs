@@ -6,7 +6,7 @@
 // mode, and a scripted run renders storage-driven ✓ progress + summary.
 //
 // Run: npm run test:sidepanel   (or: node test/sidepanel.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

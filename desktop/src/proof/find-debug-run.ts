@@ -5,12 +5,13 @@ import { readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { BrowserDriver } from "../v1/browser-driver";
 import { replay } from "../v1/replay";
 import type { WorkflowV2 } from "../v1/schema";
 
 async function main(): Promise<void> {
+  pinTestBrowser();
   const id = process.argv[2];
   if (!id) throw new Error("task id");
   const root = path.join(process.cwd(), "docs/proof/realworld");
