@@ -66,7 +66,8 @@ test("security code, PIN, and verification code are credential fields and halt",
 
 test("captcha, SSO, and a bot wall halt before a click", () => {
   assert.equal(pageHalt({ blocked: "", path: "/captcha", passwordFields: 0, text: "I'm not a robot" }), "bot_wall");
-  assert.equal(pageHalt({ blocked: "", path: "/sso", passwordFields: 0, text: "Continue with Google" }), "login_wall");
+  assert.equal(pageHalt({ blocked: "", path: "/sso", passwordFields: 0, text: "Continue with Google" }), null);
+  assert.equal(pageHalt({ blocked: "", path: "/sso", passwordFields: 1, text: "Continue with Google" }), "login_wall");
   assert.equal(pageHalt({ blocked: "", path: "/bot", passwordFields: 0, text: "Request unsuccessful. Powered by Imperva" }), "bot_wall");
 });
 

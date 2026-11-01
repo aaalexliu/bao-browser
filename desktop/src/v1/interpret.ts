@@ -98,6 +98,8 @@ export interface InterpretMeta {
   secrets?: string[];
   /** Zone used to turn a picked date into +Nd. Absent is UTC so the same trail stays the same bytes. */
   zone?: string;
+  /** Live sessions retain false starts for later review instead of simplifying the actions. */
+  preserveActions?: boolean;
 }
 
 const NOISE = new Set([
@@ -131,7 +133,7 @@ export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): W
 function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { doc: WorkflowV2; groups: TrailEvent[][] } {
   const secrets = secretStrings(events, meta.secrets ?? []);
   const seen: InterpretMeta = { ...meta, secrets };
-  const kept = mergeTyping(withoutChooserClicks(events.filter(keep)));
+  const kept = seen.preserveActions ? events.filter(keep) : mergeTyping(withoutChooserClicks(events.filter(keep)));
   const inputs: WorkflowInput[] = [];
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {
@@ -143,9 +145,9 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     }
     return { events: [event], step };
   });
-  bindTypedOptions(mapped);
-  const pieces = foldNotes(collapseDigits(mapped, inputs), seen.secrets ?? []);
-  attachExpr(pieces.map((piece) => piece.step));
+  if (!seen.preserveActions) bindTypedOptions(mapped);
+  const pieces = seen.preserveActions ? mapped : foldNotes(collapseDigits(mapped, inputs), seen.secrets ?? []);
+  if (!seen.preserveActions) attachExpr(pieces.map((piece) => piece.step));
   const captured = applyCapturedData(pieces, inputs);
   const drafted: WorkflowV2 = {
     schema: WORKFLOW_SCHEMA_ID,

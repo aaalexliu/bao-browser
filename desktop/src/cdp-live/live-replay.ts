@@ -11,7 +11,7 @@ import type { ExtractSpec, ListRead } from "../v1/data-steps";
 import { LIVE_READ_LIMIT, liveReadRows, liveReadSelector, readLiveRegion, type RegionRead } from "./live-read";
 import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
-import type { CdpLiveDriver } from "./driver";
+import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import { clickLive, pressLiveKey, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
 import { buildView, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
@@ -138,7 +138,11 @@ export class GuardedLiveDriver implements Driver {
   async goto(url: string): Promise<void> {
     const why = navigationGuard(url, this.scope.hosts, this.scope.origins, this.scope.stopPath);
     if (why) throw this.stop(why, false);
-    await this.inner.goto(url);
+    try { await this.inner.goto(url); }
+    catch (error) {
+      if (error instanceof LiveNavigationHalt) throw this.stop(error.reason, true);
+      throw error;
+    }
   }
 
   async click(node: Identity): Promise<void> {
@@ -375,6 +379,14 @@ export async function replayLiveWorkflow(
     await driver.goto(workflow.startUrl);
     run = await replayGuarded(workflow, inputs, guarded, runId, deps.shotDir ?? (deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined));
     run.pageEngine = engineName;
+    return run;
+  } catch (error) {
+    if (!(error instanceof LiveNavigationHalt)) throw error;
+    run = pausedAt(workflow, {
+      runId, pageEngine: engineName, status: "paused",
+      steps: workflow.steps.map((step) => ({ id: step.id, status: "pending" })),
+      heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
+    }, workflow.steps[0]?.id || workflow.id, error.reason);
     return run;
   } finally {
     const leaveOpen = deps.leaveOpen === true && !!run && run.status !== "failed";

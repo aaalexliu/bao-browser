@@ -8,7 +8,7 @@
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { condense } from "../v1/condense";
+import { explain, type InterpretMeta } from "../v1/interpret";
 import { normText, withoutPrice } from "../v1/identity";
 import type { TrailEvent } from "../v1/interpret";
 import { smallestChange } from "../v1/recorder";
@@ -260,7 +260,11 @@ export function refusedStepLabels(workflow: Pick<WorkflowV2, "steps">, guard: La
     .map((step) => step.label);
 }
 
-/** The session's workflow, built from its trail the way the eval drivers build one. */
+export function liveTrailSteps(events: readonly TrailEvent[], meta: InterpretMeta) {
+  return explain(events.filter((event) => event.op !== "scroll"), { ...meta, preserveActions: true });
+}
+
+/** Keep the live session's false starts for review instead of condensing them. */
 export function workflowFromTrail(input: {
   id: string;
   name: string;
@@ -271,7 +275,7 @@ export function workflowFromTrail(input: {
   events: readonly TrailEvent[];
   guard: LabelGuard;
 }): WorkflowV2 {
-  const built = condense(input.events, { id: input.id, name: input.name, startUrl: input.startUrl });
+  const built = liveTrailSteps(input.events, { id: input.id, name: input.name, startUrl: input.startUrl }).workflow;
   const workflow: WorkflowV2 = {
     ...built,
     createdAt: input.createdAt,

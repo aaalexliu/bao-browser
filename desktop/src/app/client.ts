@@ -79,7 +79,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean> };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; liveChromeProfile?: string; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean> };
   profileCopy?: { bytes: number; copyMs: number; status: "open" | "deleted" };
   relay?: { paired?: boolean; deviceId?: string };
   sync?: {
@@ -98,6 +98,7 @@ let state: ShellState & {
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
   opened?: OpenedState | null;
+  liveTargetOverride?: string;
   liveSession?: LiveSessionRecord | null;
   librarySplits?: string[];
   home?: string;
@@ -111,7 +112,7 @@ let argsWorkflow = "";
 let openWorkflow = "";
 let healFilter: "pending" | "kept" | "reverted" = "pending";
 let openHeal: { runId: string; healId: string } | null = null;
-let openRun = "";
+let openRun = screen === "run" ? new URLSearchParams(location.search).get("run") || "" : "";
 let selectedStep = "";
 let banner: { id: string; title: string; body: string } | null = null;
 const dismissed = new Set<string>();
@@ -377,6 +378,16 @@ function settings(): string {
   const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
   return `<section><h2>Settings</h2>
     ${libraryHome}
+    <div class="card" id="live-chrome-settings">
+      <h3>Live Chrome</h3>
+      <label>Profile for live sessions <select id="live-chrome-profile" aria-describedby="live-chrome-help" ${!chromeProfiles.length ? "disabled" : ""}>
+        ${!chromeProfiles.length ? `<option value="">No Chrome profiles found</option>` : chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${(state.settings?.liveChromeProfile || "Default") === profile.directory ? "selected" : ""}>${esc(profile.name)} (${esc(profile.directory)})</option>`).join("")}
+      </select></label>
+      <p class="quiet" id="live-chrome-help">Live sessions use the sign-in in this profile of your open Chrome. This choice applies to the next live session or replay, not the profile-copy engine below. Bao never signs in for you.</p>
+      <p class="quiet"><code>--live-target</code> wins over <code>BAO_LIVE_TARGET</code>. Either launch override wins over this choice.${state.liveTargetOverride ? ` Current override: <code>${esc(state.liveTargetOverride)}</code>.` : ""}</p>
+      <button id="save-live-chrome" type="button" ${!chromeProfiles.length ? "disabled" : ""}>Save live profile</button>
+      <p id="live-chrome-feedback" role="status"></p>
+    </div>
     <div class="card" id="page-engine-settings">
       <h3>Page engine</h3>
       <label>Run engine <select id="page-engine">
@@ -677,6 +688,19 @@ function bind(): void {
     await fetch("/api/extension/host-access/revoke", { method: "POST" });
     renderKey = "";
     await refresh();
+  };
+  const saveLiveChrome = document.getElementById("save-live-chrome");
+  if (saveLiveChrome) saveLiveChrome.onclick = async () => {
+    const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({
+      liveChromeProfile: (document.getElementById("live-chrome-profile") as HTMLSelectElement).value,
+    }) });
+    const body = await response.json();
+    if (response.ok) {
+      renderKey = "";
+      await refresh();
+    }
+    const feedback = document.getElementById("live-chrome-feedback");
+    if (feedback) feedback.textContent = response.ok ? "Live profile saved. It applies to the next live session or replay." : body.error || "Could not save live profile.";
   };
   const engineChoice = document.getElementById("page-engine") as HTMLSelectElement | null;
   const profileChoice = document.getElementById("chrome-profile") as HTMLSelectElement | null;
@@ -2343,5 +2367,5 @@ const statePoller = createStatePoller({
   visible: () => document.visibilityState === "visible",
 });
 document.addEventListener("visibilitychange", statePoller.visibilityChanged);
-void refresh().catch(() => undefined);
+void (screen === "settings" ? loadHostAccess() : refresh()).catch(() => undefined);
 setInterval(tickClock, 250);
