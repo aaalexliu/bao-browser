@@ -68,6 +68,74 @@ test("live Chrome rejects window capture without calling it", async () => {
   assert.equal(other.refuseWindowShot, false);
 });
 
+test("live Chrome helper refuses nodes outside stable Chrome before launching the helper", async () => {
+  const live = chromeHelper();
+  for (const bundle of [
+    "com.apple.UserNotificationCenter", "", "com.google.Chrome.helper", "com.google.Chrome.evil",
+    "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary", "com.google.chrome.for.testing",
+  ]) {
+    await assert.rejects(live.nodes(bundle), /target bundle must be com\.google\.Chrome/);
+  }
+  for (const args of [
+    ["nodes"],
+    ["nodes", "--pid", "123"],
+    ["nodes", "--bundle"],
+    ["nodes", "--bundle", "com.google.Chrome", "--bundle", "com.apple.UserNotificationCenter"],
+    ["nodes", "--bundle", "com.google.Chrome", "--bundle", "com.google.Chrome"],
+  ]) {
+    await assert.rejects(live.exec(args), /target bundle must be com\.google\.Chrome/);
+  }
+  await assert.rejects(live.windows("com.google.Chrome"), /Screen Recording is not used/);
+  await assert.rejects(live.permissions(true), /Screen Recording is not used/);
+  assert.deepEqual(live.calls, []);
+});
+
+test("live Chrome helper accepts stable Chrome nodes and skips ScreenCapture preflight", async (t) => {
+  const sent: string[][] = [];
+  t.mock.method(MacOsHelper.prototype, "exec", async (args: string[]) => {
+    sent.push(args);
+    return { ok: true };
+  });
+  const live = chromeHelper();
+  await live.nodes("com.google.Chrome", 42);
+  await live.nodes("com.google.Chrome");
+  await live.permissions(false);
+  assert.deepEqual(sent, [
+    ["nodes", "--bundle", "com.google.Chrome", "--pid", "42"],
+    ["nodes", "--bundle", "com.google.Chrome"],
+    ["permissions-ax"],
+  ]);
+});
+
+test("live Chrome helper leaves other commands' bundle handling to the native helper", async (t) => {
+  const sent: string[][] = [];
+  t.mock.method(MacOsHelper.prototype, "exec", async (args: string[]) => {
+    sent.push(args);
+    return { ok: true };
+  });
+  const live = chromeHelper();
+  for (const bundle of ["com.google.Chrome", "com.google.chrome.for.testing", "com.example.test", ""]) {
+    await live.press({ platform: "macos", app: bundle, role: "AXButton", name: "Allow", path: [] }, 42);
+    await live.hit(10, 20, bundle);
+    await live.focused(bundle);
+    assert.deepEqual(sent.slice(-3), [
+      ["press", "--bundle", bundle, "--role", "AXButton", "--name", "Allow", "--pid", "42"],
+      ["hit", "--x", "10", "--y", "20", "--allow-bundle", bundle],
+      ["focus", "--allow-bundle", bundle],
+    ]);
+  }
+  for (const command of [
+    "read", "set-value", "focus-role", "move-window", "key", "type-keys", "cg-key", "cg-type",
+    "fixture", "windows-brief", "close-window", "raise-window", "set-window-text", "confirm-text",
+  ]) {
+    const args = [command, "--bundle", "com.example.test"];
+    await live.exec(args);
+    assert.deepEqual(sent.at(-1), args);
+  }
+  await live.moveWindow("", { x: 50, y: 50, w: 550, h: 500 }, { pid: 42, frontmost: true });
+  assert.deepEqual(sent.at(-1), ["move-window", "--pid", "42", "--frontmost", "--x", "50", "--y", "50", "--w", "550", "--h", "500"]);
+});
+
 test("live entries keep the shared gate", () => {
   for (const name of LIVE_ENTRIES) {
     const src = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live", name), "utf8");

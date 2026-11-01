@@ -8,14 +8,13 @@ use core_foundation::base::TCFType;
 use core_foundation::string::CFString;
 use core_graphics::display::CGDisplay;
 
-use crate::apps::{bundle_id_for_pid, pids_for_bundle};
+use crate::apps::pids_for_bundle;
 use crate::element::{
     actions, attribute_names, copy_attr, element_attr, element_list, has_press, numeric_attribute,
     parent, raw_frame, role_of, same_element, set_bool, string_attr, El, IDENTIFIER,
 };
 use crate::sample::{ancestor_chain, hits_in_window};
 use crate::model::{Frame, Geom, Geometry, Node, Seg};
-use crate::win::main_window;
 
 const MAX_NODES: i32 = 1500;
 const MAX_DEPTH: i32 = 30;
@@ -82,48 +81,16 @@ pub fn app_from_pid(pid: i32, manual: bool) -> Result<(i32, El), String> {
     Ok((pid, el))
 }
 
-/// The process to type into. No pid keeps the one-process bundle lookup.
-/// A pid selects that process even when another process shares the bundle id.
-pub fn app_target(bundle: &str, pid: Option<i32>) -> Result<(i32, El), String> {
-    match pid {
-        Some(pid) => {
-            if !bundle.is_empty() {
-                let mut actual = String::new();
-                for _ in 0..20 {
-                    actual = bundle_id_for_pid(pid);
-                    if !actual.is_empty() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
-                if actual.is_empty() {
-                    return Err(format!("pid {pid} has no bundle id"));
-                }
-                if actual != bundle {
-                    return Err(format!("pid {pid} is {actual}, not {bundle}"));
-                }
-            }
-            app_from_pid(pid, true)
-        }
-        None => app_element(bundle),
-    }
+pub fn detect_geom(app: &El) -> Geom {
+    let (screen_w, screen_h) = screen_size();
+    ax_geometry(screen_w, screen_h, ax_windows(app).into_iter().filter_map(|el| raw_frame(&el)))
 }
 
-pub fn detect_geom(pid: i32, app: &El) -> Geom {
-    let (screen_w, screen_h) = screen_size();
-    let mut geom = Geom { screen_w, screen_h, flip_y: false, ax_window: None, cg_window: None };
-    let cg = main_window(pid).ok();
-    let ax = ax_windows(app).into_iter().filter_map(|el| raw_frame(&el))
-        .max_by(|a, b| (a.w * a.h).partial_cmp(&(b.w * b.h)).unwrap_or(std::cmp::Ordering::Equal));
-    if let (Some(ax), Some(cg)) = (ax, cg) {
-        let same = (ax.y - cg.frame.y).abs();
-        let flipped = (screen_h - ax.y - ax.h - cg.frame.y).abs();
-        let size_ok = (ax.w - cg.frame.w).abs() < 30.0 && (ax.h - cg.frame.h).abs() < 80.0;
-        geom.flip_y = size_ok && flipped < 12.0 && same > 40.0;
-        geom.ax_window = Some(ax);
-        geom.cg_window = Some(cg.frame);
-    }
-    geom
+fn ax_geometry(screen_w: f64, screen_h: f64, windows: impl Iterator<Item = Frame>) -> Geom {
+    let ax_window = windows.max_by(|a, b| (a.w * a.h).partial_cmp(&(b.w * b.h)).unwrap_or(std::cmp::Ordering::Equal));
+    // AX already uses top-left screen points. WindowServer enumeration can ask
+    // for Screen Recording even without reading titles, so never use it here.
+    Geom { screen_w, screen_h, flip_y: false, ax_window, cg_window: None }
 }
 
 fn ax_windows(app: &El) -> Vec<El> {
@@ -339,7 +306,7 @@ pub fn harvest_filtered_pid(bundle: &str, forced: Option<i32>, manual: bool, tit
     };
     let bundle_name = if bundle.is_empty() { crate::apps::bundle_id_for_pid(pid) } else { bundle.to_string() };
     let bundle = bundle_name.as_str();
-    let mut geom = detect_geom(pid, &app);
+    let mut geom = detect_geom(&app);
     let mut out = Vec::new();
     let mut elems = Vec::new();
     let mut seen = Seen { ptrs: HashSet::new(), elems: Vec::new(), shapes: HashSet::new() };
@@ -400,6 +367,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ax_only_geometry_keeps_offset_window_and_retina_points() {
+        // A 3024 x 1964 Retina panel exposes a 1512 x 982 point desktop.
+        let window = Frame { x: 143.0, y: 117.0, w: 1000.0, h: 700.0 };
+        let small = Frame { x: 200.0, y: 140.0, w: 300.0, h: 200.0 };
+        let geom = ax_geometry(1512.0, 982.0, vec![small, window].into_iter());
+        assert!(!geom.flip_y);
+        assert!(geom.cg_window.is_none());
+        let frame = geom.ax_window.as_ref().unwrap();
+        assert_eq!((frame.x, frame.y, frame.w, frame.h), (143.0, 117.0, 1000.0, 700.0));
+        assert_eq!(geom.to_top_left(263.0, 297.0, 32.0), (263.0, 297.0));
+        assert_eq!(geom.to_ax_origin(263.0, 297.0, 32.0), (263.0, 297.0));
+        let empty = ax_geometry(1512.0, 982.0, std::iter::empty());
+        assert!(empty.ax_window.is_none());
+        assert_eq!(empty.to_top_left(-80.0, 1100.0, 24.0), (-80.0, 1100.0));
+    }
+
+    #[test]
     fn depth_cap_and_group_descent() {
         assert_eq!(MAX_DEPTH, 30);
         assert!(!skip_children("AXSplitGroup"));
@@ -428,26 +412,5 @@ mod tests {
         assert_ne!(button, shape_key(1, "AXGroup", Some(frame)));
         assert_eq!(shape_key(4, "AXApplication", None), Some("4|AXApplication".into()));
         assert_ne!(shape_key(4, "AXApplication", None), shape_key(4, "AXMenuBar", None));
-    }
-
-    #[test]
-    fn app_target_rejects_a_non_positive_pid_before_lookup() {
-        let err = match app_target("", Some(0)) {
-            Err(err) => err,
-            Ok(_) => panic!("a zero pid must be refused"),
-        };
-        assert_eq!(err, "pid must be positive");
-    }
-
-    #[test]
-    fn app_target_refuses_a_pid_that_is_not_the_named_bundle() {
-        let pid = std::process::id() as i32;
-        let err = match app_target("com.google.Chrome", Some(pid)) {
-            Err(err) => err,
-            Ok(_) => panic!("this process is not Chrome"),
-        };
-        let refused = err == format!("pid {pid} has no bundle id") || err.contains("not com.google.Chrome");
-        assert!(refused, "{err}");
-        assert!(!err.contains("AXUIElementCreateApplication"), "{err}");
     }
 }

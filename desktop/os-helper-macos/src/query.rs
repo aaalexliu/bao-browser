@@ -20,7 +20,7 @@ fn geom_for_pid(pid: i32) -> Geom {
     if pid > 0 {
         if let Some(app) = El::adopt(unsafe { AXUIElementCreateApplication(pid) }) {
             app.timeout();
-            return detect_geom(pid, &app);
+            return detect_geom(&app);
         }
     }
     let (screen_w, screen_h) = screen_size();
@@ -87,6 +87,19 @@ fn walk_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Optio
         return Ok((false, "no accessibility element at point".into(), None));
     }
     let (nodes, _, _) = crate::walk::tree(allow_bundle)?;
+    let Some(chosen) = node_at_point(nodes, x, y) else {
+        return Ok((false, "no accessibility element at point".into(), None));
+    };
+    let useful = chosen.useful;
+    let reason = if useful {
+        "window-walk".into()
+    } else {
+        format!("window walk hit {}, not an actionable control", chosen.role)
+    };
+    Ok((useful, reason, Some(chosen)))
+}
+
+fn node_at_point(nodes: Vec<Node>, x: f64, y: f64) -> Option<Node> {
     let mut best: Option<Node> = None;
     let mut best_area = f64::MAX;
     for node in nodes {
@@ -102,16 +115,7 @@ fn walk_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Optio
             best = Some(node);
         }
     }
-    let Some(chosen) = best else {
-        return Ok((false, "no accessibility element at point".into(), None));
-    };
-    let useful = chosen.useful;
-    let reason = if useful {
-        "window-walk".into()
-    } else {
-        format!("window walk hit {}, not an actionable control", chosen.role)
-    };
-    Ok((useful, reason, Some(chosen)))
+    best
 }
 
 /// System-wide `AXUIElementCopyElementAtPosition`, then the allowed app's windows.
@@ -157,4 +161,30 @@ pub fn focused(allow_bundle: &str) -> Result<(bool, String, Option<Node>), Strin
     let text = is_text_role(&node.role);
     let reason = if text { String::new() } else { format!("focused element is {}, not a text control", node.role) };
     Ok((text, reason, Some(node)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::node_at_point;
+    use crate::model::{Frame, Node};
+
+    fn node(name: &str, frame: Frame, useful: bool) -> Node {
+        Node {
+            role: if useful { "AXButton" } else { "AXWindow" }.into(),
+            subrole: String::new(), title: name.into(), description: String::new(),
+            identifier: String::new(), name: name.into(), value: String::new(),
+            actions: Vec::new(), frame: Some(frame.clone()), ax_frame: Some(frame),
+            path: Vec::new(), pid: 42, app: "com.google.chrome.for.testing".into(), useful,
+        }
+    }
+
+    #[test]
+    fn window_walk_hits_offset_retina_points_without_a_y_flip() {
+        let nodes = vec![
+            node("window", Frame { x: 50.0, y: 50.0, w: 550.0, h: 500.0 }, false),
+            node("button", Frame { x: 210.0, y: 317.0, w: 220.0, h: 56.0 }, true),
+        ];
+        assert_eq!(node_at_point(nodes.clone(), 320.0, 345.0).unwrap().name, "button");
+        assert!(node_at_point(nodes, 320.0, 1117.0 - 345.0).is_none());
+    }
 }

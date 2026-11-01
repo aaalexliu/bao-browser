@@ -40,10 +40,29 @@ export function helperBin(): string {
   return HELPER_APP;
 }
 
+class LiveChromeHelper extends MacOsHelper {
+  override exec(args: string[], timeoutMs?: number) {
+    const command = args[0];
+    if (command === "nodes") {
+      const flags = args.filter((arg) => arg === "--bundle");
+      const bundle = args[args.indexOf("--bundle") + 1];
+      if (flags.length !== 1 || bundle !== CHROME_BUNDLE) {
+        return Promise.reject(new Error("live Chrome helper refuses nodes: target bundle must be com.google.Chrome"));
+      }
+    }
+    if (command === "windows" || (command === "permissions" && args.includes("--prompt"))) {
+      return Promise.reject(new Error(`live Chrome helper refuses ${command}: Screen Recording is not used`));
+    }
+    // A distinct command makes old helpers fail closed instead of ignoring a new flag.
+    if (command === "permissions") args = ["permissions-ax"];
+    return super.exec(args, timeoutMs);
+  }
+}
+
 export function chromeHelper(): MacOsHelper {
   const bin = helperBin();
   if (!bin.endsWith(".app")) throw new Error("BaoOSHelper must be launched as an app bundle");
-  return forbidScreenRecording(new MacOsHelper(bin));
+  return forbidScreenRecording(new LiveChromeHelper(bin));
 }
 
 export async function logAx(file: string, event: AxClick): Promise<void> {

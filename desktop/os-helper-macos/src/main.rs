@@ -84,8 +84,9 @@ fn hit_json(useful: bool, reason: String, node: Option<model::Node>) -> Value {
 fn run(args: &[String]) -> Result<Value, String> {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("help");
     match cmd {
-        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "windows-brief", "move-window", "shot", "key", "type-keys", "fixture", "close-window", "drag", "drag-file"]})),
-        "permissions" => Ok(perms::report(args.iter().any(|a| a == "--prompt"))),
+        "help" | "--help" => Ok(json!({"ok": true, "commands": ["permissions", "permissions-ax", "nodes", "hit", "focus", "press", "set-value", "read", "focus-role", "windows", "windows-brief", "move-window", "shot", "key", "type-keys", "fixture", "close-window", "drag", "drag-file"]})),
+        "permissions" => Ok(perms::report(args.iter().any(|a| a == "--prompt"), false)),
+        "permissions-ax" => Ok(perms::report(false, true)),
         "nodes" => {
             let bundle = bundle_or_pid(args)?;
             let (nodes, geom, pid) = walk::tree_pid(&bundle, pid_flag(args)?)?;
@@ -249,6 +250,15 @@ mod tests {
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().copied().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn live_permissions_report_accessibility_without_a_screen_capture_result() {
+        let result = run(&args(&["permissions-ax"])).unwrap();
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["prompted"], false);
+        assert!(result["accessibility"].is_boolean());
+        assert!(result.get("screenCapture").is_none());
     }
 
     #[test]

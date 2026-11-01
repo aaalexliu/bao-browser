@@ -1,6 +1,6 @@
 # What Bao asks permission for
 
-Chrome and macOS enforce separate permissions. Turning one on does not turn the others on. The daily-Chrome helper path is below. For the separate copied-profile route and its permission requirements, see [agent-browser trial](agent-browser-engine.md#pick-an-engine-and-profile).
+Bao's daily-Chrome path never needs Screen Recording. Live screenshots and video come from CDP. Leave Screen Recording off for this path. Chrome and macOS enforce separate permissions. Turning one on does not turn the others on. For the separate copied-profile route and its permission requirements, see [agent-browser trial](agent-browser-engine.md#pick-an-engine-and-profile).
 
 ## The Chrome remote-debugging toggle
 
@@ -20,19 +20,19 @@ Status checks do not ask for Automation or open Chrome. BaoOSHelper sends severa
 
 ## Which grant each job needs
 
-The helper reports four jobs. Extension replay has its own site grant. A grant for one job does not turn another job off.
+The helper reports four jobs, including legacy OS tools. Extension replay has its own site grant. A grant for one job does not turn another job off.
 
 - **AX press** reads and presses a control by its name. It needs Accessibility. The footer reads **AX press ready**.
-- **Window capture** saves one window. It needs Screen Recording. The footer reads **window capture ready**.
+- **Window capture** is the explicit legacy `shot` command, not the Chrome screenshot path. It needs Screen Recording. The footer reads **window capture ready** when that optional grant exists.
 - **Live Chrome** reads Chrome's controls through Accessibility. The footer reads **live Chrome ready** when Accessibility is granted and either Automation for Google Chrome is granted or that Chrome is already listening with remote debugging on. If Chrome is closed, the Automation check stays neutral. If debugging is off and Automation is not yet asked or denied, the footer reads **live Chrome needs one more permission**. Use **Allow** beside **Automation: Google Chrome** for not yet asked, or System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome for denied. An unavailable check shows its error and does not claim readiness unless Chrome is already listening. Live Chrome does not capture the window; Screen Recording never blocks it.
-- **MCP driver** (`bao mcp-ax`) takes a picture before it observes, clicks, types, or presses a key. It needs Accessibility and Screen Recording. The footer reads **MCP driver ready** only when both are on.
+- **Legacy OS MCP driver** (`bao mcp-ax`) calls `shot` before it observes, clicks, types, or presses a key. It needs Accessibility and Screen Recording for that explicit window capture. The footer reads **MCP driver ready** only when both are on. Use the `live_*` tools in [`bao mcp`](cdp-live-chrome.md#agent-entry-point) instead to avoid Screen Recording.
 - **Extension replay** uses the extension's site grant. The helper status does not report it.
 
 `helper.label` stays `helper ok` when Accessibility and Screen Recording are both on, and `helper needs permission` when either is off. The live Chrome row also counts Automation as described above.
 
-Leave Screen Recording on for window capture and the MCP driver. If the footer reads **helper needs permission**, allow the missing grant and open Bao again.
+Do not enable Screen Recording for Bao's daily-Chrome path. The legacy **helper needs permission** label can appear with Screen Recording off even when **live Chrome ready** is true.
 
-A second BaoOSHelper, or `open -a BaoOSHelper --args shot`, can still capture a window during a live Chrome session while Screen Recording is granted. The live session's own helper does not send `shot`.
+`shot` is the only helper command that captures pixels from macOS. It remains an explicit opt-in for legacy OS tools. The generic `permissions` command reports Accessibility and preflights Screen Recording without prompting. The explicit diagnostic commands `windows` (WindowServer enumeration) and `permissions --prompt` can also check or request Screen Recording; live Chrome refuses all three. Normal `nodes`, `press`, `hit`, `focus`, and remote-debugging toggle calls use AX window bounds, never WindowServer window lists or screen capture. Live permission checks use `permissions-ax`, which omits `screenCapture` from its report and does not preflight Screen Recording. An old helper rejects that command rather than falling back to a Screen Recording check. The live wrapper refuses `nodes` unless `--bundle` is exactly `com.google.Chrome`.
 
 ## Extension host grants
 
