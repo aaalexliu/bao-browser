@@ -294,6 +294,7 @@ export interface LiveReplayDeps {
   onNotice?: (message: string) => void;
   /** Records the replay window here as <runId>.webm. */
   videoDir?: string;
+  evalVideoNoBlur?: true;
 }
 
 /**
@@ -324,6 +325,8 @@ export async function replayLiveWorkflow(
   }
   let cdp: Awaited<ReturnType<typeof connectTarget>>["cdp"] | undefined;
   let driver: CdpLiveDriver | undefined;
+  let run: RunResult | undefined;
+  let videoStartedAt = 0;
   try {
     const opened = await connectTarget(prepared, scope.hosts, {
       openProfile: deps.openProfile,
@@ -335,7 +338,11 @@ export async function replayLiveWorkflow(
     driver = opened.driver;
     driver.setOrigins(scope.origins);
     driver.setStopPath(scope.stopPath);
-    if (deps.videoDir && !deps.artifactRoot) await driver.recordVideo(path.join(deps.videoDir, `${runId}.webm`));
+    const videoDir = deps.artifactRoot ? path.join(deps.artifactRoot, "videos") : deps.videoDir;
+    if (videoDir) {
+      videoStartedAt = Date.now();
+      await driver.startVideo(path.join(videoDir, `${runId}.webm`), { noBlur: deps.evalVideoNoBlur });
+    }
     rememberLockTarget(REPLAY_AGENT, driver.targetId, lockFile);
     const leftover = takeDeadTarget(lockFile);
     if (leftover && leftover !== driver.targetId) {
@@ -345,18 +352,9 @@ export async function replayLiveWorkflow(
     await watchNewTargets(cdp, driver.targetId, () => true, () => {
       guarded.halted = "new_target";
     });
-    const videoStartedAt = Date.now();
-    if (deps.artifactRoot) await driver.startVideo(path.join(deps.artifactRoot, "videos", `${runId}.webm`));
     await driver.goto(workflow.startUrl);
-    const run = await replayGuarded(workflow, inputs, guarded, runId, deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined);
+    run = await replayGuarded(workflow, inputs, guarded, runId, deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined);
     run.pageEngine = engineName;
-    try {
-      const recorded = await driver.finishVideo();
-      if (recorded.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; run.videoTruncated = recorded.truncated; }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "video capture failed";
-      run.traceUnavailable = [run.traceUnavailable, `replay video unavailable: ${reason}`].filter(Boolean).join("; ");
-    }
     return run;
   } finally {
     await driver?.end().catch(() => undefined);
@@ -366,6 +364,12 @@ export async function replayLiveWorkflow(
       await setRemoteDebugging(false, remoteDebuggingDeps(ax, prepared.target.portFile, deps.axLog, deps.onNotice)).catch(() => undefined);
     }
     releaseCdpLock(REPLAY_AGENT, lockFile);
-    await driver?.writeVideo();
+    try {
+      const recorded = await driver?.finishVideo();
+      if (run && recorded?.wrote) { run.video = `${runId}.webm`; run.videoStartedAt = videoStartedAt; run.videoTruncated = recorded.truncated; }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "video capture failed";
+      if (run) run.traceUnavailable = [run.traceUnavailable, `replay video unavailable: ${reason}`].filter(Boolean).join("; ");
+    }
   }
 }

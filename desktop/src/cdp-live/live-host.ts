@@ -64,7 +64,7 @@ import {
 import type { CdpSocket } from "./socket";
 import { leafTexts } from "../v1/recorder";
 import type { RunResult } from "../v1/replay";
-import { validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
+import { popupDismissName, validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
 
 const AGENT = "bao-live";
@@ -89,7 +89,8 @@ interface OpenState {
   facts: PageFacts | null;
   halted: string;
   refused: boolean;
-  covered: Set<string>;
+  covered: Map<string, string[]>;
+  optionalDismissals: Set<string>;
   /** Every act that went through. The saved workflow is built from it. */
   trail: LiveTrail;
   startedAt: number;
@@ -153,6 +154,7 @@ export interface LiveHostOptions {
   onNotice?: (message: string) => void;
   /** Records each session window as live-<session>-<time>.webm and each replay window as <runId>.webm here. */
   videoDir?: string;
+  evalVideoNoBlur?: true;
 }
 
 type EndReason = "stop" | "disconnect" | "idle";
@@ -355,9 +357,6 @@ export function createLiveHost(opts: LiveHostOptions): {
       driver.setOrigins(origins);
       driver.setStopPath(stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
-      if (opts.videoDir && !selected?.artifactRoot) {
-        await driver.recordVideo(path.join(opts.videoDir, `live-${ids.workflowId.slice(0, 40)}-${Date.now().toString(36)}.webm`));
-      }
       const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40));
       const trail = await LiveTrail.open(opts.home);
       open = {
@@ -378,7 +377,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         facts: null,
         halted: "",
         refused: false,
-        covered: new Set(),
+        covered: new Map(),
+        optionalDismissals: new Set(),
         trail,
         startedAt: Date.now(),
         steps: [],
@@ -390,7 +390,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         runId: `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
         eventShots: new Map(),
       };
-      if (open.artifactRoot) await driver.startVideo(path.join(open.artifactRoot, "videos", `${open.runId}.webm`));
+      const videoDir = open.artifactRoot ? path.join(open.artifactRoot, "videos") : opts.videoDir;
+      if (videoDir) await driver.startVideo(path.join(videoDir, open.artifactRoot ? `${open.runId}.webm` : `live-${open.id}-${Date.now().toString(36)}.webm`), { noBlur: opts.evalVideoNoBlur });
       slot = { phase: "open", id: open.id };
       rememberLockTarget(AGENT, driver.targetId, lockFile);
       const leftover = takeDeadTarget(lockFile);
@@ -418,8 +419,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         releaseCdpLock(AGENT, lockFile);
         open = null;
         slot = { phase: "idle" };
+        await driver?.finishVideo().catch(() => undefined);
         if (clip) await rm(clip, { force: true });
-        await driver?.writeVideo();
       }
       throw err;
     }
@@ -561,15 +562,21 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note("click", label, "running", null);
     }), ref);
     if (before) await state.log.patchLast(state.driver.lastTrusted());
-    const control = before?.identity ? JSON.stringify([before.side.url, before.identity]) : "";
+    const control = before?.identity ? JSON.stringify(before.identity) : "";
     if (outcome.kind !== "applied") {
-      if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) state.covered.add(control);
+      if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) {
+        if (!state.covered.has(control)) state.covered.set(control, []);
+      }
       else state.refused = true;
       // A refusal before the click gets its own audit row. After the click, the click's row stands.
       if (!before) await note("click", outcome.reason, "failed", null);
       return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
-    state.covered.delete(control);
+    const recovered = state.covered.get(control);
+    if (recovered) {
+      recovered.forEach((id) => state.optionalDismissals.add(id));
+      state.covered.delete(control);
+    }
     const after = await readAfter(state, index, true);
     // The accessible name, not the redacted view label, so the item in "Add 1 ct {item}" keeps its digits.
     const name = before?.identity?.name || before?.identity?.text || outcome.label;
@@ -580,7 +587,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       effect.subtreeAfter,
       async () => (await state.driver.tree().catch(() => null))?.nodes || [],
     );
-    await state.trail.add({
+    const event = await state.trail.add({
       op: "click",
       identity: before?.identity,
       beforeUrl: before?.side.url,
@@ -588,6 +595,9 @@ export function createLiveHost(opts: LiveHostOptions): {
       ...effect,
       ...(skip ? { skipWhen: skip.text, ...(skip.anyCount ? { skipAnyCount: true } : {}) } : {}),
     });
+    if (popupDismissName(before?.identity)) {
+      for (const dismissals of state.covered.values()) dismissals.push(event.id);
+    }
     return look("click");
   }
 
@@ -639,7 +649,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
   function saveWorkflow(status: string, video: boolean, videoTruncated: boolean, traceUnavailable?: string): boolean {
     if (!open) return false;
-    const events = open.trail.list();
+    const events = open.trail.list().map((event) => open!.optionalDismissals.has(event.id) ? { ...event, optional: "dismiss" as const } : event);
     if (!events.length) return false;
     const workflow = workflowFromTrail({
       id: open.id,
@@ -694,7 +704,14 @@ export function createLiveHost(opts: LiveHostOptions): {
     const refused = open.refused || open.covered.size > 0;
     const noteText = open.halted ? open.halted : refused ? "Refused." : ended;
     const status = open.halted ? "needs_human" : refused ? "failed" : "passed";
+    const ending = open;
     let saveError = "";
+    await ending.driver.end().catch(() => undefined);
+    ending.cdp.close();
+    if (ending.turnedOn) await restoreOff(ending.portFile).catch(() => undefined);
+    try { await ending.closeTarget?.(); }
+    catch (error) { saveError = error instanceof Error ? error.message : "profile cleanup failed"; }
+    finally { releaseCdpLock(AGENT, lockFile); }
     let videoError = "";
     let saved = false;
     let videoWrote = false;
@@ -708,19 +725,10 @@ export function createLiveHost(opts: LiveHostOptions): {
     try { saved = saveWorkflow(status, videoWrote, videoTruncated, videoError || undefined); }
     catch (error) { saveError = error instanceof Error ? error.message : "workflow save failed"; }
     const videoNote = videoError ? `${saved ? "Workflow saved; " : ""}${videoError}` : "";
-    const ending = open;
     await ending.log.flush(saveError ? "failed" : status, saveError || [noteText, videoNote].filter(Boolean).join(" "), ending.host);
     slot = { phase: "closed", id, status: saveError ? "failed" : status };
     open = null;
-    // A replay opens its own connection, so the session closes its window and socket before it frees the lock.
-    await ending.driver.end().catch(() => undefined);
-    ending.cdp.close();
-    if (ending.turnedOn) await restoreOff(ending.portFile).catch(() => undefined);
-    try { await ending.closeTarget?.(); } finally {
-      releaseCdpLock(AGENT, lockFile);
-      if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.webm`), { force: true });
-      await ending.driver.writeVideo();
-    }
+    if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.webm`), { force: true });
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });
     }
@@ -728,7 +736,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   /** Runs inside the call chain. The session must be closed, and the replay takes the CDP lock itself. */
-  async function runReplay(workflow: WorkflowV2, inputs: ReplayArgs): Promise<RunResult> {
+  async function runReplay(workflow: WorkflowV2, inputs: ReplayArgs, evalVideoNoBlur?: true): Promise<RunResult> {
     if (slot.phase === "open") throw new Error("stop the live session before replay");
     const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     let selected: LiveRunSelection | undefined;
@@ -745,6 +753,7 @@ export function createLiveHost(opts: LiveHostOptions): {
           engineName: run.pageEngine,
           artifactRoot: selected?.artifactRoot,
           videoDir: opts.videoDir,
+          evalVideoNoBlur,
           lockFile,
           helper: opts.helper,
           openProfile,
@@ -774,7 +783,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       if (!workflow) throw new Error("workflow is required");
       const errors = validateWorkflow(workflow);
       if (errors.length) throw new Error(`invalid workflow: ${errors.join(", ")}`);
-      return reply({ op: LIVE_REPLAY, run: await runReplay(workflow, inputs) });
+      return reply({ op: LIVE_REPLAY, run: await runReplay(workflow, inputs, opts.evalVideoNoBlur) });
     } catch (err) {
       const reason = err instanceof Error ? err.message : "live replay failed";
       return reply({ op: LIVE_REPLAY, outcome: { kind: "rejected", reason: reason.slice(0, 180) } });

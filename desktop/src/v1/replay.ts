@@ -56,6 +56,7 @@ import {
   type FileOutput,
 } from "./files-dates";
 import {
+  popupDismissName,
   subst,
   type FileArg,
   type Identity,
@@ -527,7 +528,7 @@ export async function replay(
         const passed = clutterPrimed
           ? "recovered: clutter"
           : (outcome.note || outcome.detail || (outcome.recovered ? `recovered: ${outcome.recovered}` : ""));
-        stamp({ id: step.id, status: "passed", ...(passed ? { reason: passed } : {}) });
+        stamp({ id: step.id, status: outcome.skipped ? "skipped" : "passed", ...(passed ? { reason: passed } : {}) });
       }
       noteTrajectory(trajectory, step, outcome.acted, true, clock() - started);
       continue;
@@ -756,7 +757,7 @@ export function runPassed(
 }
 
 type StepOutcome =
-  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string; note?: string; detail?: string }
+  | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string; note?: string; detail?: string; skipped?: true }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
   | { ok: false; paused: "confirm" | "trust" | "signin"; repairs: RepairLog[]; ask?: HumanAsk };
 
@@ -819,7 +820,7 @@ async function runStep(
     }
   }
   const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery, trust);
-  if (!outcome.ok) return outcome;
+  if (!outcome.ok || outcome.skipped) return outcome;
   if (step.gone) {
     const left = await holdCheck(step.gone, args, driver, false);
     if (!left) {
@@ -893,6 +894,7 @@ async function runStepAction(
     return { ok: true, repairs, acted: step.identity, recovered: held.recovered };
   }
   const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate, recovery);
+  if (found.optionalAbsent) return { ok: true, repairs, skipped: true, note: "optional dismiss absent" };
   if (!found.hit.ok || found.hit.index == null) {
     const failure = await fail(driver, step, "find", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets);
     if (step.identity) failure.identity = identityView(step.identity, found.nodes, found.hit);
@@ -1045,7 +1047,17 @@ async function findTarget(
   locatorMode: LocatorMode,
   gate: ApplyGate,
   recovery: RecoveryBudget,
-): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[]; recovered?: string }> {
+): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[]; recovered?: string; optionalAbsent?: true }> {
+  if (step.optional === "dismiss") {
+    const deadline = Date.now() + 2000;
+    while (true) {
+      const tree = await driver.tree();
+      const candidates = tree.nodes.flatMap((node, index) => popupDismissName(node) && popupDismissName(node).toLowerCase() === popupDismissName(step.identity).toLowerCase() && canClick(index, tree.boxes, tree.hidden) ? [index] : []);
+      if (candidates.length) return { nodes: tree.nodes, hit: candidates.length === 1 ? { ok: true, index: candidates[0]!, ranked: [] } : { ok: false, reason: "tie", ranked: [] }, tried: [] };
+      if (Date.now() >= deadline) return { nodes: tree.nodes, hit: { ok: false, reason: "no-candidates", ranked: [] }, tried: [], optionalAbsent: true };
+      await (driver.sleep ? driver.sleep(50) : sleep(50));
+    }
+  }
   const recovered = await dismissCover(driver, gate, step, repairs, recovery);
   let tree = await driver.tree();
   let located = locate(step, tree, args, locatorMode);

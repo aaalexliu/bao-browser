@@ -165,6 +165,11 @@ export interface StepLocator {
   anchor?: Identity;
 }
 
+export function popupDismissName(identity: Identity | undefined): string {
+  const name = identity?.name ?? identity?.text ?? identity?.label ?? "";
+  return identity?.surface === "dom" && identity.role === "button" && /^(?:close|x|no thanks|not now|dismiss)$/i.test(name) ? name : "";
+}
+
 export interface WorkflowStep {
   id: string;
   index: number;
@@ -178,6 +183,7 @@ export interface WorkflowStep {
   input?: string;
   key?: string;
   checked?: boolean;
+  optional?: "dismiss";
   sensitive?: boolean;
   /** A confirm or login step is done by the person. Replay does not click or type it. */
   human?: boolean;
@@ -341,6 +347,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if ((step.action === "confirm" || step.action === "login") && step.provenance) {
       errors.push(`coordinates ${step.id}`);
     }
+    if (step.optional !== undefined && (step.optional !== "dismiss" || step.action !== "click" || step.surface !== "dom" || !popupDismissName(step.identity))) errors.push(`optional ${step.id}`);
     if (step.action === "verify" && !step.expect && !step.postcondition) errors.push(`verify ${step.id}`);
     if (step.heal && step.heal !== "auto" && step.heal !== "ask" && step.heal !== "never") errors.push(`heal ${step.id}`);
     if (step.when) {

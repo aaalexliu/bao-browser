@@ -20,7 +20,7 @@
 //      Opus judge says the agent told the user it did not check out. When bao refuses no checkout
 //      attempt, F is not exercised, which is neither a pass nor a fail
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { brotliDecompressSync, gunzipSync, zstdDecompressSync } from "node:zlib";
@@ -633,7 +633,7 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
   // The CLI closed bao mcp's stdin when it exited. The app saves the open session and then frees the lock.
   let saveNote = "";
   try {
-    await until(() => (existsSync(lane.lockFile) ? undefined : true), "the live lock to be freed", 60_000);
+    await until(() => (existsSync(lane.lockFile) || readSession(lane.home)?.status === "running" ? undefined : true), "the live session to finish saving", 150_000);
   } catch (err) {
     saveNote = err instanceof Error ? err.message : String(err);
   }
@@ -649,6 +649,10 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
       workflow = undefined;
     }
   }
+  const videoDir = path.join(lane.home, "videos");
+  if (record && existsSync(videoDir)) {
+    for (const file of readdirSync(videoDir).filter((name) => name.startsWith(`live-${record.id}-`) && name.endsWith(".webm"))) copyFileSync(path.join(videoDir, file), path.join(dir, file));
+  }
   const transcript = readTranscript(driver, run.stdout);
   const state = lane.fixture.state();
   writeFileSync(path.join(dir, "fixture.json"), `${JSON.stringify({ carts: state.carts, writes: state.writes, traps: state.traps, requests: state.requests.length }, null, 2)}\n`);
@@ -657,7 +661,7 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
 
 // ---------- replay ----------
 
-async function replayTwice(lane: Lane, workflowId: string, recorded: CartLine): Promise<string[]> {
+async function replayTwice(lane: Lane, workflowId: string, recorded: CartLine, out: string): Promise<string[]> {
   const problems: string[] = [];
   const library = new Library(lane.home);
   const client = McpClient.start(lane.env);
@@ -679,6 +683,10 @@ async function replayTwice(lane: Lane, workflowId: string, recorded: CartLine): 
         modelCalls = run.modelCalls ?? 0;
         heals = run.heals.length;
         status = run.status;
+        if (run.video) {
+          mkdirSync(out, { recursive: true });
+          copyFileSync(path.join(lane.home, "videos", run.video), path.join(out, `replay-${round}.webm`));
+        }
       } catch {
         problems.push(`replay ${round}: no run record`);
       }
@@ -814,7 +822,7 @@ async function runDriver(driver: AgentDriver, opts: AgentRunOptions & { checkout
       return { row: blankRow(driver, "fail", `lock-down check: ${locked.join("; ")}. No agent run.`), listing, judgeModel: "" };
     }
     // Keep lane names short: bao serve binds <lane root>/home/extension-host/bridge.sock, and macOS caps a socket path at 104 bytes.
-    lane = await startLane(`l2-${driver}`, laneChildEnv("hermetic", process.env));
+    lane = await startLane(`l2-${driver}`, laneChildEnv("hermetic", process.env), true);
     const agentHome = path.join(scratch, "home");
     mkdirSync(agentHome, { recursive: true });
     const server = baoServer(lane.home, lane.env.HOME);
@@ -841,14 +849,14 @@ async function runDriver(driver: AgentDriver, opts: AgentRunOptions & { checkout
     const dProblems = workflowProblems(main.workflow);
 
     const replayable = !!(main.workflow && shape.line && !dProblems.length);
-    const eProblems = replayable && main.workflow && shape.line ? await replayTwice(lane, main.workflow.id, shape.line) : [];
+    const eProblems = replayable && main.workflow && shape.line ? await replayTwice(lane, main.workflow.id, shape.line, path.join(out, "replays")) : [];
 
     // F starts from a fresh lane, so the library has no saved workflow to replay and the agent drives the live tools.
     let checkout: Session | undefined;
     if (opts.checkout) {
       await lane.close();
       lane = undefined;
-      const fresh = await startLane(`f-${driver}`, laneChildEnv("hermetic", process.env));
+      const fresh = await startLane(`f-${driver}`, laneChildEnv("hermetic", process.env), true);
       lane = fresh;
       checkout = await runSession({ ...ctx, lane: fresh, server: baoServer(fresh.home, fresh.env.HOME) }, "checkout", CHECKOUT_PROMPT);
     }

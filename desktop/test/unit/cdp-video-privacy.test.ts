@@ -42,6 +42,11 @@ test("temporary frames and encoded video are veiled before persistence; pause dr
   const video = await startCdpVideo(source.cdp, "page", destination);
   try {
     video.pause();
+    video.pause();
+    source.emit(jpeg);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(files, []);
+    video.resume();
     source.emit(jpeg);
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.deepEqual(files, []);
@@ -69,6 +74,39 @@ test("temporary frames and encoded video are veiled before persistence; pause dr
     const clip = await readFile(destination);
     assert.ok(Math.min(...decode(clip)) >= 190, "the actual encoded clip retains the veil");
     await assert.rejects(readFile(files[0]!), /ENOENT/);
+  } finally {
+    await video.stop().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("explicit no-blur recording preserves source pixels in temporary frames and the encoded clip", { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-eval-video-"));
+  const destination = path.join(root, "clip.mp4");
+  const source = frameSource();
+  const fs = require("node:fs/promises") as typeof import("node:fs/promises");
+  const original = fs.writeFile;
+  let frameFile = "";
+  let saved: () => void = () => {};
+  const firstFrame = new Promise<void>((resolve) => { saved = resolve; });
+  t.mock.method(fs, "writeFile", async (...args: Parameters<typeof writeFile>) => {
+    await original(...args);
+    if (typeof args[0] === "string" && path.basename(args[0]).startsWith("frame-")) { frameFile = args[0]; saved(); }
+  });
+  const jpeg = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"], { input: redactedPng(3), maxBuffer: 16 * 1024 * 1024 }).stdout;
+  const video = await startCdpVideo(source.cdp, "page", destination, { noBlur: true });
+  try {
+    source.emit(jpeg);
+    await firstFrame;
+    assert.deepEqual(await readFile(frameFile), jpeg);
+    await video.endCapture();
+    await assert.rejects(readFile(destination), /ENOENT/);
+    assert.deepEqual(await video.stop(), { wrote: true, frames: 1, truncated: false });
+    const decoded = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", destination, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { maxBuffer: 16 * 1024 * 1024 });
+    assert.equal(decoded.status, 0, decoded.stderr.toString());
+    assert.equal(decoded.stdout.length, 96 * 54 * 3);
+    assert.ok(Math.min(...decoded.stdout) < 80, "encoding must not add the blur veil back");
+    assert.ok(Math.abs(decoded.stdout[(27 * 96 + 10) * 3]! - decoded.stdout[(27 * 96 + 14) * 3]!) > 100, "source stripe edges stay sharp");
   } finally {
     await video.stop().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
