@@ -6,12 +6,9 @@ use accessibility_sys::{
 };
 use core_foundation::base::TCFType;
 use core_foundation::string::CFString;
-use objc2::msg_send;
-use objc2::rc::Retained;
-use objc2::runtime::AnyClass;
-use objc2_foundation::{NSArray, NSRect};
+use core_graphics::display::CGDisplay;
 
-use crate::apps::{bundle_id_for_pid, pids_for_bundle};
+use crate::apps::pids_for_bundle;
 use crate::element::{
     actions, attribute_names, copy_attr, element_attr, element_list, has_press, numeric_attribute,
     parent, raw_frame, role_of, same_element, set_bool, string_attr, El, IDENTIFIER,
@@ -53,15 +50,8 @@ fn useful(role: &str, name: &str, acts: &[String]) -> bool {
 }
 
 pub fn screen_size() -> (f64, f64) {
-    // The first NSScreen is the primary display. Use points, not Retina pixels.
-    unsafe {
-        let Some(cls) = AnyClass::get(c"NSScreen") else { return (0.0, 0.0) };
-        let screens: Retained<NSArray<objc2::runtime::AnyObject>> = msg_send![cls, screens];
-        if screens.len() == 0 { return (0.0, 0.0) }
-        let screen = screens.objectAtIndex_unchecked(0);
-        let frame: NSRect = msg_send![screen, frame];
-        (frame.size.width, frame.size.height)
-    }
+    let b = CGDisplay::main().bounds();
+    (b.size.width, b.size.height)
 }
 
 pub fn app_element(bundle: &str) -> Result<(i32, El), String> {
@@ -89,33 +79,6 @@ pub fn app_from_pid(pid: i32, manual: bool) -> Result<(i32, El), String> {
         let _ = set_bool(&el, "AXEnhancedUserInterface", true);
     }
     Ok((pid, el))
-}
-
-/// The process to type into. No pid keeps the one-process bundle lookup.
-/// A pid selects that process even when another process shares the bundle id.
-pub fn app_target(bundle: &str, pid: Option<i32>) -> Result<(i32, El), String> {
-    match pid {
-        Some(pid) => {
-            if !bundle.is_empty() {
-                let mut actual = String::new();
-                for _ in 0..20 {
-                    actual = bundle_id_for_pid(pid);
-                    if !actual.is_empty() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
-                if actual.is_empty() {
-                    return Err(format!("pid {pid} has no bundle id"));
-                }
-                if actual != bundle {
-                    return Err(format!("pid {pid} is {actual}, not {bundle}"));
-                }
-            }
-            app_from_pid(pid, true)
-        }
-        None => app_element(bundle),
-    }
 }
 
 pub fn detect_geom(app: &El) -> Geom {
@@ -338,8 +301,7 @@ pub fn harvest_filtered(bundle: &str, manual: bool, title: &str, skip_menu: bool
 
 pub fn harvest_filtered_pid(bundle: &str, forced: Option<i32>, manual: bool, title: &str, skip_menu: bool) -> Result<LiveTree, String> {
     let (pid, app) = match forced {
-        Some(pid) if manual => app_target(bundle, Some(pid))?,
-        Some(pid) => app_from_pid(pid, false)?,
+        Some(pid) => app_from_pid(pid, manual)?,
         None => app_element_opts(bundle, manual)?,
     };
     let bundle_name = if bundle.is_empty() { crate::apps::bundle_id_for_pid(pid) } else { bundle.to_string() };
@@ -450,26 +412,5 @@ mod tests {
         assert_ne!(button, shape_key(1, "AXGroup", Some(frame)));
         assert_eq!(shape_key(4, "AXApplication", None), Some("4|AXApplication".into()));
         assert_ne!(shape_key(4, "AXApplication", None), shape_key(4, "AXMenuBar", None));
-    }
-
-    #[test]
-    fn app_target_rejects_a_non_positive_pid_before_lookup() {
-        let err = match app_target("", Some(0)) {
-            Err(err) => err,
-            Ok(_) => panic!("a zero pid must be refused"),
-        };
-        assert_eq!(err, "pid must be positive");
-    }
-
-    #[test]
-    fn app_target_refuses_a_pid_that_is_not_the_named_bundle() {
-        let pid = std::process::id() as i32;
-        let err = match app_target("com.google.Chrome", Some(pid)) {
-            Err(err) => err,
-            Ok(_) => panic!("this process is not Chrome"),
-        };
-        let refused = err == format!("pid {pid} has no bundle id") || err.contains("not com.google.Chrome");
-        assert!(refused, "{err}");
-        assert!(!err.contains("AXUIElementCreateApplication"), "{err}");
     }
 }
