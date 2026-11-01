@@ -787,8 +787,7 @@ export function redactOverlay(caption: string): void {
   const veil = document.createElement("div");
   veil.id = "bao-redact";
   veil.setAttribute("data-bao-redact", "1");
-  veil.setAttribute("aria-hidden", "true");
-  veil.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483646;background:rgba(245,245,247,0.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)";
+  veil.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(245,245,247,0.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)";
   const cap = document.createElement("div");
   cap.textContent = String(caption || "").slice(0, 80);
   cap.style.cssText = "position:absolute;left:16px;bottom:16px;max-width:70%;background:#1d1d1f;color:#f5f5f7;padding:8px 12px;border-radius:8px;font:13px/1.3 -apple-system,sans-serif";

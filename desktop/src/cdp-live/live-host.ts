@@ -1,4 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { condenseWithGroups } from "../v1/condense";
 import { workflowShotName } from "../v1/shots";
@@ -398,6 +399,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await driver.goto(url);
       return await look("start");
     } catch (err) {
+      const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.webm`) : "";
       if (open?.log) {
         const reason = err instanceof Error ? err.message : "live call failed";
         await open.log.flush("failed", reason.slice(0, 160), host).catch(() => undefined);
@@ -409,6 +411,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         releaseCdpLock(AGENT, lockFile);
         open = null;
         slot = { phase: "idle" };
+        if (clip) await rm(clip, { force: true });
       }
       throw err;
     }
@@ -701,7 +704,10 @@ export function createLiveHost(opts: LiveHostOptions): {
     await ending.driver.end().catch(() => undefined);
     ending.cdp.close();
     if (ending.turnedOn) await restoreOff(ending.portFile).catch(() => undefined);
-    try { await ending.closeTarget?.(); } finally { releaseCdpLock(AGENT, lockFile); }
+    try { await ending.closeTarget?.(); } finally {
+      releaseCdpLock(AGENT, lockFile);
+      if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.webm`), { force: true });
+    }
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });
     }
