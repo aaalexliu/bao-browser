@@ -1205,7 +1205,7 @@ export async function startApp(opts: {
           return json(res, { ...run, id: run.runId });
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
-        if (refusal) return json(res, { error: refusal }, 409);
+        if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(body.args || {});
         if (body.fresh) {
           const existing = replays.get(saved.id);

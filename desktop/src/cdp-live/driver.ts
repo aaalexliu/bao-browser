@@ -137,35 +137,16 @@ export class CdpLiveDriver implements Driver {
   private pageEngine: AgentBrowserPage | undefined;
   private pageEngineSelected = false;
   private video: CdpVideo | undefined;
-  private videoScriptId = "";
 
   touch(): void { this.pageEngine?.touch(); }
 
   async startVideo(destination: string): Promise<void> {
     if (this.video) throw new Error("page video already started");
-    const added = await this.cdp.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", {
-      source: `(${redactOverlay.toString()})("run evidence")`,
-    }, this.sessionId);
-    this.videoScriptId = added.identifier;
-    try {
-      await this.evaluateFunction(redactOverlay, "run evidence");
-      this.video = await startCdpVideo(this.cdp, this.sessionId, destination);
-    } catch (error) {
-      await this.finishVideo();
-      throw error;
-    }
+    this.video = await startCdpVideo(this.cdp, this.sessionId, destination);
   }
 
   async finishVideo(): Promise<{ wrote: boolean; frames: number; truncated: boolean }> {
-    try {
-      return this.video ? await this.video.stop() : { wrote: false, frames: 0, truncated: false };
-    } finally {
-      if (this.videoScriptId) {
-        await this.cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: this.videoScriptId }, this.sessionId).catch(() => undefined);
-        this.videoScriptId = "";
-        await this.evaluate(`document.getElementById("bao-redact")?.remove()`).catch(() => undefined);
-      }
-    }
+    return this.video ? this.video.stop() : { wrote: false, frames: 0, truncated: false };
   }
 
   pauseCapture(): void { this.video?.pause(); }
@@ -671,11 +652,11 @@ export class CdpLiveDriver implements Driver {
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
     const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
-    await this.evaluateFunction(redactOverlay, label);
     try {
+      await this.evaluateFunction(redactOverlay, label);
       return await this.screenshotPng();
     } finally {
-      if (!this.videoScriptId) await this.evaluate(`document.getElementById("bao-redact")?.remove()`).catch(() => undefined);
+      await this.cdp.send("Runtime.evaluate", { expression: 'document.getElementById("bao-redact")?.remove()', returnByValue: true }, this.sessionId).catch(() => undefined);
     }
   }
 
@@ -802,15 +783,6 @@ export interface LiveWindowOptions {
 
 /** Runs in the page. Covers the viewport so a CDP screenshot does not keep readable page text. */
 export function redactOverlay(caption: string): void {
-  if (!document.documentElement) {
-    const observer = new MutationObserver(() => {
-      if (!document.documentElement) return;
-      observer.disconnect();
-      redactOverlay(caption);
-    });
-    observer.observe(document, { childList: true });
-    return;
-  }
   document.getElementById("bao-redact")?.remove();
   const veil = document.createElement("div");
   veil.id = "bao-redact";

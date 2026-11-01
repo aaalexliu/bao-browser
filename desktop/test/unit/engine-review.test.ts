@@ -58,6 +58,8 @@ test("Library labels captures as recordings and keeps untimed truncated video vi
   assert.equal(runKind(recording), "recording");
   assert.match(runsList([recording], []), />recording<\/span>/);
   assert.match(runViewer(recording, { name: "Recorded task", steps: [] }), /Recorded task recorded/);
+  const missingVideo = runViewer({ ...recording, traceUnavailable: "video unavailable: encoder <failed>" }, { name: "Recorded task", steps: [] });
+  assert.match(missingVideo, /video unavailable: encoder &lt;failed&gt;/);
   const html = videoBar({ ...recording, video: "recording.webm", videoStartedAt: 100, videoTruncated: true }, []);
   assert.match(html, /<video id="run-video"/);
   assert.match(html, /Video truncated at the capture limit/);

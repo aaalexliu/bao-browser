@@ -7,6 +7,7 @@ import { chromium } from "playwright";
 import { startApp } from "../../src/app/server";
 import { pageEngineName } from "../../src/engines/agent-browser";
 import { createLiveHost } from "../../src/cdp-live/live-host";
+import { AgentBrowserPage } from "../../src/engines/agent-browser";
 import { pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import { launchFixtureBrowser } from "../instacart/browser";
@@ -21,10 +22,11 @@ type Reply = {
 
 const enabled = process.env.BAO_LIVE_TESTS === "1" && !!process.env.AGENT_BROWSER_PARITY_BINARY;
 
-test("old and agent-browser keep the same guarded Instacart cart and recorded replay", { skip: !enabled, timeout: 240_000 }, async () => {
+test("old and agent-browser keep the same guarded Instacart cart and recorded replay", { skip: !enabled, timeout: 240_000 }, async (t) => {
   pinTestBrowser();
   const fixture = await startInstacartFixture();
   const browser = await launchFixtureBrowser(fixture);
+  const observer = await chromium.connectOverCDP(browser.cdpUrl);
   const savedBinary = process.env.BAO_AGENT_BROWSER;
   const comparisons: unknown[] = [];
   try {
@@ -54,9 +56,18 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
       };
       try {
         const started = await call({ op: "live_session_start", intent: "put costco blueberries into the cart at instacart", url: fixture.url("/store/costco/storefront") });
+        const livePage = observer.contexts().flatMap((context) => context.pages()).find((page) => page.url() === fixture.url("/store/costco/storefront"));
+        assert.ok(livePage);
+        assert.equal(await livePage.locator("#bao-redact").count(), 0, "the live window stays readable after the initial shot");
         const partial = await call({ op: "live_type", ref: ref(started, "Search Costco"), text: "blue" });
         const typed = await call({ op: "live_type", ref: ref(partial, "Search Costco"), text: "berries" });
+        assert.equal(await livePage.locator("#bao-redact").count(), 0, "step shots remove the veil in finally");
+        assert.ok((await livePage.locator("body").innerText()).includes("Costco"));
+        if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await livePage.screenshot({ path: path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, `${engine}-live-page.png`) });
         const found = await call({ op: "live_key", ref: ref(typed, "Search Costco"), key: "Enter" });
+        assert.equal(await livePage.locator("#bao-redact").count(), 0, "navigation does not install a persistent veil");
+        assert.ok((await livePage.locator("body").innerText()).includes("blueberries"));
+        if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await livePage.screenshot({ path: path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, `${engine}-live-after-navigation.png`) });
         await call({ op: "live_click", ref: ref(started, "Search Costco") }, "refused");
         assert.ok(found.view?.stopBeforeConfirm.some((item) => item.label === "Checkout"));
         const product = found.view!.controls.filter((item) => item.kind === "link" && item.label.includes(TARGET.name) && item.label !== TARGET.name);
@@ -144,12 +155,32 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
         const image = await readFile(path.join(home, "live-session", "shots", shot.shot!));
         assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
         if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await writeFile(path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, `${engine}-cart.png`), image);
+        if (engine === "agent-browser") {
+          const restarted = await call({ op: "live_session_start", intent: "Failed screenshot cleanup", url: fixture.url("/store/costco/storefront") });
+          assert.equal(restarted.outcome.kind, "applied");
+          const page = observer.contexts().flatMap((context) => context.pages()).find((page) => page.url() === fixture.url("/store/costco/storefront"));
+          assert.ok(page);
+          const screenshot = t.mock.method(AgentBrowserPage.prototype, "screenshot", async function(this: AgentBrowserPage) {
+            await this.close();
+            throw new Error("fixture screenshot transport failed");
+          });
+          try {
+            const failed = await call({ op: "live_screenshot" });
+            assert.equal(failed.shot, "");
+            assert.equal(screenshot.mock.calls.length, 1);
+            assert.equal(await page.locator("#bao-redact").count(), 0, "cleanup survives a stopped native transport");
+          } finally { screenshot.mock.restore(); }
+          assert.equal(((await host.call({ op: "live_stop" })) as Reply).outcome.kind, "stopped");
+        }
+        process.kill(browser.pid, 0);
+        assert.equal((await fetch(`${browser.cdpUrl}/json/version`)).status, 200);
       } finally { await host.close(); await app.close(); await rm(home, { recursive: true, force: true }); }
     }
     assert.deepEqual({ ...comparisons[0] as object, engine: "same" }, { ...comparisons[1] as object, engine: "same" });
     if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await writeFile(path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, "parity.json"), JSON.stringify(comparisons, null, 2));
   } finally {
     if (savedBinary === undefined) delete process.env.BAO_AGENT_BROWSER; else process.env.BAO_AGENT_BROWSER = savedBinary;
+    await observer.close();
     await browser.close();
     await fixture.close();
   }

@@ -1,8 +1,26 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CdpSocket } from "../cdp-live/socket";
 import { ffmpegBin } from "../v1/replay-video";
+
+const MAX_FRAME_BYTES = 16 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
+
+async function veilFrame(ffmpeg: string, data: Buffer): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const child = execFile(ffmpeg, ["-hide_banner", "-loglevel", "error", "-threads", "1", "-filter_threads", "1", "-max_pixels", "2073600", "-i", "pipe:0",
+      "-vf", "gblur=sigma=18,lutrgb=r=val*0.18+245*0.82:g=val*0.18+245*0.82:b=val*0.18+247*0.82",
+      "-frames:v", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2pipe", "pipe:1"],
+    { encoding: "buffer", timeout: 10_000, killSignal: "SIGKILL", maxBuffer: MAX_FRAME_BYTES, env: { PATH: "/usr/bin:/bin" } }, (error, output) => {
+      if (error || output.length < 4 || output.readUInt16BE(0) !== 0xffd8 || output.readUInt16BE(output.length - 2) !== 0xffd9) {
+        reject(new Error("CDP video frame could not be veiled"));
+      } else resolve(output);
+    });
+    child.stdin?.on("error", () => undefined);
+    child.stdin?.end(data);
+  });
+}
 
 export interface CdpVideo {
   pause(): void;
@@ -53,6 +71,9 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
         });
         if ((await stat(destination)).size < 1000) throw new Error("CDP video output was empty");
         return { wrote: true, frames: frames.length, truncated };
+      } catch (error) {
+        await rm(destination, { force: true });
+        throw error;
       } finally { await rm(dir, { recursive: true, force: true }); }
     })();
     return stopping;
@@ -60,9 +81,13 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   cdp.on("Page.screencastFrame", sessionId, (params) => {
     void cdp.send("Page.screencastFrameAck", { sessionId: params.sessionId }, sessionId).catch(() => undefined);
     if (!active || paused || writing || Date.now() - last < 150) return;
-    if (typeof params.data !== "string") { failure = new Error("CDP video frame was invalid"); return; }
-    const data = Buffer.from(params.data, "base64");
-    if (bytes + data.length > 512 * 1024 * 1024) {
+    const data = typeof params.data === "string" && params.data.length <= Math.ceil(MAX_FRAME_BYTES / 3) * 4 ? Buffer.from(params.data, "base64") : undefined;
+    if (!data || data.length > MAX_FRAME_BYTES) {
+      failure = new Error("CDP video frame was invalid or too large");
+      void stop().catch(() => undefined);
+      return;
+    }
+    if (bytes + data.length > MAX_VIDEO_BYTES) {
       truncated = true;
       void stop().catch(() => undefined);
       return;
@@ -72,7 +97,20 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
     last = Date.now();
     frames.push({ file, at: last });
     writing = true;
-    pending = writeFile(file, data, { mode: 0o600 }).catch(() => { failure = new Error("CDP video frame could not be saved"); }).finally(() => { writing = false; });
+    pending = veilFrame(ffmpeg, data).then(async (veiled) => {
+      const extra = Math.max(0, veiled.length - data.length);
+      if (bytes + extra > MAX_VIDEO_BYTES) {
+        frames.pop();
+        truncated = true;
+        void stop().catch(() => undefined);
+        return;
+      }
+      bytes += extra;
+      await writeFile(file, veiled, { mode: 0o600 });
+    }).catch(() => {
+      failure = new Error("CDP video frame could not be veiled or saved");
+      void stop().catch(() => undefined);
+    }).finally(() => { writing = false; });
     if (frames.length >= 6000) {
       truncated = true;
       void stop().catch(() => undefined);
@@ -80,7 +118,7 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   });
   try {
     await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 }, sessionId);
-  } catch (error) { active = false; await rm(dir, { recursive: true, force: true }); throw error; }
+  } catch (error) { active = false; await pending; await rm(dir, { recursive: true, force: true }); throw error; }
   return {
     pause() { paused = true; },
     resume() { paused = false; },

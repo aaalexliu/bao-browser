@@ -100,6 +100,7 @@ export interface RunSummary {
   video?: string;
   videoStartedAt?: number;
   videoTruncated?: boolean;
+  traceUnavailable?: string;
   repairs?: { stepId?: string; repair: string; detail?: string }[];
   receipts?: { stepId?: string; source?: string; expected?: string; actual?: string; pass?: boolean }[];
   trajectory?: TrajectoryStep[];
@@ -674,6 +675,7 @@ export function runViewer(
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
+      ${run.traceUnavailable ? `<p class="quiet" id="trace-unavailable">${esc(run.traceUnavailable)}</p>` : ""}
     </header>
     ${outputsHtml(run.id, run.outputs)}
     ${video}

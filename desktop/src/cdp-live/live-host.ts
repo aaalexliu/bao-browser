@@ -623,10 +623,10 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
-  function saveWorkflow(status: string, video: boolean, videoTruncated: boolean): void {
-    if (!open) return;
+  function saveWorkflow(status: string, video: boolean, videoTruncated: boolean, traceUnavailable?: string): boolean {
+    if (!open) return false;
     const events = open.trail.list();
-    if (!events.length) return;
+    if (!events.length) return false;
     const workflow = workflowFromTrail({
       id: open.id,
       name: open.intent.slice(0, 80),
@@ -637,7 +637,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       events,
       guard: open.guard,
     });
-    if (!workflow.steps.length) return;
+    if (!workflow.steps.length) return false;
     const library = new Library(opts.home);
     library.save(workflow);
     if (open.artifactRoot) {
@@ -661,9 +661,10 @@ export function createLiveHost(opts: LiveHostOptions): {
         }
         return { id: step.id, status: "passed" };
       });
-      library.saveRun({ id: open.runId, kind: "capture", pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated,
+      library.saveRun({ id: open.runId, kind: "capture", pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
         ...(video ? { video: `${open.runId}.webm`, videoStartedAt: open.startedAt } : {}) });
     }
+    return true;
   }
 
   async function stop(reason: EndReason = "stop"): Promise<unknown> {
@@ -679,6 +680,8 @@ export function createLiveHost(opts: LiveHostOptions): {
     const noteText = open.halted ? open.halted : open.refused ? "Refused." : ended;
     const status = open.halted ? "needs_human" : open.refused ? "failed" : "passed";
     let saveError = "";
+    let videoError = "";
+    let saved = false;
     let videoWrote = false;
     let videoTruncated = false;
     try {
@@ -686,11 +689,12 @@ export function createLiveHost(opts: LiveHostOptions): {
       videoWrote = recorded.wrote;
       videoTruncated = recorded.truncated;
     }
-    catch (error) { saveError = error instanceof Error ? error.message : "video save failed"; }
-    try { saveWorkflow(status, videoWrote, videoTruncated); }
+    catch (error) { videoError = `video unavailable: ${error instanceof Error ? error.message : "video save failed"}`; }
+    try { saved = saveWorkflow(status, videoWrote, videoTruncated, videoError || undefined); }
     catch (error) { saveError = error instanceof Error ? error.message : "workflow save failed"; }
+    const videoNote = videoError ? `${saved ? "Workflow saved; " : ""}${videoError}` : "";
     const ending = open;
-    await ending.log.flush(saveError ? "failed" : status, saveError || noteText, ending.host);
+    await ending.log.flush(saveError ? "failed" : status, saveError || [noteText, videoNote].filter(Boolean).join(" "), ending.host);
     slot = { phase: "closed", id, status: saveError ? "failed" : status };
     open = null;
     // A replay opens its own connection, so the session closes its window and socket before it frees the lock.
@@ -701,7 +705,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });
     }
-    return reply({ op: "live_stop", session: id, outcome: { kind: "stopped", already: false }, view, shot: "" });
+    return reply({ op: "live_stop", session: id, outcome: { kind: "stopped", already: false, ...(videoNote ? { reason: videoNote } : {}) }, view, shot: "" });
   }
 
   /** Runs inside the call chain. The session must be closed, and the replay takes the CDP lock itself. */
