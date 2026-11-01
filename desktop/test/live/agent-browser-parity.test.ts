@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -32,7 +32,7 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
       fixture.reset();
       const target = { kind: "throwaway" as const, portFile: browser.portFile };
       const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target, idleMs: 0,
-        selectRun: async () => ({ target, engineName: engine, ...(engine === "agent-browser" ? { artifactRoot: home } : {}) }),
+        selectRun: async () => ({ target, engineName: engine, artifactRoot: home }),
       });
       const call = async (body: Record<string, unknown>, expected = "applied") => {
         const reply = await host.call(body) as Reply;
@@ -94,7 +94,22 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
         assert.deepEqual(fixture.state().carts.costco.map((item) => [item.productId, item.qty]), [[TARGET.id, 1]]);
         assert.equal(fixture.state().writes.length, 1);
         assert.deepEqual(fixture.state().traps, []);
-        comparisons.push({ engine, cart: cartState.carts, writes: cartState.writes.map(({ op, productId, qty }) => ({ op, productId, qty })), steps: replayed.steps.map(({ status }) => status) });
+        const evidence = replayed.steps.map((step) => ({
+          identity: "identity" in step,
+          dom: !!step.snapshot?.dom?.length,
+          ax: !!step.snapshot?.ax,
+          before: !!step.beforeShot,
+          after: !!step.afterShot,
+        }));
+        assert.ok(evidence.every((step) => !step.identity && !step.dom && !step.ax), "guarded old/native replay does not record successful-step identity, DOM, or AX evidence");
+        assert.ok(evidence.every((step) => step.before && step.after), "both engines retain step screenshots at the same fixture viewport");
+        library.saveRun({ id: replayed.runId, workflowId: workflow.id, pageEngine: engine, at: Date.now(),
+          status: replayed.status, steps: replayed.steps, heals: replayed.heals, modelCalls: replayed.modelCalls,
+          video: replayed.video, videoStartedAt: replayed.videoStartedAt, traceUnavailable: replayed.traceUnavailable });
+        comparisons.push({ engine, cart: cartState.carts, writes: cartState.writes.map(({ op, productId, qty }) => ({ op, productId, qty })), steps: replayed.steps.map(({ status }) => status), evidence });
+        if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) {
+          await cp(home, path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, `${engine}-library`), { recursive: true });
+        }
         const image = await readFile(path.join(home, "live-session", "shots", shot.shot!));
         assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
         if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await writeFile(path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, `${engine}-cart.png`), image);
