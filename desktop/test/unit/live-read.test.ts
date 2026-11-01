@@ -23,7 +23,9 @@ test("live reads record a safe region and return fresh output through MCP and th
     if (req.url === "/auth") return res.end('<h1>Sign in</h1><label>Verification code<input autocomplete="one-time-code"></label>');
     res.end(`<!doctype html><title>Credit stand-in</title><main>
       <h1>Security freeze</h1><section id="freeze-status" aria-label="Freeze status"><h2>Freeze status</h2>
-      <p>Frozen. Score: ${score}. Balance: $412. Updated 2026-11-01.</p>
+      <p>Frozen.</p><p>Social security number ***-**-6789. Score: ${score}. Balance: $412. Updated 2026-11-01.</p>
+      <p>Account number</p><p>Score: ${score}. Balance: $412.</p>
+      <p>Password</p><p>must be 8 characters</p><p>hunter2</p><p>Status: Frozen.</p>
       <p>SSN: 123-45-6789</p><p>Card number: 4111 1111 1111 1111</p><p>Email: demo@example.com</p>
       <input value="field-secret"><textarea>textarea-secret</textarea><span contenteditable>editable-secret</span>
       <p hidden>hidden-secret</p><p style="display:none">display-secret</p><p aria-hidden="true">aria-secret</p>
@@ -83,8 +85,11 @@ test("live reads record a safe region and return fresh output through MCP and th
     const started = await tool<LiveReply>("live_session_start", { intent: "Read freeze status", url, workflowId: "wf-read-freeze" });
     assert.equal(started.outcome.kind, "applied");
     const read = await tool<LiveReply>("live_read", { name: "freeze_status", selector: "#freeze-status" });
-    assert.match(read.read!.text, /Frozen\. Score: 742\. Balance: \$412\. Updated 2026-11-01\./);
-    for (const secret of ["123-45-6789", "4111", "demo@example.com", "field-secret", "textarea-secret", "editable-secret", "hidden-secret", "display-secret", "aria-secret", "script-secret"]) {
+    assert.match(read.read!.text, /Frozen\./);
+    assert.match(read.read!.text, /Score: 742\. Balance: \$412\. Updated 2026-11-01\./);
+    assert.equal(read.read!.text.match(/Score: 742\. Balance: \$412\./g)?.length, 2);
+    assert.match(read.read!.text, /Status: Frozen\./);
+    for (const secret of ["6789", "123-45-6789", "4111", "hunter2", "demo@example.com", "field-secret", "textarea-secret", "editable-secret", "hidden-secret", "display-secret", "aria-secret", "script-secret"]) {
       assert.equal(read.read!.text.includes(secret), false, secret);
     }
     assert.equal(read.read!.truncated, false);
@@ -101,19 +106,24 @@ test("live reads record a safe region and return fresh output through MCP and th
     assert.equal(readFileSync(path.join(dirs.home, "live-session", "trail.jsonl"), "utf8").includes("123-45-6789"), false);
 
     score = 756;
-    // The replay uses a fresh page without the redaction-only credential words.
     server.removeAllListeners("request");
     server.on("request", (req, res) => {
       res.setHeader("content-type", "text/html");
       if (req.url === "/auth") return res.end('<h1>Sign in</h1><label>Verification code<input autocomplete="one-time-code"></label>');
-      res.end(`<title>Credit stand-in</title><main><section id="freeze-status"><h2>Freeze status</h2><p>Frozen. Score: ${score}. Balance: $412.</p><p>SSN: 123-45-6789</p></section></main>`);
+      res.end(`<title>Credit stand-in</title><main><section id="freeze-status"><h2>Freeze status</h2>
+        <p>Frozen.</p><p>Social security number ***-**-6789. Score: ${score}. Balance: $412.</p>
+        <p>Account number</p><p>Score: ${score}. Balance: $412.</p>
+        <p>Password</p><p>must be 8 characters</p><p>hunter2</p><p>Status: Frozen.</p>
+        <p>SSN: 123-45-6789</p></section></main>`);
     });
     const outcome = await tool<WorkflowOutcome>("run_workflow", { id: workflow.id, leaveOpen: true });
     assert.equal(outcome.outcome, "ok", JSON.stringify(outcome));
     assert.equal(outcome.pageLeftOpen, true);
     const text = (outcome.outputs![0] as OutputTable).rows[0]!.text!;
-    assert.match(text, /Score: 756\. Balance: \$412/);
+    assert.equal(text.match(/Score: 756\. Balance: \$412\./g)?.length, 2);
+    assert.match(text, /Status: Frozen\./);
     assert.match(text, /\[redacted\]/);
+    for (const secret of ["6789", "hunter2"]) assert.equal(text.includes(secret), false, secret);
     await pageSet(1);
     assert.equal(existsSync(path.join(dirs.home, "live.lock")), false);
     const held = browser.pages().find((item) => item !== page && !item.isClosed())
@@ -176,4 +186,41 @@ test("live reads record a safe region and return fresh output through MCP and th
     await app.close();
     await browser.close();
   }
+});
+
+test("live reads retain neighboring results without returning split credentials", { timeout: 60_000 }, async () => {
+  const dirs = applyHermeticApp("live-read-fields");
+  const browser = await launchOwnedChrome({ userDataDir: dirs.chromeUserData, headless: true, childHome: dirs.nativeHostHome });
+  try {
+    const page = browser.pages()[0] || await browser.newPage();
+    const labels = [
+      "Password", "Passcode", "SSN", "Social security", "Social security number", "Card number", "Credit card number",
+      "CVV", "CVC", "Security code", "Verification code", "One-time code", "One time code", "OTP", "PIN",
+      "Token", "Access token", "Refresh token", "Bearer token", "API key", "API-key", "API_key", "APIkey", "Client secret",
+      "Authorization", "Account number",
+    ];
+    const results = "Score: 742. Balance: $412. Status: Frozen. Updated: 2026-11-01.";
+    for (const label of labels) {
+      for (const html of [
+        `<p>${label}: hunter2. ${results}</p>`,
+        `<p>${label}: hunter2.part:tail. ${results}</p>`,
+        `<p>${label} = hunter2; ${results}</p>`,
+        `<span>${label}#</span><p>${results}</p>`,
+        `<p><span>${label} is </span><strong>hunter2</strong></p><p>${results}</p>`,
+        `<span>${label}</span><p>${results}</p>`,
+        `<span>${label}</span><small>must be 8 characters</small><strong>hunter2</strong><p>${results}</p>`,
+        `<p>${results}</p><span>${label}</span><small>must be 8 characters</small><strong>hunter2</strong>`,
+      ]) {
+        await page.setContent(`<main>${html}</main>`);
+        const read = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
+        assert.ok(read.text.includes(results), `${label}: ${read.text}`);
+        assert.equal(read.text.includes("hunter2"), false, label);
+        assert.equal(read.text.includes("part:tail"), false, label);
+        assert.equal(read.truncated, false);
+      }
+    }
+    await page.setContent("<main>Social security number ***-**-6789. Score: 742. Balance: $412.</main>");
+    const masked = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
+    assert.equal(masked.text, "[redacted]. Score: 742. Balance: $412.");
+  } finally { await browser.close(); }
 });

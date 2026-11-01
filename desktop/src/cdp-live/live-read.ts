@@ -70,8 +70,10 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
     size += text.length;
     if (size > 64000) truncated = true;
   }
+  const credentialLabel = /\b(?:password|passcode|ssn|social security(?: number)?|(?:credit )?card number|cvv|cvc|security code|verification code|one[- ]time code|otp|pin|(?:access |refresh |bearer )?token|api[- _]?key|client secret|authorization|account number)\b/;
+  const nextField = /(?:[.;][ \t]+|\n)[A-Za-z][A-Za-z0-9 _/-]*[:=#]/;
   const text = chunks.join("\n")
-    .replace(/\b(?:password|passcode|ssn|social security(?: number)?|(?:credit )?card number|cvv|cvc|security code|verification code|one[- ]time code|otp|pin|(?:access |refresh |bearer )?token|api[- _]?key|client secret|authorization|account number)\s*(?:[:=#]\s*|is\s+|\s+)[^\n;]+/gi, "[redacted]")
+    .replace(new RegExp(`${credentialLabel.source}[\\s\\S]*?(?=${nextField.source}|$)`, "gi"), "[redacted]")
     .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted]")
     .replace(/\b\d(?:[ -]?\d){8,18}\b/g, "[redacted]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted]")
