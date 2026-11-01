@@ -134,6 +134,7 @@ interface LiveRunSelection {
   engineName: PageEngineName;
   artifactRoot?: string;
   close?: () => Promise<void>;
+  closed?: Promise<void>;
 }
 
 export interface LiveHostOptions {
@@ -189,7 +190,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let warnTimer: ReturnType<typeof setTimeout> | undefined;
   let warning: LiveIdleWarning | null = null;
-  const heldProfiles: (() => Promise<void>)[] = [];
+  const heldProfiles = new Set<() => Promise<void>>();
 
   function reply(body: Record<string, unknown>): unknown {
     return publicLiveResult(body);
@@ -797,8 +798,17 @@ export function createLiveHost(opts: LiveHostOptions): {
           onNotice: opts.onNotice,
         }, runId);
       } finally {
-        if (run.pageLeftOpen && selected?.close) heldProfiles.push(selected.close);
-        else await selected?.close?.();
+        if (run.pageLeftOpen && selected?.close) {
+          const closeProfile = selected.close;
+          let closing: Promise<void> | undefined;
+          const release = (): Promise<void> => closing ??= Promise.resolve().then(closeProfile).finally(() => { heldProfiles.delete(release); });
+          heldProfiles.add(release);
+          if (selected.closed) void selected.closed.then(() => {
+            const released = chain.then(release);
+            chain = released.catch(() => undefined);
+            return released;
+          }).catch(() => opts.onNotice?.("Could not release the closed Chrome profile copy."));
+        } else await selected?.close?.();
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "live replay failed";
@@ -852,7 +862,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await stop().catch(() => undefined);
       releaseCdpLock(AGENT, lockFile);
     }
-    await Promise.all(heldProfiles.splice(0).map((closeProfile) => closeProfile()));
+    await Promise.all([...heldProfiles].map((closeProfile) => closeProfile()));
   }
 
   return { call, replay, keepOpen, close, isOpen: () => open !== null };

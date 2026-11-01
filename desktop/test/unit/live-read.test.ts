@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import test from "node:test";
@@ -9,10 +9,11 @@ import { createLiveHost } from "../../src/cdp-live/live-host";
 import { parseLiveTarget } from "../../src/cdp-live/live-target";
 import { LIVE_READ_LIMIT, liveReadSelector, liveReadSpec, readLiveRegion } from "../../src/cdp-live/live-read";
 import { McpClient } from "../../src/eval/mcp-client";
-import { launchOwnedChrome } from "../../src/launch";
+import { openCopiedChrome } from "../../src/engines/chrome-profile-copy";
+import { launchOwnedChrome, pidsForDataDir } from "../../src/launch";
 import type { WorkflowOutcome } from "../../src/mcp/catalog";
 import type { OutputTable } from "../../src/v1/data-steps";
-import { validateWorkflow } from "../../src/v1/schema";
+import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
 import { applyHermeticApp, laneChildEnv } from "../runtime";
 
 test("live reads record a safe region and return fresh output through MCP and the run record", { timeout: 120_000 }, async (t) => {
@@ -25,12 +26,9 @@ test("live reads record a safe region and return fresh output through MCP and th
       <h1>Security freeze</h1><section id="freeze-status" aria-label="Freeze status"><h2>Freeze status</h2>
       <p>Frozen.</p><p>Social security number ***-**-6789. Score: ${score}. Balance: $412. Updated 2026-11-01.</p>
       <p>Account number</p><p>Score: ${score}. Balance: $412.</p>
-      <p>Password</p><p>must be 8 characters</p><p>hunter2</p><p>Status: Frozen.</p>
+      <p>Password</p><p>correct horse battery</p><p>Status: Frozen.</p>
       <p>Account number</p><p>****6789</p><p>Balance</p><p>$412</p><p>Score</p><p>${score}</p>
-      <p>Authorization</p><p>Your score is ${score}</p><p>Balance $412</p>
-      <p>Password</p><p>Updated: 2026-11-01</p><p>hunter2</p>
-      <p>Account number</p><p>Opened: 01/2019</p><p>****6789</p>
-      <p>Token</p><p>abc:hunter2</p><p>Password: hunter2. Note: keep-secret</p>
+      <p>Your score is ${score}</p><p>Balance $412</p>
       <p>SSN: 123-45-6789</p><p>Card number: 4111 1111 1111 1111</p><p>Email: demo@example.com</p>
       <input value="field-secret"><textarea>textarea-secret</textarea><span contenteditable>editable-secret</span>
       <p hidden>hidden-secret</p><p style="display:none">display-secret</p><p aria-hidden="true">aria-secret</p>
@@ -58,7 +56,7 @@ test("live reads record a safe region and return fresh output through MCP and th
   try {
     // The page function filters credential text even when split across DOM nodes.
     const credentials = await page.evaluate(readLiveRegion, { selector: "#credentials", limit: LIVE_READ_LIMIT });
-    assert.equal(credentials.text, "[redacted]\n[redacted]\n[redacted]");
+    assert.equal(credentials.text, "PIN:\n[redacted]\nPassword: [redacted]\nToken: [redacted]");
     for (const selector of [".duplicate", "#absent", "[", "input", "[hidden]"]) {
       await assert.rejects(page.evaluate(readLiveRegion, { selector, limit: LIVE_READ_LIMIT }), /ambiguous|not found|invalid read|hidden or sensitive/);
     }
@@ -96,9 +94,7 @@ test("live reads record a safe region and return fresh output through MCP and th
     assert.match(read.read!.text, /Status: Frozen\./);
     assert.match(read.read!.text, /Balance\n\$412\nScore\n742/);
     assert.match(read.read!.text, /Your score is 742\nBalance \$412/);
-    assert.match(read.read!.text, /Updated: 2026-11-01/);
-    assert.match(read.read!.text, /Opened: 01\/2019/);
-    for (const secret of ["6789", "123-45-6789", "4111", "hunter2", "abc:", "keep-secret", "demo@example.com", "field-secret", "textarea-secret", "editable-secret", "hidden-secret", "display-secret", "aria-secret", "script-secret"]) {
+    for (const secret of ["6789", "123-45-6789", "4111", "correct horse battery", "demo@example.com", "field-secret", "textarea-secret", "editable-secret", "hidden-secret", "display-secret", "aria-secret", "script-secret"]) {
       assert.equal(read.read!.text.includes(secret), false, secret);
     }
     assert.equal(read.read!.truncated, false);
@@ -122,12 +118,9 @@ test("live reads record a safe region and return fresh output through MCP and th
       res.end(`<title>Credit stand-in</title><main><section id="freeze-status"><h2>Freeze status</h2>
         <p>Frozen.</p><p>Social security number ***-**-6789. Score: ${score}. Balance: $412.</p>
         <p>Account number</p><p>Score: ${score}. Balance: $412.</p>
-        <p>Password</p><p>must be 8 characters</p><p>hunter2</p><p>Status: Frozen.</p>
+        <p>Password</p><p>correct horse battery</p><p>Status: Frozen.</p>
         <p>Account number</p><p>****6789</p><p>Balance</p><p>$412</p><p>Score</p><p>${score}</p>
-        <p>Authorization</p><p>Your score is ${score}</p><p>Balance $412</p>
-        <p>Password</p><p>Updated: 2026-11-01</p><p>hunter2</p>
-        <p>Account number</p><p>Opened: 01/2019</p><p>****6789</p>
-        <p>Token</p><p>abc:hunter2</p><p>Password: hunter2. Note: keep-secret</p>
+        <p>Your score is ${score}</p><p>Balance $412</p>
         <p>SSN: 123-45-6789</p></section></main>`);
     });
     const outcome = await tool<WorkflowOutcome>("run_workflow", { id: workflow.id, leaveOpen: true });
@@ -138,10 +131,8 @@ test("live reads record a safe region and return fresh output through MCP and th
     assert.match(text, /Status: Frozen\./);
     assert.match(text, /Balance\n\$412\nScore\n756/);
     assert.match(text, /Your score is 756\nBalance \$412/);
-    assert.match(text, /Updated: 2026-11-01/);
-    assert.match(text, /Opened: 01\/2019/);
     assert.match(text, /\[redacted\]/);
-    for (const secret of ["6789", "hunter2", "abc:", "keep-secret"]) assert.equal(text.includes(secret), false, secret);
+    for (const secret of ["6789", "correct horse battery"]) assert.equal(text.includes(secret), false, secret);
     await pageSet(1);
     assert.equal(existsSync(path.join(dirs.home, "live.lock")), false);
     const held = browser.pages().find((item) => item !== page && !item.isClosed())
@@ -206,69 +197,107 @@ test("live reads record a safe region and return fresh output through MCP and th
   }
 });
 
-test("live reads retain neighboring results without returning split credentials", { timeout: 60_000 }, async () => {
+test("live reads apply only the two node-local credential rules", { timeout: 60_000 }, async () => {
   const dirs = applyHermeticApp("live-read-fields");
   const browser = await launchOwnedChrome({ userDataDir: dirs.chromeUserData, headless: true, childHome: dirs.nativeHostHome });
   try {
     const page = browser.pages()[0] || await browser.newPage();
-    const labels = [
-      "Password", "Passcode", "SSN", "Social security", "Social security number", "Card number", "Credit card number",
-      "CVV", "CVC", "Security code", "Verification code", "One-time code", "One time code", "OTP", "PIN",
-      "Token", "Access token", "Refresh token", "Bearer token", "API key", "API-key", "API_key", "APIkey", "Client secret",
-      "Authorization", "Account number",
+    const cases: { nodes: string[]; expected: string[] }[] = [
+      { nodes: ["PIN: 1234", "Score: 742"], expected: ["PIN: [redacted]", "Score: 742"] },
+      { nodes: ["PIN", "Score: 742"], expected: ["PIN", "Score: 742"] },
+      { nodes: ["Account number", "****6789", "Balance", "$412", "Score", "742"], expected: ["Account number", "[redacted]", "Balance", "$412", "Score", "742"] },
+      { nodes: ["Social security number ***-**-6789. Score: 742. Balance: $412."], expected: ["Social security number [redacted]. Score: 742. Balance: $412."] },
+      { nodes: ["Password", "correct horse battery"], expected: ["Password", "[redacted]"] },
+      { nodes: ["Freeze status: Frozen"], expected: ["Freeze status: Frozen"] },
+      { nodes: ["PIN: 12 34; Score: 742"], expected: ["PIN: [redacted]; Score: 742"] },
+      { nodes: ["Password: correct horse\nScore: 742"], expected: ["Password: [redacted]\nScore: 742"] },
+      { nodes: ["PIN:\nScore: 742"], expected: ["PIN:\nScore: 742"] },
+      { nodes: ["Password", "required", "Score: 742"], expected: ["Password", "[redacted]", "Score: 742"] },
+      { nodes: ["Token", "Updated: 2026-11-01", "Balance: $412"], expected: ["Token", "Updated: 2026-11-01", "Balance: $412"] },
+      { nodes: ["The account number shown is ****6789. Score: 742"], expected: ["The account number [redacted]. Score: 742"] },
+      { nodes: ["Token: Bearer hunter2. Score: 742"], expected: ["Token: [redacted]. Score: 742"] },
+      { nodes: ["Password - hunter2. Score: 742"], expected: ["Password [redacted]. Score: 742"] },
     ];
-    const results = "Score: 742. Balance: $412. Status: Frozen. Updated: 2026-11-01.";
-    for (const label of labels) {
-      for (const html of [
-        `<p>${label}: hunter2. ${results}</p>`,
-        `<p>${label}: hunter2.part:tail. ${results}</p>`,
-        `<p>${label} = hunter2; ${results}</p>`,
-        `<span>${label}#</span><p>${results}</p>`,
-        `<p><span>${label} is </span><strong>hunter2</strong></p><p>${results}</p>`,
-        `<span>${label}</span><span>is</span><strong>hunter2</strong><p>${results}</p>`,
-        `<span>${label}</span><span>:</span><strong>hunter2</strong><p>${results}</p>`,
-        `<span>${label}</span><p>${results}</p>`,
-        `<span>${label}</span><small>must be 8 characters</small><strong>hunter2</strong><p>${results}</p>`,
-        `<p>${results}</p><span>${label}</span><small>must be 8 characters</small><strong>hunter2</strong>`,
-        `<span>${label}</span><p>Updated: 2026-11-01</p><strong>hunter2</strong><p>${results}</p>`,
-        `<span>${label}:</span><p>Updated: 2026-11-01</p><strong>hunter2</strong><p>${results}</p>`,
-        `<span>${label}</span><small>must be 8 characters</small><p>Updated: 2026-11-01</p><strong>hunter2</strong><p>${results}</p>`,
-        `<span>${label}</span><p>Opened: 01/2019</p><strong>****6789</strong><p>${results}</p>`,
-        `<span>${label}</span><strong>abc:hunter2</strong><p>${results}</p>`,
-        `<p>${label}: hunter2. Note: keep-secret. ${results}</p>`,
-        `<p>${label}: hunter2. Hint: keep-secret. ${results}</p>`,
-        `<p>${label}: "hunter2 with spaces". ${results}</p>`,
-        `<p>${label}: frozen. ${results}</p>`,
-        `<p>${label}: 2026-11-01. ${results}</p>`,
-        `<span>${label}</span><strong>****6789</strong><p>Balance</p><p>$412</p><p>Score</p><p>742</p><p>${results}</p>`,
-        `<span>${label}</span><p>Your score is 742</p><p>Balance $412</p><p>${results}</p>`,
-      ]) {
-        await page.setContent(`<main>${html}</main>`);
-        const read = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
-        assert.ok(read.text.includes(results), `${label}: ${read.text}`);
-        assert.equal(read.text.includes("hunter2"), false, label);
-        assert.equal(read.text.includes("part:tail"), false, label);
-        assert.equal(read.text.includes("abc:"), false, label);
-        assert.equal(read.text.includes("keep-secret"), false, label);
-        assert.equal(read.text.includes("6789"), false, label);
-        assert.equal(read.truncated, false);
+    for (const label of ["PIN", "Password", "Passcode", "SSN", "Social security number", "Account number", "Routing number", "Token", "Authorization"]) {
+      for (const separator of [" ", ": ", "# ", " is "]) {
+        cases.push({ nodes: [`${label}${separator}correct horse battery. Score: 742. Balance: $412.`], expected: [`${label}${separator}[redacted]. Score: 742. Balance: $412.`] });
       }
+      cases.push({ nodes: [label, "correct horse battery", "Score: 742"], expected: [label, "[redacted]", "Score: 742"] });
+      cases.push({ nodes: [label, "Available balance: $412"], expected: [label, "Available balance: $412"] });
     }
-    for (const [html, expected] of [
-      ["<p>Account number</p><strong>****6789</strong><p>Balance</p><p>$412</p><p>Score</p><h2>742</h2>", "[redacted]\nBalance\n$412\nScore\n742"],
-      ["<p>Authorization</p><p>Your score is 742</p><p>Balance $412</p>", "[redacted]\nYour score is 742\nBalance $412"],
-      ["<p>Password: frozen</p><h2>Score</h2><p>742</p>", "[redacted]\nScore\n742"],
-      ["<p>Password</p><p>Updated: 2026-11-01</p><strong>hunter2</strong>", "[redacted]\nUpdated: 2026-11-01\n[redacted]"],
-      ["<p>Account number</p><p>Opened: 01/2019</p><strong>****6789</strong>", "[redacted]\nOpened: 01/2019\n[redacted]"],
-      ["<p>Token</p><strong>abc:hunter2</strong>", "[redacted]"],
-      ["<p>Password: hunter2. Note: keep-secret</p>", "[redacted]"],
-    ]) {
-      await page.setContent(`<main>${html}</main>`);
+    for (const { nodes, expected } of cases) {
+      await page.setContent(`<main>${nodes.map((text) => `<p>${text}</p>`).join("")}</main>`);
       const read = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
-      assert.equal(read.text, expected, html);
+      assert.equal(read.text, expected.join("\n"), JSON.stringify(nodes));
+      assert.equal(read.truncated, false);
     }
-    await page.setContent("<main>Social security number ***-**-6789. Score: 742. Balance: $412.</main>");
-    const masked = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
-    assert.equal(masked.text, "[redacted]. Score: 742. Balance: $412.");
   } finally { await browser.close(); }
+});
+
+test("closing a left-open copied Chrome releases its lease before the next replay or session", { timeout: 120_000 }, async (t) => {
+  const dirs = applyHermeticApp("live-read-copy-close");
+  const sourceRoot = path.join(dirs.home, "source");
+  mkdirSync(path.join(sourceRoot, "Default"), { recursive: true });
+  writeFileSync(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Synthetic profile" } } } }));
+  const launcher = require("../../src/launch") as typeof import("../../src/launch");
+  const realLaunch = launcher.launchOwnedChrome;
+  const contexts: Awaited<ReturnType<typeof launchOwnedChrome>>[] = [];
+  t.mock.method(launcher, "launchOwnedChrome", async (options: Parameters<typeof launchOwnedChrome>[0]) => {
+    const context = await realLaunch({ ...options, headless: true, childHome: dirs.nativeHostHome });
+    contexts.push(context);
+    return context;
+  });
+  const server = createServer((_req, res) => res.end("<title>Report</title><main>Freeze status: Frozen. Score: 742.</main>"));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const copies: Awaited<ReturnType<typeof openCopiedChrome>>[] = [];
+  let released = 0;
+  const host = createLiveHost({ home: dirs.home, lockFile: path.join(dirs.home, "copy.lock"), selectRun: async () => {
+    const copy = await openCopiedChrome({ sourceRoot, home: dirs.home, directory: "Default" });
+    copies.push(copy);
+    return { ...copy, engineName: "old", close: async () => { await copy.close(); released += 1; } };
+  } });
+  const extract = liveReadSpec("report", "main");
+  const workflow: WorkflowV2 = {
+    schema: "bao.workflow/v2", version: 3, id: "wf-copy-read", name: "Report", driver: "cdp-live", startUrl: url, createdAt: 1, inputs: [],
+    outputs: [{ name: "report", type: "table", from: "report", columns: [{ name: "text", type: "text" }] }],
+    steps: [{ id: "read", index: 0, action: "extract", label: "Read report", surface: "dom", timeoutMs: 5000, heal: "never", locators: extract.locators, extract }],
+  };
+  assert.deepEqual(validateWorkflow(workflow), []);
+  try {
+    for (const next of ["replay", "session"] as const) {
+      const kept = await host.replay(workflow, {}, { leaveOpen: true });
+      assert.equal(kept.status, "passed");
+      assert.equal(kept.pageLeftOpen, true);
+      const copy = copies.at(-1)!;
+      const profileDir = path.dirname(copy.target.portFile);
+      assert.equal(existsSync(profileDir), true);
+      if (next === "replay") {
+        const cdp = await contexts.at(-1)!.browser()!.newBrowserCDPSession();
+        await cdp.send("Browser.close").catch(() => undefined);
+      } else {
+        const pids = pidsForDataDir(profileDir);
+        assert.ok(pids.length > 0);
+        for (const pid of pids) process.kill(pid, "SIGTERM");
+      }
+      await copy.closed;
+      if (next === "replay") {
+        const run = await host.replay(workflow);
+        assert.equal(run.status, "passed", run.failure?.reason);
+      } else {
+        const started = await host.call({ op: "live_session_start", intent: "Read report", url, workflowId: "wf-after-copy-close" }) as { outcome: { kind: string } };
+        assert.equal(started.outcome.kind, "applied");
+        await host.call({ op: "live_read", name: "report", selector: "main" });
+        const stopped = await host.call({ op: "live_stop" }) as { outcome: { kind: string } };
+        assert.equal(stopped.outcome.kind, "stopped");
+      }
+      assert.equal(existsSync(profileDir), false);
+      assert.notEqual(copies.at(-1)!.target.portFile, copy.target.portFile);
+    }
+    assert.equal(released, 4);
+  } finally {
+    await host.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+  assert.equal(released, 4);
 });

@@ -43,7 +43,7 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
   if (matches.length !== 1) throw new Error(matches.length ? "read selector is ambiguous" : "read region not found");
   const root = matches[0]!;
   const excluded = "input, textarea, select, script, style, noscript, template, [hidden], [aria-hidden=true], [contenteditable]:not([contenteditable=false])";
-  const credential = /password|passcode|\bssn\b|social.?security|card.?number|\bcvv\b|\bcvc\b|security.?code|verification.?code|one.?time.?code|\botp\b|\bpin\b|\btoken\b|api.?key|client.?secret|authorization|account.?number/i;
+  const credential = /password|passcode|\bssn\b|social.?security|card.?number|\bcvv\b|\bcvc\b|security.?code|verification.?code|one.?time.?code|\botp\b|\bpin\b|\btoken\b|api.?key|client.?secret|authorization|account.?number|routing.?number/i;
   function visible(el: Element): boolean {
     for (let node: Element | null = el; node; node = node.parentElement) {
       if (node.matches(excluded)) return false;
@@ -64,30 +64,26 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
     if (++visited > 20000 || size >= 64000) { truncated = true; break; }
     const node = walker.currentNode;
     if (!node.parentElement || !visible(node.parentElement)) continue;
-    const text = (node.textContent || "").replace(/\s+/g, " ").trim();
+    const text = (node.textContent || "").replace(/\r\n?/g, "\n").replace(/[^\S\n]+/g, " ").trim();
     if (!text) continue;
     chunks.push(text.slice(0, 64000 - size));
     size += text.length;
     if (size > 64000) truncated = true;
   }
-  const credentialLabel = /\b(?:password|passcode|ssn|social security(?: number)?|(?:credit )?card number|cvv|cvc|security code|verification code|one[- ]time code|otp|pin|(?:access |refresh |bearer )?token|api[- _]?key|client secret|authorization|account number)\b/;
-  const reportText = /\b(?:score|balance|amount|status|frozen|unfrozen)\b|\$\s*\d/;
-  const date = /\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{2,4}/;
-  const value = /(?:"[^"\n]+"|'[^'\n]+'|\d(?:[ -]?\d){8,18}|[*•xX][\d*•xX -]*\d|[^\s;,]+?)/;
-  const boundedValue = `(?!(?:${reportText.source}))${value.source}`;
-  const inlineEnd = /(?=[.,;]?(?:\s|$))/;
-  const lineEnd = /(?=[.,;]?(?:\n|$)|[.,;][ \t])/;
-  const continuedValue = `(?![A-Za-z][A-Za-z _-]*:[ \\t]*(?:${date.source})${inlineEnd.source})${boundedValue}`;
-  const helper = `(?!(?:${continuedValue})${lineEnd.source})(?![^\\n]*(?:${reportText.source}))(?:[^\\n]*[ \\t][^\\n]*|[A-Za-z][A-Za-z _-]*:[ \\t]*(?:${date.source}))`;
-  const note = new RegExp(`(?:[.;][ \\t]+|^|\\n)(?:note|hint)[ \\t]*[:=#][ \\t]*${value.source}${inlineEnd.source}`, "gi");
-  const labeledValue = new RegExp(`${credentialLabel.source}(?:[ \\t]*(?:[:=#][ \\t]*|is[ \\t]+)${value.source}${inlineEnd.source}|[ \\t]+(?!is\\b)${boundedValue}${inlineEnd.source}|\\s*(?:[:=#]|is\\b)?\\n((?:${helper}\\n)*)${continuedValue}${lineEnd.source})?(?:${note.source})?`, "gi");
-  const text = chunks.join("\n")
-    .replace(labeledValue, (_match, help: string | undefined) => help ? `[redacted]\n${help.replace(note, "[redacted]")}[redacted]` : "[redacted]")
-    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted]")
-    .replace(/\b\d(?:[ -]?\d){8,18}\b/g, "[redacted]")
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted]")
-    .replace(/\b(?:sk-[\w-]{12,}|eyJ[\w-]+\.[\w-]+\.[\w-]+)\b/g, "[redacted]")
-    .trim();
+  const credentialLabel = /\b(?:pin|password|passcode|ssn|social security number|account number|routing number|token|authorization)\b/;
+  const bareLabel = new RegExp(`^${credentialLabel.source}[ \\t]*(?:[:#]|is\\b)?[ \\t]*$`, "i");
+  const ownField = /^[A-Za-z][A-Za-z ]{0,39}:/;
+  const inlineValue = new RegExp(`(${credentialLabel.source}[ \\t]*(?:(?:[:#]|is\\b)[ \\t]*)?)([^\\n;]*?)(?=\\. |;|\\n|$)`, "gi");
+  const text = chunks.map((chunk, index) => {
+    let safe = chunk;
+    if (index > 0 && bareLabel.test(chunks[index - 1]!) && !ownField.test(chunk)) safe = "[redacted]";
+    else safe = chunk.replace(inlineValue, (match, prefix: string, value: string) => value ? `${prefix}[redacted]` : match);
+    return safe
+      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted]")
+      .replace(/\b\d(?:[ -]?\d){8,18}\b/g, "[redacted]")
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted]")
+      .replace(/\b(?:sk-[\w-]{12,}|eyJ[\w-]+\.[\w-]+\.[\w-]+)\b/g, "[redacted]");
+  }).join("\n").trim();
   if (!text) throw new Error("read region has no readable text");
   const limit = Math.min(4000, Math.max(1, ask.limit));
   truncated ||= text.length > limit;

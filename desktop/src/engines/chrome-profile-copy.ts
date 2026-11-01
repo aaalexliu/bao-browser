@@ -115,7 +115,7 @@ export async function copyChromeProfile(options: {
 /** The installed Chrome keeps its keychain identity; no helper, toggle, or native input is used. */
 export async function openCopiedChrome(options: {
   sourceRoot: string; directory: string; home: string; loadExtensions?: boolean;
-}): Promise<{ target: LiveTarget; close(): Promise<void>; bytes: number; copyMs: number }> {
+}): Promise<{ target: LiveTarget; close(): Promise<void>; closed: Promise<void>; bytes: number; copyMs: number }> {
   const copy = await copyChromeProfile(options);
   try {
     const context = await launchOwnedChrome({
@@ -126,6 +126,7 @@ export async function openCopiedChrome(options: {
     return {
       target: { kind: "bao", portFile: path.join(copy.userDataDir, "DevToolsActivePort") },
       bytes: copy.bytes, copyMs: copy.copyMs,
+      closed: new Promise<void>((resolve) => context.once("close", () => resolve())),
       async close() { try { await context.close(); } finally { await copy.close(); } },
     };
   } catch (error) { await copy.close(); throw error; }

@@ -292,7 +292,7 @@ export async function replayGuarded(workflow: WorkflowV2, inputs: ReplayArgs, gu
 }
 
 export interface LiveReplayOptions {
-  /** Keep a passed or paused final page open. Copied profiles stay until the Bao app closes. */
+  /** Keep a passed or paused final page open. */
   leaveOpen?: boolean;
 }
 
