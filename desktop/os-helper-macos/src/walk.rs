@@ -186,8 +186,10 @@ fn linked_children(el: &El) -> Vec<El> {
 fn follow(el: &El, role: &str) -> Vec<El> {
     let mut out = Vec::new();
     if role == "AXApplication" {
-        if let Some(win) = element_attr(el, "AXMainWindow") { out.push(win); }
+        // The focused window goes first. A modal dialog, such as Chrome's "Allow remote debugging?",
+        // is focused and small, while the main window's web page can spend the whole node budget.
         if let Some(win) = element_attr(el, "AXFocusedWindow") { out.push(win); }
+        if let Some(win) = element_attr(el, "AXMainWindow") { out.push(win); }
         out.extend(ax_windows(el));
     }
     if !skip_children(role) {

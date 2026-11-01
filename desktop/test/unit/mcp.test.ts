@@ -153,6 +153,9 @@ test("initialize tells the agent to start, read, act, and end, and that ending s
     assert.deepEqual(order, [...order].sort((a, b) => a - b));
     assert.match(text, /live_stop\. Ending the session saves the workflow/);
     assert.match(text, /Bao app running/);
+    // A covered control is a popup in the way, not a policy stop, so the agent dismisses it and retries.
+    assert.match(text, /element is covered refusal means a dialog or popup sits over the control: read again, close or dismiss it/);
+    assert.match(text, /For any other refusal or a halted reply, do not try another way/);
   } finally {
     mcp.child.kill();
   }
