@@ -71,9 +71,18 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
     if (size > 64000) truncated = true;
   }
   const credentialLabel = /\b(?:password|passcode|ssn|social security(?: number)?|(?:credit )?card number|cvv|cvc|security code|verification code|one[- ]time code|otp|pin|(?:access |refresh |bearer )?token|api[- _]?key|client secret|authorization|account number)\b/;
-  const nextField = /(?:[.;][ \t]+|\n)[A-Za-z][A-Za-z0-9 _/-]*[:=#]/;
+  const reportText = /\b(?:score|balance|amount|status|frozen|unfrozen)\b|\$\s*\d/;
+  const date = /\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{2,4}/;
+  const value = /(?:"[^"\n]+"|'[^'\n]+'|\d(?:[ -]?\d){8,18}|[*•xX][\d*•xX -]*\d|[^\s;,]+?)/;
+  const boundedValue = `(?!(?:${reportText.source}))${value.source}`;
+  const inlineEnd = /(?=[.,;]?(?:\s|$))/;
+  const lineEnd = /(?=[.,;]?(?:\n|$)|[.,;][ \t])/;
+  const continuedValue = `(?![A-Za-z][A-Za-z _-]*:[ \\t]*(?:${date.source})${inlineEnd.source})${boundedValue}`;
+  const helper = `(?!(?:${continuedValue})${lineEnd.source})(?![^\\n]*(?:${reportText.source}))(?:[^\\n]*[ \\t][^\\n]*|[A-Za-z][A-Za-z _-]*:[ \\t]*(?:${date.source}))`;
+  const note = new RegExp(`(?:[.;][ \\t]+|^|\\n)(?:note|hint)[ \\t]*[:=#][ \\t]*${value.source}${inlineEnd.source}`, "gi");
+  const labeledValue = new RegExp(`${credentialLabel.source}(?:[ \\t]*(?:[:=#][ \\t]*|is[ \\t]+)${value.source}${inlineEnd.source}|[ \\t]+(?!is\\b)${boundedValue}${inlineEnd.source}|\\s*(?:[:=#]|is\\b)?\\n((?:${helper}\\n)*)${continuedValue}${lineEnd.source})?(?:${note.source})?`, "gi");
   const text = chunks.join("\n")
-    .replace(new RegExp(`${credentialLabel.source}[\\s\\S]*?(?=${nextField.source}|$)`, "gi"), "[redacted]")
+    .replace(labeledValue, (_match, help: string | undefined) => help ? `[redacted]\n${help.replace(note, "[redacted]")}[redacted]` : "[redacted]")
     .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted]")
     .replace(/\b\d(?:[ -]?\d){8,18}\b/g, "[redacted]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted]")

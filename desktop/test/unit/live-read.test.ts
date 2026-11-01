@@ -26,6 +26,11 @@ test("live reads record a safe region and return fresh output through MCP and th
       <p>Frozen.</p><p>Social security number ***-**-6789. Score: ${score}. Balance: $412. Updated 2026-11-01.</p>
       <p>Account number</p><p>Score: ${score}. Balance: $412.</p>
       <p>Password</p><p>must be 8 characters</p><p>hunter2</p><p>Status: Frozen.</p>
+      <p>Account number</p><p>****6789</p><p>Balance</p><p>$412</p><p>Score</p><p>${score}</p>
+      <p>Authorization</p><p>Your score is ${score}</p><p>Balance $412</p>
+      <p>Password</p><p>Updated: 2026-11-01</p><p>hunter2</p>
+      <p>Account number</p><p>Opened: 01/2019</p><p>****6789</p>
+      <p>Token</p><p>abc:hunter2</p><p>Password: hunter2. Note: keep-secret</p>
       <p>SSN: 123-45-6789</p><p>Card number: 4111 1111 1111 1111</p><p>Email: demo@example.com</p>
       <input value="field-secret"><textarea>textarea-secret</textarea><span contenteditable>editable-secret</span>
       <p hidden>hidden-secret</p><p style="display:none">display-secret</p><p aria-hidden="true">aria-secret</p>
@@ -89,7 +94,11 @@ test("live reads record a safe region and return fresh output through MCP and th
     assert.match(read.read!.text, /Score: 742\. Balance: \$412\. Updated 2026-11-01\./);
     assert.equal(read.read!.text.match(/Score: 742\. Balance: \$412\./g)?.length, 2);
     assert.match(read.read!.text, /Status: Frozen\./);
-    for (const secret of ["6789", "123-45-6789", "4111", "hunter2", "demo@example.com", "field-secret", "textarea-secret", "editable-secret", "hidden-secret", "display-secret", "aria-secret", "script-secret"]) {
+    assert.match(read.read!.text, /Balance\n\$412\nScore\n742/);
+    assert.match(read.read!.text, /Your score is 742\nBalance \$412/);
+    assert.match(read.read!.text, /Updated: 2026-11-01/);
+    assert.match(read.read!.text, /Opened: 01\/2019/);
+    for (const secret of ["6789", "123-45-6789", "4111", "hunter2", "abc:", "keep-secret", "demo@example.com", "field-secret", "textarea-secret", "editable-secret", "hidden-secret", "display-secret", "aria-secret", "script-secret"]) {
       assert.equal(read.read!.text.includes(secret), false, secret);
     }
     assert.equal(read.read!.truncated, false);
@@ -114,6 +123,11 @@ test("live reads record a safe region and return fresh output through MCP and th
         <p>Frozen.</p><p>Social security number ***-**-6789. Score: ${score}. Balance: $412.</p>
         <p>Account number</p><p>Score: ${score}. Balance: $412.</p>
         <p>Password</p><p>must be 8 characters</p><p>hunter2</p><p>Status: Frozen.</p>
+        <p>Account number</p><p>****6789</p><p>Balance</p><p>$412</p><p>Score</p><p>${score}</p>
+        <p>Authorization</p><p>Your score is ${score}</p><p>Balance $412</p>
+        <p>Password</p><p>Updated: 2026-11-01</p><p>hunter2</p>
+        <p>Account number</p><p>Opened: 01/2019</p><p>****6789</p>
+        <p>Token</p><p>abc:hunter2</p><p>Password: hunter2. Note: keep-secret</p>
         <p>SSN: 123-45-6789</p></section></main>`);
     });
     const outcome = await tool<WorkflowOutcome>("run_workflow", { id: workflow.id, leaveOpen: true });
@@ -122,8 +136,12 @@ test("live reads record a safe region and return fresh output through MCP and th
     const text = (outcome.outputs![0] as OutputTable).rows[0]!.text!;
     assert.equal(text.match(/Score: 756\. Balance: \$412\./g)?.length, 2);
     assert.match(text, /Status: Frozen\./);
+    assert.match(text, /Balance\n\$412\nScore\n756/);
+    assert.match(text, /Your score is 756\nBalance \$412/);
+    assert.match(text, /Updated: 2026-11-01/);
+    assert.match(text, /Opened: 01\/2019/);
     assert.match(text, /\[redacted\]/);
-    for (const secret of ["6789", "hunter2"]) assert.equal(text.includes(secret), false, secret);
+    for (const secret of ["6789", "hunter2", "abc:", "keep-secret"]) assert.equal(text.includes(secret), false, secret);
     await pageSet(1);
     assert.equal(existsSync(path.join(dirs.home, "live.lock")), false);
     const held = browser.pages().find((item) => item !== page && !item.isClosed())
@@ -207,17 +225,47 @@ test("live reads retain neighboring results without returning split credentials"
         `<p>${label} = hunter2; ${results}</p>`,
         `<span>${label}#</span><p>${results}</p>`,
         `<p><span>${label} is </span><strong>hunter2</strong></p><p>${results}</p>`,
+        `<span>${label}</span><span>is</span><strong>hunter2</strong><p>${results}</p>`,
+        `<span>${label}</span><span>:</span><strong>hunter2</strong><p>${results}</p>`,
         `<span>${label}</span><p>${results}</p>`,
         `<span>${label}</span><small>must be 8 characters</small><strong>hunter2</strong><p>${results}</p>`,
         `<p>${results}</p><span>${label}</span><small>must be 8 characters</small><strong>hunter2</strong>`,
+        `<span>${label}</span><p>Updated: 2026-11-01</p><strong>hunter2</strong><p>${results}</p>`,
+        `<span>${label}:</span><p>Updated: 2026-11-01</p><strong>hunter2</strong><p>${results}</p>`,
+        `<span>${label}</span><small>must be 8 characters</small><p>Updated: 2026-11-01</p><strong>hunter2</strong><p>${results}</p>`,
+        `<span>${label}</span><p>Opened: 01/2019</p><strong>****6789</strong><p>${results}</p>`,
+        `<span>${label}</span><strong>abc:hunter2</strong><p>${results}</p>`,
+        `<p>${label}: hunter2. Note: keep-secret. ${results}</p>`,
+        `<p>${label}: hunter2. Hint: keep-secret. ${results}</p>`,
+        `<p>${label}: "hunter2 with spaces". ${results}</p>`,
+        `<p>${label}: frozen. ${results}</p>`,
+        `<p>${label}: 2026-11-01. ${results}</p>`,
+        `<span>${label}</span><strong>****6789</strong><p>Balance</p><p>$412</p><p>Score</p><p>742</p><p>${results}</p>`,
+        `<span>${label}</span><p>Your score is 742</p><p>Balance $412</p><p>${results}</p>`,
       ]) {
         await page.setContent(`<main>${html}</main>`);
         const read = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
         assert.ok(read.text.includes(results), `${label}: ${read.text}`);
         assert.equal(read.text.includes("hunter2"), false, label);
         assert.equal(read.text.includes("part:tail"), false, label);
+        assert.equal(read.text.includes("abc:"), false, label);
+        assert.equal(read.text.includes("keep-secret"), false, label);
+        assert.equal(read.text.includes("6789"), false, label);
         assert.equal(read.truncated, false);
       }
+    }
+    for (const [html, expected] of [
+      ["<p>Account number</p><strong>****6789</strong><p>Balance</p><p>$412</p><p>Score</p><h2>742</h2>", "[redacted]\nBalance\n$412\nScore\n742"],
+      ["<p>Authorization</p><p>Your score is 742</p><p>Balance $412</p>", "[redacted]\nYour score is 742\nBalance $412"],
+      ["<p>Password: frozen</p><h2>Score</h2><p>742</p>", "[redacted]\nScore\n742"],
+      ["<p>Password</p><p>Updated: 2026-11-01</p><strong>hunter2</strong>", "[redacted]\nUpdated: 2026-11-01\n[redacted]"],
+      ["<p>Account number</p><p>Opened: 01/2019</p><strong>****6789</strong>", "[redacted]\nOpened: 01/2019\n[redacted]"],
+      ["<p>Token</p><strong>abc:hunter2</strong>", "[redacted]"],
+      ["<p>Password: hunter2. Note: keep-secret</p>", "[redacted]"],
+    ]) {
+      await page.setContent(`<main>${html}</main>`);
+      const read = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
+      assert.equal(read.text, expected, html);
     }
     await page.setContent("<main>Social security number ***-**-6789. Score: 742. Balance: $412.</main>");
     const masked = await page.evaluate(readLiveRegion, { selector: "main", limit: LIVE_READ_LIMIT });
