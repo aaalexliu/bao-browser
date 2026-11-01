@@ -3,7 +3,7 @@
 // 10,000 logical rows). Drives the real content.js. See §8 of the design doc.
 //
 // Run: npm run test:virtual   (-- --headed to watch it scroll)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

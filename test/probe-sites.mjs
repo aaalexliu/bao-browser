@@ -15,7 +15,7 @@
 //      npm run probe -- https://foo.bar   (ad-hoc URLs work too)
 //      npm run probe -- --json            (raw JSON lines, for piping)
 //      npm run probe -- --headed          (watch)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 
 // The registry: category → verified-or-candidate live targets. Keep in sync with the
 // per-category test-case table in recording-gaps-and-app-universe.md.

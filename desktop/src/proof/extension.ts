@@ -4,18 +4,19 @@
 //   PROOF_PART=worker|signals|fingerprints|tasks|rates|debugger|all
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { createServer, type Server } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
+import { TEST_MEDIA_ARGS } from "../test-browser.js";
 import { Capture } from "../app/capture";
 import { BrowserDriver } from "../v1/browser-driver";
 import { captureStartUrl, outputCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
 import { unavailableHeal } from "../v1/heal";
 import { explain, type TrailEvent } from "../v1/interpret";
-import { keepSessionCookies, launchOwnedChrome } from "../launch";
+import { keepSessionCookies, launchOwnedChrome, pinTestBrowser, testLaneKeychainArgs } from "../launch";
 import { classifyPage } from "../v1/page-class";
 import { replay, type RunResult } from "../v1/replay";
 import type { ReplayArgs, WorkflowV2 } from "../v1/schema";
@@ -83,23 +84,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 function chromeBin(): string {
-  // Branded Google Chrome ignores --load-extension. Chrome for Testing still loads
-  // an unpacked extension, and the human session uses that same binary.
-  const fromEnv = process.env.BAO_PROOF_CHROME;
-  if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  const root = path.join(homedir(), ".cache/ms-playwright");
-  if (existsSync(root)) {
-    const hits = readdirSync(root)
-      .map((name) => path.join(root, name, "chrome-linux64", "chrome"))
-      .filter((file) => existsSync(file))
-      .sort();
-    const found = hits[hits.length - 1];
-    if (found) return found;
-  }
-  for (const file of ["/usr/local/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome"]) {
-    if (existsSync(file)) return file;
-  }
-  throw new Error("chrome was not found");
+  if (process.env.BAO_PROOF_CHROME) process.env.BAO_TEST_BROWSER = process.env.BAO_PROOF_CHROME;
+  return pinTestBrowser();
 }
 
 function run(cmd: string, args: string[]): string {
@@ -197,6 +183,8 @@ class ChromeRun {
     keepSessionCookies(this.profile);
     const args = [
       `--user-data-dir=${this.profile}`,
+      ...TEST_MEDIA_ARGS,
+      ...testLaneKeychainArgs(),
       `--load-extension=${EXT_DIR}`,
       `--disable-extensions-except=${EXT_DIR}`,
       "--disable-features=DisableLoadExtensionCommandLineSwitch",
@@ -1644,6 +1632,7 @@ function startFixture(): Promise<{ server: Server; port: number }> {
 }
 
 async function main(): Promise<void> {
+  chromeBin();
   mkdirSync(ARTIFACTS, { recursive: true });
   mkdirSync(HOME, { recursive: true });
   mkdirSync(BAO, { recursive: true });

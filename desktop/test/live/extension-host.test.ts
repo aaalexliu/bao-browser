@@ -12,6 +12,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { startApp } from "../../src/app/server";
 import { keepSessionCookies, pinTestBrowser } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
+import { TEST_MEDIA_ARGS } from "../../src/test-browser.js";
 import { EXTENSION_ID } from "../../src/extension/protocol";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
@@ -124,6 +125,7 @@ test("extension replay asks for one origin and does not error with no host permi
       "--remote-debugging-address=127.0.0.1",
       "--use-mock-keychain",
       "--password-store=basic",
+      ...TEST_MEDIA_ARGS,
       "about:blank",
     ];
     if (process.env.BAO_CHROME_NO_SANDBOX === "1") args.push("--no-sandbox", "--disable-dev-shm-usage");

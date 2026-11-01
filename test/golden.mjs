@@ -5,7 +5,7 @@
 // Each ref must resolve to a decodable JPEG of plausible dimensions.
 //
 // Run: npm run test:golden   (or: node test/golden.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

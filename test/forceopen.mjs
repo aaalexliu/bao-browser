@@ -5,7 +5,7 @@
 // doc §8 Tier-C). Here we use the controlled closed-shadow fixture.
 //
 // Run: npm run test:forceopen   (-- --headed to watch)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

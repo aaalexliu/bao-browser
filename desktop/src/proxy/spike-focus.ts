@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page, Request } from "playwright";
 import { omitSecret, redactPayload } from "../../../src/mask";
-import { launchOwnedChrome } from "../launch";
+import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { AuditTrail, deriveWorkflow, trimTrail } from "./audit";
 import { PageExecutor, preparePage } from "./executor";
 import { handleComputerCall, type ComputerAction, type ComputerCall, type ComputerCallOutput } from "./openai";
@@ -83,6 +83,7 @@ interface Exchange {
 }
 
 async function main(): Promise<void> {
+  pinTestBrowser();
   installNodeGuard();
   const work = await mkdtemp(path.join(tmpdir(), "bao-focus-"));
   const recordDir = path.join(work, "record");

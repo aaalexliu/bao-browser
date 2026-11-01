@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { LIVE_DISCONNECT } from "../../src/cdp-live/live-ops";

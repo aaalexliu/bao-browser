@@ -3,7 +3,7 @@
 // QA/dev workflows + run history, screenshots the actual dashboard / side panel /
 // filmstrip, frames each into a 1280x800 store tile, and emits the 440x280 promo.
 //   node store/gen-store-assets.mjs   [--raw]
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

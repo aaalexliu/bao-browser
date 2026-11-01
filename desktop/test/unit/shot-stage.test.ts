@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { applyHermeticApp } from "../runtime";
 

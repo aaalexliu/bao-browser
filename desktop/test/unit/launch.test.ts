@@ -4,7 +4,7 @@ import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -138,6 +138,11 @@ test("the test lane launches BAO_TEST_BROWSER with a mock keychain", () => {
   );
   assert.deepEqual(testLaneKeychainArgs(lane), ["--use-mock-keychain", "--password-store=basic"]);
   assert.deepEqual(testLaneKeychainArgs(product), []);
+  assert.deepEqual(testLaneMediaArgs(lane), ["--deny-permission-prompts", "--use-fake-device-for-media-stream"]);
+  assert.deepEqual(testLaneMediaArgs(product), []);
+  const copied = ownedChromeLaunchArgs([], lane, "darwin", true);
+  assert.equal(copied.includes("--deny-permission-prompts"), false);
+  assert.equal(copied.includes("--use-fake-device-for-media-stream"), false);
   assert.deepEqual(ownedChromeLaunchArgs(["--use-mock-keychain=0", "--password-store=gnome"], lane, "darwin"), [
     "--no-first-run",
     "--no-default-browser-check",
@@ -145,6 +150,8 @@ test("the test lane launches BAO_TEST_BROWSER with a mock keychain", () => {
     "--force-renderer-accessibility",
     "--use-mock-keychain",
     "--password-store=basic",
+    "--deny-permission-prompts",
+    "--use-fake-device-for-media-stream",
   ]);
   const laneCmd = `${pin} --user-data-dir=${owned} --no-first-run --use-mock-keychain --password-store=basic`;
   assert.equal(assessOwnedCommand(laneCmd, owned, lane).ok, true);

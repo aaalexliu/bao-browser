@@ -7,7 +7,7 @@
 //   2. text  — cards carry NO id/href; only the author name disambiguates them.
 //
 // Run: npm run test:list   (or: node test/list.mjs --headed to watch)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";

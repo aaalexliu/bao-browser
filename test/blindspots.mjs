@@ -9,7 +9,7 @@
 //   canvas                → graceful degrade (pixels, no DOM target)
 //
 // Run: npm run test:blindspots   (-- --headed to watch)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

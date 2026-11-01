@@ -5,7 +5,7 @@
 // boundary without CDP. See use-cases-and-snapshot-fallback.md §8 (Tier-B item 5).
 //
 // Run: npm run test:frames   (-- --headed to watch)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { pinTestBrowser } from "../../src/launch";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";

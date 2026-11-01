@@ -9,6 +9,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pinTestBrowser } from "../launch";
 import { startApp } from "../app/server";
 import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 import { pauseIsExpected, scoreBotWall, type TaskExpect } from "./task-expect";
@@ -148,6 +149,7 @@ class Session {
 }
 
 async function main(): Promise<void> {
+  pinTestBrowser();
   mkdirSync(ARTIFACTS, { recursive: true });
   mkdirSync(PUBLIC_ARTIFACTS, { recursive: true });
   mkdirSync(path.join(ROOT, "workflows"), { recursive: true });

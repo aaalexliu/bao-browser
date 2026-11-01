@@ -1,7 +1,7 @@
 // Rasterize assets/icon.svg to PNG app icons at the sizes Chrome + the CWS need.
 // Uses the already-installed Playwright Chromium (no new deps). Output -> icons/.
 //   node assets/gen-icons.mjs
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

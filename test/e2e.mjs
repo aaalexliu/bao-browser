@@ -3,7 +3,7 @@
 // chrome.tabs.sendMessage path the popup uses. Outputs are dumped to ./out.
 //
 // Run: npm test   (or: node test/e2e.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";

@@ -9,7 +9,8 @@ import { mkdtempSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileS
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { chromium, type Page } from "playwright";
+import type { Page } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { pinTestBrowser } from "../../src/launch";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";

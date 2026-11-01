@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile, copyFile } from
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Page } from "playwright";
-import { launchOwnedChrome } from "./launch";
+import { launchOwnedChrome, pinTestBrowser } from "./launch";
 import { appOwnedProfileDir, assertNotDailyChrome } from "./profile";
 import { recordSession, replaySession, toWorkflow, type ReplayOutcome } from "./session";
 import type { Workflow } from "../../src/types";
@@ -110,6 +110,7 @@ async function saveShot(dir: string, name: string, page: Page): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  pinTestBrowser();
   const artifactDir = process.env.BAO_SPIKE_ARTIFACTS || "/opt/cursor/artifacts";
   await mkdir(artifactDir, { recursive: true });
   const work = await mkdtemp(path.join(tmpdir(), "bao-spike1-"));

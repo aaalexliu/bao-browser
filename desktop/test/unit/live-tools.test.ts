@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
+import { TEST_MEDIA_ARGS } from "../../src/test-browser.js";
 import { openLiveWindow, type CdpLiveDriver } from "../../src/cdp-live/driver";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { clickLive, pressLiveKey, scrollLive, typeLive, type LiveActTarget } from "../../src/cdp-live/live-act";
@@ -549,6 +550,7 @@ test("in a real page Enter submits a search box with no button, scroll loads mor
       "--headless=new",
       `--user-data-dir=${userData}`,
       "--remote-debugging-port=0",
+      ...TEST_MEDIA_ARGS,
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-extensions",

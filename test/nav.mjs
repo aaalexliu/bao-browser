@@ -3,7 +3,7 @@
 // waitForUser (and survive a forced SW kill while paused), then resume.
 //
 // Run: npm run test:nav   (or: node test/nav.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

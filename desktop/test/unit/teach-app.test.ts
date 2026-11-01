@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
 import { blurSensitiveFields, unblurSensitiveFields } from "../../src/v1/dom-page";

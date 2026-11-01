@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../../src/test-browser.js";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 
 const html = `<!doctype html>

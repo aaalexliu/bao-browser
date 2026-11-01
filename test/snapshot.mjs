@@ -7,7 +7,7 @@
 //   3) an oversized subtree is truncated with a marker
 //
 // Run: npm run test:snapshot   (or: node test/snapshot.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

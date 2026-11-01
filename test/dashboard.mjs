@@ -5,7 +5,7 @@
 // its run history. Editing + the filmstrip land in later steps.
 //
 // Run: npm run test:dashboard   (or: node test/dashboard.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 

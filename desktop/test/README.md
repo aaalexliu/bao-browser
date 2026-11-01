@@ -37,6 +37,56 @@ node --test --test-name-pattern "first replay after a fresh launch" desktop/dist
 
 This runs a required-suite test outside the runner, so it opens installed Chrome on a throwaway profile. It asserts `document.cookie` in the first session and the Cookie header after relaunch. If the header is missing, that relaunch is a Mac keychain result. The product command line refuses `--use-mock-keychain` and `--password-store`. Do not point it at a daily Chrome profile. The live test "a session cookie survives relaunching bao's Chrome" in `login-import.test.ts` runs on the test browser with the mock keychain, so its pass does not show the Mac keychain result.
 
+## Camera and microphone isolation
+
+Throwaway browsers start with `--deny-permission-prompts` and
+`--use-fake-device-for-media-stream`. Chrome rejects `getUserMedia` without
+asking macOS for access. Do not use `--use-fake-ui-for-media-stream`: it
+accepts media requests instead of denying them.
+
+`desktop/src/test-browser.js` shares these flags across desktop tests,
+extension fixtures, public probes, and asset scripts. Import its `testChromium`
+launch methods for test Playwright contexts, or spread `TEST_MEDIA_ARGS` into
+the arguments of a manually spawned test browser. The shared module uses
+CommonJS so both root `.mjs` tools and compiled desktop code load it;
+`allowJs` in `tsconfig.desktop.json` copies and type-checks it.
+
+Owned replay and eval launches in `desktop/src/launch.ts` add the flags only
+when `BAO_TEST_BROWSER` is set. Product launches, live CDP connections,
+agent-browser profile copies, and the logged-in `.chrome-profile` scripts keep
+their media settings. Copied profiles set `preserveMediaPermissions` to keep
+those settings even in a test-lane process. Standalone spikes and proof scripts
+pin the test browser.
+
+`desktop/test/unit/test-media.test.ts` requests audio, video, and both together,
+queries permissions, and enumerates devices. It covers separate contexts,
+new tabs, two origins, replay video, and a manual spawn. Every media request
+must fail with `NotAllowedError`. It checks the actual process flags without
+requiring `--enable-automation`. `BAO_MEDIA_HEADED=1` shows the test windows.
+`BAO_MEDIA_PUBLIC=1` also loads the CreepJS and sannysoft proof pages; the
+required suite skips public hosts. Run with a temp `HOME`, no model keys,
+and `BAO_HEAL_CURSOR_ACCOUNT=0`.
+
+On macOS, capture `log show --predicate 'process == "tccd"'` for the run.
+Camera or microphone `AUTHREQ_CTX` entries with `preflight=yes` only check
+status and cannot prompt. List those checks in the evidence. There must be no
+Camera or Microphone entry with `preflight=no` from Chrome for Testing.
+
+Media-related public proof pages are in `desktop/src/proof/extension.ts`:
+
+- `https://abrahamjuliot.github.io/creepjs/` queries camera and microphone
+  permissions and calls `mediaDevices.enumerateDevices()` in `creep.js`.
+- `https://bot.sannysoft.com/` calls the legacy `navigator.getUserMedia()` without
+  constraints, queries notification permissions, and enumerates devices. Its
+  `fpCollect.min.js` also enumerates devices.
+
+No pre-existing local test fixture calls `getUserMedia` or queries camera or
+microphone permissions. These public-page calls identify media probes, not which
+page caused a past macOS alert. Do not load an unguarded browser to reproduce an
+OS prompt. The fake-UI and fake-device pair still let Chrome's audio helpers
+make real microphone requests in the headed proof. The deny-prompt and
+fake-device pair rejects those requests instead.
+
 ## Instacart fixture
 
 `desktop/test/instacart/` stands in for `www.instacart.com`, so a live-path test never reaches the real site.

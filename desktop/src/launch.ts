@@ -3,7 +3,7 @@
 // Chrome and attach over a private debugging port. Playwright's launcher is
 // only used when a caller asks for page.video(). Both test lanes and the
 // browser evals set BAO_TEST_BROWSER, and then every launch starts that
-// browser with a mock keychain instead.
+// browser with a mock keychain and camera and microphone denied in Chrome.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -11,6 +11,7 @@ import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { parseDevToolsActivePort } from "./cdp-live/endpoint";
 import { assertNotDailyChrome } from "./profile";
+import { TEST_MEDIA_ARGS } from "./test-browser.js";
 
 export const ACCOUNT_CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 /** The real binary. A PATH wrapper in this environment injects --no-sandbox and port 9222. */
@@ -91,7 +92,8 @@ const MOCK_KEYCHAIN_ARGS = ["--use-mock-keychain", "--password-store=basic"];
  * BAO_TEST_BROWSER to Playwright's Chromium, and pinTestBrowser sets it for
  * the browser evals. While it is set, every launch starts that binary with a
  * mock keychain, so a test never opens the user's Chrome or the login
- * keychain. Product launches never set it.
+ * keychain. Test media denial also keeps camera and microphone access inside
+ * Chrome. Product launches never set it.
  */
 export function testLaneBrowser(env: NodeJS.ProcessEnv = process.env): string | undefined {
   return env.BAO_TEST_BROWSER?.trim() || undefined;
@@ -138,11 +140,16 @@ export function testLaneKeychainArgs(env: NodeJS.ProcessEnv = process.env): stri
   return testLaneBrowser(env) ? [...MOCK_KEYCHAIN_ARGS] : [];
 }
 
+/** Tests and evals deny media prompts and use synthetic capture devices. */
+export function testLaneMediaArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  return testLaneBrowser(env) ? [...TEST_MEDIA_ARGS] : [];
+}
+
 /**
  * Owned Chrome only. Account Chrome never receives the sandbox opt-in.
  * Caller arguments never carry a keychain flag. Only the test lane adds one.
  */
-export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
+export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, preserveMediaPermissions = false): string[] {
   const mac = platform === "darwin" ? ["--force-renderer-accessibility"] : [];
   const sandbox = needsLinuxNoSandbox(env, platform) ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
   const drop = new Set([
@@ -157,12 +164,12 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env)];
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env), ...(preserveMediaPermissions ? [] : testLaneMediaArgs(env))];
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
-function ownedLaunchArgs(extra: string[] | undefined, append: string[] | undefined): string[] {
-  return ownedChromeLaunchArgs([...(extra ?? []), ...(append ?? [])]);
+function ownedLaunchArgs(extra: string[] | undefined, append: string[] | undefined, preserveMediaPermissions?: boolean): string[] {
+  return ownedChromeLaunchArgs([...(extra ?? []), ...(append ?? [])], process.env, process.platform, preserveMediaPermissions);
 }
 
 const KEYCHAIN_FLAG_NAMES = new Set(["--use-mock-keychain", "--password-store"]);
@@ -373,7 +380,7 @@ export async function launchAccountChrome(opts: {
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
   const exe = resolveAccountChrome();
-  const args = [...accountLaunchArgs(OWNED_DEBUG_PORT), ...testLaneKeychainArgs()];
+  const args = [...accountLaunchArgs(OWNED_DEBUG_PORT), ...testLaneKeychainArgs(), ...testLaneMediaArgs()];
   const { child, port } = await spawnOwnedChrome(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], opts.userDataDir);
   const stop = () => {
     if (child.exitCode == null) child.kill("SIGTERM");
@@ -434,6 +441,8 @@ export async function launchOwnedChrome(opts: {
   deviceScaleFactor?: number;
   /** Only Chrome gets this HOME. Bao keeps its own isolated state and native-host paths. */
   childHome?: string;
+  /** Copied real profiles must not receive test-media flags. */
+  preserveMediaPermissions?: boolean;
   loadExtensions?: boolean;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
@@ -444,6 +453,7 @@ export async function launchOwnedChrome(opts: {
 
 async function launchNormalChrome(opts: {
   userDataDir: string;
+  preserveMediaPermissions?: boolean;
   childHome?: string;
   loadExtensions?: boolean;
   headless?: boolean;
@@ -460,7 +470,7 @@ async function launchNormalChrome(opts: {
   const headless = opts.headless ?? true;
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
-    ...ownedLaunchArgs(opts.args, opts.appendArgs),
+    ...ownedLaunchArgs(opts.args, opts.appendArgs, opts.preserveMediaPermissions),
     `--remote-debugging-port=${OWNED_DEBUG_PORT}`,
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
@@ -569,6 +579,7 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess)
 /** Playwright video only. The pipe and default switches come back with it. */
 async function launchOwnedChromeForVideo(opts: {
   userDataDir: string;
+  preserveMediaPermissions?: boolean;
   childHome?: string;
   loadExtensions?: boolean;
   videoDir?: string;
@@ -591,7 +602,7 @@ async function launchOwnedChromeForVideo(opts: {
     chromiumSandbox: true,
     ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: [...ownedLaunchArgs(opts.args, opts.appendArgs), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
+    args: [...ownedLaunchArgs(opts.args, opts.appendArgs, opts.preserveMediaPermissions), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);

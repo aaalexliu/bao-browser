@@ -4,7 +4,7 @@
 // (a naive el.click() would wrongly un-check it). Radio records the chosen option.
 //
 // Run: npm run test:check   (or: node test/check.mjs)
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 

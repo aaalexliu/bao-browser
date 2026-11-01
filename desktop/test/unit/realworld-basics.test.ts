@@ -248,7 +248,7 @@ test("zero executed steps and a failed final check are not passes", () => {
 });
 
 test("a click inside an open shadow root is recorded on the inner control", async () => {
-  const { chromium } = await import("playwright");
+  const { testChromium: chromium } = await import("../../src/test-browser.js");
   const { recorderSource } = await import("../../src/v1/recorder.js");
   const { dumpPage } = await import("../../src/v1/dom-page.js");
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });

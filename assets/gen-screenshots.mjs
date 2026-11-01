@@ -10,7 +10,7 @@
 //   node assets/gen-screenshots.mjs   (assumes dist/ is already built)
 //
 // Output -> assets/store/01-dashboard.png, assets/store/02-sidepanel.png
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
