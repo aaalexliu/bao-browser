@@ -28,7 +28,7 @@ The helper reports four jobs, including legacy OS tools. Extension replay has it
 - **Legacy OS MCP driver** (`bao mcp-ax`) drives Calculator and TextEdit, not Chrome. It calls `shot` before it observes, clicks, types, or presses a key. It needs Accessibility and Screen Recording for that explicit window capture. Its API capability has `optional: true`; the UI does not show its missing grants or a prompt. Use the `live_*` tools in [`bao mcp`](cdp-live-chrome.md#agent-entry-point) to drive Chrome without Screen Recording.
 - **Extension replay** uses the extension's site grant. The helper status does not report it.
 
-`helper.label` reads `helper ok` when Accessibility is on and Automation for Google Chrome is granted, or when Accessibility is on and Chrome is closed so Automation cannot be checked. Otherwise it reads `helper needs permission`. Screen Recording never affects the label. An existing remote-debugging listener can satisfy the live Chrome row without changing the label's Automation requirement.
+Without the helper or outside macOS, `helper.label` reads `helper off`. With the helper present on macOS, it reads `helper ok` when Accessibility is on and Automation for Google Chrome is granted, or when Accessibility is on and Chrome is closed so Automation cannot be checked. Otherwise it reads `helper needs permission`. Screen Recording never affects the label. An existing remote-debugging listener can satisfy the live Chrome row without changing the label's Automation requirement.
 
 The UI lists two required permissions: Accessibility and Automation: Google Chrome. Do not enable Screen Recording for Bao's daily-Chrome path.
 
