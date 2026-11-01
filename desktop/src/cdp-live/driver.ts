@@ -659,9 +659,8 @@ export class CdpLiveDriver implements Driver {
       await this.evaluateFunction(redactOverlay, label);
       return await this.screenshotPng();
     } finally {
-      // The video shows the page, not the veil. Every veiled paint came before the screenshot returned.
-      this.screencast?.skip(veiled - 0.05, Date.now() / 1000);
       await this.cdp.send("Runtime.evaluate", { expression: 'document.getElementById("bao-redact")?.remove()', returnByValue: true }, this.sessionId).catch(() => undefined);
+      this.screencast?.skip(veiled - 0.05, Date.now() / 1000 + 0.1);
     }
   }
 
@@ -681,12 +680,15 @@ export class CdpLiveDriver implements Driver {
     this.screencast = await startScreencast(this.cdp, this.sessionId, dest).catch(() => undefined);
   }
 
-  /** Closes or leaves the window, then writes its video, if one was recording. */
+  /** Stops recording and closes or leaves the window. */
   async end(): Promise<void> {
+    await this.screencast?.stop();
+    await this.release();
+  }
+
+  async writeVideo(): Promise<void> {
     const video = this.screencast;
     this.screencast = undefined;
-    await video?.stop();
-    await this.release();
     await video?.write().catch(() => null);
   }
 

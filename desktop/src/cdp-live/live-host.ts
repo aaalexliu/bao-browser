@@ -89,6 +89,7 @@ interface OpenState {
   facts: PageFacts | null;
   halted: string;
   refused: boolean;
+  covered: Set<string>;
   /** Every act that went through. The saved workflow is built from it. */
   trail: LiveTrail;
   startedAt: number;
@@ -377,6 +378,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         facts: null,
         halted: "",
         refused: false,
+        covered: new Set(),
         trail,
         startedAt: Date.now(),
         steps: [],
@@ -417,6 +419,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         open = null;
         slot = { phase: "idle" };
         if (clip) await rm(clip, { force: true });
+        await driver?.writeVideo();
       }
       throw err;
     }
@@ -558,12 +561,15 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note("click", label, "running", null);
     }), ref);
     if (before) await state.log.patchLast(state.driver.lastTrusted());
+    const control = before?.identity ? JSON.stringify([before.side.url, before.identity]) : "";
     if (outcome.kind !== "applied") {
-      state.refused = true;
+      if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) state.covered.add(control);
+      else state.refused = true;
       // A refusal before the click gets its own audit row. After the click, the click's row stands.
       if (!before) await note("click", outcome.reason, "failed", null);
       return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
+    state.covered.delete(control);
     const after = await readAfter(state, index, true);
     // The accessible name, not the redacted view label, so the item in "Add 1 ct {item}" keeps its digits.
     const name = before?.identity?.name || before?.identity?.text || outcome.label;
@@ -685,8 +691,9 @@ export function createLiveHost(opts: LiveHostOptions): {
     const ended = reason === "disconnect" ? "Saved when the agent disconnected."
       : reason === "idle" ? "Saved after the agent went quiet."
         : "Stopped.";
-    const noteText = open.halted ? open.halted : open.refused ? "Refused." : ended;
-    const status = open.halted ? "needs_human" : open.refused ? "failed" : "passed";
+    const refused = open.refused || open.covered.size > 0;
+    const noteText = open.halted ? open.halted : refused ? "Refused." : ended;
+    const status = open.halted ? "needs_human" : refused ? "failed" : "passed";
     let saveError = "";
     let videoError = "";
     let saved = false;
@@ -712,6 +719,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     try { await ending.closeTarget?.(); } finally {
       releaseCdpLock(AGENT, lockFile);
       if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.webm`), { force: true });
+      await ending.driver.writeVideo();
     }
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });

@@ -9,7 +9,6 @@ import path from "node:path";
 import { ffmpegBin } from "../v1/replay-video";
 import type { CdpSocket } from "./socket";
 
-/** About an hour of frames at Chrome's usual screencast rate. Later frames are dropped. */
 const MAX_FRAMES = 20_000;
 
 export interface Frame {
@@ -82,11 +81,19 @@ export async function startScreencast(
     if (typeof params.sessionId === "number") {
       void cdp.send("Page.screencastFrameAck", { sessionId: params.sessionId }, sessionId).catch(() => undefined);
     }
-    if (!recording || typeof params.data !== "string" || frames.length >= MAX_FRAMES) return;
+    if (!recording || typeof params.data !== "string") return;
     const stamp = (params.metadata as { timestamp?: unknown } | undefined)?.timestamp;
+    const at = typeof stamp === "number" ? stamp : now();
+    const last = frames[frames.length - 1];
+    if (last && Math.floor(last.at * 10) === Math.floor(at * 10)) {
+      writeFileSync(last.file, Buffer.from(params.data, "base64"));
+      last.at = at;
+      return;
+    }
+    if (frames.length >= MAX_FRAMES) return;
     const file = path.join(dir, `frame-${String(frames.length).padStart(5, "0")}.jpg`);
     writeFileSync(file, Buffer.from(params.data, "base64"));
-    frames.push({ file, at: typeof stamp === "number" ? stamp : now() });
+    frames.push({ file, at });
   });
   try {
     await cdp.send("Page.startScreencast", { format: "jpeg", quality: 70, maxWidth: 1280, maxHeight: 960, everyNthFrame: 1 }, sessionId);

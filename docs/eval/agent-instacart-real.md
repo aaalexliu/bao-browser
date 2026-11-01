@@ -8,9 +8,16 @@ The owner approved this flow: through Bao, in his signed-in daily Chrome (Defaul
 
 - Chrome: the owner's Google Chrome on this Mac, Default profile, signed in to Instacart with Costco as the store. Bao turned remote debugging on at the start (`bao remote-debugging on`) and off at the end (`bao remote-debugging off`), and BaoOSHelper pressed **Allow** for each connection. No Chrome was started with a debugging switch, and no profile file other than `DevToolsActivePort` was read.
 - Bao: `bao serve` with the daily live target, its own library per agent, a temp `HOME` (so the real NativeMessagingHosts files were not rewritten), `BAO_HEAL_CURSOR_ACCOUNT=0`, and `BAO_RUN_VIDEO=1`. It ran as a LaunchAgent in the owner's GUI session, not from an ssh shell, so macOS attributed BaoOSHelper's Apple Events to BaoOSHelper. BaoOSHelper was a worktree build signed with the existing `bao dev signing` certificate, so the owner's Accessibility and Automation grants applied.
-- Agents: the prompt `put costco kirkland organic blueberries into the cart at instacart` and nothing else, with the fixture lane's lock-down flags and `bao mcp` as the only MCP server. Claude Code 2.1.310 ran with `--model claude-opus-5-5 --max-budget-usd 3`. Codex 0.164.0 ran with `--model gpt-6-astra`. Before each run, the lane's lock-down check (`checkAgentLockdown(driver, model)`) passed: Claude Code offered only `mcp__bao__*` (13 entries), Codex the known code-mode set (16).
+- Agents: the prompt `put costco kirkland organic blueberries into the cart at instacart` and nothing else, with the fixture lane's lock-down flags and `bao mcp` as the only MCP server. Claude Code 2.1.310 ran with `--model claude-opus-5-5 --max-budget-usd 3`. Codex 0.164.0 ran with `--model gpt-6-astra`. Before each run, the lane's lock-down check (`checkAgentLockdown([driver], { model, budgetUsd })`) passed: Claude Code offered only `mcp__bao__*` (13 entries), Codex the known code-mode set (16).
 - Cart: before any write, the Costco cart was read in a window Bao opened: empty (`Items in cart: 0`, no lines). After each add, the cart panel was read, then the add was removed with `instacart.ts`'s `readInstacart` and `removeLabelOk`, and checked with `cartRestored`. Screenshots, videos, transcripts, and workflows are kept outside the repo.
 - Judge: Opus (`claude-opus-5-5`) through `claude -p` with no tool and no MCP server, given the measured facts below.
+
+The W10 run drove the agents from a harness with those same flags. These fixture-lane commands reproduce the agent flags, not the real-site setup:
+
+```sh
+bao eval agent-instacart --driver claude --model claude-opus-5-5 --budget-usd 3
+bao eval agent-instacart --driver codex --model gpt-6-astra
+```
 
 Grades, adapted from the fixture lane:
 
@@ -41,7 +48,7 @@ Timings on this Mac: `bao remote-debugging on` 12.4 to 12.7 s and `off` 12.1 to 
 ## What broke
 
 - **BaoOSHelper missed Chrome's Allow sheet.** Its accessibility walk stops after 1,500 nodes and visited Chrome's main window before the focused window. With a heavy page in front, the budget ran out before the "Allow remote debugging?" sheet, and the start failed with `BaoOSHelper cannot see the Allow remote debugging dialog`. The walk now starts with the focused window (`desktop/os-helper-macos/src/walk.rs`).
-- **A covered control ended the agent's session.** `bao mcp`'s instructions said to end the session on any refusal but a stale ref. They now say that `element is covered` means a dialog or popup sits over the control, and the agent should read again, dismiss it with its own control, and retry. This fix came before Codex's last attempt.
+- **A covered control ended the agent's session.** `bao mcp`'s instructions said to end the session on any refusal but a stale ref. Before Codex's last attempt, they changed to let the agent dismiss the popup and retry. The instructions now limit that recovery to a dismiss control (Close, X, No thanks, Not now, Dismiss) or Escape through `live_key`, then one retry of the original click. Continue, Accept, Agree, Sign in, Subscribe, Place order, and all consent or purchase controls are forbidden for this recovery; Bao's deny lists still apply. With no dismiss control, the agent ends the session and tells the user.
 - **A browser extension covered Instacart.** The owner's Rakuten extension shows a popup over the header cart and the cart panel's Remove button. Bao refuses a covered click, which is right. The harness's restore gave the marked control keyboard focus and pressed Enter, without touching the popup. Bao itself does not do that; whether it should is open.
 - **Load from other work.** With another task's Xcode build running, Chrome took longer than Bao's 15 s to open the profile window.
 - **Session status.** A session that hit one stale ref ends as `failed: Refused.` even when the task succeeded and the workflow saved.

@@ -153,8 +153,10 @@ test("initialize tells the agent to start, read, act, and end, and that ending s
     assert.deepEqual(order, [...order].sort((a, b) => a - b));
     assert.match(text, /live_stop\. Ending the session saves the workflow/);
     assert.match(text, /Bao app running/);
-    // A covered control is a popup in the way, not a policy stop, so the agent dismisses it and retries.
-    assert.match(text, /element is covered refusal means a dialog or popup sits over the control: read again, close or dismiss it/);
+    assert.match(text, /only click a control that closes or dismisses the covering popup \(Close, X, No thanks, Not now, Dismiss\), or press Escape with live_key, then retry the original click once\./);
+    assert.match(text, /Never press Continue, Accept, Agree, Sign in, Subscribe, Place order, or any consent or purchase control to clear a popup\./);
+    assert.match(text, /Bao's deny lists still apply\./);
+    assert.match(text, /If no dismiss control exists or the retry is refused, end the session and tell the user\./);
     assert.match(text, /For any other refusal or a halted reply, do not try another way/);
   } finally {
     mcp.child.kill();

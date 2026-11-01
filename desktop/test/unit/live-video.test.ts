@@ -8,7 +8,10 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { after, before, describe, it } from "node:test";
+import { CdpLiveDriver } from "../../src/cdp-live/driver";
 import { createLiveHost } from "../../src/cdp-live/live-host";
+import { CdpSocket } from "../../src/cdp-live/socket";
+import * as screencast from "../../src/cdp-live/screencast";
 import { concatList, startScreencast } from "../../src/cdp-live/screencast";
 import { ffmpegBin } from "../../src/v1/replay-video";
 import { Library } from "../../src/v1/store";
@@ -75,6 +78,59 @@ test("the screencast acks every frame, keeps frames until stop, and drops them a
   assert.match(encoded, /file 'frame-00000\.jpg'\nduration 0\.500\nfile 'frame-00001\.jpg'\nduration 0\.500\nfile 'frame-00001\.jpg'\n$/);
 });
 
+test("a 60 fps stream keeps the newest frame in each 0.1-second slot and acks all frames", async () => {
+  const { cdp, sent, emit } = fakeCdp();
+  const newest = new Map<number, string>();
+  const cast = await startScreencast(cdp, "S1", "/nowhere/clip.webm", async (list) => {
+    const dir = path.dirname(list);
+    const files = readdirSync(dir).filter((name) => name.endsWith(".jpg")).sort();
+    assert.equal(files.length, 100);
+    assert.deepEqual(files.map((file) => readFileSync(path.join(dir, file), "utf8")), [...newest.values()]);
+    const encoded = readFileSync(list, "utf8");
+    assert.match(encoded, /frame-00099\.jpg/);
+    assert.doesNotMatch(encoded, /frame-00100\.jpg/);
+    return true;
+  }, () => 110);
+  for (let frame = 0; frame < 600; frame += 1) {
+    const at = 100 + frame / 60;
+    const value = `frame ${frame}`;
+    newest.set(Math.floor(at * 10), value);
+    emit({ data: Buffer.from(value).toString("base64"), sessionId: frame, metadata: { timestamp: at } });
+  }
+  assert.equal(await cast.write(), "/nowhere/clip.webm");
+  assert.equal(sent.filter(([method]) => method === "Page.screencastFrameAck").length, 600);
+});
+
+test("the audit veil skip extends past its removal, even when the screenshot fails", async (t) => {
+  let clock = 1_000_000;
+  let fail = false;
+  const skips: [number, number][] = [];
+  t.mock.method(Date, "now", () => clock);
+  t.mock.method(screencast, "startScreencast", async () => ({
+    skip: (from: number, to: number) => { skips.push([from, to]); },
+    stop: async () => undefined,
+    write: async () => null,
+  }));
+  const cdp = {
+    send: async (method: string, params: { expression?: string }) => {
+      if (method === "Page.captureScreenshot") {
+        clock += 1000;
+        if (fail) throw new Error("screenshot failed");
+        return { data: Buffer.from("png").toString("base64") };
+      }
+      if (params.expression === 'document.getElementById("bao-redact")?.remove()') clock += 1000;
+      return { result: {} };
+    },
+  } as unknown as CdpSocket;
+  const driver = new CdpLiveDriver(cdp, "S1", "T1");
+  await driver.recordVideo("/nowhere/clip.webm");
+  assert.equal((await driver.captureRedacted("audit")).toString(), "png");
+  assert.deepEqual(skips, [[999.95, 1002.1]]);
+  fail = true;
+  await assert.rejects(driver.captureRedacted("audit failure"), /screenshot failed/);
+  assert.deepEqual(skips[1], [1001.95, 1004.1]);
+});
+
 test("frames painted under an audit screenshot's veil are left out", async () => {
   const { cdp, emit } = fakeCdp();
   let encoded = "";
@@ -111,13 +167,31 @@ describe("a live session and a live replay record their window", { timeout: 180_
     await fixture?.close();
   });
 
-  it("writes live-<session>-<time>.webm for the session and <runId>.webm for the replay", async () => {
+  it("releases CDP before writing session, replay, and failed-start videos", async (t) => {
     const home = mkdtempSync(path.join(tmpdir(), "bao-live-video-"));
     const videoDir = path.join(home, "videos");
+    const lockFile = path.join(home, "lock");
+    let closed = 0;
+    let written = 0;
+    const close = CdpSocket.prototype.close;
+    const writeVideo = CdpLiveDriver.prototype.writeVideo;
+    t.mock.method(CdpSocket.prototype, "close", function (this: CdpSocket) {
+      close.call(this);
+      assert.equal(this.isOpen, false);
+      closed += 1;
+    });
+    t.mock.method(CdpLiveDriver.prototype, "writeVideo", async function (this: CdpLiveDriver) {
+      assert.equal(closed, written + 1);
+      assert.equal(existsSync(lockFile), false);
+      const targets = await (await fetch(`${browser.cdpUrl}/json/list`)).json() as { id: string }[];
+      assert.ok(!targets.some((target) => target.id === this.targetId));
+      await writeVideo.call(this);
+      written += 1;
+    });
     fixture.reset();
     const host = createLiveHost({
       home,
-      lockFile: path.join(home, "lock"),
+      lockFile,
       target: { kind: "throwaway", portFile: browser.portFile },
       helper: () => fakeChromeHelper().helper,
       openProfile: async () => {
@@ -146,6 +220,9 @@ describe("a live session and a live replay record their window", { timeout: 180_
       assert.equal(run.modelCalls, 0);
       const clip = path.join(videoDir, `${run.runId}.webm`);
       assert.ok(existsSync(clip) && statSync(clip).size > 1000, readdirSync(videoDir).join(", "));
+      t.mock.method(CdpLiveDriver.prototype, "goto", async () => { throw new Error("failed start"); });
+      assert.equal((await call({ op: "live_session_start", intent: "failed start", url: fixture.url("/store/costco/storefront") })).outcome?.kind, "rejected");
+      assert.equal(written, 3);
     } finally {
       await host.close();
     }

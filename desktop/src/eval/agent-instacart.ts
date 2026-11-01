@@ -45,6 +45,7 @@ import {
   runAgentCli,
   type AgentAuth,
   type AgentDriver,
+  type AgentRunOptions,
   type BaoMcpServer,
   type LiveCliResult,
 } from "./live-cli";
@@ -487,7 +488,7 @@ function decoded(body: Buffer, encoding: string): Buffer {
  * Run the driver once against a stand-in model API on 127.0.0.1 and read the tools it offers.
  * No model runs and no token is spent. The stand-in answers with an error, so the CLI exits.
  */
-async function checkLockdown(driver: AgentDriver, bin: string, server: BaoMcpServer, auth: AgentAuth, root: string, model?: string): Promise<ToolListing> {
+async function checkLockdown(driver: AgentDriver, bin: string, server: BaoMcpServer, auth: AgentAuth, root: string, opts: AgentRunOptions): Promise<ToolListing> {
   let first: ToolListing | undefined;
   const catalog = driver === "codex" ? codexCatalog() : undefined;
   const api: Server = createServer((req, res) => {
@@ -531,13 +532,13 @@ async function checkLockdown(driver: AgentDriver, bin: string, server: BaoMcpSer
       env.ANTHROPIC_API_KEY = "lockdown-check";
       const config = path.join(dir, "mcp.json");
       writeFileSync(config, claudeMcpConfig(server));
-      args = claudeAgentArgs(config, { model });
+      args = claudeAgentArgs(config, opts);
     } else {
       env.CODEX_HOME = path.join(dir, "codex");
       mkdirSync(env.CODEX_HOME, { recursive: true });
       env.BAO_LOCKDOWN_KEY = "lockdown-check";
       const provider = `{ name = "check", base_url = "http://127.0.0.1:${port}/v1", wire_api = "responses", env_key = "BAO_LOCKDOWN_KEY", request_max_retries = 0, stream_max_retries = 0 }`;
-      const base = codexAgentArgs(server, dir, { model });
+      const base = codexAgentArgs(server, dir, opts);
       args = [...base.slice(0, -1), "-c", 'model_provider="check"', "-c", `model_providers.check=${provider}`, "-"];
     }
     const run = await runAgentCli({ bin, args, env, cwd: dir, prompt: "lock-down check", timeoutMs: 90_000 });
@@ -555,7 +556,7 @@ function baoServer(home: string, userHome = path.join(home, "user")): BaoMcpServ
 }
 
 /** The lock-down check alone, with no browser and no model: what each driver would offer. */
-export async function checkAgentLockdown(drivers: readonly AgentDriver[], model?: string): Promise<{ driver: AgentDriver; listing?: ToolListing; problems: string[] }[]> {
+export async function checkAgentLockdown(drivers: readonly AgentDriver[], opts: AgentRunOptions = {}): Promise<{ driver: AgentDriver; listing?: ToolListing; problems: string[] }[]> {
   const results: { driver: AgentDriver; listing?: ToolListing; problems: string[] }[] = [];
   for (const driver of drivers) {
     const bin = driverBinary(driver);
@@ -566,7 +567,7 @@ export async function checkAgentLockdown(drivers: readonly AgentDriver[], model?
     const scratch = mkdtempSync(path.join(tmpdir(), `bao-agent-check-${driver}-`));
     try {
       const auth = driver === "claude" ? claudeAgentAuth(path.join(scratch, "claude")) : codexAgentAuth(path.join(scratch, "codex"));
-      const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch, model);
+      const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch, opts);
       results.push({ driver, listing, problems: [...lockdownProblems(driver, listing), ...(auth.missing ? [auth.missing] : [])] });
     } finally {
       rmSync(scratch, { recursive: true, force: true });
@@ -590,7 +591,7 @@ interface Session {
   saveNote: string;
 }
 
-interface Driven {
+interface Driven extends AgentRunOptions {
   driver: AgentDriver;
   bin: string;
   auth: AgentAuth;
@@ -598,7 +599,6 @@ interface Driven {
   server: BaoMcpServer;
   agentHome: string;
   out: string;
-  model?: string;
 }
 
 function readSession(home: string): LiveSessionRecord | null {
@@ -620,9 +620,9 @@ async function runSession(ctx: Driven, label: Session["label"], prompt: string):
   if (driver === "claude") {
     const config = path.join(work, "mcp.json");
     writeFileSync(config, claudeMcpConfig(ctx.server));
-    args = claudeAgentArgs(config, { model: ctx.model });
+    args = claudeAgentArgs(config, ctx);
   } else {
-    args = codexAgentArgs(ctx.server, work, { model: ctx.model });
+    args = codexAgentArgs(ctx.server, work, ctx);
   }
   console.error(`bao eval agent-instacart ${driver} ${label}: ${prompt}`);
   const started = Date.now();
@@ -797,7 +797,7 @@ interface LaneResult {
   judgeModel: string;
 }
 
-async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifacts: string; model?: string }): Promise<LaneResult> {
+async function runDriver(driver: AgentDriver, opts: AgentRunOptions & { checkout: boolean; artifacts: string }): Promise<LaneResult> {
   const bin = driverBinary(driver);
   if (!bin) return { row: blankRow(driver, "not run", `not run: the ${driver} CLI is not installed`), judgeModel: "" };
   const out = path.join(opts.artifacts, driver);
@@ -807,7 +807,7 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
   try {
     const auth = driver === "claude" ? claudeAgentAuth(path.join(scratch, "claude")) : codexAgentAuth(path.join(scratch, "codex"));
     if (auth.missing) return { row: blankRow(driver, "not run", auth.missing), judgeModel: "" };
-    const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch, opts.model);
+    const listing = await checkLockdown(driver, bin, baoServer(path.join(scratch, "check-home")), auth, scratch, opts);
     writeFileSync(path.join(out, "lockdown.json"), `${JSON.stringify(listing, null, 2)}\n`);
     const locked = lockdownProblems(driver, listing);
     if (locked.length) {
@@ -820,7 +820,7 @@ async function runDriver(driver: AgentDriver, opts: { checkout: boolean; artifac
     const server = baoServer(lane.home, lane.env.HOME);
     const version = await (await fetch(`${lane.browser.cdpUrl}/json/version`)).json() as { "User-Agent"?: string };
     const browserAgent = version["User-Agent"] || "";
-    const ctx: Driven = { driver, bin, auth, lane, server, agentHome, out, model: opts.model };
+    const ctx: Driven = { driver, bin, auth, lane, server, agentHome, out, model: opts.model, budgetUsd: opts.budgetUsd };
 
     const main = await runSession(ctx, "main", AGENT_PROMPT);
     const reasons: string[] = [];
@@ -952,7 +952,7 @@ export function renderAgentTable(lines: readonly TableLine[], notes: Map<string,
     "",
     "Lock-down flags:",
     "",
-    "- Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools \"\" --no-chrome --allowedTools \"mcp__bao__*\" --permission-mode dontAsk --max-budget-usd 1`.",
+    "- Claude Code: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config <file> --tools \"\" --no-chrome --allowedTools \"mcp__bao__*\" --permission-mode dontAsk --max-budget-usd <n>`, where `--budget-usd n` sets the per-session cap (default 1 USD). `--model id` selects the driver's model.",
     "- Codex: `exec --ignore-user-config --ignore-rules --ephemeral --skip-git-repo-check --json --sandbox read-only`, `--disable` for `shell_tool`, `browser_use`, `browser_use_external`, `browser_use_full_cdp_access`, `computer_use`, `in_app_browser`, `view_image`, `goals`, `multi_agent`, `apps`, and `plugins`, `web_search=\"disabled\"`, and `mcp_servers.bao` with `tool_timeout_sec = 180` and `default_tools_approval_mode = \"approve\"`. Without that approval mode, `codex exec` refuses every bao call.",
     "",
     "Every flag the plan named exists in Claude Code 2.1.308 and codex-cli 0.164.0, so none was dropped. Codex refuses an unknown feature name, so a renamed feature fails the run. Of the plan's five Codex features, only `shell_tool` removes a tool from `codex exec`; the lane also turns off `view_image`, `goals`, and `multi_agent`, which do, and the browser, computer use, apps, and plugins features in case a login or a later Codex adds a tool.",
@@ -1006,7 +1006,16 @@ function flag(args: string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-export const AGENT_EVAL_USAGE = "usage: bao eval agent-instacart [--driver claude|codex] [--model id] [--skip-checkout] [--out file] [--artifacts dir] [--check]";
+export const AGENT_EVAL_USAGE = "usage: bao eval agent-instacart [--driver claude|codex] [--model id] [--budget-usd n] [--skip-checkout] [--out file] [--artifacts dir] [--check]";
+
+export function agentRunOptions(args: string[]): AgentRunOptions {
+  const model = flag(args, "--model");
+  if (args.includes("--model") && (!model || model.startsWith("--"))) throw new Error(AGENT_EVAL_USAGE);
+  if (!args.includes("--budget-usd")) return { model };
+  const budgetUsd = Number(flag(args, "--budget-usd"));
+  if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) throw new Error(AGENT_EVAL_USAGE);
+  return { model, budgetUsd };
+}
 
 export function agentDrivers(args: string[]): readonly AgentDriver[] {
   const only = flag(args, "--driver");
@@ -1018,6 +1027,7 @@ export function agentDrivers(args: string[]): readonly AgentDriver[] {
 
 export async function evalAgentInstacart(args: string[] = []): Promise<{ markdown: string; rows: AgentRow[] }> {
   const drivers = agentDrivers(args);
+  const options = agentRunOptions(args);
   const out = flag(args, "--out") || path.join("docs", "eval", "agent-instacart.md");
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const artifacts = path.resolve(flag(args, "--artifacts") || path.join("out", "agent-instacart", stamp));
@@ -1030,7 +1040,7 @@ export async function evalAgentInstacart(args: string[] = []): Promise<{ markdow
   for (const driver of drivers) {
     let result: LaneResult;
     try {
-      result = await runDriver(driver, { checkout: !args.includes("--skip-checkout"), artifacts, model: flag(args, "--model") });
+      result = await runDriver(driver, { ...options, checkout: !args.includes("--skip-checkout"), artifacts });
     } catch (err) {
       result = { row: blankRow(driver, "fail", `lane error: ${err instanceof Error ? err.message : String(err)}`), judgeModel: "" };
     }

@@ -366,5 +366,6 @@ export async function replayLiveWorkflow(
       await setRemoteDebugging(false, remoteDebuggingDeps(ax, prepared.target.portFile, deps.axLog, deps.onNotice)).catch(() => undefined);
     }
     releaseCdpLock(REPLAY_AGENT, lockFile);
+    await driver?.writeVideo();
   }
 }

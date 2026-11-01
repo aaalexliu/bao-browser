@@ -10,8 +10,10 @@ import {
   AGENT_PROMPT,
   CHECKOUT_PROMPT,
   agentDrivers,
+  agentRunOptions,
   cartShape,
   checkoutProblems,
+  checkAgentLockdown,
   earlierRows,
   judgePrompt,
   liveReplyFacts,
@@ -29,6 +31,7 @@ import {
   type AgentRow,
 } from "../../src/eval/agent-instacart";
 import { CODEX_DISABLED_FEATURES, claudeAgentArgs, claudeAgentAuth, codexAgentArgs, codexAgentAuth } from "../../src/eval/live-cli";
+import * as liveCli from "../../src/eval/live-cli";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { search, storeBySlug } from "../instacart/catalog";
 import { TARGET, type CartWrite, type FixtureState, type Hit } from "../instacart/fixture";
@@ -69,6 +72,40 @@ test("claude runs with the plan's lock-down flags and a budget cap", () => {
 test("a model id belongs to one driver", () => {
   assert.deepEqual(agentDrivers(["--driver", "codex", "--model", "gpt-6-astra"]), ["codex"]);
   assert.throws(() => agentDrivers(["--model", "gpt-6-astra"]), /usage/);
+});
+
+test("the lane parses Claude's budget and model into the emitted agent flags", () => {
+  const chosen = agentRunOptions(["--driver", "claude", "--model", "claude-opus-5-5", "--budget-usd", "3"]);
+  assert.deepEqual(chosen, { model: "claude-opus-5-5", budgetUsd: 3 });
+  const args = claudeAgentArgs("/tmp/mcp.json", chosen);
+  assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
+  assert.equal(args[args.indexOf("--max-budget-usd") + 1], "3");
+  const defaults = claudeAgentArgs("/tmp/mcp.json", agentRunOptions([]));
+  assert.equal(defaults[defaults.indexOf("--max-budget-usd") + 1], "1");
+  for (const value of [undefined, "0", "-1", "NaN", "Infinity", "--check"]) {
+    assert.throws(() => agentRunOptions(["--budget-usd", ...(value === undefined ? [] : [value])]), /usage/);
+  }
+  assert.throws(() => agentRunOptions(["--model", "--check"]), /usage/);
+});
+
+test("the lock-down check passes the lane's chosen model and budget to Claude", async (t) => {
+  t.mock.method(liveCli, "driverBinary", () => process.execPath);
+  t.mock.method(liveCli, "claudeAgentAuth", () => ({ env: {} }));
+  const calls: string[][] = [];
+  t.mock.method(liveCli, "runAgentCli", async (opts: Parameters<typeof liveCli.runAgentCli>[0]) => {
+    calls.push(opts.args);
+    await fetch(`${opts.env.ANTHROPIC_BASE_URL}/v1/messages`, {
+      method: "POST",
+      body: JSON.stringify({ tools: [{ name: "mcp__bao__live_snapshot" }] }),
+    });
+    return { code: 1, tokens: "n/a", timedOut: false, stderr: "", stdout: "" };
+  });
+  const checked = await checkAgentLockdown(["claude"], agentRunOptions(["--budget-usd", "3", "--model", "claude-opus-5-5"]));
+  assert.deepEqual(checked[0]?.problems, []);
+  assert.equal(calls.length, 1);
+  const args = calls[0]!;
+  assert.equal(args[args.indexOf("--max-budget-usd") + 1], "3");
+  assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
 });
 
 test("codex runs with no user config, every acting feature off, and bao's calls approved with the configured timeout", () => {
