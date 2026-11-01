@@ -225,15 +225,17 @@ export async function startApp(opts: {
   let automationNotice = "";
   const profileSourceRoot = opts.chromeProfilesRoot ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? systemChromeProfilesRoot() : undefined);
   let profileCopy: { bytes: number; copyMs: number; status: "open" | "deleted" } | undefined;
+  const liveTarget = () => parseLiveTarget(opts.liveTarget || `daily:${library.settings().liveChromeProfile || "Default"}`, baoProfile,
+    profileSourceRoot ? path.join(profileSourceRoot, "DevToolsActivePort") : undefined);
   const live = createLiveHost({
     home: library.root,
-    target: parseLiveTarget(opts.liveTarget, baoProfile),
+    target: liveTarget(),
     lockFile: opts.liveLockFile,
     selectRun: async () => {
       const settings = library.settings();
       const engineName = pageEngineName(settings.pageEngine);
       if (engineName === "old" || opts.liveTarget?.startsWith("throwaway:")) {
-        return { target: parseLiveTarget(opts.liveTarget, baoProfile), engineName };
+        return { target: liveTarget(), engineName };
       }
       if (!profileSourceRoot || !settings.chromeProfile) throw new Error("choose a Chrome profile in Settings before starting agent-browser");
       const copied = await openCopiedChrome({ sourceRoot: profileSourceRoot, directory: settings.chromeProfile, home: library.root,
@@ -564,6 +566,7 @@ export async function startApp(opts: {
           home: opts.home,
           librarySplits,
           settings: library.settings(),
+          liveTargetOverride: opts.liveTarget || "",
           profileCopy,
           workflows: library.list().map(summary),
           trails: library.listTrails(),
@@ -851,11 +854,16 @@ export async function startApp(opts: {
         return json(res, { profiles });
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; liveChromeProfile?: string; chromeProfileExtensions?: unknown };
         const patch: Partial<Settings> = {};
         if (body.pageEngine !== undefined) {
           if (body.pageEngine !== "old" && body.pageEngine !== "agent-browser") return json(res, { error: "unknown page engine" }, 400);
           patch.pageEngine = body.pageEngine;
+        }
+        if (body.liveChromeProfile !== undefined) {
+          const choices = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
+          if (typeof body.liveChromeProfile !== "string" || !choices.some((entry) => entry.directory === body.liveChromeProfile)) return json(res, { error: "choose an existing live Chrome profile" }, 400);
+          patch.liveChromeProfile = body.liveChromeProfile;
         }
         if (body.chromeProfile !== undefined) {
           const choices = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];

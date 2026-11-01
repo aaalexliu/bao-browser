@@ -11,9 +11,12 @@ function trustedWord(value: boolean | null, via: string): string {
   return "—";
 }
 
-/** `?screen=live` opens the run view. Any other value stays on the library. */
-export function screenFromQuery(search: string): "live" | "" {
-  return new URLSearchParams(search).get("screen") === "live" ? "live" : "";
+/** Local links open live status, Settings, or a saved run without replaying it. */
+export function screenFromQuery(search: string): "live" | "settings" | "run" | "" {
+  const query = new URLSearchParams(search);
+  const screen = query.get("screen");
+  if (screen === "live" || screen === "settings") return screen;
+  return screen === "run" && query.get("run") ? "run" : "";
 }
 
 /** `?screen=live&page=0` selects an audit window. An absent page lets the view choose. */

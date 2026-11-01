@@ -1,6 +1,8 @@
 import { BOOKS_HOSTS, INSTACART_HOSTS, INSTACART_PATH_BLOCK } from "./allowlist";
 
-export const PRESET_NAMES = ["generic", "instacart", "books"] as const;
+export const PRESET_NAMES = ["generic", "instacart", "books", "experian"] as const;
+export const EXPERIAN_HOSTS = ["www.experian.com", "usa.experian.com"] as const;
+const GENERIC_STOP_PATH = "/(?:checkout|login|signin|sign-in|account|payment)(?:/|$|[?#])";
 export type PresetName = (typeof PRESET_NAMES)[number];
 
 export interface GuardPreset {
@@ -24,10 +26,10 @@ export const GUARD_PRESETS: Record<PresetName, GuardPreset> = {
   generic: {
     hosts: [],
     start: "",
-    deny: "password|sign in|log in|create account|subscribe|delete account",
+    deny: "password|sign in|log in|sign out|log out|create account|subscribe|delete account",
     commit: "place(?:\\s+\\w+){0,3}\\s+order|pay now|confirm purchase|submit order|buy now",
     submit: "",
-    stopPath: "/checkout|/login|/signin|/sign-in|/account|/payment",
+    stopPath: GENERIC_STOP_PATH,
     reached: "checkout|place order|confirm",
   },
   instacart: {
@@ -38,6 +40,15 @@ export const GUARD_PRESETS: Record<PresetName, GuardPreset> = {
     submit: "^(?:add|add to cart|add item|add \\d+ (?:ct|items?|pkg|ea|each)\\b.*|search|(?:decrease|decrement|increase|increment)\\b.*|remove\\b(?!.*\\ball\\b).*)$",
     stopPath: INSTACART_PATH_BLOCK.source,
     reached: "your cart|cart",
+  },
+  experian: {
+    hosts: EXPERIAN_HOSTS,
+    start: "https://usa.experian.com/member",
+    deny: "dispute|sign out|log out|cancel|delete account|password",
+    commit: COMMIT_FLOOR,
+    submit: "^(?:freeze|unfreeze|lift|thaw|lock|unlock)\\b.*$",
+    stopPath: GENERIC_STOP_PATH,
+    reached: "",
   },
   books: {
     hosts: BOOKS_HOSTS,
@@ -69,6 +80,7 @@ export function presetForUrl(url: string, asked = ""): PresetName | null {
   }
   if ((INSTACART_HOSTS as readonly string[]).includes(host)) return "instacart";
   if ((BOOKS_HOSTS as readonly string[]).includes(host)) return "books";
+  if ((EXPERIAN_HOSTS as readonly string[]).includes(host)) return "experian";
   return presetName(asked) || "generic";
 }
 

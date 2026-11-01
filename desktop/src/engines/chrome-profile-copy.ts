@@ -28,11 +28,11 @@ async function readChromeState(sourceRoot: string): Promise<Record<string, unkno
 export async function listChromeProfiles(sourceRoot: string): Promise<ChromeProfileChoice[]> {
   const state = await readChromeState(sourceRoot);
   const cache = object(object(state.profile).info_cache);
-  return Object.entries(cache).flatMap(([directory, value]) => {
-    if (!/^(Default|Profile \d+)$/.test(directory)) return [];
-    const entry = object(value);
-    if (typeof entry.name !== "string") return [];
-    return [{ directory, name: entry.name, email: typeof entry.user_name === "string" ? entry.user_name : "" }];
+  const folders = await readdir(sourceRoot, { withFileTypes: true });
+  return folders.filter((folder) => folder.isDirectory() && /^(Default|Profile \d+)$/.test(folder.name)).map((folder) => {
+    const directory = folder.name;
+    const entry = object(cache[directory]);
+    return { directory, name: typeof entry.name === "string" && entry.name ? entry.name : directory, email: typeof entry.user_name === "string" ? entry.user_name : "" };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 

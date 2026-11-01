@@ -1,13 +1,13 @@
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { condenseWithGroups } from "../v1/condense";
 import { workflowShotName } from "../v1/shots";
 import { type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
-import { type CdpLiveDriver } from "./driver";
+import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
+import { siteHost } from "../v1/human-ask";
 import {
   clickLive,
   pressLiveKey,
@@ -57,6 +57,7 @@ import {
   cartAddSkip,
   clickEffect,
   LiveTrail,
+  liveTrailSteps,
   trailIdentity,
   workflowFromTrail,
   type LiveSide,
@@ -408,10 +409,15 @@ export function createLiveHost(opts: LiveHostOptions): {
       await driver.goto(url);
       return await look("start");
     } catch (err) {
+      const halt = err instanceof LiveNavigationHalt ? err : undefined;
+      const instruction = halt?.reason === "login_wall"
+        ? `Sign in to ${siteHost(url)} in Chrome, then start again.`
+        : "Bao stopped at a path it does not drive.";
+      const id = open?.id || "";
       const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.webm`) : "";
       if (open?.log) {
-        const reason = err instanceof Error ? err.message : "live call failed";
-        await open.log.flush("failed", reason.slice(0, 160), host).catch(() => undefined);
+        const reason = halt ? instruction : err instanceof Error ? err.message : "live call failed";
+        await open.log.flush(halt ? "needs_human" : "failed", reason.slice(0, 160), host).catch(() => undefined);
       }
       await driver?.end().catch(() => undefined);
       cdp?.close();
@@ -423,6 +429,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         await driver?.finishVideo().catch(() => undefined);
         if (clip) await rm(clip, { force: true });
       }
+      if (halt) return reply({ op: "live_session_start", session: id, outcome: { kind: "halted", reason: halt.reason, instruction }, view: null, shot: "" });
       throw err;
     }
   }
@@ -666,7 +673,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const library = new Library(opts.home);
     library.save(workflow);
     if (open.artifactRoot) {
-      const { groups } = condenseWithGroups(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl });
+      const { groups } = liveTrailSteps(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl });
       const workflowShots = path.join(library.root, "shots", "workflows", workflow.id);
       const runShots = path.join(library.root, "shots", "runs", open.runId);
       mkdirSync(workflowShots, { recursive: true });

@@ -119,11 +119,19 @@ function toIdentity(node: DomDump): Identity {
   };
 }
 
+export class LiveNavigationHalt extends Error {
+  constructor(readonly reason: "login_wall" | "stop-path") {
+    super(reason);
+    this.name = "LiveNavigationHalt";
+  }
+}
+
 export class CdpLiveDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
   private loadEpoch = 0;
   private offHost = "";
   private blockedNav = "";
+  private blockedNavUrl = "";
   /** The last top-frame URL that committed on an allowed host and off any stop path. */
   private lastAllowed = "";
   private origins: readonly string[] = [];
@@ -230,6 +238,7 @@ export class CdpLiveDriver implements Driver {
       return;
     }
     this.blockedNav = allowed ? "stop-path" : this.refusal(url);
+    this.blockedNavUrl = url;
     void this.cdp.send("Fetch.failRequest", {
       requestId,
       errorReason: "BlockedByClient",
@@ -239,6 +248,7 @@ export class CdpLiveDriver implements Driver {
   takeBlockedNav(): string {
     const reason = this.blockedNav;
     this.blockedNav = "";
+    this.blockedNavUrl = "";
     return reason;
   }
 
@@ -438,12 +448,25 @@ export class CdpLiveDriver implements Driver {
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.assertHost();
     const epoch = this.loadEpoch;
-    if (this.pageEngine) await this.pageEngine.goto(url);
-    else {
-      const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
-      if (nav.errorText) throw new Error(nav.errorText);
+    this.takeBlockedNav();
+    try {
+      if (this.pageEngine) await this.pageEngine.goto(url);
+      else {
+        const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
+        if (nav.errorText) throw new Error(nav.errorText);
+      }
+      await this.waitForLoad(epoch, timeoutMs);
+    } catch (error) {
+      const blockedUrl = this.blockedNavUrl;
+      const blocked = this.takeBlockedNav();
+      if (blocked === "stop-path") {
+        const stopped = new URL(blockedUrl);
+        const login = /\/(?:login|signin|sign-in)(?:\/|$|[?#])/i.test(stopped.pathname + stopped.hash);
+        throw new LiveNavigationHalt(login ? "login_wall" : "stop-path");
+      }
+      if (blocked) throw new Error(blocked);
+      throw error;
     }
-    await this.waitForLoad(epoch, timeoutMs);
     const href = await this.evaluate<string>("location.href", "startup");
     if (this.allows(href)) return;
     if (!href || href === "about:blank") throw new Error("navigation did not finish");

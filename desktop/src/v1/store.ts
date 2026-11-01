@@ -42,6 +42,8 @@ export interface Settings extends HealSettings {
   hostAccess?: "all" | "site" | "none";
   /** Local run choice. Old remains the default. */
   pageEngine?: "old" | "agent-browser";
+  /** Profile for live sessions in the running Chrome. Local to this Mac. */
+  liveChromeProfile?: string;
   /** Chrome profile directory explicitly picked on this Mac. Never synced. */
   chromeProfile?: string;
   /** Local extension choice by Chrome profile directory. Off unless explicitly enabled. */

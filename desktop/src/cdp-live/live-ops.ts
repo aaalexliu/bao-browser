@@ -43,14 +43,14 @@ export interface LiveIdleWarning {
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome, by default this Mac's own Chrome in its Default profile. A preset (generic, instacart, books) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart and books.toscrape.com uses books. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. A preset (generic, instacart, books, experian) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
     inputSchema: {
       type: "object",
       properties: {
         intent: { type: "string" },
         url: { type: "string" },
         portFile: { type: "string", description: "Leave this out. An absolute DevToolsActivePort path, only for a Chrome started with its own --user-data-dir." },
-        preset: { type: "string", enum: ["generic", "instacart", "books"], description: "Leave this out for a known host." },
+        preset: { type: "string", enum: ["generic", "instacart", "books", "experian"], description: "Leave this out for a known host." },
         workflowId: { type: "string", description: "Optional wf-<name>. Without it the id comes from the intent." },
       },
       required: ["intent", "url"],
@@ -383,8 +383,7 @@ export function pageHalt(facts: { blocked: string; path: string; passwordFields:
   const text = (facts.text || "").toLowerCase();
   if (/request unsuccessful|powered by imperva|incapsula incident/.test(text)) return "bot_wall";
   if (/verify you are human|i'm not a robot|i’m not a robot|recaptcha challenge/.test(text)) return "bot_wall";
-  if (/continue with google|sign in with google|sign in with apple|continue with apple|single sign-on|\bsso\b/.test(text)) return "login_wall";
-  if (/verification code|one-time code|one time code|two-factor|two factor|\b2fa\b|security code|\bpin\b/.test(text)) return "login_wall";
+  if (facts.passwordFields > 0 && /continue with google|sign in with google|sign in with apple|continue with apple|single sign-on|\bsso\b|verification code|one-time code|one time code|two-factor|two factor|\b2fa\b|security code|\bpin\b/.test(text)) return "login_wall";
   if (facts.blocked === "login" || facts.blocked === "login_wall" || (facts.passwordFields > 0 && /login|sign-?in/i.test(facts.path))) {
     return "login_wall";
   }
