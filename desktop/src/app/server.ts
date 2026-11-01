@@ -817,7 +817,9 @@ export async function startApp(opts: {
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/video")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
         const run = library.readRun(id);
-        const file = path.join(library.root, "videos", `${run.id}.webm`);
+        const name = run.video;
+        if (!name || !/^[\w.-]+\.(mp4|webm)$/.test(name)) return json(res, { error: "no video" }, 404);
+        const file = path.join(library.root, "videos", name);
         if (!existsSync(file)) return json(res, { error: "no video" }, 404);
         return sendVideo(req, res, file);
       }
@@ -3365,6 +3367,7 @@ function sameTarget(current: string, startUrl: string): boolean {
 }
 
 function sendVideo(req: IncomingMessage, res: ServerResponse, file: string): void {
+  const contentType = path.extname(file) === ".mp4" ? "video/mp4" : "video/webm";
   const size = statSync(file).size;
   const asked = byteRange(req.headers.range, size);
   if (req.headers.range && !asked) {
@@ -3373,14 +3376,14 @@ function sendVideo(req: IncomingMessage, res: ServerResponse, file: string): voi
     return;
   }
   if (size === 0) {
-    res.writeHead(200, { "content-type": "video/webm", "content-length": 0, "accept-ranges": "bytes", "cache-control": "no-store" });
+    res.writeHead(200, { "content-type": contentType, "content-length": 0, "accept-ranges": "bytes", "cache-control": "no-store" });
     res.end();
     return;
   }
   const start = asked?.start ?? 0;
   const end = asked?.end ?? size - 1;
   const headers: Record<string, number | string> = {
-    "content-type": "video/webm",
+    "content-type": contentType,
     "accept-ranges": "bytes",
     "content-length": end - start + 1,
     "cache-control": "no-store",

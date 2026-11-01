@@ -221,7 +221,7 @@ One runner replays a `cdp-live` workflow: `replayLiveWorkflow` in `desktop/src/c
 - A refusal fails the step. A workflow edited to click Checkout fails with `denied`, and one edited to open `/checkout` fails with `blocked-path`, before any load. A sign-in page, a bot check, a stop path, or a new window pauses the run with `needs_human`. A confirm step a person does on replay also pauses it.
 - The replay closes its window and socket and frees the lock when it ends.
 
-With `BAO_RUN_VIDEO=1`, live sessions save `<home>/videos/live-<session>-<time>.webm` and replays save `<home>/videos/<runId>.webm`. Copied-profile capture and replay always record, using the latter path. A replay sets `run.video`, so its persisted run page plays the clip through `/api/runs/<id>/video`.
+With `BAO_RUN_VIDEO=1`, live sessions save `<home>/videos/live-<session>-<time>.mp4` and replays save `<home>/videos/<runId>.mp4`. Copied-profile capture and replay always record, using the latter path. A replay sets `run.video`, so its persisted run page plays the clip through `/api/runs/<id>/video`.
 
 [Evidence](agent-browser-engine.md#evidence) owns the shared CDP recording contract, teardown order, limits, and unavailable-evidence reasons. [What stays on this Mac](permissions.md#what-stays-on-this-mac) covers video privacy and grants, including the private eval app's no-blur exception. The [agent lane](../desktop/test/README.md#instacart-agent-lane-l2) documents its clip artifacts.
 

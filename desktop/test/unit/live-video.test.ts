@@ -67,16 +67,18 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
         const typed = await call({ op: "live_type", ref: search, text: "blueberries" });
         assert.equal(typed.outcome?.kind, "applied");
         assert.equal((await call({ op: "live_stop" })).outcome?.kind, "stopped");
-        const session = readdirSync(videoDir).find((name) => name.startsWith(`live-${started.session}-`) && name.endsWith(".webm"));
+        const session = readdirSync(videoDir).find((name) => name.startsWith(`live-${started.session}-`) && name.endsWith(".mp4"));
         assert.ok(session && statSync(path.join(videoDir, session)).size > 1000);
         const workflow = new Library(home).read(started.session!);
         const run = await host.replay(workflow);
         assert.equal(run.status, "passed", JSON.stringify(run.failure));
         assert.equal(run.modelCalls, 0);
-        assert.equal(run.video, `${run.runId}.webm`);
+        assert.equal(run.video, `${run.runId}.mp4`);
         assert.ok(statSync(path.join(videoDir, run.video!)).size > 1000);
         const replayed = await call({ op: "live_replay", workflow, noBlur: true });
         assert.equal(replayed.run?.status, "passed");
+        assert.ok(replayed.run?.video?.endsWith(".mp4"));
+        assert.ok(readdirSync(videoDir).every((name) => name.endsWith(".mp4")), "new recordings do not leave a WebM copy");
         assert.deepEqual(modes, [evalVideoNoBlur, undefined, evalVideoNoBlur]);
         t.mock.method(CdpLiveDriver.prototype, "goto", async () => { throw new Error("failed start"); });
         assert.equal((await call({ op: "live_session_start", intent: "failed start", url: fixture.url("/store/costco/storefront") })).outcome?.kind, "rejected");
@@ -154,9 +156,10 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
       const result = await response.json() as { runId: string; status: string };
       assert.equal(result.status, "passed", JSON.stringify(result));
       const saved = library.readRun(result.runId);
-      assert.equal(saved.video, `${result.runId}.webm`);
+      assert.equal(saved.video, `${result.runId}.mp4`);
       const video = await fetch(`http://127.0.0.1:${app.port}/api/runs/${result.runId}/video`);
       assert.equal(video.status, 200);
+      assert.equal(video.headers.get("content-type"), "video/mp4");
       assert.ok((await video.arrayBuffer()).byteLength > 1000);
     } finally {
       await app.close();

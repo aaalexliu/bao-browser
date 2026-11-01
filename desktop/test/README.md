@@ -99,7 +99,7 @@ fake-device pair rejects those requests instead.
 - `desktop/test/unit/instacart-fixture.test.ts` checks the fixture and runs in `npm run test:v1`.
 - `desktop/test/unit/live-recording.test.ts` records a live session on the fixture, then replays the saved workflow with no model, once with the item already in the cart and once without.
 - `desktop/test/unit/live-replay.test.ts` records the same task through the app's `/api/live`, then replays it through `/api/replay` and through `bao mcp`'s `run_workflow`. It checks the recorded search, the skipped Add, the refused checkout, and zero model calls.
-- `desktop/test/unit/live-video.test.ts` records a short session and its replay with a video folder set, and checks that each window wrote a webm. It skips the browser part when no ffmpeg is found.
+- `desktop/test/unit/live-video.test.ts` records a short session and its replay with a video folder set, and checks that each window wrote an MP4. It skips the browser part when no ffmpeg is found.
 
 The SPKI flag works with a temp `--user-data-dir` on Playwright's Chrome for Testing 149. Without the flag the same pages fail with `ERR_CERT_AUTHORITY_INVALID`. `MAP * ~NOTFOUND` also fails IP literals and `localhost`, so a page cannot reach `127.0.0.1` by address.
 

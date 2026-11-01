@@ -147,33 +147,41 @@ test("a missed step keeps every locator it tried, with the score", async () => {
   assert.equal(ranked.failure?.locators?.[0]?.kind, "identity");
 });
 
-test("run video answers a byte range", async () => {
+for (const format of ["mp4", "webm"] as const) test(`run ${format} video answers byte ranges with its media type`, async () => {
   process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   const home = mkdtempSync(path.join(tmpdir(), "bao-video-"));
   const app = await startApp({ home, port: 0 });
   try {
-    app.library.saveRun({
-      id: "run-video",
-      workflowId: "wf",
-      status: "passed",
-      at: 1,
-      heals: [],
-      steps: [],
-      video: "run-video.webm",
-    });
-    const file = path.join(home, "videos", "run-video.webm");
+    const run = {
+      id: "run-video", workflowId: "wf", status: "passed", at: 1, heals: [], steps: [], video: `recorded.${format}`,
+    };
+    app.library.saveRun(run);
+    const file = path.join(home, "videos", run.video);
     mkdirSync(path.dirname(file), { recursive: true });
     const body = Buffer.from("0123456789".repeat(100));
     writeFileSync(file, body);
-    const full = await fetch(`http://127.0.0.1:${app.port}/api/runs/run-video/video`);
+    const url = `http://127.0.0.1:${app.port}/api/runs/run-video/video`;
+    const full = await fetch(url);
     assert.equal(full.status, 200);
+    assert.equal(full.headers.get("content-type"), `video/${format}`);
     assert.equal(full.headers.get("accept-ranges"), "bytes");
     assert.equal(Number(full.headers.get("content-length")), body.length);
-    assert.equal((await full.arrayBuffer()).byteLength, body.length);
-    const part = await fetch(`http://127.0.0.1:${app.port}/api/runs/run-video/video`, { headers: { range: "bytes=0-9" } });
+    assert.deepEqual(Buffer.from(await full.arrayBuffer()), body);
+    const part = await fetch(url, { headers: { range: "bytes=0-9" } });
     assert.equal(part.status, 206);
+    assert.equal(part.headers.get("content-type"), `video/${format}`);
     assert.equal(part.headers.get("content-range"), `bytes 0-9/${body.length}`);
     assert.equal(await part.text(), "0123456789");
+    const invalid = await fetch(url, { headers: { range: `bytes=${body.length}-` } });
+    assert.equal(invalid.status, 416);
+    await invalid.arrayBuffer();
+    writeFileSync(file, Buffer.alloc(0));
+    const empty = await fetch(url);
+    assert.equal(empty.status, 200);
+    assert.equal(empty.headers.get("content-type"), `video/${format}`);
+    assert.equal((await empty.arrayBuffer()).byteLength, 0);
+    app.library.saveRun({ ...run, video: `../recorded.${format}` });
+    assert.equal((await fetch(url)).status, 404);
   } finally {
     await app.close();
   }

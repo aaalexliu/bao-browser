@@ -106,7 +106,7 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
           assert.ok((await stat(path.join(home, "videos", captured.video))).size > 1000);
           if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) {
             const artifacts = process.env.AGENT_BROWSER_PARITY_ARTIFACTS;
-            await copyFile(path.join(home, "videos", captured.video), path.join(artifacts, "agent-browser-recording.webm"));
+            await copyFile(path.join(home, "videos", captured.video), path.join(artifacts, `agent-browser-recording${path.extname(captured.video)}`));
             const ui = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
             try {
               const page = await ui.newPage({ viewport: { width: 1400, height: 1000 } });
@@ -131,7 +131,7 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
           assert.ok(replayed.video, "guarded replay has page video");
           assert.ok(replayed.traceUnavailable, "unsupported trace is explicit, not an empty success");
           assert.ok(replayed.steps.every((step) => step.status === "skipped" || (step.beforeShot && step.afterShot)), "replay keeps per-step screenshots");
-          if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await copyFile(path.join(home, "videos", replayed.video), path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, "agent-browser-replay.webm"));
+          if (process.env.AGENT_BROWSER_PARITY_ARTIFACTS) await copyFile(path.join(home, "videos", replayed.video), path.join(process.env.AGENT_BROWSER_PARITY_ARTIFACTS, `agent-browser-replay${path.extname(replayed.video)}`));
         }
         assert.deepEqual(fixture.state().carts.costco.map((item) => [item.productId, item.qty]), [[TARGET.id, 1]]);
         assert.equal(fixture.state().writes.length, 1);

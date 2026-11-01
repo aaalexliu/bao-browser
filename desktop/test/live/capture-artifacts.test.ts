@@ -122,7 +122,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
       const write = fs.writeFile;
       t.mock.method(fs, "writeFile", async (...args: Parameters<typeof writeFile>) => {
         await write(...args);
-        if (String(args[0]).includes("/bao-cdp-video-") && path.basename(String(args[0])).startsWith("frame-")) frameSaved();
+        if (path.basename(String(args[0])).startsWith("frame-")) frameSaved();
       });
       const startVideo = CdpLiveDriver.prototype.startVideo;
       t.mock.method(CdpLiveDriver.prototype, "startVideo", async function(this: CdpLiveDriver, file: string) {
@@ -135,7 +135,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
         assert.equal(result.wrote, true, "successful encoding is required to reproduce the orphan");
         assert.ok((await stat(destination)).size > 1000, "the owned clip exists before cleanup");
         created = true;
-        if (proof) await writeFile(path.join(proof, `clip-${stage}-${mode}.webm`), await readFile(destination));
+        if (proof) await writeFile(path.join(proof, `clip-${stage}-${mode}${path.extname(destination)}`), await readFile(destination));
         return result;
       });
       if (mode === "startup-error") {

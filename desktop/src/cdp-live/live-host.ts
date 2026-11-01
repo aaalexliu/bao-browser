@@ -153,7 +153,7 @@ export interface LiveHostOptions {
   /** Gets the warning when it comes, and null when a call, Keep open, or the end clears it. */
   onIdleWarn?: (warning: LiveIdleWarning | null) => void;
   onNotice?: (message: string) => void;
-  /** Records each session window as live-<session>-<time>.webm and each replay window as <runId>.webm here. */
+  /** Records each session window as live-<session>-<time>.mp4 and each replay window as <runId>.mp4 here. */
   videoDir?: string;
   evalVideoNoBlur?: true;
 }
@@ -392,7 +392,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         eventShots: new Map(),
       };
       const videoDir = open.artifactRoot ? path.join(open.artifactRoot, "videos") : opts.videoDir;
-      if (videoDir) await driver.startVideo(path.join(videoDir, open.artifactRoot ? `${open.runId}.webm` : `live-${open.id}-${Date.now().toString(36)}.webm`), { noBlur: opts.evalVideoNoBlur });
+      if (videoDir) await driver.startVideo(path.join(videoDir, open.artifactRoot ? `${open.runId}.mp4` : `live-${open.id}-${Date.now().toString(36)}.mp4`), { noBlur: opts.evalVideoNoBlur });
       slot = { phase: "open", id: open.id };
       rememberLockTarget(AGENT, driver.targetId, lockFile);
       const leftover = takeDeadTarget(lockFile);
@@ -408,7 +408,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await driver.goto(url);
       return await look("start");
     } catch (err) {
-      const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.webm`) : "";
+      const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.mp4`) : "";
       if (open?.log) {
         const reason = err instanceof Error ? err.message : "live call failed";
         await open.log.flush("failed", reason.slice(0, 160), host).catch(() => undefined);
@@ -687,7 +687,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         return { id: step.id, status: "passed" };
       });
       library.saveRun({ id: open.runId, kind: "capture", pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
-        ...(video ? { video: `${open.runId}.webm`, videoStartedAt: open.startedAt } : {}) });
+        ...(video ? { video: `${open.runId}.mp4`, videoStartedAt: open.startedAt } : {}) });
     }
     return true;
   }
@@ -729,7 +729,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     await ending.log.flush(saveError ? "failed" : status, [saveError || noteText, videoNote].filter(Boolean).join(" "), ending.host);
     slot = { phase: "closed", id, status: saveError ? "failed" : status };
     open = null;
-    if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.webm`), { force: true });
+    if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.mp4`), { force: true });
     if (saveError) {
       return reply({ op: "live_stop", session: id, outcome: { kind: "rejected", reason: saveError.slice(0, 180) }, view, shot: "" });
     }
@@ -771,8 +771,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         stepId: workflow.steps[0]?.id || workflow.id, index: 0, intent: workflow.intent || workflow.name,
         phase: "action", reason, snapshot: {},
       };
-      const clip = selected?.artifactRoot ? path.join(selected.artifactRoot, "videos", `${runId}.webm`) : "";
-      if (clip && existsSync(clip) && statSync(clip).size > 1000) run.video = `${runId}.webm`;
+      const clip = selected?.artifactRoot ? path.join(selected.artifactRoot, "videos", `${runId}.mp4`) : "";
+      if (clip && existsSync(clip) && statSync(clip).size > 1000) run.video = `${runId}.mp4`;
     }
     return run;
   }
