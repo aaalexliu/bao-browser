@@ -471,6 +471,13 @@ test("the record bar and the permission card follow live state", () => {
   assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
 });
 
+test("the permission dot marks helper ok as ready without marking idle or unavailable states", () => {
+  const helper = { platform: "darwin", accessibility: true, screenCapture: false, automation: { state: "granted" as const, message: "allowed" } };
+  assert.match(permissionDot({ ...helper, label: "helper ok" }), /class="dot ok"/);
+  assert.doesNotMatch(permissionDot({ ...helper, label: "helper needs permission" }), /class="dot ok"/);
+  assert.match(permissionDot({ ...helper, label: "helper needs permission", accessibility: false }), /class="dot need"/);
+});
+
 test("only known missing Automation grants bring back the permission card and need dot", () => {
   for (const state of ["granted", "closed", "unavailable", "not-asked", "denied", undefined] as const) {
     for (const accessibility of [true, false]) {

@@ -171,14 +171,18 @@
     .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #c7c7cc; display: inline-block; }
     .dot.on { background: #ff3b30; }
     .dot.need { background: var(--need); }
+    .dot.ok { background: var(--ok); }
     #helper-status { position: relative; display: flex; align-items: center; gap: 0.35rem; }
     .helper-jobs { list-style: none; margin: 0; padding: 0 0 0 0.9rem; display: grid; gap: 0.2rem; }
     #perm-dot summary { cursor: pointer; list-style: none; display: flex; }
     #perm-dot summary::-webkit-details-marker { display: none; }
     #perm-dot .perms {
-      position: absolute; left: 0; bottom: 1.4rem; z-index: 6; min-width: 14rem;
-      background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.45rem 0.6rem;
+      position: absolute; left: calc(100% + 0.8rem); bottom: 0; z-index: 6; min-width: 18rem; width: max-content; margin: 0;
+      background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem;
     }
+    #perm-dot .perm { display: grid; grid-template-columns: 1.1rem 1fr; }
+    #perm-dot .perm strong { white-space: nowrap; }
+    #perm-dot .perm button { grid-column: 2; justify-self: start; }
     #onboarding summary { cursor: pointer; font-weight: 650; }
     #content { min-width: 0; }
     #act { padding: var(--space-4) var(--space-5) 0; }
@@ -641,7 +645,7 @@
     #onboarding { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1rem 1.1rem; margin-top: var(--space-3); }
     .perms { list-style: none; padding: 0; margin: 0.6rem 0; display: grid; gap: 0.35rem; }
     .perm { display: flex; gap: 0.5rem; align-items: center; }
-    .perm .mark { width: 1.1rem; text-align: center; }
+    .perm .mark { flex: none; width: 1.1rem; text-align: center; }
     .perm[data-ok="true"] .mark::before { content: "✓"; color: var(--ok); font-weight: 700; }
     .perm[data-ok="false"] .mark::before { content: "○"; color: var(--quiet); }
     #palette { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.28); z-index: 40; display: grid; align-items: start; justify-content: center; padding-top: 12vh; }

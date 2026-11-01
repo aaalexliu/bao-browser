@@ -2044,5 +2044,6 @@ export function onboarding(helper?: PermissionState): string {
 /** Collapsed sidebar mark. The Library card is the other place this list appears. */
 export function permissionDot(helper?: PermissionState): string {
   if (helper?.platform !== "darwin") return "";
-  return `<details id="perm-dot"><summary title="Mac permissions"><span class="dot${macPermissionMissing(helper) ? " need" : ""}" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
+  const mark = macPermissionMissing(helper) ? " need" : helper.label === "helper ok" ? " ok" : "";
+  return `<details id="perm-dot"><summary title="Mac permissions"><span class="dot${mark}" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
 }
