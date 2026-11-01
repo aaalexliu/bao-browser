@@ -17,7 +17,8 @@ import {
   type LiveActOutcome,
   type LiveActTarget,
 } from "./live-act";
-import { liveScope, replayLiveWorkflow } from "./live-replay";
+import { liveScope, replayLiveWorkflow, type LiveReplayOptions } from "./live-replay";
+import { LIVE_READ_LIMIT, liveReadSpec, readLiveRegion, type RegionRead } from "./live-read";
 import {
   connectTarget,
   openChromeProfileWindow,
@@ -116,6 +117,7 @@ interface Before {
 const LOOK_OPS: Record<string, LiveOpName> = {
   start: "live_session_start",
   snapshot: "live_snapshot",
+  read: "live_read",
   click: "live_click",
   type: "live_type",
   key: "live_key",
@@ -164,7 +166,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   call(raw: unknown): Promise<unknown>;
   isOpen(): boolean;
   /** Replays a cdp-live workflow in a new window of this host's target. */
-  replay(workflow: WorkflowV2, inputs?: ReplayArgs): Promise<RunResult>;
+  replay(workflow: WorkflowV2, inputs?: ReplayArgs, options?: LiveReplayOptions): Promise<RunResult>;
   /** The person's Keep open. False when no session is open. */
   keepOpen(): Promise<boolean>;
   close(): Promise<void>;
@@ -187,6 +189,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let warnTimer: ReturnType<typeof setTimeout> | undefined;
   let warning: LiveIdleWarning | null = null;
+  const heldProfiles: (() => Promise<void>)[] = [];
 
   function reply(body: Record<string, unknown>): unknown {
     return publicLiveResult(body);
@@ -280,6 +283,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         }
         return await look("snapshot");
       }
+      if (op === "live_read") return await readRegion(String(body.name || ""), body.selector === undefined ? "body" : String(body.selector));
       if (op === "live_click") return await click(String(body.ref || ""));
       if (op === "live_type") return await typeInto(String(body.ref || ""), String(body.text || ""));
       if (op === "live_key") {
@@ -509,6 +513,20 @@ export function createLiveHost(opts: LiveHostOptions): {
       shot,
       ...extra,
     });
+  }
+
+  async function readRegion(name: string, selector: string): Promise<unknown> {
+    if (!open) throw new Error("no live session");
+    const state = open;
+    const spec = liveReadSpec(name, selector);
+    if (state.trail.list().some((event) => event.extract?.as === name)) throw new Error("read output name already used");
+    const looked = await look("read") as Record<string, unknown>;
+    if (state.halted) return looked;
+    const read = await state.driver.evaluateFunction<RegionRead>(readLiveRegion, { selector, limit: LIVE_READ_LIMIT });
+    const url = await state.driver.locationHref();
+    const event = await state.trail.add({ op: "extract", extract: spec, beforeUrl: url, afterUrl: url });
+    if (typeof looked.shot === "string" && looked.shot) state.eventShots.set(event.id, looked.shot);
+    return reply({ ...looked, read: { name, ...read } });
   }
 
   /** A key press or a scroll. `what` is the key, or the scroll direction. */
@@ -751,7 +769,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   /** Runs inside the call chain. The session must be closed, and the replay takes the CDP lock itself. */
-  async function runReplay(workflow: WorkflowV2, inputs: ReplayArgs, evalVideoNoBlur?: true): Promise<RunResult> {
+  async function runReplay(workflow: WorkflowV2, inputs: ReplayArgs, options: LiveReplayOptions = {}, evalVideoNoBlur?: true): Promise<RunResult> {
     if (slot.phase === "open") throw new Error("stop the live session before replay");
     const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     let selected: LiveRunSelection | undefined;
@@ -765,6 +783,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       try {
         run = await replayLiveWorkflow(workflow, inputs, {
           target: selected?.target ?? defaultTarget,
+          leaveOpen: options.leaveOpen,
           engineName: run.pageEngine,
           artifactRoot: selected?.artifactRoot,
           shotDir: path.join(opts.home, "shots", "runs", runId),
@@ -777,7 +796,10 @@ export function createLiveHost(opts: LiveHostOptions): {
           connectTimeoutMs: opts.connectTimeoutMs,
           onNotice: opts.onNotice,
         }, runId);
-      } finally { await selected?.close?.(); }
+      } finally {
+        if (run.pageLeftOpen && selected?.close) heldProfiles.push(selected.close);
+        else await selected?.close?.();
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "live replay failed";
       run.status = "failed";
@@ -799,15 +821,15 @@ export function createLiveHost(opts: LiveHostOptions): {
       if (!workflow) throw new Error("workflow is required");
       const errors = validateWorkflow(workflow);
       if (errors.length) throw new Error(`invalid workflow: ${errors.join(", ")}`);
-      return reply({ op: LIVE_REPLAY, run: await runReplay(workflow, inputs, opts.evalVideoNoBlur) });
+      return reply({ op: LIVE_REPLAY, run: await runReplay(workflow, inputs, { leaveOpen: body.leaveOpen === true }, opts.evalVideoNoBlur) });
     } catch (err) {
       const reason = err instanceof Error ? err.message : "live replay failed";
       return reply({ op: LIVE_REPLAY, outcome: { kind: "rejected", reason: reason.slice(0, 180) } });
     }
   }
 
-  async function replay(workflow: WorkflowV2, inputs: ReplayArgs = {}): Promise<RunResult> {
-    const run = chain.then(() => runReplay(workflow, inputs));
+  async function replay(workflow: WorkflowV2, inputs: ReplayArgs = {}, options: LiveReplayOptions = {}): Promise<RunResult> {
+    const run = chain.then(() => runReplay(workflow, inputs, options));
     chain = run.then(() => undefined, () => undefined);
     return run;
   }
@@ -830,6 +852,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await stop().catch(() => undefined);
       releaseCdpLock(AGENT, lockFile);
     }
+    await Promise.all(heldProfiles.splice(0).map((closeProfile) => closeProfile()));
   }
 
   return { call, replay, keepOpen, close, isOpen: () => open !== null };

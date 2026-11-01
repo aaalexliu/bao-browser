@@ -35,7 +35,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live workflow, which a live session saves, replays instead through the running Bao app in a new window of the Chrome the live tools drive, with no model call and no approval step. It repeats the recorded steps, including the search text the session typed. It skips a cart add when the item is already in the cart, and it keeps the live guards: checkout and other confirm or denied controls are refused, and a sign-in page or bot check stops it with needs_human. An extension workflow returns failed with the reason and does not run. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live workflow, which a live session saves, replays instead through the running Bao app in a new window of the Chrome the live tools drive, with no model call and no approval step. It repeats the recorded steps, including the search text the session typed. It skips a cart add when the item is already in the cart, and it keeps the live guards: checkout and other confirm or denied controls are refused, and a sign-in page or bot check stops it with needs_human. An extension workflow returns failed with the reason and does not run. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs, including fresh text from live_read steps. For a cdp-live workflow, leaveOpen keeps the passed or paused final page in Chrome; pageLeftOpen confirms it. Copied profiles stay open until Bao closes. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -44,6 +44,7 @@ const CATALOG_TOOLS = [
         resume: { type: "string" },
         rerun: { type: "boolean" },
         cancel: { type: "boolean" },
+        leaveOpen: { type: "boolean", description: "Live workflows only: keep the passed or paused final page open in Chrome. Default false." },
       },
     },
   },
@@ -63,7 +64,7 @@ export const INSTRUCTIONS = [
   "Bao drives a Chrome window for you and saves what you did as a workflow.",
   "To do a task in the browser:",
   "1. Start: live_session_start with the user's intent and the site's start page, such as its home or store page, not a search results url. The Bao app picks the Chrome to drive. portFile and preset are optional.",
-  "2. Read: live_snapshot. Use only refs from the latest snapshot. A long page comes in pages; pass page to read the next one.",
+  "2. Read: live_snapshot lists controls. Use only refs from the latest snapshot. A long page comes in pages; pass page to read the next one. To read and record page text, call live_read with a unique name and a CSS selector for one region (default body). It keeps scores and amounts, redacts secrets, and caps text at 4000 characters. Replay returns fresh text in outputs.",
   "3. Act: live_click, live_type, live_key, or live_scroll on one ref, then read again. To search, use the site's own search box: live_type the query into it, then live_key Enter on it or live_click its search button. Do not put the query in a url. The workflow keeps only the steps you take, so a typed search is a step that replay repeats.",
   "4. End: live_stop. Ending the session saves the workflow in the Bao library. If the client disconnects first, Bao saves it too.",
   "Bao does not click a control listed under stopBeforeConfirm, such as a place order button. For a stale_ref or unknown_ref refusal, read again. An element is covered refusal means a dialog or popup sits over the control: read again, only click a control that closes or dismisses the covering popup (Close, X, No thanks, Not now, Dismiss), or press Escape with live_key, then retry the original click once. Never press Continue, Accept, Agree, Sign in, Subscribe, Place order, or any consent or purchase control to clear a popup. Bao's deny lists still apply. If no dismiss control exists or the retry is refused, end the session and tell the user. For any other refusal or a halted reply, do not try another way: end the session and tell the user what Bao stopped on.",
@@ -208,6 +209,7 @@ async function callTool(library: Library, libraries: string[] | undefined, live:
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
+      leaveOpen: args.leaveOpen === true,
     }, undefined, { live });
     return withLibraries(result, libraries);
   }
