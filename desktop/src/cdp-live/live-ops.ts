@@ -64,7 +64,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_read",
-    description: "Read and record visible text from one CSS region or element. name is a unique output name, such as freeze_status. selector defaults to body; prefer a stable id or a named region, such as [aria-label='Freeze status']. Missing, hidden, sensitive, or ambiguous regions are refused. Text is capped at 4000 characters with a truncation marker. Fields and editable content are excluded; credential labels, SSNs, long account/card numbers, emails, and tokens are redacted. Scores, dates, amounts, and freeze status stay readable. The saved workflow reads the region again on replay and returns its fresh text in run_workflow and get_run outputs. Text and run pictures stay on this Mac; do not read a region that contains secrets.",
+    description: "Read and record visible text from one CSS region or element. name is a unique output name, such as freeze_status. selector defaults to body; prefer a stable id or a named region, such as [aria-label='Freeze status']. Missing, hidden, sensitive, or ambiguous regions are refused. Text is capped at 4000 characters with a truncation marker. Fields and editable content are excluded. Redaction covers credential-label values, SSNs, Luhn-valid 13-19-digit card numbers, JWTs, and keys with sk-, ghp_, gho_, xoxb-, xoxp-, or AKIA prefixes. Scores, dates, amounts, and freeze status stay readable. The saved workflow reads the region again on replay and returns its fresh text in run_workflow and get_run outputs. Text and run pictures stay on this Mac; do not read a region that contains secrets.",
     inputSchema: {
       type: "object",
       properties: {

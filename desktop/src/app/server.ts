@@ -240,7 +240,7 @@ export async function startApp(opts: {
         loadExtensions: settings.chromeProfileExtensions?.[settings.chromeProfile] === true });
       profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "open" };
       return {
-        target: copied.target, engineName, artifactRoot: library.root, closed: copied.closed,
+        target: copied.target, engineName, artifactRoot: library.root, closed: copied.closed, parkedTargetId: copied.parkedTargetId,
         close: async () => { await copied.close(); profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "deleted" }; },
       };
     },

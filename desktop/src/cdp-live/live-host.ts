@@ -135,6 +135,7 @@ interface LiveRunSelection {
   artifactRoot?: string;
   close?: () => Promise<void>;
   closed?: Promise<void>;
+  parkedTargetId?: string;
 }
 
 export interface LiveHostOptions {
@@ -785,6 +786,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         run = await replayLiveWorkflow(workflow, inputs, {
           target: selected?.target ?? defaultTarget,
           leaveOpen: options.leaveOpen,
+          parkedTargetId: selected?.parkedTargetId,
           engineName: run.pageEngine,
           artifactRoot: selected?.artifactRoot,
           shotDir: path.join(opts.home, "shots", "runs", runId),

@@ -299,6 +299,7 @@ export interface LiveReplayOptions {
 export interface LiveReplayDeps extends LiveReplayOptions {
   /** The target selected for this replay, fixed until teardown. */
   target: LiveTarget;
+  parkedTargetId?: string;
   engineName?: PageEngineName;
   artifactRoot?: string;
   /** Run-local page pictures, independent of video recording. */
@@ -378,7 +379,15 @@ export async function replayLiveWorkflow(
   } finally {
     const leaveOpen = deps.leaveOpen === true && !!run && run.status !== "failed";
     const ended = await driver?.end({ leaveOpen }).then(() => true, () => false);
-    if (run && leaveOpen && ended) run.pageLeftOpen = true;
+    if (run && leaveOpen && ended) {
+      if (cdp && deps.parkedTargetId && deps.parkedTargetId !== driver?.targetId) {
+        await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets").then(async ({ targetInfos }) => {
+          const parked = targetInfos.find((target) => target.targetId === deps.parkedTargetId && target.type === "page" && target.url === "about:blank");
+          if (parked) await cdp!.send("Target.closeTarget", { targetId: parked.targetId });
+        }).catch(() => undefined);
+      }
+      run.pageLeftOpen = true;
+    }
     cdp?.close();
     if (prepared.turnedOn) {
       const ax = deps.helper ? deps.helper() : chromeHelper();

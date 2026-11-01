@@ -75,14 +75,22 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
   const ownField = /^[A-Za-z][A-Za-z ]{0,39}:/;
   const inlineValue = new RegExp(`(${credentialLabel.source}[ \\t]*(?:(?:[:#]|is\\b)[ \\t]*)?)([^\\n;]*?)(?=\\. |;|\\n|$)`, "gi");
   const text = chunks.map((chunk, index) => {
-    let safe = chunk;
+    let safe = chunk.replace(/(?<![A-Za-z0-9_-])(?:(?:sk-|ghp_|gho_|xoxb-|xoxp-|AKIA)[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?![A-Za-z0-9_-])/g, "[redacted]");
     if (index > 0 && bareLabel.test(chunks[index - 1]!) && !ownField.test(chunk)) safe = "[redacted]";
-    else safe = chunk.replace(inlineValue, (match, prefix: string, value: string) => value ? `${prefix}[redacted]` : match);
+    else safe = safe.replace(inlineValue, (match, prefix: string, value: string) => value ? `${prefix}[redacted]` : match);
     return safe
-      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted]")
-      .replace(/\b\d(?:[ -]?\d){8,18}\b/g, "[redacted]")
-      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted]")
-      .replace(/\b(?:sk-[\w-]{12,}|eyJ[\w-]+\.[\w-]+\.[\w-]+)\b/g, "[redacted]");
+      .replace(/\b\d(?:[ -]?\d){12,}\b/g, (number) => {
+        const digits = number.replace(/[ -]/g, "");
+        if (digits.length > 19) return number;
+        let sum = 0;
+        for (let index = digits.length - 1; index >= 0; index -= 1) {
+          let digit = Number(digits[index]);
+          if ((digits.length - 1 - index) % 2) { digit *= 2; if (digit > 9) digit -= 9; }
+          sum += digit;
+        }
+        return sum % 10 === 0 ? "[redacted]" : number;
+      })
+      .replace(/\b\d{3}[- ]\d{2}[- ]\d{4}\b/g, "[redacted]");
   }).join("\n").trim();
   if (!text) throw new Error("read region has no readable text");
   const limit = Math.min(4000, Math.max(1, ask.limit));
