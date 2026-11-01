@@ -1,7 +1,7 @@
 // The live session's trail. Each live_click, live_type, live_key, and live_scroll
 // that goes through appends one TrailEvent to <home>/live-session/trail.jsonl, with
 // the control's full identity from CdpLiveDriver.tree(). A refused or halted call
-// appends nothing. Interpret keeps applied actions and false starts in order.
+// appends nothing.
 // Search text replays as typed; other typed text becomes an input.
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
@@ -265,7 +265,6 @@ export function liveTrailSteps(events: readonly TrailEvent[], meta: InterpretMet
     : condenseWithGroups(events, policy);
 }
 
-/** Keep the live session's false starts for review instead of condensing them. */
 export function workflowFromTrail(input: {
   id: string;
   name: string;

@@ -9,7 +9,7 @@ import { assignSiblingIndex } from "../v1/identity";
 import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
-import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
+import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationGuard, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
 import { focusLiveMark, focusStillMarked, markedState, type MarkedState } from "./live-ops";
 import { CdpSocket } from "./socket";
 
@@ -236,9 +236,9 @@ export class CdpLiveDriver implements Driver {
       void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
       return;
     }
-    this.blockedNav = allowed
-      ? stopPathHit(url, "/(?:login|signin|sign-in)(?:/|$|[?#])") ? "login_wall" : "stop-path"
-      : this.refusal(url);
+    this.blockedNav = navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall"
+      ? "login_wall"
+      : allowed ? "stop-path" : this.refusal(url);
     void this.cdp.send("Fetch.failRequest", {
       requestId,
       errorReason: "BlockedByClient",
@@ -444,6 +444,7 @@ export class CdpLiveDriver implements Driver {
 
   async goto(url: string, timeoutMs = 20_000): Promise<void> {
     if (this.preserveTarget) throw new Error("cdp-live will not navigate an attached tab");
+    if (navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall") throw new LiveNavigationHalt("login_wall");
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.assertHost();
     const epoch = this.loadEpoch;

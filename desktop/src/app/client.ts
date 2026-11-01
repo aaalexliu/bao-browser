@@ -2370,5 +2370,5 @@ const statePoller = createStatePoller({
   visible: () => document.visibilityState === "visible",
 });
 document.addEventListener("visibilitychange", statePoller.visibilityChanged);
-void (screen === "settings" ? loadHostAccess() : refresh()).catch(() => undefined);
+void refresh().catch(() => undefined);
 setInterval(tickClock, 250);

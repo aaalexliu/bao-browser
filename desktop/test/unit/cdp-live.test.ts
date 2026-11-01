@@ -383,7 +383,7 @@ test("start audit URLs keep host and port digits without exposing private URL pa
 test("a live session view stays on this machine and blurs the page shot", () => {
   assert.equal(screenFromQuery("?screen=live"), "live");
   assert.equal(screenFromQuery("?screen=library"), "");
-  assert.equal(screenFromQuery("?screen=settings"), "settings");
+  assert.equal(screenFromQuery("?screen=settings"), "");
   assert.equal(screenFromQuery("?screen=run&run=run-fixture"), "");
   assert.equal(screenFromQuery("?screen=run"), "");
   assert.equal(shotNameOk("shot-001.png"), true);

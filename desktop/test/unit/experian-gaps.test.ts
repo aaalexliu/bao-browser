@@ -34,12 +34,17 @@ test("security and SSO copy needs a visible credential input; bot walls do not",
 });
 
 test("generic stop paths use whole segments, including hash routes", () => {
-  for (const pathname of ["/member/accounts/summary", "/member/account-settings", "/login-help", "/payment-history"]) {
+  for (const pathname of ["/member/accounts/summary", "/member/account-settings", "/login-help", "/payment-history", "/member?next=/login"]) {
     assert.equal(navigationGuard(`https://credit.test${pathname}`, ["credit.test"], ["https://credit.test"], generic.stopPath), null, pathname);
   }
-  for (const pathname of ["/account", "/account/security", "/login", "/member/login/index", "/#/login", "/signin", "/sign-in", "/checkout", "/payment"]) {
+  for (const pathname of ["/account", "/account/security", "/checkout", "/payment"]) {
     assert.equal(navigationGuard(`https://credit.test${pathname}`, ["credit.test"], ["https://credit.test"], generic.stopPath), "stop-path", pathname);
   }
+  for (const pathname of ["/login", "/login/index", "/member/login/index", "/#/login", "/#/signin", "/signin", "/sign-in"]) {
+    assert.equal(navigationGuard(`https://credit.test${pathname}`, ["credit.test"], ["https://credit.test"], generic.stopPath), "login_wall", pathname);
+    assert.equal(pageHalt({ path: pathname, stopPath: generic.stopPath, blocked: "", passwordFields: 0 }), "login_wall", pathname);
+  }
+  assert.equal(navigationGuard("https://other.test/login", ["credit.test"], ["https://credit.test"], generic.stopPath), "url is not on the host list");
 });
 
 test("Experian selects both hosts and allows freeze controls while denying unrelated writes", () => {
@@ -158,11 +163,15 @@ test("Settings lists real profile folders, saves the live choice and reads it at
     assert.equal((await put({ liveChromeProfile: "../outside" })).status, 400);
     assert.equal((await put({ liveChromeProfile: "Profile 9" })).status, 400);
     await page.goto(`http://127.0.0.1:${app.port}/?screen=settings`);
+    await page.waitForSelector("#library-search");
+    assert.equal(await page.locator("#live-chrome-settings").count(), 0);
+    await page.click("button[data-screen=settings]");
     await page.waitForFunction(() => document.querySelectorAll("#live-chrome-profile option").length === 3);
     assert.deepEqual(await page.locator("#live-chrome-profile option").allTextContents(), ["Credit reports (Profile 2)", "Personal (Default)", "Profile 3 (Profile 3)"]);
     assert.match(await page.locator("#live-chrome-settings").innerText(), /--live-target.*wins over.*BAO_LIVE_TARGET/s);
     assert.equal((await put({ liveChromeProfile: "Profile 2" })).status, 200);
     await page.reload();
+    await page.click("button[data-screen=settings]");
     await page.waitForFunction(() => (document.getElementById("live-chrome-profile") as HTMLSelectElement)?.value === "Profile 2");
     await start();
     assert.deepEqual(seen.at(-1), { kind: "daily", profile: "Profile 2", portFile: path.join(source, "DevToolsActivePort") });
@@ -230,7 +239,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     const started = await live("live_session_start", { intent: "Read credit", url: fixture.url("/member/expired") });
     assert.equal(started.outcome.kind, "halted", JSON.stringify(started));
     assert.equal(started.outcome.reason, "login_wall");
-    assert.match(started.outcome.instruction || "", /Sign in to .* in Chrome, then start again/);
+    assert.match(started.outcome.instruction || "", /Sign in again in Chrome.*new live session/);
     const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: "wf-expired", name: "Read credit report", intent: "Read credit report", createdAt: 1, driver: "cdp-live", startUrl: fixture.url("/member/expired"), inputs: [], steps: [{ id: "report", index: 0, action: "note", surface: "dom", timeoutMs: 1000, label: "Read report" }] };
     app.library.save(workflow);
     const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: workflow.id, args: {} }) });
@@ -279,6 +288,90 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         assert.equal(saved.modelCalls, 0);
       }
       assert.equal(fixture.requests.some(request => request.path === login), false, `${login} must never load`);
+    }
+  });
+
+  it("direct login links halt click and Enter, persist the instruction, and pause replay", async () => {
+    for (const login of ["/login", "/login/index", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
+      for (const op of ["click", "key"] as const) {
+        const startUrl = fixture.url(`/member/session-links?login=${encodeURIComponent(login)}`);
+        let reply = await live("live_session_start", { intent: `Read direct ${login} ${op}`, url: startUrl });
+        const targetPath = new URL(fixture.url(login)).pathname;
+        const requests = () => fixture.requests.filter(request => request.path === targetPath).length;
+        const before = requests();
+        try {
+          assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+          reply = await live("live_key", { key: "Tab", ref: refOf(reply, "Search") });
+          assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+          reply = await live(`live_${op}`, { ref: refOf(reply, "Resume"), ...(op === "key" ? { key: "Enter" } : {}) });
+          assert.equal(reply.outcome.kind, "halted", `${login} ${op}: ${JSON.stringify(reply)}`);
+          assert.equal(reply.outcome.reason, "login_wall");
+          assert.match(reply.outcome.instruction || "", /Sign in again in Chrome/);
+        } finally { await live("live_stop"); }
+        const record = JSON.parse(await readFile(path.join(root, "bao", "live-session", "session.json"), "utf8"));
+        assert.equal(record.status, "needs_human");
+        assert.equal(record.note, reply.outcome.instruction);
+        const capture = app.library.listRuns().find(run => run.workflowId === reply.session && run.kind === "capture");
+        assert.equal(capture?.status, "needs_human");
+        assert.equal(capture?.envelope?.ask, reply.outcome.instruction);
+        const workflow = workflowFromTrail({
+          id: `wf-direct-${login.replace(/\W/g, "")}-${op}`, name: "Read member actions", intent: "Read member actions", startUrl, createdAt: 1, savedAt: 2,
+          guard: liveScope(startUrl).guard,
+          events: [{ id: "resume", ts: 1, kind: "act", op, ...(op === "key" ? { key: "Enter" } : {}), identity: { surface: "dom", role: "link", name: "Resume", tag: "a", path: [] } }],
+        });
+        app.library.save(workflow);
+        const replayed = JSON.parse((await mcp.call("run_workflow", { id: workflow.id })).text);
+        assert.equal(replayed.outcome, "needs_human", `${login} ${op}: ${JSON.stringify(replayed)}`);
+        const saved = app.library.readRun(replayed.run_id);
+        assert.equal(saved.status, "needs_human");
+        assert.equal((saved.failure as RunResult["failure"])?.reason, "login_wall");
+        assert.match(saved.envelope?.ask || "", /Sign in to .* in Chrome/);
+        assert.equal(saved.modelCalls, 0);
+        assert.equal(requests(), before, `${login} must never load`);
+      }
+    }
+  });
+
+  it("an already-open login path saves the sign-in sentence immediately and on stop", async () => {
+    for (const login of ["/login", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
+      let reply = await live("live_session_start", { intent: `Read on-page ${login}`, url: fixture.url(`/member/session-links?login=${encodeURIComponent(login)}`) });
+      try {
+        reply = await live("live_click", { ref: refOf(reply, "More details") });
+        assert.equal(reply.outcome.kind, "halted", JSON.stringify(reply));
+        assert.equal(reply.outcome.reason, "login_wall");
+        const record = JSON.parse(await readFile(path.join(root, "bao", "live-session", "session.json"), "utf8"));
+        assert.equal(record.note, reply.outcome.instruction);
+        assert.match(record.note, /Sign in again in Chrome/);
+      } finally { await live("live_stop"); }
+      const record = JSON.parse(await readFile(path.join(root, "bao", "live-session", "session.json"), "utf8"));
+      assert.equal(record.note, reply.outcome.instruction);
+    }
+  });
+
+  it("direct login starts and navigate steps leave typed halts and paused owner asks", async () => {
+    for (const login of ["/login", "/signin", "/sign-in", "/#/login"]) {
+      const started = await live("live_session_start", { intent: "Read credit", url: fixture.url(login) });
+      assert.equal(started.outcome.kind, "halted", JSON.stringify(started));
+      assert.equal(started.outcome.reason, "login_wall");
+      assert.match(started.outcome.instruction || "", /Sign in again in Chrome/);
+      for (const direct of [false, true]) {
+        const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: `wf-navigate-${login.replace(/\W/g, "")}-${direct}`, name: "Read member actions", createdAt: 1, driver: "cdp-live", startUrl: fixture.url(direct ? login : "/member/security-help"), inputs: [], steps: [{ id: "resume", index: 0, action: "navigate", surface: "dom", value: fixture.url(login), label: "Resume member actions", timeoutMs: 1000 }] };
+        app.library.save(workflow);
+        const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: workflow.id, args: {} }) });
+        assert.equal(response.status, 200);
+        const run = await response.json() as RunResult;
+        assert.equal(run.status, "paused", JSON.stringify(run));
+        assert.equal(run.pausedKind, "wall");
+        assert.match(run.ask?.instruction || "", /Sign in to .* in Chrome/);
+        assert.equal(app.library.readRun(run.runId).status, "needs_human");
+        assert.equal(app.library.readRun(run.runId).envelope?.ask, run.ask?.instruction);
+        const replayed = JSON.parse((await mcp.call("run_workflow", { id: workflow.id })).text);
+        assert.equal(replayed.outcome, "needs_human", JSON.stringify(replayed));
+        const saved = app.library.readRun(replayed.run_id);
+        assert.equal(saved.status, "needs_human");
+        assert.match(saved.envelope?.ask || "", /Sign in to .* in Chrome/);
+        assert.equal(saved.modelCalls, 0);
+      }
     }
   });
 
