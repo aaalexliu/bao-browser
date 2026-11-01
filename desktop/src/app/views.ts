@@ -182,7 +182,7 @@ export interface ShellState {
     accessibility?: boolean;
     screenCapture?: boolean;
     automation?: AutomationReport;
-    capabilities?: { id: string; status: string }[];
+    capabilities?: { id: string; status: string; optional?: boolean }[];
   };
   /** Sidebar dot after the Library card has been dismissed, or on any other screen. */
   permDot?: boolean;
@@ -296,9 +296,8 @@ function icon(name: string): string {
   return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
 }
 
-/** One line per helper job, so each job's state reads on its own. */
-export function helperJobList(helper?: { capabilities?: { status: string }[] }): string {
-  const rows = (helper?.capabilities ?? []).map((row) => row.status).filter((status) => status.length > 0);
+export function helperJobList(helper?: { capabilities?: { status: string; optional?: boolean }[] }): string {
+  const rows = (helper?.capabilities ?? []).filter((row) => !row.optional).map((row) => row.status).filter((status) => status.length > 0);
   if (!rows.length) return "";
   return `<ul class="helper-jobs">${rows.map((status) => `<li>${esc(status)}</li>`).join("")}</ul>`;
 }
@@ -2011,12 +2010,11 @@ function automationPermissionMissing(automation?: AutomationReport): boolean {
 }
 
 export function macPermissionMissing(helper?: PermissionState): boolean {
-  return helper?.platform === "darwin" && (!helper.accessibility || !helper.screenCapture || automationPermissionMissing(helper.automation));
+  return helper?.platform === "darwin" && (!helper.accessibility || automationPermissionMissing(helper.automation));
 }
 
 function permRows(helper?: PermissionState): string {
   const access = !!helper?.accessibility;
-  const screen = !!helper?.screenCapture;
   const automation = helper?.automation;
   const automationOk = automation?.state === "granted";
   const automationMissing = automationPermissionMissing(automation);
@@ -2025,7 +2023,6 @@ function permRows(helper?: PermissionState): string {
     : automation?.message || "BaoOSHelper is unavailable.";
   return `<ul class="perms">
       <li class="perm" data-perm="accessibility" data-ok="${access ? "true" : "false"}"><span class="mark"></span><span><strong>Accessibility</strong> ${access ? "allowed" : "not granted yet"}</span></li>
-      <li class="perm" data-perm="screen" data-ok="${screen ? "true" : "false"}"><span class="mark"></span><span><strong>Screen Recording</strong> ${screen ? "allowed" : "not granted yet"}</span></li>
       <li class="perm" data-perm="automation" data-ok="${automationOk ? "true" : automationMissing ? "false" : "unknown"}"><span class="mark"></span><span><strong>Automation: Google Chrome</strong> ${esc(automationMessage)}</span> <button type="button" id="automation-ask">${automationOk ? "Check" : "Allow"}</button></li>
     </ul>`;
 }
@@ -2034,8 +2031,8 @@ export function onboarding(helper?: PermissionState): string {
   if (!macPermissionMissing(helper)) return "";
   return `<section id="onboarding">
     <details>
-      <summary>Three permissions on the Mac</summary>
-      <p>Accessibility lets bao see the control you used. Screen Recording lets bao keep a picture of each step. Automation lets bao open Chrome's remote-debugging page. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper needs permission")}”.</p>
+      <summary>Two permissions on the Mac</summary>
+      <p>Accessibility lets bao read Chrome's controls and press Allow for remote debugging. Automation lets bao open Chrome's remote-debugging page. Chrome supplies screenshots and video without Screen Recording. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper needs permission")}”.</p>
       ${permRows(helper)}
       <button type="button" id="onboard-done">Continue</button>
     </details>

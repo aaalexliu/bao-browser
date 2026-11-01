@@ -1,4 +1,5 @@
-// Headed macOS replays record the one window they are driving.
+// Optional native-window recording requires BAO_REPLAY_VIDEO=1.
+// Chrome uses browser screenshots and video by default.
 // The grabber is ScreenCaptureKit's desktop-independent window filter.
 // A false preflight returns without calling SCShareableContent.
 
@@ -8,8 +9,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-export function shouldRecordOwnedWindow(platform: NodeJS.Platform, headed: boolean): boolean {
-  return platform === "darwin" && headed;
+export function shouldRecordOwnedWindow(platform: NodeJS.Platform, headed: boolean, optedIn = false): boolean {
+  return platform === "darwin" && headed && optedIn;
 }
 
 export function bundledWindowVideoApp(): string | undefined {
@@ -32,13 +33,13 @@ let screenOk: boolean | undefined;
 
 export async function openReplayVideo(pids: number[], dest: string): Promise<ReplayVideo> {
   const ids = pids.filter((pid) => pid > 0);
-  if (!shouldRecordOwnedWindow(process.platform, process.env.BAO_HEADED === "1") || ids.length === 0) return noop;
+  if (!shouldRecordOwnedWindow(process.platform, process.env.BAO_HEADED === "1", process.env.BAO_REPLAY_VIDEO === "1") || ids.length === 0) return noop;
   return startReplayVideo(ids, dest);
 }
 
 /** Computer-use replays are on screen even when the product window is not headed. */
 export async function openOsReplayVideo(pid: number, dest: string): Promise<ReplayVideo> {
-  if (process.platform !== "darwin" || process.env.BAO_REPLAY_VIDEO === "0" || !(pid > 0)) return noop;
+  if (process.platform !== "darwin" || process.env.BAO_REPLAY_VIDEO !== "1" || !(pid > 0)) return noop;
   return startReplayVideo([pid], dest);
 }
 

@@ -446,13 +446,13 @@ test("the record bar and the permission card follow live state", () => {
   const linux = onboarding({ label: "helper off", platform: "linux", accessibility: false, screenCapture: false });
   assert.equal(linux, "");
   assert.equal(permissionDot({ platform: "linux", accessibility: false, screenCapture: false }), "");
-  const granted = onboarding({ label: "helper ok", platform: "darwin", accessibility: true, screenCapture: true, automation: { state: "granted", message: "granted" } });
+  const granted = onboarding({ label: "helper ok", platform: "darwin", accessibility: true, screenCapture: false, automation: { state: "granted", message: "granted" } });
   assert.equal(granted, "");
-  const missing = onboarding({ label: "helper needs permission", platform: "darwin", accessibility: false, screenCapture: true });
+  const missing = onboarding({ label: "helper needs permission", platform: "darwin", accessibility: false, screenCapture: false, automation: { state: "granted", message: "allowed" } });
   assert.match(missing, /<details>/);
-  assert.match(missing, /<summary>Three permissions on the Mac<\/summary>/);
+  assert.match(missing, /<summary>Two permissions on the Mac<\/summary>/);
   assert.match(missing, /data-perm="accessibility" data-ok="false"/);
-  assert.match(missing, /data-perm="screen" data-ok="true"/);
+  assert.doesNotMatch(missing, /data-perm="screen"/);
   assert.match(missing, /not granted yet/);
   assert.match(missing, /allowed/);
   const dot = permissionDot({ platform: "darwin", accessibility: false, screenCapture: false });
@@ -482,7 +482,7 @@ test("only known missing Automation grants bring back the permission card and ne
           automation: state ? { state, message: `${state} report` } : undefined,
         };
         const automationMissing = state === "not-asked" || state === "denied";
-        const missing = !accessibility || !screenCapture || automationMissing;
+        const missing = !accessibility || automationMissing;
         const context = JSON.stringify(helper);
         assert.equal(macPermissionMissing(helper), missing, context);
         const card = onboarding(helper);
@@ -492,6 +492,7 @@ test("only known missing Automation grants bring back the permission card and ne
         for (const html of [dot, ...(missing ? [card] : [])]) {
           const mark = state === "granted" ? "true" : automationMissing ? "false" : "unknown";
           assert.ok(html.includes(`data-perm="automation" data-ok="${mark}"`), context);
+          assert.doesNotMatch(html, /data-perm="screen"|Screen Recording<\/strong>/, context);
           if (state === "closed") {
             assert.match(html, /Chrome isn&#39;t running, so Bao can&#39;t check this right now/);
           } else if (state === "unavailable") {
@@ -517,7 +518,8 @@ test("unavailable Automation rows keep the real error without marking a missing 
     const helper = { platform: "darwin", accessibility: true, screenCapture: true, automation: { state: "unavailable" as const, message } };
     assert.equal(macPermissionMissing(helper), false);
     assert.equal(onboarding(helper), "");
-    for (const html of [permissionDot(helper), onboarding({ ...helper, screenCapture: false })]) {
+    assert.equal(onboarding({ ...helper, screenCapture: false }), "");
+    for (const html of [permissionDot(helper), permissionDot({ ...helper, screenCapture: false })]) {
       assert.ok(html.includes(htmlEsc(message)), message);
       assert.ok(html.includes('data-perm="automation" data-ok="unknown"'), message);
       assert.doesNotMatch(html, /Chrome isn&#39;t running/);

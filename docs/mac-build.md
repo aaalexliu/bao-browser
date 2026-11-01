@@ -210,7 +210,7 @@ open /Applications/Bao.app
 
 Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 
-Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With Accessibility and Screen Recording on, the footer reads **helper ok**.
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer reads **helper ok**, even with Screen Recording off.
 
 ## Logs
 
@@ -233,14 +233,11 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-The product window does not need these grants. The nested helper does. Bao's status checks read Accessibility, Screen Recording, and Automation for Google Chrome without prompting. See [What Bao asks permission for](permissions.md) for grant requirements, Automation prompt timing, and live Chrome readiness. The helper's prompt text is defined in [`Info.plist`](../desktop/os-helper-macos/Info.plist), not in the product window.
+The product window does not need these grants. The nested helper does. Bao's status checks read Accessibility and Automation for Google Chrome without prompting or checking Screen Recording. See [What Bao asks permission for](permissions.md) for grant requirements, Automation prompt timing, and live Chrome readiness. The helper's prompt text is defined in [`Info.plist`](../desktop/os-helper-macos/Info.plist), not in the product window.
 
 Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the Accessibility row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. The footer shows the helper label, then one line per job. These examples assume the [live Chrome permission check](permissions.md#which-grant-each-job-needs) is satisfied:
-
-- With Accessibility on and Screen Recording off: **helper needs permission**, then **AX press ready**, **window capture needs Screen Recording**, **live Chrome ready**, and **MCP driver needs Accessibility and Screen Recording**.
-- With Accessibility and Screen Recording on: **helper ok**, then **AX press ready**, **window capture ready**, **live Chrome ready**, and **MCP driver ready**.
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer shows **helper ok**, **AX press ready**, and **live Chrome ready**. Screen Recording on or off makes no difference. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for API capability rows.
 
 An agent can check the local server. This is not a page to open:
 
@@ -248,7 +245,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` and `helper.label` follow [Which grant each job needs](permissions.md#which-grant-each-job-needs). `helper.screenCapture` is true only with Screen Recording on. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` and `helper.label` follow [Which grant each job needs](permissions.md#which-grant-each-job-needs). `helper.screenCapture` stays false because app status does not check Screen Recording. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 
@@ -258,7 +255,7 @@ A chooser and a Finder drop each add a `file` input. The secret string is absent
 
 Replay sets a file input with `DOM.setFileInputFiles`, and a drop zone with a synthetic `DataTransfer`. Run again after moving the replay window. The next run reuses that window. Chrome for Testing is moved with CDP `Browser.setWindowBounds`. The helper is also tried with the replay pid. A size row can stay `n/a-harness` when `AXSize` is rejected (`-25200`). A step failure counts only after the requested bounds landed.
 
-Each headed ordinary browser replay writes `videos/<runId>.webm`. On macOS the picture is that replay's window: a ScreenCaptureKit filter (`SCContentFilter`, desktop-independent window), not a display crop. Copied-profile live capture and replay use the separate [CDP evidence path](agent-browser-engine.md#evidence).
+On macOS, the optional native-window recorder can save an ordinary browser replay to `videos/<runId>.webm` only with explicit `BAO_REPLAY_VIDEO=1`, `BAO_HEADED=1`, a `BaoWindowVideo.app`, a passing Screen Recording probe, and ffmpeg. The picture is that replay's window: a ScreenCaptureKit filter (`SCContentFilter`, desktop-independent window), not a display crop. Without the opt-in, Bao does not probe Screen Recording or start this recorder. Copied-profile live capture and replay use the separate [CDP evidence path](agent-browser-engine.md#evidence).
 
 A `login` step waits. Replay does not type the password and does not press Log in. The bar says to sign in in the Bao window. `Bao.app` posts that sentence with `UNUserNotificationCenter` (category `bao.act`). The Dock badge is `!`. `osascript` is not used, and BaoOSHelper does not post the notification.
 

@@ -436,7 +436,7 @@ export async function startApp(opts: {
     const app = bundledHelperApp();
     if (process.platform !== "darwin" || !app) return undefined;
     const helper = new MacOsHelper(app);
-    const permissions = await helper.permissions(false).catch((err) => ({
+    const permissions = await helper.exec(["permissions-ax"]).catch((err) => ({
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     }));

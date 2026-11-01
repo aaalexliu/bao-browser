@@ -8,6 +8,7 @@ export interface Capability {
   ready: string;
   blocked: string;
   grants: readonly HelperGrant[];
+  optional?: boolean;
 }
 
 export const CAPABILITIES: readonly Capability[] = [
@@ -20,8 +21,9 @@ export const CAPABILITIES: readonly Capability[] = [
   {
     id: "window-capture",
     ready: "window capture ready",
-    blocked: "window capture needs Screen Recording",
+    blocked: "optional window capture needs Screen Recording (not needed for Chrome)",
     grants: ["screen-recording"],
+    optional: true,
   },
   {
     id: "live-chrome",
@@ -32,8 +34,9 @@ export const CAPABILITIES: readonly Capability[] = [
   {
     id: "mcp-ax",
     ready: "MCP driver ready",
-    blocked: "MCP driver needs Accessibility and Screen Recording",
+    blocked: "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)",
     grants: ["accessibility", "screen-recording"],
+    optional: true,
   },
 ];
 
@@ -43,7 +46,7 @@ export interface HelperStatus {
   accessibility: boolean;
   screenCapture: boolean;
   automation?: AutomationReport;
-  capabilities: { id: Capability["id"]; status: string }[];
+  capabilities: { id: Capability["id"]; status: string; optional?: boolean }[];
 }
 
 export function capabilityReport(input: {
@@ -71,13 +74,14 @@ export function capabilityReport(input: {
       ? `live Chrome needs one more permission: ${automation.message}`
       : `live Chrome Automation status unavailable: ${automation?.message || "Could not read Automation permission for Google Chrome."}`;
   return {
-    label: accessibility && screenCapture ? "helper ok" : "helper needs permission",
+    label: accessibility && (automation?.state === "granted" || automation?.state === "closed") ? "helper ok" : "helper needs permission",
     platform,
     accessibility,
     screenCapture,
     automation: input.automation,
     capabilities: CAPABILITIES.map((cap) => ({
       id: cap.id,
+      optional: cap.optional,
       status: cap.id === "live-chrome" && accessibility && !held.automation
         ? automationBlocked
         : cap.grants.every((grant) => held[grant]) ? cap.ready : cap.blocked,
