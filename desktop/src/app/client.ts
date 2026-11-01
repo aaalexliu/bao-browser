@@ -306,8 +306,8 @@ function capture(): string {
       <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
     </div>
     <div class="card">
-      <h3>Proxy and MCP</h3>
-      <p>MCP is a stdio process, <code>bao mcp</code>. It records screenshot, click, type, key, and scroll into the local trail. No call leaves the machine unless you set a model key for healing.</p>
+      <h3>Agent and MCP</h3>
+      <p>Connect an agent with <code>bao mcp</code>. Its <code>live_*</code> tools start a session in Chrome, read the page, click, type, press keys, and scroll. <code>live_stop</code> saves the session's actions as a workflow. Watch steps, the audit, and blurred page shots on Live.</p>
     </div>
     <div class="card">
       <h3>Steps</h3>

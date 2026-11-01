@@ -117,7 +117,8 @@ test("the live screen can open the first audit page and move to the next", () =>
   assert.match(first, /step-0/);
   assert.match(first, /shot-001\.png/);
   assert.match(first, /id="live-pager"/);
-  assert.doesNotMatch(first, /step-44/);
+  assert.match(first, /<strong>step-44<\/strong>/);
+  assert.doesNotMatch(first.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || "", /step-44/);
   const opened = liveSessionView(session);
   assert.match(opened, /shot-001\.png/);
   assert.match(opened, /Audit page 1 of/);

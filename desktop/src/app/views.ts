@@ -352,7 +352,7 @@ export function remoteMcpSetting(on: boolean, relay?: { paired?: boolean; permis
     : "Not paired. A short code from the registry pairs this Mac.";
   return `<section id="remote-mcp-setting">
     <h3>Remote agent</h3>
-    <label><input id="remote-mcp" type="checkbox"${checked}> Let a remote agent run workflows on this Mac</label>
+    <label class="remote-choice"><input id="remote-mcp" type="checkbox"${checked}> Let a remote agent run workflows on this Mac</label>
     <p class="quiet">This stays off until you check it, or this Bao process has BAO_REMOTE_MCP=1. The registry needs that same variable. A paired Mac dials the relay over a WebSocket. Without a relay token, remote jobs do not run. A run still waits for Allow on this Mac unless you choose Deny. That choice is enforced here, not by the remote client.</p>
     <label>Remote runs <select id="remote-permission">
       <option value="ask"${ask}>Ask before each run</option>
@@ -630,7 +630,7 @@ export function runViewer(
       : spec?.when?.value
         ? `<em class="route">${esc(spec.when.value)}</em>`
         : "";
-    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span> ${esc(step.label || step.id)} <em>${esc(dur)}</em>${routeMark}${recoveredMark}${askMark}${reviewMark}</button>`;
+    return `<button type="button" class="step ${esc(step.status)} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}"><span>${mark}</span><span class="step-label">${esc(step.label || step.id)}</span><em class="step-duration">${esc(dur)}</em>${routeMark}${recoveredMark}${askMark}${reviewMark}</button>`;
   }).join("");
   const ran = routeRan(steps, workflow);
   const routeLine = ran ? `<p id="route-ran" data-route="${esc(ran)}">Route: ${esc(ran)}</p>` : "";
@@ -723,8 +723,10 @@ function pageClassPane(run: RunSummary): string {
   if (!items.length) return "";
   const rows = items.map((item) => {
     const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${bit.detail}`).join(" · ");
-    const note = evidence || item.reason;
-    return `<li data-class="${esc(item.class)}"><strong>${esc(classLabel(item.class))}</strong>${item.vendor ? ` · ${esc(item.vendor)}` : ""}${note ? ` <span class="quiet">${esc(note)}</span>` : ""}</li>`;
+    const label = classLabel(item.class);
+    const detail = evidence || item.reason;
+    const note = detail?.trim().toLowerCase() === label.toLowerCase() ? "" : detail;
+    return `<li data-class="${esc(item.class)}"><strong>${esc(label)}</strong>${item.vendor ? ` · ${esc(item.vendor)}` : ""}${note ? ` <span class="quiet">${esc(note)}</span>` : ""}</li>`;
   }).join("");
   const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
   return `<section id="page-class" data-class="${esc(items[items.length - 1]?.class || "")}">

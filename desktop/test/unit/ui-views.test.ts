@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, macPermissionMissing, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, macPermissionMissing, plainFailure, promotionLine, rail, recordBar, remoteMcpSetting, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { attentionCount, formatWait, liveIdleSurfaceText, makeAsk } from "../../src/v1/human-ask";
 import { lookup } from "../../src/v1/identity";
@@ -12,6 +12,13 @@ import type { Identity } from "../../src/v1/schema";
 function id(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
+
+test("Remote agent keeps the checkbox and its text in one spaced row", () => {
+  const off = remoteMcpSetting(false);
+  assert.match(off, /<label class="remote-choice"><input id="remote-mcp" type="checkbox"> Let a remote agent run workflows on this Mac<\/label>/);
+  const on = remoteMcpSetting(true);
+  assert.match(on, /<label class="remote-choice"><input id="remote-mcp" type="checkbox" checked> Let a remote agent run workflows on this Mac<\/label>/);
+});
 
 test("confirm act bar names the button and has no approve control", () => {
   const ask = makeAsk({
