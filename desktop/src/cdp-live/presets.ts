@@ -14,6 +14,8 @@ export interface GuardPreset {
   submit: string;
   stopPath: string;
   reached: string;
+  /** Credit-freeze action buttons need a fresh session's explicit commit opt-in. */
+  freezeCommit?: boolean;
 }
 
 /** Labels that are a commit under every preset and every explicit flag. */
@@ -43,6 +45,7 @@ export const GUARD_PRESETS: Record<PresetName, GuardPreset> = {
   },
   experian: {
     hosts: EXPERIAN_HOSTS,
+    freezeCommit: true,
     start: "https://usa.experian.com/member",
     deny: "dispute|sign out|log out|cancel|delete account|password",
     commit: COMMIT_FLOOR,

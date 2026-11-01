@@ -54,6 +54,7 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
     <h2>Live session</h2>
     <p id="live-status"><strong>${esc(session.status)}</strong> ${esc(session.host)}</p>
     <p class="quiet">${esc(session.intent)}</p>
+    ${session.allowCommit ? `<p class="quiet">Experian commit opt-in: this session may change the freeze. Later sessions and replays still stop for confirmation.</p>` : ""}
     ${session.note ? `<p class="quiet" id="live-note">${esc(session.note)}</p>` : ""}
     <p class="quiet">These pictures stay on this Mac. Page text is blurred before the file is written, and the app does not upload them.</p>
     <h3 class="section">Steps</h3>

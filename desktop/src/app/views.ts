@@ -88,6 +88,7 @@ export interface PromotionView {
 export interface RunSummary {
   id: string;
   kind?: "replay" | "capture";
+  allowCommit?: boolean;
   workflowId: string;
   status: string;
   at?: number;
@@ -612,7 +613,7 @@ export function runViewer(
         brokenAttr: failure?.brokenAttr,
       })
       : `${esc(workflow.name)} ${run.kind === "capture" ? "recorded" : "passed"}`;
-  const statusWord = run.kind === "capture" ? `recording (${run.status})` : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
+  const statusWord = run.kind === "capture" ? `recording (${run.status === "needs_human" ? "needs you" : run.status})` : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
   const badge = modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
@@ -675,6 +676,7 @@ export function runViewer(
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
+      ${run.allowCommit ? `<p class="quiet" id="commit-opt-in">Experian commit opt-in was on for this recording. It does not authorize a replay.</p>` : ""}
       ${run.traceUnavailable ? `<p class="quiet" id="trace-unavailable">${esc(run.traceUnavailable)}</p>` : ""}
     </header>
     ${outputsHtml(run.id, run.outputs)}

@@ -1,10 +1,8 @@
 // The live session's trail. Each live_click, live_type, live_key, and live_scroll
 // that goes through appends one TrailEvent to <home>/live-session/trail.jsonl, with
 // the control's full identity from CdpLiveDriver.tree(). A refused or halted call
-// appends nothing. When the session ends, condense() and interpret() build its
-// workflow from that trail, as the eval drivers do: typed text becomes an input,
-// a search box's text replays as typed, a cart add is skipped while its item is
-// in the cart, and a purchase control is a gate.
+// appends nothing. Interpret keeps applied actions and false starts in order.
+// Search text replays as typed; other typed text becomes an input.
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -142,9 +140,8 @@ export function appearedLeaf(
 }
 
 /**
- * What a click changed, as condense and interpret read it. A url change is the effect by
- * itself. Otherwise it is the shortest leaf text that is new to the page, else the clicked
- * control's own text, else nothing, and condense drops a click with no effect.
+ * What a click changed. A url change is enough by itself. Otherwise use the shortest
+ * new leaf text, else the clicked control's own text, else nothing.
  * Prices, long numbers, emails, and addresses are scrubbed first.
  */
 export function clickEffect(before: LiveSide, after: LiveSide): Pick<TrailEvent, "subtreeBefore" | "subtreeAfter"> {

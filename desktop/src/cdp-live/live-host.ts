@@ -32,6 +32,7 @@ import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import {
   admit,
   buildView,
+  EXPERIAN_COMMIT_INSTRUCTION,
   isLiveOp,
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
@@ -324,7 +325,10 @@ export function createLiveHost(opts: LiveHostOptions): {
     const client = typeof body.client === "string" ? body.client.slice(0, 80) : "";
     if (!intent) throw new Error("intent is required");
     if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
-    const { guard, stopPath, hosts, origins } = liveScope(url, asked);
+    if (body.allowCommit !== undefined && typeof body.allowCommit !== "boolean") throw new Error("allowCommit must be a boolean");
+    const { preset, guard, stopPath, hosts, origins } = liveScope(url, asked);
+    if (body.allowCommit === true && preset !== "experian") throw new Error("allowCommit applies only to Experian freeze actions");
+    guard.allowCommit = body.allowCommit === true;
     const host = new URL(url).hostname;
     const blocked = navigationGuard(url, hosts, origins, stopPath);
     if (blocked) throw new Error(blocked);
@@ -359,7 +363,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       driver.setOrigins(origins);
       driver.setStopPath(stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
-      const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40));
+      const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40), guard.allowCommit);
       const trail = await LiveTrail.open(opts.home);
       open = {
         id: ids.workflowId.slice(0, 40),
@@ -488,7 +492,9 @@ export function createLiveHost(opts: LiveHostOptions): {
       open.halted = halt;
       open.refused = true;
     }
-    const shot = await record(action, open.read.view.title || action, Date.now() - started, halt ? "needs_human" : "passed", null);
+    const reached = !halt && open.read.view.reached;
+    const shot = await record(action, open.read.view.title || action, Date.now() - started, halt || reached ? "needs_human" : "passed", null);
+    if (open.guard.freezeCommit) await open.log.flush(reached || halt ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_INSTRUCTION : halt || "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);
       if (event && shot) open.eventShots.set(event.id, shot);
@@ -496,7 +502,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     return reply({
       op: LOOK_OPS[action] || "live_screenshot",
       session: open.id,
-      outcome: halt ? { kind: "halted", reason: halt } : { kind: "applied" },
+      outcome: halt ? { kind: "halted", reason: halt } : reached ? { kind: "reached", reason: "experian_commit", instruction: EXPERIAN_COMMIT_INSTRUCTION } : { kind: "applied" },
       view: shown(open.read),
       shot,
       ...extra,
@@ -530,9 +536,9 @@ export function createLiveHost(opts: LiveHostOptions): {
       reread: async () => (await reread(state)).read,
     });
     if (outcome.kind !== "applied") {
-      state.refused = true;
+      if (outcome.kind !== "reached") state.refused = true;
       if (outcome.kind === "halted") state.halted = outcome.reason;
-      await note(action, outcome.reason, "failed", null);
+      await note(action, outcome.reason, outcome.kind === "reached" ? "needs_human" : "failed", null);
       return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     const after = await readAfter(state, -1);
@@ -573,6 +579,10 @@ export function createLiveHost(opts: LiveHostOptions): {
     const control = before?.identity;
     const covered = control && [...state.covered.keys()].find((identity) => sameRecordedControl(identity, control));
     if (outcome.kind !== "applied") {
+      if (outcome.kind === "reached") {
+        await note("click", outcome.reason, "needs_human", null);
+        return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
+      }
       if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) {
         if (!covered) state.covered.set(control, []);
       }
@@ -672,7 +682,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     if (!workflow.steps.length) return false;
     const library = new Library(opts.home);
     library.save(workflow);
-    if (open.artifactRoot) {
+    if (open.artifactRoot || open.guard.freezeCommit) {
       const { groups } = liveTrailSteps(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl });
       const workflowShots = path.join(library.root, "shots", "workflows", workflow.id);
       const runShots = path.join(library.root, "shots", "runs", open.runId);
@@ -693,7 +703,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         }
         return { id: step.id, status: "passed" };
       });
-      library.saveRun({ id: open.runId, kind: "capture", pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
+      library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
+        ...(open.read?.view.reached ? { envelope: { status: "needs_human", run_id: open.runId, reason: "experian_commit", ask: EXPERIAN_COMMIT_INSTRUCTION } } : {}),
         ...(video ? { video: `${open.runId}.webm`, videoStartedAt: open.startedAt } : {}) });
     }
     return true;
@@ -710,8 +721,9 @@ export function createLiveHost(opts: LiveHostOptions): {
       : reason === "idle" ? "Saved after the agent went quiet."
         : "Stopped.";
     const refused = open.refused || open.covered.size > 0;
-    const noteText = open.halted ? open.halted : refused ? "Refused." : ended;
-    const status = open.halted ? "needs_human" : refused ? "failed" : "passed";
+    const reached = open.read?.view.reached;
+    const noteText = open.halted ? open.halted : reached ? EXPERIAN_COMMIT_INSTRUCTION : refused ? "Refused." : ended;
+    const status = open.halted || reached ? "needs_human" : refused ? "failed" : "passed";
     const ending = open;
     let saveError = "";
     await ending.driver.end().catch(() => undefined);

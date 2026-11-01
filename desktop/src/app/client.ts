@@ -376,12 +376,15 @@ function settings(): string {
   const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
   const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
+  const liveProfile = state.settings?.liveChromeProfile || "Default";
+  const liveProfileMissing = chromeProfiles.length > 0 && !chromeProfiles.some((profile) => profile.directory === liveProfile);
   return `<section><h2>Settings</h2>
     ${libraryHome}
     <div class="card" id="live-chrome-settings">
       <h3>Live Chrome</h3>
       <label>Profile for live sessions <select id="live-chrome-profile" aria-describedby="live-chrome-help" ${!chromeProfiles.length ? "disabled" : ""}>
-        ${!chromeProfiles.length ? `<option value="">No Chrome profiles found</option>` : chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${(state.settings?.liveChromeProfile || "Default") === profile.directory ? "selected" : ""}>${esc(profile.name)} (${esc(profile.directory)})</option>`).join("")}
+        ${liveProfileMissing ? `<option value="" selected>Profile missing: ${esc(liveProfile)}. Choose another profile.</option>` : ""}
+        ${!chromeProfiles.length ? `<option value="">No Chrome profiles found</option>` : chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${liveProfile === profile.directory ? "selected" : ""}>${esc(profile.name)} (${esc(profile.directory)})</option>`).join("")}
       </select></label>
       <p class="quiet" id="live-chrome-help">Live sessions use the sign-in in this profile of your open Chrome. This choice applies to the next live session or replay, not the profile-copy engine below. Bao never signs in for you.</p>
       <p class="quiet"><code>--live-target</code> wins over <code>BAO_LIVE_TARGET</code>. Either launch override wins over this choice.${state.liveTargetOverride ? ` Current override: <code>${esc(state.liveTargetOverride)}</code>.` : ""}</p>

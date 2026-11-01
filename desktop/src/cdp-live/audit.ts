@@ -22,10 +22,11 @@ export class SessionLog {
   private shots = 0;
   private record: LiveSessionRecord;
 
-  constructor(private readonly dir: string, intent: string, id = "live") {
+  constructor(private readonly dir: string, intent: string, id = "live", allowCommit = false) {
     this.record = {
       id,
       intent,
+      ...(allowCommit ? { allowCommit: true } : {}),
       status: "running",
       host: "",
       updatedAt: Date.now(),

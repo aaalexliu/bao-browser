@@ -18,6 +18,7 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
       url: flag(args, "--url") || "",
       portFile: flag(args, "--port-file") || "",
       preset: flag(args, "--preset") || "",
+      ...(args.includes("--allow-commit") ? { allowCommit: true } : {}),
       workflowId: flag(args, "--workflow-id") || "",
     };
   }

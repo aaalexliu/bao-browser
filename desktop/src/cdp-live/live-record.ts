@@ -20,6 +20,7 @@ export interface LiveStep {
 export interface LiveSessionRecord {
   id: string;
   intent: string;
+  allowCommit?: boolean;
   status: "running" | "passed" | "needs_human" | "failed" | "idle";
   host: string;
   updatedAt: number;
@@ -94,6 +95,7 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
   return {
     id: String(raw.id || "").replace(/[^\w.-]/g, "").slice(0, 40),
     intent: redactLabel(String(raw.intent || "")).slice(0, 160),
+    ...(raw.allowCommit === true ? { allowCommit: true } : {}),
     status,
     host: /^[\w.-]+$/.test(String(raw.host || "")) ? String(raw.host) : "",
     updatedAt: Number.isFinite(raw.updatedAt) ? Math.round(Number(raw.updatedAt)) : 0,

@@ -43,7 +43,7 @@ export interface LiveIdleWarning {
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. A preset (generic, instacart, books, experian) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. A preset (generic, instacart, books, experian) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. Freeze-flow navigation stays allowed, but the final Unfreeze, Freeze, Lift, Thaw, Confirm or Submit button returns reached: experian_commit without a click. Stop and save with live_stop. Only after the owner explicitly says go, start a new session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides checkout, deny labels or credential guards. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -51,6 +51,7 @@ export const LIVE_TOOLS = [
         url: { type: "string" },
         portFile: { type: "string", description: "Leave this out. An absolute DevToolsActivePort path, only for a Chrome started with its own --user-data-dir." },
         preset: { type: "string", enum: ["generic", "instacart", "books", "experian"], description: "Leave this out for a known host." },
+        allowCommit: { type: "boolean", default: false, description: "Experian freeze actions only. Use true only after the owner explicitly says go. Default reaches the final button without clicking it. This permission expires with the session and is recorded on its capture run." },
         workflowId: { type: "string", description: "Optional wf-<name>. Without it the id comes from the intent." },
       },
       required: ["intent", "url"],
@@ -165,6 +166,7 @@ export interface LiveView {
   controls: LiveControlView[];
   stopBeforeConfirm: { label: string }[];
   credentialFields: number;
+  reached?: { ref: string; label: string };
   epoch: number;
 }
 
@@ -176,7 +178,9 @@ export interface LiveViewPage extends LiveView {
 }
 
 /** The label patterns of the active preset. */
-export type LabelGuard = Pick<GuardPreset, "commit" | "deny" | "submit">;
+export type LabelGuard = Pick<GuardPreset, "commit" | "deny" | "submit" | "freezeCommit"> & { allowCommit?: boolean };
+
+export const EXPERIAN_COMMIT_INSTRUCTION = "The final credit-freeze button is on screen. Bao did not click it. Confirm with the owner before starting a new session with allowCommit: true.";
 
 type TargetKind = "click" | "field" | "commit" | "credential" | "deny";
 
@@ -234,12 +238,22 @@ function pattern(source: string, label: string): boolean {
  * A commit label is refused under every preset. A form submit is a commit too,
  * unless it is in a search form or its label is one the preset allows.
  */
-function commit(control: LiveControlFact, guard: LabelGuard): boolean {
-  if (control.kind === "field") return false;
-  if (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label)) return true;
-  if (control.form === "search") return false;
-  if (control.kind === "submit") return !pattern(guard.submit, control.label);
-  return false;
+function freezeFlow(facts: PageFacts, guard: LabelGuard): boolean {
+  return guard.freezeCommit === true && /\b(?:unfreeze|freeze|lift|thaw)\b/i.test(`${facts.path} ${facts.title} ${facts.headings.join(" ")}`);
+}
+
+function commitRefusal(control: LiveControlFact, guard: LabelGuard, facts: PageFacts): string {
+  if (control.kind === "field") return "";
+  if (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label)) return "stop_before_confirm";
+  if (control.form === "search") return "";
+  const inFreezeFlow = freezeFlow(facts, guard);
+  const finalFreeze = /^(?:unfreeze|freeze|lift|thaw)\b/i.test(control.label) && (control.kind === "submit" || inFreezeFlow);
+  const finalConfirm = inFreezeFlow && /^(?:confirm|submit)\b/i.test(control.label);
+  if (guard.freezeCommit && control.kind !== "link" && (finalFreeze || finalConfirm)) {
+    return guard.allowCommit === true ? "" : "experian_commit";
+  }
+  if (inFreezeFlow && /^(?:continue|next|review)\b/i.test(control.label)) return "";
+  return control.kind === "submit" && !pattern(guard.submit, control.label) ? "stop_before_confirm" : "";
 }
 
 function denied(control: LiveControlFact, denySource: string): boolean {
@@ -255,13 +269,13 @@ export function searchField(control: LiveControlFact): boolean {
  * Enter in a field can submit its form. With a submit button, that button is judged as a click.
  * With none, the form can still submit, or a page script can act, so only a search box takes Enter.
  */
-function enterRefusal(control: LiveControlFact, guard: LabelGuard): string {
+function enterRefusal(control: LiveControlFact, guard: LabelGuard, facts: PageFacts): string {
   if (pattern(guard.deny, control.label)) return "denied";
   if (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label)) return "stop_before_confirm";
   if (control.formSubmit !== undefined) {
     const button: LiveControlFact = { index: control.index, label: control.formSubmit, kind: "submit", form: control.form };
     if (denied(button, guard.deny)) return "denied";
-    return commit(button, guard) ? "stop_before_confirm" : "";
+    return commitRefusal(button, guard, facts);
   }
   return searchField(control) ? "" : "stop_before_confirm";
 }
@@ -295,13 +309,15 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
       byRef.set(ref, { index: control.index, kind: "deny", selector, href, enter: "denied" });
       continue;
     }
-    if (commit(control, guard)) {
+    const refusal = commitRefusal(control, guard, facts);
+    if (refusal) {
       view.stopBeforeConfirm.push({ label });
-      byRef.set(ref, { index: control.index, kind: "commit", selector, href, enter: "stop_before_confirm" });
+      byRef.set(ref, { index: control.index, kind: "commit", selector, href, enter: refusal });
+      if (refusal === "experian_commit") view.reached = { ref, label };
       continue;
     }
     const kind: TargetKind = control.kind === "field" ? "field" : "click";
-    const enter = kind === "field" ? enterRefusal(control, guard) : "";
+    const enter = kind === "field" ? enterRefusal(control, guard, facts) : "";
     byRef.set(ref, { index: control.index, kind, selector, href, enter });
     view.controls.push({ ref, label, kind: control.kind });
   }
@@ -342,7 +358,7 @@ export function planClick(read: LiveRead, ref: string): Plan {
   if (!parsed || parsed.epoch !== read.view.epoch) return { ok: false, refusal: "stale_ref" };
   const target = read.targets.byRef.get(ref);
   if (!target) return { ok: false, refusal: "unknown_ref" };
-  if (target.kind === "commit") return { ok: false, refusal: "stop_before_confirm" };
+  if (target.kind === "commit") return { ok: false, refusal: target.enter };
   if (target.kind === "deny") return { ok: false, refusal: "denied" };
   if (target.kind === "credential") return { ok: false, refusal: "credential_field" };
   return { ok: true, selector: target.selector };

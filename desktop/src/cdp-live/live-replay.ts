@@ -11,7 +11,7 @@ import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
 import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import { clickLive, pressLiveKey, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
-import { buildView, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
+import { buildView, EXPERIAN_COMMIT_INSTRUCTION, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
 import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import { acquireCdpLock, CDP_LOCK_PATH, releaseCdpLock, rememberLockTarget, takeDeadTarget } from "./lock";
@@ -42,7 +42,7 @@ export function liveScope(url: string, asked = ""): LiveScope {
   const hosts = [...new Set([new URL(url).hostname, ...flags.hosts])];
   return {
     preset,
-    guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit },
+    guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit, ...(flags.freezeCommit ? { freezeCommit: true } : {}) },
     stopPath: flags.stopPath,
     hosts,
     origins: originsFor(url, hosts),
@@ -212,11 +212,12 @@ export class GuardedLiveDriver implements Driver {
     const ref = node ? `e${read.view.epoch}.c${marked}` : "";
     const outcome = await run(this.target(read), ref);
     if (outcome.kind === "applied") return;
-    throw this.stop(outcome.reason, outcome.kind === "halted");
+    throw this.stop(outcome.reason, outcome.kind === "halted" || outcome.kind === "reached");
   }
 }
 
 function haltLine(reason: string, site: string): string {
+  if (reason === "experian_commit") return EXPERIAN_COMMIT_INSTRUCTION;
   if (reason === "login_wall") return `Sign in to ${site} in Chrome, then run the workflow again.`;
   if (reason === "bot_wall") return `${site} is showing a bot check. Complete it in Chrome, then run the workflow again.`;
   if (reason === "stop-path") return `The page went to a path on ${site} that Bao does not drive, so Bao stopped.`;
@@ -232,7 +233,7 @@ function pausedAt(workflow: WorkflowV2, run: RunResult, stepId: string, reason: 
   const site = siteHost(workflow.startUrl);
   const ask = {
     ...makeAsk({
-      kind: "wall",
+      kind: reason === "experian_commit" ? "confirm" : "wall",
       wall: reason === "bot_wall" ? "bot" : "login",
       workflowId: workflow.id,
       workflowName: workflow.name,
@@ -250,7 +251,7 @@ function pausedAt(workflow: WorkflowV2, run: RunResult, stepId: string, reason: 
   return {
     ...run,
     status: "paused",
-    pausedKind: "wall",
+    pausedKind: reason === "experian_commit" ? "confirm" : "wall",
     pausedStepId: stepId,
     ask,
     steps: run.steps.map((item) => (item.id === stepId ? { ...item, status: "paused", reason } : item)),
