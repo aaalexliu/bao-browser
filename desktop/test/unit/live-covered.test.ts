@@ -99,7 +99,10 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
         const optional = workflow.steps.filter((step) => step.optional);
         assert.equal(optional.length, 1, JSON.stringify({ workflow, trail: readFileSync(path.join(home, "live-session", "trail.jsonl"), "utf8") }));
         assert.equal(popupDismissName(optional[0]?.identity), "Close");
-        assert.notEqual(optional[0]?.expect?.kind, "settled");
+        if (urlChange === "hash") {
+          assert.equal(optional[0]?.expect?.kind, "settled");
+          assert.equal(optional[0]?.confidence, "low");
+        }
         const validate = new Ajv({ strict: false }).compile(JSON.parse(readFileSync("schema/workflow-v2.schema.json", "utf8")) as object);
         assert.deepEqual(validateWorkflow(workflow), []);
         assert.equal(validate(workflow), true, JSON.stringify(validate.errors));

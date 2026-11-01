@@ -98,6 +98,8 @@ test("an optional dismiss does not absorb a later required click on the same con
   const workflow = build([first, second]);
   assertClean(workflow);
   assert.deepEqual(workflow.steps.map((step) => step.optional), ["dismiss", undefined]);
+  assert.equal(workflow.steps[0]?.expect?.kind, "settled");
+  assert.equal(workflow.steps[0]?.confidence, "low");
 });
 
 /** Keys anywhere in a JSON document. */

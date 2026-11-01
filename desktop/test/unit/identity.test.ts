@@ -27,6 +27,17 @@ test("recorded controls survive text and position drift without matching conflic
   assert.equal(sameRecordedControl(css, { ...css, surface: "ax" }), false);
 });
 
+test("generated ids and names fall through to CSS without weakening stable fields", () => {
+  for (const field of ["id", "nameAttr"] as const) {
+    const recorded = dom({ [field]: ":r5:", cssPath: "#welcome > button" });
+    const retried = { ...recorded, [field]: ":r7:" };
+    assert.equal(sameRecordedControl(recorded, retried), true);
+    assert.equal(sameRecordedControl(recorded, { ...retried, cssPath: "#cart > button" }), false);
+    const stable = { ...recorded, [field]: "welcome-close" };
+    assert.equal(sameRecordedControl(stable, retried), false);
+  }
+});
+
 test("thresholds are the refuse line", () => {
   assert.equal(ACCEPT, 60);
   assert.equal(MARGIN, 25);

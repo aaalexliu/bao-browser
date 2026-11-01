@@ -116,7 +116,7 @@ export function sameRecordedControl(want: Identity, node: Identity): boolean {
   if (want.testId) return want.testId === node.testId;
   if (want.id && !unstableId(want.id)) return want.id === node.id;
   if (normRole(want.role) === "link" && want.href) return want.href === node.href;
-  if (want.nameAttr) return want.nameAttr === node.nameAttr;
+  if (want.nameAttr && !unstableId(want.nameAttr)) return want.nameAttr === node.nameAttr;
   return !!want.cssPath && want.cssPath === node.cssPath;
 }
 

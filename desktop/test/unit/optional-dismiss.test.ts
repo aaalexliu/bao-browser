@@ -35,7 +35,7 @@ async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => I
   return { result, clicked, elapsed };
 }
 
-for (const field of ["testId", "id", "cssPath", "path"] as const) {
+for (const field of ["testId", "id", "nameAttr", "cssPath", "path"] as const) {
   test(`optional dismiss matches its recorded ${field}, not another Close`, async (t) => {
     const want = dismiss(field === "path" ? {} : { path: [], [field]: "welcome-close" });
     const target = { ...want };
@@ -54,6 +54,36 @@ for (const field of ["testId", "id", "cssPath", "path"] as const) {
     assert.equal(result.steps[0]?.status, "skipped");
     assert.deepEqual(clicked, []);
     assert.equal(elapsed, 2000);
+  });
+}
+
+for (const field of ["id", "nameAttr"] as const) {
+  for (const moved of [false, true]) {
+    test(`an optional dismiss survives a generated ${field} change with ${moved ? "moved" : "unchanged"} CSS`, async (t) => {
+      const want = dismiss({ [field]: ":r5:", cssPath: "#old-close" });
+      const target = dismiss({ [field]: ":r7:", cssPath: moved ? "#new-close" : want.cssPath });
+      const other = dismiss({ [field]: ":r9:", cssPath: "#cart-close", path: [{ role: "dialog", name: "Cart" }] });
+      const { result, clicked } = await run(t, want, () => [other, target]);
+      assert.equal(result.status, "passed", JSON.stringify(result.failure));
+      assert.equal(result.steps[0]?.status, "passed");
+      assert.deepEqual(clicked, [target]);
+    });
+  }
+
+  test(`a generated ${field} does not match another popup`, async (t) => {
+    const want = dismiss({ [field]: ":r5:", cssPath: "#old-close" });
+    const other = dismiss({ [field]: ":r7:", cssPath: "#new-close", path: [{ role: "dialog", name: "Cart" }] });
+    const { result, clicked } = await run(t, want, () => [other]);
+    assert.equal(result.steps[0]?.status, "skipped");
+    assert.deepEqual(clicked, []);
+  });
+
+  test(`a stable ${field} still constrains candidates inside the recorded popup`, async (t) => {
+    const want = dismiss({ [field]: "welcome-close", cssPath: "#old-close" });
+    const other = dismiss({ [field]: "other-close", cssPath: "#new-close" });
+    const { result, clicked } = await run(t, want, () => [other]);
+    assert.equal(result.steps[0]?.status, "skipped");
+    assert.deepEqual(clicked, []);
   });
 }
 
