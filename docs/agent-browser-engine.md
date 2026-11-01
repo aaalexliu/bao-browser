@@ -35,6 +35,10 @@ Run records state the selected page engine. Operational failures before step 0 r
 
 Unsupported console/network traces also carry `traceUnavailable`; empty arrays do not claim that tracing succeeded. A real agent's model cost is separate from replay's `modelCalls`, which counts Bao heal calls.
 
+Successful guarded-live steps do not retain identity-score tables, DOM snapshots, or accessibility snapshots with either engine. The local old/native comparison runs the same five steps with evidence enabled and verifies that both lack all three fields. The trial leaves this shared limit unchanged. This result applies to guarded-live replay, not ordinary `BrowserDriver` replay, which has a separate step-capture implementation. Adding successful-step diagnostics to guarded-live capture is follow-up work.
+
+The Library step image uses its captured aspect ratio at the full pane width. This fits both full-viewport screenshots and old-engine target crops without grey side bands, stretching, or discarding page content. Before/after switching preserves each image's own dimensions. The image-less placeholder keeps its fixed height.
+
 ## Capability contract and parity status
 
 The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `desktop/src/cdp-live/live-replay.ts`. A status of **gap** blocks a default switch. An implemented operation is not full end-to-end parity until its fixture coverage passes.
@@ -58,9 +62,13 @@ The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `de
 | Human handoff and assertions | Gap | Existing replay logic remains; full interactive parity is not yet proved. |
 | Copied-profile chooser and lifecycle | Works | Synthetic/API tests and selected-profile native launch passed. Copies close and delete; extension loading is opt-in per profile. Real-cart proof remains separate. |
 | Live capture step shots and CDP video | Works | Expanded local fixture passed: Library step PNGs, replay before/after PNGs, and nonempty CDP videos. The real agent recording also saved its workflow, four step PNGs, and video. |
+| Successful guarded-live identity scores, DOM, and AX snapshots | Shared limit | The same five local steps lack all three fields with old and native engines. No scores or snapshots are invented. Ordinary browser replay uses a separate capture path. |
+| Library step-image fit | Works | The frame follows the captured viewport or target-crop ratio at full pane width. Before/after switching keeps the full image visible. |
 | Real copied-profile replay | One flow proved | The approved four-step Costco replay passed on a fresh profile copy, extensions off, with zero model calls. This is not full feature parity. |
 
 ## Real-site checkpoint
+
+The accepted real-run summary is cart start **0**, add **1**, end **0**. Agent cost rounded to cents is **USD 0.47**. The final replay passed **4/4** steps with **0 model calls**.
 
 With extensions off, the read-only preflight opened the empty Costco cart. One Opus 5.5 agent run then used only product Bao MCP: 18 tool calls, 55.6 seconds, USD 0.4706854. It added the approved Kirkland Signature Organic Blueberries, 3 lbs, product 19232694, once. The cart screenshot showed exactly one line at quantity 1.
 
@@ -73,6 +81,14 @@ Code review found that post-DOMContentLoaded startup probes used Bao's 12-second
 After that fix, one explicitly authorized extra model-free replay passed all four steps through product Bao MCP: `run-mvx3dt73-lo2e`, 44,221 ms, zero model calls, eight before/after PNGs, and an 18.84-second CDP clip. Its fresh profile copy had extensions off. All 68 prompt-monitor samples were clear. A fresh empty-cart baseline preceded it. The replay added exactly the approved single quantity. Restoration verified that line at 1 ct, removed only that replay's actual addition, and checked `cartRestored(0, 1, 0)`. The final screenshot showed zero lines and quantity. Other carts were not opened or changed. All copies, owned Chrome processes, and native processes were gone before the cart handoff. No further cart access is authorized.
 
 Private evidence is under the task's `real-run/` directory: the earlier `claude-main/` and `replay.json`, plus `final-attempt/{baseline/,replay.json,restore/,cleanup.json}`. `agent-replay-library.mp4` contains the actual earlier agent clip, the final replay, running Bao Library/workflow/step-screen stills, and the empty restored-cart still. It is 65.76 seconds at 1920 x 1080. The approved real-cart flow is proved; the other capability gaps still block a default-engine change.
+
+## Follow-ups before a default switch
+
+- Prove nested-frame and shadow-root actions, broader check/select operations, and interactive handoff/assertion parity.
+- Review overall capture status after a recoverable stale-ref refusal. Preserve the historical failed capture until that policy is settled.
+- Diagnose the black Library video surface separately. The raw replay clip decodes; the cause could be playback or screenshot rendering.
+- Add successful-step identity, DOM, and accessibility evidence to guarded-live capture for both engines if the product needs it. These fields are absent with the old engine too.
+- Review ordinary trial replay's separate step-capture implementation before widening the supported copied-profile workflow types.
 
 ## Local proof
 
