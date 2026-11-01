@@ -674,7 +674,7 @@ export class CdpLiveDriver implements Driver {
     }, this.sessionId);
   }
 
-  /** Records this window into `dest` as a webm until end(). A window that cannot record still runs. */
+  /** Starts CDP recording. After end(), call writeVideo() once the socket and lock are free. A window that cannot record still runs. */
   async recordVideo(dest: string): Promise<void> {
     if (this.screencast) return;
     this.screencast = await startScreencast(this.cdp, this.sessionId, dest).catch(() => undefined);

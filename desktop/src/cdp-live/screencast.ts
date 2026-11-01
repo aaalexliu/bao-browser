@@ -1,6 +1,6 @@
-// Records a live window through the CDP connection that drives it. Page.startScreencast sends a
-// frame each time the page paints. Each frame goes to a temp folder as it comes. ffmpeg then joins
-// the frames into one webm, each frame shown until the next one came. No macOS screen recording.
+// Records a live window through the CDP connection that drives it, without macOS screen recording.
+// Keep at most ten frames a second so a busy page cannot fill the temp folder at its paint rate.
+// Encode after releasing the browser connection and lock, so ffmpeg cannot hold either open.
 
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
