@@ -23,6 +23,92 @@ function frameSource() {
 }
 
 const ffmpeg = ffmpegBin();
+const hasFfprobe = spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
+
+test("MP4 clips use QuickTime-safe H.264 with square pixels and a 30 fps timeline", { skip: !ffmpeg || !hasFfprobe, timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-quicktime-"));
+  const destination = path.join(root, "clip.mp4");
+  const source = frameSource();
+  const fs = require("node:fs/promises") as typeof import("node:fs/promises");
+  const original = fs.writeFile;
+  let saved: () => void = () => {};
+  t.mock.method(fs, "writeFile", async (...args: Parameters<typeof writeFile>) => {
+    await original(...args);
+    if (typeof args[0] === "string" && path.basename(args[0]).startsWith("frame-")) saved();
+  });
+  const jpegs = ["red", "blue"].map((color) => {
+    const jpeg = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `testsrc=size=1279x813,drawbox=color=${color}:t=fill`, "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"], { maxBuffer: 16 * 1024 * 1024 });
+    assert.equal(jpeg.status, 0, jpeg.stderr.toString());
+    return jpeg.stdout;
+  });
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  const video = await startCdpVideo(source.cdp, "page", destination, { noBlur: true });
+  try {
+    for (const [index, gap] of [0, 730].entries()) {
+      now += gap;
+      const persisted = new Promise<void>((resolve) => { saved = resolve; });
+      source.emit(jpegs[index]!);
+      await persisted;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    now += 1270;
+    video.pause();
+    assert.deepEqual(await video.stop(), { wrote: true, frames: 2, truncated: false });
+    const probe = spawnSync("ffprobe", ["-v", "error", "-show_streams", "-of", "json", destination], { encoding: "utf8" });
+    assert.equal(probe.status, 0, probe.stderr);
+    const stream = JSON.parse(probe.stdout).streams[0];
+    assert.equal(stream.codec_name, "h264");
+    assert.equal(stream.profile, "Main");
+    assert.equal(stream.level, 40);
+    assert.equal(stream.codec_tag_string, "avc1");
+    assert.equal(stream.width, 1278);
+    assert.equal(stream.height, 812);
+    assert.equal(stream.sample_aspect_ratio, "1:1");
+    assert.equal(stream.pix_fmt, "yuv420p");
+    assert.equal(stream.color_range, "tv");
+    assert.equal(stream.color_space, "bt709");
+    assert.equal(stream.color_transfer, "bt709");
+    assert.equal(stream.color_primaries, "bt709");
+    assert.equal(stream.has_b_frames, 0);
+    assert.equal(stream.r_frame_rate, "30/1");
+    assert.equal(stream.avg_frame_rate, "30/1");
+    assert.ok(Math.abs(Number(stream.duration) - 2.04) <= 1 / 30, `irregular captures retain their wall-clock duration: ${stream.duration}`);
+    const samples = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", destination, "-vf", "select='eq(n,0)+eq(n,30)',scale=1:1", "-fps_mode", "vfr", "-frames:v", "2", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+    assert.equal(samples.status, 0, samples.stderr.toString());
+    assert.equal(samples.stdout.length, 6);
+    assert.ok(samples.stdout[0]! > 200 && samples.stdout[2]! < 20, "the first second starts with the red capture");
+    assert.ok(samples.stdout[3]! < 20 && samples.stdout[5]! > 200, "the second second holds the latest blue capture");
+    const clip = await readFile(destination);
+    const boxes: string[] = [];
+    for (let offset = 0; offset + 8 <= clip.length;) {
+      const size = clip.readUInt32BE(offset);
+      assert.ok(size >= 8 && offset + size <= clip.length);
+      boxes.push(clip.toString("ascii", offset + 4, offset + 8));
+      offset += size;
+    }
+    assert.ok(boxes.includes("moov") && boxes.includes("mdat"));
+    assert.ok(boxes.indexOf("moov") < boxes.indexOf("mdat"), "faststart puts metadata before media data");
+  } finally {
+    await video.stop().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an MP4 encoder failure rejects stop and removes the incomplete clip", { skip: !ffmpeg, timeout: 30_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-encoder-failure-"));
+  const destination = path.join(root, "clip.mp4");
+  const source = frameSource();
+  const video = await startCdpVideo(source.cdp, "page", destination, { noBlur: true });
+  try {
+    source.emit(Buffer.from("invalid-jpeg"));
+    await assert.rejects(video.stop());
+    await assert.rejects(readFile(destination), /ENOENT/);
+  } finally {
+    await video.stop().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("temporary frames and encoded video are veiled before persistence; pause drops frames", { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-privacy-"));
