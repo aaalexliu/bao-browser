@@ -63,6 +63,7 @@ import {
 } from "./live-trail";
 import type { CdpSocket } from "./socket";
 import { leafTexts } from "../v1/recorder";
+import { sameRecordedControl } from "../v1/identity";
 import type { RunResult } from "../v1/replay";
 import { popupDismissName, validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
@@ -89,7 +90,7 @@ interface OpenState {
   facts: PageFacts | null;
   halted: string;
   refused: boolean;
-  covered: Map<string, string[]>;
+  covered: Map<Identity, string[]>;
   optionalDismissals: Set<string>;
   /** Every act that went through. The saved workflow is built from it. */
   trail: LiveTrail;
@@ -562,20 +563,20 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note("click", label, "running", null);
     }), ref);
     if (before) await state.log.patchLast(state.driver.lastTrusted());
-    const control = before?.identity ? JSON.stringify(before.identity) : "";
+    const control = before?.identity;
+    const covered = control && [...state.covered.keys()].find((identity) => sameRecordedControl(identity, control));
     if (outcome.kind !== "applied") {
       if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) {
-        if (!state.covered.has(control)) state.covered.set(control, []);
+        if (!covered) state.covered.set(control, []);
       }
       else state.refused = true;
       // A refusal before the click gets its own audit row. After the click, the click's row stands.
       if (!before) await note("click", outcome.reason, "failed", null);
       return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
-    const recovered = state.covered.get(control);
-    if (recovered) {
-      recovered.forEach((id) => state.optionalDismissals.add(id));
-      state.covered.delete(control);
+    if (covered) {
+      state.covered.get(covered)!.forEach((id) => state.optionalDismissals.add(id));
+      state.covered.delete(covered);
     }
     const after = await readAfter(state, index, true);
     // The accessible name, not the redacted view label, so the item in "Add 1 ct {item}" keeps its digits.
@@ -724,8 +725,8 @@ export function createLiveHost(opts: LiveHostOptions): {
     catch (error) { videoError = `video unavailable: ${error instanceof Error ? error.message : "video save failed"}`; }
     try { saved = saveWorkflow(status, videoWrote, videoTruncated, videoError || undefined); }
     catch (error) { saveError = error instanceof Error ? error.message : "workflow save failed"; }
-    const videoNote = videoError ? `${saved ? "Workflow saved; " : ""}${videoError}` : "";
-    await ending.log.flush(saveError ? "failed" : status, saveError || [noteText, videoNote].filter(Boolean).join(" "), ending.host);
+    const videoNote = videoError ? `${saved ? "Workflow saved; " : ""}${videoError}` : videoTruncated ? "Video truncated." : "";
+    await ending.log.flush(saveError ? "failed" : status, [saveError || noteText, videoNote].filter(Boolean).join(" "), ending.host);
     slot = { phase: "closed", id, status: saveError ? "failed" : status };
     open = null;
     if (!saved && ending.artifactRoot) await rm(path.join(ending.artifactRoot, "videos", `${ending.runId}.webm`), { force: true });

@@ -658,7 +658,7 @@ export class CdpLiveDriver implements Driver {
       return await this.screenshotPng();
     } finally {
       await this.cdp.send("Runtime.evaluate", { expression: 'document.getElementById("bao-redact")?.remove()', returnByValue: true }, this.sessionId).catch(() => undefined);
-      await sleep(100);
+      if (this.video) await sleep(100);
       this.resumeCapture();
     }
   }

@@ -597,6 +597,7 @@ function observed(
     { ...event, identity },
     { input, secret, known, secrets },
   );
+  if (event.optional === "dismiss" && step.expect?.kind === "settled") return {};
   return {
     ...(step.postcondition ? { postcondition: step.postcondition } : {}),
     ...(step.expect ? { expect: step.expect } : {}),

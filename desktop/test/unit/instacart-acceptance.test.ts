@@ -198,7 +198,10 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
     }
     await until(() => (existsSync(file) ? true : undefined), "the workflow saved on disconnect");
     await until(() => (existsSync(lockFile) ? undefined : true), "the live lock released on disconnect");
-    const session = JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as LiveSessionRecord;
+    const session = await until(() => {
+      const record = JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as LiveSessionRecord;
+      return record.status === "running" ? undefined : record;
+    }, "the final session record on disconnect");
     assert.equal(session.id, WORKFLOW_ID);
     assert.notEqual(session.status, "running");
 

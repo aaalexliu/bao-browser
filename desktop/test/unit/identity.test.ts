@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { ACCEPT, MARGIN, fromAtspiNode, fromAxNode, lookup, type Identity } from "../../src/v1/identity";
+import { ACCEPT, MARGIN, fromAtspiNode, fromAxNode, lookup, sameRecordedControl, type Identity } from "../../src/v1/identity";
 
 function dom(partial: Partial<Identity> & { role?: string }): Identity {
   return {
@@ -12,6 +12,20 @@ function dom(partial: Partial<Identity> & { role?: string }): Identity {
     ...partial,
   };
 }
+
+test("recorded controls survive text and position drift without matching conflicting stable fields", () => {
+  for (const patch of [{ testId: "costco" }, { id: "costco" }, { nameAttr: "costco" }, { role: "link", href: "/store/costco" }, { role: "a", href: "/store/costco" }]) {
+    const recorded = dom({ name: "Costco By 12:45pm", text: "12:45pm", cssPath: "div:nth-of-type(2) > button", xpath: "/body[1]/div[2]/button[1]", ...patch });
+    const retried = { ...recorded, name: "Costco By 1:00pm", text: "1:00pm", cssPath: "div:nth-of-type(1) > button", xpath: "/body[1]/div[1]/button[1]" };
+    assert.equal(sameRecordedControl(recorded, retried), true);
+    const other = dom({ ...recorded, testId: "other", id: "other", nameAttr: "other", href: "/store/other" });
+    assert.equal(sameRecordedControl(recorded, other), false);
+  }
+  const css = dom({ cssPath: "#costco > button", text: "12:45pm" });
+  assert.equal(sameRecordedControl(css, { ...css, text: "1:00pm" }), true);
+  assert.equal(sameRecordedControl(css, { ...css, role: "textbox" }), false);
+  assert.equal(sameRecordedControl(css, { ...css, surface: "ax" }), false);
+});
 
 test("thresholds are the refuse line", () => {
   assert.equal(ACCEPT, 60);

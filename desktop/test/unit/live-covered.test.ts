@@ -45,9 +45,26 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
     it(`a ${urlChange}-changing popup recovers and its dismiss step replays with or without the popup`, async (t) => {
       const home = mkdtempSync(path.join(tmpdir(), "bao-optional-dismiss-"));
       let popup = true;
+      let extraClose = false;
+      const unrelatedDismissed: boolean[] = [];
+      const end = CdpLiveDriver.prototype.end;
+      t.mock.method(CdpLiveDriver.prototype, "end", async function (this: CdpLiveDriver) {
+        unrelatedDismissed.push(await this.evaluateFunction<boolean>(() => document.body.dataset.unrelatedClosed === "yes", undefined));
+        await end.call(this);
+      });
       const goto = CdpLiveDriver.prototype.goto;
       t.mock.method(CdpLiveDriver.prototype, "goto", async function (this: CdpLiveDriver, url: string) {
         await goto.call(this, url);
+        if (extraClose) await this.evaluateFunction(() => {
+          const cart = document.createElement("div");
+          cart.setAttribute("role", "region");
+          cart.setAttribute("aria-label", "Cart");
+          const close = document.createElement("button");
+          close.textContent = "Close";
+          close.onclick = () => { document.body.dataset.unrelatedClosed = "yes"; cart.remove(); };
+          cart.append(close);
+          document.body.append(cart);
+        }, undefined);
         if (popup) await this.evaluateFunction((change: string) => {
           const original = location.href;
           history.replaceState(null, "", change === "hash" ? `${original}#welcome` : `${original}?welcome=1`);
@@ -82,6 +99,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
         const optional = workflow.steps.filter((step) => step.optional);
         assert.equal(optional.length, 1, JSON.stringify({ workflow, trail: readFileSync(path.join(home, "live-session", "trail.jsonl"), "utf8") }));
         assert.equal(popupDismissName(optional[0]?.identity), "Close");
+        assert.notEqual(optional[0]?.expect?.kind, "settled");
         const validate = new Ajv({ strict: false }).compile(JSON.parse(readFileSync("schema/workflow-v2.schema.json", "utf8")) as object);
         assert.deepEqual(validateWorkflow(workflow), []);
         assert.equal(validate(workflow), true, JSON.stringify(validate.errors));
@@ -90,6 +108,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
           assert.ok(validateWorkflow(invalid).some((error) => error.startsWith("optional ")));
           assert.equal(validate(invalid), false);
         }
+        extraClose = true;
         for (popup of [true, false]) {
           const run = await host.replay(workflow);
           assert.equal(run.status, "passed", JSON.stringify(run.failure));
@@ -97,11 +116,66 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
           assert.equal(dismiss?.status, popup ? "passed" : "skipped");
           if (!popup) assert.equal(dismiss?.reason, "optional dismiss absent");
           assert.equal(run.modelCalls, 0);
+          assert.equal(unrelatedDismissed.at(-1), false, "the cart's Close must not be clicked");
         }
+        extraClose = false;
         const required = { ...workflow, steps: workflow.steps.map((step) => ({ ...step, optional: undefined, timeoutMs: 200 })) };
         const missed = await host.replay(required);
         assert.equal(missed.status, "failed");
         assert.equal(missed.failure?.stepId, optional[0]!.id);
+      } finally { await host.close(); }
+    });
+  }
+
+  for (const stable of ["id", "testId", "nameAttr", "href", "cssPath"] as const) {
+    it(`recovers the same control by ${stable} after its ETA and position change`, async (t) => {
+      const home = mkdtempSync(path.join(tmpdir(), "bao-covered-identity-"));
+      const goto = CdpLiveDriver.prototype.goto;
+      t.mock.method(CdpLiveDriver.prototype, "goto", async function (this: CdpLiveDriver, url: string) {
+        await goto.call(this, url);
+        await this.evaluateFunction((field: string) => {
+          const spacer = document.createElement("div");
+          const area = document.createElement("div");
+          const target = document.createElement(field === "href" ? "a" : "button");
+          target.textContent = "Costco By 12:45pm";
+          if (field === "id") target.id = "costco-store";
+          if (field === "testId") target.setAttribute("data-testid", "costco-store");
+          if (field === "nameAttr") target.setAttribute("name", "costco-store");
+          if (field === "href") target.setAttribute("href", "/store/costco/storefront");
+          target.onclick = (event) => { event.preventDefault(); target.textContent = "Costco ready"; };
+          area.append(target);
+          const dialog = document.createElement("div");
+          dialog.setAttribute("role", "dialog");
+          dialog.setAttribute("aria-label", "Welcome");
+          dialog.style.cssText = "position:fixed;inset:0;z-index:99999;background:white";
+          const close = document.createElement("button");
+          close.textContent = "Close";
+          close.onclick = () => {
+            target.textContent = "Costco By 1:00pm";
+            if (field !== "cssPath") spacer.remove();
+            dialog.remove();
+          };
+          dialog.append(close);
+          document.body.prepend(spacer, area, dialog);
+        }, stable);
+      });
+      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0 });
+      const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
+      try {
+        const started = await call({ op: "live_session_start", intent: "open Costco after welcome", url: fixture.url("/store/costco/storefront") });
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const covered = await call({ op: "live_click", ref: ref(started, "Costco By 12:45pm") });
+          assert.deepEqual(covered.outcome, { kind: "refused", reason: "element is covered" });
+        }
+        const dismissed = await call({ op: "live_click", ref: ref(started, "Close") });
+        assert.equal(dismissed.outcome.kind, "applied");
+        const retried = await call({ op: "live_click", ref: ref(dismissed, "Costco By 1:00pm") });
+        assert.equal(retried.outcome.kind, "applied");
+        assert.equal((await call({ op: "live_stop" })).outcome.kind, "stopped");
+        const session = JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as LiveSessionRecord;
+        assert.equal(session.status, "passed");
+        const workflow = new Library(home).read(started.session!);
+        assert.equal(workflow.steps.filter((step) => step.optional === "dismiss").length, 1);
       } finally { await host.close(); }
     });
   }

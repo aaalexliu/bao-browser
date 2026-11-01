@@ -100,7 +100,7 @@ function sameApp(query: Identity, candidate: Identity): boolean {
   return true;
 }
 
-function pathEq(a: PathSeg[], b: PathSeg[]): boolean {
+export function pathEq(a: PathSeg[], b: PathSeg[]): boolean {
   if (a.length === 0 || a.length !== b.length) return false;
   return a.every((seg, i) => {
     const other = b[i];
@@ -109,6 +109,15 @@ function pathEq(a: PathSeg[], b: PathSeg[]): boolean {
     if (!seg.name && !other.name) return true;
     return eq(seg.name, other.name);
   });
+}
+
+export function sameRecordedControl(want: Identity, node: Identity): boolean {
+  if (want.surface !== node.surface || normRole(want.role) !== normRole(node.role)) return false;
+  if (want.testId) return want.testId === node.testId;
+  if (want.id && !unstableId(want.id)) return want.id === node.id;
+  if (normRole(want.role) === "link" && want.href) return want.href === node.href;
+  if (want.nameAttr) return want.nameAttr === node.nameAttr;
+  return !!want.cssPath && want.cssPath === node.cssPath;
 }
 
 function namesMatch(query: Identity, candidate: Identity): boolean {

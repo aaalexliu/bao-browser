@@ -15,7 +15,7 @@ import { startInstacartFixture, type InstacartFixture } from "../instacart/fixtu
 import { startServe } from "../instacart/lane";
 import { laneChildEnv } from "../runtime";
 
-type Body = { outcome?: { kind?: string }; session?: string; view?: { controls: { ref: string; label: string }[] }; run?: { status: string; video?: string } };
+type Body = { outcome?: { kind?: string; reason?: string }; session?: string; view?: { controls: { ref: string; label: string }[] }; run?: { status: string; video?: string } };
 
 describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !ffmpegBin() }, () => {
   let fixture: InstacartFixture;
@@ -81,6 +81,39 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
         t.mock.method(CdpLiveDriver.prototype, "goto", async () => { throw new Error("failed start"); });
         assert.equal((await call({ op: "live_session_start", intent: "failed start", url: fixture.url("/store/costco/storefront") })).outcome?.kind, "rejected");
         assert.equal(finished, 4);
+      } finally { await host.close(); }
+    });
+  }
+
+  for (const ending of ["stop", "disconnect", "idle", "save-failure"] as const) {
+    it(`reports session video truncation on ${ending}`, async (t) => {
+      const home = mkdtempSync(path.join(tmpdir(), "bao-truncated-video-"));
+      const finishVideo = CdpLiveDriver.prototype.finishVideo;
+      if (ending === "save-failure") t.mock.method(Library.prototype, "save", () => { throw new Error("workflow save failed"); });
+      t.mock.method(CdpLiveDriver.prototype, "finishVideo", async function (this: CdpLiveDriver) {
+        const result = await finishVideo.call(this);
+        assert.equal(result.wrote, true);
+        return { ...result, truncated: true };
+      });
+      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, videoDir: path.join(home, "videos"), idleMs: ending === "idle" ? 500 : 0, idleWarnMs: 0 });
+      const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
+      try {
+        const started = await call({ op: "live_session_start", intent: "record a search", url: fixture.url("/store/costco/storefront"), client: "test" });
+        assert.equal(started.outcome?.kind, "applied");
+        const typed = await call({ op: "live_type", ref: started.view?.controls.find((control) => control.label === "Search Costco")?.ref, text: "blueberries" });
+        assert.equal(typed.outcome?.kind, "applied");
+        if (ending === "idle") {
+          const deadline = Date.now() + 15_000;
+          while (host.isOpen() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+          assert.equal(host.isOpen(), false);
+        } else {
+          const stopped = await call(ending === "disconnect" ? { op: "live_disconnect", client: "test" } : { op: "live_stop" });
+          assert.equal(stopped.outcome?.kind, ending === "save-failure" ? "rejected" : "stopped");
+          assert.equal(stopped.outcome?.reason, ending === "save-failure" ? "workflow save failed" : "Video truncated.");
+        }
+        const session = JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as { status: string; note: string };
+        assert.equal(session.status, ending === "save-failure" ? "failed" : "passed");
+        assert.ok(session.note.endsWith("Video truncated."), session.note);
       } finally { await host.close(); }
     });
   }

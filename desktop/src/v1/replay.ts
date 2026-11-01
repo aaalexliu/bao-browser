@@ -10,7 +10,7 @@ import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard"
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
 import { findDebugDir, queriesForLocators, writeFindDebug } from "./find-debug";
-import { lookup, normRole } from "./identity";
+import { lookup, normRole, pathEq, sameRecordedControl } from "./identity";
 import { actWaitMs, confirmButton, makeAsk, siteHost, wallInstruction, type HumanAsk } from "./human-ask";
 import { formatClock } from "./time";
 import { identityView } from "./run-trace";
@@ -491,7 +491,7 @@ export async function replay(
       outcome = held.outcome;
     }
     let clutterPrimed = false;
-    if (!outcome && before && before.class === "clutter") {
+    if (!step.optional && !outcome && before && before.class === "clutter") {
       noteClass(before);
       const nodes = (await driver.tree().catch(() => undefined))?.nodes || [];
       if (!findRecovery(nodes) && recovery.used < RECOVERY_LIMIT) {
@@ -551,7 +551,7 @@ export async function replay(
         outcome = held.outcome;
         failure = held.outcome.failure;
       }
-    } else if (missed.class === "clutter") {
+    } else if (!step.optional && missed.class === "clutter") {
       const nodesNow = (await driver.tree().catch(() => undefined))?.nodes || [];
       const coveredNow = findRecovery(nodesNow);
       const budgetLeft = recovery.used < RECOVERY_LIMIT;
@@ -978,7 +978,7 @@ async function dismissCover(
   repairs: RepairLog[],
   budget: RecoveryBudget,
 ): Promise<string | undefined> {
-  if (budget.used >= RECOVERY_LIMIT) return undefined;
+  if (step.optional || budget.used >= RECOVERY_LIMIT) return undefined;
   const tree = await driver.tree();
   const stop = hardFailure({ nodes: tree.nodes, network: driver.trace?.().network });
   if (stop || hasCaptcha(tree.nodes)) return undefined;
@@ -1017,13 +1017,6 @@ function targetInsideDialog(step: WorkflowStep, tree: LiveTree): boolean {
   return true;
 }
 
-function sameRecordedControl(want: Identity, node: Identity): boolean {
-  if (want.id && node.id === want.id) return true;
-  if (want.testId && node.testId === want.testId) return true;
-  if (want.cssPath && node.cssPath && want.cssPath === node.cssPath) return true;
-  return false;
-}
-
 async function waitSpinner(driver: Driver, step: WorkflowStep): Promise<boolean> {
   const timeout = Math.min(step.timeoutMs ?? 1000, 2000);
   if (timeout <= 0) return false;
@@ -1050,9 +1043,17 @@ async function findTarget(
 ): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[]; recovered?: string; optionalAbsent?: true }> {
   if (step.optional === "dismiss") {
     const deadline = Date.now() + 2000;
+    const want = step.identity;
+    const scoped = want?.path.some((seg) => seg.name || ["dialog", "alertdialog"].includes(normRole(seg.role)));
     while (true) {
       const tree = await driver.tree();
-      const candidates = tree.nodes.flatMap((node, index) => popupDismissName(node) && popupDismissName(node).toLowerCase() === popupDismissName(step.identity).toLowerCase() && canClick(index, tree.boxes, tree.hidden) ? [index] : []);
+      const scopedCandidates = tree.nodes.flatMap((node, index) => {
+        if (!want || !popupDismissName(node) || popupDismissName(node).toLowerCase() !== popupDismissName(want).toLowerCase() || !canClick(index, tree.boxes, tree.hidden)) return [];
+        if (want.path.length && !pathEq(want.path, node.path)) return [];
+        return [index];
+      });
+      const exact = scopedCandidates.filter((index) => sameRecordedControl(want!, tree.nodes[index]!));
+      const candidates = exact.length || want?.testId || want?.id || want?.nameAttr || !scoped ? exact : scopedCandidates;
       if (candidates.length) return { nodes: tree.nodes, hit: candidates.length === 1 ? { ok: true, index: candidates[0]!, ranked: [] } : { ok: false, reason: "tie", ranked: [] }, tried: [] };
       if (Date.now() >= deadline) return { nodes: tree.nodes, hit: { ok: false, reason: "no-candidates", ranked: [] }, tried: [], optionalAbsent: true };
       await (driver.sleep ? driver.sleep(50) : sleep(50));
@@ -1214,6 +1215,7 @@ async function readExpect(
 }
 
 async function expectationsHold(step: WorkflowStep, tree: LiveTree, args: ReplayArgs): Promise<boolean> {
+  if (step.optional === "dismiss" && step.expect?.kind === "settled" && !step.postcondition) return true;
   if (step.expect && !holdsExpect(step.expect, tree, args)) return false;
   if (step.postcondition && !holds(step.postcondition, tree, args)) return false;
   return true;

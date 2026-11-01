@@ -31,6 +31,7 @@ import { COMMIT_FLOOR, guardPreset } from "../cdp-live/presets";
 import type { WorkflowOutcome } from "../mcp/catalog";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
+import { ffmpegBin } from "../v1/replay-video";
 import { FIXTURE_HOSTS, TARGET, type CartWrite, type FixtureState, type Hit } from "../../test/instacart/fixture";
 import { CLI, startLane, until, type Lane } from "../../test/instacart/lane";
 import { laneChildEnv } from "../../test/runtime";
@@ -806,6 +807,7 @@ interface LaneResult {
 }
 
 async function runDriver(driver: AgentDriver, opts: AgentRunOptions & { checkout: boolean; artifacts: string }): Promise<LaneResult> {
+  if (!ffmpegBin()) return { row: blankRow(driver, "not run", "not run: ffmpeg not found"), judgeModel: "" };
   const bin = driverBinary(driver);
   if (!bin) return { row: blankRow(driver, "not run", `not run: the ${driver} CLI is not installed`), judgeModel: "" };
   const out = path.join(opts.artifacts, driver);

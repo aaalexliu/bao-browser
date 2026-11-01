@@ -15,6 +15,7 @@ import {
   checkoutProblems,
   checkAgentLockdown,
   earlierRows,
+  evalAgentInstacart,
   judgePrompt,
   liveReplyFacts,
   lockdownProblems,
@@ -32,6 +33,7 @@ import {
 } from "../../src/eval/agent-instacart";
 import { CODEX_DISABLED_FEATURES, claudeAgentArgs, claudeAgentAuth, codexAgentArgs, codexAgentAuth } from "../../src/eval/live-cli";
 import * as liveCli from "../../src/eval/live-cli";
+import * as replayVideo from "../../src/v1/replay-video";
 import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { search, storeBySlug } from "../instacart/catalog";
 import { TARGET, type CartWrite, type FixtureState, type Hit } from "../instacart/fixture";
@@ -106,6 +108,28 @@ test("the lock-down check passes the lane's chosen model and budget to Claude", 
   const args = calls[0]!;
   assert.equal(args[args.indexOf("--max-budget-usd") + 1], "3");
   assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
+});
+
+test("missing ffmpeg reports both drivers not run before login, lock-down, or agent work", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-agent-preflight-"));
+  const probe = t.mock.method(replayVideo, "ffmpegBin", () => undefined);
+  const unexpected = () => { throw new Error("agent work must not start without ffmpeg"); };
+  const binary = t.mock.method(liveCli, "driverBinary", unexpected);
+  const claude = t.mock.method(liveCli, "claudeAgentAuth", unexpected);
+  const codex = t.mock.method(liveCli, "codexAgentAuth", unexpected);
+  const agent = t.mock.method(liveCli, "runAgentCli", unexpected);
+  try {
+    for (const extra of [[], ["--skip-checkout"]]) {
+      const { rows } = await evalAgentInstacart(["--out", path.join(root, "table.md"), "--artifacts", path.join(root, "artifacts"), ...extra]);
+      assert.deepEqual(rows.map((row) => [row.driver, row.status, row.reason]), [
+        ["claude", "not run", "not run: ffmpeg not found"],
+        ["codex", "not run", "not run: ffmpeg not found"],
+      ]);
+      assert.deepEqual(earlierRows(readFileSync(path.join(root, "table.md"), "utf8")).map((row) => row.driver), ["claude", "codex"]);
+    }
+    assert.equal(probe.mock.callCount(), 4);
+    for (const mocked of [binary, claude, codex, agent]) assert.equal(mocked.mock.callCount(), 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("codex runs with no user config, every acting feature off, and bao's calls approved with the configured timeout", () => {
