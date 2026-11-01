@@ -20,7 +20,7 @@ test("live reads record a safe region and return fresh output through MCP and th
   let score = 742;
   const server = createServer((req, res) => {
     res.setHeader("content-type", "text/html");
-    if (req.url === "/login") return res.end('<h1>Sign in</h1><input type="password">');
+    if (req.url === "/auth") return res.end('<h1>Sign in</h1><label>Verification code<input autocomplete="one-time-code"></label>');
     res.end(`<!doctype html><title>Credit stand-in</title><main>
       <h1>Security freeze</h1><section id="freeze-status" aria-label="Freeze status"><h2>Freeze status</h2>
       <p>Frozen. Score: ${score}. Balance: $412. Updated 2026-11-01.</p>
@@ -105,7 +105,7 @@ test("live reads record a safe region and return fresh output through MCP and th
     server.removeAllListeners("request");
     server.on("request", (req, res) => {
       res.setHeader("content-type", "text/html");
-      if (req.url === "/login") return res.end('<h1>Sign in</h1><input type="password">');
+      if (req.url === "/auth") return res.end('<h1>Sign in</h1><label>Verification code<input autocomplete="one-time-code"></label>');
       res.end(`<title>Credit stand-in</title><main><section id="freeze-status"><h2>Freeze status</h2><p>Frozen. Score: ${score}. Balance: $412.</p><p>SSN: 123-45-6789</p></section></main>`);
     });
     const outcome = await tool<WorkflowOutcome>("run_workflow", { id: workflow.id, leaveOpen: true });
@@ -163,7 +163,7 @@ test("live reads record a safe region and return fresh output through MCP and th
     await targets.send("Target.closeTarget", { targetId: keptIds.find((id) => !baseline.includes(id))! });
     await pageSet(0);
 
-    const login = { ...workflow, id: "wf-read-login", startUrl: url + "/login" };
+    const login = { ...workflow, id: "wf-read-login", startUrl: url + "/auth" };
     app.library.save(login);
     const halted = await tool<WorkflowOutcome>("run_workflow", { id: login.id, leaveOpen: true });
     assert.equal(halted.pageLeftOpen, true);
