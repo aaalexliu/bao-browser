@@ -122,7 +122,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
       const write = fs.writeFile;
       t.mock.method(fs, "writeFile", async (...args: Parameters<typeof writeFile>) => {
         await write(...args);
-        if (String(args[0]).includes("/bao-cdp-video-") && path.basename(String(args[0])).startsWith("frame-")) frameSaved();
+        if (path.basename(String(args[0])).startsWith("frame-")) frameSaved();
       });
       const startVideo = CdpLiveDriver.prototype.startVideo;
       t.mock.method(CdpLiveDriver.prototype, "startVideo", async function(this: CdpLiveDriver, file: string) {

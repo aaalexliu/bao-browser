@@ -95,7 +95,7 @@ test("MP4 clips use QuickTime-safe H.264 with square pixels and a 30 fps timelin
   }
 });
 
-test("an hour-long MP4 handoff retains a bounded truncated clip past the old encoder deadline", { skip: !ffmpeg || !hasFfprobe, timeout: 60_000 }, async (t) => {
+test("an MP4 keeps its full timeline and post-handoff frames across a twenty-minute pause", { skip: !ffmpeg || !hasFfprobe, timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-long-handoff-"));
   const destination = path.join(root, "clip.mp4");
   const source = frameSource();
@@ -106,55 +106,103 @@ test("an hour-long MP4 handoff retains a bounded truncated clip past the old enc
     await original(...args);
     if (typeof args[0] === "string" && path.basename(args[0]).startsWith("frame-")) saved();
   });
-  const jpeg = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"], { input: redactedPng(3) }).stdout;
-  assert.ok(jpeg.length);
+  const jpegs = ["red", "blue"].map((color) => {
+    const jpeg = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `color=${color}:size=32x24`, "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"]);
+    assert.equal(jpeg.status, 0, jpeg.stderr.toString());
+    return jpeg.stdout;
+  });
   let now = Date.now();
   t.mock.method(Date, "now", () => now);
   const video = await startCdpVideo(source.cdp, "page", destination, { noBlur: true });
   try {
-    for (const gap of [0, 60 * 60 * 1000]) {
+    for (const [index, gap] of [0, 20 * 60 * 1000].entries()) {
       video.pause();
       video.pause();
       now += gap;
       video.resume();
-      source.emit(jpeg);
+      source.emit(jpegs[index]!);
       video.resume();
       const persisted = new Promise<void>((resolve) => { saved = resolve; });
-      source.emit(jpeg);
+      source.emit(jpegs[index]!);
       await persisted;
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
+    now += 2000;
     video.pause();
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const stopped = video.stop();
     await new Promise<void>((resolve) => setImmediate(resolve));
     t.mock.timers.tick(120_000);
-    assert.deepEqual(await stopped, { wrote: true, frames: 2, truncated: true });
+    assert.deepEqual(await stopped, { wrote: true, frames: 2, truncated: false });
     const probe = spawnSync("ffprobe", ["-v", "error", "-show_streams", "-of", "json", destination], { encoding: "utf8" });
     assert.equal(probe.status, 0, probe.stderr);
     const stream = JSON.parse(probe.stdout).streams[0];
-    assert.equal(Number(stream.nb_frames), 27_000, "wall-clock gaps cannot expand the encoder's work without bound");
-    assert.equal(Number(stream.duration), 900);
+    assert.ok(Math.abs(Number(stream.duration) - 1202.04) <= 1 / 30, `the entire pause and following action remain: ${stream.duration}`);
     assert.equal(stream.avg_frame_rate, "30/1");
-    assert.ok((await readFile(destination)).length > 1000);
-    assert.deepEqual(await video.stop(), { wrote: true, frames: 2, truncated: true });
+    for (const [time, channel] of [[600, 0], [1201, 2]] as const) {
+      const sample = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-ss", String(time), "-i", destination, "-vf", "scale=1:1", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+      assert.equal(sample.status, 0, sample.stderr.toString());
+      assert.equal(sample.stdout.length, 3);
+      assert.ok(sample.stdout[channel]! > 200 && sample.stdout[2 - channel]! < 20, `the right frame is visible at ${time}s`);
+    }
+    assert.deepEqual(await readdir(root), ["clip.mp4"], "successful encoding removes the source bundle");
   } finally {
     await video.stop().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("an MP4 encoder failure rejects stop and removes the incomplete clip", { skip: !ffmpeg, timeout: 30_000 }, async () => {
+for (const outcome of ["failure", "timeout"] as const) test(`an MP4 encoder ${outcome} retains recoverable source frames`, { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-encoder-failure-"));
   const destination = path.join(root, "clip.mp4");
   const source = frameSource();
+  const jpeg = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"], { input: redactedPng(3) }).stdout;
+  assert.ok(jpeg.length);
+  const encoder = path.join(root, "encoder");
+  await writeFile(encoder, `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.argv.at(-1), Buffer.alloc(2000));\n${outcome === "timeout" ? "setInterval(() => {}, 1000);" : "process.exit(1);"}\n`, { mode: 0o700 });
+  const previous = process.env.FFMPEG;
+  process.env.FFMPEG = encoder;
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  const processes = require("node:child_process") as typeof import("node:child_process");
+  const spawn = processes.spawn;
+  let child: ReturnType<typeof spawn> | undefined;
+  let started: () => void = () => {};
+  const spawned = new Promise<void>((resolve) => { started = resolve; });
+  t.mock.method(processes, "spawn", (...args: Parameters<typeof spawn>) => {
+    child = spawn(...args);
+    child.once("spawn", started);
+    return child;
+  });
   const video = await startCdpVideo(source.cdp, "page", destination, { noBlur: true });
   try {
-    source.emit(Buffer.from("invalid-jpeg"));
-    await assert.rejects(video.stop());
+    source.emit(jpeg);
+    video.pause();
+    now += 20 * 60 * 1000;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let settled = false;
+    const stopped = video.stop();
+    void stopped.then(() => { settled = true; }, () => { settled = true; });
+    const rejected = assert.rejects(stopped, /CDP video encoding (failed|timed out); video frames retained at /);
+    await spawned;
+    if (outcome === "timeout") {
+      t.mock.timers.tick(120_000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, false, "a long clip gets more than the old fixed deadline");
+      t.mock.timers.tick(20 * 60 * 1000 * 2 + 1000);
+    }
+    await rejected;
     await assert.rejects(readFile(destination), /ENOENT/);
+    const bundle = (await readdir(root)).find((name) => name.startsWith("clip.mp4.frames-"));
+    assert.ok(bundle);
+    const manifest = path.join(root, bundle, "frames.txt");
+    const recovered = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", manifest, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+    assert.equal(recovered.status, 0, recovered.stderr.toString());
+    assert.equal(recovered.stdout.length, 96 * 54 * 3, "ffmpeg can still decode the original recording after the encoder fails");
   } finally {
+    child?.kill("SIGKILL");
     await video.stop().catch(() => undefined);
+    if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
     await rm(root, { recursive: true, force: true });
   }
 });

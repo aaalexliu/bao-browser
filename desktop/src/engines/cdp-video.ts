@@ -1,28 +1,11 @@
 import { execFile, spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
 import type { CdpSocket } from "../cdp-live/socket";
 import { ffmpegBin } from "../v1/replay-video";
 
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
-const MP4_FPS = 30;
-const MAX_MP4_FRAMES = 15 * 60 * MP4_FPS;
-
-async function* cfrFrames(timeline: readonly { file: string; at: number }[], ticks: number): AsyncGenerator<Buffer> {
-  let index = 0;
-  let loaded = -1;
-  let data = Buffer.alloc(0);
-  for (let tick = 0; tick < ticks; tick++) {
-    while (index + 1 < timeline.length && timeline[index + 1]!.at * MP4_FPS <= tick * 1000) index++;
-    if (loaded !== index) {
-      data = await readFile(timeline[index]!.file);
-      loaded = index;
-    }
-    yield data;
-  }
-}
 
 async function veilFrame(ffmpeg: string, data: Buffer): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
@@ -51,7 +34,8 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   const ffmpeg = ffmpegBin();
   if (!ffmpeg) throw new Error("CDP video needs ffmpeg; the run has not started");
   await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
-  const dir = await mkdtemp("/tmp/bao-cdp-video-");
+  const mp4 = path.extname(destination) === ".mp4";
+  const dir = await mkdtemp(mp4 ? `${destination}.frames-` : "/tmp/bao-cdp-video-");
   await chmod(dir, 0o700);
   const frames: { file: string; at: number }[] = [];
   let active = true;
@@ -105,53 +89,48 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   const stop = (): ReturnType<CdpVideo["stop"]> => {
     stopping ??= (async () => {
       await endCapture();
+      let keepFrames = false;
       try {
         if (failure) throw failure;
         if (!frames.length) throw new Error("CDP video recorded no frames");
-        const mp4 = path.extname(destination) === ".mp4";
-        let duration = 0;
-        const timeline = mp4 ? frames.map((frame, index) => {
-          const at = duration;
-          duration += Math.max(40, (frames[index + 1]?.at ?? endedAt) - frame.at);
-          return { file: frame.file, at };
-        }) : [];
-        const ticks = Math.ceil((duration + 40) * MP4_FPS / 1000);
-        if (mp4 && ticks > MAX_MP4_FRAMES) truncated = true;
+        keepFrames = mp4;
+        let duration = 40;
+        const entry = (file: string) => mp4 ? `file '${path.basename(file)}'\noption framerate 1000` : `file '${file}'`;
+        const list = frames.map((frame, index) => {
+          const span = Math.max(40, (frames[index + 1]?.at ?? endedAt) - frame.at);
+          duration += span;
+          return `${entry(frame.file)}\nduration ${(span / 1000).toFixed(3)}`;
+        }).join("\n") + `\n${entry(frames[frames.length - 1]!.file)}\n${mp4 ? "duration 0.040\n" : ""}`;
         const manifest = path.join(dir, "frames.txt");
-        if (!mp4) {
-          const list = frames.map((frame, index) => {
-            const next = frames[index + 1]?.at ?? endedAt;
-            return `file '${frame.file}'\nduration ${Math.max(0.04, (next - frame.at) / 1000).toFixed(3)}`;
-          }).join("\n") + `\nfile '${frames[frames.length - 1]!.file}'\n`;
-          await writeFile(manifest, list, { mode: 0o600 });
-        }
-        const input = mp4 ? ["-f", "image2pipe", "-framerate", String(MP4_FPS), "-c:v", "mjpeg", "-i", "pipe:0"]
-          : ["-f", "concat", "-safe", "0", "-i", manifest];
+        await writeFile(manifest, list, { mode: 0o600 });
         const encoding = mp4 ? [
-          "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2:out_color_matrix=bt709:out_range=tv,setsar=1,setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+          "-t", (duration / 1000).toFixed(3),
+          "-vf", "fps=30:round=up,scale=trunc(iw/2)*2:trunc(ih/2)*2:out_color_matrix=bt709:out_range=tv,setsar=1,setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
           "-fps_mode", "cfr", "-c:v", "libx264", "-preset", "fast",
           "-profile:v", "main", "-level:v", "4.0", "-pix_fmt", "yuv420p", "-bf", "0", "-maxrate", "20M", "-bufsize", "25M",
           "-color_range", "tv", "-colorspace", "bt709", "-color_trc", "bt709", "-color_primaries", "bt709", "-movflags", "+faststart",
         ] : [
           "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-fps_mode", "vfr", "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "5",
         ];
-        const child = spawn(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...input, ...encoding, destination],
-          { stdio: ["pipe", "ignore", "ignore"], env: { PATH: "/usr/bin:/bin" } });
-        const encoded = new Promise<void>((resolve, reject) => {
-          const timer = mp4 ? undefined : setTimeout(() => { child.kill("SIGKILL"); reject(new Error("CDP video encoding timed out")); }, 120_000);
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", manifest, ...encoding, destination],
+            { stdio: "ignore", env: { PATH: "/usr/bin:/bin" } });
+          const timer = setTimeout(() => { child.kill("SIGKILL"); }, mp4 ? 120_000 + duration * 2 : 120_000);
           child.once("error", () => { clearTimeout(timer); reject(new Error("CDP video encoder did not start")); });
-          child.once("exit", (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error("CDP video encoding failed")); });
+          child.once("exit", (code, signal) => {
+            clearTimeout(timer);
+            if (code === 0) resolve();
+            else reject(new Error(signal === "SIGKILL" ? "CDP video encoding timed out" : "CDP video encoding failed"));
+          });
         });
-        try {
-          if (mp4) await Promise.all([encoded, pipeline(cfrFrames(timeline, Math.min(ticks, MAX_MP4_FRAMES)), child.stdin)]);
-          else { child.stdin.end(); await encoded; }
-        } catch (error) { child.kill("SIGKILL"); throw error; }
         if ((await stat(destination)).size < 1000) throw new Error("CDP video output was empty");
+        keepFrames = false;
         return { wrote: true, frames: frames.length, truncated };
       } catch (error) {
         await rm(destination, { force: true });
+        if (keepFrames) throw new Error(`${error instanceof Error ? error.message : "CDP video encoding failed"}; video frames retained at ${dir}`);
         throw error;
-      } finally { await rm(dir, { recursive: true, force: true }); }
+      } finally { if (!keepFrames) await rm(dir, { recursive: true, force: true }); }
     })();
     return stopping;
   };
