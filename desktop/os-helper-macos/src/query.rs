@@ -5,7 +5,7 @@ use accessibility_sys::{
 };
 use core_foundation::base::{CFGetTypeID, TCFType};
 
-use crate::apps::{bundle_id_for_pid, pids_for_bundle};
+use crate::apps::bundle_id_for_pid;
 use crate::element::{copy_attr, has_press, parent, pid_of, El};
 use crate::model::{Geom, Node};
 use crate::walk::{ancestor_path, describe, detect_geom, is_text_role, screen_size};
@@ -53,37 +53,6 @@ fn copy_system(x: f64, y: f64) -> Result<Option<El>, String> {
         return Ok(None);
     }
     Ok(El::adopt(raw))
-}
-
-fn target_pid(bundle: &str) -> Result<Option<i32>, String> {
-    if bundle.is_empty() { return Ok(None); }
-    let pids = pids_for_bundle(bundle);
-    if pids.len() != 1 {
-        return Err(format!("expected one process for {bundle}, found {} ({pids:?})", pids.len()));
-    }
-    Ok(Some(pids[0]))
-}
-
-fn check_point_owner(expected: i32, actual: i32) -> Result<(), String> {
-    if actual != expected {
-        return Err(format!("point is covered by another app (owner pid {actual}, target pid {expected}); refusing to read or press its controls"));
-    }
-    Ok(())
-}
-
-fn copy_owned_point(x: f64, y: f64, expected: Option<i32>) -> Result<Option<El>, String> {
-    let leaf = copy_system(x, y)?;
-    if let (Some(pid), Some(leaf)) = (expected, leaf.as_ref()) {
-        // Read only the owner pid until we know this is the target app.
-        check_point_owner(pid, pid_of(leaf))?;
-    }
-    Ok(leaf)
-}
-
-pub(crate) fn require_uncovered_point(x: f64, y: f64, pid: i32) -> Result<(), String> {
-    copy_owned_point(x, y, Some(pid))?
-        .ok_or_else(|| "no accessibility element at point; refusing to press".to_string())?;
-    Ok(())
 }
 
 fn climb(leaf: El) -> Result<(bool, String, Option<Node>), String> {
@@ -151,22 +120,20 @@ fn node_at_point(nodes: Vec<Node>, x: f64, y: f64) -> Option<Node> {
 
 /// System-wide `AXUIElementCopyElementAtPosition`, then the allowed app's windows.
 pub fn at_point(x: f64, y: f64, allow_bundle: &str) -> Result<(bool, String, Option<Node>), String> {
-    if let Some(leaf) = copy_owned_point(x, y, target_pid(allow_bundle)?)? {
-        let hit = climb(leaf)?;
-        if hit.0 || allow_bundle.is_empty() { return Ok(hit); }
-        // Chrome can return only AXApplication here. Its owner was checked
-        // above, so the target's AX window frames are a safe fallback.
+    if let Some(leaf) = copy_system(x, y)? {
+        let bundle = bundle_id_for_pid(pid_of(&leaf));
+        if allow_bundle.is_empty() || bundle == allow_bundle {
+            return climb(leaf);
+        }
     }
     walk_point(x, y, allow_bundle)
 }
 
 pub fn focused(allow_bundle: &str) -> Result<(bool, String, Option<Node>), String> {
-    let expected = target_pid(allow_bundle)?;
     let sys = system_wide()?;
     let from_app = copy_attr(&sys, kAXFocusedApplicationAttribute).and_then(|value| {
         if !is_element(&value) { return None; }
         let app = El::retain(value.as_CFTypeRef() as AXUIElementRef)?;
-        if expected.is_some_and(|pid| pid_of(&app) != pid) { return None; }
         copy_attr(&app, kAXFocusedUIElementAttribute)
     });
     let value = if from_app.is_some() { from_app } else { copy_attr(&sys, kAXFocusedUIElementAttribute) };
@@ -185,10 +152,10 @@ pub fn focused(allow_bundle: &str) -> Result<(bool, String, Option<Node>), Strin
     }
     let el = El::retain(value.as_CFTypeRef() as AXUIElementRef).ok_or("focused element was null")?;
     let pid = pid_of(&el);
-    if expected.is_some_and(|expected| pid != expected) {
+    let bundle = bundle_id_for_pid(pid);
+    if !allow_bundle.is_empty() && bundle != allow_bundle {
         return Ok((false, "focused element is outside the allowed app".into(), None));
     }
-    let bundle = bundle_id_for_pid(pid);
     let geom = geom_for_pid(pid);
     let node = describe(&el, &ancestor_path(&el), &bundle, pid, &geom);
     let text = is_text_role(&node.role);
@@ -198,7 +165,7 @@ pub fn focused(allow_bundle: &str) -> Result<(bool, String, Option<Node>), Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{check_point_owner, node_at_point};
+    use super::node_at_point;
     use crate::model::{Frame, Node};
 
     fn node(name: &str, frame: Frame, useful: bool) -> Node {
@@ -212,21 +179,12 @@ mod tests {
     }
 
     #[test]
-    fn owned_chrome_window_fallback_hits_offset_retina_points_without_a_y_flip() {
+    fn window_walk_hits_offset_retina_points_without_a_y_flip() {
         let nodes = vec![
             node("window", Frame { x: 50.0, y: 50.0, w: 550.0, h: 500.0 }, false),
             node("button", Frame { x: 210.0, y: 317.0, w: 220.0, h: 56.0 }, true),
         ];
         assert_eq!(node_at_point(nodes.clone(), 320.0, 345.0).unwrap().name, "button");
         assert!(node_at_point(nodes, 320.0, 1117.0 - 345.0).is_none());
-    }
-
-    #[test]
-    fn covered_point_refuses_before_reading_or_pressing_a_foreign_element() {
-        assert!(check_point_owner(42, 42).is_ok());
-        for owner in [0, 43, 99] {
-            assert_eq!(check_point_owner(42, owner).unwrap_err(),
-                format!("point is covered by another app (owner pid {owner}, target pid 42); refusing to read or press its controls"));
-        }
     }
 }
