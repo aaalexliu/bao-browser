@@ -361,7 +361,7 @@ test("an attach run picks one open page and does not create or close a target", 
 test("a live session view stays on this machine and blurs the page shot", () => {
   assert.equal(screenFromQuery("?screen=live"), "live");
   assert.equal(screenFromQuery("?screen=library"), "");
-  assert.equal(screenFromQuery("?screen=settings"), "settings");
+  assert.equal(screenFromQuery("?screen=settings"), "");
   assert.equal(screenFromQuery("?screen=run&run=run-fixture"), "");
   assert.equal(screenFromQuery("?screen=run"), "");
   assert.equal(shotNameOk("shot-001.png"), true);

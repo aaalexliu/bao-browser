@@ -49,6 +49,7 @@ export type LiveActOutcome =
   | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
 
 function planRefusal(reason: string): LiveActOutcome {
+  if (reason === "login_wall") return { kind: "halted", reason };
   return reason === "experian_commit"
     ? { kind: "reached", reason, instruction: EXPERIAN_COMMIT_INSTRUCTION }
     : { kind: "refused", reason };
@@ -62,12 +63,11 @@ async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guar
 
 /** A load the window failed on a stop path goes back to the last allowed page, and the refusal reads that page again. */
 async function refuseBlocked(target: LiveActTarget, reason: string): Promise<LiveActOutcome> {
-  if (reason === "login_wall") return { kind: "halted", reason };
   if (reason === "stop-path") {
     await target.driver.returnFromBlock();
     await target.reread();
   }
-  return { kind: "refused", reason };
+  return planRefusal(reason);
 }
 
 function controlOf(read: LiveRead, ref: string) {
@@ -81,7 +81,7 @@ export async function clickLive(target: LiveActTarget, ref: string): Promise<Liv
   const entry = target.read.targets.byRef.get(ref);
   if (entry?.href) {
     const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
-    if (why) return { kind: "refused", reason: why };
+    if (why) return planRefusal(why);
   }
   const index = entry?.index ?? -1;
   if (!await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
@@ -138,7 +138,7 @@ export async function pressLiveKey(target: LiveActTarget, key: string, ref: stri
   const control = controlOf(target.read, ref);
   if (key === "Enter" && entry?.href) {
     const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
-    if (why) return { kind: "refused", reason: why };
+    if (why) return planRefusal(why);
   }
   const index = entry?.index ?? -1;
   if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };

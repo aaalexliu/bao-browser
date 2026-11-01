@@ -427,6 +427,21 @@ test("a key press or scroll whose load is failed on a stop path goes back and re
   assert.deepEqual(scroll.log.calls.slice(-2), ["returnFromBlock", "reread"]);
 });
 
+test("direct login links halt click and Enter before any page action", async () => {
+  for (const login of ["/login", "/login/index", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
+    const shop = facts([{ index: 0, label: "Resume", kind: "link", href: `http://127.0.0.1${login}` }]);
+    const read = buildView(shop, 1, instacart);
+    for (const act of [
+      (target: LiveActTarget) => clickLive(target, "e1.c0"),
+      (target: LiveActTarget) => pressLiveKey(target, "Enter", "e1.c0"),
+    ]) {
+      const { target, log } = fakeTarget(read, { marked: shop });
+      assert.deepEqual(await act(target), { kind: "halted", reason: "login_wall" });
+      assert.deepEqual(log.calls, []);
+    }
+  }
+});
+
 test("click, Enter and scroll halt on a blocked login redirect without returning to an expired page", async () => {
   const shop = facts([{ index: 0, label: "Search deals", kind: "field", field: { type: "search", name: "d", autocomplete: "" }, form: "search" }]);
   const read = buildView(shop, 1, instacart);

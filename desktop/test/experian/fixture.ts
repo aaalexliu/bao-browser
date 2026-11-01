@@ -44,7 +44,7 @@ export async function startExperianFixture() {
       res.end();
     } else if (url.pathname === "/member/session-links") {
       const login = encodeURIComponent(url.searchParams.get("login") || "/login");
-      send("Member actions", `<a href="/member/expired?login=${login}">Continue</a><form action="/member/expired"><input type="hidden" name="login" value="${decodeURIComponent(login)}"><label>Search <input type="search" name="q"></label><button type="submit">Search</button></form>`);
+      send("Member actions", `<a href="/member/expired?login=${login}">Continue</a><form action="/member/expired"><input type="hidden" name="login" value="${decodeURIComponent(login)}"><label>Search <input type="search" name="q"></label><button type="submit">Search</button></form><a href="${decodeURIComponent(login)}">Resume</a><button type="button" data-path="${decodeURIComponent(login)}" onclick="history.pushState({}, '', this.dataset.path)">More details</button>`);
     } else if (url.pathname === "/member") {
       send("Dashboard", `${header}<p>Your score: 742.</p><a href="https://www.experian.com/">Public site</a><a href="/member/accounts/summary">Accounts summary</a><a href="/member/security-help">Security help</a>${buttons}<a href="/member/freeze">Manage freeze</a>`);
     } else if (url.pathname === "/member/freeze") {

@@ -64,14 +64,13 @@ export function navigationRefusal(url: string, hosts: readonly string[] = BOOKS_
 
 /** Pathname and hash, so `#/checkout` is the same stop as `/checkout`. */
 export function stopPathHit(url: string, stopPath: string): boolean {
-  if (!stopPath) return false;
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return false;
   }
-  return stopPathMatch(`${parsed.pathname}${parsed.hash}`, stopPath);
+  return pathHalt(`${parsed.pathname}${parsed.hash}`, stopPath) !== null;
 }
 
 /** `path` is a pathname plus hash, as a page reports it. */
@@ -82,6 +81,11 @@ export function stopPathMatch(path: string, stopPath: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function pathHalt(path: string, stopPath = ""): "login_wall" | "stop-path" | null {
+  if (/\/(?:login|signin|sign-in)(?:\/|$|[?#])/i.test(path)) return "login_wall";
+  return stopPathMatch(path, stopPath) ? "stop-path" : null;
 }
 
 /** The start origin keeps its port. Other preset hosts use the default http and https origins. */
@@ -96,7 +100,6 @@ export function originsFor(start: string, hosts: readonly string[]): string[] {
   return [...origins];
 }
 
-/** Refusal the live entry can show. A blocked Instacart path stays `blocked-path`. */
 export function navigationGuard(
   url: string,
   hosts: readonly string[],
@@ -104,10 +107,10 @@ export function navigationGuard(
   stopPath = "",
 ): string | null {
   const refusal = navigationRefusal(url, hosts, origins.length ? origins : undefined);
-  if (refusal === "blocked-path") return "blocked-path";
-  if (refusal) return "url is not on the host list";
-  if (stopPathHit(url, stopPath)) return "stop-path";
-  return null;
+  if (refusal && refusal !== "blocked-path") return "url is not on the host list";
+  const parsed = new URL(url);
+  const halt = pathHalt(`${parsed.pathname}${parsed.hash}`, stopPath);
+  return halt === "login_wall" ? halt : refusal || halt;
 }
 
 export function navigationAllowed(url: string, hosts: readonly string[] = BOOKS_HOSTS): boolean {

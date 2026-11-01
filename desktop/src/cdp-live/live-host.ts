@@ -7,7 +7,6 @@ import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
 import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
-import { siteHost } from "../v1/human-ask";
 import {
   clickLive,
   pressLiveKey,
@@ -38,6 +37,7 @@ import {
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
   LIVE_IDLE_WARN_MS,
+  LIVE_LOGIN_INSTRUCTION,
   LIVE_REPLAY,
   markedState,
   pageHalt,
@@ -193,7 +193,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   function reply(body: Record<string, unknown>): unknown {
     const outcome = body.outcome as { kind?: string; reason?: string; instruction?: string } | undefined;
     if (outcome?.kind === "halted" && outcome.reason === "login_wall" && !outcome.instruction) {
-      return publicLiveResult({ ...body, outcome: { ...outcome, instruction: "Sign in again in Chrome, then start a new live session." } });
+      return publicLiveResult({ ...body, outcome: { ...outcome, instruction: LIVE_LOGIN_INSTRUCTION } });
     }
     return publicLiveResult(body);
   }
@@ -336,6 +336,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     guard.allowCommit = body.allowCommit === true;
     const host = new URL(url).hostname;
     const blocked = navigationGuard(url, hosts, origins, stopPath);
+    if (blocked === "login_wall") return reply({ op: "live_session_start", session: "", outcome: { kind: "halted", reason: blocked }, view: null, shot: "" });
     if (blocked) throw new Error(blocked);
     const selected = await opts.selectRun?.();
     if (portFile && selected?.close) {
@@ -420,7 +421,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     } catch (err) {
       const halt = err instanceof LiveNavigationHalt ? err : undefined;
       const instruction = halt?.reason === "login_wall"
-        ? `Sign in to ${siteHost(url)} in Chrome, then start again.`
+        ? LIVE_LOGIN_INSTRUCTION
         : "Bao stopped at a path it does not drive.";
       const id = open?.id || "";
       const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.webm`) : "";
@@ -499,7 +500,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
     const reached = action !== "start" && !halt && open.read.view.reached;
     const shot = await record(action, open.read.view.title || action, Date.now() - started, halt || reached ? "needs_human" : "passed", null);
-    if (open.guard.freezeCommit) await open.log.flush(reached || halt ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_MESSAGE : halt || "", open.host);
+    if (open.guard.freezeCommit) await open.log.flush(reached || halt ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_MESSAGE : halt === "login_wall" ? LIVE_LOGIN_INSTRUCTION : halt || "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);
       if (event && shot) open.eventShots.set(event.id, shot);
@@ -709,8 +710,9 @@ export function createLiveHost(opts: LiveHostOptions): {
         }
         return { id: step.id, status: "passed" };
       });
+      const ask = open.halted === "login_wall" ? LIVE_LOGIN_INSTRUCTION : open.read?.view.reached ? EXPERIAN_COMMIT_MESSAGE : "";
       library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
-        ...(open.read?.view.reached ? { envelope: { status: "needs_human", run_id: open.runId, reason: "experian_commit", ask: EXPERIAN_COMMIT_MESSAGE } } : {}),
+        ...(ask ? { envelope: { status: "needs_human", run_id: open.runId, reason: open.halted || "experian_commit", ask } } : {}),
         ...(video ? { video: `${open.runId}.webm`, videoStartedAt: open.startedAt } : {}) });
     }
     return true;
@@ -728,7 +730,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         : "Stopped.";
     const refused = open.refused || open.covered.size > 0;
     const reached = open.read?.view.reached;
-    const noteText = open.halted ? open.halted : reached ? EXPERIAN_COMMIT_MESSAGE : refused ? "Refused." : ended;
+    const noteText = open.halted === "login_wall" ? LIVE_LOGIN_INSTRUCTION : open.halted || (reached ? EXPERIAN_COMMIT_MESSAGE : refused ? "Refused." : ended);
     const status = open.halted || reached ? "needs_human" : refused ? "failed" : "passed";
     const ending = open;
     let saveError = "";

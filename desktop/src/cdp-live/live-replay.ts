@@ -125,7 +125,7 @@ export class GuardedLiveDriver implements Driver {
 
   async goto(url: string): Promise<void> {
     const why = navigationGuard(url, this.scope.hosts, this.scope.origins, this.scope.stopPath);
-    if (why) throw this.stop(why, false);
+    if (why) throw this.stop(why, why === "login_wall");
     try { await this.inner.goto(url); }
     catch (error) {
       if (error instanceof LiveNavigationHalt) throw this.stop(error.reason, true);
@@ -319,9 +319,15 @@ export async function replayLiveWorkflow(
   if (workflow.driver !== "cdp-live") throw new Error("not a live workflow");
   const scope = liveScope(workflow.startUrl);
   const blocked = navigationGuard(workflow.startUrl, scope.hosts, scope.origins, scope.stopPath);
+  const engineName = deps.engineName ?? "old";
+  const initial: RunResult = {
+    runId, pageEngine: engineName, status: "paused",
+    steps: workflow.steps.map((step) => ({ id: step.id, status: "pending" })),
+    heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
+  };
+  if (blocked === "login_wall") return pausedAt(workflow, initial, workflow.steps[0]?.id || workflow.id, blocked);
   if (blocked) throw new Error(blocked);
   const lockFile = deps.lockFile || CDP_LOCK_PATH;
-  const engineName = deps.engineName ?? "old";
   await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
   let prepared;
   try {
@@ -365,11 +371,7 @@ export async function replayLiveWorkflow(
     return run;
   } catch (error) {
     if (!(error instanceof LiveNavigationHalt)) throw error;
-    run = pausedAt(workflow, {
-      runId, pageEngine: engineName, status: "paused",
-      steps: workflow.steps.map((step) => ({ id: step.id, status: "pending" })),
-      heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
-    }, workflow.steps[0]?.id || workflow.id, error.reason);
+    run = pausedAt(workflow, initial, workflow.steps[0]?.id || workflow.id, error.reason);
     return run;
   } finally {
     await driver?.end().catch(() => undefined);

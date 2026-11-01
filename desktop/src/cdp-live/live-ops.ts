@@ -1,4 +1,4 @@
-import { insertTextRefusal, stopPathMatch } from "./allowlist";
+import { insertTextRefusal, pathHalt } from "./allowlist";
 import { redactLabel } from "./live-record";
 import { COMMIT_FLOOR, type GuardPreset } from "./presets";
 
@@ -43,7 +43,7 @@ export interface LiveIdleWarning {
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. A preset (generic, instacart, books, experian) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. Freeze-flow navigation stays allowed, but the final Unfreeze, Freeze, Lift, Thaw, Confirm or Submit button returns reached: experian_commit without a click. Stop and save with live_stop. Only after the owner explicitly says go, start a new session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides checkout, deny labels or credential guards. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. A preset (generic, instacart, books, experian) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. Dashboard Unfreeze and other freeze-flow starters stay ordinary clicks. Only the final Unfreeze, Freeze, Lift, Thaw, Confirm or Submit action on the freeze review or confirmation page returns reached: experian_commit without a click. Session start never returns reached. Stop and save with live_stop. Only after the owner explicitly says go, start a new session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides checkout, deny labels or credential guards. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -97,7 +97,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_stop",
-    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Typed text becomes an input, except a search box's text, which replay types again as recorded. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay repeats the recorded steps, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
+    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, and scroll that went through is on the session's trail, and the workflow is built from it. Only Experian workflows keep repeated clicks, clicks with no visible effect and typed corrections in order; other presets condense them as before. Scrolls stay in the trail but do not become steps. Typed text becomes an input, except a search box's text, which replay types again as recorded. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay repeats the recorded steps, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;
@@ -180,6 +180,7 @@ export interface LiveViewPage extends LiveView {
 /** The label patterns of the active preset. */
 export type LabelGuard = Pick<GuardPreset, "commit" | "deny" | "submit" | "freezeCommit"> & { allowCommit?: boolean };
 
+export const LIVE_LOGIN_INSTRUCTION = "Sign in again in Chrome, then start a new live session.";
 export const EXPERIAN_COMMIT_MESSAGE = "The final unfreeze button is on screen. Bao stopped before clicking it.";
 export const EXPERIAN_COMMIT_INSTRUCTION = `${EXPERIAN_COMMIT_MESSAGE} Confirm with the owner before starting a new session with allowCommit: true.`;
 
@@ -397,12 +398,13 @@ export function planType(read: LiveRead, ref: string, text: string, prior = ""):
 }
 
 export function pageHalt(facts: { blocked: string; path: string; passwordFields: number; text?: string; stopPath?: string }): "login_wall" | "bot_wall" | "stop-path" | null {
-  if (stopPathMatch(facts.path, facts.stopPath || "")) return "stop-path";
+  const halt = pathHalt(facts.path, facts.stopPath);
+  if (halt) return halt;
   const text = (facts.text || "").toLowerCase();
   if (/request unsuccessful|powered by imperva|incapsula incident/.test(text)) return "bot_wall";
   if (/verify you are human|i'm not a robot|i’m not a robot|recaptcha challenge/.test(text)) return "bot_wall";
   if (facts.passwordFields > 0 && /continue with google|sign in with google|sign in with apple|continue with apple|single sign-on|\bsso\b|verification code|one-time code|one time code|two-factor|two factor|\b2fa\b|security code|\bpin\b/.test(text)) return "login_wall";
-  if (facts.blocked === "login" || facts.blocked === "login_wall" || (facts.passwordFields > 0 && /login|sign-?in/i.test(facts.path))) {
+  if (facts.blocked === "login" || facts.blocked === "login_wall") {
     return "login_wall";
   }
   if (facts.blocked === "bot_wall" || facts.blocked === "captcha") return "bot_wall";

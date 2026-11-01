@@ -11,7 +11,7 @@ import { liveCliBody, liveToolResult } from "../../src/mcp/live-proxy";
 import { acquireCdpLock, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { GuardedLiveDriver, liveReplayArgs, liveScope, replayGuarded, replayLiveWorkflow, type LiveWindow } from "../../src/cdp-live/live-replay";
-import { CdpLiveDriver } from "../../src/cdp-live/driver";
+import { CdpLiveDriver, LiveNavigationHalt } from "../../src/cdp-live/driver";
 import type { CdpSocket } from "../../src/cdp-live/socket";
 import { guardPreset } from "../../src/cdp-live/presets";
 import { WORKFLOW_SCHEMA_ID, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
@@ -497,6 +497,31 @@ test("a guarded replay pauses for a person on a bot wall or a stop path, and on 
   assert.deepEqual(calls, []);
 });
 
+test("a guarded replay pauses on login pages and login navigate steps without touching the page", async () => {
+  for (const login of ["/login", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
+    const page: FakePage = { path: login, controls: [{ label: "Resume", kind: "button" }] };
+    const { window, calls } = liveWindow([page]);
+    const driver = new GuardedLiveDriver(window, SHOP_SCOPE);
+    const node = (await window.tree()).nodes[0]!;
+    await assert.rejects(driver.click(node), /login_wall/);
+    assert.equal(driver.stopped?.halt, true);
+    assert.deepEqual(calls, []);
+    const current = await guarded(liveWorkflow([liveStep(0, "click", "Resume")]), [page]);
+    assert.equal(current.run.status, "paused", JSON.stringify(current.run));
+    assert.equal(current.run.pausedKind, "wall");
+    assert.notEqual(current.run.steps[0]?.reason, "stop-path");
+    assert.match(current.run.ask?.instruction || "", /Sign in/i);
+    assert.deepEqual(current.calls, []);
+    const navigation = await guarded(liveWorkflow([liveStep(0, "navigate", "Resume", { value: `http://127.0.0.1${login}` })]), [ADD_TO_CART]);
+    assert.equal(navigation.run.status, "paused", JSON.stringify(navigation.run));
+    assert.equal(navigation.run.pausedKind, "wall");
+    assert.equal(navigation.run.steps[0]?.reason, "login_wall");
+    assert.match(navigation.run.ask?.instruction || "", /Sign in to .* in Chrome/);
+    assert.equal(navigation.run.modelCalls, 0);
+    assert.deepEqual(navigation.calls, []);
+  }
+});
+
 test("a guarded replay refuses a confirm or denied control, a blocked load, a control that moved, and a control the live view does not list", async () => {
   const order = await guarded(liveWorkflow([liveStep(0, "click", "Place your order")]), [{ controls: [{ label: "Place your order", kind: "button" }] }]);
   assert.equal(order.run.status, "failed");
@@ -621,6 +646,9 @@ test("the live window blocks only its own main frame, stops a load on a stop pat
     assert.equal(driver.takeBlockedNav(), "", "the blocked halt is consumed once");
     assert.equal(verdict(`login-${pathname}`), "Fetch.failRequest");
   }
+  own.emit("Fetch.requestPaused", { requestId: "off-host-login", frameId: "MAIN", request: { url: "https://evil.example/login" } });
+  assert.equal(driver.takeBlockedNav(), "evil.example");
+  await assert.rejects(driver.goto("http://127.0.0.1/login"), error => error instanceof LiveNavigationHalt && error.reason === "login_wall");
   const attached = fakeCdp();
   await new CdpLiveDriver(attached.cdp, "s", "TAB", ["127.0.0.1"], true).start();
   assert.equal(attached.sent.some((item) => item.method === "Fetch.enable"), false);
