@@ -237,11 +237,12 @@ export function esc(value: unknown): string {
   return htmlEsc(visibleCopy(String(value ?? "")));
 }
 
-/** A URL for a real PNG. Anything else stays blank so the window never paints a broken image. */
+/** A URL for a page PNG or JPEG. Reject paths and other data formats. */
 export function imageRef(runId: string, value: string | undefined): string {
   if (!value) return "";
   if (value.startsWith("iVBORw0KGgo") && /^[A-Za-z0-9+/=]+$/.test(value)) return `data:image/png;base64,${value}`;
-  if (/^[\w.-]+\.png$/.test(value)) return `/api/runs/${encodeURIComponent(runId)}/shots/${encodeURIComponent(value)}`;
+  if (value.startsWith("/9j/") && /^[A-Za-z0-9+/=]+$/.test(value)) return `data:image/jpeg;base64,${value}`;
+  if (/^[\w.-]+\.(png|jpe?g)$/.test(value)) return `/api/runs/${encodeURIComponent(runId)}/shots/${encodeURIComponent(value)}`;
   return "";
 }
 
@@ -635,7 +636,7 @@ export function runViewer(
   const routeLine = ran ? `<p id="route-ran" data-route="${esc(ran)}">Route: ${esc(ran)}</p>` : "";
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
-  const shot = shotPane(before, after, selected?.action, selected?.label || "");
+  const shot = shotPane(before, after, selected?.action, selected?.label || "", selected?.beforeShotError, selected?.afterShotError);
   const table = identityTable(identity);
   const video = videoBar(run, steps);
   const safeHeadline = failed ? esc(headline) : headline;
@@ -852,14 +853,15 @@ function frameUrl(runId: string, step: StepView, failure: FailureView | undefine
     || imageRef(runId, failure.beforeShot);
 }
 
-function shotPane(before: string, after: string, action?: string, label?: string): string {
-  const which = after ? "after" : "before";
+function shotPane(before: string, after: string, action?: string, label?: string, beforeError?: string, afterError?: string): string {
+  const which = after || afterError ? "after" : "before";
+  const missing = "No picture was saved for this step.";
   return `<div class="shots" id="shots">
     <div class="row">
-      <button type="button" class="toggle ${which === "before" ? "on" : ""}" data-frame="before" ${before ? "" : "disabled"}>Before</button>
-      <button type="button" class="toggle ${which === "after" ? "on" : ""}" data-frame="after" ${after ? "" : "disabled"}>After</button>
+      <button type="button" class="toggle ${which === "before" ? "on" : ""}" data-frame="before">Before</button>
+      <button type="button" class="toggle ${which === "after" ? "on" : ""}" data-frame="after">After</button>
     </div>
-    <div class="shot-stage" id="shot-stage" data-before="${esc(before)}" data-after="${esc(after)}" data-which="${which}">${placeholder(action, label || "This step")}</div>
+    <div class="shot-stage" id="shot-stage" data-before="${esc(before)}" data-after="${esc(after)}" data-before-error="${esc(beforeError || missing)}" data-after-error="${esc(afterError || missing)}" data-which="${which}">${placeholder(action, label || "This step")}<p class="quiet" data-shot-error hidden></p></div>
   </div>`;
 }
 

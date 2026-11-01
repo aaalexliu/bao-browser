@@ -1,9 +1,18 @@
 // Shot file names shared by replay and the window. No Node APIs, so the
 // browser bundle can import this too.
 
-export function shotFile(stepId: string, which: "before" | "after"): string {
+export type ShotFormat = "png" | "jpg";
+
+export function shotFormat(bytes: Uint8Array): ShotFormat | undefined {
+  if (bytes.length < 24) return;
+  if ([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, i) => bytes[i] === byte)) return "png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg";
+  return;
+}
+
+export function shotFile(stepId: string, which: "before" | "after", format: ShotFormat = "png"): string {
   const safe = stepId.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80) || "step";
-  return `${safe}-${which}.png`;
+  return `${safe}-${which}.${format}`;
 }
 
 export function workflowShotName(stepId: string): string {

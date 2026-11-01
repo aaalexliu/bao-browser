@@ -753,6 +753,7 @@ export function createLiveHost(opts: LiveHostOptions): {
           target: selected?.target ?? defaultTarget,
           engineName: run.pageEngine,
           artifactRoot: selected?.artifactRoot,
+          shotDir: path.join(opts.home, "shots", "runs", runId),
           videoDir: opts.videoDir,
           evalVideoNoBlur,
           lockFile,

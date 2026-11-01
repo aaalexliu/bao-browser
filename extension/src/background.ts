@@ -1251,18 +1251,16 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
   }
   if (op === "shot") {
     const tabId = await ownedTab();
-    await sendTab(tabId, { op: "mask" }).catch(() => undefined);
+    await sendTab(tabId, { op: "mask" });
     try {
-      const tab = await chrome.tabs.get(tabId);
-      if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
-      await chrome.tabs.update(tabId, { active: true }).catch(() => undefined);
-      let jpeg = "";
-      try {
-        jpeg = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 40 });
-      } catch {
-        jpeg = "";
-      }
-      return { ok: true, jpeg };
+      // CDP avoids captureVisibleTab's two-pictures-per-second limit.
+      return await withDebugger(tabId, async () => {
+        const shot = await chrome.debugger.sendCommand({ tabId }, "Page.captureScreenshot", {
+          format: "jpeg", quality: 40,
+        }) as { data?: string };
+        if (!shot.data) throw new Error("Chrome returned no picture");
+        return { ok: true, jpeg: `data:image/jpeg;base64,${shot.data}` };
+      });
     } finally {
       await sendTab(tabId, { op: "unmask" }).catch(() => undefined);
     }

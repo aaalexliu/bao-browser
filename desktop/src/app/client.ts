@@ -2231,17 +2231,33 @@ function mountShots(root: ParentNode = document): void {
 
 function mountStage(stage: HTMLElement): void {
   const which = stage.dataset.which || (stage.dataset.after ? "after" : "before");
-  const url = which === "before" ? stage.dataset.before || "" : stage.dataset.after || stage.dataset.before || "";
+  const url = which === "before" ? stage.dataset.before || "" : stage.dataset.after || "";
   stage.querySelectorAll("img").forEach((img) => img.remove());
   stage.classList.remove("has-shot");
-  if (!url) return;
+  const reason = stage.querySelector<HTMLElement>("[data-shot-error]");
+  const placeholder = stage.querySelector<HTMLElement>(".ph");
+  const showError = (message: string) => {
+    if (placeholder) placeholder.hidden = true;
+    if (reason) { reason.textContent = message; reason.hidden = false; }
+  };
+  if (reason) reason.hidden = true;
+  if (placeholder) placeholder.hidden = false;
+  if (!url) {
+    showError((which === "before" ? stage.dataset.beforeError : stage.dataset.afterError) || "No picture was saved for this step.");
+    return;
+  }
   const img = new Image();
   img.alt = "";
   img.onload = () => {
-    if (!stage.isConnected) return;
+    if (!stage.isConnected || img.parentElement !== stage) return;
     stage.classList.add("has-shot");
-    stage.prepend(img);
   };
+  img.onerror = () => {
+    if (!stage.isConnected || img.parentElement !== stage) return;
+    img.remove();
+    showError("The saved picture could not be loaded.");
+  };
+  stage.prepend(img);
   img.src = url;
 }
 
