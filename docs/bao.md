@@ -102,7 +102,7 @@ A native `<select>` is set from the page and held on that option, because the sh
 
 ### What stayed out
 
-Spoofing `navigator` or the TLS handshake is out of scope, and so is clicking a challenge widget. `captureVisibleTab` still throws without an install-time host permission, so the proof's window shots are the ones that count.
+Spoofing `navigator` or the TLS handshake is out of scope, and so is clicking a challenge widget. That proof used window shots because `captureVisibleTab` failed. The current step-picture path is in [the extension driver guide](extension.md#what-it-can-touch).
 
 ## 2026-10-21 — Real-app drift and multi-locator
 
@@ -279,7 +279,7 @@ Locator versions live on the workflow versions, in the one Versions panel. A ver
 
 ### 2026-10-22 — Trace-style run viewer
 
-A filmstrip frame shows the step's cropped, redacted screenshot, with the outline drawn on the target when the picture was taken. A step with no picture keeps the icon. Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
+Step-picture formats, framing, and missing-picture behavior are in [Bao desktop v1](v1.md#install-and-run). Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
 
 ### 2026-10-22 — Try a step, input tokens, and per-site trust
 
@@ -293,7 +293,7 @@ A past run can be started again from the run viewer. Re-run with this run's inpu
 
 The integration branch (pull request 58) is the tree a Mac build should use. It already contains the desktop window, and this pass landed the rest of the open desktop work on that same branch:
 
-- Step pictures in the filmstrip and in Before / After are cropped around the target element's box, with padding, the control centered and fully in frame, and a thin outline on it. A type step shows the field before the value and after it. A secret is covered.
+- Step-picture behavior is in [Bao desktop v1](v1.md#install-and-run).
 - Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. The act bar says "Sign in to the site in the Bao window."
 - The current Mac permission-card behavior is in [Bao desktop v1](v1.md#install-and-run); grant requirements are in [permissions](permissions.md).
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.

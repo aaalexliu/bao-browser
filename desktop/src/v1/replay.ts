@@ -250,7 +250,7 @@ export interface ReplayOptions {
   /** Append-only receipt file. Absent keeps the receipts on the run only. */
   receipts?: ReceiptLog;
   nowMs?: () => number;
-  /** Directory for per-step PNGs. Absent skips capture. */
+  /** Directory for per-step PNGs or JPEGs. Absent skips capture. */
   shotDir?: string;
   /** Auto-heal stays off after too many recent failures. */
   circuitOpen?: boolean;

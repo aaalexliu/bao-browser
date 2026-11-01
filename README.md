@@ -405,14 +405,12 @@ is still the source of truth for the extension.
   worse fit for short human steps. A heal row is named from that heal's
   workflow id, so a login heal no longer picks up a sibling named
   `textedit write`. OpenAdapt and Simular did not have public app screens
-  worth copying. A follow-up replaced empty thumbnails with per-step PNGs
-  from capture and replay, gave the workflow its own page, and drew one
-  sparkline cell per recent run. A missing picture is an icon and the target
-  text. Red is reserved for a failed step. A later polish shows every saved
-  step on the workflow page, turns the heal notice into a dismissible toast,
-  and crops each thumbnail around the target instead of shrinking the page.
-  Step rows stay about one line tall, and a healed step keeps a crop of the
-  control it actually used.
+  worth copying. A follow-up added capture and replay pictures, gave the
+  workflow its own page, and drew one sparkline cell per recent run. Current
+  step-picture behavior is in [Bao desktop v1](docs/v1.md#install-and-run).
+  Red is reserved for a failed step. A later polish shows every saved
+  step on the workflow page and turns the heal notice into a dismissible
+  toast. Step rows stay about one line tall.
 
 ---
 
