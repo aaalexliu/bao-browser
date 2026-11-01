@@ -180,7 +180,8 @@ export interface LiveViewPage extends LiveView {
 /** The label patterns of the active preset. */
 export type LabelGuard = Pick<GuardPreset, "commit" | "deny" | "submit" | "freezeCommit"> & { allowCommit?: boolean };
 
-export const EXPERIAN_COMMIT_INSTRUCTION = "The final credit-freeze button is on screen. Bao did not click it. Confirm with the owner before starting a new session with allowCommit: true.";
+export const EXPERIAN_COMMIT_MESSAGE = "The final unfreeze button is on screen. Bao stopped before clicking it.";
+export const EXPERIAN_COMMIT_INSTRUCTION = `${EXPERIAN_COMMIT_MESSAGE} Confirm with the owner before starting a new session with allowCommit: true.`;
 
 type TargetKind = "click" | "field" | "commit" | "credential" | "deny";
 

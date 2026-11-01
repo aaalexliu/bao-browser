@@ -11,7 +11,7 @@ import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
 import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import { clickLive, pressLiveKey, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
-import { buildView, EXPERIAN_COMMIT_INSTRUCTION, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
+import { buildView, EXPERIAN_COMMIT_MESSAGE, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
 import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import { acquireCdpLock, CDP_LOCK_PATH, releaseCdpLock, rememberLockTarget, takeDeadTarget } from "./lock";
@@ -217,7 +217,7 @@ export class GuardedLiveDriver implements Driver {
 }
 
 function haltLine(reason: string, site: string): string {
-  if (reason === "experian_commit") return EXPERIAN_COMMIT_INSTRUCTION;
+  if (reason === "experian_commit") return EXPERIAN_COMMIT_MESSAGE;
   if (reason === "login_wall") return `Sign in to ${site} in Chrome, then run the workflow again.`;
   if (reason === "bot_wall") return `${site} is showing a bot check. Complete it in Chrome, then run the workflow again.`;
   if (reason === "stop-path") return `The page went to a path on ${site} that Bao does not drive, so Bao stopped.`;

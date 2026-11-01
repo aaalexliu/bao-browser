@@ -33,6 +33,7 @@ import {
   admit,
   buildView,
   EXPERIAN_COMMIT_INSTRUCTION,
+  EXPERIAN_COMMIT_MESSAGE,
   isLiveOp,
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
@@ -494,7 +495,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
     const reached = !halt && open.read.view.reached;
     const shot = await record(action, open.read.view.title || action, Date.now() - started, halt || reached ? "needs_human" : "passed", null);
-    if (open.guard.freezeCommit) await open.log.flush(reached || halt ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_INSTRUCTION : halt || "", open.host);
+    if (open.guard.freezeCommit) await open.log.flush(reached || halt ? "needs_human" : "running", reached ? EXPERIAN_COMMIT_MESSAGE : halt || "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);
       if (event && shot) open.eventShots.set(event.id, shot);
@@ -704,7 +705,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         return { id: step.id, status: "passed" };
       });
       library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
-        ...(open.read?.view.reached ? { envelope: { status: "needs_human", run_id: open.runId, reason: "experian_commit", ask: EXPERIAN_COMMIT_INSTRUCTION } } : {}),
+        ...(open.read?.view.reached ? { envelope: { status: "needs_human", run_id: open.runId, reason: "experian_commit", ask: EXPERIAN_COMMIT_MESSAGE } } : {}),
         ...(video ? { video: `${open.runId}.webm`, videoStartedAt: open.startedAt } : {}) });
     }
     return true;
@@ -722,7 +723,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         : "Stopped.";
     const refused = open.refused || open.covered.size > 0;
     const reached = open.read?.view.reached;
-    const noteText = open.halted ? open.halted : reached ? EXPERIAN_COMMIT_INSTRUCTION : refused ? "Refused." : ended;
+    const noteText = open.halted ? open.halted : reached ? EXPERIAN_COMMIT_MESSAGE : refused ? "Refused." : ended;
     const status = open.halted || reached ? "needs_human" : refused ? "failed" : "passed";
     const ending = open;
     let saveError = "";
