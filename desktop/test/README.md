@@ -39,24 +39,23 @@ This runs a required-suite test outside the runner, so it opens installed Chrome
 
 ## Camera and microphone isolation
 
-Throwaway browsers start with `--deny-permission-prompts` and
+Browsers launched by tests and tooling start with `--deny-permission-prompts` and
 `--use-fake-device-for-media-stream`. Chrome rejects `getUserMedia` without
 asking macOS for access. Do not use `--use-fake-ui-for-media-stream`: it
 accepts media requests instead of denying them.
 
 `desktop/src/test-browser.js` shares these flags across desktop tests,
-extension fixtures, public probes, and asset scripts. Import its `testChromium`
-launch methods for test Playwright contexts, or spread `TEST_MEDIA_ARGS` into
+extension fixtures, public probes, asset scripts, and the logged-in
+`.chrome-profile` tools `test/live.mjs` and `test/live-notes.mjs`. Import its
+`testChromium` launch methods for test Playwright contexts, or spread `TEST_MEDIA_ARGS` into
 the arguments of a manually spawned test browser. The shared module uses
 CommonJS so both root `.mjs` tools and compiled desktop code load it;
 `allowJs` in `tsconfig.desktop.json` copies and type-checks it.
 
-Owned replay and eval launches in `desktop/src/launch.ts` add the flags only
-when `BAO_TEST_BROWSER` is set. Product launches, live CDP connections,
-agent-browser profile copies, and the logged-in `.chrome-profile` scripts keep
-their media settings. Copied profiles set `preserveMediaPermissions` to keep
-those settings even in a test-lane process. Standalone spikes and proof scripts
-pin the test browser.
+Owned replay, eval, and copied-profile launches in `desktop/src/launch.ts` add
+the flags only when `BAO_TEST_BROWSER` is set. Product launches without that
+variable and live CDP connections keep their media settings. Standalone spikes
+and proof scripts pin the test browser.
 
 `desktop/test/unit/test-media.test.ts` requests audio, video, and both together,
 queries permissions, and enumerates devices. It covers separate contexts,

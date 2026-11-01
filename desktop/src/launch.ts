@@ -149,7 +149,7 @@ export function testLaneMediaArgs(env: NodeJS.ProcessEnv = process.env): string[
  * Owned Chrome only. Account Chrome never receives the sandbox opt-in.
  * Caller arguments never carry a keychain flag. Only the test lane adds one.
  */
-export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, preserveMediaPermissions = false): string[] {
+export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
   const mac = platform === "darwin" ? ["--force-renderer-accessibility"] : [];
   const sandbox = needsLinuxNoSandbox(env, platform) ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
   const drop = new Set([
@@ -164,12 +164,12 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env), ...(preserveMediaPermissions ? [] : testLaneMediaArgs(env))];
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env), ...testLaneMediaArgs(env)];
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
-function ownedLaunchArgs(extra: string[] | undefined, append: string[] | undefined, preserveMediaPermissions?: boolean): string[] {
-  return ownedChromeLaunchArgs([...(extra ?? []), ...(append ?? [])], process.env, process.platform, preserveMediaPermissions);
+function ownedLaunchArgs(extra: string[] | undefined, append: string[] | undefined): string[] {
+  return ownedChromeLaunchArgs([...(extra ?? []), ...(append ?? [])]);
 }
 
 const KEYCHAIN_FLAG_NAMES = new Set(["--use-mock-keychain", "--password-store"]);
@@ -441,8 +441,6 @@ export async function launchOwnedChrome(opts: {
   deviceScaleFactor?: number;
   /** Only Chrome gets this HOME. Bao keeps its own isolated state and native-host paths. */
   childHome?: string;
-  /** Copied real profiles must not receive test-media flags. */
-  preserveMediaPermissions?: boolean;
   loadExtensions?: boolean;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
@@ -453,7 +451,6 @@ export async function launchOwnedChrome(opts: {
 
 async function launchNormalChrome(opts: {
   userDataDir: string;
-  preserveMediaPermissions?: boolean;
   childHome?: string;
   loadExtensions?: boolean;
   headless?: boolean;
@@ -470,7 +467,7 @@ async function launchNormalChrome(opts: {
   const headless = opts.headless ?? true;
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
-    ...ownedLaunchArgs(opts.args, opts.appendArgs, opts.preserveMediaPermissions),
+    ...ownedLaunchArgs(opts.args, opts.appendArgs),
     `--remote-debugging-port=${OWNED_DEBUG_PORT}`,
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
@@ -579,7 +576,6 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess)
 /** Playwright video only. The pipe and default switches come back with it. */
 async function launchOwnedChromeForVideo(opts: {
   userDataDir: string;
-  preserveMediaPermissions?: boolean;
   childHome?: string;
   loadExtensions?: boolean;
   videoDir?: string;
@@ -602,7 +598,7 @@ async function launchOwnedChromeForVideo(opts: {
     chromiumSandbox: true,
     ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: [...ownedLaunchArgs(opts.args, opts.appendArgs, opts.preserveMediaPermissions), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
+    args: [...ownedLaunchArgs(opts.args, opts.appendArgs), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);

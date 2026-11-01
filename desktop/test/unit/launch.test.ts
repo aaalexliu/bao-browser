@@ -140,9 +140,6 @@ test("the test lane launches BAO_TEST_BROWSER with a mock keychain", () => {
   assert.deepEqual(testLaneKeychainArgs(product), []);
   assert.deepEqual(testLaneMediaArgs(lane), ["--deny-permission-prompts", "--use-fake-device-for-media-stream"]);
   assert.deepEqual(testLaneMediaArgs(product), []);
-  const copied = ownedChromeLaunchArgs([], lane, "darwin", true);
-  assert.equal(copied.includes("--deny-permission-prompts"), false);
-  assert.equal(copied.includes("--use-fake-device-for-media-stream"), false);
   assert.deepEqual(ownedChromeLaunchArgs(["--use-mock-keychain=0", "--password-store=gnome"], lane, "darwin"), [
     "--no-first-run",
     "--no-default-browser-check",

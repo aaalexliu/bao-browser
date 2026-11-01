@@ -86,7 +86,12 @@ test("hermetic env drops inherited launch settings and pins the test browser", (
   assert.equal(env.BAO_HEAL_CURSOR_ACCOUNT, "0");
   assert.equal(env.BAO_LANE, "hermetic");
   assert.equal(env.BAO_TEST_MOCK_KEYCHAIN, undefined);
-  assert.deepEqual(ownedChromeLaunchArgs([], env, "darwin").slice(-2), ["--use-mock-keychain", "--password-store=basic"]);
+  assert.deepEqual(ownedChromeLaunchArgs([], env, "darwin").slice(-4), [
+    "--use-mock-keychain",
+    "--password-store=basic",
+    "--deny-permission-prompts",
+    "--use-fake-device-for-media-stream",
+  ]);
 });
 
 test("the live lane turns public demos on, stays headless, and launches the test browser, not installed Chrome", () => {
@@ -97,7 +102,12 @@ test("the live lane turns public demos on, stays headless, and launches the test
   assert.equal(env.BAO_LANE, "live");
   assert.equal(env.BAO_BROWSER, undefined);
   assert.equal(env.BAO_TEST_BROWSER, pin);
-  assert.deepEqual(ownedChromeLaunchArgs([], env, "darwin").slice(-2), ["--use-mock-keychain", "--password-store=basic"]);
+  assert.deepEqual(ownedChromeLaunchArgs([], env, "darwin").slice(-4), [
+    "--use-mock-keychain",
+    "--password-store=basic",
+    "--deny-permission-prompts",
+    "--use-fake-device-for-media-stream",
+  ]);
   const installed = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME;
   assert.equal(resolveNormalChrome(installed, env, "darwin"), pin);
   assert.equal(resolveNormalChrome(installed, env, "linux"), pin);

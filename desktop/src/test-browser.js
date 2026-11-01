@@ -2,7 +2,6 @@
 const { chromium } = require("playwright");
 
 // Deny in Chrome, and never open real capture devices. Fake UI would auto-accept.
-// Test profiles only, never live CDP or copies of real profiles.
 const TEST_MEDIA_ARGS = Object.freeze([
   "--deny-permission-prompts",
   "--use-fake-device-for-media-stream",

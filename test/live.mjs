@@ -11,7 +11,7 @@
 //   node test/live.mjs login  https://substack.com
 //   node test/live.mjs record https://yourpub.substack.com/publish/post   # interact, then press Enter
 //   node test/live.mjs replay https://yourpub.substack.com/publish/post
-import { chromium } from "playwright";
+import { testChromium as chromium } from "../desktop/src/test-browser.js";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
