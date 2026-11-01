@@ -18,7 +18,14 @@ test("Live, Runs and Capture keep their content aligned in the app", { timeout: 
     await page.goto(`${base}/fixture`);
     const png = await page.screenshot();
     const log = new SessionLog(liveSessionDir(dirs.home), "Read member report");
-    await log.add({ action: "start", label: "http://127.0.0.1:47811/member", path: "/member", isTrusted: null, ms: 100, png });
+    const liveSteps = Array.from({ length: 41 }, (_, index) => ({ name: index === 0 ? "start" : `click-${index}`, status: "passed", ms: 100 }));
+    log.setSteps(liveSteps);
+    await log.add({ action: "start", label: "http://127.0.0.1:47811/member", path: "/member", isTrusted: null, ms: 0, png });
+    await log.add({ action: "start", label: "Member report", path: "/member", isTrusted: null, ms: 100 });
+    for (let index = 1; index < liveSteps.length; index += 1) {
+      await log.add({ action: "click", label: `Control ${index}`, path: "/member", isTrusted: true, ms: 0 });
+      await log.add({ action: "click", label: "Member report", path: "/member", isTrusted: null, ms: 100, ...(index === liveSteps.length - 1 ? { png } : {}) });
+    }
     await log.flush("passed");
     const label = 'Click "View full credit report"';
     const workflow: WorkflowV2 = {
@@ -52,6 +59,28 @@ test("Live, Runs and Capture keep their content aligned in the app", { timeout: 
         return { decoration: css.textDecorationLine, border: css.borderStyle, height: a.getBoundingClientRect().height };
       });
       assert.deepEqual(pager, { decoration: "none", border: "solid", height: 32 });
+      const shownSteps = () => page.locator("#live-steps li strong").allTextContents();
+      assert.deepEqual(await shownSteps(), liveSteps.map((step) => step.name));
+      assert.equal(await page.locator("#live-audit tbody tr").count(), 40);
+      assert.match(await page.locator("#live-shots img").getAttribute("src") || "", /shot-001\.png$/);
+      await page.getByRole("link", { name: "Next", exact: true }).click();
+      await page.waitForURL(/screen=live&page=1/);
+      await page.locator('#live-audit-page[data-page="2"]').waitFor();
+      assert.deepEqual(await shownSteps(), liveSteps.map((step) => step.name));
+      assert.equal(await page.locator("#live-audit tbody tr").count(), 40);
+      assert.equal(await page.locator("#live-shots img").count(), 0);
+      await page.getByRole("link", { name: "Next", exact: true }).click();
+      await page.locator('#live-audit-page[data-page="3"]').waitFor();
+      assert.deepEqual(await shownSteps(), liveSteps.map((step) => step.name));
+      assert.equal(await page.locator("#live-audit tbody tr").count(), 2);
+      assert.match(await page.locator("#live-shots img").getAttribute("src") || "", /shot-002\.png$/);
+      await page.getByRole("link", { name: "Previous", exact: true }).click();
+      await page.locator('#live-audit-page[data-page="2"]').waitFor();
+      assert.deepEqual(await shownSteps(), liveSteps.map((step) => step.name));
+      await page.getByRole("link", { name: "Previous", exact: true }).click();
+      await page.locator('#live-audit-page[data-page="1"]').waitFor();
+      assert.deepEqual(await shownSteps(), liveSteps.map((step) => step.name));
+      assert.equal(await page.locator("#live-audit tbody tr").count(), 40);
 
       await page.locator('button[data-screen="runs"]').click();
       await page.locator('[data-open-run="run-ui-polish"]').click();

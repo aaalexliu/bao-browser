@@ -83,8 +83,13 @@ test("the live record keeps every audit row and the view pages them", () => {
   const html = liveSessionView(record, last.page);
   assert.match(html, /step-40/);
   assert.match(html, /41 rows/);
-  assert.doesNotMatch(html, />step-0</);
-  assert.match(html, /id="live-steps"/);
+  const auditHtml = html.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || "";
+  assert.match(auditHtml, />step-40</);
+  assert.doesNotMatch(auditHtml, />step-0</);
+  const stepsHtml = html.match(/<ol id="live-steps">([\s\S]*?)<\/ol>/)?.[1] || "";
+  assert.equal((stepsHtml.match(/<li /g) || []).length, 41);
+  assert.match(stepsHtml, />step-0</);
+  assert.match(stepsHtml, />step-40</);
 });
 
 test("one lock reader accepts both lock bodies", () => {

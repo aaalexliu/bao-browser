@@ -41,6 +41,62 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
     await fixture?.close();
   });
 
+  for (const failure of ["covered", "blocked"] as const) {
+    it(`${failure} click keeps its step when the next click is refused`, async (t) => {
+      const home = mkdtempSync(path.join(tmpdir(), "bao-click-step-"));
+      if (failure === "blocked") {
+        const goto = CdpLiveDriver.prototype.goto;
+        t.mock.method(CdpLiveDriver.prototype, "goto", async function (this: CdpLiveDriver, url: string) {
+          await goto.call(this, url);
+          await this.evaluateFunction(() => {
+            const browse = document.createElement("button");
+            browse.textContent = "Browse";
+            browse.onclick = () => { location.href = "/checkout"; };
+            document.body.prepend(browse);
+          }, undefined);
+        });
+      }
+      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0 });
+      const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
+      const session = () => JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as LiveSessionRecord;
+      try {
+        let read = await call({ op: "live_session_start", intent: "browse the store", url: fixture.url("/store/costco/storefront") });
+        assert.equal(read.outcome.kind, "applied");
+        if (failure === "covered") {
+          read = await call({ op: "live_click", ref: ref(read, CART) });
+          assert.equal(read.outcome.kind, "applied");
+        }
+        const before = session();
+        const first = await call({ op: "live_click", ref: ref(read, failure === "covered" ? CART : "Browse") });
+        assert.deepEqual(first.outcome, { kind: "refused", reason: failure === "covered" ? "element is covered" : "blocked-path" });
+        const afterFirst = session();
+        assert.deepEqual(afterFirst.steps.slice(before.steps.length), [{ name: "click", status: "running", ms: 0 }]);
+        assert.equal(afterFirst.audit.length, before.audit.length + 1);
+        assert.equal(afterFirst.audit.at(-1)?.action, "click");
+        const refused = await call({ op: "live_click", ref: "e0.c0" });
+        assert.deepEqual(refused.outcome, { kind: "refused", reason: "stale_ref" });
+        const afterRefusal = session();
+        assert.deepEqual(afterRefusal.steps.slice(before.steps.length), [
+          { name: "click", status: "running", ms: 0 },
+          { name: "click", status: "failed", ms: 0 },
+        ]);
+        assert.equal(afterRefusal.audit.length, afterFirst.audit.length + 1);
+        assert.deepEqual(afterRefusal.audit.slice(0, afterFirst.audit.length), afterFirst.audit);
+        assert.equal(afterRefusal.audit.at(-1)?.label, "stale_ref");
+        if (failure === "covered") {
+          const applied = await call({ op: "live_click", ref: ref(refused, "Close") });
+          assert.equal(applied.outcome.kind, "applied");
+          const afterApplied = session();
+          assert.equal(afterApplied.steps.length, afterRefusal.steps.length + 1);
+          assert.equal(afterApplied.steps.at(-1)?.status, "passed");
+          assert.equal(afterApplied.audit.length, afterRefusal.audit.length + 2);
+        }
+        assert.equal((await call({ op: "live_stop" })).outcome.kind, "stopped");
+        assert.equal(session().status, "failed");
+      } finally { await host.close(); }
+    });
+  }
+
   for (const urlChange of ["hash", "query"] as const) {
     it(`a ${urlChange}-changing popup recovers and its dismiss step replays with or without the popup`, async (t) => {
       const home = mkdtempSync(path.join(tmpdir(), "bao-optional-dismiss-"));

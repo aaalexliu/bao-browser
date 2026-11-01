@@ -36,9 +36,8 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
   }
   const shotAt = session.audit.findIndex((row) => row.shot);
   const chosen = page == null ? (shotAt < 0 ? 0 : Math.floor(shotAt / AUDIT_PAGE_SIZE)) : page;
-  const stepPage = auditPage(session.steps, chosen);
   const audit = auditPage(session.audit, chosen);
-  const steps = stepPage.rows.map((step) =>
+  const steps = session.steps.map((step) =>
     `<li data-status="${esc(step.status)}"><strong>${esc(step.name)}</strong> <span class="quiet">${esc(step.status)} · ${step.ms} ms</span></li>`).join("");
   const rows = audit.rows.map((row) =>
     `<tr><td>${esc(row.action)}</td><td>${esc(row.label)}</td><td class="mono">${esc(row.path)}</td><td>${esc(trustedWord(row.isTrusted, row.via))}</td><td>${row.ms} ms</td></tr>`).join("");

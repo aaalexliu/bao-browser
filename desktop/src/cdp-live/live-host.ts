@@ -183,6 +183,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   let open: OpenState | null = null;
   let chain = Promise.resolve();
   let pending = 0;
+  let runningStep: OpenState["steps"][number] | undefined;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let warnTimer: ReturnType<typeof setTimeout> | undefined;
   let warning: LiveIdleWarning | null = null;
@@ -249,6 +250,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   async function dispatch(raw: unknown): Promise<unknown> {
+    runningStep = undefined;
     open?.driver.touch();
     const body = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const op = typeof body.op === "string" ? body.op : "";
@@ -304,11 +306,13 @@ export function createLiveHost(opts: LiveHostOptions): {
   function updateStep(action: string, status: string, ms: number): void {
     if (!open) return;
     const name = Object.keys(LOOK_OPS).find((key) => LOOK_OPS[key] === action) || action;
-    const last = open.steps.at(-1);
-    if (status !== "running" && last?.name === name && last.status === "running") {
-      Object.assign(last, { status, ms });
+    if (status !== "running" && runningStep?.name === name) {
+      Object.assign(runningStep, { status, ms });
+      runningStep = undefined;
     } else {
-      open.steps.push({ name, status, ms });
+      const step = { name, status, ms };
+      open.steps.push(step);
+      runningStep = status === "running" ? step : undefined;
     }
     open.log.setSteps(open.steps);
   }
