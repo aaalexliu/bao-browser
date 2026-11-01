@@ -39,18 +39,20 @@ This runs a required-suite test outside the runner, so it opens installed Chrome
 
 ## Camera and microphone isolation
 
-Browsers launched by tests and tooling start with `--deny-permission-prompts` and
-`--use-fake-device-for-media-stream`. Chrome rejects `getUserMedia` without
-asking macOS for access. Do not use `--use-fake-ui-for-media-stream`: it
-accepts media requests instead of denying them.
+Test browsers start with `--deny-permission-prompts`, which denies Chrome
+permission requests, and `--use-fake-device-for-media-stream`, which uses
+synthetic capture devices. Chrome rejects `getUserMedia` without asking macOS
+for access. Do not use `--use-fake-ui-for-media-stream`: it accepts media
+requests instead of denying them.
 
 `desktop/src/test-browser.js` shares these flags across desktop tests,
 extension fixtures, public probes, asset scripts, and the logged-in
 `.chrome-profile` tools `test/live.mjs` and `test/live-notes.mjs`. Import its
 `testChromium` launch methods for test Playwright contexts, or spread `TEST_MEDIA_ARGS` into
 the arguments of a manually spawned test browser. The shared module uses
-CommonJS so both root `.mjs` tools and compiled desktop code load it;
-`allowJs` in `tsconfig.desktop.json` copies and type-checks it.
+CommonJS so both root `.mjs` tools and compiled desktop code load it.
+`allowJs` in `tsconfig.desktop.json` copies the imported module into the build;
+its `// @ts-check` enables type-checking.
 
 Owned replay, eval, and copied-profile launches in `desktop/src/launch.ts` add
 the flags only when `BAO_TEST_BROWSER` is set. Product launches without that
@@ -63,8 +65,10 @@ new tabs, two origins, replay video, and a manual spawn. Every media request
 must fail with `NotAllowedError`. It checks the actual process flags without
 requiring `--enable-automation`. `BAO_MEDIA_HEADED=1` shows the test windows.
 `BAO_MEDIA_PUBLIC=1` also loads the CreepJS and sannysoft proof pages; the
-required suite skips public hosts. Run with a temp `HOME`, no model keys,
-and `BAO_HEAL_CURSOR_ACCOUNT=0`.
+required suite skips public hosts. These switches apply to a direct
+`node --test desktop/dist/desktop/test/unit/test-media.test.js` run after
+`npm run build:desktop`; both lane runners drop inherited `BAO` names. Run with
+a temp `HOME`, no model keys, and `BAO_HEAL_CURSOR_ACCOUNT=0`.
 
 On macOS, capture `log show --predicate 'process == "tccd"'` for the run.
 Camera or microphone `AUTHREQ_CTX` entries with `preflight=yes` only check

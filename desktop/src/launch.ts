@@ -100,9 +100,9 @@ export function testLaneBrowser(env: NodeJS.ProcessEnv = process.env): string | 
 }
 
 /**
- * Tests and evals only. Returns BAO_TEST_BROWSER, and sets it to Playwright's
- * Chromium when it is unset, so every later launch in this process, and in a
- * child that inherits the env, starts the test browser with a mock keychain.
+ * Test and tooling launches only. Returns BAO_TEST_BROWSER, and sets it to
+ * Playwright's Chromium when it is unset, so later launches in this process
+ * and children that inherit the env use the test lane described above.
  */
 export function pinTestBrowser(
   env: NodeJS.ProcessEnv = process.env,

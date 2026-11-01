@@ -12,6 +12,9 @@ Definition of done for any capability is the repo standard:
 A headless Chromium loads the unpacked extension, records a real session on a fixture
 page, replays it, and dumps artifacts to `out/`.
 
+[Camera and microphone isolation](../desktop/test/README.md#camera-and-microphone-isolation)
+also covers the root test tools, including the logged-in `.chrome-profile` scripts below.
+
 ```sh
 npm install
 npx playwright install chromium   # one-time: downloads the browser
