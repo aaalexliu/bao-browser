@@ -154,7 +154,7 @@ export class CdpLiveDriver implements Driver {
   async pageShot(): Promise<Buffer> { return this.captureRedacted("run evidence"); }
   async shot(): Promise<Buffer> { return this.pageShot(); }
 
-  /** Fixed before the first page operation. The CDP connection retains only guards and ownership. */
+  /** Fixed before the first page operation. CDP keeps guards, ownership, video, and veil cleanup. */
   usePageEngine(engine: AgentBrowserPage): void {
     if (this.pageEngineSelected) throw new Error("page engine already selected");
     this.pageEngineSelected = true;

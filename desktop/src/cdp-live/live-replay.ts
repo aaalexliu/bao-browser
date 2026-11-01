@@ -280,7 +280,7 @@ export async function replayGuarded(workflow: WorkflowV2, inputs: ReplayArgs, gu
 }
 
 export interface LiveReplayDeps {
-  /** The Chrome to drive: the serve-level live target. */
+  /** The target selected for this replay, fixed until teardown. */
   target: LiveTarget;
   engineName?: PageEngineName;
   artifactRoot?: string;

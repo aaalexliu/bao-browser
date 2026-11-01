@@ -1,6 +1,6 @@
 # What Bao asks permission for
 
-Chrome and macOS enforce separate permissions. Turning one on does not turn the others on.
+Chrome and macOS enforce separate permissions. Turning one on does not turn the others on. The daily-Chrome helper path is below. For the separate copied-profile route and its permission requirements, see [agent-browser trial](agent-browser-engine.md#pick-an-engine-and-profile).
 
 ## The Chrome remote-debugging toggle
 
@@ -40,11 +40,11 @@ These belong to the Bao extension in Chrome, not to the remote-debugging connect
 
 ## What an allowlist refuses
 
-A live run is given an exact host list. Bao refuses a navigation whose host is not on that list, before the navigation. An Instacart run may use `instacart.com` and `www.instacart.com` only, and it refuses checkout, login, account, address, and payment paths. A books run stays on `books.toscrape.com`. Subresources such as images are not navigations, so they are not added to the list. Cookie values are not read or stored.
+A live run is given an exact host list. Bao refuses a navigation whose host is not on that list, before the navigation. An Instacart run may use `instacart.com` and `www.instacart.com` only, and it refuses checkout, login, account, address, and payment paths. A books run stays on `books.toscrape.com`. Subresources such as images are not navigations, so they are not added to the list. Live page reads do not collect cookie values. The separate [profile-copy route](agent-browser-engine.md#pick-an-engine-and-profile) copies profile files, not just the allowlisted site's data.
 
 ## What stays on this Mac
 
-The live run view, its step list, and its audit log are files in Bao's home directory on this machine. Screenshots are taken with Chrome's `Page.captureScreenshot` of the page, not with macOS screen recording. A live session started with `bao live_session_start` or `bao mcp`, and the Instacart runner, cover the whole page with a blur before each shot, so names, prices, and cart lines are not readable in the picture. That veil is `redactOverlay`, applied by `captureRedacted` in `desktop/src/cdp-live/driver.ts`. The session script `desktop/src/cdp-live/session.ts` uses `redactForShot` instead. It blurs only the nodes it matches, such as an email or a price. A count of 0 still writes the PNG. A plain name and a Place order button stay readable in those shots. The app serves those files only on `127.0.0.1`, with caching off. They are not uploaded.
+The live run view, its step list, and its audit log are files in Bao's home directory on this machine. Live page screenshots use Chrome, not macOS screen recording. App live sessions and the Instacart runner use `captureRedacted` in `desktop/src/cdp-live/driver.ts`; the [live evidence contract](agent-browser-engine.md#evidence) covers the screenshot veil and copied-profile video. The session script `desktop/src/cdp-live/session.ts` uses `redactForShot` instead. It blurs only the nodes it matches, such as an email or a price. A count of 0 still writes the PNG. A plain name and a Place order button stay readable in those shots. The app serves those files only on `127.0.0.1`, with caching off. They are not uploaded.
 
 ## What each one costs in speed
 

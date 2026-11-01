@@ -1,6 +1,8 @@
 # CDP live
 
-`driver` set to `cdp-live` attaches to Chrome that is already running. The measured session is [cdp-live-chrome.md](cdp-live-chrome.md).
+`driver` set to `cdp-live` uses Bao's guarded live runner. The default engine attaches to Chrome that is already running; the Settings-selected [agent-browser trial](agent-browser-engine.md) uses a private profile copy instead. The measured daily-Chrome session is [cdp-live-chrome.md](cdp-live-chrome.md).
+
+For the default daily-Chrome path:
 
 1. Open Google Chrome. App sessions, app replays, and the books runner can enable remote debugging; the standalone generic session still needs it enabled first. See [Agent entry point](cdp-live-chrome.md#agent-entry-point) for the toggle and [permissions](permissions.md) for the grants.
 2. From the repo root, run `npm run build:desktop`.
@@ -10,9 +12,9 @@
 
 ## Driver
 
-`cdp-live` attaches to the browser WebSocket published by `DevToolsActivePort` and to no other file in the Chrome profile. The desktop and `bao mcp`'s `run_workflow` never launch Bao's Chrome for a workflow whose driver is `cdp-live`. They replay it with `replayLiveWorkflow` in `desktop/src/cdp-live/live-replay.ts`, in the running app's live target, as [cdp-live-chrome.md](cdp-live-chrome.md) describes. The string `cdp` stays invalid and still maps to Playwright if something calls `workflowDriver` without the live-attach check.
+On the daily-Chrome path, `cdp-live` reads only `DevToolsActivePort` in the Chrome profile and attaches to its browser WebSocket. The desktop and `bao mcp`'s `run_workflow` route a `cdp-live` workflow through `replayLiveWorkflow` in `desktop/src/cdp-live/live-replay.ts`, not ordinary browser replay. The app selects the run's target and engine as [Agent entry point](cdp-live-chrome.md#agent-entry-point) describes. The string `cdp` stays invalid and still maps to Playwright if something calls `workflowDriver` without the live-attach check.
 
-The driver:
+The standalone runners below use the old engine. For the books runner:
 
 - A new-window run opens one window with `Target.createTarget` `about:blank` and closes only that target.
 - An attach run (`--attach-path`) calls `Target.getTargets` only to choose the one already-open page whose host and pathname match. It does not create a target, does not call `Page.navigate` on that tab, and detaches instead of closing it. Two different paths, or no allowlisted page, stop with `needs_human` and do not attach. When every open allowlisted page shares one unexpected path, the run attaches to the first of those, screenshots it, clicks nothing, and still stops with `needs_human`.

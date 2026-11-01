@@ -96,7 +96,7 @@ Leave `BAO_MCP_LIVE` unset for the catalog and `live_*` tools. The evaluator is 
 
 ## CDP live
 
-`cdp-live` is a workflow driver. The contract and the 10-line start are in [cdp-live.md](cdp-live.md). The measured Chrome session is in [cdp-live-chrome.md](cdp-live-chrome.md).
+`cdp-live` is a workflow driver. The contract and the 10-line start are in [cdp-live.md](cdp-live.md). The measured Chrome session is in [cdp-live-chrome.md](cdp-live-chrome.md). For the Settings engine choice and copied-profile route, see [agent-browser trial](agent-browser-engine.md).
 
 ## Checks
 
