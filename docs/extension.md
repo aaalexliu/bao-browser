@@ -49,6 +49,8 @@ Nothing happens until Record or a run starts.
 
 Record asks for that tab's origin and injects the same recorder the Playwright driver uses. Replay opens a page with two choices. Allow all sites is the default: it asks Chrome for `http://*/*` and `https://*/*`, and later runs do not ask again. Only this site asks for the workflow's origin. Either way, replay opens a new window and drives that tab. It does not type into the tab the person is already using. A secret is typed only on the origin the workflow opened.
 
+Step pictures come from Chrome's `Page.captureScreenshot` through the debugger, not macOS window capture. They keep the extension's JPEG format and avoid `captureVisibleTab`'s two-pictures-per-second limit. Password fields stay covered during capture.
+
 The toolbar badge says REC or RUN while a session is active. A strip inside the page appears only for "needs you" (a confirm, a login, or a bot wall).
 
 Steps, locators, the confirm gate, and the page classifier are the ones the Playwright driver already uses. Place Order, Buy, Pay, Submit order, and Reserve stay confirm steps. A bot wall pauses. Password values are dropped. A click, a key, and a file input attach `chrome.debugger` for that action. The click is `Input.dispatchMouseEvent`, typing is `Input.insertText` or `Input.dispatchKeyEvent`, and a file input is `DOM.setFileInputFiles`. The debugger detaches when the action finishes. A native `<select>` is set from the page and held on that option, so a control that resets when its data arrives stays where the workflow put it. The browser's select popup does not open. A click waits for an in-flight XHR on that tab to finish before it lands.

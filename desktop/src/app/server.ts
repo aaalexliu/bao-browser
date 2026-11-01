@@ -90,7 +90,7 @@ import {
 } from "../v1/teach";
 import { guideCrops, guideHtml } from "../v1/guide";
 import { guideMe, type GuideProgress } from "../v1/guide-me";
-import { guideShotName, shotFile, workflowShotName } from "../v1/shots";
+import { guideShotName, shotFile, shotFormat, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
@@ -536,7 +536,7 @@ export async function startApp(opts: {
       if (req.method === "GET" && url.pathname.startsWith("/api/live-session/shots/")) {
         const name = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
         if (!shotNameOk(name)) return json(res, { error: "no picture" }, 404);
-        return sendPng(res, path.join(library.root, "live-session", "shots", name));
+        return sendPicture(res, path.join(library.root, "live-session", "shots", name));
       }
       if (req.method === "POST" && url.pathname === "/api/helper/automation") {
         if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
@@ -737,13 +737,13 @@ export async function startApp(opts: {
         const parts = url.pathname.split("/");
         const id = decodeURIComponent(parts[3] || "");
         const file = path.basename(decodeURIComponent(parts[5] || ""));
-        return sendPng(res, path.join(library.root, "shots", "workflows", id, file));
+        return sendPicture(res, path.join(library.root, "shots", "workflows", id, file));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/poster")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
         const file = workflowPoster(path.join(library.root, "shots", "workflows", id));
         if (!file) return json(res, { error: "no picture" }, 404);
-        return sendPng(res, file);
+        return sendPicture(res, file);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/share")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -794,11 +794,11 @@ export async function startApp(opts: {
       if (req.method === "GET" && url.pathname === "/api/capture/poster") {
         const file = pendingSave?.poster;
         if (!file || !existsSync(file) || !isFullPageShot(readFileSync(file))) return json(res, { error: "no picture" }, 404);
-        return sendPng(res, file);
+        return sendPicture(res, file);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/capture/shots/")) {
         const file = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
-        return sendPng(res, path.join(library.root, "shots", "capture", file));
+        return sendPicture(res, path.join(library.root, "shots", "capture", file));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && (url.pathname.endsWith("/outputs.csv") || url.pathname.endsWith("/outputs.json"))) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -825,14 +825,14 @@ export async function startApp(opts: {
         const parts = url.pathname.split("/");
         const id = decodeURIComponent(parts[3] || "");
         const file = path.basename(decodeURIComponent(parts[5] || ""));
-        return sendPng(res, path.join(library.root, "shots", "runs", id, file));
+        return sendPicture(res, path.join(library.root, "shots", "runs", id, file));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/poster")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
         const frame = path.join(library.root, "videos", `${id}.png`);
-        const file = existsSync(frame) ? frame : newestPng(path.join(library.root, "shots", "runs", id));
+        const file = existsSync(frame) ? frame : newestRunShot(path.join(library.root, "shots", "runs", id));
         if (!file) return json(res, { error: "no picture" }, 404);
-        return sendPng(res, file);
+        return sendPicture(res, file);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/")) {
         return json(res, library.readRun(decodeURIComponent(url.pathname.split("/")[3] || "")));
@@ -3420,22 +3420,25 @@ function readLiveSessionFile(root: string): ReturnType<typeof publicLiveSession>
   }
 }
 
-function sendPng(res: ServerResponse, file: string): void {
-  if (!/^[\w.-]+\.png$/.test(path.basename(file)) || !existsSync(file)) {
+function sendPicture(res: ServerResponse, file: string): void {
+  if (!/^[\w.-]+\.(png|jpe?g)$/.test(path.basename(file)) || !existsSync(file)) {
     json(res, { error: "no picture" }, 404);
     return;
   }
-  res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
-  res.end(readFileSync(file));
+  const bytes = readFileSync(file);
+  const format = shotFormat(bytes);
+  if (!format) return json(res, { error: "unsupported picture" }, 404);
+  res.writeHead(200, { "content-type": format === "jpg" ? "image/jpeg" : "image/png", "cache-control": "no-store" });
+  res.end(bytes);
 }
 
-function newestPng(dir: string): string | undefined {
+function newestRunShot(dir: string): string | undefined {
   if (!existsSync(dir)) return;
   const ranked = readdirSync(dir)
-    .filter((name) => /^[\w.-]+\.png$/.test(name))
+    .filter((name) => /^[\w.-]+\.(png|jpe?g)$/.test(name))
     .map((name) => {
       const file = path.join(dir, name);
-      return { file, mtime: statSync(file).mtimeMs, after: name.endsWith("-after.png"), cropped: croppedPng(file) };
+      return { file, mtime: statSync(file).mtimeMs, after: /-after\.(png|jpe?g)$/.test(name), cropped: /\.jpe?g$/.test(name) || croppedPng(file) };
     })
     .filter((item) => item.cropped)
     .sort((a, b) => Number(b.after) - Number(a.after) || b.mtime - a.mtime);
@@ -3459,11 +3462,12 @@ function workflowPoster(dir: string): string | undefined {
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {
   mkdirSync(dir, { recursive: true });
   const write = (name: string, b64?: string): string | undefined => {
-    if (!b64 || !b64.startsWith("iVBORw0KGgo")) return;
+    if (!b64) return;
     const buf = Buffer.from(b64, "base64");
-    if (buf.length < 24 || buf[0] !== 0x89) return;
-    const file = path.basename(name);
-    if (!/^[\w.-]+\.png$/.test(file)) return;
+    const format = shotFormat(buf);
+    if (!format) return;
+    const file = path.basename(name).replace(/\.png$/, `.${format}`);
+    if (!/^[\w.-]+\.(png|jpg)$/.test(file)) return;
     writeFileSync(path.join(dir, file), buf);
     return file;
   };

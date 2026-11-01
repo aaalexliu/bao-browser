@@ -65,6 +65,8 @@ export interface StepView {
   identity?: IdentityView;
   beforeShot?: string;
   afterShot?: string;
+  beforeShotError?: string;
+  afterShotError?: string;
   /** Why auto-heal did not run. Absent when the step was not sorted out of healing. */
   triage?: string;
   snapshot?: StepSnapshot;

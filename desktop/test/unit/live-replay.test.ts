@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { startApp, type App } from "../../src/app/server";
@@ -16,6 +16,7 @@ import { frameRpc } from "../../src/mcp/frame";
 import type { WorkflowOutcome } from "../../src/mcp/catalog";
 import type { RunResult } from "../../src/v1/replay";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import { shotFormat } from "../../src/v1/shots";
 import { launchFixtureBrowser, type FixtureBrowser } from "../instacart/browser";
 import { TARGET, startInstacartFixture, type InstacartFixture } from "../instacart/fixture";
 import { applyHermeticApp } from "../runtime";
@@ -179,6 +180,15 @@ describe("a recorded live workflow replays through the one live runner", { timeo
     assert.deepEqual(searched(), ["/store/costco/s?k=blueberries"]);
     assert.deepEqual(writes(), [["add", TARGET.id, 1]]);
     assert.equal(app.library.readRun(first.body.runId).status, "passed");
+    const shots = path.join(home, "shots", "runs", first.body.runId);
+    assert.equal(readdirSync(shots).length, recorded.steps.length * 2, "live Library runs save page pictures with video off");
+    for (const step of first.body.steps) {
+      for (const ref of [step.beforeShot, step.afterShot]) {
+        assert.ok(ref, "each live step keeps both picture references");
+        assert.equal(shotFormat(readFileSync(path.join(shots, ref))), "png");
+      }
+    }
+    assert.equal(existsSync(path.join(home, "videos", `${first.body.runId}.webm`)), false);
     assert.equal(existsSync(lockFile), false, "the replay frees the CDP lock");
 
     // Again: the item is already in the cart.
@@ -199,6 +209,7 @@ describe("a recorded live workflow replays through the one live runner", { timeo
       const stored = app.library.readRun(viaMcp.runId || "");
       assert.equal(stored.status, "passed");
       assert.equal(stored.modelCalls, 0);
+      assert.equal(readdirSync(path.join(home, "shots", "runs", stored.id)).length, recorded.steps.length * 2);
 
       // A workflow edited to click Checkout after the Add. Replay refuses the click and never loads /checkout.
       const checkout: WorkflowStep = {

@@ -67,7 +67,7 @@ import {
   type WorkflowStep,
   type WorkflowV2,
 } from "./schema";
-import { shotFile } from "./shots";
+import { shotFile, shotFormat } from "./shots";
 import { postKey, targetKey, timingBucket, type TrajectoryStep } from "./trajectory";
 
 export interface LocatorHit {
@@ -148,7 +148,7 @@ export interface Driver {
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
-  /** Page PNG of the target, when the driver can see it. Unit-test drivers omit this. */
+  /** Page PNG or JPEG of the target. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
   /** Full viewport. Unit-test drivers omit this. */
   pageShot?(): Promise<Buffer | undefined>;
@@ -207,6 +207,8 @@ export interface RunResult {
     endedAt?: number;
     beforeShot?: string;
     afterShot?: string;
+    beforeShotError?: string;
+    afterShotError?: string;
     triage?: string;
     snapshot?: { dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string };
   }[];
@@ -375,31 +377,31 @@ export async function replay(
       continue;
     }
     const wants = pageWhen(step);
+    let skipReason = "";
     if (wants) {
       if (!guard || guard.key !== wants.key) {
         guard = { key: wants.key, open: pageShows(await driver.tree(), wants.text, wants.anyCount) === wants.shown };
       }
-      if (!guard.open) {
-        steps[i] = { id: step.id, status: "passed", reason: wants.shown ? "other branch" : "already done" };
-        continue;
-      }
+      if (!guard.open) skipReason = wants.shown ? "other branch" : "already done";
     } else {
       guard = undefined;
-      if (step.when?.input && String(args[step.when.input] ?? "") !== (step.when.value ?? "")) {
-        steps[i] = { id: step.id, status: "passed", reason: "other branch" };
-        continue;
-      }
+      if (step.when?.input && String(args[step.when.input] ?? "") !== (step.when.value ?? "")) skipReason = "other branch";
     }
     const mode = stepPolicy(step, workflow, settings);
     driver.markStep?.(step.id);
     let pictured = step;
     const started = clock();
-    const yieldShot = opts.yieldHuman && (step.action === "login" || step.action === "confirm");
-    const beforeShot = yieldShot ? undefined : await writeStepShot(driver, opts.shotDir, step, "before");
+    const yieldShot = opts.yieldHuman && !skipReason && (step.action === "login" || step.action === "confirm");
+    const before = yieldShot ? { error: "Pictures stay off while you have the page." } : await writeStepShot(driver, opts.shotDir, step, "before");
+    const beforeShot = before.ref;
     const stamp = (patch: RunResult["steps"][number]) => {
-      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot };
+      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot, beforeShotError: before.error };
     };
     try {
+    if (skipReason) {
+      stamp({ id: step.id, status: "passed", reason: skipReason });
+      continue;
+    }
     const extra = i === workflow.steps.length - 1 ? workflow.readBack : undefined;
     if (step.unresolved) {
       const failure = await fail(driver, step, "find", "unresolved step", undefined, secrets);
@@ -713,9 +715,9 @@ export async function replay(
     noteTrajectory(trajectory, patched, retried.acted, true, clock() - started);
     } finally {
       const quiet = gate.shotsPaused;
-      const afterShot = quiet ? undefined : await writeStepShot(driver, opts.shotDir, pictured, "after");
+      const after = quiet ? { error: "Pictures stay off while you have the page." } : await writeStepShot(driver, opts.shotDir, pictured, "after");
       const snapshot = quiet || !driver.captureStep ? undefined : await driver.captureStep().catch(() => undefined);
-      if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot, ...(snapshot ? { snapshot } : {}) };
+      if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot: after.ref, beforeShotError: before.error, afterShotError: after.error, ...(snapshot ? { snapshot } : {}) };
     }
   }
   const executed = steps.filter((step) => step.status === "passed" && step.reason !== "other branch" && step.reason !== "not re-run");
@@ -2108,8 +2110,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<string | undefined> {
-  if (!dir) return;
+async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<{ ref?: string; error?: string }> {
+  if (!dir) return {};
+  if (!driver.shot && !driver.pageShot) return { error: "This driver cannot take page pictures." };
+  let bytes: Buffer | undefined;
   try {
     if (process.env.BAO_PROOF_PAGE === "1" && which === "before" && /delete account/i.test(step.label || "")) {
       const full = await driver.pageShot?.();
@@ -2118,18 +2122,31 @@ async function writeStepShot(driver: Driver, dir: string | undefined, step: Work
         writeFileSync(path.join(dir, "identity.png"), full);
       }
     }
-    if (!driver.shot) return;
-    const png = await driver.shot({
+    bytes = await driver.shot?.({
       identity: step.identity,
       action: step.action,
       label: step.sensitive ? undefined : step.label,
     });
-    if (!png || png.length < 24 || png[0] !== 0x89 || png[1] !== 0x50) return;
+    if (!bytes?.length && driver.pageShot) bytes = await driver.pageShot();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    const reason = /rate.?limit|MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND/i.test(message) ? "Chrome's picture rate limit was reached."
+      : /cannot take|unsupported|not supported/i.test(message) ? "This driver cannot take page pictures."
+      : /timeout|timed out/i.test(message) ? "Chrome timed out taking this picture."
+      : /closed|no tab|not attached/i.test(message) ? "The Chrome page is no longer available."
+      : /mask/i.test(message) ? "Bao could not hide private fields for this picture."
+      : "Chrome could not take this picture.";
+    return { error: reason };
+  }
+  if (!bytes?.length) return { error: "Chrome returned no picture." };
+  const format = shotFormat(bytes);
+  if (!format) return { error: "Chrome returned an unsupported picture format." };
+  try {
     mkdirSync(dir, { recursive: true });
-    const name = shotFile(step.id, which);
-    writeFileSync(path.join(dir, name), png);
-    return name;
+    const name = shotFile(step.id, which, format);
+    writeFileSync(path.join(dir, name), bytes);
+    return { ref: name };
   } catch {
-    return;
+    return { error: "The picture could not be saved." };
   }
 }

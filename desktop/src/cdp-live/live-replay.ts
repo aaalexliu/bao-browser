@@ -284,6 +284,8 @@ export interface LiveReplayDeps {
   target: LiveTarget;
   engineName?: PageEngineName;
   artifactRoot?: string;
+  /** Run-local page pictures, independent of video recording. */
+  shotDir?: string;
   lockFile?: string;
   /** BaoOSHelper, for the daily Chrome's Allow dialog. Tests pass a fake. */
   helper?: () => ChromeAx;
@@ -353,7 +355,7 @@ export async function replayLiveWorkflow(
       guarded.halted = "new_target";
     });
     await driver.goto(workflow.startUrl);
-    run = await replayGuarded(workflow, inputs, guarded, runId, deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined);
+    run = await replayGuarded(workflow, inputs, guarded, runId, deps.shotDir ?? (deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined));
     run.pageEngine = engineName;
     return run;
   } finally {
