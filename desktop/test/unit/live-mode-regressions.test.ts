@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import test, { after, before, describe } from "node:test";
+import { chromium } from "playwright";
+import { startApp } from "../../src/app/server";
 import { adoptLiveWindow, CdpLiveDriver, openLiveWindow, type LiveNavigationOptions } from "../../src/cdp-live/driver";
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { readLivePage, type PageFacts } from "../../src/cdp-live/live-ops";
@@ -10,10 +12,11 @@ import { LIVE_READ_LIMIT, liveReadSpec, readLiveRegion } from "../../src/cdp-liv
 import { GuardedLiveDriver, liveScope, type LiveWindow } from "../../src/cdp-live/live-replay";
 import { openProfileWindow } from "../../src/cdp-live/live-target";
 import type { CdpSocket } from "../../src/cdp-live/socket";
+import { McpClient } from "../../src/eval/mcp-client";
 import { launchOwnedChrome } from "../../src/launch";
 import type { Identity } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, laneChildEnv } from "../runtime";
 
 test("every owned-window entry applies navigation policy before startup events", async () => {
   for (const entry of ["adopt", "open", "profile"] as const) {
@@ -103,10 +106,24 @@ test("guarded replay supplies page context for both actions and extracts", async
   }
 });
 
+test("CDP select-all commands use only the platform modifier and keep other chords intact", async () => {
+  const sent: Record<string, unknown>[] = [];
+  const cdp = { send: async (_method: string, params: Record<string, unknown>) => { sent.push(params); return {}; } } as unknown as CdpSocket;
+  const driver = new CdpLiveDriver(cdp, "session", "owned");
+  for (const chord of ["Meta+a", "Cmd+A", "Control+a", "Ctrl+A", "Meta+Shift+a", "Control+Shift+a", "Alt+a", "Meta+Control+a", "Meta+Alt+a", "Control+Alt+a", "Meta+b", "Control+b", "a", "Shift+a"]) {
+    sent.length = 0;
+    await driver.key(chord);
+    const selectAll = process.platform === "darwin" ? /^(Meta|Cmd)\+a$/i : /^(Control|Ctrl)\+a$/i;
+    assert.deepEqual(sent[0]?.commands ?? [], selectAll.test(chord) ? ["selectAll"] : [], chord);
+    assert.equal(sent[1]?.commands, undefined, chord);
+    assert.equal(sent[0]?.text, chord === "a" ? "a" : chord === "Shift+a" ? "A" : "", chord);
+  }
+});
+
 interface Reply {
   session: string;
   outcome: { kind: string; reason?: string };
-  view: { controls: { ref: string; label: string; options?: { value: string; selected: boolean }[] }[] };
+  view: { controls: { ref: string; label: string; options?: { value: string; selected: boolean; disabled: boolean }[] }[] };
   tabs?: { tab: string; active: boolean; url: string }[];
   read?: { text: string };
 }
@@ -126,10 +143,15 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
   const server = createServer((req, res) => {
     res.setHeader("content-type", "text/html");
     if (req.url === "/popup") return res.end("<title>Popup</title><button>Finish</button>");
+    if (req.url === "/editing") return res.end(`<title>Editing</title><style>[contenteditable]{min-height:24px}</style>
+      <main oninput="document.querySelector('#value').textContent='Value:'+(event.target.isContentEditable ? event.target.textContent : event.target.value)">
+      <label>Name<input></label><label>Note<textarea></textarea></label><div contenteditable aria-label="Editor"></div></main><p id="value">Value:</p>`);
     if (req.url === "/secrets") return res.end(`<title>Details</title>${secretLabels.map((label, index) => `<section id="secret-${index}" name="${label}" aria-label="${label}"><p>${label}: private-inline-${index}. Status: ready.</p><p>${label}</p><p>private-split-${index}</p><p>Balance: $412</p></section><button>${label}</button>`).join("")}`);
     res.end(`<title>Controls</title><label>Note<textarea></textarea></label>
       <label>Audience<select id="audience" onclick="document.body.dataset.clicked='yes'" oninput="document.body.dataset.inputs=String(Number(document.body.dataset.inputs||0)+1)" onchange="document.querySelector('#result').textContent='Audience: '+this.selectedOptions[0].label">
       <option value="internal">Internal</option><option value="external">External</option><option value="one">Duplicate</option><option value="two">Duplicate</option><option value="repeated">First</option><option value="repeated">Second</option><option disabled value="disabled">Disabled</option><optgroup disabled label="Unavailable"><option value="grouped">Grouped</option></optgroup></select></label>
+      <label>Disabled audience<select disabled><option value="unavailable">Unavailable</option></select></label>
+      <fieldset disabled><label>Disabled fieldset<select><option value="nested">Nested</option></select></label></fieldset>
       <p id="result">Audience: Internal</p><form onsubmit="event.preventDefault();document.querySelector('#result').textContent='Created'"><button>Create</button></form>
       <a href="/popup" target="_blank">New tab</a>`);
   });
@@ -154,6 +176,12 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       for (const careful of [false, true]) {
         let reply = await call({ op: "live_session_start", careful, intent: `Choose audience ${careful}`, url });
         assert.equal(reply.outcome.kind, "applied");
+        const options = (label: string) => reply.view.controls.find((control) => control.label === label)!.options!;
+        assert.deepEqual(options("Audience").map((option) => [option.value, option.disabled]), [["internal", false], ["external", false], ["one", false], ["two", false], ["repeated", false], ["repeated", false], ["disabled", true], ["grouped", true]]);
+        for (const [label, value] of [["Disabled audience", "unavailable"], ["Disabled fieldset", "nested"]]) {
+          assert.equal(options(label)[0]?.disabled, true, label);
+          assert.deepEqual((await call({ op: "live_select", ref: ref(reply, label), option: value })).outcome, { kind: "refused", reason: "option is disabled" });
+        }
         await live!.evaluateFunction(() => {
           const cover = document.createElement("div");
           cover.id = "cover";
@@ -167,6 +195,16 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
           assert.deepEqual(result.outcome, { kind: "refused", reason });
         }
         assert.deepEqual(await live!.evaluateFunction(() => ({ value: (document.querySelector("select") as HTMLSelectElement).value, inputs: document.body.dataset.inputs || "0", clicked: document.body.dataset.clicked || "no" }), null), { value: "internal", inputs: "0", clicked: "no" });
+        await live!.evaluateFunction(() => {
+          document.querySelector("optgroup")!.disabled = false;
+          document.querySelector<HTMLSelectElement>("select[disabled]")!.disabled = false;
+          document.querySelector("fieldset")!.disabled = false;
+        }, null);
+        reply = await call({ op: "live_snapshot" });
+        assert.equal(options("Audience").find((option) => option.value === "grouped")?.disabled, false);
+        assert.equal(options("Audience").find((option) => option.value === "disabled")?.disabled, true);
+        assert.equal(options("Disabled audience")[0]?.disabled, false);
+        assert.equal(options("Disabled fieldset")[0]?.disabled, false);
         reply = await call({ op: "live_select", ref: ref(reply, "Audience"), option: careful ? "external" : "External" });
         assert.equal(reply.outcome.kind, "applied");
         assert.deepEqual(await live!.evaluateFunction(() => ({ value: (document.querySelector("select") as HTMLSelectElement).value, inputs: document.body.dataset.inputs, clicked: document.body.dataset.clicked || "no" }), null), { value: "external", inputs: "1", clicked: "no" });
@@ -221,6 +259,42 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       }
       await call({ op: "live_stop" });
     } finally { await host.close(); }
+  });
+
+  test("MCP select-all deletes and replaces input, textarea, and editable text", async () => {
+    const home = path.join(dirs.home, "editing");
+    const app = await startApp({ home, port: 0, liveTarget: `throwaway:${path.join(dirs.chromeUserData, "DevToolsActivePort")}`, liveLockFile: path.join(home, "lock") });
+    const pinned = process.env.BAO_TEST_BROWSER;
+    const mcp = McpClient.start({ ...laneChildEnv("hermetic", process.env, () => pinned ?? chromium.executablePath()), HOME: dirs.nativeHostHome, BAO_HOME: home });
+    const call = async (name: string, args: Record<string, unknown> = {}): Promise<Reply> => {
+      const result = await mcp.call(name, args);
+      assert.equal(result.isError, false, result.text);
+      const reply = JSON.parse(result.text) as Reply;
+      if (name !== "live_stop") assert.equal(reply.outcome.kind, "applied", result.text);
+      return reply;
+    };
+    try {
+      await mcp.handshake();
+      let reply = await call("live_session_start", { intent: "Edit local fields", url: url + "/editing" });
+      const selectAll = process.platform === "darwin" ? "Meta+a" : "Control+a";
+      const alias = process.platform === "darwin" ? "Cmd+A" : "Ctrl+A";
+      for (const [index, label] of ["Name", "Note", "Editor"].entries()) {
+        reply = await call("live_type", { ref: ref(reply, label), text: "abcdef" });
+        reply = await call("live_key", { ref: ref(reply, label), key: selectAll });
+        reply = await call("live_key", { ref: ref(reply, label), key: "Backspace" });
+        reply = await call("live_read", { name: `deleted_${index}`, selector: "#value" });
+        assert.equal(reply.read?.text, "Value:", label);
+        reply = await call("live_type", { ref: ref(reply, label), text: "abcdef" });
+        reply = await call("live_key", { ref: ref(reply, label), key: alias });
+        reply = await call("live_type", { ref: ref(reply, label), text: "replacement" });
+        reply = await call("live_read", { name: `replaced_${index}`, selector: "#value" });
+        assert.equal(reply.read?.text, "Value:replacement", label);
+      }
+      await call("live_stop");
+    } finally {
+      await mcp.close();
+      await app.close();
+    }
   });
 
   test("YOLO reads secret-named regions but redacts only their secret values", async (t) => {

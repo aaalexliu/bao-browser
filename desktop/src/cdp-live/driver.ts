@@ -573,6 +573,7 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Input.dispatchKeyEvent", {
       type: "keyDown", key: character, code, modifiers, windowsVirtualKeyCode: virtualKey,
       text: modifiers & 7 ? "" : known ? known.text : character.length === 1 ? character : "",
+      ...(name.toLowerCase() === "a" && modifiers === (process.platform === "darwin" ? 4 : 2) ? { commands: ["selectAll"] } : {}),
     }, this.sessionId);
     await this.cdp.send("Input.dispatchKeyEvent", {
       type: "keyUp", key: character, code, modifiers, windowsVirtualKeyCode: virtualKey,
