@@ -43,10 +43,11 @@ test("Auth Platform's product copy is not a login wall; actual sign-in still is"
   const copy = { blocked: "", path: "/auth/overview", passwordFields: 0, text: "Google Auth Platform is not configured yet. Get started. Sign in with Google. Single sign-on." };
   assert.equal(pageHalt({ ...copy, url: "https://console.cloud.google.com/auth/overview" }), null);
   assert.equal(pageHalt({ ...copy, url: "https://console.cloud.google.com/auth/branding" }), null);
-  assert.equal(pageHalt({ ...copy, url: "https://other.example/auth/overview" }), "login_wall");
-  assert.equal(pageHalt({ ...copy, url: "https://console.cloud.google.com/other" }), "login_wall");
+  assert.equal(pageHalt({ ...copy, url: "https://other.example/auth/overview" }), null);
+  assert.equal(pageHalt({ ...copy, url: "https://other.example/auth/overview", passwordFields: 1 }), "login_wall");
+  assert.equal(pageHalt({ ...copy, url: "https://console.cloud.google.com/other" }), null);
   assert.equal(pageHalt({ ...copy, url: "https://console.cloud.google.com/auth/overview", blocked: "login", passwordFields: 1 }), "login_wall");
-  assert.equal(pageHalt({ ...copy, url: "https://accounts.google.com/signin" }), "login_wall");
+  assert.equal(pageHalt({ ...copy, url: "https://accounts.google.com/signin", path: "/signin" }), "login_wall");
 });
 
 test("CLI leaves the mode to settings unless --careful is explicit", () => {
@@ -61,7 +62,7 @@ test("real MCP clicks Create and Confirm and continues on sign-in copy by defaul
   const fixture = createServer((req, res) => {
     res.setHeader("content-type", "text/html");
     const route = new URL(req.url || "/", "http://localhost").pathname;
-    if (route === "/auth") return res.end('<h1>Sign in</h1><p>Continue with Google</p><button onclick="location.href=\'/done\'">Continue</button>');
+    if (route === "/auth") return res.end('<h1>Sign in</h1><p>Continue with Google</p><input type="password" aria-label="Password"><button onclick="location.href=\'/done\'">Continue</button>');
     if (route === "/confirm") return res.end('<h1>Confirm project</h1><section><form action="/auth"><button>Confirm</button></form></section>');
     if (route === "/done") return res.end('<h1>Done</h1><button>Finish</button>');
     if (route === "/redirect") { res.writeHead(302, { location: `http://localhost:${(fixture.address() as { port: number }).port}/done` }); return res.end(); }

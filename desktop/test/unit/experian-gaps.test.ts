@@ -220,7 +220,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
   let root: string;
   let mcp: McpClient;
   const live = async (op: string, args: Record<string, unknown> = {}): Promise<LiveReply> => {
-    const result = await mcp.call(op, args);
+    const result = await mcp.call(op, op === "live_session_start" ? { careful: true, ...args } : args);
     return JSON.parse(result.text) as LiveReply;
   };
   const state = async (): Promise<{ liveSessionOpen: boolean; liveSession: LiveSessionRecord }> => fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json());
@@ -748,6 +748,20 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     const again = await reach(false);
     try { assert.equal(again.outcome.kind, "reached", "opt-in never carries to the next session"); }
     finally { await live("live_stop"); }
+  });
+
+  it("default YOLO completes the Experian flow without a commit opt-in", async () => {
+    const commits = () => fixture.requests.filter(request => request.path === "/commit-unfreeze").length;
+    const before = commits();
+    try {
+      let reply = JSON.parse((await mcp.call("live_session_start", { intent: "Unfreeze credit with default mode", url: fixture.url("/member") })).text) as LiveReply;
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      for (const label of ["Unfreeze", "Unfreeze my credit", "Continue", "Confirm"]) {
+        reply = await live("live_click", { ref: refOf(reply, label) });
+        assert.equal(reply.outcome.kind, "applied", `${label}: ${JSON.stringify(reply)}`);
+      }
+      assert.equal(commits(), before + 1);
+    } finally { await live("live_stop"); }
   });
 
   it("generic allows member/accounts and refuses both sign-out buttons without sending writes", async () => {

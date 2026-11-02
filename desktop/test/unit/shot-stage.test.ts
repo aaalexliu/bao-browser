@@ -60,7 +60,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
       const fitHandle = await page.waitForFunction(([w, h]) => {
         const stage = document.querySelector("#shot-stage");
         const image = stage?.querySelector<HTMLImageElement>("img");
-        if (!stage || !image || image.naturalWidth !== w || image.naturalHeight !== h) return null;
+        if (!stage || !image || !image.complete || image.naturalWidth !== w || image.naturalHeight !== h) return null;
         const rect = stage.getBoundingClientRect();
         const style = getComputedStyle(stage);
         return { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),

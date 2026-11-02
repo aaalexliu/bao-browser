@@ -72,11 +72,15 @@ test("guarded replay supplies page context for both actions and extracts", async
   for (const scenario of [
     { url: auth, blocked: "", password: false, text: "Sign in with Google. Single sign-on.", halt: false },
     { url: "https://console.cloud.google.com/auth/branding", blocked: "", password: false, text: "Sign in with Google.", halt: false },
-    { url: "https://other.example/auth/overview", blocked: "", password: false, text: "Sign in with Google.", halt: true },
-    { url: "https://console.cloud.google.com/other", blocked: "", password: false, text: "Sign in with Google.", halt: true },
+    { url: "https://other.example/auth/overview", blocked: "", password: false, text: "Sign in with Google.", halt: false },
+    { url: "https://other.example/auth/overview", blocked: "", password: true, text: "Sign in with Google.", halt: true },
+    { url: "https://console.cloud.google.com/other", blocked: "", password: false, text: "Sign in with Google.", halt: false },
+    { url: "https://console.cloud.google.com/other", blocked: "", password: true, text: "Sign in with Google.", halt: true },
     { url: auth, blocked: "login", password: false, text: "Sign in with Google.", halt: true },
     { url: auth, blocked: "", password: true, text: "Sign in with Google.", halt: true },
-    { url: auth, blocked: "", password: false, text: "Verification code", halt: true },
+    { url: "https://accounts.google.com/signin", blocked: "", password: false, text: "Select an account", halt: true },
+    { url: auth, blocked: "", password: false, text: "Verification code", halt: false },
+    { url: auth, blocked: "", password: true, text: "Verification code", halt: true },
   ]) {
     for (const action of ["click", "read"] as const) {
       const effects: string[] = [];

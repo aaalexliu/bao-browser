@@ -117,7 +117,8 @@ test("live reads record a safe region and return fresh output through MCP and th
     assert.deepEqual(validateWorkflow(workflow), []);
     assert.equal(workflow.version, 3);
     assert.deepEqual(workflow.steps.map((step) => step.action), ["extract"]);
-    assert.equal(JSON.stringify(workflow).includes("742"), false, "sampled text is not baked into the workflow");
+    assert.deepEqual(workflow.steps[0]?.extract, liveReadSpec("freeze_status", "#freeze-status"));
+    assert.equal(workflow.steps[0]?.value, undefined, "the extract stores its declaration, not sampled text");
     assert.equal(readFileSync(path.join(dirs.home, "live-session", "trail.jsonl"), "utf8").includes("123-45-6789"), false);
 
     score = 756;
