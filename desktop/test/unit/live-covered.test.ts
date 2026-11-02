@@ -60,7 +60,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       const session = () => JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as LiveSessionRecord;
       try {
-        let read = await call({ op: "live_session_start", intent: "browse the store", url: fixture.url("/store/costco/storefront") });
+        let read = await call({ op: "live_session_start", careful: true, intent: "browse the store", url: fixture.url("/store/costco/storefront") });
         assert.equal(read.outcome.kind, "applied");
         if (failure === "covered") {
           read = await call({ op: "live_click", ref: ref(read, CART) });
@@ -138,7 +138,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
       const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0 });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       try {
-        const started = await call({ op: "live_session_start", intent: "search Costco after dismissing welcome", url: fixture.url("/store/costco/storefront") });
+        const started = await call({ op: "live_session_start", careful: true, intent: "search Costco after dismissing welcome", url: fixture.url("/store/costco/storefront") });
         assert.equal(started.outcome.kind, "applied");
         const covered = await call({ op: "live_click", ref: ref(started, "Search Costco") });
         assert.deepEqual(covered.outcome, { kind: "refused", reason: "element is covered" });
@@ -221,7 +221,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
       const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0 });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       try {
-        const started = await call({ op: "live_session_start", intent: "open Costco after welcome", url: fixture.url("/store/costco/storefront") });
+        const started = await call({ op: "live_session_start", careful: true, intent: "open Costco after welcome", url: fixture.url("/store/costco/storefront") });
         for (let attempt = 0; attempt < 2; attempt += 1) {
           const covered = await call({ op: "live_click", ref: ref(started, "Costco By 12:45pm") });
           assert.deepEqual(covered.outcome, { kind: "refused", reason: "element is covered" });
@@ -253,7 +253,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
       });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       try {
-        const started = await call({ op: "live_session_start", intent: "view the cart", url: fixture.url("/store/costco/storefront"), client: "test" });
+        const started = await call({ op: "live_session_start", careful: true, intent: "view the cart", url: fixture.url("/store/costco/storefront"), client: "test" });
         assert.equal(started.outcome.kind, "applied");
         const opened = await call({ op: "live_click", ref: ref(started, CART) });
         assert.equal(opened.outcome.kind, "applied");

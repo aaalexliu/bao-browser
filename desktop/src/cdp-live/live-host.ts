@@ -2,15 +2,16 @@ import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { workflowShotName } from "../v1/shots";
-import { type PageEngineName } from "../engines/agent-browser";
+import { AgentBrowserPage, type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
-import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
+import { adoptLiveWindow, LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import {
   clickLive,
   pressLiveKey,
   scrollLive,
+  selectLive,
   typeLive,
   watchNewTargets,
   type LiveActOutcome,
@@ -108,6 +109,9 @@ interface OpenState {
   engineName: PageEngineName;
   runId: string;
   eventShots: Map<string, string>;
+  tabs: Set<string>;
+  drivers: Map<string, CdpLiveDriver>;
+  endpoint: string;
 }
 
 /** The marked control and the page around it, read after every check and before the act. */
@@ -120,6 +124,10 @@ interface Before {
 const LOOK_OPS: Record<string, LiveOpName> = {
   start: "live_session_start",
   snapshot: "live_snapshot",
+  navigate: "live_navigate",
+  tabs: "live_tabs",
+  switch: "live_switch_tab",
+  select: "live_select",
   read: "live_read",
   click: "live_click",
   type: "live_type",
@@ -149,6 +157,8 @@ export interface LiveHostOptions {
   target?: LiveTarget;
   /** Runs once per session or replay. The chosen engine and private profile stay fixed until it ends. */
   selectRun?: () => Promise<LiveRunSelection>;
+  /** Local setting, read at session start. A start argument takes precedence. Default: false. */
+  careful?: () => boolean;
   /** BaoOSHelper, for the daily Chrome's Allow dialog. Tests pass a fake. */
   helper?: () => ChromeAx;
   /** Asks the daily Chrome to open a window in the target's profile. Tests pass a fake. */
@@ -293,6 +303,10 @@ export function createLiveHost(opts: LiveHostOptions): {
         }
         return await look("snapshot");
       }
+      if (op === "live_navigate") return await navigate(String(body.url || ""));
+      if (op === "live_tabs") return await tabs();
+      if (op === "live_switch_tab") return await switchTab(String(body.tab || ""));
+      if (op === "live_select") return await chooseOption(String(body.ref || ""), String(body.option ?? ""));
       if (op === "live_read") return await readRegion(String(body.name || ""), body.selector === undefined ? "body" : String(body.selector));
       if (op === "live_click") return await click(String(body.ref || ""));
       if (op === "live_type") return await typeInto(String(body.ref || ""), String(body.text || ""));
@@ -354,13 +368,15 @@ export function createLiveHost(opts: LiveHostOptions): {
     const workflowId = typeof body.workflowId === "string" ? body.workflowId.trim() : "";
     const client = typeof body.client === "string" ? body.client.slice(0, 80) : "";
     if (!intent) throw new Error("intent is required");
-    if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
+    if (body.careful !== undefined && typeof body.careful !== "boolean") throw new Error("careful must be a boolean");
+    const careful = body.careful ?? opts.careful?.() ?? false;
+    if (url !== "about:blank" && !url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
     if (body.allowCommit !== undefined && typeof body.allowCommit !== "boolean") throw new Error("allowCommit must be a boolean");
-    const { preset, guard, stopPath, hosts, origins } = liveScope(url, asked);
+    const { preset, guard, stopPath, hosts, origins } = liveScope(url, asked, careful);
     if (body.allowCommit === true && preset !== "experian") throw new Error("allowCommit applies only to Experian freeze actions");
     guard.allowCommit = body.allowCommit === true;
     const host = new URL(url).hostname;
-    const blocked = navigationGuard(url, hosts, origins, stopPath);
+    const blocked = navigationGuard(url, hosts, origins, stopPath, careful);
     if (blocked === "login_wall") return reply({ op: "live_session_start", session: "", outcome: { kind: "halted", reason: blocked }, view: null, shot: "" });
     if (blocked) throw new Error(blocked);
     const selected = await opts.selectRun?.();
@@ -391,6 +407,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       });
       cdp = opened.cdp;
       driver = opened.driver;
+      driver.setCareful(careful);
       driver.setOrigins(origins);
       driver.setStopPath(stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
@@ -426,6 +443,9 @@ export function createLiveHost(opts: LiveHostOptions): {
         engineName,
         runId: `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
         eventShots: new Map(),
+        tabs: new Set([driver.targetId]),
+        drivers: new Map([[driver.targetId, driver]]),
+        endpoint: `ws://127.0.0.1:${prepared.endpoint.port}${prepared.endpoint.browserPath}`,
       };
       const videoDir = open.artifactRoot ? path.join(open.artifactRoot, "videos") : opts.videoDir;
       if (videoDir) await driver.startVideo(path.join(videoDir, open.artifactRoot ? `${open.runId}.mp4` : `live-${open.id}-${Date.now().toString(36)}.mp4`), { noBlur: opts.evalVideoNoBlur });
@@ -439,7 +459,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         if (!open) return;
         open.halted = "new_target";
         open.refused = true;
-      });
+      }, careful, open.tabs);
       await note("start", url, "running", null);
       await driver.goto(url);
       return await look("start");
@@ -470,7 +490,7 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function reread(state: OpenState): Promise<{ read: LiveRead; facts: PageFacts }> {
     state.epoch += 1;
-    const facts = await state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
+    const facts = await state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1, careful: state.guard.careful });
     state.read = buildView(facts, state.epoch, state.guard);
     state.facts = facts;
     return { read: state.read, facts };
@@ -529,13 +549,16 @@ export function createLiveHost(opts: LiveHostOptions): {
     const started = Date.now();
     const { read, facts } = await reread(open);
     open.read = read;
-    const halt = open.halted || pageHalt({
+    const detected = pageHalt({
       blocked: facts.blocked,
       path: facts.path,
+      url: facts.url,
       passwordFields: open.read.view.credentialFields,
       text: facts.text,
       stopPath: open.stopPath,
     });
+    const loginNote = detected === "login_wall" && open.guard.careful === false;
+    const halt = open.halted || (loginNote ? null : detected);
     const reached = action !== "start" && !halt && open.read.view.reached;
     const reason = halt || (reached ? "experian_commit" : "");
     const message = reason ? await stopForOwner(open, reason) : "";
@@ -548,11 +571,64 @@ export function createLiveHost(opts: LiveHostOptions): {
     return reply({
       op: LOOK_OPS[action] || "live_screenshot",
       session: open.id,
-      outcome: halt ? { kind: "halted", reason: halt } : reached ? { kind: "reached", reason: "experian_commit", instruction: EXPERIAN_COMMIT_INSTRUCTION } : { kind: "applied" },
+      outcome: halt ? { kind: "halted", reason: halt } : reached ? { kind: "reached", reason: "experian_commit", instruction: EXPERIAN_COMMIT_INSTRUCTION } : { kind: "applied", ...(loginNote ? { note: "Sign-in page detected; session remains open." } : {}) },
       view: shown(open.read),
       shot,
       ...extra,
     });
+  }
+
+  async function navigate(url: string): Promise<unknown> {
+    if (!open) throw new Error("no live session");
+    const why = navigationGuard(url, open.hosts, open.origins, open.stopPath, open.guard.careful);
+    if (why) return reply({ op: "live_navigate", session: open.id, outcome: { kind: "refused", reason: why }, view: shown(open.read), shot: "" });
+    await note("navigate", url, "running", null);
+    const beforeUrl = await open.driver.locationHref();
+    await open.driver.goto(url);
+    await open.trail.add({ op: "navigate", beforeUrl, afterUrl: await open.driver.locationHref() });
+    return look("navigate");
+  }
+
+  async function tabs(): Promise<unknown> {
+    if (!open) throw new Error("no live session");
+    const listed = await open.cdp.send<{ targetInfos: { targetId: string; type: string; url: string; title: string }[] }>("Target.getTargets");
+    return reply({ op: "live_tabs", session: open.id, outcome: { kind: "applied" },
+      tabs: listed.targetInfos.filter((tab) => tab.type === "page" && open!.tabs.has(tab.targetId))
+        .map((tab) => ({ tab: tab.targetId, url: tab.url, title: tab.title, active: tab.targetId === open!.driver.targetId })) });
+  }
+
+  async function switchTab(tab: string): Promise<unknown> {
+    if (!open) throw new Error("no live session");
+    if (!open.tabs.has(tab)) throw new Error("tab is not owned by this session");
+    const state = open;
+    let driver = state.drivers.get(tab);
+    if (!driver) {
+      driver = await adoptLiveWindow(state.cdp, state.hosts, tab);
+      driver.setCareful(state.guard.careful !== false);
+      driver.setOrigins(state.origins);
+      driver.setStopPath(state.stopPath);
+      if (state.engineName === "agent-browser") driver.usePageEngine(await AgentBrowserPage.open({ endpoint: state.endpoint, targetId: tab, ownership: "external" }));
+      state.drivers.set(tab, driver);
+    }
+    if (driver !== state.driver) await state.driver.moveVideoTo(driver);
+    state.driver = driver;
+    await state.cdp.send("Target.activateTarget", { targetId: tab });
+    await note("switch", tab, "running", null);
+    return look("switch");
+  }
+
+  async function chooseOption(ref: string, option: string): Promise<unknown> {
+    if (!open?.read) throw new Error("no live page");
+    const state = open;
+    const index = state.read!.targets.byRef.get(ref)?.index ?? -1;
+    let before: Before | undefined;
+    const outcome = await selectLive(actTarget(state, state.read!, async (action, label) => {
+      before = await readBefore(state, index);
+      await note(action, label, "running", null);
+    }), ref, option);
+    if (outcome.kind !== "applied") return reply({ op: "live_select", session: state.id, outcome, view: shown(state.read), shot: "" });
+    await state.trail.add({ op: "select", value: option, identity: before?.identity, beforeUrl: before?.side.url, afterUrl: await state.driver.locationHref() });
+    return look("select");
   }
 
   async function readRegion(name: string, selector: string): Promise<unknown> {
@@ -562,7 +638,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     if (state.trail.list().some((event) => event.extract?.as === name)) throw new Error("read output name already used");
     const looked = await look("read") as Record<string, unknown>;
     if (state.halted) return looked;
-    const read = await state.driver.evaluateFunction<RegionRead>(readLiveRegion, { selector, limit: LIVE_READ_LIMIT });
+    const read = await state.driver.evaluateFunction<RegionRead>(readLiveRegion, { selector, limit: LIVE_READ_LIMIT, careful: state.guard.careful });
     const url = await state.driver.locationHref();
     const event = await state.trail.add({ op: "extract", extract: spec, beforeUrl: url, afterUrl: url });
     if (typeof looked.shot === "string" && looked.shot) state.eventShots.set(event.id, looked.shot);
@@ -778,6 +854,11 @@ export function createLiveHost(opts: LiveHostOptions): {
     const ending = open;
     let saveError = "";
     await ending.driver.end().catch(() => undefined);
+    for (const [id, driver] of ending.drivers) {
+      if (driver !== ending.driver) await driver.end().catch(() => undefined);
+      ending.tabs.delete(id);
+    }
+    for (const targetId of ending.tabs) await ending.cdp.send("Target.closeTarget", { targetId }).catch(() => undefined);
     ending.cdp.close();
     if (ending.turnedOn) await restoreOff(ending.portFile).catch(() => undefined);
     try { await ending.closeTarget?.(); }

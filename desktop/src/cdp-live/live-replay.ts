@@ -37,15 +37,15 @@ export interface LiveScope {
 }
 
 /** The scope of a start url. A known host always gets its own preset. Other hosts use `asked`, else generic. */
-export function liveScope(url: string, asked = ""): LiveScope {
+export function liveScope(url: string, asked = "", careful = true): LiveScope {
   const preset = presetForUrl(url, asked);
   if (!preset) throw new Error("unknown preset");
   const flags = guardPreset(preset);
   const hosts = [...new Set([new URL(url).hostname, ...flags.hosts])];
   return {
     preset,
-    guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit, ...(flags.freezeCommit ? { freezeCommit: true } : {}) },
-    stopPath: flags.stopPath,
+    guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit, careful, ...(flags.freezeCommit ? { freezeCommit: true } : {}) },
+    stopPath: careful ? flags.stopPath : "",
     hosts,
     origins: originsFor(url, hosts),
   };

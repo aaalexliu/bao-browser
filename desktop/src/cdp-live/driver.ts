@@ -98,6 +98,17 @@ const KEY_EVENTS: Record<string, { code: string; keyCode: number; text: string }
   Enter: { code: "Enter", keyCode: 13, text: "\r" },
   Tab: { code: "Tab", keyCode: 9, text: "" },
   Escape: { code: "Escape", keyCode: 27, text: "" },
+  ArrowLeft: { code: "ArrowLeft", keyCode: 37, text: "" },
+  ArrowUp: { code: "ArrowUp", keyCode: 38, text: "" },
+  ArrowRight: { code: "ArrowRight", keyCode: 39, text: "" },
+  ArrowDown: { code: "ArrowDown", keyCode: 40, text: "" },
+  Backspace: { code: "Backspace", keyCode: 8, text: "" },
+  Delete: { code: "Delete", keyCode: 46, text: "" },
+  " ": { code: "Space", keyCode: 32, text: " " },
+  Home: { code: "Home", keyCode: 36, text: "" },
+  End: { code: "End", keyCode: 35, text: "" },
+  PageUp: { code: "PageUp", keyCode: 33, text: "" },
+  PageDown: { code: "PageDown", keyCode: 34, text: "" },
 };
 
 function toIdentity(node: DomDump): Identity {
@@ -135,6 +146,7 @@ export class CdpLiveDriver implements Driver {
   private lastAllowed = "";
   private origins: readonly string[] = [];
   private stopPath = "";
+  private careful = true;
   private humanAsk: HumanAsk | undefined;
   private trustEvents: TrustEvent[] = [];
   private trustCursor = 0;
@@ -149,7 +161,14 @@ export class CdpLiveDriver implements Driver {
 
   async startVideo(destination: string, opts: { noBlur?: true } = {}): Promise<void> {
     if (this.video) throw new Error("page video already started");
-    this.video = await startCdpVideo(this.cdp, this.sessionId, destination, opts);
+    this.video = await startCdpVideo(this.cdp, this.sessionId, destination, this.careful ? opts : { noBlur: true });
+  }
+
+  async moveVideoTo(next: CdpLiveDriver): Promise<void> {
+    if (!this.video) return;
+    await this.video.switchSession(next.sessionId);
+    next.video = this.video;
+    this.video = undefined;
   }
 
   async finishVideo(): Promise<{ wrote: boolean; frames: number; truncated: boolean }> {
@@ -166,6 +185,7 @@ export class CdpLiveDriver implements Driver {
     if (this.pageEngineSelected) throw new Error("page engine already selected");
     this.pageEngineSelected = true;
     this.pageEngine = engine;
+    engine.setCareful(this.careful);
   }
 
   constructor(
@@ -176,6 +196,11 @@ export class CdpLiveDriver implements Driver {
     /** True leaves an existing tab open. False closes a tab this driver opened. */
     private readonly preserveTarget = false,
   ) {}
+
+  setCareful(careful: boolean): void {
+    this.careful = careful;
+    this.pageEngine?.setCareful(careful);
+  }
 
   setOrigins(origins: readonly string[]): void {
     this.origins = origins;
@@ -190,6 +215,7 @@ export class CdpLiveDriver implements Driver {
     if (!url || url === "about:blank" || url.startsWith("about:") || url.startsWith("chrome:") || url.startsWith("devtools:") || url.startsWith("chrome-error:")) {
       return true;
     }
+    if (!this.careful) return /^https?:/.test(url);
     if (this.origins.length) return navigationRefusal(url, this.hosts, this.origins) == null;
     return navigationAllowed(url, this.hosts);
   }
@@ -491,9 +517,9 @@ export class CdpLiveDriver implements Driver {
   }
 
   async insertText(text: string, prior = "", markIndex = -1): Promise<void> {
-    const refusal = insertTextRefusal(text, prior);
+    const refusal = this.careful ? insertTextRefusal(text, prior) : null;
     if (refusal) throw new Error(refusal);
-    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex, careful: this.careful });
     if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
     if (this.pageEngine) await this.pageEngine.insertText(text);
     else await this.cdp.send("Input.insertText", { text }, this.sessionId);
@@ -546,24 +572,22 @@ export class CdpLiveDriver implements Driver {
       await this.pageEngine.key(key.replace(/^cmd\+/i, "Meta+").replace(/^ctrl\+/i, "Control+"));
       return;
     }
-    if (key === "cmd+a" || key === "Meta+a") {
-      await this.chord("a", "KeyA", 4, 65);
-      return;
+    const parts = key.split("+");
+    let modifiers = 0;
+    for (const part of parts.slice(0, -1)) {
+      modifiers |= ({ meta: 4, cmd: 4, control: 2, ctrl: 2, alt: 1, shift: 8 } as Record<string, number>)[part.toLowerCase()] || 0;
     }
-    const name = key === "Return" ? "Enter" : key;
+    const raw = parts.at(-1) || "";
+    const name = raw === "Return" ? "Enter" : raw === "Space" ? " " : raw;
     const known = KEY_EVENTS[name];
+    const code = known?.code || (/^[a-z]$/i.test(name) ? `Key${name.toUpperCase()}` : /^\d$/.test(name) ? `Digit${name}` : name);
+    const virtualKey = known?.keyCode || (name.length === 1 ? name.toUpperCase().charCodeAt(0) : 0);
     await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyDown",
-      key: name,
-      code: known?.code || name,
-      windowsVirtualKeyCode: known?.keyCode || 0,
-      text: known ? known.text : name.length === 1 ? name : "",
+      type: "keyDown", key: name, code, modifiers, windowsVirtualKeyCode: virtualKey,
+      text: modifiers & 7 ? "" : known ? known.text : name.length === 1 ? name : "",
     }, this.sessionId);
     await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyUp",
-      key: name,
-      code: known?.code || name,
-      windowsVirtualKeyCode: known?.keyCode || 0,
+      type: "keyUp", key: name, code, modifiers, windowsVirtualKeyCode: virtualKey,
     }, this.sessionId);
   }
 
@@ -575,7 +599,7 @@ export class CdpLiveDriver implements Driver {
     this.assertHost();
     await this.bringToFront();
     if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
-    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex, careful: this.careful });
     if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
     const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.key(key);
@@ -669,6 +693,7 @@ export class CdpLiveDriver implements Driver {
   /** Page screenshot after a local blur veil. The PNG stays in this process until the caller writes it. */
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
+    if (!this.careful) return this.screenshotPng();
     const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
     this.pauseCapture();
     try {

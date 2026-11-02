@@ -7,6 +7,10 @@ import { COMMIT_FLOOR, type GuardPreset } from "./presets";
 export const LIVE_TOOL_NAMES = [
   "live_session_start",
   "live_snapshot",
+  "live_navigate",
+  "live_tabs",
+  "live_switch_tab",
+  "live_select",
   "live_read",
   "live_click",
   "live_type",
@@ -46,10 +50,11 @@ export interface LiveIdleWarning {
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. A preset (generic, instacart, books, experian) supplies deny labels, confirm labels, and stop paths. Those are refused before navigation and before a click. It also names the form buttons that buy nothing, such as Add to cart. Checkout and place order are always refused. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. Dashboard Unfreeze and other freeze-flow starters stay ordinary clicks. Only the final Unfreeze, Freeze, Lift, Thaw, Confirm or Submit action on the freeze review or confirmation page returns reached: experian_commit without a click. Session start never returns reached. Stop and save with live_stop. Only after the owner explicitly says go, start a new session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides checkout, deny labels or credential guards. Other hosts use the preset given, else generic. The reply lists controls and names the buttons that will not be clicked. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. By default Bao performs the action, including Create, Save, Submit, Confirm, checkout, and place order. Sign-in detection adds a note and leaves the session usable. Set careful: true to opt into preset deny labels, confirm checks, stop paths, and sign-in halts. If omitted, careful uses this Mac's setting, which defaults to false. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. Other hosts use the preset given, else generic. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. In careful mode, dashboard Unfreeze and other freeze-flow starters stay ordinary clicks, but the final Unfreeze, Freeze, Lift, Thaw, Confirm or Submit action on the freeze review or confirmation page returns reached: experian_commit without a click. Session start never returns reached. Stop and save with live_stop. Only after the owner explicitly says go, start a new careful session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides careful mode's checkout, deny labels or credential guards. The reply lists controls with refs. In careful mode it also names buttons held for confirmation. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
     inputSchema: {
       type: "object",
       properties: {
+        careful: { type: "boolean", description: "Opt into confirm checks, sign-in halts, and site deny rules. Defaults to this Mac's careful setting (false)." },
         intent: { type: "string" },
         url: { type: "string" },
         portFile: { type: "string", description: "Leave this out. An absolute DevToolsActivePort path, only for a Chrome started with its own --user-data-dir." },
@@ -62,12 +67,32 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_snapshot",
-    description: `Read the open live page. Controls are listed in page order, ${LIVE_PAGE_SIZE} to a page, and the reply gives page and pages. Pass page to read another page of the last read without reading the page again, so every ref from that read still works. Confirm buttons and denied labels are named and not given a ref. Credential fields, including security code, PIN, verification code, and one-time code, are counted and not given a ref.`,
+    description: `Read the open live page. Controls are listed in page order, ${LIVE_PAGE_SIZE} to a page, and the reply gives page and pages. Pass page to read another page of the last read without reading the page again, so every ref from that read still works. By default every control keeps its label and gets a ref, including credential fields. In careful mode confirm and denied buttons have no ref, labels are redacted, and credential fields are counted without refs. Select controls list their options for live_select.`,
     inputSchema: { type: "object", properties: { page: { type: "integer", minimum: 1 } } },
   },
   {
+    name: "live_navigate",
+    description: "Navigate Bao's current tab to an http(s) URL. By default Bao performs the action and follows redirects. Careful mode applies its host list and stop paths.",
+    inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+  },
+  {
+    name: "live_tabs",
+    description: "List only tabs opened by Bao or by Bao's tabs. Other Chrome tabs are not listed or controlled.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "live_switch_tab",
+    description: "Switch to a tab id from live_tabs and read it. Old refs become stale. Bao never switches to a tab outside this session.",
+    inputSchema: { type: "object", properties: { tab: { type: "string" } }, required: ["tab"] },
+  },
+  {
+    name: "live_select",
+    description: "Choose an option on a native select control from the latest snapshot by its value or label. For custom menus, click the combobox, then the option ref, or use live_key.",
+    inputSchema: { type: "object", properties: { ref: { type: "string" }, option: { type: "string" } }, required: ["ref", "option"] },
+  },
+  {
     name: "live_read",
-    description: "Read and record visible text from one CSS region or element. name is a unique output name, such as freeze_status. selector defaults to body; prefer a stable id or a named region, such as [aria-label='Freeze status']. Missing, hidden, sensitive, or ambiguous regions are refused. Text is capped at 4000 characters with a truncation marker. Fields and editable content are excluded. Redaction covers credential-label values, SSNs, Luhn-valid 13-19-digit card numbers, JWTs, and keys with sk-, ghp_, gho_, xoxb-, xoxp-, or AKIA prefixes. Scores, dates, amounts, and freeze status stay readable. The saved workflow reads the region again on replay and returns its fresh text in run_workflow and get_run outputs. Text and run pictures stay on this Mac; do not read a region that contains secrets.",
+    description: "Read and record visible text from one CSS region or element. name is a unique output name, such as freeze_status. selector defaults to body; prefer a stable id or a named region, such as [aria-label='Freeze status']. Missing, hidden, or ambiguous regions are refused. Careful mode also refuses credential-named ancestors; YOLO reads them with the same secret-value redaction. Text is capped at 4000 characters with a truncation marker. Fields and editable content are excluded. Redaction covers credential-label values, SSNs, Luhn-valid 13-19-digit card numbers, JWTs, and keys with sk-, ghp_, gho_, xoxb-, xoxp-, or AKIA prefixes. Scores, dates, amounts, and freeze status stay readable. The saved workflow reads the region again on replay and returns its fresh text in run_workflow and get_run outputs. Text and run pictures stay on this Mac; do not read a region that contains secrets.",
     inputSchema: {
       type: "object",
       properties: {
@@ -79,20 +104,20 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_click",
-    description: "Click one ref from the latest snapshot. A confirm button or a denied label is refused and not clicked. A control covered by another element is refused and not clicked.",
+    description: "Click one ref from the latest snapshot. By default Bao performs the action. In careful mode confirm buttons and preset deny labels are guarded. Stale refs and controls covered by another element are refused.",
     inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
   },
   {
     name: "live_type",
-    description: "Type into one non-credential field from the latest snapshot. Passwords, security codes, card numbers, SSNs, and secret-looking text are refused. Typing stops if focus is no longer that field. To search, type the query into the site's search box, then press Enter on that box with live_key.",
+    description: "Type into one field or contenteditable from the latest snapshot. By default Bao performs the action, including credentials, long text, and digit strings. Careful mode refuses credential fields, secret-looking text, and text longer than 80 characters. Typing stops if focus is no longer that field. To search, type the query into the site's search box, then press Enter on that box with live_key.",
     inputSchema: { type: "object", properties: { ref: { type: "string" }, text: { type: "string" } }, required: ["ref", "text"] },
   },
   {
     name: "live_key",
-    description: "Press Enter, Tab, or Escape. With a ref from the latest snapshot, the control is focused first and refused on the same rules as live_click. Enter needs a ref. Enter in a field is refused when that field's form would submit through a confirm or denied button. A field with no submit button takes Enter only when it is a search box. Any other key is refused.",
+    description: "Press a common key: Enter, Tab, Escape, arrows, Backspace, Delete, Space, Home, End, PageUp, PageDown, or Meta/Control/Alt/Shift combinations such as Meta+a. With a ref from the latest snapshot the control is focused first. Careful mode accepts only Enter, Tab, and Escape, and Enter needs a ref. By default Bao performs the action, including form submission. In careful mode Enter in a field is refused when its form would submit through a confirm or denied button, or when it has no submit button and is not a search box. Unsupported key names are refused.",
     inputSchema: {
       type: "object",
-      properties: { key: { type: "string", enum: [...LIVE_KEYS] }, ref: { type: "string" } },
+      properties: { key: { type: "string" }, ref: { type: "string" } },
       required: ["key"],
     },
   },
@@ -107,12 +132,12 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_screenshot",
-    description: "Save a redacted screenshot into this Mac's live session. The reply is the shot name, not the picture bytes.",
+    description: "Save a readable screenshot into this Mac's live session. Careful mode blurs screenshots and video. The reply is the shot name, not the picture bytes.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "live_stop",
-    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, scroll, and named read that went through is on the session's trail, and the workflow is built from it. Only Experian workflows keep repeated clicks, clicks with no visible effect and typed corrections in order; other presets condense them as before. Scrolls stay in the trail but do not become steps. Typed text becomes an input, except a search box's text, which replay types again as recorded. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay repeats the recorded steps, skips a cart add when the item is already in the cart, and keeps every guard this session had.",
+    description: "Close the live session and write its workflow in this Mac's library. Each click, typed field, key, scroll, and named read that went through is on the session's trail, and the workflow is built from it. Only Experian workflows keep repeated clicks, clicks with no visible effect and typed corrections in order; other presets condense them as before. Scrolls stay in the trail but do not become steps. Typed text becomes an input, except a search box's text, which replay types again as recorded. run_workflow and the Bao app replay that workflow in a new window of the same Chrome, with no model call and no approval step. Replay repeats the recorded steps, skips a cart add when the item is already in the cart, and keeps the existing replay guards. The live session's careful setting does not change replay.",
     inputSchema: { type: "object", properties: {} },
   },
 ] as const;
@@ -155,10 +180,12 @@ export interface LiveControlFact {
   field?: { type: string; name: string; autocomplete: string };
   /** A field's form submits through this button on Enter. Absent when there is no form or no submit button. */
   formSubmit?: string;
+  options?: { value: string; label: string; selected: boolean; disabled: boolean }[];
 }
 
 export interface PageFacts {
   path: string;
+  url?: string;
   title: string;
   headings: string[];
   blocked: string;
@@ -172,6 +199,7 @@ export interface LiveControlView {
   ref: string;
   label: string;
   kind: string;
+  options?: LiveControlFact["options"];
 }
 
 export interface LiveView {
@@ -192,10 +220,10 @@ export interface LiveViewPage extends LiveView {
   controlsTotal: number;
 }
 
-/** The label patterns of the active preset. */
-export type LabelGuard = Pick<GuardPreset, "commit" | "deny" | "submit" | "freezeCommit"> & { allowCommit?: boolean };
+/** The active preset and session mode. Absent mode keeps legacy recordings guarded. */
+export type LabelGuard = Pick<GuardPreset, "commit" | "deny" | "submit" | "freezeCommit"> & { careful?: boolean; allowCommit?: boolean };
 
-export const EXPERIAN_COMMIT_INSTRUCTION = `${EXPERIAN_COMMIT_MESSAGE} Confirm with the owner before starting a new session with allowCommit: true.`;
+export const EXPERIAN_COMMIT_INSTRUCTION = `${EXPERIAN_COMMIT_MESSAGE} Confirm with the owner before starting a new careful session with allowCommit: true.`;
 
 type TargetKind = "click" | "field" | "commit" | "credential" | "deny";
 
@@ -209,6 +237,7 @@ interface RefTarget {
 }
 
 export interface LiveRead {
+  careful?: boolean;
   view: LiveView;
   targets: {
     byRef: Map<string, RefTarget>;
@@ -231,6 +260,7 @@ function selectorFor(index: number): string {
 const CREDENTIAL_WORD = /\b(password|passcode|otp|cvv|cvc|ssn|social security|card number|security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor)\b/;
 
 function credential(control: LiveControlFact): boolean {
+  if (control.kind !== "field") return false;
   const type = (control.field?.type || "").toLowerCase();
   const auto = (control.field?.autocomplete || "").toLowerCase();
   const name = `${control.field?.name || ""} ${control.label}`.toLowerCase();
@@ -310,18 +340,20 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
     const href = control.href || "";
     if (credential(control)) {
       view.credentialFields += 1;
-      byRef.set(ref, { index: control.index, kind: "credential", selector, href, enter: "credential_field" });
-      passwordRef = passwordRef || ref;
-      continue;
+      if (guard.careful !== false) {
+        byRef.set(ref, { index: control.index, kind: "credential", selector, href, enter: "credential_field" });
+        passwordRef = passwordRef || ref;
+        continue;
+      }
     }
-    const label = redactLabel(control.label);
-    if (!label) continue;
-    if (denied(control, guard.deny)) {
+    const label = guard.careful === false ? control.label : redactLabel(control.label);
+    if (!label && guard.careful !== false) continue;
+    if (guard.careful !== false && denied(control, guard.deny)) {
       view.stopBeforeConfirm.push({ label });
       byRef.set(ref, { index: control.index, kind: "deny", selector, href, enter: "denied" });
       continue;
     }
-    const refusal = commitRefusal(control, guard, facts);
+    const refusal = guard.careful === false ? "" : commitRefusal(control, guard, facts);
     if (refusal) {
       view.stopBeforeConfirm.push({ label });
       byRef.set(ref, { index: control.index, kind: "commit", selector, href, enter: refusal });
@@ -329,11 +361,11 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
       continue;
     }
     const kind: TargetKind = control.kind === "field" ? "field" : "click";
-    const enter = kind === "field" ? enterRefusal(control, guard, facts) : "";
+    const enter = kind === "field" && guard.careful !== false ? enterRefusal(control, guard, facts) : "";
     byRef.set(ref, { index: control.index, kind, selector, href, enter });
-    view.controls.push({ ref, label, kind: control.kind });
+    view.controls.push({ ref, label, kind: control.kind, ...(control.options ? { options: control.options } : {}) });
   }
-  return { view, targets: { byRef, passwordRef } };
+  return { careful: guard.careful, view, targets: { byRef, passwordRef } };
 }
 
 /** One page of the view's controls. A page past either end is clamped to that end. */
@@ -378,8 +410,9 @@ export function planClick(read: LiveRead, ref: string): Plan {
 
 /** Enter needs a ref. Tab and Escape without one go to whatever has focus. */
 export function planKey(read: LiveRead, key: string, ref: string): Plan {
-  if (!(LIVE_KEYS as readonly string[]).includes(key)) return { ok: false, refusal: "key_not_allowed" };
-  if (!ref) return key === "Enter" ? { ok: false, refusal: "ref_required" } : { ok: true, selector: "" };
+  const common = /^(?:(?:Meta|Control|Ctrl|Cmd|Alt|Shift)\+)*(?:Enter|Return|Tab|Escape|Arrow(?:Up|Down|Left|Right)|Backspace|Delete|Space|Home|End|PageUp|PageDown|[a-zA-Z0-9 ])$/i;
+  if (read.careful === false ? !common.test(key) : !(LIVE_KEYS as readonly string[]).includes(key)) return { ok: false, refusal: "key_not_allowed" };
+  if (!ref) return key === "Enter" && read.careful !== false ? { ok: false, refusal: "ref_required" } : { ok: true, selector: "" };
   const plan = planClick(read, ref);
   if (!plan.ok) return plan;
   const enter = read.targets.byRef.get(ref)?.enter || "";
@@ -401,12 +434,12 @@ export function planType(read: LiveRead, ref: string, text: string, prior = ""):
   if (!target) return { ok: false, refusal: "unknown_ref" };
   if (target.kind === "credential") return { ok: false, refusal: "credential_field" };
   if (target.kind !== "field") return { ok: false, refusal: "not_a_field" };
-  const refusal = insertTextRefusal(text, prior);
+  const refusal = read.careful === false ? null : insertTextRefusal(text, prior);
   if (refusal) return { ok: false, refusal };
   return { ok: true, selector: target.selector };
 }
 
-export function pageHalt(facts: { blocked: string; path: string; passwordFields: number; text?: string; stopPath?: string }): "login_wall" | "bot_wall" | "stop-path" | null {
+export function pageHalt(facts: { blocked: string; path: string; url?: string; passwordFields: number; text?: string; stopPath?: string }): "login_wall" | "bot_wall" | "stop-path" | null {
   const halt = pathHalt(facts.path, facts.stopPath);
   if (halt) return halt;
   const text = (facts.text || "").toLowerCase();
@@ -458,6 +491,19 @@ export function publicLiveResult(value: unknown): unknown {
   return stripSecrets(value);
 }
 
+/** Page function. Chooses one option on the select this process just marked. */
+export function selectLiveOption(ask: { markIndex: number; option: string }): void {
+  const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
+  if (!(el instanceof HTMLSelectElement)) throw new Error("not_a_select");
+  const byValue = Array.from(el.options).filter((option) => option.value === ask.option);
+  const options = byValue.length ? byValue : Array.from(el.options).filter((option) => option.label === ask.option);
+  if (options.length !== 1) throw new Error(options.length ? "ambiguous option" : "option not found");
+  if (el.disabled || options[0]!.disabled) throw new Error("option is disabled");
+  el.value = options[0]!.value;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 /** Page function. Focuses the control this process just marked. */
 export function focusLiveMark(ask: { markIndex: number }): void {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
@@ -468,12 +514,20 @@ export function focusLiveMark(ask: { markIndex: number }): void {
 export function selectLiveMark(ask: { markIndex: number }): void {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.select();
+  else if (el instanceof HTMLElement && el.isContentEditable) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
 }
 
 /** Page function. The value already in the marked field. It is not returned to the caller of the tool. */
 export function markedFieldValue(ask: { markIndex: number }): string {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return String(el.value || "").slice(0, 80);
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return String(el.value || "");
+  if (el instanceof HTMLElement && el.isContentEditable) return el.innerText;
   return "";
 }
 
@@ -501,7 +555,7 @@ export function markedState(ask: { markIndex: number }): MarkedState {
 }
 
 /** Page function. True only when focus is still the marked control, including through an open shadow root. */
-export function focusStillMarked(ask: { markIndex: number }): { ok: boolean; credential: boolean } {
+export function focusStillMarked(ask: { markIndex: number; careful?: boolean }): { ok: boolean; credential: boolean } {
   const marked = ask.markIndex >= 0 ? document.querySelector(`[data-bao-live="${ask.markIndex}"]`) : null;
   let node: Element | null = document.activeElement;
   while (node && node.shadowRoot) {
@@ -520,10 +574,11 @@ export function focusStillMarked(ask: { markIndex: number }): { ok: boolean; cre
     : "";
   const credential = password || /password|one-time-code|cc-number|cc-csc/.test(auto)
     || /\b(password|passcode|otp|cvv|cvc|ssn|social security|card number|security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor)\b/.test(name);
-  if (!(marked instanceof HTMLElement)) return { ok: ask.markIndex < 0 && !credential, credential };
+  const allowed = ask.careful === false || !credential;
+  if (!(marked instanceof HTMLElement)) return { ok: ask.markIndex < 0 && allowed, credential };
   if (!focused) return { ok: false, credential };
   const same = focused === marked || marked.contains(focused);
-  return { ok: same && !credential, credential };
+  return { ok: same && allowed, credential };
 }
 
 /**
@@ -531,7 +586,7 @@ export function focusStillMarked(ask: { markIndex: number }): { ok: boolean; cre
  * markIndex marks the control at that index. markHandle marks the control that
  * tree() gave that data-bao-i handle, and the reply says which index it has.
  */
-export function readLivePage(ask: { markIndex: number; markHandle?: string }): PageFacts {
+export function readLivePage(ask: { markIndex: number; markHandle?: string; careful?: boolean }): PageFacts {
   const mark = typeof ask?.markIndex === "number" ? ask.markIndex : -1;
   const handle = typeof ask?.markHandle === "string" ? ask.markHandle : "";
   if (mark >= 0 || handle) {
@@ -544,19 +599,24 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
   const buttonInput = (el: Element): boolean => el instanceof HTMLInputElement
     && /^(submit|image|button|reset)$/.test((el.getAttribute("type") || "").toLowerCase());
   const labelled = (el: Element): string => (
-    el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
-      ? Array.from(el.labels || []).map((label) => label.textContent || "").join(" ").trim()
+    el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
+      ? Array.from(el.labels || []).map((label) => {
+        const copy = label.cloneNode(true) as Element;
+        copy.querySelectorAll("input, textarea, select").forEach((field) => field.remove());
+        return copy.textContent || "";
+      }).join(" ").trim()
       : ""
   );
   const textOf = (el: Element): string => (
     el.getAttribute("aria-label")
+    || (el.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)?.textContent || "").join(" ").trim()
     || (buttonInput(el) ? (el as HTMLInputElement).value || el.getAttribute("alt") || el.getAttribute("name") : "")
     || labelled(el)
     || el.getAttribute("placeholder")
     || (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.getAttribute("name") : "")
     || el.textContent
     || ""
-  ).replace(/\s+/g, " ").trim().slice(0, 80);
+  ).replace(/\s+/g, " ").trim();
   const submits = (el: Element): boolean => (el instanceof HTMLButtonElement && el.type === "submit")
     || (el instanceof HTMLInputElement && /^(submit|image)$/.test((el.getAttribute("type") || "").toLowerCase()));
   const ownerOf = (el: Element): HTMLFormElement | null => (
@@ -575,7 +635,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
   const visit = (el: Element, kind: string, field?: { type: string; name: string; autocomplete: string }): void => {
     if (concealed(el)) return;
     const label = textOf(el);
-    if (!label) return;
+    if (!label && ask.careful !== false) return;
     if (mark === index || (handle && el.getAttribute("data-bao-i") === handle)) {
       el.setAttribute("data-bao-live", String(index));
       if (handle) marked = index;
@@ -590,10 +650,11 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
     const fact: LiveControlFact = { index, label, kind, form: search ? "search" : "", href, field };
     const button = field && form ? Array.from(form.elements).find(submits) : undefined;
     if (button) fact.formSubmit = textOf(button);
+    if (el instanceof HTMLSelectElement) fact.options = Array.from(el.options).map((option) => ({ value: option.value, label: option.label, selected: option.selected, disabled: option.disabled }));
     controls.push(fact);
     index += 1;
   };
-  for (const el of document.querySelectorAll("a[href], button, input, textarea")) {
+  for (const el of document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="checkbox"], [role="radio"], [role="option"], [role="combobox"], [contenteditable]:not([contenteditable="false"])')) {
     if (el instanceof HTMLAnchorElement) {
       visit(el, "link");
       continue;
@@ -602,7 +663,11 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
       visit(el, submits(el) && ownerOf(el) ? "submit" : "button");
       continue;
     }
-    const type = (el.getAttribute("type") || "text").toLowerCase();
+    if (el instanceof HTMLSelectElement) { visit(el, "select"); continue; }
+    const role = el.getAttribute("role");
+    const editable = el instanceof HTMLElement && el.isContentEditable;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && !editable) { visit(el, role || "button"); continue; }
+    const type = (el.getAttribute("type") || (editable ? "contenteditable" : "text")).toLowerCase();
     if (type === "hidden") continue;
     visit(el, "field", {
       type,
@@ -613,6 +678,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
   const headings = [...document.querySelectorAll("h1, h2")].slice(0, 8).map((el) => (el.textContent || "").replace(/\s+/g, " ").trim());
   return {
     path: `${location.pathname || "/"}${location.hash || ""}`,
+    url: location.href,
     title: document.title || "",
     headings,
     blocked: credentialHalt ? "login" : "",

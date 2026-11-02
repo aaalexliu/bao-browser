@@ -29,7 +29,7 @@ net.createServer(socket => {
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'missing-result') { socket.end(JSON.stringify({ id: cmd.id, success: true, data: {} }) + '\\n'); return; }
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'ended') { socket.end(); return; }
     if (cmd.action === 'screenshot') fs.writeFileSync(cmd.path, Buffer.from('89504e470d0a1a0a', 'hex'));
-    const data = cmd.action === 'evaluate' ? { result: {count: ${mode === "ambiguous" ? 2 : 1}, credential: false} } : cmd.action === 'keyboard' ? {inserted: true} : cmd.action === 'screenshot' ? {path: cmd.path} : cmd.action === 'tab_switch' ? {targetId: ${mode === "wrongtab" ? "'WRONG'" : "cmd.tabId"}} : {};
+    const data = cmd.action === 'evaluate' ? { result: {count: ${mode === "ambiguous" ? 2 : 1}, credential: ${mode === "credential"}} } : cmd.action === 'keyboard' ? {inserted: true} : cmd.action === 'screenshot' ? {path: cmd.path} : cmd.action === 'tab_switch' ? {targetId: ${mode === "wrongtab" ? "'WRONG'" : "cmd.tabId"}} : {};
     socket.end(JSON.stringify({id: cmd.id, success: true, data}) + '\\n');
   });
 }).listen(process.env.AGENT_BROWSER_SOCKET_DIR + '/bao.sock');
@@ -99,6 +99,18 @@ for (const mode of ["hang", "malformed", "error", "missing-result", "ended"]) {
   });
 }
 
+test("native credential checks follow the live session mode", async () => {
+  const fake = await fakeEngine("credential");
+  try {
+    await assert.rejects(fake.page.insertText("demo"), /refuses credential fields/);
+    fake.page.setCareful(false);
+    await fake.page.insertText("demo");
+    fake.page.setCareful(true);
+    await assert.rejects(fake.page.insertText("demo"), /refuses credential fields/);
+    assert.equal((await fake.records()).filter((cmd) => cmd.action === "keyboard").length, 1);
+  } finally { await fake.close(); }
+});
+
 test("ambiguous selection fails before any mutation", async () => {
   const fake = await fakeEngine("ambiguous");
   try {
@@ -159,22 +171,35 @@ test("an uncertain native startup read propagates immediately without another pr
   } finally { await fake.close(); }
 });
 
-test("live activity resets the idle timeout without extending the absolute cap", async () => {
-  const idle = await fakeEngine("ok", 150, { idleMs: 500 });
+test("live activity resets the idle timeout without extending the absolute cap", async (t) => {
+  const original = globalThis.setTimeout;
+  const timers: { handle: NodeJS.Timeout; callback: () => void; ms: number }[] = [];
+  t.mock.method(globalThis, "setTimeout", (callback: () => void, ms?: number) => {
+    const tracked = ms === 500 || ms === 900;
+    const handle = original(callback, tracked ? 60_000 : ms);
+    if (tracked) timers.push({ handle, callback, ms: ms! });
+    return handle;
+  });
+  const cleared = t.mock.method(globalThis, "clearTimeout");
+  const idle = await fakeEngine("ok", null, { idleMs: 500 });
   try {
     for (let i = 0; i < 4; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      await idle.page.evaluate("document.title");
+      const previous = timers.at(-1)!;
+      idle.page.touch();
+      assert.ok(cleared.mock.calls.some((call) => call.arguments[0] === previous.handle));
+      assert.notEqual(timers.at(-1)!.handle, previous.handle);
+      assert.equal(timers.at(-1)!.ms, 500);
     }
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    timers.at(-1)!.callback();
     await assert.rejects(idle.page.evaluate("document.title"), /idle timeout/);
   } finally { await idle.close(); }
-  const capped = await fakeEngine("ok", 150, { idleMs: 500, lifetimeMs: 900 });
+  const capped = await fakeEngine("ok", null, { idleMs: 500, lifetimeMs: 900 });
   try {
-    for (let i = 0; i < 6; i++) {
-      capped.page.touch();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
+    const cap = timers.find((timer) => timer.ms === 900)!;
+    for (let i = 0; i < 6; i++) capped.page.touch();
+    assert.equal(timers.filter((timer) => timer.ms === 900).length, 1);
+    assert.equal(cleared.mock.calls.some((call) => call.arguments[0] === cap.handle), false);
+    cap.callback();
     await assert.rejects(capped.page.evaluate("document.title"), /lifetime exceeded/);
   } finally { await capped.close(); }
 });

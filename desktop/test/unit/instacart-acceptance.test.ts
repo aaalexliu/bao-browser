@@ -166,7 +166,7 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
       for (const name of ["live_session_start", "live_snapshot", "live_click", "live_type", "live_key", "live_stop", "run_workflow"]) {
         assert.ok(tools.includes(name), `the one bao server lists ${name}`);
       }
-      const started = await live(agent, "live_session_start", { intent: INTENT, url: fixture.url("/store/costco/storefront") });
+      const started = await live(agent, "live_session_start", { careful: true, intent: INTENT, url: fixture.url("/store/costco/storefront") });
       assert.equal(started.session, WORKFLOW_ID);
       const search = (reply: LiveReply) => refOf(reply, "the search box", (item) => item.label === "Search Costco");
       const typed = await live(agent, "live_type", { ref: search(started), text: "blueberries" });

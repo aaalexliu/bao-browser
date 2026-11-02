@@ -176,6 +176,10 @@ test("the live tools stay off the remote relay and a workflow id comes from the 
   assert.deepEqual(LIVE_TOOL_NAMES, [
     "live_session_start",
     "live_snapshot",
+    "live_navigate",
+    "live_tabs",
+    "live_switch_tab",
+    "live_select",
     "live_read",
     "live_click",
     "live_type",
