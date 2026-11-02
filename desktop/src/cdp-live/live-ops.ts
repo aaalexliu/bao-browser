@@ -651,7 +651,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string; care
     const fact: LiveControlFact = { index, label, kind, form: search ? "search" : "", href, field };
     const button = field && form ? Array.from(form.elements).find(submits) : undefined;
     if (button) fact.formSubmit = textOf(button);
-    if (el instanceof HTMLSelectElement) fact.options = Array.from(el.options).map((option) => ({ value: option.value, label: option.label, selected: option.selected, disabled: option.disabled }));
+    if (el instanceof HTMLSelectElement) fact.options = Array.from(el.options).map((option) => ({ value: option.value, label: option.label, selected: option.selected, disabled: el.matches(":disabled") || option.matches(":disabled") }));
     controls.push(fact);
     index += 1;
   };
