@@ -11,9 +11,9 @@ import type { ExtractSpec, ListRead } from "../v1/data-steps";
 import { LIVE_READ_LIMIT, liveReadRows, liveReadSelector, readLiveRegion, type RegionRead } from "./live-read";
 import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
-import type { CdpLiveDriver } from "./driver";
+import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import { clickLive, pressLiveKey, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
-import { buildView, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
+import { buildView, EXPERIAN_COMMIT_MESSAGE, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
 import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import { acquireCdpLock, CDP_LOCK_PATH, releaseCdpLock, rememberLockTarget, takeDeadTarget } from "./lock";
@@ -44,7 +44,7 @@ export function liveScope(url: string, asked = ""): LiveScope {
   const hosts = [...new Set([new URL(url).hostname, ...flags.hosts])];
   return {
     preset,
-    guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit },
+    guard: { commit: flags.commit, deny: flags.deny, submit: flags.submit, ...(flags.freezeCommit ? { freezeCommit: true } : {}) },
     stopPath: flags.stopPath,
     hosts,
     origins: originsFor(url, hosts),
@@ -137,8 +137,12 @@ export class GuardedLiveDriver implements Driver {
 
   async goto(url: string): Promise<void> {
     const why = navigationGuard(url, this.scope.hosts, this.scope.origins, this.scope.stopPath);
-    if (why) throw this.stop(why, false);
-    await this.inner.goto(url);
+    if (why) throw this.stop(why, why === "login_wall");
+    try { await this.inner.goto(url); }
+    catch (error) {
+      if (error instanceof LiveNavigationHalt) throw this.stop(error.reason, true);
+      throw error;
+    }
   }
 
   async click(node: Identity): Promise<void> {
@@ -220,11 +224,12 @@ export class GuardedLiveDriver implements Driver {
     const ref = node ? `e${read.view.epoch}.c${marked}` : "";
     const outcome = await run(this.target(read), ref);
     if (outcome.kind === "applied") return;
-    throw this.stop(outcome.reason, outcome.kind === "halted");
+    throw this.stop(outcome.reason, outcome.kind === "halted" || outcome.kind === "reached");
   }
 }
 
 function haltLine(reason: string, site: string): string {
+  if (reason === "experian_commit") return EXPERIAN_COMMIT_MESSAGE;
   if (reason === "login_wall") return `Sign in to ${site} in Chrome, then run the workflow again.`;
   if (reason === "bot_wall") return `${site} is showing a bot check. Complete it in Chrome, then run the workflow again.`;
   if (reason === "stop-path") return `The page went to a path on ${site} that Bao does not drive, so Bao stopped.`;
@@ -240,7 +245,7 @@ function pausedAt(workflow: WorkflowV2, run: RunResult, stepId: string, reason: 
   const site = siteHost(workflow.startUrl);
   const ask = {
     ...makeAsk({
-      kind: "wall",
+      kind: reason === "experian_commit" ? "confirm" : "wall",
       wall: reason === "bot_wall" ? "bot" : "login",
       workflowId: workflow.id,
       workflowName: workflow.name,
@@ -258,7 +263,7 @@ function pausedAt(workflow: WorkflowV2, run: RunResult, stepId: string, reason: 
   return {
     ...run,
     status: "paused",
-    pausedKind: "wall",
+    pausedKind: reason === "experian_commit" ? "confirm" : "wall",
     pausedStepId: stepId,
     ask,
     steps: run.steps.map((item) => (item.id === stepId ? { ...item, status: "paused", reason } : item)),
@@ -332,9 +337,15 @@ export async function replayLiveWorkflow(
   if (workflow.driver !== "cdp-live") throw new Error("not a live workflow");
   const scope = liveScope(workflow.startUrl);
   const blocked = navigationGuard(workflow.startUrl, scope.hosts, scope.origins, scope.stopPath);
+  const engineName = deps.engineName ?? "old";
+  const initial: RunResult = {
+    runId, pageEngine: engineName, status: "paused",
+    steps: workflow.steps.map((step) => ({ id: step.id, status: "pending" })),
+    heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
+  };
+  if (blocked === "login_wall") return pausedAt(workflow, initial, workflow.steps[0]?.id || workflow.id, blocked);
   if (blocked) throw new Error(blocked);
   const lockFile = deps.lockFile || CDP_LOCK_PATH;
-  const engineName = deps.engineName ?? "old";
   await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
   let prepared;
   try {
@@ -375,6 +386,10 @@ export async function replayLiveWorkflow(
     await driver.goto(workflow.startUrl);
     run = await replayGuarded(workflow, inputs, guarded, runId, deps.shotDir ?? (deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined));
     run.pageEngine = engineName;
+    return run;
+  } catch (error) {
+    if (!(error instanceof LiveNavigationHalt)) throw error;
+    run = pausedAt(workflow, initial, workflow.steps[0]?.id || workflow.id, error.reason);
     return run;
   } finally {
     const leaveOpen = deps.leaveOpen === true && !!run && run.status !== "failed";

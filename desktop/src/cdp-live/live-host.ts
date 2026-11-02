@@ -1,13 +1,12 @@
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { condenseWithGroups } from "../v1/condense";
 import { workflowShotName } from "../v1/shots";
 import { type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard } from "./allowlist";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
-import { type CdpLiveDriver } from "./driver";
+import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import {
   clickLive,
   pressLiveKey,
@@ -33,10 +32,12 @@ import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import {
   admit,
   buildView,
+  EXPERIAN_COMMIT_INSTRUCTION,
   isLiveOp,
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
   LIVE_IDLE_WARN_MS,
+  LIVE_LOGIN_INSTRUCTION,
   LIVE_REPLAY,
   markedState,
   pageHalt,
@@ -58,6 +59,7 @@ import {
   cartAddSkip,
   clickEffect,
   LiveTrail,
+  liveTrailSteps,
   trailIdentity,
   workflowFromTrail,
   type LiveSide,
@@ -68,6 +70,7 @@ import { sameRecordedControl } from "../v1/identity";
 import type { RunResult } from "../v1/replay";
 import { popupDismissName, validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
+import { ownerStopMessage } from "../v1/stop-copy";
 
 const AGENT = "bao-live";
 
@@ -194,6 +197,10 @@ export function createLiveHost(opts: LiveHostOptions): {
   const heldProfiles = new Set<() => Promise<void>>();
 
   function reply(body: Record<string, unknown>): unknown {
+    const outcome = body.outcome as { kind?: string; reason?: string; instruction?: string } | undefined;
+    if (outcome?.kind === "halted" && outcome.reason === "login_wall" && !outcome.instruction) {
+      return publicLiveResult({ ...body, outcome: { ...outcome, instruction: LIVE_LOGIN_INSTRUCTION } });
+    }
     return publicLiveResult(body);
   }
 
@@ -277,6 +284,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       if (op === "live_stop") return await stop();
       if (!open) return reply({ op, session, outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
       if (open.halted) {
+        await stopForOwner(open, open.halted);
         return reply({ op, session: open.id, outcome: { kind: "halted", reason: open.halted }, view: shown(open.read), shot: "" });
       }
       if (op === "live_snapshot") {
@@ -309,30 +317,33 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
   }
 
-  function updateStep(action: string, status: string, ms: number): void {
-    if (!open) return;
+  function updateStep(action: string, status: string, ms: number): boolean {
+    if (!open) return false;
     const name = Object.keys(LOOK_OPS).find((key) => LOOK_OPS[key] === action) || action;
+    let completed = false;
     if (status !== "running" && runningStep?.name === name) {
       Object.assign(runningStep, { status, ms });
       runningStep = undefined;
+      completed = true;
     } else {
       const step = { name, status, ms };
       open.steps.push(step);
       runningStep = status === "running" ? step : undefined;
     }
     open.log.setSteps(open.steps);
+    return completed;
   }
 
   async function note(action: string, label: string, status: string, isTrusted: boolean | null): Promise<void> {
     if (!open) return;
-    updateStep(action, status, 0);
+    const completed = updateStep(action, status, 0);
     await open.log.add({
       action,
       label: label.slice(0, 80),
       path: open.read?.view.path || "",
       isTrusted,
       ms: 0,
-    });
+    }, completed);
   }
 
   async function start(body: Record<string, unknown>): Promise<unknown> {
@@ -344,9 +355,13 @@ export function createLiveHost(opts: LiveHostOptions): {
     const client = typeof body.client === "string" ? body.client.slice(0, 80) : "";
     if (!intent) throw new Error("intent is required");
     if (!url.startsWith("http://") && !url.startsWith("https://")) throw new Error("url must be http or https");
-    const { guard, stopPath, hosts, origins } = liveScope(url, asked);
+    if (body.allowCommit !== undefined && typeof body.allowCommit !== "boolean") throw new Error("allowCommit must be a boolean");
+    const { preset, guard, stopPath, hosts, origins } = liveScope(url, asked);
+    if (body.allowCommit === true && preset !== "experian") throw new Error("allowCommit applies only to Experian freeze actions");
+    guard.allowCommit = body.allowCommit === true;
     const host = new URL(url).hostname;
     const blocked = navigationGuard(url, hosts, origins, stopPath);
+    if (blocked === "login_wall") return reply({ op: "live_session_start", session: "", outcome: { kind: "halted", reason: blocked }, view: null, shot: "" });
     if (blocked) throw new Error(blocked);
     const selected = await opts.selectRun?.();
     if (portFile && selected?.close) {
@@ -379,7 +394,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       driver.setOrigins(origins);
       driver.setStopPath(stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
-      const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40));
+      const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40), guard.allowCommit);
       const trail = await LiveTrail.open(opts.home);
       open = {
         id: ids.workflowId.slice(0, 40),
@@ -429,10 +444,14 @@ export function createLiveHost(opts: LiveHostOptions): {
       await driver.goto(url);
       return await look("start");
     } catch (err) {
+      const halt = err instanceof LiveNavigationHalt ? err : undefined;
+      const instruction = halt ? ownerStopMessage(halt.reason) : "";
+      const id = open?.id || "";
       const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.mp4`) : "";
       if (open?.log) {
-        const reason = err instanceof Error ? err.message : "live call failed";
-        await open.log.flush("failed", reason.slice(0, 160), host).catch(() => undefined);
+        const reason = halt ? instruction : err instanceof Error ? err.message : "live call failed";
+        await open.log.flush(halt ? "needs_human" : "failed", reason.slice(0, 160), host).catch(() => undefined);
+        if (halt) await note("start", instruction, "needs_human", null).catch(() => undefined);
       }
       await driver?.end().catch(() => undefined);
       cdp?.close();
@@ -444,6 +463,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         await driver?.finishVideo().catch(() => undefined);
         if (clip) await rm(clip, { force: true });
       }
+      if (halt) return reply({ op: "live_session_start", session: id, outcome: { kind: "halted", reason: halt.reason, instruction }, view: null, shot: "" });
       throw err;
     }
   }
@@ -485,24 +505,42 @@ export function createLiveHost(opts: LiveHostOptions): {
     return { url, leaves: leafMap, text: mark.text, value: mark.value, missing: mark.missing };
   }
 
+  async function stopForOwner(state: OpenState, reason: string): Promise<string> {
+    if (reason !== "experian_commit") {
+      state.driver.pauseCapture();
+      state.halted = reason;
+      state.refused = true;
+    }
+    const message = ownerStopMessage(reason);
+    await state.log.flush("needs_human", message, state.host);
+    return message;
+  }
+
+  async function finishAction(action: string, outcome: Exclude<LiveActOutcome, { kind: "applied" }>): Promise<void> {
+    if (!open) return;
+    const human = outcome.kind === "halted" || outcome.kind === "reached";
+    if (!human) open.refused = true;
+    const label = human ? await stopForOwner(open, outcome.reason) : outcome.reason;
+    await note(action, label, human ? "needs_human" : "failed", null);
+  }
+
   async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
     if (!open) throw new Error("no live session");
     const started = Date.now();
     const { read, facts } = await reread(open);
     open.read = read;
-    const halt = pageHalt({
+    const halt = open.halted || pageHalt({
       blocked: facts.blocked,
       path: facts.path,
       passwordFields: open.read.view.credentialFields,
       text: facts.text,
       stopPath: open.stopPath,
     });
-    if (halt) {
-      open.driver.pauseCapture();
-      open.halted = halt;
-      open.refused = true;
-    }
-    const shot = await record(action, open.read.view.title || action, Date.now() - started, halt ? "needs_human" : "passed", null);
+    const reached = action !== "start" && !halt && open.read.view.reached;
+    const reason = halt || (reached ? "experian_commit" : "");
+    const message = reason ? await stopForOwner(open, reason) : "";
+    const shot = await record(action, message || open.read.view.title || action, Date.now() - started, reason ? "needs_human" : "passed", null);
+    if (open.guard.freezeCommit && !reason) await open.log.flush("running", "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);
       if (event && shot) open.eventShots.set(event.id, shot);
@@ -510,7 +548,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     return reply({
       op: LOOK_OPS[action] || "live_screenshot",
       session: open.id,
-      outcome: halt ? { kind: "halted", reason: halt } : { kind: "applied" },
+      outcome: halt ? { kind: "halted", reason: halt } : reached ? { kind: "reached", reason: "experian_commit", instruction: EXPERIAN_COMMIT_INSTRUCTION } : { kind: "applied" },
       view: shown(open.read),
       shot,
       ...extra,
@@ -558,9 +596,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       reread: async () => (await reread(state)).read,
     });
     if (outcome.kind !== "applied") {
-      state.refused = true;
-      if (outcome.kind === "halted") state.halted = outcome.reason;
-      await note(action, outcome.reason, "failed", null);
+      await finishAction(action, outcome);
       return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     const after = await readAfter(state, -1);
@@ -603,10 +639,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     if (outcome.kind !== "applied") {
       if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) {
         if (!covered) state.covered.set(control, []);
-      }
-      else state.refused = true;
-      // A refusal before the click gets its own audit row. After the click, the click's row stands.
-      if (!before) await note("click", outcome.reason, "failed", null);
+      } else await finishAction("click", outcome);
       return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     if (covered) {
@@ -647,9 +680,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note("type", label, "running", null);
     }), ref, text);
     if (outcome.kind !== "applied") {
-      state.refused = true;
-      if (outcome.kind === "halted") state.halted = outcome.reason;
-      else await note("type", outcome.reason, "failed", null);
+      await finishAction("type", outcome);
       return reply({ op: "live_type", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     const after = await readAfter(state, index);
@@ -669,7 +700,7 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function record(action: string, label: string, ms: number, status: string, isTrusted: boolean | null): Promise<string> {
     if (!open) return "";
-    updateStep(action, status, ms);
+    const completed = updateStep(action, status, ms);
     const png = await open.driver.captureRedacted(`${action} ${open.read?.view.path || ""}`).catch(() => undefined);
     return open.log.add({
       action,
@@ -678,7 +709,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       isTrusted,
       ms,
       png,
-    });
+    }, completed && status === "needs_human");
   }
 
   /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
@@ -699,8 +730,8 @@ export function createLiveHost(opts: LiveHostOptions): {
     if (!workflow.steps.length) return false;
     const library = new Library(opts.home);
     library.save(workflow);
-    if (open.artifactRoot) {
-      const { groups } = condenseWithGroups(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl });
+    if (open.artifactRoot || open.guard.freezeCommit) {
+      const { groups } = liveTrailSteps(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl }, open.guard);
       const workflowShots = path.join(library.root, "shots", "workflows", workflow.id);
       const runShots = path.join(library.root, "shots", "runs", open.runId);
       mkdirSync(workflowShots, { recursive: true });
@@ -720,7 +751,10 @@ export function createLiveHost(opts: LiveHostOptions): {
         }
         return { id: step.id, status: "passed" };
       });
-      library.saveRun({ id: open.runId, kind: "capture", pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
+      const reason = open.halted || (open.read?.view.reached ? "experian_commit" : "");
+      const ask = reason ? ownerStopMessage(reason) : "";
+      library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
+        ...(ask ? { envelope: { status: "needs_human", run_id: open.runId, reason, ask } } : {}),
         ...(video ? { video: `${open.runId}.mp4`, videoStartedAt: open.startedAt } : {}) });
     }
     return true;
@@ -737,8 +771,10 @@ export function createLiveHost(opts: LiveHostOptions): {
       : reason === "idle" ? "Saved after the agent went quiet."
         : "Stopped.";
     const refused = open.refused || open.covered.size > 0;
-    const noteText = open.halted ? open.halted : refused ? "Refused." : ended;
-    const status = open.halted ? "needs_human" : refused ? "failed" : "passed";
+    const reached = open.read?.view.reached;
+    const stopReason = open.halted || (reached ? "experian_commit" : "");
+    const noteText = stopReason ? ownerStopMessage(stopReason) : refused ? "Refused." : ended;
+    const status = open.halted || reached ? "needs_human" : refused ? "failed" : "passed";
     const ending = open;
     let saveError = "";
     await ending.driver.end().catch(() => undefined);

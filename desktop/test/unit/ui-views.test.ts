@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { actBar, liveIdleBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, macPermissionMissing, plainFailure, promotionLine, rail, recordBar, remoteMcpSetting, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
-import { attentionCount, formatWait, liveIdleSurfaceText, makeAsk } from "../../src/v1/human-ask";
+import { actSurfaceText, attentionCount, formatWait, liveIdleSurfaceText, makeAsk } from "../../src/v1/human-ask";
+import { notices, runsList, teachReview, trailPane, consolePane, tryResult, type RunSummary } from "../../src/app/views";
+import { liveSessionView } from "../../src/app/live-view";
+import { emptyLogin, loginsScreen } from "../../src/app/logins-view";
+import { ownerStopMessage, ownerStopText } from "../../src/v1/stop-copy";
+import { testChromium } from "../../src/test-browser.js";
+import { notifyOs } from "../../src/v1/browser-driver";
+import { EventEmitter } from "node:events";
 import { lookup } from "../../src/v1/identity";
 import { viewFromLookup } from "../../src/v1/run-trace";
 import { paddedClip } from "../../src/v1/shots";
@@ -12,6 +19,129 @@ import type { Identity } from "../../src/v1/schema";
 function id(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
+
+const stopCodes = [
+  "login_wall", "experian_commit", "stop_before_confirm", "bot_wall", "stop-path", "new_target", "credential_field", "focus_moved",
+  "stale_ref", "unknown_ref", "denied", "key_not_allowed", "ref_required", "direction_not_allowed", "not_a_field", "not_a_live_control",
+  "busy", "not_open", "credentials", "scheme", "blocked-path", "signed-out", "captcha", "cancelled", "approve", "paused", "timeout", "timed-out",
+  "below-threshold", "no-candidates", "tie", "5xx", "unknown", "future_stop_code",
+  "The final unfreeze button is on screen. Start a new session with allowCommit: true.",
+];
+
+test("every stop code stays out of every owner renderer without changing the records", async () => {
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    for (const code of stopCodes) {
+      const run: RunSummary = {
+        id: "run", workflowId: "wf", status: "needs_human", at: 1,
+        steps: [{ id: "step", label: "Review credit", status: "paused", phase: "action", reason: code }],
+        failure: { stepId: "step", phase: "action", reason: code },
+        envelope: { status: "needs_human", reason: code, ask: code },
+        pageClasses: [{ stepId: "step", class: "changed", reason: code, line: code, evidence: [{ source: "text", detail: code }] }],
+        trail: [{ kind: "handoff", text: code }],
+      };
+      const session = {
+        id: "session", intent: "Read credit", status: "needs_human" as const, host: "credit.test", updatedAt: 1,
+        note: code, steps: [{ name: code, status: "needs_human", ms: 1 }],
+        audit: [{ action: "click", label: code, path: "/member", isTrusted: true, ms: 1, at: 1, shot: "", via: "cdp" as const }],
+      };
+      const ask = { ...makeAsk({ kind: "wall", workflowId: "wf", workflowName: "Read credit", stepId: "step", stepIndex: 1, stepCount: 1, label: "Read credit", timeoutMs: 0 }), instruction: code };
+      const workflows = [{ id: "wf", name: "Read credit", steps: 1 }];
+      const workflow = { name: "Read credit", steps: [{ id: "step", label: "Review credit" }] };
+      const original = JSON.stringify({ run, session, ask });
+      const login = { ...emptyLogin(), report: { imported: 0, signedIn: false, headline: "Sign in needed", skippedBot: 0, skippedExpired: 0, rejected: [{ name: "Session", host: "credit.test", reason: code }], failed: [{ name: "Session", host: "credit.test", reason: code }], message: "Continue in Chrome.", offerSignIn: false, signInUrl: "", keychain: null, probed: false, localStorageItems: 0, indexedDbOrigins: 0 } };
+      const renderers = {
+        live: liveSessionView(session),
+        run: runViewer(run, workflow),
+        replay: runViewer({ ...run, envelope: { ...run.envelope!, ask: undefined } }, workflow),
+        stopped: runViewer({ ...run, envelope: { ...run.envelope!, status: "stopped" } }, workflow),
+        timeout: runViewer({ ...run, envelope: { ...run.envelope!, status: "timed-out" } }, workflow),
+        library: libraryTable(workflows, [run]),
+        runs: runsList([run], workflows),
+        trace: trailPane([{ kind: "handoff", reason: code, text: code }]) + consolePane([{ text: code }]),
+        heals: healInbox([run], workflows),
+        teach: teachReview({ review: { workflow: { name: "Read credit", inputs: [], steps: [] }, raw: [{ op: "click", reason: code }], summary: { line: "Review this take", dropped: [{ id: "event", reason: code }] } } }),
+        notification: notices([{ title: code, body: code }]),
+        act: actBar({ activeAsk: ask }),
+        systemNotification: htmlEsc(actSurfaceText(ask)),
+        headline: htmlEsc(stopHeadline({ stepNumber: 1, label: "Read credit", reason: code })),
+        failure: htmlEsc(plainFailure({ phase: "action", reason: code })),
+        promotion: promotionLine({ status: "reverted", reason: code }),
+        match: tryResult({ matched: false, reason: code }),
+        login: loginsScreen(login),
+      };
+      await page.setContent(Object.entries(renderers).map(([name, html]) => `<article data-screen-case="${name}">${html}</article>`).join(""));
+      for (const name of Object.keys(renderers)) {
+        const text = await page.locator(`[data-screen-case="${name}"]`).innerText();
+        assert.ok(text.trim(), `${code}: ${name} must render`);
+        if (code === "timeout") {
+          assert.doesNotMatch(text, /(?:stopped:|because|^)\s*timeout\b/m);
+          const raw = await page.locator(`[data-screen-case="${name}"] *`).evaluateAll((nodes) => nodes.some((node) => node.childElementCount === 0 && node.textContent?.trim() === "timeout"));
+          assert.equal(raw, false, `${name} must not show the timeout code as a reason`);
+        } else assert.equal(text.includes(code), false, `${code}: ${name}: ${text}`);
+        assert.doesNotMatch(text, /allowCommit|--allow-commit/);
+        if (name === "library" || name === "runs") assert.match(text, /needs you/);
+      }
+      assert.equal(JSON.stringify({ run, session, ask }), original, "rendering must retain the protocol tokens");
+      assert.equal(run.steps![0]!.reason, code);
+      assert.equal(run.failure!.reason, code);
+    }
+  } finally { await browser.close(); }
+});
+
+test("owner stop copy retains approved asks and hides technical opt-in instructions", () => {
+  assert.equal(ownerStopMessage("login_wall"), "Sign in again in Chrome, then start a new live session.");
+  assert.equal(ownerStopMessage("experian_commit"), "The final unfreeze button is on screen. Bao stopped before clicking it.");
+  assert.equal(ownerStopMessage("stop_before_confirm"), "Waiting for you to confirm the final step.");
+  assert.equal(ownerStopMessage("focus_moved"), "Focus left the field Bao was typing in, so Bao stopped.");
+  for (const unknown of ["unrecognized", "FutureHalt", "future.code", "future-stop-code"]) assert.equal(ownerStopMessage(unknown), "Bao stopped. Open Chrome to check the page before continuing.");
+  assert.equal(ownerStopMessage("merged into the previous type"), "merged into the previous type");
+  assert.equal(ownerStopText("step-44"), "step-44");
+  assert.equal(ownerStopText("sign-in"), "sign-in");
+  assert.equal(ownerStopText("5xx 503"), "The site is not available. Try again later.");
+  for (const code of stopCodes) {
+    assert.equal(ownerStopMessage(code, "Sign in to credit.test in Chrome, then run the workflow again."), "Sign in to credit.test in Chrome, then run the workflow again.");
+    assert.doesNotMatch(ownerStopMessage(code, "Start a new session with allowCommit: true."), /allowCommit/);
+    assert.equal(ownerStopText(`action: ${code}`), ownerStopMessage(code));
+  }
+  const ask = "The final unfreeze button is on screen. Bao stopped before clicking it.";
+  const html = runViewer({ id: "run", workflowId: "wf", status: "needs_human", steps: [{ id: "step", status: "paused", reason: "experian_commit" }], failure: { stepId: "step", reason: "experian_commit" }, envelope: { status: "needs_human", reason: "experian_commit", ask: `${ask} Start a new session with allowCommit: true.` } }, { name: "Read credit", steps: [{ id: "step" }] });
+  assert.ok(html.includes(ask));
+  assert.doesNotMatch(html, /experian_commit|allowCommit/);
+  const useful = "Sign in to credit.test in Chrome, then run the workflow again.";
+  assert.ok(stopHeadline({ stepNumber: 1, label: "Read credit", reason: "login_wall", instruction: useful }).includes(useful));
+  assert.ok(plainFailure({ reason: "login_wall", instruction: useful }).includes(useful));
+});
+
+test("OS notification delivery uses the same stop copy", { skip: process.platform !== "darwin" }, async (t) => {
+  const net: typeof import("node:net") = require("node:net");
+  const original = process.env.BAO_NOTIFY_SOCK;
+  const sent: { title: string; body: string; tooltip: string }[] = [];
+  t.mock.method(net, "createConnection", () => {
+    const socket = Object.assign(new EventEmitter(), {
+      end() {}, destroy() {},
+      write(value: string) {
+        sent.push(JSON.parse(value));
+        socket.emit("data", Buffer.from('{"ok":true,"delivered":true}\n'));
+      },
+    });
+    queueMicrotask(() => socket.emit("connect"));
+    return socket as unknown as import("node:net").Socket;
+  });
+  process.env.BAO_NOTIFY_SOCK = "fixture-notifier";
+  try {
+    for (const code of stopCodes) {
+      assert.equal((await notifyOs(code, code, code)).delivered, true);
+      const posted = sent.at(-1)!;
+      assert.deepEqual(posted, { cmd: "act", title: ownerStopText(code), body: ownerStopText(code), tooltip: ownerStopText(code) });
+      assert.equal(JSON.stringify(posted).includes(code), false);
+    }
+  } finally {
+    if (original == null) delete process.env.BAO_NOTIFY_SOCK;
+    else process.env.BAO_NOTIFY_SOCK = original;
+  }
+});
 
 test("Remote agent keeps the checkbox and its text in one spaced row", () => {
   const off = remoteMcpSetting(false);

@@ -22,10 +22,11 @@ export class SessionLog {
   private shots = 0;
   private record: LiveSessionRecord;
 
-  constructor(private readonly dir: string, intent: string, id = "live") {
+  constructor(private readonly dir: string, intent: string, id = "live", allowCommit = false) {
     this.record = {
       id,
       intent,
+      ...(allowCommit ? { allowCommit: true } : {}),
       status: "running",
       host: "",
       updatedAt: Date.now(),
@@ -43,7 +44,7 @@ export class SessionLog {
     ms: number;
     via?: "ax" | "cdp";
     png?: Buffer;
-  }): Promise<string> {
+  }, replaceLast = false): Promise<string> {
     let shot = "";
     if (row.png && row.png.length > 32) {
       this.shots += 1;
@@ -52,17 +53,18 @@ export class SessionLog {
       await mkdir(folder, { recursive: true });
       await writeAtomic(path.join(folder, shot), row.png);
     }
+    const prior = replaceLast ? this.record.audit.at(-1) : undefined;
     const clean = publicLiveSession({
       ...this.record,
-      audit: [...this.record.audit, {
+      audit: [...(replaceLast ? this.record.audit.slice(0, -1) : this.record.audit), {
         action: row.action,
         label: row.label,
         path: row.path,
-        isTrusted: row.isTrusted,
+        isTrusted: row.isTrusted ?? prior?.isTrusted ?? null,
         ms: row.ms,
-        at: Date.now(),
-        shot,
-        via: row.via || "cdp",
+        at: prior?.at ?? Date.now(),
+        shot: shot || prior?.shot || "",
+        via: row.via || prior?.via || "cdp",
       }],
     });
     if (clean) this.record = clean;

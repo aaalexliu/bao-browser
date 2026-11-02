@@ -9,7 +9,7 @@ import { assignSiblingIndex } from "../v1/identity";
 import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
-import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
+import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationGuard, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
 import { focusLiveMark, focusStillMarked, markedState, type MarkedState } from "./live-ops";
 import { CdpSocket } from "./socket";
 
@@ -117,6 +117,13 @@ function toIdentity(node: DomDump): Identity {
     path: node.path,
     value: node.value,
   };
+}
+
+export class LiveNavigationHalt extends Error {
+  constructor(readonly reason: "login_wall" | "stop-path") {
+    super(reason);
+    this.name = "LiveNavigationHalt";
+  }
 }
 
 export class CdpLiveDriver implements Driver {
@@ -229,7 +236,9 @@ export class CdpLiveDriver implements Driver {
       void this.cdp.send("Fetch.continueRequest", { requestId }, this.sessionId).catch(() => undefined);
       return;
     }
-    this.blockedNav = allowed ? "stop-path" : this.refusal(url);
+    this.blockedNav = navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall"
+      ? "login_wall"
+      : allowed ? "stop-path" : this.refusal(url);
     void this.cdp.send("Fetch.failRequest", {
       requestId,
       errorReason: "BlockedByClient",
@@ -435,15 +444,24 @@ export class CdpLiveDriver implements Driver {
 
   async goto(url: string, timeoutMs = 20_000): Promise<void> {
     if (this.preserveTarget) throw new Error("cdp-live will not navigate an attached tab");
+    if (stopPathHit(url, this.stopPath) && navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall") throw new LiveNavigationHalt("login_wall");
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.assertHost();
     const epoch = this.loadEpoch;
-    if (this.pageEngine) await this.pageEngine.goto(url);
-    else {
-      const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
-      if (nav.errorText) throw new Error(nav.errorText);
+    this.takeBlockedNav();
+    try {
+      if (this.pageEngine) await this.pageEngine.goto(url);
+      else {
+        const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
+        if (nav.errorText) throw new Error(nav.errorText);
+      }
+      await this.waitForLoad(epoch, timeoutMs);
+    } catch (error) {
+      const blocked = this.takeBlockedNav();
+      if (blocked === "login_wall" || blocked === "stop-path") throw new LiveNavigationHalt(blocked);
+      if (blocked) throw new Error(blocked);
+      throw error;
     }
-    await this.waitForLoad(epoch, timeoutMs);
     const href = await this.evaluate<string>("location.href", "startup");
     if (this.allows(href)) return;
     if (!href || href === "about:blank") throw new Error("navigation did not finish");

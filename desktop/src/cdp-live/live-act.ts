@@ -7,6 +7,7 @@ import { navigationGuard } from "./allowlist";
 import type { CdpLiveDriver } from "./driver";
 import {
   buildView,
+  EXPERIAN_COMMIT_INSTRUCTION,
   focusLiveMark,
   markedFieldValue,
   planClick,
@@ -44,7 +45,15 @@ export interface LiveActTarget {
 
 export type LiveActOutcome =
   | { kind: "refused" | "halted"; reason: string }
+  | { kind: "reached"; reason: "experian_commit"; instruction: string }
   | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
+
+function planRefusal(reason: string): LiveActOutcome {
+  if (reason === "login_wall") return { kind: "halted", reason };
+  return reason === "experian_commit"
+    ? { kind: "reached", reason, instruction: EXPERIAN_COMMIT_INSTRUCTION }
+    : { kind: "refused", reason };
+}
 
 /** Marks the control again and keeps the plan only if the mark is still the control the plan named. */
 async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guard">, ref: string, index: number): Promise<boolean> {
@@ -52,27 +61,26 @@ async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guar
   return sameTarget(target.read, buildView(marked, target.read.view.epoch, target.guard), ref);
 }
 
-/** A load the window failed on a stop path goes back to the last allowed page, and the refusal reads that page again. */
 async function refuseBlocked(target: LiveActTarget, reason: string): Promise<LiveActOutcome> {
-  if (reason === "stop-path") {
+  if (reason !== "login_wall") {
     await target.driver.returnFromBlock();
     await target.reread();
   }
-  return { kind: "refused", reason };
+  return planRefusal(reason);
 }
 
 function controlOf(read: LiveRead, ref: string) {
   return ref ? read.view.controls.find((item) => item.ref === ref) : undefined;
 }
 
-/** One trusted click on a listed control. A confirm, denied, or credential control, an off-list link, and a covered control are refused. */
+/** Guard checks run before dispatch; the final Experian freeze stop returns reached without a click. */
 export async function clickLive(target: LiveActTarget, ref: string): Promise<LiveActOutcome> {
   const plan = planClick(target.read, ref);
-  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
+  if (!plan.ok) return planRefusal(plan.refusal);
   const entry = target.read.targets.byRef.get(ref);
   if (entry?.href) {
     const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
-    if (why) return { kind: "refused", reason: why };
+    if (why) return planRefusal(why);
   }
   const index = entry?.index ?? -1;
   if (!await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
@@ -124,12 +132,12 @@ export async function typeLive(target: LiveActTarget, ref: string, text: string,
 /** Enter, Tab, or Escape, on the same guards as a click. */
 export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
   const plan = planKey(target.read, key, ref);
-  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
+  if (!plan.ok) return planRefusal(plan.refusal);
   const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
   const control = controlOf(target.read, ref);
   if (key === "Enter" && entry?.href) {
     const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
-    if (why) return { kind: "refused", reason: why };
+    if (why) return planRefusal(why);
   }
   const index = entry?.index ?? -1;
   if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };

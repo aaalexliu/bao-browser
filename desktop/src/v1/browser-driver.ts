@@ -16,6 +16,7 @@ import { clickInDrive } from "./drive-click";
 import { armBrowserDownloads, inspectDatePicker, readCalendarSelection, waitForDownloadFile, watchDownload } from "./files-dates";
 import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
+import { ownerStopText } from "./stop-copy";
 
 const dialogHandlers = new WeakMap<Page, (dialog: Dialog) => void>();
 
@@ -1048,6 +1049,9 @@ export function watchOsNotify(watch: (report: NotifyReport) => void): void {
 }
 
 export async function notifyOs(title: string, body: string, tooltip = ""): Promise<NotifyReport> {
+  title = ownerStopText(title);
+  body = ownerStopText(body);
+  tooltip = ownerStopText(tooltip);
   if (process.platform === "darwin") {
     const report = await baoNotify("act", title, body, tooltip);
     console.log(`bao notify ${JSON.stringify({

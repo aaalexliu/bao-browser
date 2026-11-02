@@ -413,18 +413,55 @@ test("a key press halts when focus moves or lands in a credential field, and a b
   await assert.rejects(pressLiveKey(broken.target, "Enter", "e1.c0"), /socket closed/);
   const off = fakeTarget(read, { marked: shop, blockedAfter: "evil.example" });
   assert.deepEqual(await pressLiveKey(off.target, "Enter", "e1.c0"), { kind: "refused", reason: "evil.example" });
-  assert.equal(off.log.calls.includes("returnFromBlock"), false);
+  assert.deepEqual(off.log.calls.slice(-2), ["returnFromBlock", "reread"]);
 });
 
-test("a key press or scroll whose load is failed on a stop path goes back and reads the page again", async () => {
+for (const reason of ["stop-path", "blocked-path", "evil.example", "credentials", "scheme", "that url", "that host", "future-document-refusal"]) {
+  test(`click, Enter and scroll recover the actual page after a ${reason} document refusal`, async () => {
+    const shop = facts([{ index: 0, label: "Search deals", kind: "field", field: { type: "search", name: "d", autocomplete: "" }, form: "search" }]);
+    const read = buildView(shop, 1, instacart);
+    for (const act of [
+      (target: LiveActTarget) => clickLive(target, "e1.c0"),
+      (target: LiveActTarget) => pressLiveKey(target, "Enter", "e1.c0"),
+      (target: LiveActTarget) => scrollLive(target, "down", ""),
+    ]) {
+      const { target, log } = fakeTarget(read, { marked: shop, blockedAfter: reason });
+      assert.deepEqual(await act(target), { kind: "refused", reason });
+      assert.deepEqual(log.calls.slice(-2), ["returnFromBlock", "reread"]);
+      assert.equal(log.calls.filter(call => call === "returnFromBlock").length, 1);
+      assert.equal(log.calls.filter(call => call.startsWith("before:")).length, 1);
+    }
+  });
+}
+
+test("direct login links halt click and Enter before any page action", async () => {
+  for (const login of ["/login", "/login/index", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
+    const shop = facts([{ index: 0, label: "Resume", kind: "link", href: `http://127.0.0.1${login}` }]);
+    const read = buildView(shop, 1, instacart);
+    for (const act of [
+      (target: LiveActTarget) => clickLive(target, "e1.c0"),
+      (target: LiveActTarget) => pressLiveKey(target, "Enter", "e1.c0"),
+    ]) {
+      const { target, log } = fakeTarget(read, { marked: shop });
+      assert.deepEqual(await act(target), { kind: "halted", reason: "login_wall" });
+      assert.deepEqual(log.calls, []);
+    }
+  }
+});
+
+test("click, Enter and scroll halt on a blocked login redirect without returning to an expired page", async () => {
   const shop = facts([{ index: 0, label: "Search deals", kind: "field", field: { type: "search", name: "d", autocomplete: "" }, form: "search" }]);
   const read = buildView(shop, 1, instacart);
-  const key = fakeTarget(read, { marked: shop, blockedAfter: "stop-path" });
-  assert.deepEqual(await pressLiveKey(key.target, "Enter", "e1.c0"), { kind: "refused", reason: "stop-path" });
-  assert.deepEqual(key.log.calls.slice(-3), ["press:Enter:0", "returnFromBlock", "reread"]);
-  const scroll = fakeTarget(read, { blockedAfter: "stop-path" });
-  assert.deepEqual(await scrollLive(scroll.target, "down", ""), { kind: "refused", reason: "stop-path" });
-  assert.deepEqual(scroll.log.calls.slice(-2), ["returnFromBlock", "reread"]);
+  for (const act of [
+    (target: LiveActTarget) => clickLive(target, "e1.c0"),
+    (target: LiveActTarget) => pressLiveKey(target, "Enter", "e1.c0"),
+    (target: LiveActTarget) => scrollLive(target, "down", ""),
+  ]) {
+    const { target, log } = fakeTarget(read, { marked: shop, blockedAfter: "login_wall" });
+    assert.deepEqual(await act(target), { kind: "halted", reason: "login_wall" });
+    assert.equal(log.calls.includes("returnFromBlock"), false);
+    assert.equal(log.calls.includes("reread"), false);
+  }
 });
 
 test("a scroll checks its ref before it moves anything and reports whether the page moved", async () => {

@@ -17,6 +17,7 @@ import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { controlKey, publicSite, visibleCopy } from "../v1/visible-copy";
+import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 /** Chromium app mode uses the document title as the window title. */
@@ -88,6 +89,7 @@ export interface PromotionView {
 export interface RunSummary {
   id: string;
   kind?: "replay" | "capture";
+  allowCommit?: boolean;
   workflowId: string;
   status: string;
   at?: number;
@@ -424,7 +426,7 @@ export function actBar(state: ShellState, now = Date.now()): string {
         : "";
     return `<section id="act-bar" data-ask="${ask.kind}" data-step="${esc(ask.stepId)}">
       <p class="kicker">${esc(kicker)}</p>
-      <p class="instruction">${esc(ask.instruction)}</p>
+      <p class="instruction">${esc(ownerStopText(ask.instruction))}</p>
       <p class="timeout" id="act-timeout" data-deadline="${ask.deadline ?? ""}" data-effect="${esc(effect)}">${esc(formatWait(now, ask.deadline, effect))}</p>
       <div class="row">
         <button id="act-show" type="button">Show window</button>
@@ -517,6 +519,7 @@ export function stopHeadline(input: {
   action?: string;
   identity?: IdentityView;
   reason?: string;
+  instruction?: string;
   brokenAttr?: string;
 }): string {
   const name = input.label || input.action || "step";
@@ -527,7 +530,7 @@ export function stopHeadline(input: {
     const lead = identity.lead ?? 0;
     bits.push(`${head}: two candidates scored ${identity.candidates[0]!.score} and ${identity.candidates[1]!.score} (lead ${lead} < 25).`);
   } else if (input.reason) {
-    bits.push(`${head} stopped: ${input.reason}.`);
+    bits.push(`${head} stopped. ${ownerStopMessage(input.reason, input.instruction)}`);
   } else {
     bits.push(head);
   }
@@ -609,10 +612,11 @@ export function runViewer(
         action: failed.action,
         identity: failed.identity || failure?.identity,
         reason: failed.reason || failure?.reason,
+        instruction: run.envelope?.ask,
         brokenAttr: failure?.brokenAttr,
       })
       : `${esc(workflow.name)} ${run.kind === "capture" ? "recorded" : "passed"}`;
-  const statusWord = run.kind === "capture" ? `recording (${run.status})` : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
+  const statusWord = run.kind === "capture" ? `recording (${run.status === "needs_human" ? "needs you" : run.status})` : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
   const badge = modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
@@ -622,7 +626,7 @@ export function runViewer(
     const dur = duration(step);
     const review = (context.reviewStepIds || []).includes(step.id) || step.triage === "review";
     const reviewMark = review ? `<em class="review">needs review</em>` : "";
-    const recoveredMark = step.reason?.startsWith("recovered:") ? `<em class="recovered">${esc(step.reason)}</em>` : "";
+    const recoveredMark = step.reason?.startsWith("recovered:") ? `<em class="recovered">${esc(ownerStopText(step.reason))}</em>` : "";
     const askMark = step.reason === "always ask" ? `<em class="ask">always ask</em>` : "";
     const spec = workflow.steps.find((item) => item.id === step.id);
     const routeMark = step.reason === "other branch"
@@ -642,7 +646,7 @@ export function runViewer(
   const safeHeadline = failed ? esc(headline) : headline;
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
   const recoveredRow = selected?.reason?.startsWith("recovered:")
-    ? `<p id="recovered-row">${esc(selected.reason)}</p>`
+    ? `<p id="recovered-row">${esc(ownerStopText(selected.reason))}</p>`
     : "";
   const stepRepairs = (run.repairs || []).filter((item) => !selected || item.stepId === selected.id);
   const stepReceipts = (run.receipts || []).filter((item) => !selected || item.stepId === selected.id);
@@ -656,6 +660,7 @@ export function runViewer(
     phase,
     changed: identity?.changed || (failure && failure.stepId === selected?.id ? failure.identity?.changed : undefined),
     reason: selected?.reason || failure?.reason,
+    instruction: selected?.id === failed?.id ? run.envelope?.ask : undefined,
     repairs: stepRepairs.length ? stepRepairs : (run.repairs || []),
     authRecovered: run.precondition?.recovered,
   }) : "";
@@ -675,7 +680,8 @@ export function runViewer(
       <h2>${esc(workflow.name)} · ${esc(run.id)}</h2>
       <p class="${esc(run.status)}" id="run-status"><strong>${esc(statusWord)}</strong> ${failed ? `at step ${stopped}` : ""} ${badge}</p>
       ${routeLine}
-      ${run.traceUnavailable ? `<p class="quiet" id="trace-unavailable">${esc(run.traceUnavailable)}</p>` : ""}
+      ${run.allowCommit ? `<p class="quiet" id="commit-opt-in">Experian commit opt-in was on for this recording. It does not authorize a replay.</p>` : ""}
+      ${run.traceUnavailable ? `<p class="quiet" id="trace-unavailable">${esc(ownerStopText(run.traceUnavailable))}</p>` : ""}
     </header>
     ${outputsHtml(run.id, run.outputs)}
     ${video}
@@ -722,9 +728,9 @@ function pageClassPane(run: RunSummary): string {
   const items = run.pageClasses || [];
   if (!items.length) return "";
   const rows = items.map((item) => {
-    const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${bit.detail}`).join(" · ");
+    const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${ownerStopText(bit.detail)}`).join(" · ");
     const label = classLabel(item.class);
-    const detail = evidence || item.reason;
+    const detail = evidence || ownerStopMessage(item.reason);
     const note = detail?.trim().toLowerCase() === label.toLowerCase() ? "" : detail;
     return `<li data-class="${esc(item.class)}"><strong>${esc(label)}</strong>${item.vendor ? ` · ${esc(item.vendor)}` : ""}${note ? ` <span class="quiet">${esc(note)}</span>` : ""}</li>`;
   }).join("");
@@ -741,7 +747,7 @@ function classLabel(name: string): string {
   if (name === "login_wall") return "sign-in needed";
   if (name === "clutter") return "popup";
   if (name === "changed") return "page changed";
-  return name;
+  return ownerStopText(name);
 }
 
 function wallStopLine(stepNumber: number, label: string, item: { class: string; vendor?: string }): string {
@@ -763,7 +769,7 @@ function envelopePane(
   if (!envelope || (envelope.status !== "needs_human" && envelope.status !== "needs_signin" && envelope.status !== "timed-out" && envelope.status !== "stopped" && envelope.status !== "completed")) return "";
   const heading = envelope.status === "completed" ? "Completed" : envelope.status === "timed-out" ? "Stopped, timed out" : envelope.status === "stopped" ? "Stopped" : "Needs you";
   if (envelope.status === "needs_human" || envelope.status === "needs_signin") {
-    const message = envelope.ask || envelope.reason || "";
+    const message = ownerStopMessage(envelope.reason || "", envelope.ask);
     const where = wait
       ? `waiting on step ${wait.stepNumber}, ${wait.label}`
       : envelope.step
@@ -772,7 +778,7 @@ function envelopePane(
     const deadline = (envelope.deadline || "").trim();
     const limit = !deadline || deadline === "No timeout" ? "no timeout" : deadline;
     const bits = [
-      `<p id="envelope-status"><strong>${esc(envelope.status)}</strong></p>`,
+      `<p id="envelope-status"><strong>${esc(heading)}</strong></p>`,
       envelope.run_id ? `<p class="mono" id="envelope-run">${esc(envelope.run_id)}</p>` : "",
       envelope.resume_token ? `<p class="mono" id="envelope-token">${esc(envelope.resume_token)}</p>` : "",
     ].filter(Boolean);
@@ -785,9 +791,9 @@ function envelopePane(
   }
   return `<section id="run-envelope" data-status="${esc(envelope.status)}">
     <h3>${heading}</h3>
-    <p id="envelope-status"><strong>${esc(envelope.status)}</strong></p>
-    ${envelope.ask ? `<p id="envelope-ask">${esc(envelope.ask)}</p>` : ""}
-    ${envelope.reason && envelope.reason !== envelope.ask ? `<p id="envelope-reason">${esc(envelope.reason)}</p>` : ""}
+    <p id="envelope-status"><strong>${esc(heading)}</strong></p>
+    ${envelope.ask ? `<p id="envelope-ask">${esc(ownerStopMessage(envelope.reason || "", envelope.ask))}</p>` : ""}
+    ${envelope.reason && envelope.reason !== envelope.ask ? `<p id="envelope-reason">${esc(ownerStopMessage(envelope.reason))}</p>` : ""}
     ${envelope.deadline ? `<p id="envelope-deadline">${esc(envelope.deadline)}</p>` : ""}
     ${envelope.step ? `<p id="envelope-step">Step ${esc(envelope.step)}</p>` : ""}
     ${envelope.run_id ? `<p class="mono" id="envelope-run">${esc(envelope.run_id)}</p>` : ""}
@@ -798,7 +804,7 @@ function envelopePane(
 function handoffPane(trail: RunSummary["trail"]): string {
   const rows = (trail || []).filter((event) => event.kind === "handoff" && event.text);
   if (!rows.length) return "";
-  return `<ol id="handoff-trail">${rows.map((event) => `<li>${esc(event.text || "")}</li>`).join("")}</ol>`;
+  return `<ol id="handoff-trail">${rows.map((event) => `<li>${esc(ownerStopMessage(event.text || ""))}</li>`).join("")}</ol>`;
 }
 
 function duration(step: StepView): string {
@@ -1006,7 +1012,7 @@ export function consolePane(lines: ConsoleLine[] | undefined, stepId?: string): 
   if (!shown.length) return `<p class="quiet" id="console-log">No console lines were captured.</p>`;
   const rows = shown.map((line) => {
     const when = typeof line.ts === "number" ? formatClock(line.ts) : "";
-    return `<li><span class="quiet">${esc([when, line.type || "log"].filter(Boolean).join(" "))}</span> ${esc(line.text)}</li>`;
+    return `<li><span class="quiet">${esc([when, line.type || "log"].filter(Boolean).join(" "))}</span> ${esc(ownerStopText(line.text))}</li>`;
   }).join("");
   return `${note}<ol id="console-log">${rows}</ol>`;
 }
@@ -1030,11 +1036,11 @@ export function inputsPane(inputs: Record<string, string> | undefined): string {
   return `<table class="identity">${rows.map(([key, value]) => `<tr><th>${esc(key)}</th><td>${esc(value)}</td></tr>`).join("")}</table>`;
 }
 
-export function trailPane(events: { id?: string; ts?: number; op?: string; kind?: string }[]): string {
+export function trailPane(events: { id?: string; ts?: number; op?: string; kind?: string; text?: string; reason?: string }[]): string {
   if (events.length === 0) return `<p class="quiet">No trail events.</p>`;
   const lines = events.map((event) => {
     const when = typeof event.ts === "number" ? formatClock(event.ts) : "";
-    return [when, event.kind || "", event.op || "", event.id || ""].filter(Boolean).join(" ");
+    return [when, event.kind || "", event.op || "", event.id || "", event.reason ? ownerStopMessage(event.reason) : ownerStopText(event.text || "")].filter(Boolean).join(" ");
   }).join("\n");
   return `<pre id="trail-view">${esc(lines)}</pre>`;
 }
@@ -1074,11 +1080,11 @@ function classRows(runs: RunSummary[], workflows: WorkflowSummary[]): string {
   const rows: string[] = [];
   for (const run of runs) {
     for (const item of run.pageClasses || []) {
-      const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${bit.detail}`).join(" · ");
+      const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${ownerStopText(bit.detail)}`).join(" · ");
       const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
       rows.push(`<article class="heal-row" data-page-class="${esc(item.class)}" data-run="${esc(run.id)}">
         <strong>${esc(names.get(run.workflowId) || run.workflowId)}</strong> · ${esc(item.stepId)} · ${esc(classLabel(item.class))}
-        <span class="quiet">${esc(item.line || item.reason)}</span>
+        <span class="quiet">${esc(ownerStopMessage(item.reason, item.line))}</span>
         ${evidence ? `<span class="quiet">${esc(evidence)}</span>` : ""}
         <span class="quiet">${(run.heals || []).length} heals · ${calls} model calls</span>
       </article>`);
@@ -1199,7 +1205,7 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
 }
 
 export function notices(items: { id?: string; title?: string; body?: string }[]): string {
-  return items.map((item) => `<div class="toast" data-notice="${esc(item.id || item.title || "")}"><div><strong>${esc(item.title)}</strong><div>${esc(item.body)}</div></div><button type="button" data-dismiss="${esc(item.id || item.title || "")}" aria-label="Dismiss">Close</button></div>`).join("");
+  return items.map((item) => `<div class="toast" data-notice="${esc(item.id || item.title || "")}"><div><strong>${esc(ownerStopText(item.title || ""))}</strong><div>${esc(ownerStopText(item.body || ""))}</div></div><button type="button" data-dismiss="${esc(item.id || item.title || "")}" aria-label="Dismiss">Close</button></div>`).join("");
 }
 
 export function healWorkflowName(
@@ -1246,6 +1252,7 @@ export function plainFailure(input: {
   phase?: string;
   changed?: string;
   reason?: string;
+  instruction?: string;
   repairs?: { repair: string; detail?: string }[];
   authRecovered?: boolean;
 }): string {
@@ -1257,7 +1264,7 @@ export function plainFailure(input: {
   }
   const bits = [`Phase ${phase || "the step"}.`];
   if (input.changed) bits.push(`What changed: ${input.changed}.`);
-  else if (input.reason) bits.push(`Bao stopped because ${input.reason}.`);
+  else if (input.reason) bits.push(ownerStopMessage(input.reason, input.instruction));
   const repairs = input.repairs || [];
   if (repairs.length === 0) bits.push("Bao did not try a cheap repair.");
   else bits.push(`Bao tried ${repairs.map((item) => `${item.repair}${item.detail ? ` (${item.detail})` : ""}`).join(", then ")}.`);
@@ -1319,7 +1326,7 @@ export function promotionLine(promotion: PromotionView | undefined): string {
     return `<p id="promotion" data-status="promoted">Promoted. Drift passed and ${promotion.replays ?? 2} later replays passed.</p>`;
   }
   if (promotion.status === "reverted") {
-    return `<p id="promotion" data-status="reverted">Reverted. ${esc(promotion.reason || "A later check failed")} put the saved step back.</p>`;
+    return `<p id="promotion" data-status="reverted">Reverted. ${esc(ownerStopText(promotion.reason || "A later check failed"))} put the saved step back.</p>`;
   }
   const drift = promotion.drift === "passed" ? "Drift passed." : promotion.drift === "failed" ? "Drift failed." : "Drift is still pending.";
   const need = promotion.need && promotion.need > 0 ? promotion.need : DEFAULT_PROMOTE_AFTER;
@@ -1425,7 +1432,7 @@ export function tryResult(result: {
   const img = imageRef("try", result.preview);
   const picture = img ? `<img class="try-outline" alt="Outlined match" src="${img}">` : "";
   const lead = typeof result.identity?.lead === "number" ? `<p id="try-lead">lead ${result.identity.lead}</p>` : "";
-  const status = result.matched ? "Matched" : `No match${result.reason ? `: ${result.reason}` : ""}`;
+  const status = result.matched ? "Matched" : `No match${result.reason ? `: ${ownerStopMessage(result.reason)}` : ""}`;
   const actions = result.actions ?? 0;
   const calls = result.modelCalls ?? 0;
   return `<div id="try-result" data-matched="${result.matched ? "1" : "0"}" data-actions="${actions}" data-model-calls="${calls}">
@@ -1894,13 +1901,13 @@ export function teachReview(teach: TeachView): string {
   if (!review) return `<section id="teach-review"><h2>Review</h2><p class="quiet">Stop teaching to review the workflow.</p></section>`;
   const raw = review.raw.map((event) => {
     const label = event.kind === "decision" ? `decision · ${event.detail || event.op}` : `${event.op || event.kind}`;
-    const why = event.reason ? ` — ${event.reason}` : "";
+    const why = event.reason ? ` - ${ownerStopMessage(event.reason)}` : "";
     return `<li data-event="${esc(event.id || "")}">${esc(label + why)}</li>`;
   }).join("");
   const summary = review.summary;
   const dropped = summary?.dropped || [];
   const summaryHtml = summary
-    ? `<p id="teach-summary">${esc(summary.line)}</p>${dropped.length ? `<ul id="teach-dropped-reasons">${dropped.map((item) => `<li data-event="${esc(item.id)}">${esc(item.id)} — ${esc(item.reason)}</li>`).join("")}</ul>` : ""}`
+    ? `<p id="teach-summary">${esc(summary.line)}</p>${dropped.length ? `<ul id="teach-dropped-reasons">${dropped.map((item) => `<li data-event="${esc(item.id)}">${esc(item.id)} - ${esc(ownerStopMessage(item.reason))}</li>`).join("")}</ul>` : ""}`
     : "";
   return `<section id="teach-review">
     <header class="wf-head">

@@ -1,4 +1,5 @@
 import { AUDIT_PAGE_SIZE, auditPage, liveShotUrl, type LiveSessionRecord } from "../cdp-live/live-record";
+import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 
 function esc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
@@ -11,7 +12,6 @@ function trustedWord(value: boolean | null, via: string): string {
   return "—";
 }
 
-/** `?screen=live` opens the run view. Any other value stays on the library. */
 export function screenFromQuery(search: string): "live" | "" {
   return new URLSearchParams(search).get("screen") === "live" ? "live" : "";
 }
@@ -38,9 +38,9 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
   const chosen = page == null ? (shotAt < 0 ? 0 : Math.floor(shotAt / AUDIT_PAGE_SIZE)) : page;
   const audit = auditPage(session.audit, chosen);
   const steps = session.steps.map((step) =>
-    `<li data-status="${esc(step.status)}"><strong>${esc(step.name)}</strong> <span class="quiet">${esc(step.status)} · ${step.ms} ms</span></li>`).join("");
+    `<li data-status="${esc(step.status)}"><strong>${esc(ownerStopText(step.name))}</strong> <span class="quiet">${esc(step.status)} · ${step.ms} ms</span></li>`).join("");
   const rows = audit.rows.map((row) =>
-    `<tr><td>${esc(row.action)}</td><td>${esc(row.label)}</td><td class="mono">${esc(row.path)}</td><td>${esc(trustedWord(row.isTrusted, row.via))}</td><td>${row.ms} ms</td></tr>`).join("");
+    `<tr><td>${esc(row.action)}</td><td>${esc(ownerStopText(row.label))}</td><td class="mono">${esc(row.path)}</td><td>${esc(trustedWord(row.isTrusted, row.via))}</td><td>${row.ms} ms</td></tr>`).join("");
   const shots = audit.rows.filter((row) => row.shot).map((row) => {
     const src = liveShotUrl(row.shot);
     if (!src) return "";
@@ -50,7 +50,8 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
     <h2>Live session</h2>
     <p id="live-status"><strong>${esc(session.status)}</strong> ${esc(session.host)}</p>
     <p class="quiet">${esc(session.intent)}</p>
-    ${session.note ? `<p class="quiet" id="live-note">${esc(session.note)}</p>` : ""}
+    ${session.allowCommit ? `<p class="quiet">Experian commit opt-in: this session may change the freeze. Later sessions and replays still stop for confirmation.</p>` : ""}
+    ${session.note ? `<p class="quiet" id="live-note">${esc(ownerStopMessage(session.note))}</p>` : ""}
     <p class="quiet">These pictures stay on this Mac. Page text is blurred before the file is written, and the app does not upload them.</p>
     <h3 class="section">Steps</h3>
     <ol id="live-steps">${steps || `<li class="quiet">No steps yet.</li>`}</ol>

@@ -1,14 +1,13 @@
 // The live session's trail. Each live_click, live_type, live_key, and live_scroll
 // that goes through appends one TrailEvent to <home>/live-session/trail.jsonl, with
 // the control's full identity from CdpLiveDriver.tree(). A refused or halted call
-// appends nothing. When the session ends, condense() and interpret() build its
-// workflow from that trail, as the eval drivers do: typed text becomes an input,
-// a search box's text replays as typed, a cart add is skipped while its item is
-// in the cart, and a purchase control is a gate.
+// appends nothing.
+// Search text replays as typed; other typed text becomes an input.
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { condense } from "../v1/condense";
+import { condenseWithGroups } from "../v1/condense";
+import { explain, type InterpretMeta } from "../v1/interpret";
 import { normText, withoutPrice } from "../v1/identity";
 import type { TrailEvent } from "../v1/interpret";
 import { smallestChange } from "../v1/recorder";
@@ -16,7 +15,7 @@ import { validateWorkflow, type Identity, type WorkflowV2 } from "../v1/schema";
 import { liveSessionDir } from "./audit";
 import type { LabelGuard } from "./live-ops";
 import { redactLabel } from "./live-record";
-import { COMMIT_FLOOR } from "./presets";
+import { COMMIT_FLOOR, presetForUrl } from "./presets";
 
 export const LIVE_TRAIL_SOURCE = { agent: "live-model", vendor: "bao", adapter: "cdp-live" } as const;
 
@@ -142,9 +141,8 @@ export function appearedLeaf(
 }
 
 /**
- * What a click changed, as condense and interpret read it. A url change is the effect by
- * itself. Otherwise it is the shortest leaf text that is new to the page, else the clicked
- * control's own text, else nothing, and condense drops a click with no effect.
+ * What a click changed. A url change is enough by itself. Otherwise use the shortest
+ * new leaf text, else the clicked control's own text, else nothing.
  * Prices, long numbers, emails, and addresses are scrubbed first.
  */
 export function clickEffect(before: LiveSide, after: LiveSide): Pick<TrailEvent, "subtreeBefore" | "subtreeAfter"> {
@@ -260,7 +258,13 @@ export function refusedStepLabels(workflow: Pick<WorkflowV2, "steps">, guard: La
     .map((step) => step.label);
 }
 
-/** The session's workflow, built from its trail the way the eval drivers build one. */
+export function liveTrailSteps(events: readonly TrailEvent[], meta: InterpretMeta, guard?: Pick<LabelGuard, "freezeCommit">) {
+  const policy = { ...meta, preserveActions: guard?.freezeCommit ?? presetForUrl(meta.startUrl) === "experian" };
+  return policy.preserveActions
+    ? explain(events.filter((event) => event.op !== "scroll"), policy)
+    : condenseWithGroups(events, policy);
+}
+
 export function workflowFromTrail(input: {
   id: string;
   name: string;
@@ -271,7 +275,7 @@ export function workflowFromTrail(input: {
   events: readonly TrailEvent[];
   guard: LabelGuard;
 }): WorkflowV2 {
-  const built = condense(input.events, { id: input.id, name: input.name, startUrl: input.startUrl });
+  const built = liveTrailSteps(input.events, { id: input.id, name: input.name, startUrl: input.startUrl }, input.guard).workflow;
   const workflow: WorkflowV2 = {
     ...built,
     createdAt: input.createdAt,

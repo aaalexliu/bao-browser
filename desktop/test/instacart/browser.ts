@@ -19,6 +19,7 @@ import { FIXTURE_HOSTS } from "./fixture";
 export interface FixtureTarget {
   port: number;
   spki: string;
+  hosts?: readonly string[];
 }
 
 export interface FixtureBrowser {
@@ -38,8 +39,8 @@ export interface FixtureBrowser {
   close(): Promise<void>;
 }
 
-export function hostResolverRules(port: number): string {
-  return [...FIXTURE_HOSTS.map((host) => `MAP ${host} 127.0.0.1:${port}`), "MAP * ~NOTFOUND"].join(", ");
+export function hostResolverRules(port: number, hosts: readonly string[] = FIXTURE_HOSTS): string {
+  return [...hosts.map((host) => `MAP ${host} 127.0.0.1:${port}`), "MAP * ~NOTFOUND"].join(", ");
 }
 
 export function fixtureBrowserArgs(
@@ -57,7 +58,7 @@ export function fixtureBrowserArgs(
     "--use-mock-keychain",
     "--password-store=basic",
     ...TEST_MEDIA_ARGS,
-    `--host-resolver-rules=${hostResolverRules(target.port)}`,
+    `--host-resolver-rules=${hostResolverRules(target.port, target.hosts)}`,
     `--ignore-certificate-errors-spki-list=${target.spki}`,
     ...sandbox,
     ...(opts.headless ? ["--headless=new"] : []),
