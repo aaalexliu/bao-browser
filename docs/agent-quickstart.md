@@ -28,7 +28,7 @@ Agents start it through `bao-mcp`, a launcher inside the Mac app: `/Applications
 
 One command sets up each agent. `bao agent config claude` and `bao agent config codex` print the entry. `--write` puts it in that agent's own config and pre-approves Bao's tools there, so the agent runs them without asking first. Only the `bao` server is pre-approved. Other servers, the agent's global approval policy, and its permission mode stay as they were. Without `--write`, nothing is written.
 
-Pre-approval skips the agent's own prompt. Bao's own guards still run: a live click on a credential field, a commit button such as Place order, or a submit button is still refused ([cdp-live-chrome.md](cdp-live-chrome.md)). Without pre-approval, Codex asks before each Bao call, and `codex exec` with `approval_policy = "never"` refuses every Bao call with `MCP tool call requires approval, but approval policy is never`.
+Pre-approval skips only the agent's own prompt, not [Bao's live guards](cdp-live-chrome.md#agent-entry-point). Without pre-approval, Codex asks before each Bao call, and `codex exec` with `approval_policy = "never"` refuses every Bao call with `MCP tool call requires approval, but approval policy is never`.
 
 ```sh
 npm run build:desktop

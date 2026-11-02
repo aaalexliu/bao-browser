@@ -14,7 +14,7 @@ export interface GuardPreset {
   submit: string;
   stopPath: string;
   reached: string;
-  /** Credit-freeze action buttons need a fresh session's explicit commit opt-in. */
+  /** Final credit-freeze actions need a fresh session's explicit commit opt-in. */
   freezeCommit?: boolean;
 }
 

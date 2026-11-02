@@ -236,10 +236,6 @@ function pattern(source: string, label: string): boolean {
   }
 }
 
-/**
- * A commit label is refused under every preset. A form submit is a commit too,
- * unless it is in a search form or its label is one the preset allows.
- */
 function freezeFlow(facts: PageFacts, guard: LabelGuard): boolean {
   return guard.freezeCommit === true && /\b(?:unfreeze|freeze|lift|thaw)\b/i.test(`${facts.path} ${facts.title} ${facts.headings.join(" ")}`);
 }

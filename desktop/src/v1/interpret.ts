@@ -98,7 +98,7 @@ export interface InterpretMeta {
   secrets?: string[];
   /** Zone used to turn a picked date into +Nd. Absent is UTC so the same trail stays the same bytes. */
   zone?: string;
-  /** Live sessions retain false starts for later review instead of simplifying the actions. */
+  /** Keep the raw action order for later workflow review. */
   preserveActions?: boolean;
 }
 
