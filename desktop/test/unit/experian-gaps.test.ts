@@ -372,6 +372,55 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     }
   });
 
+  it("policy redirect refusals complete one row and leave the session usable", async () => {
+    for (const op of ["click", "key"] as const) {
+      for (const label of ["Account details", "External details"]) {
+        let reply = await live("live_session_start", { intent: "Read member links", url: fixture.url("/member/policy-links") });
+        const action = op === "key" ? { key: "Enter" } : {};
+        let failed: LiveSessionRecord;
+        try {
+          assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+          const before = (await state()).liveSession;
+          reply = await live(`live_${op}`, { ref: refOf(reply, label), ...action });
+          assert.equal(reply.outcome.kind, "refused", JSON.stringify(reply));
+          assert.ok(reply.outcome.reason);
+          if (label === "Account details") assert.equal(reply.outcome.reason, "stop-path");
+          else assert.equal(reply.outcome.reason, "credit.test");
+          const current = await state();
+          assert.equal(current.liveSessionOpen, true);
+          failed = current.liveSession;
+          assert.equal(failed.status, "running");
+          assert.equal(failed.steps.length, before.steps.length + 1);
+          assert.deepEqual(failed.steps.slice(0, -1), before.steps);
+          assert.deepEqual(failed.steps.at(-1), { name: op, status: "failed", ms: 0 });
+          assert.equal(failed.audit.length, before.audit.length + 1);
+          assert.deepEqual(failed.audit.slice(0, -1), before.audit);
+          assert.equal(failed.audit.at(-1)?.action, op);
+          assert.equal(failed.audit.at(-1)?.label, reply.outcome.reason);
+          const persisted = JSON.parse(await readFile(path.join(root, "bao", "live-session", "session.json"), "utf8"));
+          assert.deepEqual(persisted.steps, failed.steps);
+          assert.deepEqual(persisted.audit, failed.audit);
+          reply = await live("live_snapshot");
+          assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+          if (label === "Account details") {
+            reply = await live("live_click", { ref: refOf(reply, "Security help") });
+            assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+            assert.equal(reply.view?.path, "/member/security-help");
+          } else {
+            reply = await live("live_scroll", { direction: "down" });
+            assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+          }
+        } finally { await live("live_stop"); }
+        const saved = JSON.parse(await readFile(path.join(root, "bao", "live-session", "session.json"), "utf8")) as LiveSessionRecord;
+        assert.equal(saved.status, "failed");
+        assert.deepEqual(saved.steps.slice(0, failed!.steps.length), failed!.steps);
+        assert.deepEqual(saved.audit.slice(0, failed!.audit.length), failed!.audit);
+        assert.equal(saved.steps.some(step => step.status === "running"), false);
+        assert.equal(fixture.requests.some(request => ["/account", "/forbidden", "/write", "/commit-unfreeze"].includes(request.path)), false);
+      }
+    }
+  });
+
   it("direct login links halt click and Enter, persist the instruction, and pause replay", async () => {
     for (const login of ["/login", "/login/index", "/member/login/index", "/signin", "/sign-in", "/#/login"]) {
       for (const op of ["click", "key"] as const) {

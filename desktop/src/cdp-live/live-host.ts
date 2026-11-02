@@ -343,7 +343,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       path: open.read?.view.path || "",
       isTrusted,
       ms: 0,
-    }, completed && status === "needs_human");
+    }, completed);
   }
 
   async function start(body: Record<string, unknown>): Promise<unknown> {
@@ -637,13 +637,9 @@ export function createLiveHost(opts: LiveHostOptions): {
     const control = before?.identity;
     const covered = control && [...state.covered.keys()].find((identity) => sameRecordedControl(identity, control));
     if (outcome.kind !== "applied") {
-      if (outcome.kind !== "refused") await finishAction("click", outcome);
-      else {
-        if (outcome.reason === "element is covered" && control) {
-          if (!covered) state.covered.set(control, []);
-        } else state.refused = true;
-        if (!before) await note("click", outcome.reason, "failed", null);
-      }
+      if (outcome.kind === "refused" && outcome.reason === "element is covered" && control) {
+        if (!covered) state.covered.set(control, []);
+      } else await finishAction("click", outcome);
       return reply({ op: "live_click", session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     if (covered) {

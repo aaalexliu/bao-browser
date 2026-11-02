@@ -31,6 +31,11 @@ export async function startExperianFixture() {
     } else if (url.pathname === "/member/account-redirect") {
       res.writeHead(302, { location: "/account" });
       res.end();
+    } else if (url.pathname === "/member/off-host-redirect") {
+      res.writeHead(302, { location: "https://credit.test/forbidden" });
+      res.end();
+    } else if (url.pathname === "/member/policy-links") {
+      send("Member links", '<a href="/member/account-redirect">Account details</a><a href="/member/off-host-redirect">External details</a><a href="/member/security-help">Security help</a>');
     } else if (url.pathname === "/member/bot") {
       send("Request unsuccessful", "<p>Incapsula incident ID: 000000000-0000000000000000</p>", 403);
     } else if (url.pathname === "/") {
