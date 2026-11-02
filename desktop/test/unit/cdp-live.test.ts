@@ -358,7 +358,7 @@ test("an attach run picks one open page and does not create or close a target", 
   assert.equal(attachLockIsStale(1_000, 1_000 + 20 * 60 * 1000 + 1), true);
 });
 
-test("start audit URLs keep host and port digits without exposing private URL parts", () => {
+test("start and navigate audit URLs keep host and port digits without exposing private URL parts", () => {
   const urls = [
     ["http://127.0.0.1:47811/member", "http://127.0.0.1:47811/member"],
     ["http://[::1]:47811/member", "http://[::1]:47811/member"],
@@ -366,17 +366,20 @@ test("start audit URLs keep host and port digits without exposing private URL pa
     ["https://person:secret@example.com/member?token=123456#private", "https://example.com/member"],
     ["https://example.com/report/123456", "https://example.com/report/"],
   ];
-  for (const [label, expected] of urls) {
-    const session = publicLiveSession({ status: "running", audit: [{ action: "start", label }] });
-    assert.equal(session?.audit[0]?.label, expected);
-    assert.equal(publicLiveSession(session)?.audit[0]?.label, expected, "redaction survives repeated log writes");
+  for (const action of ["start", "navigate"]) {
+    for (const [label, expected] of urls) {
+      const session = publicLiveSession({ status: "running", audit: [{ action, label }] });
+      assert.equal(session?.audit[0]?.label, expected);
+      assert.equal(publicLiveSession(session)?.audit[0]?.label, expected, "redaction survives repeated log writes");
+    }
   }
   const session = publicLiveSession({ status: "running", audit: [
     { action: "start", label: "Member dashboard" },
+    { action: "navigate", label: "Target page" },
     { action: "click", label: "Credit score 742" },
     { action: "type", label: "user@example.com" },
   ] });
-  assert.deepEqual(session?.audit.map((row) => row.label), ["Member dashboard", "Credit score", ""]);
+  assert.deepEqual(session?.audit.map((row) => row.label), ["Member dashboard", "Target page", "Credit score", ""]);
   assert.equal(redactLabel("Credit score 742"), "Credit score");
 });
 

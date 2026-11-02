@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canonical } from "../../src/v1/canonical";
-import { condense } from "../../src/v1/condense";
+import { condense, condenseWithGroups, droppedNoEffectIds } from "../../src/v1/condense";
+import type { TrailEvent } from "../../src/v1/interpret";
 import { applyHybrid } from "../../src/v1/hybrid";
 import { validateWorkflow } from "../../src/v1/schema";
 import { INTENT_CASES, noisyTrail } from "../../src/eval/intent/cases";
@@ -65,6 +66,27 @@ test("condense drops a scroll, a typo, and an aborted coupon path", () => {
   assert.equal(blob.includes("NOPE"), false);
   assert.equal(blob.includes("scroll"), false);
   assert.equal(workflow.inputs.find((input) => input.name === "name")?.default, "Ada");
+});
+
+test("condense retains explicit navigation targets and still drops incidental navigation noise", () => {
+  const start = "https://example.test/start";
+  const target = "https://example.test/target?mode=edit#details";
+  const identity = { surface: "dom" as const, role: "button", id: "open", name: "Open", path: [] };
+  const events: TrailEvent[] = [
+    { id: "initial-noise", ts: 1, kind: "act", op: "navigate", beforeUrl: start, afterUrl: start },
+    { id: "first-click", ts: 2, kind: "act", op: "click", identity, afterText: "Changed" },
+    { id: "explicit", ts: 3, kind: "act", op: "navigate", value: target, beforeUrl: start, afterUrl: "https://example.test/redirected" },
+    { id: "redirect-noise", ts: 4, kind: "act", op: "navigate", beforeUrl: target, afterUrl: "https://example.test/redirected" },
+    { id: "last-click", ts: 5, kind: "act", op: "click", identity, afterText: "Changed again" },
+  ];
+  const meta = { id: "wf-explicit-navigation", startUrl: start };
+  const workflow = condense(events, meta);
+  assert.deepEqual(workflow.steps.map((step) => step.action), ["click", "navigate", "click"]);
+  assert.equal(workflow.steps[1]?.value, target);
+  const grouped = condenseWithGroups(events, meta);
+  assert.deepEqual(grouped.workflow, workflow);
+  assert.deepEqual(grouped.groups.map((group) => group.map((event) => event.id)), [["first-click"], ["explicit"], ["last-click"]]);
+  assert.deepEqual(droppedNoEffectIds(events), []);
 });
 
 test("a long abort is dropped and a currency value stays a literal", () => {

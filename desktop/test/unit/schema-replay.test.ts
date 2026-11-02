@@ -127,6 +127,32 @@ test("interpret is deterministic and lifts a secret and a file without storing e
   assert.equal(typed?.label.includes("tomsmith") || once.inputs.find((item) => item.name === "username")?.default === "tomsmith", true);
 });
 
+test("interpret uses requested navigation targets while legacy navigation keeps its observed URL", () => {
+  const event: TrailEvent = { id: "open", ts: 1, kind: "act", op: "navigate", value: "https://target.test/entry?mode=edit", beforeUrl: "https://start.test/", afterUrl: "https://redirect.test/done" };
+  const meta = { id: "wf-explicit-open", startUrl: "https://start.test/" };
+  const explicit = interpret([event], meta);
+  assert.equal(explicit.steps[0]?.value, event.value);
+  assert.equal(explicit.steps[0]?.expect?.match, "target.test");
+  const legacy = interpret([{ ...event, value: undefined }], meta);
+  assert.equal(legacy.steps[0]?.value, event.afterUrl);
+  assert.equal(legacy.steps[0]?.expect?.match, "redirect.test");
+});
+
+test("sensitive generic fields omit defaults even when literal and preserve ordinary long text", () => {
+  const note = "Ordinary note. ".repeat(12);
+  const events: TrailEvent[] = [
+    { id: "password", ts: 1, kind: "act", op: "type", sensitive: true, literal: true, value: "demo-private-password", identity: id({ role: "textbox", name: "Secret", id: "entry" }) },
+    { id: "code", ts: 2, kind: "act", op: "type", sensitive: true, value: "654321", identity: id({ role: "textbox", name: "Verification code", id: "challenge" }) },
+    { id: "note", ts: 3, kind: "act", op: "type", value: note, identity: id({ role: "textbox", name: "Note", id: "note" }) },
+  ];
+  const workflow = interpret(events, { id: "wf-secret-fields", startUrl: "https://example.test/form" });
+  assert.deepEqual(workflow.inputs.map((input) => [input.type, input.default]), [["secret", undefined], ["secret", undefined], ["text", note]]);
+  assert.deepEqual(workflow.steps.map((step) => !!step.sensitive), [true, true, false]);
+  assert.equal(JSON.stringify(workflow).includes("demo-private-password"), false);
+  assert.equal(JSON.stringify(workflow).includes("654321"), false);
+  assert.deepEqual(validateWorkflow(workflow), []);
+});
+
 test("calculator clicks become number inputs and the equals check is the expression", () => {
   const button = (name: string, ts: number): TrailEvent => ({
     id: `b${ts}`, ts, kind: "act", op: "osClick",
