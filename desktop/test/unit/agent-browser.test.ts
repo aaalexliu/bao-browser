@@ -29,7 +29,7 @@ net.createServer(socket => {
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'missing-result') { socket.end(JSON.stringify({ id: cmd.id, success: true, data: {} }) + '\\n'); return; }
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'ended') { socket.end(); return; }
     if (cmd.action === 'screenshot') fs.writeFileSync(cmd.path, Buffer.from('89504e470d0a1a0a', 'hex'));
-    const data = cmd.action === 'evaluate' ? { result: {count: ${mode === "ambiguous" ? 2 : 1}, credential: ${mode === "credential"}} } : cmd.action === 'keyboard' ? {inserted: true} : cmd.action === 'screenshot' ? {path: cmd.path} : cmd.action === 'tab_switch' ? {targetId: ${mode === "wrongtab" ? "'WRONG'" : "cmd.tabId"}} : {};
+    const data = cmd.action === 'evaluate' ? { result: {count: ${mode === "ambiguous" ? 2 : 1}, credential: ${mode === "credential"}} } : cmd.action === 'keyboard' ? {inserted: true} : cmd.action === 'press' ? {pressed: cmd.key} : cmd.action === 'screenshot' ? {path: cmd.path} : cmd.action === 'tab_switch' ? {targetId: ${mode === "wrongtab" ? "'WRONG'" : "cmd.tabId"}} : {};
     socket.end(JSON.stringify({id: cmd.id, success: true, data}) + '\\n');
   });
 }).listen(process.env.AGENT_BROWSER_SOCKET_DIR + '/bao.sock');
@@ -141,6 +141,22 @@ test("startup evaluation allows the upstream 30-second wait plus a response budg
     assert.ok(reads.some((call) => call.arguments[1] === 12_000));
     assert.equal(reads.some((call) => call.arguments[1] === 35_000), false);
   } finally { timer.mock.restore(); await fake.close(); }
+});
+
+test("live keys reach native transport with canonical names and modifier aliases", async () => {
+  const fake = await fakeEngine();
+  try {
+    const driver = new CdpLiveDriver({} as CdpSocket, "session", "ABC123", ["example.test"]);
+    driver.usePageEngine(fake.page);
+    const cases = [
+      ["enter", "Enter"], ["RETURN", "Enter"], ["backspace", "Backspace"], ["arrowdown", "ArrowDown"],
+      ["space", "Space"], [" ", "Space"], ["pageup", "PageUp"], ["pagedown", "PageDown"], ["escape", "Escape"],
+      ["sHiFt+cMd+A", "Shift+Meta+A"], ["aLt+cTrL+delete", "Alt+Control+Delete"], ["cOnTrOl+home", "Control+Home"],
+      ["mEtA+end", "Meta+End"], ["tab", "Tab"], ["a", "a"], ["A", "A"], ["sHiFt+a", "Shift+a"],
+    ];
+    for (const [key] of cases) await driver.key(key!);
+    assert.deepEqual((await fake.records()).filter((command) => command.action === "press").map((command) => command.key), cases.map(([, key]) => key));
+  } finally { await fake.close(); }
 });
 
 test("native navigation uses startup evaluation for both readiness and final location", async (t) => {

@@ -4,6 +4,7 @@ import path from "node:path";
 import { workflowShotName } from "../v1/shots";
 import { AgentBrowserPage, type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard } from "./allowlist";
+import { canonicalKey } from "./keys";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
 import { adoptLiveWindow, LiveNavigationHalt, type CdpLiveDriver } from "./driver";
@@ -312,7 +313,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       if (op === "live_click") return await click(String(body.ref || ""));
       if (op === "live_type") return await typeInto(String(body.ref || ""), String(body.text || ""));
       if (op === "live_key") {
-        const key = String(body.key || "");
+        const key = canonicalKey(String(body.key || ""));
         const ref = String(body.ref || "");
         return await act("key", ref, key, (target) => pressLiveKey(target, key, ref));
       }
@@ -677,14 +678,16 @@ export function createLiveHost(opts: LiveHostOptions): {
       await finishAction(action, outcome);
       return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
-    const after = await readAfter(state, -1);
-    await state.trail.add({
-      op: action,
-      ...(action === "key" ? { key: what } : { detail: what }),
-      identity: before?.identity,
-      beforeUrl: before?.side.url,
-      afterUrl: after.url || undefined,
-    });
+    if (!outcome.sensitive) {
+      const after = await readAfter(state, -1);
+      await state.trail.add({
+        op: action,
+        ...(action === "key" ? { key: what } : { detail: what }),
+        identity: before?.identity,
+        beforeUrl: before?.side.url,
+        afterUrl: after.url || undefined,
+      });
+    }
     return look(action, outcome.scroll ? { scroll: outcome.scroll } : {});
   }
 

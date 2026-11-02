@@ -4,6 +4,7 @@
 // host list, a control that moved, and a credential field.
 
 import { navigationGuard } from "./allowlist";
+import { canonicalKey, keyInsertsText } from "./keys";
 import type { CdpLiveDriver } from "./driver";
 import {
   buildView,
@@ -47,7 +48,7 @@ export interface LiveActTarget {
 export type LiveActOutcome =
   | { kind: "refused" | "halted"; reason: string }
   | { kind: "reached"; reason: "experian_commit"; instruction: string }
-  | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
+  | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts; sensitive?: boolean };
 
 function planRefusal(reason: string): LiveActOutcome {
   if (reason === "login_wall") return { kind: "halted", reason };
@@ -151,6 +152,7 @@ export async function selectLive(target: LiveActTarget, ref: string, option: str
 
 /** Press a key on the same guards as a click. */
 export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
+  key = canonicalKey(key);
   const plan = planKey(target.read, key, ref);
   if (!plan.ok) return planRefusal(plan.refusal);
   const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
@@ -162,10 +164,12 @@ export async function pressLiveKey(target: LiveActTarget, key: string, ref: stri
   const index = entry?.index ?? -1;
   if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
   const label = control?.label || "";
-  await target.before("key", `${key} ${label}`.trim());
+  const text = keyInsertsText(key);
+  await target.before("key", `${text ? "Character" : key} ${label}`.trim());
   target.driver.takeBlockedNav();
+  let sensitive = false;
   try {
-    await target.driver.pressMarked(key, index);
+    sensitive = await target.driver.pressMarked(key, index) && text;
   } catch (err) {
     const reason = err instanceof Error ? err.message : "focus_moved";
     if (reason === "credential_field" || reason === "focus_moved") return { kind: "halted", reason };
@@ -173,7 +177,7 @@ export async function pressLiveKey(target: LiveActTarget, key: string, ref: stri
   }
   const blockedNav = target.driver.takeBlockedNav();
   if (blockedNav) return refuseBlocked(target, blockedNav);
-  return { kind: "applied", label, control: control?.kind || "" };
+  return { kind: "applied", label, control: control?.kind || "", ...(sensitive ? { sensitive: true } : {}) };
 }
 
 /** Scrolls the page, or the box around one listed control, so more of a long page loads. */

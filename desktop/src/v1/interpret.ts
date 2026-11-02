@@ -391,7 +391,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   };
   if (event.op === "navigate") {
     const url = event.value || event.afterUrl || event.beforeUrl || meta.startUrl;
-    const match = openMatch(url);
+    const match = openMatch(event.afterUrl || url);
     return {
       id: `${meta.id}-${index}`,
       index,
@@ -667,12 +667,12 @@ function isSecret(event: TrailEvent, secrets: string[]): boolean {
   });
 }
 
-/** Host only. The step loads the full URL; a same-site redirect must not fail the open. */
 function openMatch(url: string): string {
   try {
-    return new URL(url).host;
+    const parsed = new URL(url);
+    return /^https?:$/.test(parsed.protocol) ? parsed.host : "";
   } catch {
-    return url;
+    return "";
   }
 }
 

@@ -11,6 +11,7 @@ import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationGuard, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
 import { focusLiveMark, focusStillMarked, markedState, type MarkedState } from "./live-ops";
+import { canonicalKey, KEY_EVENTS } from "./keys";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -92,24 +93,6 @@ export interface PageObservation {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-/** Chrome runs a key's default action only when the event carries its virtual key code. */
-const KEY_EVENTS: Record<string, { code: string; keyCode: number; text: string }> = {
-  Enter: { code: "Enter", keyCode: 13, text: "\r" },
-  Tab: { code: "Tab", keyCode: 9, text: "" },
-  Escape: { code: "Escape", keyCode: 27, text: "" },
-  ArrowLeft: { code: "ArrowLeft", keyCode: 37, text: "" },
-  ArrowUp: { code: "ArrowUp", keyCode: 38, text: "" },
-  ArrowRight: { code: "ArrowRight", keyCode: 39, text: "" },
-  ArrowDown: { code: "ArrowDown", keyCode: 40, text: "" },
-  Backspace: { code: "Backspace", keyCode: 8, text: "" },
-  Delete: { code: "Delete", keyCode: 46, text: "" },
-  " ": { code: "Space", keyCode: 32, text: " " },
-  Home: { code: "Home", keyCode: 36, text: "" },
-  End: { code: "End", keyCode: 35, text: "" },
-  PageUp: { code: "PageUp", keyCode: 33, text: "" },
-  PageDown: { code: "PageDown", keyCode: 34, text: "" },
-};
 
 const SHIFTED_KEYS: Record<string, string> = {
   "`": "~", "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
@@ -573,18 +556,19 @@ export class CdpLiveDriver implements Driver {
 
   async key(key: string): Promise<void> {
     this.assertHost();
+    key = canonicalKey(key);
     if (this.pageEngine) {
-      await this.pageEngine.key(key.replace(/^cmd\+/i, "Meta+").replace(/^ctrl\+/i, "Control+"));
+      await this.pageEngine.key(key);
       return;
     }
     const parts = key.split("+");
     let modifiers = 0;
     for (const part of parts.slice(0, -1)) {
-      modifiers |= ({ meta: 4, cmd: 4, control: 2, ctrl: 2, alt: 1, shift: 8 } as Record<string, number>)[part.toLowerCase()] || 0;
+      modifiers |= ({ Meta: 4, Control: 2, Alt: 1, Shift: 8 } as Record<string, number>)[part] || 0;
     }
     const raw = parts.at(-1) || "";
-    const name = raw === "Return" ? "Enter" : raw === "Space" ? " " : raw;
-    const known = KEY_EVENTS[name];
+    const known = KEY_EVENTS[raw];
+    const name = raw === "Space" ? " " : raw;
     const code = known?.code || (/^[a-z]$/i.test(name) ? `Key${name.toUpperCase()}` : /^\d$/.test(name) ? `Digit${name}` : name);
     const virtualKey = known?.keyCode || (name.length === 1 ? name.toUpperCase().charCodeAt(0) : 0);
     const character = modifiers & 8 && name.length === 1 ? SHIFTED_KEYS[name] || name.toUpperCase() : name;
@@ -600,9 +584,8 @@ export class CdpLiveDriver implements Driver {
 
   /**
    * Presses one key where focus is. With a mark, focus must still be that control.
-   * Focus in a credential field stops the key either way.
    */
-  async pressMarked(key: string, markIndex: number): Promise<void> {
+  async pressMarked(key: string, markIndex: number): Promise<boolean> {
     this.assertHost();
     await this.bringToFront();
     if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
@@ -611,6 +594,7 @@ export class CdpLiveDriver implements Driver {
     const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.key(key);
     await this.waitAfterClick(before, 10_000);
+    return check.credential;
   }
 
   async upload(_node: Identity, _files: FileArg[]): Promise<void> {
