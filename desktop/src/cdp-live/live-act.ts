@@ -4,7 +4,7 @@
 // host list, a control that moved, and a credential field.
 
 import { navigationGuard } from "./allowlist";
-import { canonicalKey, keyInsertsText } from "./keys";
+import { canonicalKey, keyMayInsertText } from "./keys";
 import type { CdpLiveDriver } from "./driver";
 import {
   buildView,
@@ -48,7 +48,7 @@ export interface LiveActTarget {
 export type LiveActOutcome =
   | { kind: "refused" | "halted"; reason: string }
   | { kind: "reached"; reason: "experian_commit"; instruction: string }
-  | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts; sensitive?: boolean };
+  | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
 
 function planRefusal(reason: string): LiveActOutcome {
   if (reason === "login_wall") return { kind: "halted", reason };
@@ -164,12 +164,11 @@ export async function pressLiveKey(target: LiveActTarget, key: string, ref: stri
   const index = entry?.index ?? -1;
   if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
   const label = control?.label || "";
-  const text = keyInsertsText(key);
-  await target.before("key", `${text ? "Character" : key} ${label}`.trim());
+  const text = keyMayInsertText(key);
+  await target.before("key", text ? "[redacted key]" : key);
   target.driver.takeBlockedNav();
-  let sensitive = false;
   try {
-    sensitive = await target.driver.pressMarked(key, index) && text;
+    await target.driver.pressMarked(key, index);
   } catch (err) {
     const reason = err instanceof Error ? err.message : "focus_moved";
     if (reason === "credential_field" || reason === "focus_moved") return { kind: "halted", reason };
@@ -177,7 +176,7 @@ export async function pressLiveKey(target: LiveActTarget, key: string, ref: stri
   }
   const blockedNav = target.driver.takeBlockedNav();
   if (blockedNav) return refuseBlocked(target, blockedNav);
-  return { kind: "applied", label, control: control?.kind || "", ...(sensitive ? { sensitive: true } : {}) };
+  return { kind: "applied", label, control: control?.kind || "" };
 }
 
 /** Scrolls the page, or the box around one listed control, so more of a long page loads. */

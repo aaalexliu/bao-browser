@@ -480,6 +480,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: check.postcondition,
     };
   }
+  if ((event.op === "keypress" || event.op === "key") && event.sensitive) return { ...step, action: "key", label: "Press [redacted]", sensitive: true, unresolved: { reason: "redacted key" } };
   const gate = inferGate(event, meta.secrets ?? []);
   if (gate) step.gate = gate;
   if (event.op === "keypress" || event.op === "key") {

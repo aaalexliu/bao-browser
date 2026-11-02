@@ -10,7 +10,7 @@ import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationGuard, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
-import { focusLiveMark, focusStillMarked, markedState, type MarkedState } from "./live-ops";
+import { focusLiveMark, focusStillMarked, markedState, resolveLiveOptions, type MarkedState } from "./live-ops";
 import { canonicalKey, KEY_EVENTS } from "./keys";
 import { CdpSocket } from "./socket";
 
@@ -203,7 +203,7 @@ export class CdpLiveDriver implements Driver {
     if (!url || url === "about:blank" || url.startsWith("about:") || url.startsWith("chrome:") || url.startsWith("devtools:") || url.startsWith("chrome-error:")) {
       return true;
     }
-    if (!this.careful) return /^https?:/.test(url);
+    if (!this.careful) return navigationGuard(url, this.hosts, this.origins, "", false) == null;
     if (this.origins.length) return navigationRefusal(url, this.hosts, this.origins) == null;
     return navigationAllowed(url, this.hosts);
   }
@@ -494,7 +494,7 @@ export class CdpLiveDriver implements Driver {
   async evaluateFunction<T>(
     fn: { toString(): string },
     arg: unknown,
-    helpers: ReadonlyArray<{ name: string; toString(): string }> = [],
+    helpers: ReadonlyArray<{ name: string; toString(): string }> = [resolveLiveOptions],
   ): Promise<T> {
     const prelude = helpers.map((helper) => {
       if (!/^[A-Za-z_$][\w$]*$/.test(helper.name)) throw new Error("cdp-live refused a page helper");
@@ -585,7 +585,7 @@ export class CdpLiveDriver implements Driver {
   /**
    * Presses one key where focus is. With a mark, focus must still be that control.
    */
-  async pressMarked(key: string, markIndex: number): Promise<boolean> {
+  async pressMarked(key: string, markIndex: number): Promise<void> {
     this.assertHost();
     await this.bringToFront();
     if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
@@ -594,7 +594,6 @@ export class CdpLiveDriver implements Driver {
     const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.key(key);
     await this.waitAfterClick(before, 10_000);
-    return check.credential;
   }
 
   async upload(_node: Identity, _files: FileArg[]): Promise<void> {

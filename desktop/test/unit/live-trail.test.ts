@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { LIVE_SOURCE, scrubTrailText, typeTrailEvent } from "../../src/mcp/live";
+import { keyTrailIdentity } from "../../src/cdp-live/live-trail";
 
 const secret = "SuperSecretPassword!";
 
@@ -15,6 +16,19 @@ test("a live type into a password field omits the secret and names the source", 
   assert.equal(event.value, undefined);
   assert.equal(event.sensitive, true);
   assert.equal(JSON.stringify(event).includes(secret), false);
+});
+
+test("key identities keep stable locators and discard all editable text representations", () => {
+  for (const tag of ["input", "textarea", "div"]) {
+    const identity = keyTrailIdentity({ surface: "dom", role: "textbox", tag, id: "field", testId: "stable-field", cssPath: "#field", xpath: '//*[@id="field"]', nameAttr: "entry", value: "654321", text: "654321", name: "654321", label: "654321", title: "654321", description: "654321", path: [{ role: "form", name: "654321" }] })!;
+    assert.equal(identity.id, "field");
+    assert.equal(identity.testId, "stable-field");
+    assert.equal(identity.cssPath, "#field");
+    assert.equal(identity.xpath, '//*[@id="field"]');
+    assert.deepEqual(identity.path, [{ role: "form" }]);
+    assert.equal(JSON.stringify(identity).includes("654321"), false);
+  }
+  assert.equal(keyTrailIdentity(undefined), undefined);
 });
 
 test("scrub replaces the public test secret in captured text", () => {

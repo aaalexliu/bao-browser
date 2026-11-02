@@ -495,14 +495,28 @@ export function publicLiveResult(value: unknown): unknown {
   return stripSecrets(value);
 }
 
-/** Page function. Chooses one option on the select this process just marked. */
+export function resolveLiveOptions(el: HTMLSelectElement, wanted?: string): {
+  options: NonNullable<LiveControlFact["options"]>;
+  option?: HTMLOptionElement;
+  reason: string | null;
+} {
+  const normalize = (label: string) => label.replace(/\s+/g, " ").trim();
+  const elements = Array.from(el.options);
+  const options = elements.map((option) => ({ value: option.value, label: normalize(option.label), selected: option.selected, disabled: el.matches(":disabled") || option.matches(":disabled") }));
+  if (wanted === undefined) return { options, reason: null };
+  const labels = options.filter((option) => option.label.toLowerCase() === normalize(wanted).toLowerCase());
+  const matches = labels.length ? labels : options.filter((option) => option.value === wanted);
+  if (matches.length !== 1) return { options, reason: matches.length ? "ambiguous option" : "option not found" };
+  if (matches[0]!.disabled) return { options, reason: "option is disabled" };
+  return { options, option: elements[options.indexOf(matches[0]!)], reason: null };
+}
+
 export function selectLiveOption(ask: { markIndex: number; option: string }): string | null {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
   if (!(el instanceof HTMLSelectElement)) return "not_a_select";
-  const options = Array.from(el.options).filter((option) => option.value === ask.option || option.label === ask.option);
-  if (options.length !== 1) return options.length ? "ambiguous option" : "option not found";
-  if (el.matches(":disabled") || options[0]!.matches(":disabled")) return "option is disabled";
-  for (const option of el.options) option.selected = option === options[0];
+  const resolved = resolveLiveOptions(el, ask.option);
+  if (resolved.reason) return resolved.reason;
+  for (const option of el.options) option.selected = option === resolved.option;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
   return null;
@@ -655,7 +669,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string; care
     const fact: LiveControlFact = { index, label, kind, form: search ? "search" : "", href, field };
     const button = field && form ? Array.from(form.elements).find(submits) : undefined;
     if (button) fact.formSubmit = textOf(button);
-    if (el instanceof HTMLSelectElement) fact.options = Array.from(el.options).map((option) => ({ value: option.value, label: option.label, selected: option.selected, disabled: el.matches(":disabled") || option.matches(":disabled") }));
+    if (el instanceof HTMLSelectElement) fact.options = resolveLiveOptions(el).options;
     controls.push(fact);
     index += 1;
   };

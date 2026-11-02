@@ -58,6 +58,29 @@ test("migrate drops a password literal and validates against the json schema", (
   assert.equal(doc.steps[1]?.value, "{{password}}");
 });
 
+test("redacted keys stay explicit and replay stops before dispatching a missing or placeholder key", async () => {
+  const events: TrailEvent[] = [
+    { id: "redacted", ts: 1, kind: "act", op: "key", sensitive: true, key: "Shift+x", value: "x" },
+    { id: "enter", ts: 2, kind: "act", op: "key", key: "Enter" },
+  ];
+  const doc = interpret(events, { id: "redacted-keys", startUrl: "https://example.test/" });
+  assert.deepEqual(doc.steps.map((step) => step.action), ["key", "key"]);
+  assert.equal(doc.steps[0]!.key, undefined);
+  assert.equal(doc.steps[0]!.value, undefined);
+  assert.equal(doc.steps[0]!.label, "Press [redacted]");
+  assert.deepEqual(doc.steps[0]!.unresolved, { reason: "redacted key" });
+  assert.equal(doc.steps[1]!.key, "Enter");
+  assert.deepEqual(validateWorkflow(doc), []);
+  assert.equal(validate(doc), true);
+  const keys: string[] = [];
+  const d = driver([]);
+  d.key = async (key) => { keys.push(key); };
+  const result = await replay(doc, {}, d, { heal: unavailableHeal() });
+  assert.equal(result.status, "failed");
+  assert.equal(result.failure?.reason, "unresolved step");
+  assert.deepEqual(keys, []);
+});
+
 test("a refused confirm click does not keep the pre-click status as its postcondition", () => {
   const events: TrailEvent[] = [
     {
