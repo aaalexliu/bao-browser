@@ -61,9 +61,8 @@ async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guar
   return sameTarget(target.read, buildView(marked, target.read.view.epoch, target.guard), ref);
 }
 
-/** Only a non-login stop path returns to the last allowed page; a login redirect must halt instead. */
 async function refuseBlocked(target: LiveActTarget, reason: string): Promise<LiveActOutcome> {
-  if (reason === "stop-path") {
+  if (reason !== "login_wall") {
     await target.driver.returnFromBlock();
     await target.reread();
   }

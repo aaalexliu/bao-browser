@@ -2,7 +2,7 @@
 import { createServer } from "node:https";
 import { selfSignedCert } from "../instacart/cert";
 
-export const EXPERIAN_FIXTURE_HOSTS = ["www.experian.com", "usa.experian.com", "credit.test"];
+export const EXPERIAN_FIXTURE_HOSTS = ["www.experian.com", "usa.experian.com", "credit.test", "www.instacart.com"];
 
 const page = (title: string, body: string) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body><main><h1>${title}</h1>${body}</main></body></html>`;
 const header = `<nav><a href="/member">Dashboard</a><a href="/member/credit-report">View full credit report</a><a href="/member/alerts">See alerts</a></nav>`;
@@ -34,8 +34,12 @@ export async function startExperianFixture() {
     } else if (url.pathname === "/member/off-host-redirect") {
       res.writeHead(302, { location: "https://credit.test/forbidden" });
       res.end();
+    } else if (url.pathname === "/member/path-redirect") {
+      res.writeHead(302, { location: "/payment-method" });
+      res.end();
     } else if (url.pathname === "/member/policy-links") {
-      send("Member links", '<a href="/member/account-redirect">Account details</a><a href="/member/off-host-redirect">External details</a><a href="/member/security-help">Security help</a>');
+      const scroll = url.searchParams.has("scroll") ? `<div style="height:4000px">More member details</div><script>addEventListener('scroll', () => { location.href = '/member/${url.searchParams.get("scroll")}-redirect'; }, {once:true})</script>` : "";
+      send("Member links", `<a href="/member/account-redirect">Account details</a><a href="/member/off-host-redirect">External details</a><a href="/member/path-redirect">More details</a><a href="/member/security-help">Security help</a>${scroll}`);
     } else if (url.pathname === "/member/bot") {
       send("Request unsuccessful", "<p>Incapsula incident ID: 000000000-0000000000000000</p>", 403);
     } else if (url.pathname === "/") {

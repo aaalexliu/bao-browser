@@ -537,7 +537,7 @@ test("a guarded replay refuses a confirm or denied control, a blocked load, a co
   assert.equal(blocked.run.status, "failed");
   assert.equal(blocked.run.failure?.reason, "evil.example");
   assert.deepEqual(blocked.run.steps.map((step) => step.status), ["failed", "pending"]);
-  assert.deepEqual(blocked.calls, ["click Add to cart"]);
+  assert.deepEqual(blocked.calls, ["click Add to cart", "returnFromBlock"]);
 
   const moved = await guarded(addTwice(), [ADD_TO_CART], { moved: { controls: [{ label: "Place your order", kind: "button" }] } });
   assert.equal(moved.run.failure?.reason, "stale_ref");
