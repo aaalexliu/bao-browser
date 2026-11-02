@@ -134,6 +134,7 @@ export function dumpPage(): PageDump {
     const tag = el.tagName;
     return /^(A|BUTTON|INPUT|TEXTAREA|SELECT|LABEL|H1|H2|H3|H4|SUMMARY)$/.test(tag)
       || el.hasAttribute("role")
+      || el.matches('[contenteditable]:not([contenteditable="false"])')
       || el.hasAttribute("data-testid")
       || el.hasAttribute("data-qa")
       || el.hasAttribute("data-test")
