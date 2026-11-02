@@ -404,12 +404,12 @@ export function createLiveHost(opts: LiveHostOptions): {
         axLog: path.join(opts.home, "live-session", "ax.jsonl"),
         connectTimeoutMs: opts.connectTimeoutMs,
         engineName,
+        careful,
+        origins,
+        stopPath,
       });
       cdp = opened.cdp;
       driver = opened.driver;
-      driver.setCareful(careful);
-      driver.setOrigins(origins);
-      driver.setStopPath(stopPath);
       const ids = workflowIdsFromIntent(intent, workflowId);
       const log = new SessionLog(liveSessionDir(opts.home), intent, ids.workflowId.slice(0, 40), guard.allowCommit);
       const trail = await LiveTrail.open(opts.home);
@@ -603,10 +603,11 @@ export function createLiveHost(opts: LiveHostOptions): {
     const state = open;
     let driver = state.drivers.get(tab);
     if (!driver) {
-      driver = await adoptLiveWindow(state.cdp, state.hosts, tab);
-      driver.setCareful(state.guard.careful !== false);
-      driver.setOrigins(state.origins);
-      driver.setStopPath(state.stopPath);
+      driver = await adoptLiveWindow(state.cdp, state.hosts, tab, {
+        careful: state.guard.careful,
+        origins: state.origins,
+        stopPath: state.stopPath,
+      });
       if (state.engineName === "agent-browser") driver.usePageEngine(await AgentBrowserPage.open({ endpoint: state.endpoint, targetId: tab, ownership: "external" }));
       state.drivers.set(tab, driver);
     }

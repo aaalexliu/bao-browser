@@ -492,16 +492,17 @@ export function publicLiveResult(value: unknown): unknown {
 }
 
 /** Page function. Chooses one option on the select this process just marked. */
-export function selectLiveOption(ask: { markIndex: number; option: string }): void {
+export function selectLiveOption(ask: { markIndex: number; option: string }): string | null {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
-  if (!(el instanceof HTMLSelectElement)) throw new Error("not_a_select");
+  if (!(el instanceof HTMLSelectElement)) return "not_a_select";
   const byValue = Array.from(el.options).filter((option) => option.value === ask.option);
   const options = byValue.length ? byValue : Array.from(el.options).filter((option) => option.label === ask.option);
-  if (options.length !== 1) throw new Error(options.length ? "ambiguous option" : "option not found");
-  if (el.disabled || options[0]!.disabled) throw new Error("option is disabled");
+  if (options.length !== 1) return options.length ? "ambiguous option" : "option not found";
+  if (el.matches(":disabled") || options[0]!.matches(":disabled")) return "option is disabled";
   el.value = options[0]!.value;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
+  return null;
 }
 
 /** Page function. Focuses the control this process just marked. */

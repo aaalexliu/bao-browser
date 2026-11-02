@@ -111,6 +111,11 @@ const KEY_EVENTS: Record<string, { code: string; keyCode: number; text: string }
   PageDown: { code: "PageDown", keyCode: 34, text: "" },
 };
 
+const SHIFTED_KEYS: Record<string, string> = {
+  "`": "~", "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
+  "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": "\"", ",": "<", ".": ">", "/": "?",
+};
+
 function toIdentity(node: DomDump): Identity {
   return {
     surface: "dom",
@@ -582,12 +587,13 @@ export class CdpLiveDriver implements Driver {
     const known = KEY_EVENTS[name];
     const code = known?.code || (/^[a-z]$/i.test(name) ? `Key${name.toUpperCase()}` : /^\d$/.test(name) ? `Digit${name}` : name);
     const virtualKey = known?.keyCode || (name.length === 1 ? name.toUpperCase().charCodeAt(0) : 0);
+    const character = modifiers & 8 && name.length === 1 ? SHIFTED_KEYS[name] || name.toUpperCase() : name;
     await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyDown", key: name, code, modifiers, windowsVirtualKeyCode: virtualKey,
-      text: modifiers & 7 ? "" : known ? known.text : name.length === 1 ? name : "",
+      type: "keyDown", key: character, code, modifiers, windowsVirtualKeyCode: virtualKey,
+      text: modifiers & 7 ? "" : known ? known.text : character.length === 1 ? character : "",
     }, this.sessionId);
     await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyUp", key: name, code, modifiers, windowsVirtualKeyCode: virtualKey,
+      type: "keyUp", key: character, code, modifiers, windowsVirtualKeyCode: virtualKey,
     }, this.sessionId);
   }
 
@@ -740,7 +746,7 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);
   }
 
-  private async clickSelector(selector: string): Promise<void> {
+  async actionPoint(selector: string): Promise<{ x: number; y: number }> {
     this.assertHost();
     await this.bringToFront();
     const point = await this.evaluate<{ x: number; y: number; w: number; h: number; covered: boolean } | null>(`(() => {
@@ -772,6 +778,11 @@ export class CdpLiveDriver implements Driver {
     })()`);
     if (!point || point.w < 1 || point.h < 1) throw new Error("element has no box");
     if (point.covered) throw new Error("element is covered");
+    return point;
+  }
+
+  private async clickSelector(selector: string): Promise<void> {
+    const point = await this.actionPoint(selector);
     if (this.pageEngine) {
       await this.pageEngine.click(selector);
       await this.noteTrust();
@@ -824,7 +835,13 @@ export class CdpLiveDriver implements Driver {
   }
 }
 
-export interface LiveWindowOptions {
+export interface LiveNavigationOptions {
+  careful?: boolean;
+  origins?: readonly string[];
+  stopPath?: string;
+}
+
+export interface LiveWindowOptions extends LiveNavigationOptions {
   /** False opens a tab. True opens a window. Default true. */
   newWindow?: boolean;
   /** Join an existing context. Omit this to use the default context. */
@@ -892,10 +909,7 @@ export async function openLiveWindow(
   const created = await cdp.send<{ targetId?: string }>("Target.createTarget", createParams);
   const targetId = created.targetId;
   if (!targetId) throw new Error("cdp did not open a window");
-  const sessionId = await flattenedSession(cdp, targetId);
-  const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts);
-  await driver.start();
-  return driver;
+  return adoptLiveWindow(cdp, hosts, targetId, options);
 }
 
 /** Drive a window this process asked Chrome to open. Like openLiveWindow, end() closes it. */
@@ -903,9 +917,13 @@ export async function adoptLiveWindow(
   cdp: CdpSocket,
   hosts: readonly string[],
   targetId: string,
+  options: LiveNavigationOptions = {},
 ): Promise<CdpLiveDriver> {
   const sessionId = await flattenedSession(cdp, targetId);
   const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts);
+  driver.setCareful(options.careful ?? true);
+  driver.setOrigins(options.origins ?? []);
+  driver.setStopPath(options.stopPath ?? "");
   await driver.start();
   return driver;
 }

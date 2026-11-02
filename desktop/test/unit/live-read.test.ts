@@ -246,7 +246,7 @@ test("live reads apply only the two node-local credential rules and three secret
       { nodes: ["4111111111111111/12/26", "4222 2222 2222 2/12"], expected: ["[redacted]/12/26", "[redacted]/12"] },
       { nodes: ["4111 1111 1111 1112 12/26"], expected: ["4111 1111 1111 1112 12/26"] },
     ];
-    for (const label of ["PIN", "Password", "Passcode", "SSN", "Social security number", "Account number", "Routing number", "Token", "Authorization"]) {
+    for (const label of ["PIN", "Password", "Passcode", "SSN", "Social security number", "Account number", "Routing number", "Token", "Authorization", "API key", "apiKey", "api_key", "Client secret", "clientSecret", "client-secret", "CVV", "CVC", "Security code", "Verification code", "One-time code", "One time code", "OTP"]) {
       for (const separator of [" ", ": ", "# ", " is "]) {
         cases.push({ nodes: [`${label}${separator}correct horse battery. Score: 742. Balance: $412.`], expected: [`${label}${separator}[redacted]. Score: 742. Balance: $412.`] });
       }

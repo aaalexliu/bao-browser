@@ -9,7 +9,7 @@ import { liveChromeBlock } from "../helper-capabilities";
 import { AxUnavailable, checkboxState, chromeHelper, type ChromeAx } from "./ax";
 import { checkboxReach } from "./consent";
 import { connectAndAllow } from "./connect";
-import { adoptLiveWindow, openLiveWindow, type CdpLiveDriver } from "./driver";
+import { adoptLiveWindow, openLiveWindow, type CdpLiveDriver, type LiveNavigationOptions } from "./driver";
 import { DEVTOOLS_ACTIVE_PORT, listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
 import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import { connectCdp, type CdpSocket } from "./socket";
@@ -155,6 +155,7 @@ export async function openProfileWindow(
   ask: Omit<ProfileWindowAsk, "url">,
   open: OpenProfileWindow,
   timeoutMs = 15_000,
+  options: LiveNavigationOptions = {},
 ): Promise<CdpLiveDriver> {
   const nonce = randomBytes(8).toString("hex");
   const found = markerTarget(cdp, `bao-live-${nonce}`, timeoutMs);
@@ -163,7 +164,7 @@ export async function openProfileWindow(
   await open({ ...ask, url: profileWindowUrl(nonce) });
   const targetId = await found;
   try {
-    return await adoptLiveWindow(cdp, hosts, targetId);
+    return await adoptLiveWindow(cdp, hosts, targetId, options);
   } catch (err) {
     await cdp.send("Target.closeTarget", { targetId }).catch(() => undefined);
     throw err;
@@ -258,7 +259,7 @@ export async function prepareTarget(target: LiveTarget, helper: () => ChromeAx =
 export async function connectTarget(
   prepared: PreparedTarget,
   hosts: readonly string[],
-  deps: { openProfile: OpenProfileWindow; axLog: string; connectTimeoutMs?: number; engineName?: PageEngineName },
+  deps: LiveNavigationOptions & { openProfile: OpenProfileWindow; axLog: string; connectTimeoutMs?: number; engineName?: PageEngineName },
 ): Promise<{ cdp: CdpSocket; driver: CdpLiveDriver }> {
   const { target, endpoint } = prepared;
   const engineName = deps.engineName ?? "old";
@@ -287,7 +288,7 @@ export async function connectTarget(
         pid: prepared.chromePid,
         userDataDir: path.dirname(target.portFile),
         profile: target.profile,
-      }, deps.openProfile);
+      }, deps.openProfile, undefined, deps);
       return { cdp, driver };
     }
     cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: deps.connectTimeoutMs ?? 30_000 })
@@ -297,7 +298,7 @@ export async function connectTarget(
         }
         throw err;
       });
-    const driver = await openLiveWindow(cdp, hosts);
+    const driver = await openLiveWindow(cdp, hosts, deps);
     try {
       if (engineName === "agent-browser") {
         const engine = await AgentBrowserPage.open({
