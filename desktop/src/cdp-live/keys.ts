@@ -25,7 +25,7 @@ export function canonicalKey(key: string): string {
   return [...parts.map((part) => MODIFIERS[part.toLowerCase()] || part), name].join("+");
 }
 
-export function keyInsertsText(key: string): boolean {
+export function keyMayInsertText(key: string): boolean {
   const parts = canonicalKey(key).split("+");
   const name = parts.pop() || "";
   return (name.length === 1 || name === "Space") && !parts.includes("Meta") && (!parts.includes("Control") || parts.includes("Alt"));

@@ -107,6 +107,7 @@ export function navigationGuard(
   if (!careful) {
     try {
       const parsed = new URL(url);
+      if (parsed.username || parsed.password) return "credentials";
       return url === "about:blank" || ["http:", "https:"].includes(parsed.protocol) ? null : "url must be http or https";
     } catch {
       return "that url";

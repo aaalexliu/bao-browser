@@ -159,6 +159,19 @@ test("live keys reach native transport with canonical names and modifier aliases
   } finally { await fake.close(); }
 });
 
+test("native navigation refuses URL userinfo before sending any command in either mode", async () => {
+  const fake = await fakeEngine();
+  try {
+    const driver = new CdpLiveDriver({} as CdpSocket, "session", "ABC123", ["example.test"]);
+    driver.usePageEngine(fake.page);
+    for (const careful of [false, true]) {
+      driver.setCareful(careful);
+      for (const userinfo of ["alice@", ":fixture-password@", "alice:fixture-password@"]) await assert.rejects(driver.goto(`https://${userinfo}example.test/`), /credentials/);
+    }
+    assert.equal((await fake.records()).some((command) => command.action === "navigate" || command.action === "evaluate"), false);
+  } finally { await fake.close(); }
+});
+
 test("native navigation uses startup evaluation for both readiness and final location", async (t) => {
   const fake = await fakeEngine();
   const phases: EvaluationPhase[] = [];

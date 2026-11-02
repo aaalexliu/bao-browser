@@ -5,7 +5,7 @@ import { condenseWithGroups } from "../v1/condense";
 import { workflowShotName } from "../v1/shots";
 import { AgentBrowserPage, type PageEngineName } from "../engines/agent-browser";
 import { navigationGuard } from "./allowlist";
-import { canonicalKey } from "./keys";
+import { canonicalKey, keyMayInsertText } from "./keys";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
 import { adoptLiveWindow, type CdpLiveDriver } from "./driver";
@@ -60,6 +60,7 @@ import {
 import {
   cartAddSkip,
   clickEffect,
+  keyTrailIdentity,
   LiveTrail,
   trailIdentity,
   workflowFromTrail,
@@ -527,7 +528,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       open.halted = halt;
       open.refused = true;
     }
-    const shot = await record(action, open.read.view.title || action, Date.now() - started, halt ? "needs_human" : "passed", null);
+    const shot = await record(action, action === "key" ? "key" : open.read.view.title || action, Date.now() - started, halt ? "needs_human" : "passed", null);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);
       if (event && shot) open.eventShots.set(event.id, shot);
@@ -642,16 +643,14 @@ export function createLiveHost(opts: LiveHostOptions): {
       await note(action, outcome.reason, "failed", null);
       return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
-    if (!outcome.sensitive) {
-      const after = await readAfter(state, -1);
-      await state.trail.add({
-        op: action,
-        ...(action === "key" ? { key: what } : { detail: what }),
-        identity: before?.identity,
-        beforeUrl: before?.side.url,
-        afterUrl: after.url || undefined,
-      });
-    }
+    const after = await readAfter(state, -1);
+    await state.trail.add({
+      op: action,
+      ...(action === "key" ? keyMayInsertText(what) ? { sensitive: true } : { key: what } : { detail: what }),
+      identity: action === "key" ? keyTrailIdentity(before?.identity) : before?.identity,
+      beforeUrl: before?.side.url,
+      afterUrl: after.url || undefined,
+    });
     return look(action, outcome.scroll ? { scroll: outcome.scroll } : {});
   }
 

@@ -58,6 +58,12 @@ export class LiveTrail {
   }
 }
 
+export function keyTrailIdentity(identity: Identity | undefined): Identity | undefined {
+  if (!identity) return undefined;
+  const { surface, role, tag, id, testId, nameAttr, cssPath, xpath, siblingIndex } = identity;
+  return { surface, role, tag, id, testId, nameAttr, cssPath, xpath, siblingIndex, path: identity.path.map(({ role }) => ({ role })) };
+}
+
 const SHOWN = ["name", "text", "label", "title"] as const;
 
 /** Some node's name, text, label, or title reads `want` once its prices are dropped. */

@@ -22,6 +22,18 @@ import {
   truthWorkflow,
 } from "../../src/eval/intent/score";
 
+test("condense retains each redacted key and named key without inventing a literal", () => {
+  const events: TrailEvent[] = [
+    { id: "redacted-1", ts: 1, kind: "act", op: "key", sensitive: true },
+    { id: "redacted-2", ts: 2, kind: "act", op: "key", sensitive: true },
+    { id: "enter", ts: 3, kind: "act", op: "key", key: "Enter" },
+    { id: "backspace", ts: 4, kind: "act", op: "key", key: "Backspace" },
+  ];
+  const result = condenseWithGroups(events, { id: "redacted-keys", startUrl: "https://example.test/" });
+  assert.deepEqual(result.workflow.steps.map((step) => [step.action, step.key, step.unresolved?.reason]), [["key", undefined, "redacted key"], ["key", undefined, "redacted key"], ["key", "Enter", undefined], ["key", "Backspace", undefined]]);
+  assert.deepEqual(result.groups.map((group) => group.map((event) => event.id)), events.map((event) => [event.id]));
+});
+
 test("ground-truth trails condense through noise and replay twice", async () => {
   assert.ok(INTENT_CASES.length >= 16);
   assert.ok(INTENT_CASES.length <= 20);
