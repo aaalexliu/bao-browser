@@ -390,7 +390,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     provenance: event.provenance,
   };
   if (event.op === "navigate") {
-    const url = event.afterUrl || event.beforeUrl || meta.startUrl;
+    const url = event.value || event.afterUrl || event.beforeUrl || meta.startUrl;
     const match = openMatch(url);
     return {
       id: `${meta.id}-${index}`,

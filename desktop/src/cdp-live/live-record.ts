@@ -71,7 +71,7 @@ export function redactLabel(text: string): string {
 }
 
 function auditLabel(action: string, label: string): string {
-  if (action === "start") {
+  if (action === "start" || action === "navigate") {
     try {
       const url = new URL(label);
       if (url.protocol === "http:" || url.protocol === "https:") {

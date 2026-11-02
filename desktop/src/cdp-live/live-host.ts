@@ -33,6 +33,7 @@ import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
 import {
   admit,
   buildView,
+  credentialField,
   EXPERIAN_COMMIT_INSTRUCTION,
   isLiveOp,
   LIVE_DISCONNECT,
@@ -585,7 +586,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     await note("navigate", url, "running", null);
     const beforeUrl = await open.driver.locationHref();
     await open.driver.goto(url);
-    await open.trail.add({ op: "navigate", beforeUrl, afterUrl: await open.driver.locationHref() });
+    await open.trail.add({ op: "navigate", value: url, beforeUrl, afterUrl: await open.driver.locationHref() });
     return look("navigate");
   }
 
@@ -762,11 +763,13 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
     const after = await readAfter(state, index);
     const fact = state.facts?.controls.find((item) => item.index === index);
+    const sensitive = !!fact && credentialField(fact);
     await state.trail.add({
       op: "type",
       identity: before?.identity,
       // The whole field, as the recorder keeps it. Text typed after a prefilled value includes that value.
-      value: after.value || `${before?.side.value || ""}${text}`,
+      value: sensitive ? undefined : after.value || `${before?.side.value || ""}${text}`,
+      ...(sensitive ? { sensitive: true } : {}),
       // A recorded workflow replays the search it saw. The search text is not an input.
       ...(fact && searchField(fact) ? { literal: true } : {}),
       beforeUrl: before?.side.url,

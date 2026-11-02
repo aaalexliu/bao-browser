@@ -14,7 +14,7 @@ import { openProfileWindow } from "../../src/cdp-live/live-target";
 import type { CdpSocket } from "../../src/cdp-live/socket";
 import { McpClient } from "../../src/eval/mcp-client";
 import { launchOwnedChrome } from "../../src/launch";
-import type { Identity } from "../../src/v1/schema";
+import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { applyHermeticApp, laneChildEnv } from "../runtime";
 
@@ -123,7 +123,7 @@ test("CDP select-all commands use only the platform modifier and keep other chor
 interface Reply {
   session: string;
   outcome: { kind: string; reason?: string };
-  view: { controls: { ref: string; label: string; options?: { value: string; selected: boolean; disabled: boolean }[] }[] };
+  view: { controls: { ref: string; label: string; options?: { value: string; label: string; selected: boolean; disabled: boolean }[] }[] };
   tabs?: { tab: string; active: boolean; url: string }[];
   read?: { text: string };
 }
@@ -140,16 +140,24 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
   const dirs = applyHermeticApp("live-mode-regressions");
   let browser: Awaited<ReturnType<typeof launchOwnedChrome>>;
   let url: string;
+  const navigationHits: string[] = [];
   const server = createServer((req, res) => {
     res.setHeader("content-type", "text/html");
+    const pathname = new URL(req.url || "/", "http://localhost").pathname;
+    if (pathname === "/nav-start") return res.end(`<title>Start navigation</title><button onclick="document.querySelector('#nav-result').textContent='Wrong page';this.textContent='Opened'">Open result</button><p id="nav-result">Start page</p>`);
+    if (pathname === "/nav-target") {
+      navigationHits.push(req.url || "");
+      return res.end(`<title>Target navigation</title><button onclick="document.querySelector('#nav-result').textContent='Right page';this.textContent='Opened'">Open result</button><p id="nav-result">Target page</p>`);
+    }
+    if (pathname === "/credentials") return res.end(`<title>Local form</title><label>Secret<input type="password"></label><label>Verification code<input></label><label>Challenge<input autocomplete="one-time-code"></label><label>Note<textarea></textarea></label>`);
     if (req.url === "/popup") return res.end("<title>Popup</title><button>Finish</button>");
     if (req.url === "/editing") return res.end(`<title>Editing</title><style>[contenteditable]{min-height:24px}</style>
       <main oninput="document.querySelector('#value').textContent='Value:'+(event.target.isContentEditable ? event.target.textContent : event.target.value)">
       <label>Name<input></label><label>Note<textarea></textarea></label><div contenteditable aria-label="Editor"></div></main><p id="value">Value:</p>`);
     if (req.url === "/secrets") return res.end(`<title>Details</title>${secretLabels.map((label, index) => `<section id="secret-${index}" name="${label}" aria-label="${label}"><p>${label}: private-inline-${index}. Status: ready.</p><p>${label}</p><p>private-split-${index}</p><p>Balance: $412</p></section><button>${label}</button>`).join("")}`);
     res.end(`<title>Controls</title><label>Note<textarea></textarea></label>
-      <label>Audience<select id="audience" onclick="document.body.dataset.clicked='yes'" oninput="document.body.dataset.inputs=String(Number(document.body.dataset.inputs||0)+1)" onchange="document.querySelector('#result').textContent='Audience: '+this.selectedOptions[0].label">
-      <option value="internal">Internal</option><option value="external">External</option><option value="one">Duplicate</option><option value="two">Duplicate</option><option value="repeated">First</option><option value="repeated">Second</option><option disabled value="disabled">Disabled</option><optgroup disabled label="Unavailable"><option value="grouped">Grouped</option></optgroup></select></label>
+      <label>Audience<select id="audience"${req.url === "/multiple" ? " multiple" : ""} onclick="document.body.dataset.clicked='yes'" oninput="document.body.dataset.inputs=String(Number(document.body.dataset.inputs||0)+1)" onchange="document.querySelector('#result').textContent='Audience: '+this.selectedOptions[0].label">
+      <option value="internal"${req.url === "/multiple" ? " selected" : ""}>Internal</option><option value="external"${req.url === "/multiple" ? " selected" : ""}>External</option><option value="one">Duplicate</option><option value="two">Duplicate</option><option value="repeated">First</option><option value="repeated">Second</option><option disabled value="disabled">Disabled</option><optgroup disabled label="Unavailable"><option value="grouped">Grouped</option></optgroup></select></label>
       <label>Disabled audience<select disabled><option value="unavailable">Unavailable</option></select></label>
       <fieldset disabled><label>Disabled fieldset<select><option value="nested">Nested</option></select></label></fieldset>
       <p id="result">Audience: Internal</p><form onsubmit="event.preventDefault();document.querySelector('#result').textContent='Created'"><button>Create</button></form>
@@ -234,6 +242,109 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       await call({ op: "live_stop" });
       assert.equal(JSON.parse(readFileSync(path.join(dirs.home, "select", "live-session", "session.json"), "utf8")).status, "passed");
     } finally { await host.close(); }
+  });
+
+  test("exact option labels select and replay the matched element despite duplicate values", async () => {
+    const host = newHost("exact-select");
+    const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
+    try {
+      for (const careful of [false, true]) {
+        for (const multiple of [false, true]) {
+          let reply = await call({ op: "live_session_start", careful, intent: `Choose exact audience ${careful} ${multiple}`, url: url + (multiple ? "/multiple" : "/") });
+          assert.equal(reply.outcome.kind, "applied");
+          assert.equal((await call({ op: "live_select", ref: ref(reply, "Audience"), option: "repeated" })).outcome.reason, "ambiguous option");
+          reply = await call({ op: "live_select", ref: ref(reply, "Audience"), option: "Second" });
+          assert.equal(reply.outcome.kind, "applied");
+          assert.deepEqual(reply.view.controls.find((control) => control.label === "Audience")!.options!.filter((option) => option.selected).map((option) => option.label), ["Second"]);
+          const read = await call({ op: "live_read", name: "audience", selector: "#result" });
+          assert.equal(read.read?.text, "Audience: Second");
+          await call({ op: "live_stop" });
+          const workflow = new Library(path.join(dirs.home, "exact-select")).read(reply.session);
+          assert.deepEqual(workflow.steps.map((step) => step.action), ["select", "extract"]);
+          const replay = await host.replay(workflow);
+          assert.equal(replay.status, "passed", JSON.stringify(replay.failure));
+          assert.equal(replay.modelCalls, 0);
+          const output = replay.outputs?.[0];
+          assert.equal(output?.type === "table" ? output.rows[0]?.text : undefined, "Audience: Second");
+        }
+      }
+    } finally { await host.close(); }
+  });
+
+  test("explicit navigation records its target, scrubs its audit, and replays before clicking", async () => {
+    const host = newHost("navigate");
+    const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
+    const target = url + "/nav-target?code=demo-navigation-secret#section";
+    try {
+      for (const careful of [false, true]) {
+        const baseline = navigationHits.length;
+        let reply = await call({ op: "live_session_start", careful, intent: `Navigate then open result ${careful}`, url: url + "/nav-start" });
+        reply = await call({ op: "live_navigate", url: target });
+        assert.equal(reply.outcome.kind, "applied");
+        reply = await call({ op: "live_click", ref: ref(reply, "Open result") });
+        assert.equal(reply.outcome.kind, "applied");
+        const read = await call({ op: "live_read", name: "result", selector: "#nav-result" });
+        assert.equal(read.read?.text, "Right page");
+        await call({ op: "live_stop" });
+        const home = path.join(dirs.home, "navigate");
+        const workflow = new Library(home).read(reply.session);
+        assert.deepEqual(workflow.steps.map((step) => step.action), ["navigate", "click", "extract"]);
+        assert.equal(workflow.steps[0]?.value, target);
+        const record = JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as { status: string; audit: { action: string; label: string }[] };
+        assert.equal(record.status, "passed");
+        const audit = record.audit.filter((row) => row.action === "navigate");
+        assert.equal(audit[0]?.label, url + "/nav-target");
+        for (const row of audit) assert.doesNotMatch(row.label, /demo-navigation-secret|\?code|#section/);
+        const replay = await host.replay(workflow);
+        assert.equal(replay.status, "passed", JSON.stringify(replay.failure));
+        assert.equal(replay.modelCalls, 0);
+        const output = replay.outputs?.[0];
+        assert.equal(output?.type === "table" ? output.rows[0]?.text : undefined, "Right page");
+        assert.deepEqual(navigationHits.slice(baseline), ["/nav-target?code=demo-navigation-secret", "/nav-target?code=demo-navigation-secret"]);
+      }
+    } finally { await host.close(); }
+  });
+
+  test("MCP saves typed credentials as secret inputs without defaults and keeps ordinary text", async () => {
+    const home = path.join(dirs.home, "credentials");
+    const app = await startApp({ home, port: 0, liveTarget: `throwaway:${path.join(dirs.chromeUserData, "DevToolsActivePort")}`, liveLockFile: path.join(home, "lock") });
+    const pinned = process.env.BAO_TEST_BROWSER;
+    const mcp = McpClient.start({ ...laneChildEnv("hermetic", process.env, () => pinned ?? chromium.executablePath()), HOME: dirs.nativeHostHome, BAO_HOME: home });
+    const call = async (name: string, args: Record<string, unknown> = {}): Promise<Reply> => {
+      const result = await mcp.call(name, args);
+      assert.equal(result.isError, false, result.text);
+      return JSON.parse(result.text) as Reply;
+    };
+    const note = "A routine note with ordinary text. ".repeat(8).trim();
+    try {
+      await mcp.handshake();
+      let reply = await call("live_session_start", { intent: "Fill local form", url: url + "/credentials" });
+      const session = reply.session;
+      for (const [label, text] of [["Secret", "demo-private-"], ["Secret", "password"], ["Verification code", "654321"], ["Challenge", "987654"], ["Note", note]]) {
+        reply = await call("live_type", { ref: ref(reply, label), text });
+        assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      }
+      assert.equal((await call("live_stop")).outcome.kind, "stopped");
+      const workflow = app.library.read(session);
+      assert.equal(workflow.inputs.filter((input) => input.type === "secret").length, 3);
+      assert.ok(workflow.inputs.filter((input) => input.type === "secret").every((input) => input.default === undefined));
+      assert.ok(workflow.inputs.some((input) => input.type === "text" && input.default === note));
+      assert.equal(workflow.steps.filter((step) => step.sensitive).length, 3);
+      assert.equal(JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")).status, "passed");
+      const described = await mcp.call("describe_workflow", { id: session });
+      assert.equal(described.isError, false, described.text);
+      const document = JSON.parse(described.text) as { workflow: WorkflowV2 };
+      assert.deepEqual(document.workflow.inputs, workflow.inputs);
+      const trail = readFileSync(path.join(home, "live-session", "trail.jsonl"), "utf8");
+      for (const secret of ["demo-private-", "demo-private-password", "654321", "987654"]) {
+        assert.equal(JSON.stringify(workflow).includes(secret), false, secret);
+        assert.equal(described.text.includes(secret), false, secret);
+        assert.equal(trail.includes(secret), false, secret);
+      }
+    } finally {
+      await mcp.close();
+      await app.close();
+    }
   });
 
   test("Shift inserts shifted characters while shortcuts insert no text", async (t) => {

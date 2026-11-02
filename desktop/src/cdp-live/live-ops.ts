@@ -259,7 +259,7 @@ function selectorFor(index: number): string {
 
 const CREDENTIAL_WORD = /\b(password|passcode|otp|cvv|cvc|ssn|social security|card number|security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor)\b/;
 
-function credential(control: LiveControlFact): boolean {
+export function credentialField(control: LiveControlFact): boolean {
   if (control.kind !== "field") return false;
   const type = (control.field?.type || "").toLowerCase();
   const auto = (control.field?.autocomplete || "").toLowerCase();
@@ -338,7 +338,7 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
     const ref = refFor(epoch, control.index);
     const selector = selectorFor(control.index);
     const href = control.href || "";
-    if (credential(control)) {
+    if (credentialField(control)) {
       view.credentialFields += 1;
       if (guard.careful !== false) {
         byRef.set(ref, { index: control.index, kind: "credential", selector, href, enter: "credential_field" });
@@ -499,7 +499,7 @@ export function selectLiveOption(ask: { markIndex: number; option: string }): st
   const options = byValue.length ? byValue : Array.from(el.options).filter((option) => option.label === ask.option);
   if (options.length !== 1) return options.length ? "ambiguous option" : "option not found";
   if (el.matches(":disabled") || options[0]!.matches(":disabled")) return "option is disabled";
-  el.value = options[0]!.value;
+  for (const option of el.options) option.selected = option === options[0];
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
   return null;
