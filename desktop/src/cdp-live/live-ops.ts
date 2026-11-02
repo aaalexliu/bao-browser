@@ -560,7 +560,7 @@ export function markedState(ask: { markIndex: number }): MarkedState {
   const field = el instanceof HTMLTextAreaElement
     || (el instanceof HTMLInputElement
       && !/^(password|button|submit|reset|image|checkbox|radio|file|hidden)$/.test((el.getAttribute("type") || "text").toLowerCase()));
-  const value = field ? String((el as HTMLInputElement | HTMLTextAreaElement).value || "").slice(0, 2000) : "";
+  const value = el.isContentEditable ? el.innerText : field ? String((el as HTMLInputElement | HTMLTextAreaElement).value || "").slice(0, 2000) : "";
   return { handle: el.getAttribute("data-bao-i") || "", text, value, missing: false };
 }
 
