@@ -3,6 +3,7 @@
 import { siteName } from "./page-class";
 import { formatClock } from "./time";
 import { isLoopbackHost, publicSite } from "./visible-copy";
+import { ownerStopText } from "./stop-copy";
 
 export type AskKind = "login" | "confirm" | "wall";
 
@@ -68,7 +69,7 @@ export function wallInstruction(site: string, kind: "bot" | "login"): string {
 
 export function actAskLine(ask: { kind: AskKind; site?: string; button?: string; instruction?: string }): string {
   const site = publicSite(ask.site || "the site");
-  if (ask.kind === "wall") return ask.instruction || wallInstruction(site, "bot");
+  if (ask.kind === "wall") return ownerStopText(ask.instruction || wallInstruction(site, "bot"));
   if (ask.kind === "confirm") return `Press ${ask.button || "the button"} on ${site} in the Bao window`;
   return `Sign in to ${site} in the Bao window`;
 }
@@ -84,7 +85,7 @@ export function actDeadlineLine(deadline: number | null, now = Date.now()): stri
 }
 
 /** The notification and the Dock tooltip use this exact string. */
-export function actSurfaceText(ask: Pick<HumanAsk, "kind" | "site" | "button" | "deadline">, now = Date.now()): string {
+export function actSurfaceText(ask: Pick<HumanAsk, "kind" | "site" | "button" | "deadline"> & Partial<Pick<HumanAsk, "instruction">>, now = Date.now()): string {
   return `${actAskLine(ask)}. ${actDeadlineLine(ask.deadline, now)}`;
 }
 

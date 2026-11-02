@@ -3,6 +3,7 @@
 import type { BotCookiePolicy, PublicImportResult, PublicPreview, PublicProfile, SiteLoginConfig } from "../login-import/types";
 import { formatClock, formatFriendly, formatWhen } from "../v1/time";
 import { controlKey } from "../v1/visible-copy";
+import { ownerStopMessage } from "../v1/stop-copy";
 import { esc, htmlEsc } from "./views";
 
 export interface SavedSite extends SiteLoginConfig {
@@ -149,8 +150,8 @@ function profileMark(profile: PublicProfile): string {
 function renderLoginReport(report: PublicImportResult): string {
   const tone = report.signedIn ? "pass" : "fail";
   const keychain = report.keychain ? `<div class="notice"><strong>${esc(report.keychain.title)}</strong><div>${esc(report.keychain.body)}</div></div>` : "";
-  const rejected = (report.rejected || []).map((item) => `<div>${esc(item.name)} · ${esc(item.reason)}</div>`).join("");
-  const failed = (report.failed || []).map((item) => `<div>${esc(item.name)} · ${esc(item.reason)}</div>`).join("");
+  const rejected = (report.rejected || []).map((item) => `<div>${esc(item.name)} · ${esc(ownerStopMessage(item.reason))}</div>`).join("");
+  const failed = (report.failed || []).map((item) => `<div>${esc(item.name)} · ${esc(ownerStopMessage(item.reason))}</div>`).join("");
   const signIn = report.offerSignIn ? `<button id="sign-in-once" type="button">Sign in once in Bao's window</button>` : "";
   return `<div class="card result" id="login-result"><h3 class="${tone}">${esc(report.headline)}</h3><p>${esc(report.message || "")}</p>${keychain}${rejected}${failed}<div class="row">${signIn}</div></div>`;
 }

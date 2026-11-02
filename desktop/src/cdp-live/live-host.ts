@@ -33,7 +33,6 @@ import {
   admit,
   buildView,
   EXPERIAN_COMMIT_INSTRUCTION,
-  EXPERIAN_COMMIT_MESSAGE,
   isLiveOp,
   LIVE_DISCONNECT,
   LIVE_IDLE_MS,
@@ -71,6 +70,7 @@ import { sameRecordedControl } from "../v1/identity";
 import type { RunResult } from "../v1/replay";
 import { popupDismissName, validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
+import { ownerStopMessage } from "../v1/stop-copy";
 
 const AGENT = "bao-live";
 
@@ -130,16 +130,6 @@ const LOOK_OPS: Record<string, LiveOpName> = {
 
 function shown(read: LiveRead | null | undefined): LiveViewPage | null {
   return read ? viewPage(read.view) : null;
-}
-
-function ownerStopMessage(reason: string): string {
-  if (reason === "experian_commit") return EXPERIAN_COMMIT_MESSAGE;
-  if (reason === "login_wall") return LIVE_LOGIN_INSTRUCTION;
-  if (reason === "bot_wall") return "Complete the bot check in Chrome, then start a new live session.";
-  if (reason === "stop-path") return "Bao stopped at a path it does not drive.";
-  if (reason === "new_target") return "The page opened a new window. Bao closed it and stopped.";
-  if (reason === "credential_field") return "Bao stopped at a credential field. Continue in Chrome.";
-  return "Focus left the field Bao was typing in, so Bao stopped.";
 }
 
 interface LiveRunSelection {
