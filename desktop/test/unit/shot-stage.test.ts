@@ -57,18 +57,19 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     ] as const) {
       await page.click(`#step-list [data-select-step=${step}]`);
       await page.click(`[data-frame=${which}]`);
-      await page.waitForFunction(([w, h]) => {
-        const image = document.querySelector<HTMLImageElement>("#shot-stage img");
-        return !!image && image.naturalWidth === w && image.naturalHeight === h;
-      }, [width, height]);
-      const fit = await page.locator("#shot-stage").evaluate((stage) => {
-        const image = stage.querySelector<HTMLImageElement>("img")!;
+      const fitHandle = await page.waitForFunction(([w, h]) => {
+        const stage = document.querySelector("#shot-stage");
+        const image = stage?.querySelector<HTMLImageElement>("img");
+        if (!stage || !image || image.naturalWidth !== w || image.naturalHeight !== h) return null;
         const rect = stage.getBoundingClientRect();
         const style = getComputedStyle(stage);
         return { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
           height: rect.height - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth),
           ratio: image.naturalWidth / image.naturalHeight, objectFit: getComputedStyle(image).objectFit };
-      });
+      }, [width, height]);
+      const fit = await fitHandle.jsonValue();
+      await fitHandle.dispose();
+      assert.ok(fit);
       assert.ok(Math.abs(fit.width - fit.height * fit.ratio) < 2, `${which}: frame ${fit.width}x${fit.height} does not match captured ratio ${fit.ratio}`);
       assert.equal(fit.objectFit, "contain", "keep every part of the captured page visible");
     }

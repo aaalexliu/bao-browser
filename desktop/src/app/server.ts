@@ -226,6 +226,7 @@ export async function startApp(opts: {
   const profileSourceRoot = opts.chromeProfilesRoot ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? systemChromeProfilesRoot() : undefined);
   let profileCopy: { bytes: number; copyMs: number; status: "open" | "deleted" } | undefined;
   const live = createLiveHost({
+    careful: () => library.settings().careful === true,
     home: library.root,
     target: parseLiveTarget(opts.liveTarget, baoProfile),
     lockFile: opts.liveLockFile,
@@ -853,8 +854,12 @@ export async function startApp(opts: {
         return json(res, { profiles });
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; careful?: boolean; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown };
         const patch: Partial<Settings> = {};
+        if (body.careful !== undefined) {
+          if (typeof body.careful !== "boolean") return json(res, { error: "careful must be a boolean" }, 400);
+          patch.careful = body.careful;
+        }
         if (body.pageEngine !== undefined) {
           if (body.pageEngine !== "old" && body.pageEngine !== "agent-browser") return json(res, { error: "unknown page engine" }, 400);
           patch.pageEngine = body.pageEngine;

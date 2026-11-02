@@ -93,7 +93,7 @@ test("live reads record a safe region and return fresh output through MCP and th
     const manifest = await mcp.request("tools/list", {});
     assert.match(JSON.stringify(manifest.tools?.find((tool) => tool.name === "run_workflow")), /Closing all windows of the copied Chrome frees its profile for another run without quitting Bao/);
     assert.match(JSON.stringify(manifest.tools?.find((tool) => tool.name === "live_read")), /Luhn-valid 13-19-digit card numbers/);
-    const started = await tool<LiveReply>("live_session_start", { intent: "Read freeze status", url, workflowId: "wf-read-freeze" });
+    const started = await tool<LiveReply>("live_session_start", { careful: true, intent: "Read freeze status", url, workflowId: "wf-read-freeze" });
     assert.equal(started.outcome.kind, "applied");
     const read = await tool<LiveReply>("live_read", { name: "freeze_status", selector: "#freeze-status" });
     assert.match(read.read!.text, /Frozen\./);

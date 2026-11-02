@@ -19,8 +19,12 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
       portFile: flag(args, "--port-file") || "",
       preset: flag(args, "--preset") || "",
       workflowId: flag(args, "--workflow-id") || "",
+      ...(args.includes("--careful") ? { careful: flag(args, "--careful") !== "false" } : {}),
     };
   }
+  if (cmd === "live_navigate") return { op: cmd, url: flag(args, "--url") || "" };
+  if (cmd === "live_switch_tab") return { op: cmd, tab: flag(args, "--tab") || "" };
+  if (cmd === "live_select") return { op: cmd, ref: flag(args, "--ref") || "", option: flag(args, "--option") || "" };
   if (cmd === "live_snapshot") {
     const page = flag(args, "--page");
     return page ? { op: cmd, page: Number(page) } : { op: cmd };

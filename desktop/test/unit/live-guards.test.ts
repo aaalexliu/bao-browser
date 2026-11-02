@@ -194,7 +194,7 @@ test("a release from another pid leaves the holder's lock, and closing an idle h
 
 test("the live entry refuses a stop path before navigation and keeps a blocked path distinct from a host miss", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-guard-"));
-  const host = createLiveHost({ home, lockFile: path.join(home, "lock") });
+  const host = createLiveHost({ home, lockFile: path.join(home, "lock"), careful: () => true });
   const portFile = path.join(home, "DevToolsActivePort");
   const checkout = await host.call({
     op: "live_session_start",

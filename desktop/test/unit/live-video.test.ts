@@ -61,7 +61,7 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
       const host = createLiveHost({ home, lockFile, target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0, videoDir, evalVideoNoBlur });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       try {
-        const started = await call({ op: "live_session_start", intent: "search costco for blueberries", url: fixture.url("/store/costco/storefront"), noBlur: true, evalVideoNoBlur: true });
+        const started = await call({ op: "live_session_start", careful: true, intent: "search costco for blueberries", url: fixture.url("/store/costco/storefront"), noBlur: true, evalVideoNoBlur: true });
         assert.equal(started.outcome?.kind, "applied");
         const search = started.view?.controls.find((item) => item.label === "Search Costco")?.ref;
         const typed = await call({ op: "live_type", ref: search, text: "blueberries" });
