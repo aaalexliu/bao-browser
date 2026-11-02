@@ -30,7 +30,7 @@ import type { CdpSocket } from "./socket";
 export interface LiveActTarget {
   driver: Pick<
     CdpLiveDriver,
-    "evaluateFunction" | "pressMarked" | "clickCss" | "markTrust" | "insertText" | "takeBlockedNav" | "returnFromBlock" | "sleep"
+    "evaluateFunction" | "pressMarked" | "clickCss" | "actionPoint" | "markTrust" | "insertText" | "takeBlockedNav" | "returnFromBlock" | "sleep"
   >;
   read: LiveRead;
   guard: LabelGuard;
@@ -130,14 +130,14 @@ export async function selectLive(target: LiveActTarget, ref: string, option: str
   const control = controlOf(target.read, ref);
   if (control?.kind !== "select") return { kind: "refused", reason: "not_a_select" };
   await target.before("select", control.label);
-  // Clicking checks visibility and coverage before changing the selection.
   try {
-    await target.driver.clickCss(plan.selector);
+    await target.driver.actionPoint(plan.selector);
   } catch (error) {
-    if (error instanceof Error && error.message === "element is covered") return { kind: "refused", reason: error.message };
+    if (error instanceof Error && (error.message === "element is covered" || error.message === "element has no box")) return { kind: "refused", reason: error.message };
     throw error;
   }
-  await target.driver.evaluateFunction(selectLiveOption, { markIndex: entry.index, option });
+  const reason = await target.driver.evaluateFunction<string | null>(selectLiveOption, { markIndex: entry.index, option });
+  if (reason) return { kind: "refused", reason };
   return { kind: "applied", label: control.label, control: "select" };
 }
 

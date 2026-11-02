@@ -70,7 +70,7 @@ export function readLiveRegion(ask: { selector: string; limit: number; careful?:
     size += text.length;
     if (size > 64000) truncated = true;
   }
-  const credentialLabel = /\b(?:pin|password|passcode|ssn|social security number|account number|routing number|token|authorization)\b/;
+  const credentialLabel = /\b(?:pin|password|passcode|ssn|social security number|account number|routing number|token|authorization|api.?key|client.?secret|cvv|cvc|security.?code|verification.?code|one.?time.?code|otp)\b/;
   const bareLabel = new RegExp(`^${credentialLabel.source}[ \\t]*(?:[:#]|is\\b)?[ \\t]*$`, "i");
   const ownField = /^[A-Za-z][A-Za-z ]{0,39}:/;
   const inlineValue = new RegExp(`(${credentialLabel.source}[ \\t]*(?:(?:[:#]|is\\b)[ \\t]*)?)([^\\n;]*?)(?=\\. |;|\\n|$)`, "gi");

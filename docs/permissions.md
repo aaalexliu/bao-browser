@@ -40,7 +40,7 @@ These belong to the Bao extension in Chrome, not to the remote-debugging connect
 
 ## What an allowlist refuses
 
-A live run is given an exact host list. Bao refuses a navigation whose host is not on that list, before the navigation. An Instacart run may use `instacart.com` and `www.instacart.com` only, and it refuses checkout, login, account, address, and payment paths. A books run stays on `books.toscrape.com`. Subresources such as images are not navigations, so they are not added to the list. Live page reads do not collect cookie values. The separate [profile-copy route](agent-browser-engine.md#pick-an-engine-and-profile) copies profile files, not just the allowlisted site's data.
+Default YOLO live sessions allow navigation to any HTTP(S) host. Careful live sessions, saved-workflow replay, and the Instacart runner use exact host lists and refuse off-list navigation before it starts. In these guarded runs, the Instacart preset allows only `instacart.com` and `www.instacart.com` and refuses checkout, login, account, address, and payment paths. The books preset stays on `books.toscrape.com`. Subresources such as images are not navigations, so they are not added to the list. Live page reads do not collect cookie values. The separate [profile-copy route](agent-browser-engine.md#pick-an-engine-and-profile) copies profile files, not just the allowlisted site's data.
 
 ## What stays on this Mac
 

@@ -12,7 +12,7 @@ import { LIVE_READ_LIMIT, liveReadRows, liveReadSelector, readLiveRegion, type R
 import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
 import type { CdpLiveDriver } from "./driver";
-import { clickLive, pressLiveKey, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
+import { clickLive, pressLiveKey, selectLive, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
 import { buildView, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
 import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
@@ -109,7 +109,7 @@ export class GuardedLiveDriver implements Driver {
     if (this.halted) throw this.stop(this.halted, true);
     const selector = liveReadSelector(spec);
     const { read, facts } = await this.read("");
-    const halt = pageHalt({ blocked: facts.blocked, path: facts.path, passwordFields: read.view.credentialFields, text: facts.text, stopPath: this.scope.stopPath });
+    const halt = pageHalt({ blocked: facts.blocked, path: facts.path, url: facts.url, passwordFields: read.view.credentialFields, text: facts.text, stopPath: this.scope.stopPath });
     if (halt) throw this.stop(halt, true);
     const region = await this.inner.evaluateFunction<RegionRead>(readLiveRegion, { selector, limit: LIVE_READ_LIMIT });
     return liveReadRows(region);
@@ -152,6 +152,10 @@ export class GuardedLiveDriver implements Driver {
   async fill(node: Identity, text: string, secret: boolean): Promise<void> {
     if (secret) throw this.stop("cdp-live does not fill secrets", false);
     await this.act(node, (target, ref) => typeLive(target, ref, text, true));
+  }
+
+  async select(node: Identity, option: string): Promise<void> {
+    await this.act(node, (target, ref) => selectLive(target, ref, option));
   }
 
   async focus(node: Identity): Promise<void> {
@@ -210,6 +214,7 @@ export class GuardedLiveDriver implements Driver {
     const halt = pageHalt({
       blocked: facts.blocked,
       path: facts.path,
+      url: facts.url,
       passwordFields: read.view.credentialFields,
       text: facts.text,
       stopPath: this.scope.stopPath,
@@ -353,11 +358,12 @@ export async function replayLiveWorkflow(
       axLog: deps.axLog,
       connectTimeoutMs: deps.connectTimeoutMs,
       engineName,
+      careful: scope.guard.careful,
+      origins: scope.origins,
+      stopPath: scope.stopPath,
     });
     cdp = opened.cdp;
     driver = opened.driver;
-    driver.setOrigins(scope.origins);
-    driver.setStopPath(scope.stopPath);
     const videoDir = deps.artifactRoot ? path.join(deps.artifactRoot, "videos") : deps.videoDir;
     if (videoDir) {
       videoStartedAt = Date.now();
