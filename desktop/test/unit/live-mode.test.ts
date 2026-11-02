@@ -5,7 +5,7 @@ import test from "node:test";
 import { chromium } from "playwright";
 import { startApp } from "../../src/app/server";
 import { navigationGuard } from "../../src/cdp-live/allowlist";
-import { buildView, pageHalt, planClick, planKey, type PageFacts } from "../../src/cdp-live/live-ops";
+import { buildView, LIVE_LOGIN_INSTRUCTION, pageHalt, planClick, planKey, type PageFacts } from "../../src/cdp-live/live-ops";
 import { liveScope } from "../../src/cdp-live/live-replay";
 import { McpClient } from "../../src/eval/mcp-client";
 import { launchOwnedChrome } from "../../src/launch";
@@ -85,7 +85,7 @@ test("real MCP clicks Create and Confirm and continues on sign-in copy by defaul
   const app = await startApp({ home: dirs.home, port: 0, liveTarget: `throwaway:${path.join(dirs.chromeUserData, "DevToolsActivePort")}`, liveLockFile: path.join(dirs.home, "lock") });
   const pinned = process.env.BAO_TEST_BROWSER;
   const mcp = McpClient.start({ ...laneChildEnv("hermetic", process.env, () => pinned ?? chromium.executablePath()), HOME: dirs.nativeHostHome, BAO_HOME: dirs.home });
-  type Reply = { session: string; tabs?: { tab: string; url: string; active: boolean }[]; read?: { text: string }; outcome: { kind: string; reason?: string; note?: string }; view: { controls: { ref: string; label: string; options?: { value: string; selected: boolean }[] }[]; stopBeforeConfirm: { label: string }[] } };
+  type Reply = { session: string; tabs?: { tab: string; url: string; active: boolean }[]; read?: { text: string }; outcome: { kind: string; reason?: string; note?: string; instruction?: string }; view: { controls: { ref: string; label: string; options?: { value: string; selected: boolean }[] }[]; stopBeforeConfirm: { label: string }[] } };
   const call = async (name: string, args: Record<string, unknown> = {}): Promise<Reply> => JSON.parse((await mcp.call(name, args)).text) as Reply;
   const start = (args: Record<string, unknown> = {}) => call("live_session_start", { intent: "Create a local test project", url: url + "/new", ...args });
   const ref = (reply: Reply, label: string): string => {
@@ -186,7 +186,7 @@ test("real MCP clicks Create and Confirm and continues on sign-in copy by defaul
     assert.equal((await call("live_click", { ref: "e1.c1" })).outcome.reason, "stop_before_confirm");
     await call("live_stop");
     reply = await start({ careful: true, url: url + "/auth" });
-    assert.deepEqual(reply.outcome, { kind: "halted", reason: "login_wall" });
+    assert.deepEqual(reply.outcome, { kind: "halted", reason: "login_wall", instruction: LIVE_LOGIN_INSTRUCTION });
     assert.equal((await call("live_snapshot")).outcome.kind, "halted");
     await call("live_stop");
 

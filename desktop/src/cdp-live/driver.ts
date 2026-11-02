@@ -133,7 +133,7 @@ export class CdpLiveDriver implements Driver {
   /** The last top-frame URL that committed on an allowed host and off any stop path. */
   private lastAllowed = "";
   private origins: readonly string[] = [];
-  private stopPath = "";
+  private configuredStopPath = "";
   private careful = true;
   private humanAsk: HumanAsk | undefined;
   private trustEvents: TrustEvent[] = [];
@@ -194,9 +194,13 @@ export class CdpLiveDriver implements Driver {
     this.origins = origins;
   }
 
-  /** A page load on a stop path is failed before the request leaves Chrome. */
+  /** Careful mode blocks a stop-path load before the request leaves Chrome. */
   setStopPath(stopPath: string): void {
-    this.stopPath = stopPath;
+    this.configuredStopPath = stopPath;
+  }
+
+  private get stopPath(): string {
+    return this.careful ? this.configuredStopPath : "";
   }
 
   private allows(url: string): boolean {

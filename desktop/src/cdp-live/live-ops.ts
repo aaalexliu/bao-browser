@@ -449,8 +449,16 @@ export function pageHalt(facts: { blocked: string; path: string; url?: string; p
   const text = (facts.text || "").toLowerCase();
   if (/request unsuccessful|powered by imperva|incapsula incident/.test(text)) return "bot_wall";
   if (/verify you are human|i'm not a robot|i’m not a robot|recaptcha challenge/.test(text)) return "bot_wall";
-  if (facts.passwordFields > 0 && /continue with google|sign in with google|sign in with apple|continue with apple|single sign-on|\bsso\b|verification code|one-time code|one time code|two-factor|two factor|\b2fa\b|security code|\bpin\b/.test(text)) return "login_wall";
-  if (facts.blocked === "login" || facts.blocked === "login_wall") {
+  // Auth Platform describes sign-in tools, not a login prompt. Real credential fields still count.
+  let authPlatform = false;
+  try {
+    const url = new URL(facts.url || "");
+    authPlatform = url.hostname === "console.cloud.google.com" && url.pathname.startsWith("/auth/")
+      && facts.passwordFields === 0 && !facts.blocked;
+  } catch {}
+  if (!authPlatform && /continue with google|sign in with google|sign in with apple|continue with apple|single sign-on|\bsso\b/.test(text)) return "login_wall";
+  if (/verification code|one-time code|one time code|two-factor|two factor|\b2fa\b|security code|\bpin\b/.test(text)) return "login_wall";
+  if (facts.blocked === "login" || facts.blocked === "login_wall" || (facts.passwordFields > 0 && /login|sign-?in/i.test(facts.path))) {
     return "login_wall";
   }
   if (facts.blocked === "bot_wall" || facts.blocked === "captcha") return "bot_wall";

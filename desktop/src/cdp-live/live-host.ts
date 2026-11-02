@@ -584,10 +584,19 @@ export function createLiveHost(opts: LiveHostOptions): {
   async function navigate(url: string): Promise<unknown> {
     if (!open) throw new Error("no live session");
     const why = navigationGuard(url, open.hosts, open.origins, open.stopPath, open.guard.careful);
-    if (why) return reply({ op: "live_navigate", session: open.id, outcome: { kind: "refused", reason: why }, view: shown(open.read), shot: "" });
+    if (why) {
+      if (why === "login_wall") await finishAction("navigate", { kind: "halted", reason: why });
+      return reply({ op: "live_navigate", session: open.id, outcome: { kind: why === "login_wall" ? "halted" : "refused", reason: why }, view: shown(open.read), shot: "" });
+    }
     await note("navigate", url, "running", null);
     const beforeUrl = await open.driver.locationHref();
-    await open.driver.goto(url);
+    try {
+      await open.driver.goto(url);
+    } catch (error) {
+      if (!(error instanceof LiveNavigationHalt)) throw error;
+      await finishAction("navigate", { kind: "halted", reason: error.reason });
+      return reply({ op: "live_navigate", session: open.id, outcome: { kind: "halted", reason: error.reason }, view: shown(open.read), shot: "" });
+    }
     await open.trail.add({ op: "navigate", value: url, beforeUrl, afterUrl: await open.driver.locationHref() });
     return look("navigate");
   }

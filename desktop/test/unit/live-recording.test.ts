@@ -618,7 +618,8 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
       assert.ok(type?.identity?.cssPath && type.identity.xpath, "the full identity from tree()");
       assert.equal(type?.identity?.value, undefined, "a field's text is not its identity");
       assert.equal(key?.key, "Enter");
-      assert.equal(key?.identity?.name, "Search Costco");
+      assert.equal(key?.identity?.name, undefined);
+      assert.equal(key?.identity?.testId, "search-input");
       assert.equal(key?.beforeUrl, STOREFRONT);
       assert.equal(key?.afterUrl, RESULTS);
       assert.equal(scroll?.detail, "down");

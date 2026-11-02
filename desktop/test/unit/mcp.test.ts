@@ -13,7 +13,7 @@ import { INSTRUCTIONS, TOOL_NAMES } from "../../src/mcp/server";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
+const cli = path.resolve(__dirname, "../../src/app/cli.js");
 const CATALOG = ["search_workflows", "describe_workflow", "run_workflow", "get_run"];
 
 function frame(msg: unknown): Buffer {
@@ -424,7 +424,7 @@ const shelfWorkflow = `{
 `;
 
 function callSearch(env: NodeJS.ProcessEnv, cwd: string): Promise<{ hits?: { title?: string }[] }> {
-  const child = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
+  const child = spawn(process.execPath, [cli, "mcp"], {
     cwd,
     env,
     stdio: ["pipe", "pipe", "pipe"],
@@ -478,7 +478,7 @@ test("search_workflows reads the serve home without BAO_HOME, and a set BAO_HOME
   mkdirSync(cwd);
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: user };
   delete env.BAO_HOME;
-  const status = spawnSync(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "status"], { cwd, env, encoding: "utf8" });
+  const status = spawnSync(process.execPath, [cli, "status"], { cwd, env, encoding: "utf8" });
   assert.equal(status.status, 0, status.stderr);
   const serve = (JSON.parse(status.stdout) as { home: string }).home;
   const platformHome = process.platform === "darwin"

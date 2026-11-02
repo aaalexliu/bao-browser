@@ -10,7 +10,7 @@ import { adoptLiveWindow, CdpLiveDriver, openLiveWindow, type LiveNavigationOpti
 import { createLiveHost } from "../../src/cdp-live/live-host";
 import { keyMayInsertText } from "../../src/cdp-live/keys";
 import { navigationGuard } from "../../src/cdp-live/allowlist";
-import { readLivePage, type PageFacts } from "../../src/cdp-live/live-ops";
+import { LIVE_LOGIN_INSTRUCTION, readLivePage, type PageFacts } from "../../src/cdp-live/live-ops";
 import { LIVE_READ_LIMIT, liveReadSpec, readLiveRegion } from "../../src/cdp-live/live-read";
 import { GuardedLiveDriver, liveScope, type LiveWindow } from "../../src/cdp-live/live-replay";
 import { openProfileWindow } from "../../src/cdp-live/live-target";
@@ -26,6 +26,7 @@ test("every owned-window entry applies navigation policy before startup events",
   for (const entry of ["adopt", "open", "profile"] as const) {
     for (const scenario of [
       { url: "https://other.example/page", policy: { careful: false, origins: ["https://start.example"], stopPath: "" }, reason: "" },
+      { url: "https://start.example/stop", policy: { careful: false, origins: ["https://start.example"], stopPath: "/stop" }, reason: "" },
       { url: "https://start.example/page", policy: { careful: true, origins: ["https://start.example"], stopPath: "/stop" }, reason: "" },
       { url: "https://start.example:8443/page", policy: { careful: true, origins: ["https://start.example"], stopPath: "" }, reason: "start.example" },
       { url: "https://start.example/stop", policy: { careful: true, origins: ["https://start.example"], stopPath: "/stop" }, reason: "stop-path" },
@@ -164,7 +165,7 @@ test("YOLO URL checks reject userinfo without restoring host or stop-path limits
 
 interface Reply {
   session: string;
-  outcome: { kind: string; reason?: string };
+  outcome: { kind: string; reason?: string; instruction?: string };
   view: { controls: { ref: string; label: string; options?: { value: string; label: string; selected: boolean; disabled: boolean }[] }[] };
   tabs?: { tab: string; active: boolean; url: string }[];
   read?: { text: string };
@@ -239,6 +240,31 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     await new Promise<void>((resolve) => secureServer.close(() => resolve()));
   });
   const newHost = (name: string) => createLiveHost({ home: path.join(dirs.home, name), lockFile: path.join(dirs.home, `${name}.lock`), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, idleMs: 0 });
+
+  test("YOLO ignores configured driver stop paths during navigation", async (t) => {
+    let live: CdpLiveDriver;
+    const start = CdpLiveDriver.prototype.start;
+    t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
+    const host = newHost("driver-stop-yolo");
+    const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
+    try {
+      assert.equal((await call({ op: "live_session_start", intent: "Navigate past a configured stop", url: url + "/nav-start" })).outcome.kind, "applied");
+      live!.setStopPath("/nav-target");
+      const reply = await call({ op: "live_navigate", url: url + "/nav-target" });
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      assert.equal(await live!.locationHref(), url + "/nav-target");
+    } finally { await host.close(); }
+  });
+
+  test("careful navigation returns a typed login halt with the owner instruction", async () => {
+    const host = newHost("navigate-login-careful");
+    const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
+    try {
+      assert.equal((await call({ op: "live_session_start", careful: true, intent: "Stop before sign-in", url: url + "/nav-start" })).outcome.kind, "applied");
+      const reply = await call({ op: "live_navigate", url: url + "/login" });
+      assert.deepEqual(reply.outcome, { kind: "halted", reason: "login_wall", instruction: LIVE_LOGIN_INSTRUCTION });
+    } finally { await host.close(); }
+  });
 
   test("invalid selections recover, never click, and recorded selections replay guarded", async (t) => {
     let live: CdpLiveDriver;
