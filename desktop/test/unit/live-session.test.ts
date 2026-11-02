@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -172,10 +172,11 @@ test("a login wall halts, a new tab opened by the page is blocked, and cookies n
   assert.deepEqual(touched, []);
 });
 
-test("the eight live tools stay off the remote relay and a workflow id comes from the intent", () => {
+test("the live tools stay off the remote relay and a workflow id comes from the intent", () => {
   assert.deepEqual(LIVE_TOOL_NAMES, [
     "live_session_start",
     "live_snapshot",
+    "live_read",
     "live_click",
     "live_type",
     "live_key",
@@ -217,4 +218,40 @@ test("a live session file is replaced whole, and the capture trail does not own 
   assert.equal(saved?.audit.length, 20);
   assert.equal(captureTrailOwnsSteps("live"), false);
   assert.equal(captureTrailOwnsSteps("capture"), true);
+});
+
+test("completing an audit row preserves its trust, time and evidence without replacing prior calls", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-live-completion-"));
+  const log = new SessionLog(dir, "read member details");
+  const first = Buffer.alloc(48, 1);
+  const beforeImage = Buffer.alloc(48, 2);
+  const afterImage = Buffer.alloc(48, 3);
+  const row = { action: "click", label: "Continue", path: "/member", isTrusted: true, ms: 0, via: "ax" as const };
+  try {
+    await log.add({ ...row, label: "Earlier call", png: first });
+    await log.add({ ...row, png: beforeImage });
+    const before = (await readLiveSession(dir))!;
+    const message = "Sign in again in Chrome, then start a new live session.";
+    await log.flush("needs_human", message);
+    await log.add({ action: row.action, label: message, path: row.path, isTrusted: null, ms: 5 }, true);
+    const completed = (await readLiveSession(dir))!;
+    assert.equal(completed.status, "needs_human");
+    assert.equal(completed.note, message);
+    assert.equal(completed.audit.length, 2);
+    assert.deepEqual(completed.audit[0], before.audit[0]);
+    assert.deepEqual(completed.audit[1], { ...before.audit[1], label: message, ms: 5 });
+    assert.deepEqual(readFileSync(path.join(dir, "shots", completed.audit[1]!.shot)), beforeImage);
+    await log.add({ ...row, label: message, isTrusted: null, png: afterImage }, true);
+    const withShot = (await readLiveSession(dir))!;
+    assert.equal(withShot.audit.length, 2);
+    assert.equal(withShot.audit[1]?.at, before.audit[1]?.at);
+    assert.equal(withShot.audit[1]?.isTrusted, true);
+    assert.deepEqual(readFileSync(path.join(dir, "shots", withShot.audit[1]!.shot)), afterImage);
+    assert.deepEqual(readFileSync(path.join(dir, "shots", before.audit[0]!.shot)), first);
+    await log.add({ ...row, isTrusted: false });
+    const next = (await readLiveSession(dir))!;
+    assert.equal(next.audit.length, 3);
+    assert.deepEqual(next.audit.slice(0, 2), withShot.audit);
+    assert.equal(next.audit[2]?.isTrusted, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

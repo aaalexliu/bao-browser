@@ -13,6 +13,7 @@ import { signedOutSurface } from "../../src/cdp-live/session";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { liveScope } from "../../src/cdp-live/live-replay";
 import { liveTrailSteps, workflowFromTrail } from "../../src/cdp-live/live-trail";
+import type { LiveSessionRecord } from "../../src/cdp-live/live-record";
 import * as targets from "../../src/cdp-live/live-target";
 import { guardPreset, presetForUrl } from "../../src/cdp-live/presets";
 import { McpClient } from "../../src/eval/mcp-client";
@@ -25,6 +26,8 @@ import { startExperianFixture } from "../experian/fixture";
 import { laneChildEnv } from "../runtime";
 
 const generic = guardPreset("generic");
+const LOGIN_MESSAGE = "Sign in again in Chrome, then start a new live session.";
+const FINAL_MESSAGE = "The final unfreeze button is on screen. Bao stopped before clicking it.";
 
 test("security and SSO copy needs a visible credential input; bot walls do not", () => {
   for (const text of ["PIN", "security code", "two-factor", "2fa", "verification code", "one-time code", "SSO", "sign in with Google", "sign in with Apple"]) {
@@ -220,6 +223,21 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     const result = await mcp.call(op, args);
     return JSON.parse(result.text) as LiveReply;
   };
+  const state = async (): Promise<{ liveSessionOpen: boolean; liveSession: LiveSessionRecord }> => fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json());
+  const expectOwnerStop = async (before: LiveSessionRecord, action: string, message: string) => {
+    const current = await state();
+    assert.equal(current.liveSessionOpen, true);
+    assert.equal(current.liveSession.status, "needs_human");
+    assert.equal(current.liveSession.note, message);
+    assert.equal(current.liveSession.steps.length, before.steps.length + 1);
+    assert.deepEqual(current.liveSession.steps.slice(0, before.steps.length), before.steps);
+    assert.equal(current.liveSession.steps.at(-1)?.name, action);
+    assert.equal(current.liveSession.steps.at(-1)?.status, "needs_human");
+    assert.equal(current.liveSession.audit.length, before.audit.length + 1);
+    assert.deepEqual(current.liveSession.audit.slice(0, before.audit.length), before.audit);
+    assert.equal(current.liveSession.audit.at(-1)?.action, action);
+    assert.equal(current.liveSession.audit.at(-1)?.label, message);
+  };
   const refOf = (reply: LiveReply, label: string) => {
     const ref = reply.view?.controls.find(c => c.label === label)?.ref;
     assert.ok(ref, `${label}: ${JSON.stringify(reply)}`);
@@ -291,6 +309,12 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     assert.equal(started.outcome.kind, "halted", JSON.stringify(started));
     assert.equal(started.outcome.reason, "login_wall");
     assert.match(started.outcome.instruction || "", /Sign in again in Chrome.*new live session/);
+    const stopped = await state();
+    assert.equal(stopped.liveSession.status, "needs_human");
+    assert.equal(stopped.liveSession.note, LOGIN_MESSAGE);
+    assert.deepEqual(stopped.liveSession.steps.map(step => [step.name, step.status]), [["start", "needs_human"]]);
+    assert.equal(stopped.liveSession.audit.length, 1);
+    assert.equal(stopped.liveSession.audit[0]?.label, LOGIN_MESSAGE);
     const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: "wf-expired", name: "Read credit report", intent: "Read credit report", createdAt: 1, driver: "cdp-live", startUrl: fixture.url("/member/expired"), inputs: [], steps: [{ id: "report", index: 0, action: "note", surface: "dom", timeoutMs: 1000, label: "Read report" }] };
     app.library.save(workflow);
     const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: workflow.id, args: {} }) });
@@ -314,20 +338,21 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         try {
           assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
           const ref = refOf(reply, op === "click" ? "Continue" : "Search");
+          const before = (await state()).liveSession;
           reply = await live(`live_${op}`, { ref, ...(op === "key" ? { key: "Enter" } : {}) });
           assert.equal(reply.outcome.kind, "halted", `${login} ${op}: ${JSON.stringify(reply)}`);
           assert.equal(reply.outcome.reason, "login_wall");
           assert.match(reply.outcome.instruction || "", /sign in again.*Chrome/i);
-          const state = await fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json());
-          assert.equal(state.liveSessionOpen, true);
-          assert.equal(state.liveSession.status, "needs_human");
-          assert.equal(state.liveSession.note, reply.outcome.instruction);
-          assert.equal(state.liveSession.audit.some((row: { label: string }) => row.label === "login_wall"), false);
+          await expectOwnerStop(before, op, LOGIN_MESSAGE);
           const again = await live("live_snapshot");
           assert.equal(again.outcome.kind, "halted");
           assert.equal(again.outcome.reason, "login_wall");
           assert.match(again.outcome.instruction || "", /sign in again.*Chrome/i);
         } finally { await live("live_stop"); }
+        const stopped = await state();
+        assert.equal(stopped.liveSession.status, "needs_human");
+        assert.equal(stopped.liveSession.note, LOGIN_MESSAGE);
+        assert.equal(stopped.liveSession.steps.at(-1)?.status, "needs_human");
         const workflow = workflowFromTrail({
           id: `wf-expired-${login.replace(/\W/g, "")}-${op}`, name: "Read member actions", intent: "Read member actions", startUrl, createdAt: 1, savedAt: 2,
           guard: liveScope(startUrl).guard,
@@ -359,16 +384,12 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
           assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
           reply = await live("live_key", { key: "Tab", ref: refOf(reply, "Search") });
           assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+          const before = (await state()).liveSession;
           reply = await live(`live_${op}`, { ref: refOf(reply, "Resume"), ...(op === "key" ? { key: "Enter" } : {}) });
           assert.equal(reply.outcome.kind, "halted", `${login} ${op}: ${JSON.stringify(reply)}`);
           assert.equal(reply.outcome.reason, "login_wall");
           assert.match(reply.outcome.instruction || "", /Sign in again in Chrome/);
-          const state = await fetch(`http://127.0.0.1:${app.port}/api/state`).then(response => response.json());
-          assert.equal(state.liveSessionOpen, true);
-          assert.equal(state.liveSession.status, "needs_human");
-          assert.equal(state.liveSession.note, reply.outcome.instruction);
-          assert.equal(state.liveSession.audit.at(-1)?.label, reply.outcome.instruction);
-          assert.equal(state.liveSession.steps.at(-1)?.status, "needs_human");
+          await expectOwnerStop(before, op, LOGIN_MESSAGE);
         } finally { await live("live_stop"); }
         const record = JSON.parse(await readFile(path.join(root, "bao", "live-session", "session.json"), "utf8"));
         assert.equal(record.status, "needs_human");
@@ -390,6 +411,48 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         assert.match(saved.envelope?.ask || "", /Sign in to .* in Chrome/);
         assert.equal(saved.modelCalls, 0);
         assert.equal(requests(), before, `${login} must never load`);
+      }
+    }
+  });
+
+  it("a scroll-triggered login redirect completes the current call before stop", async () => {
+    const reply = await live("live_session_start", { intent: "Read more member details", url: fixture.url("/member/session-links?login=%2Flogin%2Findex&scroll=1") });
+    try {
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      const before = (await state()).liveSession;
+      const scrolled = await live("live_scroll", { direction: "down" });
+      assert.equal(scrolled.outcome.kind, "halted", JSON.stringify(scrolled));
+      assert.equal(scrolled.outcome.reason, "login_wall");
+      await expectOwnerStop(before, "scroll", LOGIN_MESSAGE);
+    } finally { await live("live_stop"); }
+    assert.equal((await state()).liveSession.note, LOGIN_MESSAGE);
+  });
+
+  it("type and popup halts finish their current row and keep plain saved copy", async () => {
+    for (const [reason, message] of [
+      ["focus_moved", "Focus left the field Bao was typing in, so Bao stopped."],
+      ["credential_field", "Bao stopped at a credential field. Continue in Chrome."],
+      ["new_target", "The page opened a new window. Bao closed it and stopped."],
+    ] as const) {
+      const reply = await live("live_session_start", { intent: `Read member ${reason}`, url: fixture.url(`/member/action-halts?mode=${reason}`) });
+      try {
+        assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+        const before = (await state()).liveSession;
+        const action = reason === "new_target" ? "click" : "type";
+        const halted = await live(`live_${action}`, { ref: refOf(reply, action === "click" ? "More details" : "Note"), ...(action === "type" ? { text: "read" } : {}) });
+        assert.equal(halted.outcome.kind, "halted", JSON.stringify(halted));
+        assert.equal(halted.outcome.reason, reason);
+        await expectOwnerStop(before, action, message);
+      } finally { await live("live_stop"); }
+      const stopped = (await state()).liveSession;
+      assert.equal(stopped.status, "needs_human");
+      assert.equal(stopped.note, message);
+      assert.equal(stopped.audit.at(-1)?.label, message);
+      if (reason === "new_target") {
+        const capture = app.library.listRuns().find(run => run.workflowId === reply.session && run.kind === "capture");
+        assert.equal(capture?.envelope?.reason, reason);
+        assert.equal(capture?.envelope?.ask, message);
+        assert.equal(capture?.modelCalls, 0);
       }
     }
   });
@@ -480,6 +543,15 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         assert.equal(reply.outcome.kind, expected, JSON.stringify(reply));
         const reason = pathname === "/member/security-help" ? undefined : pathname === "/member/verify" ? "login_wall" : pathname === "/member/bot" ? "bot_wall" : "stop-path";
         assert.equal(reply.outcome.reason, reason);
+        if (expected === "halted") {
+          const stopped = (await state()).liveSession;
+          const message = reason === "login_wall" ? LOGIN_MESSAGE : reason === "bot_wall" ? "Complete the bot check in Chrome, then start a new live session." : "Bao stopped at a path it does not drive.";
+          assert.equal(stopped.status, "needs_human");
+          assert.equal(stopped.note, message);
+          assert.deepEqual(stopped.steps.map(step => [step.name, step.status]), [["start", "needs_human"]]);
+          assert.equal(stopped.audit.length, 1);
+          assert.equal(stopped.audit[0]?.label, message);
+        }
       }
       finally { await live("live_stop"); }
     }
@@ -526,7 +598,10 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         assert.equal(reply.view?.path, "/member/freeze");
         reply = await live("live_click", { ref: refOf(reply, "Unfreeze my credit") });
         assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
-        return await live("live_click", { ref: refOf(reply, "Continue") });
+        const before = (await state()).liveSession;
+        const reviewed = await live("live_click", { ref: refOf(reply, "Continue") });
+        if (!allowCommit) await expectOwnerStop(before, "click", FINAL_MESSAGE);
+        return reviewed;
       } catch (error) { await live("live_stop"); throw error; }
     };
     const wrongPreset = await live("live_session_start", { intent: "Invalid opt-in site", url: fixture.url("/member/freeze", "credit.test"), allowCommit: true });
@@ -535,8 +610,34 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     const reviewStart = await live("live_session_start", { intent: "Preview final freeze action", url: fixture.url("/member/unfreeze/review") });
     try {
       assert.equal(reviewStart.outcome.kind, "applied", "session start never reports reached");
-      assert.equal((await live("live_snapshot")).outcome.kind, "reached");
+      for (const op of ["snapshot", "screenshot", "read"] as const) {
+        const before = (await state()).liveSession;
+        const looked = await live(`live_${op}`, op === "read" ? { name: "review", selector: "main" } : {});
+        assert.equal(looked.outcome.kind, "reached");
+        await expectOwnerStop(before, op, FINAL_MESSAGE);
+      }
     } finally { await live("live_stop"); }
+    for (const op of ["click", "key"] as const) {
+      const direct = await live("live_session_start", { intent: `Preview final action ${op}`, url: fixture.url("/member/unfreeze/review") });
+      try {
+        assert.equal(direct.outcome.kind, "applied", "start never returns reached");
+        assert.equal((await state()).liveSession.status, "running");
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const before = (await state()).liveSession;
+          const ref = op === "click" ? direct.view!.reached!.ref : refOf(direct, "Note");
+          const stopped = await live(`live_${op}`, { ref, ...(op === "key" ? { key: "Enter" } : {}) });
+          assert.equal(stopped.outcome.kind, "reached", JSON.stringify(stopped));
+          assert.equal(stopped.outcome.reason, "experian_commit");
+          assert.match(stopped.outcome.instruction || "", /allowCommit: true/);
+          await expectOwnerStop(before, op, FINAL_MESSAGE);
+          assert.equal(commits(), 0);
+        }
+      } finally { await live("live_stop"); }
+      const stopped = (await state()).liveSession;
+      assert.equal(stopped.status, "needs_human");
+      assert.equal(stopped.note, FINAL_MESSAGE);
+      assert.equal(stopped.audit.at(-1)?.label, FINAL_MESSAGE);
+    }
     const invalid = await live("live_session_start", { intent: "Invalid opt-in", url: fixture.url("/member/freeze"), allowCommit: "true" });
     assert.equal(invalid.outcome.kind, "rejected");
     assert.match(invalid.outcome.reason || "", /boolean/);
