@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createSecureServer } from "node:https";
 import path from "node:path";
 import test, { after, before, describe } from "node:test";
 import { chromium } from "playwright";
 import { startApp } from "../../src/app/server";
 import { adoptLiveWindow, CdpLiveDriver, openLiveWindow, type LiveNavigationOptions } from "../../src/cdp-live/driver";
 import { createLiveHost } from "../../src/cdp-live/live-host";
+import { keyInsertsText } from "../../src/cdp-live/keys";
 import { readLivePage, type PageFacts } from "../../src/cdp-live/live-ops";
 import { LIVE_READ_LIMIT, liveReadSpec, readLiveRegion } from "../../src/cdp-live/live-read";
 import { GuardedLiveDriver, liveScope, type LiveWindow } from "../../src/cdp-live/live-replay";
@@ -17,6 +19,7 @@ import { launchOwnedChrome } from "../../src/launch";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { applyHermeticApp, laneChildEnv } from "../runtime";
+import { selfSignedCert } from "../instacart/cert";
 
 test("every owned-window entry applies navigation policy before startup events", async () => {
   for (const entry of ["adopt", "open", "profile"] as const) {
@@ -110,7 +113,7 @@ test("CDP select-all commands use only the platform modifier and keep other chor
   const sent: Record<string, unknown>[] = [];
   const cdp = { send: async (_method: string, params: Record<string, unknown>) => { sent.push(params); return {}; } } as unknown as CdpSocket;
   const driver = new CdpLiveDriver(cdp, "session", "owned");
-  for (const chord of ["Meta+a", "Cmd+A", "Control+a", "Ctrl+A", "Meta+Shift+a", "Control+Shift+a", "Alt+a", "Meta+Control+a", "Meta+Alt+a", "Control+Alt+a", "Meta+b", "Control+b", "a", "Shift+a"]) {
+  for (const chord of ["Meta+a", "Cmd+A", "cMd+A", "Control+a", "Ctrl+A", "cTrL+A", "Meta+Shift+a", "Control+Shift+a", "Alt+a", "Meta+Control+a", "Meta+Alt+a", "Control+Alt+a", "Meta+b", "Control+b", "a", "Shift+a"]) {
     sent.length = 0;
     await driver.key(chord);
     const selectAll = process.platform === "darwin" ? /^(Meta|Cmd)\+a$/i : /^(Control|Ctrl)\+a$/i;
@@ -118,6 +121,27 @@ test("CDP select-all commands use only the platform modifier and keep other chor
     assert.equal(sent[1]?.commands, undefined, chord);
     assert.equal(sent[0]?.text, chord === "a" ? "a" : chord === "Shift+a" ? "A" : "", chord);
   }
+});
+
+test("named keys dispatch canonical CDP events and text modifiers stay distinct from shortcuts", async () => {
+  const sent: Record<string, unknown>[] = [];
+  const cdp = { send: async (_method: string, params: Record<string, unknown>) => { sent.push(params); return {}; } } as unknown as CdpSocket;
+  const driver = new CdpLiveDriver(cdp, "session", "owned");
+  for (const [key, name, code, keyCode, text] of [
+    ["enter", "Enter", "Enter", 13, "\r"], ["RETURN", "Enter", "Enter", 13, "\r"], ["tab", "Tab", "Tab", 9, ""],
+    ["backspace", "Backspace", "Backspace", 8, ""], ["delete", "Delete", "Delete", 46, ""],
+    ["arrowdown", "ArrowDown", "ArrowDown", 40, ""], ["arrowup", "ArrowUp", "ArrowUp", 38, ""],
+    ["arrowleft", "ArrowLeft", "ArrowLeft", 37, ""], ["arrowright", "ArrowRight", "ArrowRight", 39, ""],
+    ["space", " ", "Space", 32, " "], ["pageup", "PageUp", "PageUp", 33, ""], ["pagedown", "PageDown", "PageDown", 34, ""],
+    ["home", "Home", "Home", 36, ""], ["end", "End", "End", 35, ""], ["escape", "Escape", "Escape", 27, ""],
+  ] as const) {
+    sent.length = 0;
+    await driver.key(key);
+    assert.deepEqual(sent.map((event) => [event.type, event.key, event.code, event.windowsVirtualKeyCode]), [["keyDown", name, code, keyCode], ["keyUp", name, code, keyCode]], key);
+    assert.equal(sent[0]!.text, text, key);
+  }
+  for (const key of ["p", "A", "sHiFt+a", "Space", "sHiFt+space", "Alt+x", "Shift+Alt+x", "Ctrl+Alt+q"]) assert.equal(keyInsertsText(key), true, key);
+  for (const key of ["enter", "Tab", "Escape", "Meta+a", "Cmd+A", "Control+a", "cTrL+A", "Meta+Alt+x", "Alt+ArrowDown"]) assert.equal(keyInsertsText(key), false, key);
 });
 
 interface Reply {
@@ -149,6 +173,8 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       navigationHits.push(req.url || "");
       return res.end(`<title>Target navigation</title><button onclick="document.querySelector('#nav-result').textContent='Right page';this.textContent='Opened'">Open result</button><p id="nav-result">Target page</p>`);
     }
+    if (pathname === "/credential-keys") return res.end(`<title>Local keys</title><style>[contenteditable]{min-height:24px}</style><label>Secret<input type="password"></label><input aria-label="Verification code"><label>Challenge<textarea autocomplete="one-time-code"></textarea></label><span id="security">Security code</span><div contenteditable aria-labelledby="security"></div><input placeholder="OTP"><div contenteditable autocomplete="cc-exp" aria-label="Expiry"></div><label>Note<textarea></textarea></label>`);
+    if (pathname === "/collision" || pathname === "/collision-multiple") return res.end(`<title>Option collisions</title><label>Audience<select${pathname.endsWith("multiple") ? " multiple" : ""} oninput="document.body.dataset.inputs=String(Number(document.body.dataset.inputs||0)+1)" onchange="document.querySelector('#result').textContent='Audience: '+this.selectedOptions[0].label"><option selected value="initial">Initial</option><option value="Second">First</option><option value="repeated">Second</option><option value="repeated">Third</option><option value="Same">Same</option></select></label><p id="result">Audience: Initial</p>`);
     if (pathname === "/credentials") return res.end(`<title>Local form</title><label>Secret<input type="password"></label><label>Verification code<input></label><label>Challenge<input autocomplete="one-time-code"></label><label>Note<textarea></textarea></label>`);
     if (req.url === "/popup") return res.end("<title>Popup</title><button>Finish</button>");
     if (req.url === "/editing") return res.end(`<title>Editing</title><style>[contenteditable]{min-height:24px}</style>
@@ -163,14 +189,32 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       <p id="result">Audience: Internal</p><form onsubmit="event.preventDefault();document.querySelector('#result').textContent='Created'"><button>Create</button></form>
       <a href="/popup" target="_blank">New tab</a>`);
   });
+  const secureHits: string[] = [];
+  const cert = selfSignedCert(["www.instacart.com", "instacart.com", "other.example"]);
+  const secureServer = createSecureServer(cert, (req, res) => {
+    const pathname = new URL(req.url || "/", "https://www.instacart.com").pathname;
+    secureHits.push(`${req.headers.host}${pathname}`);
+    if (pathname.startsWith("/redirect")) {
+      res.writeHead(302, { location: pathname === "/redirect-off-host" ? "https://other.example/landing" : `https://instacart.com/${pathname === "/redirect-login" ? "landing-login" : "landing"}` });
+      return res.end();
+    }
+    res.setHeader("content-type", "text/html");
+    res.end(`<title>Local navigation</title>${pathname === "/landing-login" ? '<label>Password<input type="password"></label>' : ""}<button onclick="document.querySelector('#nav-result').textContent='${pathname === "/nav-start" ? "Wrong page" : "Right page"}';this.textContent='Opened'">Open result</button><p id="nav-result">Ready</p>`);
+  });
   before(async () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => secureServer.listen(0, "127.0.0.1", resolve));
     url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-    browser = await launchOwnedChrome({ userDataDir: dirs.chromeUserData, headless: true, childHome: dirs.nativeHostHome });
+    const port = (secureServer.address() as { port: number }).port;
+    browser = await launchOwnedChrome({ userDataDir: dirs.chromeUserData, headless: true, childHome: dirs.nativeHostHome, appendArgs: [
+      `--host-resolver-rules=MAP www.instacart.com 127.0.0.1:${port},MAP instacart.com 127.0.0.1:${port},MAP other.example 127.0.0.1:${port},EXCLUDE localhost,EXCLUDE 127.0.0.1,MAP * ~NOTFOUND`,
+      `--ignore-certificate-errors-spki-list=${cert.spki}`, "--no-proxy-server",
+    ] });
   });
   after(async () => {
     await browser?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => secureServer.close(() => resolve()));
   });
   const newHost = (name: string) => createLiveHost({ home: path.join(dirs.home, name), lockFile: path.join(dirs.home, `${name}.lock`), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, idleMs: 0 });
 
@@ -271,6 +315,83 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
+  test("value and label collisions refuse without mutations and recover in live sessions and replay", async (t) => {
+    let live: CdpLiveDriver;
+    const start = CdpLiveDriver.prototype.start;
+    t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
+    const host = newHost("collision-select");
+    const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
+    try {
+      for (const careful of [false, true]) {
+        for (const multiple of [false, true]) {
+          let reply = await call({ op: "live_session_start", careful, intent: `Resolve option collision ${careful} ${multiple}`, url: url + (multiple ? "/collision-multiple" : "/collision") });
+          for (const option of ["repeated", "Second"]) {
+            assert.deepEqual((await call({ op: "live_select", ref: ref(reply, "Audience"), option })).outcome, { kind: "refused", reason: "ambiguous option" });
+            assert.deepEqual(await live!.evaluateFunction(() => ({ labels: Array.from(document.querySelector("select")!.selectedOptions).map((option) => option.label), inputs: document.body.dataset.inputs || "0" }), null), { labels: ["Initial"], inputs: "0" });
+          }
+          reply = await call({ op: "live_select", ref: ref(reply, "Audience"), option: "Same" });
+          assert.equal(reply.outcome.kind, "applied");
+          reply = await call({ op: "live_select", ref: ref(reply, "Audience"), option: "Third" });
+          assert.equal(reply.outcome.kind, "applied");
+          await call({ op: "live_read", name: "audience", selector: "#result" });
+          await call({ op: "live_stop" });
+          const workflow = new Library(path.join(dirs.home, "collision-select")).read(reply.session);
+          const replay = await host.replay(workflow);
+          assert.equal(replay.status, "passed", JSON.stringify(replay.failure));
+          const output = replay.outputs?.[0];
+          assert.equal(output?.type === "table" ? output.rows[0]?.text : undefined, "Audience: Third");
+          const ambiguous = await host.replay({ ...workflow, inputs: workflow.inputs.map((input) => ({ ...input, default: "Second" })) });
+          assert.equal(ambiguous.status, "failed");
+          assert.equal(ambiguous.failure?.reason, "ambiguous option");
+          assert.equal(ambiguous.modelCalls, 0);
+        }
+      }
+    } finally { await host.close(); }
+  });
+
+  test("redirect navigation replays on the observed host while saved host and login guards remain", async () => {
+    const host = newHost("redirect");
+    const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
+    const target = "https://www.instacart.com/redirect?mode=edit#section";
+    try {
+      for (const careful of [false, true]) {
+        let reply = await call({ op: "live_session_start", careful, intent: `Follow local redirect ${careful}`, url: "https://www.instacart.com/nav-start" });
+        reply = await call({ op: "live_navigate", url: target });
+        assert.equal(reply.outcome.kind, "applied");
+        reply = await call({ op: "live_click", ref: ref(reply, "Open result") });
+        assert.equal(reply.outcome.kind, "applied");
+        await call({ op: "live_read", name: "result", selector: "#nav-result" });
+        await call({ op: "live_stop" });
+        const workflow = new Library(path.join(dirs.home, "redirect")).read(reply.session);
+        assert.deepEqual(workflow.steps.map((step) => step.action), ["navigate", "click", "extract"]);
+        assert.equal(workflow.steps[0]!.value, target);
+        assert.equal(workflow.steps[0]!.expect?.match, "instacart.com");
+        const replay = await host.replay(workflow);
+        assert.equal(replay.status, "passed", JSON.stringify(replay.failure));
+        assert.equal(replay.modelCalls, 0);
+        const output = replay.outputs?.[0];
+        assert.equal(output?.type === "table" ? output.rows[0]?.text : undefined, "Right page");
+        if (!careful) {
+          const blocked = await host.replay({ ...workflow, steps: [{ ...workflow.steps[0]!, value: "https://www.instacart.com/redirect-off-host", expect: { kind: "url", match: "other.example", timeoutMs: 8000 } }] });
+          assert.notEqual(blocked.status, "passed");
+          assert.equal(blocked.modelCalls, 0);
+          assert.equal(secureHits.some((hit) => hit.startsWith("other.example")), false);
+        }
+      }
+      let reply = await call({ op: "live_session_start", intent: "Record informational login redirect", url: "https://www.instacart.com/nav-start" });
+      reply = await call({ op: "live_navigate", url: "https://www.instacart.com/redirect-login" });
+      assert.equal(reply.outcome.kind, "applied");
+      reply = await call({ op: "live_click", ref: ref(reply, "Open result") });
+      assert.equal(reply.outcome.kind, "applied");
+      await call({ op: "live_stop" });
+      const workflow = new Library(path.join(dirs.home, "redirect")).read(reply.session);
+      const blocked = await host.replay(workflow);
+      assert.equal(blocked.status, "paused");
+      assert.equal(blocked.modelCalls, 0);
+      assert.equal(blocked.steps.find((step) => step.id === workflow.steps[1]!.id)?.status, "paused");
+    } finally { await host.close(); }
+  });
+
   test("explicit navigation records its target, scrubs its audit, and replays before clicking", async () => {
     const host = newHost("navigate");
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
@@ -347,6 +468,67 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     }
   });
 
+  test("MCP executes credential character keys without saving them and keeps non-text keys and shortcuts", async (t) => {
+    let live: CdpLiveDriver;
+    const start = CdpLiveDriver.prototype.start;
+    t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
+    const home = path.join(dirs.home, "credential-keys");
+    const app = await startApp({ home, port: 0, liveTarget: `throwaway:${path.join(dirs.chromeUserData, "DevToolsActivePort")}`, liveLockFile: path.join(home, "lock") });
+    const pinned = process.env.BAO_TEST_BROWSER;
+    const mcp = McpClient.start({ ...laneChildEnv("hermetic", process.env, () => pinned ?? chromium.executablePath()), HOME: dirs.nativeHostHome, BAO_HOME: home });
+    const call = async (name: string, args: Record<string, unknown> = {}): Promise<Reply> => {
+      const result = await mcp.call(name, args);
+      assert.equal(result.isError, false, result.text);
+      const reply = JSON.parse(result.text) as Reply;
+      if (name !== "live_stop") assert.equal(reply.outcome.kind, "applied", result.text);
+      return reply;
+    };
+    const shortcut = process.platform === "darwin" ? "cMd+a" : "cTrL+a";
+    const expected: string[] = [];
+    try {
+      await mcp.handshake();
+      let reply = await call("live_session_start", { intent: "Use local credential keys", url: url + "/credential-keys" });
+      const session = reply.session;
+      for (const [label, keys, value] of [
+        ["Secret", ["p", "sHiFt+a", "space", "sHiFt+space", "Alt+x", "sHiFt+aLt+z", "cTrL+aLt+q"], "pA  "],
+        ["Verification code", ["p", "sHiFt+a"], "pA"],
+        ["Challenge", ["space", "sHiFt+space"], "  "],
+        ["Security code", ["Alt+x", "cTrL+aLt+q", "p", "sHiFt+a"], "pA"],
+        ["OTP", ["p", "space"], "p "],
+        ["Expiry", ["sHiFt+a", "space"], "A "],
+      ] as const) {
+        for (const [index, key] of keys.entries()) {
+          reply = await call("live_key", { ...(index % 2 === 0 ? { ref: ref(reply, label) } : {}), key });
+        }
+        const actual = await live!.evaluateFunction<string>(() => {
+          const el = document.activeElement as HTMLElement;
+          return (el.isContentEditable ? el.textContent || "" : (el as HTMLInputElement).value).replace(/\u00a0/g, " ");
+        }, null);
+        assert.equal(actual, value, label);
+        reply = await call("live_key", { ref: ref(reply, label), key: "return" });
+        reply = await call("live_key", { key: "tab" });
+        expected.push("Enter", "Tab");
+      }
+      reply = await call("live_key", { ref: ref(reply, "Secret"), key: shortcut });
+      reply = await call("live_key", { key: "escape" });
+      expected.push(process.platform === "darwin" ? "Meta+a" : "Control+a", "Escape");
+      for (const [index, key] of ["r", "sHiFt+b", "space"].entries()) reply = await call("live_key", { ...(index === 0 ? { ref: ref(reply, "Note") } : {}), key });
+      expected.push("r", "Shift+b", "Space");
+      assert.equal(await live!.evaluateFunction(() => (document.activeElement as HTMLTextAreaElement).value, null), "rB ");
+      await call("live_stop");
+      const workflow = app.library.read(session);
+      const trail = readFileSync(path.join(home, "live-session", "trail.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as { op: string; key?: string });
+      assert.deepEqual(trail.filter((event) => event.op === "key").map((event) => event.key), expected);
+      assert.deepEqual(workflow.steps.filter((step) => step.action === "key").map((step) => step.key), expected);
+      const described = await mcp.call("describe_workflow", { id: session });
+      assert.equal(described.isError, false, described.text);
+      const describedDocument = JSON.parse(described.text) as { workflow: WorkflowV2 };
+      assert.deepEqual(describedDocument.workflow.steps.filter((step) => step.action === "key").map((step) => step.key), expected);
+      assert.equal(JSON.stringify(workflow).includes("pA"), false);
+      assert.equal(described.text.includes("pA"), false);
+    } finally { await mcp.close(); await app.close(); }
+  });
+
   test("Shift inserts shifted characters while shortcuts insert no text", async (t) => {
     let live: CdpLiveDriver;
     const start = CdpLiveDriver.prototype.start;
@@ -355,7 +537,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     try {
       let reply = await call({ op: "live_session_start", intent: "Type shifted text", url });
-      for (const key of ["a", "Shift+a", "Shift+2", "Space", "Shift+z"]) {
+      for (const key of ["a", "sHiFt+a", "sHiFt+2", "space", "sHiFt+z"]) {
         reply = await call({ op: "live_key", ref: ref(reply, "Note"), key });
         assert.equal(reply.outcome.kind, "applied", key);
       }
@@ -388,11 +570,11 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       await mcp.handshake();
       let reply = await call("live_session_start", { intent: "Edit local fields", url: url + "/editing" });
       const selectAll = process.platform === "darwin" ? "Meta+a" : "Control+a";
-      const alias = process.platform === "darwin" ? "Cmd+A" : "Ctrl+A";
+      const alias = process.platform === "darwin" ? "cMd+A" : "cTrL+A";
       for (const [index, label] of ["Name", "Note", "Editor"].entries()) {
         reply = await call("live_type", { ref: ref(reply, label), text: "abcdef" });
         reply = await call("live_key", { ref: ref(reply, label), key: selectAll });
-        reply = await call("live_key", { ref: ref(reply, label), key: "Backspace" });
+        reply = await call("live_key", { ref: ref(reply, label), key: "backspace" });
         reply = await call("live_read", { name: `deleted_${index}`, selector: "#value" });
         assert.equal(reply.read?.text, "Value:", label);
         reply = await call("live_type", { ref: ref(reply, label), text: "abcdef" });

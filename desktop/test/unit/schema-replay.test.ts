@@ -132,7 +132,13 @@ test("interpret uses requested navigation targets while legacy navigation keeps 
   const meta = { id: "wf-explicit-open", startUrl: "https://start.test/" };
   const explicit = interpret([event], meta);
   assert.equal(explicit.steps[0]?.value, event.value);
-  assert.equal(explicit.steps[0]?.expect?.match, "target.test");
+  assert.equal(explicit.steps[0]?.expect?.match, "redirect.test");
+  assert.equal(interpret([{ ...event, afterUrl: undefined }], meta).steps[0]?.expect?.match, "target.test");
+  for (const afterUrl of ["about:blank", "file:///private", "not a URL"]) {
+    const step = interpret([{ ...event, afterUrl }], meta).steps[0]!;
+    assert.equal(step.value, event.value);
+    assert.equal(step.expect, undefined);
+  }
   const legacy = interpret([{ ...event, value: undefined }], meta);
   assert.equal(legacy.steps[0]?.value, event.afterUrl);
   assert.equal(legacy.steps[0]?.expect?.match, "redirect.test");

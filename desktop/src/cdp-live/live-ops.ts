@@ -1,4 +1,5 @@
 import { insertTextRefusal, stopPathMatch } from "./allowlist";
+import { canonicalKey, KEY_EVENTS } from "./keys";
 import { redactLabel } from "./live-record";
 import { COMMIT_FLOOR, type GuardPreset } from "./presets";
 
@@ -395,8 +396,11 @@ export function planClick(read: LiveRead, ref: string): Plan {
 
 /** Enter needs a ref. Tab and Escape without one go to whatever has focus. */
 export function planKey(read: LiveRead, key: string, ref: string): Plan {
-  const common = /^(?:(?:Meta|Control|Ctrl|Cmd|Alt|Shift)\+)*(?:Enter|Return|Tab|Escape|Arrow(?:Up|Down|Left|Right)|Backspace|Delete|Space|Home|End|PageUp|PageDown|[a-zA-Z0-9 ])$/i;
-  if (read.careful === false ? !common.test(key) : !(LIVE_KEYS as readonly string[]).includes(key)) return { ok: false, refusal: "key_not_allowed" };
+  key = canonicalKey(key);
+  const parts = key.split("+");
+  const name = parts.pop() || "";
+  const common = parts.every((part) => /^(Meta|Control|Alt|Shift)$/.test(part)) && (Object.hasOwn(KEY_EVENTS, name) || /^[a-z0-9]$/i.test(name));
+  if (read.careful === false ? !common : !(LIVE_KEYS as readonly string[]).includes(key)) return { ok: false, refusal: "key_not_allowed" };
   if (!ref) return key === "Enter" && read.careful !== false ? { ok: false, refusal: "ref_required" } : { ok: true, selector: "" };
   const plan = planClick(read, ref);
   if (!plan.ok) return plan;
@@ -487,8 +491,7 @@ export function publicLiveResult(value: unknown): unknown {
 export function selectLiveOption(ask: { markIndex: number; option: string }): string | null {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
   if (!(el instanceof HTMLSelectElement)) return "not_a_select";
-  const byValue = Array.from(el.options).filter((option) => option.value === ask.option);
-  const options = byValue.length ? byValue : Array.from(el.options).filter((option) => option.label === ask.option);
+  const options = Array.from(el.options).filter((option) => option.value === ask.option || option.label === ask.option);
   if (options.length !== 1) return options.length ? "ambiguous option" : "option not found";
   if (el.matches(":disabled") || options[0]!.matches(":disabled")) return "option is disabled";
   for (const option of el.options) option.selected = option === options[0];
@@ -558,14 +561,15 @@ export function focusStillMarked(ask: { markIndex: number; careful?: boolean }):
   }
   const focused = node;
   const password = focused instanceof HTMLInputElement && (focused.getAttribute("type") || "").toLowerCase() === "password";
-  const auto = focused instanceof HTMLInputElement ? (focused.getAttribute("autocomplete") || "").toLowerCase() : "";
+  const auto = focused instanceof HTMLElement ? (focused.getAttribute("autocomplete") || "").toLowerCase() : "";
   const labels = focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement
     ? Array.from(focused.labels || []).map((label) => label.textContent || "").join(" ")
     : "";
+  const linked = (focused?.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)?.textContent || "").join(" ");
   const name = focused instanceof HTMLElement
-    ? `${focused.getAttribute("name") || ""} ${focused.getAttribute("aria-label") || ""} ${labels}`.toLowerCase()
+    ? `${focused.getAttribute("name") || ""} ${focused.getAttribute("aria-label") || ""} ${linked} ${labels} ${focused.getAttribute("placeholder") || ""}`.toLowerCase().replace(/\s+/g, " ")
     : "";
-  const credential = password || /password|one-time-code|cc-number|cc-csc/.test(auto)
+  const credential = password || /password|username|one-time-code|cc-number|cc-csc|cc-exp/.test(auto)
     || /\b(password|passcode|otp|cvv|cvc|ssn|social security|card number|security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor)\b/.test(name);
   const allowed = ask.careful === false || !credential;
   if (!(marked instanceof HTMLElement)) return { ok: ask.markIndex < 0 && allowed, credential };
