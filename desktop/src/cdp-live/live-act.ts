@@ -61,7 +61,7 @@ async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guar
   return sameTarget(target.read, buildView(marked, target.read.view.epoch, target.guard), ref);
 }
 
-/** A load the window failed on a stop path goes back to the last allowed page, and the refusal reads that page again. */
+/** Only a non-login stop path returns to the last allowed page; a login redirect must halt instead. */
 async function refuseBlocked(target: LiveActTarget, reason: string): Promise<LiveActOutcome> {
   if (reason === "stop-path") {
     await target.driver.returnFromBlock();
@@ -74,7 +74,7 @@ function controlOf(read: LiveRead, ref: string) {
   return ref ? read.view.controls.find((item) => item.ref === ref) : undefined;
 }
 
-/** One trusted click on a listed control. A confirm, denied, or credential control, an off-list link, and a covered control are refused. */
+/** Guard checks run before dispatch; the final Experian freeze stop returns reached without a click. */
 export async function clickLive(target: LiveActTarget, ref: string): Promise<LiveActOutcome> {
   const plan = planClick(target.read, ref);
   if (!plan.ok) return planRefusal(plan.refusal);

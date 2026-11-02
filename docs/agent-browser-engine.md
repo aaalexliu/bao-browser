@@ -51,7 +51,7 @@ The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `de
 | --- | --- | --- |
 | DOM tree, failure snapshot | Works | Bao identities and guards; reads use native evaluation. |
 | Unique match, stale live refs | Works | Count before action; missing, ambiguous, and expired refs refuse. |
-| Click, fill, key, navigation | Works | Local two-engine Instacart cart and recorded replay passed. Credentials and off-host/commit actions still refuse. |
+| Click, fill, key, navigation | Works | Local two-engine Instacart cart and recorded replay passed. Both engines use the [live guards and Experian final-action contract](cdp-live-chrome.md#agent-entry-point). |
 | Check and select | Gap | Guarded live tools retain their stricter checkbox/select policy. Broader support and fixtures still need proof. |
 | Page screenshots | Works | Native CDP PNG, fixed page, full-page veil, Bao artifact paths. Local fixture PNGs were saved and opened. |
 | Scoped tabs | Works | Exact target id and pinning; popup guard halts. No active-tab following. |
