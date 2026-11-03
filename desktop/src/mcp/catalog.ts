@@ -22,6 +22,7 @@ import { shotFile } from "../v1/shots";
 import { originOf, trustMode } from "../v1/site-trust";
 import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
+import { scrubSaved } from "../v1/saved-secrets";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
@@ -843,7 +844,7 @@ function writeReport(library: Library, outcome: WorkflowOutcome): void {
   if (!outcome.runId) return;
   const file = reportPath(library, outcome.runId);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(outcome, null, 2));
+  writeFileSync(file, JSON.stringify(scrubSaved(outcome), null, 2));
 }
 
 function reportPath(library: Library, runId: string): string {
@@ -871,7 +872,7 @@ function writeResume(
   const file = path.join(library.root, "resumes", `${token}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   const body: ResumeFile = { workflowId, stepId, publicInputs: inputs, ...extra };
-  writeFileSync(file, JSON.stringify(body));
+  writeFileSync(file, JSON.stringify(scrubSaved(body)));
   return token;
 }
 

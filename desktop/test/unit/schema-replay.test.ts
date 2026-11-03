@@ -77,7 +77,7 @@ test("redacted keys stay explicit and replay stops before dispatching a missing 
   d.key = async (key) => { keys.push(key); };
   const result = await replay(doc, {}, d, { heal: unavailableHeal() });
   assert.equal(result.status, "failed");
-  assert.equal(result.failure?.reason, "unresolved step");
+  assert.equal(result.failure?.reason, "This step needs a value. Its saved value was stripped because it may contain a secret.");
   assert.deepEqual(keys, []);
 });
 

@@ -9,6 +9,7 @@ import { assertSyncSafe, buildPushBody, buildRunBody, SyncRejected } from "../..
 import { isElementCrop } from "../../../web/src/lib/png";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
+import { scrubSaved } from "./saved-secrets";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
@@ -634,7 +635,7 @@ function stash(
 ): void {
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, toJson(local));
+  writeFileSync(file, toJson(scrubSaved(local)));
   const theirs = migrate(remote.document);
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));

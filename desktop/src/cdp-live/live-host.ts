@@ -76,6 +76,7 @@ import { sameRecordedControl } from "../v1/identity";
 import type { RunResult } from "../v1/replay";
 import { popupDismissName, validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
+import { STRIPPED_SECRET } from "../v1/saved-secrets";
 import { ownerStopMessage } from "../v1/stop-copy";
 
 const AGENT = "bao-live";
@@ -854,7 +855,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       op: "type",
       identity: before?.identity,
       // The whole field, as the recorder keeps it. Text typed after a prefilled value includes that value.
-      value: sensitive ? undefined : after.missing ? `${replace ? "" : before?.side.value || ""}${text}` : after.value,
+      value: sensitive ? STRIPPED_SECRET : after.missing ? `${replace ? "" : before?.side.value || ""}${text}` : after.value,
       valueMode: "full",
       ...(sensitive ? { sensitive: true } : {}),
       // A recorded workflow replays the search it saw. The search text is not an input.

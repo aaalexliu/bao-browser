@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveHome } from "../home";
+import { scrubSaved } from "../v1/saved-secrets";
 import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep, type LiveToolTiming } from "./live-record";
 
 export {
@@ -101,7 +102,7 @@ export class SessionLog {
     if (!clean) return;
     this.record = clean;
     await mkdir(this.dir, { recursive: true });
-    await writeAtomic(path.join(this.dir, "session.json"), `${JSON.stringify(this.record, null, 2)}\n`);
+    await writeAtomic(path.join(this.dir, "session.json"), `${JSON.stringify(scrubSaved(this.record), null, 2)}\n`);
   }
 }
 

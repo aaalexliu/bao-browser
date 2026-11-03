@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -405,6 +406,11 @@ export async function replay(
       continue;
     }
     const extra = i === workflow.steps.length - 1 ? workflow.readBack : undefined;
+    if (stepNeedsSecretValue(step, workflow, args)) {
+      const failure = await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets);
+      stamp({ id: step.id, status: "failed", reason: NEEDS_SECRET_VALUE, phase: failure.phase });
+      return finish({ runId, status: "failed", steps, failure });
+    }
     if (step.unresolved) {
       const failure = await fail(driver, step, "find", "unresolved step", undefined, secrets);
       stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
@@ -545,6 +551,10 @@ export async function replay(
       return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind, ask: outcome.ask });
     }
     let failure = outcome.failure;
+    if (failure.reason.includes(NEEDS_SECRET_VALUE)) {
+      stamp({ id: step.id, status: "failed", reason: NEEDS_SECRET_VALUE, phase: failure.phase });
+      return finish({ runId, status: "failed", steps, failure: { ...failure, reason: NEEDS_SECRET_VALUE } });
+    }
     const missed = await classifyLive(driver, workflow, step);
     noteClass(missed, true);
     if (missed.class === "bot_wall" || missed.class === "login_wall") {
@@ -787,6 +797,9 @@ async function runStep(
   appending = false,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
+  if (stepNeedsSecretValue(step, workflow, args)) {
+    return { ok: false, repairs, failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
+  }
   if (step.action === "note") return { ok: true, repairs };
   if (step.action === "extract" || step.action === "for_each") {
     const bag = tables ?? new Map();

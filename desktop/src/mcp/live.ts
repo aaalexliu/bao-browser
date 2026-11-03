@@ -12,6 +12,7 @@ import { launchOwnedChrome, navigateOwned, productHeadless } from "../launch";
 import { osHit, osNodes } from "../proxy/os";
 import type { TrailEvent } from "../v1/interpret";
 import type { Identity } from "../v1/schema";
+import { scrubSaved } from "../v1/saved-secrets";
 
 export const LIVE_SOURCE = { agent: "live-model", vendor: "cursor", adapter: "stdio" } as const;
 
@@ -291,7 +292,7 @@ export class LiveSession {
   }
 
   private write(event: TrailEvent): void {
-    const json = JSON.stringify(event);
+    const json = JSON.stringify(scrubSaved(event));
     if (this.secrets.some((secret) => secret && json.includes(secret))) {
       throw new Error("refusing to write a secret into the trail");
     }

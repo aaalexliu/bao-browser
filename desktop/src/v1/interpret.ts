@@ -9,6 +9,7 @@ import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE } from "./saved-secrets";
 
 export interface TrailEvent {
   id: string;
@@ -141,6 +142,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
+    if ([event.value, event.key].some(hasStrippedSecret)) step.unresolved = { reason: NEEDS_SECRET_VALUE };
     const skip = event.skipWhen?.trim();
     if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
     if (step.action === "type" && (step.input || event.literal) && event.value && !step.sensitive && !secrets.includes(event.value)) {
@@ -174,7 +176,7 @@ function secretStrings(events: readonly TrailEvent[], listed: string[]): string[
   for (const event of events) {
     const password = event.sensitive || event.identity?.role === "password";
     const value = event.value;
-    if (!password || !value || value.length < 8 || out.includes(value)) continue;
+    if (!password || !value || hasStrippedSecret(value) || value.length < 8 || out.includes(value)) continue;
     out.push(value);
   }
   return out;

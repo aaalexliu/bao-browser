@@ -48,6 +48,20 @@ The live run view, its step list, and its audit log are files in Bao's home dire
 
 In `live-session/session.json`, `start` and `navigate` audit labels that parse as HTTP(S) URLs keep their origins, including host and port digits, plus redacted pathnames, capped at 80 characters. They omit URL credentials, query strings, and fragments. All other audit labels still use `redactLabel` in `desktop/src/cdp-live/live-record.ts`. `desktop/test/unit/cdp-live.test.ts` covers this rule.
 
+### Secret text in saved files
+
+Bao strips detected secrets when it saves live trails, run records and workflows. It replaces them with `[secret stripped]`. Field structure comes first: password types and `current-password`, `new-password`, `one-time-code` or `cc-*` autocomplete tokens. Value checks also cover Luhn-valid card numbers, SSN shapes, JWTs and common API-token prefixes. These checks do not change or block live typing. They do not find every possible secret. Older files may lack field type or autocomplete data, so the scrub can use only the evidence they still contain. Screenshots and videos stay unchanged.
+
+Replay stops at a stripped step with “This step needs a value.” It never types the marker. Edit the saved step and its input to supply a new value before replaying it.
+
+To inspect existing saved text in one Bao home, quit active sessions and run:
+
+```sh
+bao scrub-secrets --home /path/to/bao-home
+```
+
+The command defaults to a dry run and lists the files it would change. Add `--write` to scrub them. Before changing any saved file, Bao backs up every affected original under `<home>/secret-scrub-backups/<run>/`, with private directory and file permissions. Those backups still contain the original secrets. Keep them private and remove them once you no longer need recovery. The command skips symlinks, browser profiles, settings, screenshots and videos. Invalid JSON stops the scrub before it writes anything. Run it again to check that no saved text still needs a change.
+
 ## What each one costs in speed
 
 The debugging toggle is instant if it is already on. The Allow dialog is the slow gate, about 8 to 50 seconds, once per connection, mostly the accessibility walk. A page click is about a second, with a short pause so the tab can be watched. A screenshot is a local file write. An extension host grant is a separate prompt, up to 90 seconds, and it is not on the live-attach path.

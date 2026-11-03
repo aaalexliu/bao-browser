@@ -2,6 +2,7 @@
 // Anchor locators have no selector in that format, so they are left out.
 
 import { subst, type ReplayArgs, type StepLocator, type WorkflowV2 } from "./schema";
+import { NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
 
 export interface PuppeteerReplayFile {
   title: string;
@@ -28,6 +29,7 @@ export function toPuppeteerReplay(workflow: WorkflowV2, args: ReplayArgs = {}): 
     });
   }
   for (const step of workflow.steps) {
+    if (stepNeedsSecretValue(step, workflow, args)) throw new Error(NEEDS_SECRET_VALUE);
     const selectors = selectorChains(step.locators);
     if (step.action === "navigate") continue;
     if (step.action === "click" || step.action === "check") {

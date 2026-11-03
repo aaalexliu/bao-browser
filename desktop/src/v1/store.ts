@@ -2,6 +2,7 @@
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { scrubSaved } from "./saved-secrets";
 import type { HealSettings } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
@@ -141,7 +142,7 @@ export class Library {
   save(doc: WorkflowV2): void {
     const errors = validateWorkflow(doc);
     if (errors.length) throw new Error(errors.join(", "));
-    writeFileSync(this.file(doc.id), toJson(doc));
+    writeFileSync(this.file(doc.id), toJson(scrubSaved(doc)));
   }
 
   rename(id: string, name: string): WorkflowV2 {
@@ -167,7 +168,7 @@ export class Library {
   }
 
   saveTrail(id: string, events: unknown): void {
-    writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(events, null, 2));
+    writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(scrubSaved(events), null, 2));
   }
 
   appendTrail(id: string, event: unknown): unknown[] {
@@ -178,13 +179,13 @@ export class Library {
       events = Array.isArray(current) ? current : [current];
     } catch { /* first event */ }
     events.push(event);
-    writeFileSync(file, JSON.stringify(events, null, 2));
+    writeFileSync(file, JSON.stringify(scrubSaved(events), null, 2));
     return events;
   }
 
   savePromotion(promotion: unknown & { workflowId: string }): void {
     mkdirSync(path.join(this.root, "promotions"), { recursive: true });
-    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(promotion, null, 2));
+    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(scrubSaved(promotion), null, 2));
   }
 
   readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string; version?: number } | undefined {
@@ -208,14 +209,14 @@ export class Library {
   saveIntentEval(id: string, pair: unknown): void {
     const dir = path.join(this.root, "evals", "intent");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(pair, null, 2));
+    writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(scrubSaved(pair), null, 2));
   }
 
   saveTeachIntentCase(id: string, doc: unknown): void {
     const safe = id.replace(/[^A-Za-z0-9._-]/g, "_");
     const dir = path.join(this.root, "evals", "intent", "cases");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, `${safe}.json`), JSON.stringify(doc, null, 2));
+    writeFileSync(path.join(dir, `${safe}.json`), JSON.stringify(scrubSaved(doc), null, 2));
   }
 
   readIntentEval(id: string): unknown {
@@ -232,7 +233,7 @@ export class Library {
   }
 
   saveRun(run: StoredRun): void {
-    writeFileSync(path.join(this.root, "runs", `${run.id}.json`), JSON.stringify(run, null, 2));
+    writeFileSync(path.join(this.root, "runs", `${run.id}.json`), JSON.stringify(scrubSaved(run), null, 2));
   }
 
   readRun(id: string): StoredRun {
@@ -300,7 +301,7 @@ export class Library {
 
   savePublicInputs(id: string, inputs: Record<string, string | number>): void {
     mkdirSync(path.join(this.root, "inputs"), { recursive: true });
-    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(inputs, null, 2));
+    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(scrubSaved(inputs), null, 2));
   }
 
   readPublicInputs(id: string): Record<string, string | number> {
@@ -314,7 +315,7 @@ export class Library {
   /** Kept heal for the next sync push. Separate from the promotion tracker. */
   noteHealPromotion(id: string, heal: unknown): void {
     mkdirSync(path.join(this.root, "promotions"), { recursive: true });
-    writeFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), JSON.stringify(withoutShots(heal), null, 2));
+    writeFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), JSON.stringify(scrubSaved(withoutShots(heal)), null, 2));
   }
 
   readKeptHeal(id: string): unknown {
