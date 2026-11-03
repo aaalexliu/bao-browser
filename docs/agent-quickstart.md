@@ -28,7 +28,13 @@ Agents start it through `bao-mcp`, a launcher inside the Mac app: `/Applications
 
 One command sets up each agent. `bao agent config claude` and `bao agent config codex` print the entry. `--write` puts it in that agent's own config and pre-approves Bao's tools there, so the agent runs them without asking first. Only the `bao` server is pre-approved. Other servers, the agent's global approval policy, and its permission mode stay as they were. Without `--write`, nothing is written.
 
-Pre-approval skips only the agent's own prompt, not [Bao's live guards](cdp-live-chrome.md#agent-entry-point). Without pre-approval, Codex asks before each Bao call, and `codex exec` with `approval_policy = "never"` refuses every Bao call with `MCP tool call requires approval, but approval policy is never`.
+Pre-approval skips only the agent's own prompt. Without pre-approval, Codex asks before each Bao call, and `codex exec` with `approval_policy = "never"` refuses every Bao call with `MCP tool call requires approval, but approval policy is never`.
+
+Live sessions default to YOLO. Bao performs the action, including Create, Confirm, Place order, credentials, and form submission. YOLO follows any http(s) URL or redirect without host or stop-path limits, keeps full control labels, and records readable screenshots and video. Sign-in detection adds a note rather than halting. A session can start at `about:blank`, then use `live_navigate` to open a URL.
+
+Opt into [Bao's live guards](cdp-live-chrome.md#agent-entry-point) with `careful: true` on `live_session_start`, or `PUT /api/settings` with `{"careful":true}`. An explicit session boolean wins over the local setting. `careful: false` overrides a careful setting, and the mode stays fixed until the session ends. Agent pre-approval does not bypass careful-mode guards. Careful Experian sessions stop before the final freeze change unless the owner authorizes a fresh session with `careful: true, allowCommit: true`. That opt-in applies only to Experian and never carries into replay. Careful login-path halts ask the person to sign in in Chrome and start a new session.
+
+Stale refs, covered clicks, session ownership, the CDP lock, local API-origin checks, and read-back secret redaction stay on in both modes. Only Experian workflows retain repeated clicks, clicks with no effect, and typed corrections in both modes. Other presets still condense them. Saved workflow replay keeps its existing guards, including login and final-action pauses. [Live session modes](cdp-live-chrome.md#live-session-modes) lists the tools and both modes.
 
 ```sh
 npm run build:desktop

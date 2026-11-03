@@ -57,6 +57,12 @@ export class LiveTrail {
   }
 }
 
+export function keyTrailIdentity(identity: Identity | undefined): Identity | undefined {
+  if (!identity) return undefined;
+  const { surface, role, tag, id, testId, nameAttr, cssPath, xpath, siblingIndex } = identity;
+  return { surface, role, tag, id, testId, nameAttr, cssPath, xpath, siblingIndex, path: identity.path.map(({ role }) => ({ role })) };
+}
+
 const SHOWN = ["name", "text", "label", "title"] as const;
 
 /** Some node's name, text, label, or title reads `want` once its prices are dropped. */
@@ -251,8 +257,9 @@ function matches(source: string, label: string): boolean {
   }
 }
 
-/** A read's output name does not imply a click; only action labels can block saving. */
+/** Action labels matching careful guards. Read output names do not imply a click. */
 export function refusedStepLabels(workflow: Pick<WorkflowV2, "steps">, guard: LabelGuard): string[] {
+  if (guard.careful === false) return [];
   return workflow.steps
     .filter((step) => step.action !== "extract" && [guard.deny, guard.commit, COMMIT_FLOOR].some((source) => matches(source, step.label)))
     .map((step) => step.label);
@@ -285,10 +292,7 @@ export function workflowFromTrail(input: {
     intent: input.intent,
     summary: "Local draft. Recorded in the open Chrome through bao's live tools. Typed text is an input, except search text, which replays as typed.",
   };
-  const errors = [
-    ...validateWorkflow(workflow),
-    ...refusedStepLabels(workflow, input.guard).map((label) => `refused label in step: ${label}`),
-  ];
+  const errors = validateWorkflow(workflow);
   if (errors.length) throw new Error(errors.join(", "));
   return workflow;
 }

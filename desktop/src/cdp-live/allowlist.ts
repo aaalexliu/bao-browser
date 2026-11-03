@@ -106,7 +106,17 @@ export function navigationGuard(
   hosts: readonly string[],
   origins: readonly string[],
   stopPath = "",
+  careful = true,
 ): string | null {
+  if (!careful) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.username || parsed.password) return "credentials";
+      return url === "about:blank" || ["http:", "https:"].includes(parsed.protocol) ? null : "url must be http or https";
+    } catch {
+      return "that url";
+    }
+  }
   const refusal = navigationRefusal(url, hosts, origins.length ? origins : undefined);
   if (refusal && refusal !== "blocked-path") return "url is not on the host list";
   const parsed = new URL(url);

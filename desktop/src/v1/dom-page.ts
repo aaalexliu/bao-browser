@@ -134,6 +134,7 @@ export function dumpPage(): PageDump {
     const tag = el.tagName;
     return /^(A|BUTTON|INPUT|TEXTAREA|SELECT|LABEL|H1|H2|H3|H4|SUMMARY)$/.test(tag)
       || el.hasAttribute("role")
+      || el.matches('[contenteditable]:not([contenteditable="false"])')
       || el.hasAttribute("data-testid")
       || el.hasAttribute("data-qa")
       || el.hasAttribute("data-test")
@@ -171,8 +172,10 @@ export function dumpPage(): PageDump {
       if (chosen && chosen.length < 180) texts.push(chosen);
     }
     const input = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
-    if (input && input.type !== "password" && input.type !== "file") {
-      values.push({ handle, value: input.value });
+    const value = input ? (input.type !== "password" ? input.value : undefined)
+      : el.isContentEditable ? el.innerText : undefined;
+    if (value !== undefined && input?.type !== "file") {
+      values.push({ handle, value });
     }
     const path: { role: string; name?: string }[] = [];
     let parent: Element | null = parentOf(el);
@@ -197,7 +200,7 @@ export function dumpPage(): PageDump {
       cssPath: cssPath(el),
       xpath: xpathOf(el),
       path,
-      value: input && input.type !== "password" ? input.value : undefined,
+      value,
       bbox: (() => {
         const rect = el.getBoundingClientRect();
         return { x: rect.x, y: rect.y, w: rect.width, h: rect.height };

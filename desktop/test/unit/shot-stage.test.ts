@@ -48,6 +48,26 @@ test("Library step frame fits the captured viewport without letterboxing or crop
         { id: "missing", status: "passed", beforeShot: "before.png", afterShotError: "Chrome timed out taking this picture." },
         { id: "gone", status: "passed", afterShot: "gone.jpg" },
       ] });
+    await page.addInitScript(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "onload")!;
+      Object.defineProperty(HTMLImageElement.prototype, "onload", {
+        get() { return descriptor.get!.call(this); },
+        set(handler) {
+          descriptor.set!.call(this, function (this: HTMLImageElement, event: Event) {
+            if (this.closest("#shot-stage")) {
+              console.log("shot-ready-gap", JSON.stringify({ complete: this.complete, width: this.naturalWidth, height: this.naturalHeight, ready: this.parentElement!.classList.contains("has-shot"), frame: this.parentElement!.getBoundingClientRect().height }));
+              setTimeout(() => handler.call(this, event), 250);
+            } else handler.call(this, event);
+          });
+        },
+      });
+    });
+    const gaps: { complete: boolean; ready: boolean; frame: number }[] = [];
+    page.on("console", (message) => {
+      if (!message.text().startsWith("shot-ready-gap ")) return;
+      console.log(message.text());
+      gaps.push(JSON.parse(message.text().slice("shot-ready-gap ".length)));
+    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.click("[data-screen=runs]");
@@ -57,21 +77,26 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     ] as const) {
       await page.click(`#step-list [data-select-step=${step}]`);
       await page.click(`[data-frame=${which}]`);
-      await page.waitForFunction(([w, h]) => {
-        const image = document.querySelector<HTMLImageElement>("#shot-stage img");
-        return !!image && image.naturalWidth === w && image.naturalHeight === h;
+      const imageHandle = await page.waitForFunction(([w, h]) => {
+        const image = document.querySelector<HTMLImageElement>("#shot-stage.has-shot img");
+        return image?.complete && image.naturalWidth === w && image.naturalHeight === h ? image : null;
       }, [width, height]);
-      const fit = await page.locator("#shot-stage").evaluate((stage) => {
-        const image = stage.querySelector<HTMLImageElement>("img")!;
+      const fit = await imageHandle.evaluate(async (image) => {
+        if (!image) throw new Error("shot image missing");
+        await image.decode();
+        const stage = image.parentElement!;
         const rect = stage.getBoundingClientRect();
         const style = getComputedStyle(stage);
         return { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
           height: rect.height - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth),
           ratio: image.naturalWidth / image.naturalHeight, objectFit: getComputedStyle(image).objectFit };
       });
+      await imageHandle.dispose();
+      assert.ok(fit);
       assert.ok(Math.abs(fit.width - fit.height * fit.ratio) < 2, `${which}: frame ${fit.width}x${fit.height} does not match captured ratio ${fit.ratio}`);
       assert.equal(fit.objectFit, "contain", "keep every part of the captured page visible");
     }
+    assert.ok(gaps.some((gap) => gap.complete && !gap.ready && gap.frame === 220), "exercise a loaded image before the app leaves its placeholder state");
     await page.click("#step-list [data-select-step=missing]");
     await page.waitForSelector("#shot-stage:not(.has-shot)");
     assert.equal(await page.locator("#shot-stage img").count(), 0);

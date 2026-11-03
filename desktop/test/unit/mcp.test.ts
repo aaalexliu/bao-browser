@@ -13,7 +13,7 @@ import { INSTRUCTIONS, TOOL_NAMES } from "../../src/mcp/server";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
+const cli = path.resolve(__dirname, "../../src/app/cli.js");
 const CATALOG = ["search_workflows", "describe_workflow", "run_workflow", "get_run"];
 
 function frame(msg: unknown): Buffer {
@@ -153,11 +153,10 @@ test("initialize tells the agent to start, read, act, and end, and that ending s
     assert.deepEqual(order, [...order].sort((a, b) => a - b));
     assert.match(text, /live_stop\. Ending the session saves the workflow/);
     assert.match(text, /Bao app running/);
-    assert.match(text, /only click a control that closes or dismisses the covering popup \(Close, X, No thanks, Not now, Dismiss\), or press Escape with live_key, then retry the original click once\./);
-    assert.match(text, /Never press Continue, Accept, Agree, Sign in, Subscribe, Place order, or any consent or purchase control to clear a popup\./);
-    assert.match(text, /Bao's deny lists still apply\./);
-    assert.match(text, /If no dismiss control exists or the retry is refused, end the session and tell the user\./);
-    assert.match(text, /For any other refusal or a halted reply, do not try another way/);
+    assert.match(text, /By default Bao performs the action/);
+    assert.match(text, /Set careful: true at session start/);
+    assert.match(text, /For a stale_ref or unknown_ref refusal, read again/);
+    assert.doesNotMatch(text, /Never press Continue|do not try another way|must call live_stop|cannot bypass/);
   } finally {
     mcp.child.kill();
   }
@@ -425,7 +424,7 @@ const shelfWorkflow = `{
 `;
 
 function callSearch(env: NodeJS.ProcessEnv, cwd: string): Promise<{ hits?: { title?: string }[] }> {
-  const child = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
+  const child = spawn(process.execPath, [cli, "mcp"], {
     cwd,
     env,
     stdio: ["pipe", "pipe", "pipe"],
@@ -479,7 +478,7 @@ test("search_workflows reads the serve home without BAO_HOME, and a set BAO_HOME
   mkdirSync(cwd);
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: user };
   delete env.BAO_HOME;
-  const status = spawnSync(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "status"], { cwd, env, encoding: "utf8" });
+  const status = spawnSync(process.execPath, [cli, "status"], { cwd, env, encoding: "utf8" });
   assert.equal(status.status, 0, status.stderr);
   const serve = (JSON.parse(status.stdout) as { home: string }).home;
   const platformHome = process.platform === "darwin"

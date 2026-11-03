@@ -10,7 +10,8 @@ import { readPageMarkers, type PageSignals } from "../v1/page-class";
 import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationGuard, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
-import { focusLiveMark, focusStillMarked, markedState, type MarkedState } from "./live-ops";
+import { focusLiveMark, focusStillMarked, markedState, resolveLiveOptions, type MarkedState } from "./live-ops";
+import { canonicalKey, KEY_EVENTS } from "./keys";
 import { CdpSocket } from "./socket";
 
 /** Finds a marked element in the light DOM, then in open shadow roots. */
@@ -93,11 +94,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Chrome runs a key's default action only when the event carries its virtual key code. */
-const KEY_EVENTS: Record<string, { code: string; keyCode: number; text: string }> = {
-  Enter: { code: "Enter", keyCode: 13, text: "\r" },
-  Tab: { code: "Tab", keyCode: 9, text: "" },
-  Escape: { code: "Escape", keyCode: 27, text: "" },
+const SHIFTED_KEYS: Record<string, string> = {
+  "`": "~", "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
+  "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": "\"", ",": "<", ".": ">", "/": "?",
 };
 
 function toIdentity(node: DomDump): Identity {
@@ -134,7 +133,8 @@ export class CdpLiveDriver implements Driver {
   /** The last top-frame URL that committed on an allowed host and off any stop path. */
   private lastAllowed = "";
   private origins: readonly string[] = [];
-  private stopPath = "";
+  private configuredStopPath = "";
+  private careful = true;
   private humanAsk: HumanAsk | undefined;
   private trustEvents: TrustEvent[] = [];
   private trustCursor = 0;
@@ -149,7 +149,14 @@ export class CdpLiveDriver implements Driver {
 
   async startVideo(destination: string, opts: { noBlur?: true } = {}): Promise<void> {
     if (this.video) throw new Error("page video already started");
-    this.video = await startCdpVideo(this.cdp, this.sessionId, destination, opts);
+    this.video = await startCdpVideo(this.cdp, this.sessionId, destination, this.careful ? opts : { noBlur: true });
+  }
+
+  async moveVideoTo(next: CdpLiveDriver): Promise<void> {
+    if (!this.video) return;
+    await this.video.switchSession(next.sessionId);
+    next.video = this.video;
+    this.video = undefined;
   }
 
   async finishVideo(): Promise<{ wrote: boolean; frames: number; truncated: boolean }> {
@@ -166,6 +173,7 @@ export class CdpLiveDriver implements Driver {
     if (this.pageEngineSelected) throw new Error("page engine already selected");
     this.pageEngineSelected = true;
     this.pageEngine = engine;
+    engine.setCareful(this.careful);
   }
 
   constructor(
@@ -177,19 +185,29 @@ export class CdpLiveDriver implements Driver {
     private readonly preserveTarget = false,
   ) {}
 
+  setCareful(careful: boolean): void {
+    this.careful = careful;
+    this.pageEngine?.setCareful(careful);
+  }
+
   setOrigins(origins: readonly string[]): void {
     this.origins = origins;
   }
 
-  /** A page load on a stop path is failed before the request leaves Chrome. */
+  /** Careful mode blocks a stop-path load before the request leaves Chrome. */
   setStopPath(stopPath: string): void {
-    this.stopPath = stopPath;
+    this.configuredStopPath = stopPath;
+  }
+
+  private get stopPath(): string {
+    return this.careful ? this.configuredStopPath : "";
   }
 
   private allows(url: string): boolean {
     if (!url || url === "about:blank" || url.startsWith("about:") || url.startsWith("chrome:") || url.startsWith("devtools:") || url.startsWith("chrome-error:")) {
       return true;
     }
+    if (!this.careful) return navigationGuard(url, this.hosts, this.origins, "", false) == null;
     if (this.origins.length) return navigationRefusal(url, this.hosts, this.origins) == null;
     return navigationAllowed(url, this.hosts);
   }
@@ -480,7 +498,7 @@ export class CdpLiveDriver implements Driver {
   async evaluateFunction<T>(
     fn: { toString(): string },
     arg: unknown,
-    helpers: ReadonlyArray<{ name: string; toString(): string }> = [],
+    helpers: ReadonlyArray<{ name: string; toString(): string }> = [resolveLiveOptions],
   ): Promise<T> {
     const prelude = helpers.map((helper) => {
       if (!/^[A-Za-z_$][\w$]*$/.test(helper.name)) throw new Error("cdp-live refused a page helper");
@@ -491,9 +509,9 @@ export class CdpLiveDriver implements Driver {
   }
 
   async insertText(text: string, prior = "", markIndex = -1): Promise<void> {
-    const refusal = insertTextRefusal(text, prior);
+    const refusal = this.careful ? insertTextRefusal(text, prior) : null;
     if (refusal) throw new Error(refusal);
-    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex, careful: this.careful });
     if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
     if (this.pageEngine) await this.pageEngine.insertText(text);
     else await this.cdp.send("Input.insertText", { text }, this.sessionId);
@@ -542,40 +560,40 @@ export class CdpLiveDriver implements Driver {
 
   async key(key: string): Promise<void> {
     this.assertHost();
+    key = canonicalKey(key);
     if (this.pageEngine) {
-      await this.pageEngine.key(key.replace(/^cmd\+/i, "Meta+").replace(/^ctrl\+/i, "Control+"));
+      await this.pageEngine.key(key);
       return;
     }
-    if (key === "cmd+a" || key === "Meta+a") {
-      await this.chord("a", "KeyA", 4, 65);
-      return;
+    const parts = key.split("+");
+    let modifiers = 0;
+    for (const part of parts.slice(0, -1)) {
+      modifiers |= ({ Meta: 4, Control: 2, Alt: 1, Shift: 8 } as Record<string, number>)[part] || 0;
     }
-    const name = key === "Return" ? "Enter" : key;
-    const known = KEY_EVENTS[name];
+    const raw = parts.at(-1) || "";
+    const known = KEY_EVENTS[raw];
+    const name = raw === "Space" ? " " : raw;
+    const code = known?.code || (/^[a-z]$/i.test(name) ? `Key${name.toUpperCase()}` : /^\d$/.test(name) ? `Digit${name}` : name);
+    const virtualKey = known?.keyCode || (name.length === 1 ? name.toUpperCase().charCodeAt(0) : 0);
+    const character = modifiers & 8 && name.length === 1 ? SHIFTED_KEYS[name] || name.toUpperCase() : name;
     await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyDown",
-      key: name,
-      code: known?.code || name,
-      windowsVirtualKeyCode: known?.keyCode || 0,
-      text: known ? known.text : name.length === 1 ? name : "",
+      type: "keyDown", key: character, code, modifiers, windowsVirtualKeyCode: virtualKey,
+      text: modifiers & 7 ? "" : known ? known.text : character.length === 1 ? character : "",
+      ...(name.toLowerCase() === "a" && modifiers === (process.platform === "darwin" ? 4 : 2) ? { commands: ["selectAll"] } : {}),
     }, this.sessionId);
     await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyUp",
-      key: name,
-      code: known?.code || name,
-      windowsVirtualKeyCode: known?.keyCode || 0,
+      type: "keyUp", key: character, code, modifiers, windowsVirtualKeyCode: virtualKey,
     }, this.sessionId);
   }
 
   /**
    * Presses one key where focus is. With a mark, focus must still be that control.
-   * Focus in a credential field stops the key either way.
    */
   async pressMarked(key: string, markIndex: number): Promise<void> {
     this.assertHost();
     await this.bringToFront();
     if (markIndex >= 0) await this.evaluateFunction(focusLiveMark, { markIndex });
-    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex });
+    const check = await this.evaluateFunction<{ ok: boolean; credential: boolean }>(focusStillMarked, { markIndex, careful: this.careful });
     if (!check.ok) throw new Error(check.credential ? "credential_field" : "focus_moved");
     const before = await this.evaluate<string>("location.href").catch(() => "");
     await this.key(key);
@@ -666,9 +684,10 @@ export class CdpLiveDriver implements Driver {
     return Buffer.from(shot.data, "base64");
   }
 
-  /** Page screenshot after a local blur veil. The PNG stays in this process until the caller writes it. */
+  /** Careful shots use a local veil; YOLO shots stay readable. The caller owns persistence. */
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
+    if (!this.careful) return this.screenshotPng();
     const label = caption.replace(/\s+/g, " ").trim().slice(0, 80);
     this.pauseCapture();
     try {
@@ -715,7 +734,7 @@ export class CdpLiveDriver implements Driver {
     await this.cdp.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);
   }
 
-  private async clickSelector(selector: string): Promise<void> {
+  async actionPoint(selector: string): Promise<{ x: number; y: number }> {
     this.assertHost();
     await this.bringToFront();
     const point = await this.evaluate<{ x: number; y: number; w: number; h: number; covered: boolean } | null>(`(() => {
@@ -747,6 +766,11 @@ export class CdpLiveDriver implements Driver {
     })()`);
     if (!point || point.w < 1 || point.h < 1) throw new Error("element has no box");
     if (point.covered) throw new Error("element is covered");
+    return point;
+  }
+
+  private async clickSelector(selector: string): Promise<void> {
+    const point = await this.actionPoint(selector);
     if (this.pageEngine) {
       await this.pageEngine.click(selector);
       await this.noteTrust();
@@ -799,7 +823,13 @@ export class CdpLiveDriver implements Driver {
   }
 }
 
-export interface LiveWindowOptions {
+export interface LiveNavigationOptions {
+  careful?: boolean;
+  origins?: readonly string[];
+  stopPath?: string;
+}
+
+export interface LiveWindowOptions extends LiveNavigationOptions {
   /** False opens a tab. True opens a window. Default true. */
   newWindow?: boolean;
   /** Join an existing context. Omit this to use the default context. */
@@ -867,10 +897,7 @@ export async function openLiveWindow(
   const created = await cdp.send<{ targetId?: string }>("Target.createTarget", createParams);
   const targetId = created.targetId;
   if (!targetId) throw new Error("cdp did not open a window");
-  const sessionId = await flattenedSession(cdp, targetId);
-  const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts);
-  await driver.start();
-  return driver;
+  return adoptLiveWindow(cdp, hosts, targetId, options);
 }
 
 /** Drive a window this process asked Chrome to open. Like openLiveWindow, end() closes it. */
@@ -878,9 +905,13 @@ export async function adoptLiveWindow(
   cdp: CdpSocket,
   hosts: readonly string[],
   targetId: string,
+  options: LiveNavigationOptions = {},
 ): Promise<CdpLiveDriver> {
   const sessionId = await flattenedSession(cdp, targetId);
   const driver = new CdpLiveDriver(cdp, sessionId, targetId, hosts);
+  driver.setCareful(options.careful ?? true);
+  driver.setOrigins(options.origins ?? []);
+  driver.setStopPath(options.stopPath ?? "");
   await driver.start();
   return driver;
 }

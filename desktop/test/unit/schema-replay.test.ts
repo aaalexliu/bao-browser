@@ -58,6 +58,29 @@ test("migrate drops a password literal and validates against the json schema", (
   assert.equal(doc.steps[1]?.value, "{{password}}");
 });
 
+test("redacted keys stay explicit and replay stops before dispatching a missing or placeholder key", async () => {
+  const events: TrailEvent[] = [
+    { id: "redacted", ts: 1, kind: "act", op: "key", sensitive: true, key: "Shift+x", value: "x" },
+    { id: "enter", ts: 2, kind: "act", op: "key", key: "Enter" },
+  ];
+  const doc = interpret(events, { id: "redacted-keys", startUrl: "https://example.test/" });
+  assert.deepEqual(doc.steps.map((step) => step.action), ["key", "key"]);
+  assert.equal(doc.steps[0]!.key, undefined);
+  assert.equal(doc.steps[0]!.value, undefined);
+  assert.equal(doc.steps[0]!.label, "Press [redacted]");
+  assert.deepEqual(doc.steps[0]!.unresolved, { reason: "redacted key" });
+  assert.equal(doc.steps[1]!.key, "Enter");
+  assert.deepEqual(validateWorkflow(doc), []);
+  assert.equal(validate(doc), true);
+  const keys: string[] = [];
+  const d = driver([]);
+  d.key = async (key) => { keys.push(key); };
+  const result = await replay(doc, {}, d, { heal: unavailableHeal() });
+  assert.equal(result.status, "failed");
+  assert.equal(result.failure?.reason, "unresolved step");
+  assert.deepEqual(keys, []);
+});
+
 test("a refused confirm click does not keep the pre-click status as its postcondition", () => {
   const events: TrailEvent[] = [
     {
@@ -125,6 +148,38 @@ test("interpret is deterministic and lifts a secret and a file without storing e
   const typed = once.steps.find((step) => step.input === "username");
   assert.equal(typed?.value, "{{username}}");
   assert.equal(typed?.label.includes("tomsmith") || once.inputs.find((item) => item.name === "username")?.default === "tomsmith", true);
+});
+
+test("interpret uses requested navigation targets while legacy navigation keeps its observed URL", () => {
+  const event: TrailEvent = { id: "open", ts: 1, kind: "act", op: "navigate", value: "https://target.test/entry?mode=edit", beforeUrl: "https://start.test/", afterUrl: "https://redirect.test/done" };
+  const meta = { id: "wf-explicit-open", startUrl: "https://start.test/" };
+  const explicit = interpret([event], meta);
+  assert.equal(explicit.steps[0]?.value, event.value);
+  assert.equal(explicit.steps[0]?.expect?.match, "redirect.test");
+  assert.equal(interpret([{ ...event, afterUrl: undefined }], meta).steps[0]?.expect?.match, "target.test");
+  for (const afterUrl of ["about:blank", "file:///private", "not a URL"]) {
+    const step = interpret([{ ...event, afterUrl }], meta).steps[0]!;
+    assert.equal(step.value, event.value);
+    assert.equal(step.expect, undefined);
+  }
+  const legacy = interpret([{ ...event, value: undefined }], meta);
+  assert.equal(legacy.steps[0]?.value, event.afterUrl);
+  assert.equal(legacy.steps[0]?.expect?.match, "redirect.test");
+});
+
+test("sensitive generic fields omit defaults even when literal and preserve ordinary long text", () => {
+  const note = "Ordinary note. ".repeat(12);
+  const events: TrailEvent[] = [
+    { id: "password", ts: 1, kind: "act", op: "type", sensitive: true, literal: true, value: "demo-private-password", identity: id({ role: "textbox", name: "Secret", id: "entry" }) },
+    { id: "code", ts: 2, kind: "act", op: "type", sensitive: true, value: "654321", identity: id({ role: "textbox", name: "Verification code", id: "challenge" }) },
+    { id: "note", ts: 3, kind: "act", op: "type", value: note, identity: id({ role: "textbox", name: "Note", id: "note" }) },
+  ];
+  const workflow = interpret(events, { id: "wf-secret-fields", startUrl: "https://example.test/form" });
+  assert.deepEqual(workflow.inputs.map((input) => [input.type, input.default]), [["secret", undefined], ["secret", undefined], ["text", note]]);
+  assert.deepEqual(workflow.steps.map((step) => !!step.sensitive), [true, true, false]);
+  assert.equal(JSON.stringify(workflow).includes("demo-private-password"), false);
+  assert.equal(JSON.stringify(workflow).includes("654321"), false);
+  assert.deepEqual(validateWorkflow(workflow), []);
 });
 
 test("calculator clicks become number inputs and the equals check is the expression", () => {

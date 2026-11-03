@@ -25,6 +25,7 @@ for (const recording of [false, true]) {
         pause() { calls.push("pause"); },
         resume() { calls.push("resume"); },
         async endCapture() {},
+        async switchSession() {},
         async stop() { return { wrote: false, frames: 0, truncated: false }; },
       };
       t.mock.method(cdpVideo, "startCdpVideo", async () => video);

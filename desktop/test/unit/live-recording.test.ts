@@ -214,7 +214,7 @@ test("a purchase control on the trail becomes a gate a person confirms", () => {
   assert.deepEqual(validateWorkflow(workflow), []);
 });
 
-test("a step label the preset refuses fails the save instead of reaching the library", () => {
+test("a step label never refuses saving a workflow",  () => {
   const checkout: TrailEvent = {
     id: "live-1",
     ts: 1,
@@ -224,7 +224,7 @@ test("a step label the preset refuses fails the save instead of reaching the lib
     beforeUrl: RESULTS,
     afterUrl: "https://www.instacart.com/store/costco/cart",
   };
-  assert.throws(() => build([checkout]), /refused label in step: Click "Go to checkout"/);
+  assert.equal(build([checkout]).steps[0]?.label, 'Click "Go to checkout"');
   assert.deepEqual(refusedStepLabels(build(blueberryTrail()), instacart), []);
 });
 
@@ -570,6 +570,7 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
     try {
       const started = await call({
         op: "live_session_start",
+        careful: true,
         intent: "put costco blueberries into the cart at instacart",
         url: fixture.url("/store/costco/storefront"),
         client: "mock-user",
@@ -617,7 +618,8 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
       assert.ok(type?.identity?.cssPath && type.identity.xpath, "the full identity from tree()");
       assert.equal(type?.identity?.value, undefined, "a field's text is not its identity");
       assert.equal(key?.key, "Enter");
-      assert.equal(key?.identity?.name, "Search Costco");
+      assert.equal(key?.identity?.name, undefined);
+      assert.equal(key?.identity?.testId, "search-input");
       assert.equal(key?.beforeUrl, STOREFRONT);
       assert.equal(key?.afterUrl, RESULTS);
       assert.equal(scroll?.detail, "down");

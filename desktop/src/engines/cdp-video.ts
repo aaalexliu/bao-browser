@@ -26,6 +26,7 @@ export interface CdpVideo {
   pause(): void;
   resume(): void;
   endCapture(): Promise<void>;
+  switchSession(sessionId: string): Promise<void>;
   stop(): Promise<{ wrote: boolean; frames: number; truncated: boolean }>;
 }
 
@@ -134,8 +135,9 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
     })();
     return stopping;
   };
-  cdp.on("Page.screencastFrame", sessionId, (params) => {
-    void cdp.send("Page.screencastFrameAck", { sessionId: params.sessionId }, sessionId).catch(() => undefined);
+  const onFrame = (source: string, params: Record<string, unknown>): void => {
+    void cdp.send("Page.screencastFrameAck", { sessionId: params.sessionId }, source).catch(() => undefined);
+    if (source !== sessionId) return;
     if (!active || pauses > 0 || writing || Date.now() - last < 150) return;
     const data = typeof params.data === "string" && params.data.length <= Math.ceil(MAX_FRAME_BYTES / 3) * 4 ? Buffer.from(params.data, "base64") : undefined;
     if (!data || data.length > MAX_FRAME_BYTES) {
@@ -172,7 +174,14 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
       truncated = true;
       void stop().catch(() => undefined);
     }
-  });
+  };
+  const listening = new Set<string>();
+  const listen = (source: string): void => {
+    if (listening.has(source)) return;
+    listening.add(source);
+    cdp.on("Page.screencastFrame", source, (params) => onFrame(source, params));
+  };
+  listen(sessionId);
   try {
     await startCapture();
   } catch (error) { active = false; await pending; await rm(dir, { recursive: true, force: true }); throw error; }
@@ -180,6 +189,17 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
     pause() { pauses += 1; },
     resume() { pauses = Math.max(0, pauses - 1); },
     endCapture,
+    async switchSession(next: string) {
+      if (ending || stopping) throw new Error("video capture has ended");
+      active = false;
+      await cdp.send("Page.stopScreencast", {}, sessionId).catch(() => undefined);
+      await pending;
+      sessionId = next;
+      listen(next);
+      active = true;
+      last = 0;
+      await startCapture();
+    },
     stop,
   };
 }

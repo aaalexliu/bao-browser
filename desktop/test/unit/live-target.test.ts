@@ -167,6 +167,7 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
     try {
       const started = await host.call({
         op: "live_session_start",
+        careful: true,
         intent: "Put costco blueberries in the cart",
         url: fixture.url("/store/costco/storefront"),
       }) as LiveBody;
@@ -377,6 +378,7 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
         op: "live_session_start",
         intent: "Shop",
         url: fixture.url("/store/costco/storefront"),
+        careful: true,
         preset: "generic",
       }) as LiveBody;
       assert.equal(started.outcome?.kind, "applied", JSON.stringify(started.outcome));
@@ -528,6 +530,7 @@ describe("a live session with no port file from the agent", { timeout: 180_000 }
       assert.deepEqual(listed.result?.tools?.find((item) => item.name === "live_session_start")?.inputSchema.required, ["intent", "url"]);
 
       const started = await tool("live_session_start", {
+        careful: true,
         intent: "put costco blueberries into the cart at instacart",
         url: fixture.url("/store/costco/storefront"),
       });

@@ -36,7 +36,7 @@ export function liveReadRows(read: RegionRead): ListRead {
 }
 
 /** Page function. Only redacted, bounded visible text leaves Chrome. */
-export function readLiveRegion(ask: { selector: string; limit: number }): RegionRead {
+export function readLiveRegion(ask: { selector: string; limit: number; careful?: boolean }): RegionRead {
   let matches: NodeListOf<Element>;
   try { matches = document.querySelectorAll(ask.selector); }
   catch { throw new Error("invalid read selector"); }
@@ -50,7 +50,7 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
       const style = getComputedStyle(node);
       if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || style.opacity === "0") return false;
       const hint = [node.id, node.getAttribute("name"), node.getAttribute("autocomplete"), node.getAttribute("aria-label")].filter(Boolean).join(" ");
-      if (credential.test(hint)) return false;
+      if (ask.careful !== false && credential.test(hint)) return false;
     }
     return true;
   }
@@ -70,7 +70,7 @@ export function readLiveRegion(ask: { selector: string; limit: number }): Region
     size += text.length;
     if (size > 64000) truncated = true;
   }
-  const credentialLabel = /\b(?:pin|password|passcode|ssn|social security number|account number|routing number|token|authorization)\b/;
+  const credentialLabel = /\b(?:pin|password|passcode|ssn|social security number|account number|routing number|token|authorization|api.?key|client.?secret|cvv|cvc|security.?code|verification.?code|one.?time.?code|otp)\b/;
   const bareLabel = new RegExp(`^${credentialLabel.source}[ \\t]*(?:[:#]|is\\b)?[ \\t]*$`, "i");
   const ownField = /^[A-Za-z][A-Za-z ]{0,39}:/;
   const inlineValue = new RegExp(`(${credentialLabel.source}[ \\t]*(?:(?:[:#]|is\\b)[ \\t]*)?)([^\\n;]*?)(?=\\. |;|\\n|$)`, "gi");

@@ -40,6 +40,8 @@ export interface Settings extends HealSettings {
    * This is not synced. Another machine has its own Chrome grant.
    */
   hostAccess?: "all" | "site" | "none";
+  /** Opt into live-session confirm checks, sign-in halts, and site deny rules. Local, default false. */
+  careful?: boolean;
   /** Local run choice. Old remains the default. */
   pageEngine?: "old" | "agent-browser";
   /** Profile for live sessions in the running Chrome. Local to this Mac. */

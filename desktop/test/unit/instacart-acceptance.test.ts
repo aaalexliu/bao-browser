@@ -166,7 +166,7 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
       for (const name of ["live_session_start", "live_snapshot", "live_click", "live_type", "live_key", "live_stop", "run_workflow"]) {
         assert.ok(tools.includes(name), `the one bao server lists ${name}`);
       }
-      const started = await live(agent, "live_session_start", { intent: INTENT, url: fixture.url("/store/costco/storefront") });
+      const started = await live(agent, "live_session_start", { careful: true, intent: INTENT, url: fixture.url("/store/costco/storefront") });
       assert.equal(started.session, WORKFLOW_ID);
       const search = (reply: LiveReply) => refOf(reply, "the search box", (item) => item.label === "Search Costco");
       const typed = await live(agent, "live_type", { ref: search(started), text: "blueberries" });
@@ -233,7 +233,8 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
     const [type, enter, open, add, openCart] = workflow.steps;
     assert.equal(workflow.steps.length, 5, workflow.steps.map((step) => step.label).join(" | "));
     assert.deepEqual([type?.action, type?.input, type?.value, type?.identity?.name], ["type", undefined, "blueberries", "Search Costco"]);
-    assert.deepEqual([enter?.action, enter?.key, enter?.identity?.name, enter?.expect?.match], ["key", "Enter", "Search Costco", "k=blueberries"]);
+    assert.deepEqual([enter?.action, enter?.key, enter?.identity?.testId, enter?.expect?.match], ["key", "Enter", "search-input", "k=blueberries"]);
+    assert.equal(enter?.identity?.name, undefined);
     assert.equal(JSON.stringify(workflow).includes("{{"), false, "no step reads an input");
     // The product link shows its price. The step's label and role locator leave it out, and the href stays.
     assert.deepEqual([open?.action, open?.identity?.role, open?.identity?.href?.endsWith(TARGET_PATH)], ["click", "link", true]);

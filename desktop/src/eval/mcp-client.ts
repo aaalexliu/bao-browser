@@ -34,7 +34,7 @@ export class McpClient {
   }
 
   static start(env: NodeJS.ProcessEnv): McpClient {
-    const cli = require("node:path").join(process.cwd(), "desktop/dist/desktop/src/app/cli.js") as string;
+    const cli = require("node:path").resolve(__dirname, "../app/cli.js") as string;
     const child = spawn(process.execPath, [cli, "mcp"], {
       env,
       stdio: ["pipe", "pipe", "pipe"],

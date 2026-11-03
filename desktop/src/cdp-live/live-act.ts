@@ -1,9 +1,8 @@
-// One guarded path for each act on a live page. A live session's tools and the
-// replay of a cdp-live workflow both act through these functions, so a replay
-// keeps every guard the session had: deny and confirm labels, stop paths, the
-// host list, a control that moved, and a credential field.
+// Live tools and saved-workflow replay share these action checks.
+// The live session's mode selects its guards; replay stays careful.
 
 import { navigationGuard } from "./allowlist";
+import { canonicalKey, keyMayInsertText } from "./keys";
 import type { CdpLiveDriver } from "./driver";
 import {
   buildView,
@@ -19,6 +18,7 @@ import {
   scrollLivePage,
   selectLiveMark,
   targetVerdict,
+  selectLiveOption,
   type LabelGuard,
   type LiveRead,
   type PageFacts,
@@ -30,7 +30,7 @@ import type { CdpSocket } from "./socket";
 export interface LiveActTarget {
   driver: Pick<
     CdpLiveDriver,
-    "evaluateFunction" | "pressMarked" | "clickCss" | "markTrust" | "insertText" | "takeBlockedNav" | "returnFromBlock" | "sleep"
+    "evaluateFunction" | "pressMarked" | "clickCss" | "actionPoint" | "markTrust" | "insertText" | "takeBlockedNav" | "returnFromBlock" | "sleep"
   >;
   read: LiveRead;
   guard: LabelGuard;
@@ -79,7 +79,7 @@ export async function clickLive(target: LiveActTarget, ref: string): Promise<Liv
   if (!plan.ok) return planRefusal(plan.refusal);
   const entry = target.read.targets.byRef.get(ref);
   if (entry?.href) {
-    const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
+    const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath, target.guard.careful);
     if (why) return planRefusal(why);
   }
   const index = entry?.index ?? -1;
@@ -129,20 +129,41 @@ export async function typeLive(target: LiveActTarget, ref: string, text: string,
   return { kind: "applied", label, control: control?.kind || "" };
 }
 
-/** Enter, Tab, or Escape, on the same guards as a click. */
+export async function selectLive(target: LiveActTarget, ref: string, option: string): Promise<LiveActOutcome> {
+  const plan = planClick(target.read, ref);
+  if (!plan.ok) return { kind: "refused", reason: plan.refusal };
+  const entry = target.read.targets.byRef.get(ref)!;
+  if (!await stillMarked(target, ref, entry.index)) return { kind: "refused", reason: "stale_ref" };
+  const control = controlOf(target.read, ref);
+  if (control?.kind !== "select") return { kind: "refused", reason: "not_a_select" };
+  await target.before("select", control.label);
+  try {
+    await target.driver.actionPoint(plan.selector);
+  } catch (error) {
+    if (error instanceof Error && (error.message === "element is covered" || error.message === "element has no box")) return { kind: "refused", reason: error.message };
+    throw error;
+  }
+  const reason = await target.driver.evaluateFunction<string | null>(selectLiveOption, { markIndex: entry.index, option });
+  if (reason) return { kind: "refused", reason };
+  return { kind: "applied", label: control.label, control: "select" };
+}
+
+/** Press a key on the same guards as a click. */
 export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
+  key = canonicalKey(key);
   const plan = planKey(target.read, key, ref);
   if (!plan.ok) return planRefusal(plan.refusal);
   const entry = ref ? target.read.targets.byRef.get(ref) : undefined;
   const control = controlOf(target.read, ref);
   if (key === "Enter" && entry?.href) {
-    const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath);
+    const why = navigationGuard(entry.href, target.hosts, target.origins, target.stopPath, target.guard.careful);
     if (why) return planRefusal(why);
   }
   const index = entry?.index ?? -1;
   if (entry && !await stillMarked(target, ref, index)) return { kind: "refused", reason: "stale_ref" };
   const label = control?.label || "";
-  await target.before("key", `${key} ${label}`.trim());
+  const text = keyMayInsertText(key);
+  await target.before("key", text ? "[redacted key]" : key);
   target.driver.takeBlockedNav();
   try {
     await target.driver.pressMarked(key, index);
@@ -176,16 +197,18 @@ export async function scrollLive(target: LiveActTarget, direction: string, ref: 
 }
 
 /**
- * While `active()` is true, closes a page the driven window opens, and any page that was not
- * open when the watch began. `closed()` runs after each close, so the caller can halt.
+ * Tracks pages opened by this session's tabs, never unrelated pages.
+ * Careful mode closes each new owned page and calls `closed()`; YOLO leaves it usable.
  */
-export async function watchNewTargets(cdp: CdpSocket, ownId: string, active: () => boolean, closed: () => void): Promise<void> {
+export async function watchNewTargets(cdp: CdpSocket, ownId: string, active: () => boolean, closed: () => void, careful = true, owned = new Set<string>([ownId])): Promise<void> {
   const baseline = new Set<string>([ownId]);
   let ready = false;
   cdp.on("Target.targetCreated", undefined, (params) => {
     const info = (params as { targetInfo?: { type?: string; targetId?: string; openerId?: string } }).targetInfo;
-    if (!ready || !info?.targetId || !active()) return;
-    if (targetVerdict(info, ownId, baseline) !== "close") return;
+    if (!ready || !info?.targetId || !active() || info.type !== "page") return;
+    if (!info.openerId || !owned.has(info.openerId)) return;
+    owned.add(info.targetId);
+    if (!careful || targetVerdict(info, ownId, baseline) !== "close") return;
     void cdp.send("Target.closeTarget", { targetId: info.targetId }).catch(() => undefined);
     closed();
   });

@@ -16,6 +16,10 @@ const DROP_OP = new Set([
   "dom", "ax", "navigate", "scroll",
 ]);
 
+function noise(event: TrailEvent): boolean {
+  return DROP_OP.has(event.op) && !(event.op === "navigate" && !!event.value);
+}
+
 export function condense(events: readonly TrailEvent[], meta: InterpretMeta): WorkflowV2 {
   return interpret(prepare(events), meta);
 }
@@ -27,14 +31,14 @@ export function condenseWithGroups(events: readonly TrailEvent[], meta: Interpre
 
 /** Click ids removed by the effect filter, after the other deterministic drops. */
 export function droppedNoEffectIds(events: readonly TrailEvent[]): string[] {
-  const prepared = events.filter((event) => event.kind !== "read" && !DROP_OP.has(event.op));
+  const prepared = events.filter((event) => event.kind !== "read" && !noise(event));
   const before = collapseRetries(collapseTypos(dropAborted(dropBack(prepared))));
   const kept = new Set(dropNoEffect(before).map((event) => event.id));
   return before.filter((event) => event.op === "click" && !kept.has(event.id)).map((event) => event.id);
 }
 
 function prepare(events: readonly TrailEvent[]): TrailEvent[] {
-  const dropped = events.filter((event) => event.kind !== "read" && !DROP_OP.has(event.op));
+  const dropped = events.filter((event) => event.kind !== "read" && !noise(event));
   const undone = dropBack(dropped);
   const aborted = dropAborted(undone);
   const typed = collapseTypos(aborted);
@@ -83,7 +87,7 @@ function laterDepends(events: TrailEvent[], index: number): boolean {
   if (!path) return revealsLaterTarget(events, index);
   for (let j = index + 1; j < events.length; j++) {
     const later = events[j]!;
-    if (later.kind === "read" || DROP_OP.has(later.op) || later.op === "back") continue;
+    if (later.kind === "read" || noise(later) || later.op === "back") continue;
     const laterPath = later.identity?.cssPath;
     if (!laterPath || laterPath === path) continue;
     if (laterPath.startsWith(`${path} >`) || laterPath.startsWith(`${path}>`) || laterPath.startsWith(`${path} `)) {
@@ -102,7 +106,7 @@ function revealsLaterTarget(events: TrailEvent[], index: number): boolean {
   if (next && (next.op === "type" || next.op === "key") && sameControl(event, next)) return false;
   for (let j = index + 1; j < events.length; j++) {
     const later = events[j]!;
-    if (later.kind === "read" || DROP_OP.has(later.op) || later.op === "back") continue;
+    if (later.kind === "read" || noise(later) || later.op === "back") continue;
     if (!sameControl(event, later)) return true;
   }
   return false;
@@ -111,7 +115,7 @@ function revealsLaterTarget(events: TrailEvent[], index: number): boolean {
 function nextAct(events: TrailEvent[], index: number): TrailEvent | undefined {
   for (let j = index + 1; j < events.length; j++) {
     const later = events[j]!;
-    if (later.kind === "read" || DROP_OP.has(later.op)) continue;
+    if (later.kind === "read" || noise(later)) continue;
     return later;
   }
   return undefined;

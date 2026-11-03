@@ -124,10 +124,13 @@ test("live_key presses only Enter, Tab, and Escape, and Enter needs a ref", () =
     { index: 0, label: "Search Costco", kind: "field", field: { type: "text", name: "q", autocomplete: "off" } },
     { index: 1, label: "View cart", kind: "button" },
   ]), 5, instacart);
-  for (const key of ["a", " ", "Space", "Backspace", "ArrowDown", "enter", "Meta+a"]) {
+  for (const key of ["a", " ", "Space", "Backspace", "ArrowDown", "Meta+a", "shift+enter", "ctrl+tab"]) {
     assert.equal(refusal(planKey(read, key, "e5.c0")), "key_not_allowed", key);
   }
   assert.equal(refusal(planKey(read, "Enter", "")), "ref_required");
+  assert.equal(refusal(planKey(read, "return", "")), "ref_required");
+  assert.equal(planKey(read, "enter", "e5.c0").ok, true);
+  assert.equal(planKey(read, "escape", "").ok, true);
   assert.deepEqual(planKey(read, "Tab", ""), { ok: true, selector: "" });
   assert.deepEqual(planKey(read, "Escape", ""), { ok: true, selector: "" });
   assert.equal(planKey(read, "Enter", "e5.c0").ok, true);
@@ -164,6 +167,8 @@ test("Enter in a field is judged by the field's label and the button its form su
   assert.equal(planKey(read, "Enter", "e6.c2").ok, true, "a form that adds to the cart");
   assert.equal(refusal(planKey(read, "Enter", "e6.c3")), "denied", "instacart denies place order before the commit rule");
   assert.equal(refusal(planKey(read, "Enter", "e6.c4")), "stop_before_confirm", "an unlabeled submit is a commit");
+  assert.equal(refusal(planKey(read, "return", "e6.c4")), "stop_before_confirm");
+  assert.equal(refusal(planKey(read, "enter", "e6.c8")), "credential_field");
   assert.equal(refusal(planKey(read, "Enter", "e6.c5")), "denied");
   assert.equal(refusal(planKey(read, "Enter", "e6.c6")), "stop_before_confirm");
   assert.equal(refusal(planKey(read, "Enter", "e6.c7")), "denied");
@@ -364,7 +369,7 @@ test("a refused key press never marks, writes, or presses, and a stale mark stop
   assert.deepEqual(stale.log.calls, ["readLivePage:0"]);
   const ok = fakeTarget(read, { marked: shop });
   assert.deepEqual(await pressLiveKey(ok.target, "Enter", "e1.c0"), { kind: "applied", label: "Search Costco", control: "field" });
-  assert.deepEqual(ok.log.calls, ["readLivePage:0", "before:key:Enter Search Costco", "press:Enter:0"]);
+  assert.deepEqual(ok.log.calls, ["readLivePage:0", "before:key:Enter", "press:Enter:0"]);
   const free = fakeTarget(read);
   assert.deepEqual(await pressLiveKey(free.target, "Escape", ""), { kind: "applied", label: "", control: "" });
   assert.deepEqual(free.log.calls, ["before:key:Escape", "press:Escape:-1"]);
@@ -722,15 +727,15 @@ test("in a real page Enter submits a search box with no button, scroll loads mor
     assert.equal(hits.some((hit) => hit.startsWith("/checkout") || hit.startsWith("/order")), false);
     assert.deepEqual(audit, [
       "key Escape",
-      "key Enter Search Costco",
+      "key Enter",
       ...Array.from({ length: scrolls }, () => "scroll down"),
       "scroll right Deal 0",
       "scroll down",
-      "key Tab Quantity",
-      "key Enter Quantity",
-      "key Enter Add to cart",
-      "key Enter Search deals",
-      "key Enter Quantity",
+      "key Tab",
+      "key Enter",
+      "key Enter",
+      "key Enter",
+      "key Enter",
       "key Tab",
     ]);
   } finally {
