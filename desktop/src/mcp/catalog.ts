@@ -336,9 +336,41 @@ function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string
 }
 
 export function getRun(library: Library, runId: string): WorkflowOutcome {
-  const file = reportPath(library, runId);
-  if (!existsSync(file)) throw new Error("run not found");
-  return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
+  const { run, report } = library.lookupRun(runId);
+  if (report) return report;
+  const stored = run!;
+  const envelope = stored.envelope;
+  const status = envelope?.status || stored.status;
+  const outcome: OutcomeName = status === "passed" || status === "ok" || status === "completed" ? "ok"
+    : status === "needs_signin" || status === "needs_approval" || status === "needs_human" ? status
+    : status === "paused" || status === "running" ? "needs_human" : "failed";
+  const failure = stored.failure as RunResult["failure"];
+  const reason = envelope?.reason || failure?.reason;
+  const step = envelope?.step || failure?.stepId;
+  const receipts = stored.steps.flatMap((item) => {
+    const receipt = item as { id?: string; status?: string };
+    return receipt?.id && receipt.status ? [{ id: receipt.id, status: receipt.status, readBack: "" }] : [];
+  });
+  return {
+    outcome,
+    reason,
+    runId: stored.id,
+    run_id: stored.id,
+    workflowId: stored.workflowId,
+    receipts,
+    stops: outcome !== "ok" && step ? [{ stepId: step, outcome, reason: reason || "" }] : [],
+    link: linkFor(stored.workflowId),
+    outputs: stored.outputs,
+    pageLeftOpen: stored.pageLeftOpen,
+    ...(envelope ? {
+      status: status as WorkflowOutcome["status"],
+      step: envelope.step,
+      ask: envelope.ask,
+      deadline: envelope.deadline,
+      resume: envelope.resume_token,
+      resume_token: envelope.resume_token,
+    } : {}),
+  };
 }
 
 interface LiveRun {

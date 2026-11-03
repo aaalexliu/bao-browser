@@ -1,12 +1,13 @@
 // A shareable step-by-step page. One file, no network.
 // Inputs are placeholders. Secrets and absolute paths are left out.
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prepareGuideCrop, type GuideCropKind } from "./guide-crop";
 import { isElementCrop } from "./redacted-png";
 import { looksLikePath, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { guideShotName, shotFile, workflowShotName } from "./shots";
+import { Library } from "./store";
 import { visibleCopy } from "./visible-copy";
 
 const PATH_PREFIX = /\/(?:Users|home|tmp|var|opt|private|workspace|etc|usr)\/[^\s"'<>]*/g;
@@ -326,20 +327,13 @@ function safeId(id: string): string | undefined {
 }
 
 function runIds(root: string, workflowId: string): string[] {
-  const dir = path.join(root, "runs");
-  let names: string[] = [];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [];
-  }
+  const library = new Library(root);
   const rows: { id: string; at: number }[] = [];
-  for (const name of names) {
-    if (!name.endsWith(".json")) continue;
+  for (const runId of library.listRunIds()) {
     try {
-      const run = JSON.parse(readFileSync(path.join(dir, name), "utf8")) as { id?: string; workflowId?: string; at?: number };
+      const run = library.readRun(runId);
       if (run.workflowId !== workflowId) continue;
-      const id = safeId(run.id || name.replace(/\.json$/, ""));
+      const id = safeId(run.id || runId);
       if (id) rows.push({ id, at: run.at || 0 });
     } catch { /* a bad run file is not a crop */ }
   }
