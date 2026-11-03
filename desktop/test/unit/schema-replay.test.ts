@@ -8,6 +8,7 @@ import { canonical } from "../../src/v1/canonical";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildPrompt, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal } from "../../src/v1/heal";
 import { Library } from "../../src/v1/store";
+import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
 import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
 import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
@@ -199,7 +200,7 @@ test("calculator clicks become number inputs and the equals check is the express
   assert.equal(JSON.stringify(doc).includes("\"7\""), true);
 });
 
-test("property: interpret never stores the secret or the path", () => {
+test("property: interpret drops secret input data and paths while preserving embedded free text", () => {
   const secretArb = fc.stringMatching(/^[a-f0-9]{8}$/).map((s) => `ZZ${s}`);
   const pathArb = fc.stringMatching(/^\/tmp\/bao-[a-z0-9]{6}\.pdf$/);
   fc.assert(fc.property(secretArb, pathArb, fc.string({ minLength: 1, maxLength: 8 }).filter((s) => /^[a-z]+$/.test(s)), (secret, filePath, user) => {
@@ -220,7 +221,9 @@ test("property: interpret never stores the secret or the path", () => {
     ];
     const doc = interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] });
     const blob = canonical(doc);
-    assert.equal(blob.includes(secret), false);
+    assert.equal(doc.inputs.find((input) => input.type === "secret")!.default, undefined);
+    assert.equal(doc.steps[0]!.value, "{{password}}");
+    assert.equal(doc.steps[0]!.postcondition!.match, `leaked ${secret}`);
     assert.equal(blob.includes(filePath), false);
     assert.equal(canonical(doc), canonical(interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] })));
   }), { numRuns: 40 });
@@ -236,7 +239,7 @@ function driver(nodes: Identity[], extra: Partial<LiveTree> = {}): Driver & { cl
     get notices() { return state.notices; },
     get clicks() { return state.clicks; },
     tree: async () => tree(nodes, extra),
-    snapshot: async () => ({ dom: "SuperSecretPassword! visible", ax: [] }),
+    snapshot: async () => ({ dom: { value: "SuperSecretPassword!", text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET }, ax: [] }),
     click: async () => { state.clicks += 1; },
     fill: async () => {},
     key: async () => {},
@@ -282,7 +285,7 @@ test("replay stops with a structured failure when healing is off", async () => {
   assert.equal(result.status, "failed");
   assert.equal(calls, 0);
   assert.equal(result.failure?.reason, "below-threshold");
-  assert.equal(JSON.stringify(result.failure).includes("SuperSecretPassword!"), false);
+  assert.deepEqual(result.failure!.snapshot.dom, { value: STRIPPED_SECRET, text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
   assert.equal(d.clicks, 0);
 });
 
@@ -310,7 +313,9 @@ test("auto heal applies a patch, records the audit, and does not edit the workfl
   assert.equal(result.heals[0]?.model?.name, "test");
   assert.equal(result.heals[0]?.model?.version, "test");
   assert.equal(result.heals[0]?.executed?.identity?.testId, "real");
-  assert.equal(JSON.stringify(result.heals).includes("SuperSecretPassword!"), false);
+  assert.deepEqual(result.heals[0]!.snapshot.dom, { value: STRIPPED_SECRET, text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
+  assert.equal(result.heals[0]!.prompt, proposal.prompt);
+  assert.equal(result.heals[0]!.rawResponse, proposal.rawResponse);
   assert.equal(canonical(doc), before);
 });
 

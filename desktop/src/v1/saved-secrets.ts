@@ -8,7 +8,7 @@ export const NEEDS_SECRET_VALUE = "This step needs a value. Its saved value was 
 
 const ENTRY = new Set(["type", "input", "fill", "key", "keypress", "digits"]);
 const MEDIA = new Set(["screenshot", "png", "base64", "image", "video"]);
-const STRUCTURE = new Set(["schema", "id", "toolCallId", "op", "action", "kind", "type", "role", "inputType", "autocomplete", "surface", "input", "parameter", "as", "workflowId", "runId", "stepId", "sessionId", "eventId", "versionId", "hash", "prev", "version", "index", "n", "ts", "at", "createdAt", "updatedAt", "timeoutMs", "stepIndex", "stepCount", "filesDates", "tag", "subrole", "changed", "ref", "identifier", "testId", "nameAttr", "bundleId", "label", "intent", "match", "url", "startUrl", "beforeUrl", "afterUrl", "requestedUrl", "href", "src", "selector", "query", "cssPath", "xpath", "fileInput", "fileFrom", "fromOutput", "endInput"]);
+const STRUCTURE = new Set(["schema", "id", "toolCallId", "op", "action", "kind", "type", "role", "inputType", "autocomplete", "surface", "input", "parameter", "as", "workflowId", "runId", "stepId", "sessionId", "eventId", "eventIds", "cardId", "secretIds", "takes", "versionId", "hash", "prev", "version", "index", "n", "ts", "at", "createdAt", "updatedAt", "timeoutMs", "stepIndex", "stepCount", "filesDates", "tag", "subrole", "changed", "ref", "identifier", "testId", "nameAttr", "bundleId", "label", "intent", "match", "url", "startUrl", "beforeUrl", "afterUrl", "requestedUrl", "href", "src", "selector", "query", "cssPath", "xpath", "fileInput", "fileFrom", "fromOutput", "endInput"]);
 const ENUMS = new Map(Object.entries({
   status: "running passed failed paused pending skipped needs_human idle completed timed-out stopped provisional promoted reverted",
   outcome: "ok needs_human needs_signin needs_approval failed",
@@ -93,7 +93,7 @@ export function fixedSavedChoice(value: unknown): boolean {
 }
 
 function payloadField(key: string, value: unknown): boolean {
-  return ["value", "text", "valueBefore", "valueAfter", "publicInputs", "args"].includes(key) || (key === "inputs" && !Array.isArray(value));
+  return ["value", "text", "valueBefore", "valueAfter", "publicInputs", "args", "default", "rows"].includes(key) || (key === "inputs" && !Array.isArray(value));
 }
 
 export function hasStrippedSecret(value: unknown): boolean {
@@ -106,13 +106,15 @@ function missingBoundValue(value: unknown, table: boolean): boolean {
 
 export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, args: ReplayArgs): boolean {
   const reason = step.unresolved?.reason;
-  if (reason === NEEDS_SECRET_VALUE || reason === "redacted key") return true;
-  if ([step.value, step.key].some(hasStrippedSecret)) return true;
+  if (reason === "redacted key" || hasStrippedSecret(step.key)) return true;
+  const override = step.input && args[step.input] != null && ["type", "digits", "select"].includes(step.action);
+  if (!override && hasStrippedSecret(step.value)) return true;
   const { inputs, rows } = boundSteps([step])[0]!;
-  return [...inputs].some((name) => {
+  if ([...inputs].some((name) => {
     const input = workflow.inputs.find((input) => input.name === name);
-    return [args[name], input?.default].some((value) => missingBoundValue(value, input?.type === "table" && rows.has(name)));
-  });
+    return missingBoundValue(args[name] ?? input?.default, input?.type === "table" && rows.has(name));
+  })) return true;
+  return reason === NEEDS_SECRET_VALUE && (!inputs.size || [...inputs].some((name) => args[name] == null || args[name] === ""));
 }
 
 function redactSavedValue(value: string): string {
@@ -157,21 +159,19 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (typeof item === "number" && Number.isFinite(item)) item = String(item);
     if (typeof item === "string" && item && item !== STRIPPED_SECRET) secrets.add(item);
   };
-  const collectBindings = (workflow: RecordValue, args: RecordValue = {}, data = false): void => {
+  const collectBindings = (workflow: RecordValue, args: RecordValue = {}): void => {
     if (!Array.isArray(workflow.steps) || !Array.isArray(workflow.inputs)) return;
     const bound = boundSteps(workflow.steps);
     const declared = workflow.inputs.map(record);
     const names = new Set(declared.flatMap((input) => typeof input.name === "string" ? [input.name] : []));
-    if (!data) {
-      for (const output of Array.isArray(workflow.outputs) ? workflow.outputs : []) preserve(record(output), ["from"]);
-      for (const { step, row, inputs } of bound) {
-        const secret = secretNode(step) || declared.some((input) => input.type === "secret" && typeof input.name === "string" && inputs.has(input.name));
-        const scope = { names, row, secret };
-        steps.set(step, scope);
-        if (workflow === context.workflow && typeof step.id === "string") copies.set(step.id, scope);
-        const when = record(step.when);
-        if (declared.some((input) => input.type === "choice" && input.name === when.input)) preserve(when, ["value"]);
-      }
+    for (const output of Array.isArray(workflow.outputs) ? workflow.outputs : []) preserve(record(output), ["from"]);
+    for (const { step, row, inputs } of bound) {
+      const secret = secretNode(step) || declared.some((input) => input.type === "secret" && typeof input.name === "string" && inputs.has(input.name));
+      const scope = { names, row, secret };
+      steps.set(step, scope);
+      if (workflow === context.workflow && typeof step.id === "string") copies.set(step.id, scope);
+      const when = record(step.when);
+      if (declared.some((input) => input.type === "choice" && input.name === when.input)) preserve(when, ["value"]);
     }
     for (const input of declared) {
       const name = input.name;
@@ -179,12 +179,12 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
       const targets = bound.filter(({ inputs }) => inputs.has(name));
       const consumers = targets.filter(({ step }) => secretNode(step));
       const secret = input.type === "secret" || consumers.length > 0;
-      if (!data && !secret && (input.type === "choice" || (targets.length > 0 && targets.every(({ step }) => fixedSavedChoice(step))))) {
+      if (!secret && (input.type === "choice" || (targets.length > 0 && targets.every(({ step }) => fixedSavedChoice(step))))) {
         preserve(input, ["default", "choices"], true);
         preserve(args, [name], true);
       }
-      if (!secret) continue;
-      secretInputs.add(input);
+      if (!secret && input.type !== "table") continue;
+      if (secret) secretInputs.add(input);
       for (const [owner, key] of [[input, "default"], [args, name]] as const) {
         const value = owner[key];
         if (input.type !== "table") { remember(value); continue; }
@@ -196,7 +196,6 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
           if (typeof step.value !== "string") continue;
           for (const match of step.value.matchAll(ROW_BINDING)) columns.add(match[1]!);
         }
-        if (!columns.size) continue;
         const fields = tables.get(owner) ?? new Map<string, Set<string>>();
         fields.set(key, columns);
         tables.set(owner, fields);
@@ -208,7 +207,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (!item || typeof item !== "object") return;
     if (Array.isArray(item)) { item.forEach((child) => collect(child, data)); return; }
     const node = record(item);
-    collectBindings(node, {}, data);
+    if (!data) collectBindings(node);
     const scope = !data ? steps.get(node) ?? (typeof node.action === "string" && typeof node.id === "string" ? copies.get(node.id) : undefined) : undefined;
     const structural = scope?.secret || secretNode(node);
     if (!data) {
@@ -217,7 +216,8 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
         preserve(record(node.download), ["name", "url", "output"]);
         preserve(record(node.open), ["url", "file"]);
       }
-      for (const key of ["identity", "field"]) preserve(record(node[key]), ["name", "text", "title", "description"]);
+      for (const key of ["identity", "field"]) preserve(record(node[key]), ["name", "text", "title", "description", "app", "windowTitle", "siblingIndex"]);
+      preserve(record(node.provenance), ["x", "y", "space"]);
       if (["css", "xpath", "text", "testid", "role"].includes(String(node.kind))) preserve(node, ["value", "name"]);
       if (typeof node.key === "string") {
         const name = canonicalKey(node.key).split("+").at(-1) || "";
@@ -234,7 +234,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
       if (typeof node.key === "string" && keyMayInsertText(node.key)) remember(node.key);
     }
     if (node.type === "secret") remember(node.default);
-    if (context.workflow) {
+    if (context.workflow && !data) {
       for (const key of ["inputs", "publicInputs", "args"]) collectBindings(context.workflow as unknown as RecordValue, record(node[key]));
     }
     for (const [key, child] of Object.entries(node)) if (!MEDIA.has(key) && !kept(node, key, data)) collect(child, data || payloadField(key, child));
@@ -271,11 +271,11 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     const raw = record(item);
     const node = Object.fromEntries(Object.entries(raw).map(([key, child]) => {
       // Keep enum values and binding names intact even when someone typed that same word.
-      const bindingName = key === "name" && (typeof raw.type === "string" || typeof raw.kind === "string");
+      const schemaName = key === "name" && ["schema", "type", "kind", "role"].some((field) => typeof raw[field] === "string");
       const columns = tables.get(raw)?.get(key);
       const payload = data || payloadField(key, child);
       if (columns) return [key, cleanTable(child, columns)];
-      const metadata = !data && (STRUCTURE.has(key) || bindingName || (typeof child === "string" && ENUMS.get(key)?.has(child)));
+      const metadata = !data && (STRUCTURE.has(key) || schemaName || (typeof child === "string" && ENUMS.get(key)?.has(child)));
       return [key, MEDIA.has(key) || kept(raw, key, data) || metadata ? child : clean(child, payload)];
     }));
     if (ENTRY.has(String(node.action || "")) && [node.value, node.key].some(hasStrippedSecret)) {

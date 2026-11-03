@@ -409,7 +409,7 @@ export async function replay(
       stamp({ id: step.id, status: "failed", reason: NEEDS_SECRET_VALUE, phase: failure.phase });
       return finish({ runId, status: "failed", steps, failure });
     }
-    if (step.unresolved) {
+    if (step.unresolved && step.unresolved.reason !== NEEDS_SECRET_VALUE) {
       const failure = await fail(driver, step, "find", "unresolved step", undefined, secrets);
       stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, undefined, false, clock() - started);

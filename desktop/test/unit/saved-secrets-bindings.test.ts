@@ -642,10 +642,11 @@ test("CLI cleanup handles the binding matrix in JSON and JSONL without changing 
   const home = mkdtempSync(path.join(tmpdir(), "bao-binding-cli-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const originals = new Map<string, string>();
-  for (const [index, [, doc]] of samples().entries()) {
+  for (const [index, [, source]] of samples().entries()) {
+    const doc = { ...source, id: `binding-${index}` };
     for (const dir of ["workflows", "trails", "runs", "versions", "heals", "inputs", "promotions", "conflicts", "evals", "reports", "resumes"]) {
-      const relative = `${dir}/binding-${index}.json`;
-      const contents = JSON.stringify(doc);
+      const relative = `${dir}/${doc.id}.json`;
+      const contents = JSON.stringify(dir === "inputs" ? Object.fromEntries(doc.inputs.map((input) => [input.name, input.default])) : doc);
       mkdirSync(path.join(home, dir), { recursive: true });
       writeFileSync(path.join(home, relative), contents);
       originals.set(relative, contents);

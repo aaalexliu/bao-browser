@@ -10,9 +10,13 @@ import { getRun, runWorkflow, type LiveReplayer } from "../../src/mcp/catalog";
 import { LiveSession } from "../../src/mcp/live";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver } from "../../src/v1/replay";
-import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
+import { interpret, type TrailEvent } from "../../src/v1/interpret";
+import { inferSavedWorkflow } from "../../src/v1/save-intent";
+import { projectTeach, teachIntentCase } from "../../src/v1/teach";
+import { parseTable } from "../../src/v1/data-steps";
 
 const ARGS = { password: "pass", privateWord: "secret" };
 function fixture(t: TestContext): string {
@@ -33,6 +37,108 @@ async function listen(server: Server): Promise<string> {
   assert.ok(address && typeof address !== "string");
   return `http://127.0.0.1:${address.port}`;
 }
+
+test("recording, teaching and save inference keep authored metadata before the public writer", async (t) => {
+  const home = fixture(t);
+  const library = new Library(home);
+  const event: TrailEvent = { id: "password", ts: 1, kind: "act", op: "type", sensitive: true, value: "password", identity: { surface: "dom", role: "password", inputType: "password", id: "password", name: "Type {{password}}", path: [{ role: "group", name: "password" }] }, locators: [{ kind: "css", value: "#password" }] };
+  const original = structuredClone(event);
+  const meta = { id: "writer-census", name: "password", startUrl: "https://example.test/", secrets: ["pass", "secret"] };
+  const producers: [string, () => WorkflowV2 | Promise<WorkflowV2>][] = [
+    ["recording", () => interpret([event], meta)],
+    ["teaching", () => {
+      const decisions = [{ ts: 1, cardId: event.id, kind: "rename" as const, detail: "see hunter2", intent: "Type {{password}}" }];
+      const projected = projectTeach([event], decisions, meta);
+      assert.deepEqual(projected.cards[0]!.eventIds, [event.id]);
+      library.saveTeachIntentCase("writer", teachIntentCase("writer", [event], decisions, meta));
+      const stored = JSON.parse(readFileSync(path.join(home, "evals", "intent", "cases", "writer.json"), "utf8"));
+      assert.deepEqual(stored.secretIds, [event.id]);
+      assert.equal(stored.decisions[0].cardId, event.id);
+      assert.equal(stored.events[0].value, STRIPPED_SECRET);
+      return projected.workflow;
+    }],
+    ["saved trail", () => {
+      library.save(workflow());
+      library.saveTrail(meta.id, [event]);
+      return interpret(library.readTrail(meta.id) as TrailEvent[], meta);
+    }],
+    ["stripped default", () => {
+      const doc = workflow();
+      doc.inputs[0]!.default = "password";
+      library.save(doc);
+      assert.equal(library.read(doc.id).inputs[0]!.default, STRIPPED_SECRET);
+      return library.read(doc.id);
+    }],
+    ["save inference", () => inferSavedWorkflow(workflow(), { floorTitle: "Writer census", secrets: ["pass", "secret"] }, null, 1)],
+  ];
+  for (const [name, produce] of producers) {
+    const doc = await produce();
+    const step = doc.steps[0]!;
+    assert.equal(step.value, "{{password}}", name);
+    assert.equal(step.label, name === "recording" || name === "saved trail" ? "Type secret" : "Type {{password}}", name);
+    assert.deepEqual(step.locators, [{ kind: "css", value: "#password" }], name);
+    if (["recording", "teaching", "saved trail"].includes(name)) {
+      assert.equal(doc.name, "password", name);
+      assert.deepEqual(step.identity!.path, event.identity!.path, name);
+      assert.equal(step.identity!.name, "Type {{password}}", name);
+    }
+    library.save(doc);
+    const saved = library.read(doc.id);
+    let filled = "";
+    const node = saved.steps[0]!.identity!;
+    const driver = { tree: async () => ({ nodes: [node], texts: [], values: [{ identity: node, value: filled }], url: doc.startUrl }), fill: async (_node: unknown, value: string) => { filled = value; }, snapshot: async () => ({ dom: [] }), sleep: async () => {} } as unknown as Driver;
+    const result = await replay(saved, { password: "new-credential", privateWord: "new-private-word" }, driver);
+    assert.equal(result.status, "passed", `${name}: ${result.failure?.reason}`);
+    assert.equal(filled, "new-credential", name);
+    filled = "";
+    const blocked = await replay(saved, { password: STRIPPED_SECRET, privateWord: "fresh" }, driver, { heal: { available: () => true, propose: async () => { throw new Error("A stripped value reached healing"); } } });
+    assert.equal(blocked.failure?.reason, NEEDS_SECRET_VALUE, name);
+    assert.equal(filled, "", name);
+    library.saveTrail(doc.id, [event]);
+    const trail = library.readTrail(doc.id) as TrailEvent[];
+    assert.equal(trail[0]!.value, STRIPPED_SECRET, name);
+    assert.equal(trail[0]!.identity!.id, "password", name);
+    assert.deepEqual(event, original, name);
+  }
+});
+
+test("ordinary CSV and array table cells use whole-value nets without schema-name exemptions", (t) => {
+  const home = fixture(t);
+  const library = new Library(home);
+  const rows = [{ label: "4111111111111111", status: "sk-table-value" }];
+  const doc = workflow();
+  doc.version = 3;
+  doc.inputs.push({ name: "rows", type: "table", default: "label,status\n4111111111111111,sk-table-value\n" });
+  doc.steps.push({ id: "rows-loop", index: 1, action: "for_each", label: "Rows", surface: "dom", timeoutMs: 0, forEach: { over: { kind: "input", name: "rows" }, steps: [{ id: "row", index: 0, action: "type", label: "Type {{row.label}}", surface: "dom", timeoutMs: 0, value: "{{row.label}}", identity: { surface: "dom", role: "textbox", id: "row", path: [] } }] } });
+  library.save(doc);
+  assert.deepEqual(parseTable(library.read(doc.id).inputs.find((input) => input.name === "rows")!.default), [{ label: STRIPPED_SECRET, status: STRIPPED_SECRET }]);
+  library.saveRun({ id: "tables", workflowId: doc.id, status: "passed", at: 1, steps: [], heals: [], outputs: [{ name: "table", type: "table", columns: [{ name: "label", type: "text" }, { name: "status", type: "text" }], rows }] });
+  const outputs = library.readRun("tables").outputs as { rows: unknown }[];
+  assert.deepEqual(outputs[0]!.rows, [{ label: STRIPPED_SECRET, status: STRIPPED_SECRET }]);
+  assert.deepEqual(rows, [{ label: "4111111111111111", status: "sk-table-value" }]);
+  doc.inputs.push({ name: "choice", type: "choice", choices: ["4111111111111111"] });
+  library.save(doc);
+  const args = { password: { inputs: { choice: "4111111111111111" } }, choice: "4111111111111111" };
+  library.saveTrail(doc.id, [{ op: "type", args }]);
+  const trail = library.readTrail(doc.id) as { args: typeof args }[];
+  assert.equal(trail[0]!.args.choice, "4111111111111111");
+  assert.equal(trail[0]!.args.password.inputs.choice, STRIPPED_SECRET);
+  assert.equal(args.password.inputs.choice, "4111111111111111");
+});
+
+test("saved zero-valued secrets do not rewrite pointer coordinates or identity indices", (t) => {
+  const home = fixture(t);
+  const library = new Library(home);
+  const event: TrailEvent = { id: "zero", ts: 1, kind: "act", op: "type", sensitive: true, value: "0", identity: { surface: "dom", role: "textbox", name: "0", app: "0", windowTitle: "0", siblingIndex: 0, path: [] }, locators: [{ kind: "css", value: "#field" }], provenance: { x: 0, y: 0, space: "viewport" } };
+  const original = structuredClone(event);
+  library.saveTrail("zero", [event]);
+  const saved = (library.readTrail("zero") as TrailEvent[])[0]!;
+  assert.equal(saved.value, STRIPPED_SECRET);
+  assert.deepEqual(saved.identity, event.identity);
+  assert.deepEqual(saved.locators, event.locators);
+  assert.deepEqual(saved.provenance, event.provenance);
+  assert.deepEqual(event, original);
+});
 
 test("public MCP reports keep names, statuses, bindings and markers with nonempty secret evidence", async (t) => {
   const home = fixture(t);

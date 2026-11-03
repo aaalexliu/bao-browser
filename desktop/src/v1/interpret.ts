@@ -1,7 +1,6 @@
 // Deterministic interpret. Same trail, same workflow bytes.
 // Secrets become inputs. File paths are dropped. No model is required.
 
-import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { applyCapturedData, type ExtractSpec, type ListCapture } from "./data-steps";
 import { applyExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
@@ -9,7 +8,7 @@ import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE, secretSavedField } from "./saved-secrets";
+import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
 
 export interface TrailEvent {
   id: string;
@@ -151,7 +150,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     return { events: [event], step };
   });
   if (!seen.preserveActions) bindTypedOptions(mapped);
-  const pieces = seen.preserveActions ? mapped : foldNotes(collapseDigits(mapped, inputs), seen.secrets ?? []);
+  const pieces = seen.preserveActions ? mapped : foldNotes(collapseDigits(mapped, inputs));
   if (!seen.preserveActions) attachExpr(pieces.map((piece) => piece.step));
   const captured = applyCapturedData(pieces, inputs);
   const drafted: WorkflowV2 = {
@@ -166,17 +165,18 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     ...(captured.outputs ? { outputs: captured.outputs } : {}),
   };
   const shaped = shapeFilesDates(drafted, captured.pieces.map((piece) => piece.events), meta.zone || "UTC");
-  assertClean(shaped.doc, secrets);
-  return { doc: shaped.doc, groups: shaped.groups as TrailEvent[][] };
+  const saved = scrubSaved(shaped.doc, { secrets });
+  assertFileSlots(saved);
+  return { doc: saved, groups: shaped.groups as TrailEvent[][] };
 }
 
 /** A password field's typed text is a secret even when the caller did not list it. */
 function secretStrings(events: readonly TrailEvent[], listed: string[]): string[] {
   const out = [...listed];
   for (const event of events) {
-    const password = event.sensitive || event.identity?.role === "password";
+    const password = event.sensitive || secretSavedField(event.identity);
     const value = event.value;
-    if (!password || !value || hasStrippedSecret(value) || value.length < 8 || out.includes(value)) continue;
+    if (!password || !value || hasStrippedSecret(value) || out.includes(value)) continue;
     out.push(value);
   }
   return out;
@@ -249,13 +249,13 @@ function withoutChooserClicks(events: TrailEvent[]): TrailEvent[] {
  * A trailing note with nothing after it stays a note so the text is kept.
  * Handoff lines stay note steps; they are the pause record, not an intent.
  */
-function foldNotes(pieces: InterpretPiece[], secrets: string[]): InterpretPiece[] {
+function foldNotes(pieces: InterpretPiece[]): InterpretPiece[] {
   const out: InterpretPiece[] = [];
   let pending: InterpretPiece | undefined;
   for (const piece of pieces) {
     if (!isIntentNote(piece)) {
       if (pending && piece.step.action !== "note") {
-        applyNote(piece, pending, secrets);
+        applyNote(piece, pending);
         pending = undefined;
       }
       out.push(piece);
@@ -263,7 +263,7 @@ function foldNotes(pieces: InterpretPiece[], secrets: string[]): InterpretPiece[
     }
     const current = out[out.length - 1];
     if (current && current.step.action !== "note") {
-      applyNote(current, piece, secrets);
+      applyNote(current, piece);
       continue;
     }
     if (pending) {
@@ -274,7 +274,7 @@ function foldNotes(pieces: InterpretPiece[], secrets: string[]): InterpretPiece[
     pending = { events: [...piece.events], step: { ...piece.step } };
   }
   if (pending) {
-    const text = noteText(pending, secrets);
+    const text = noteText(pending);
     if (text) pending.step.intent = text;
     out.push(pending);
   }
@@ -287,15 +287,15 @@ function isIntentNote(piece: InterpretPiece): boolean {
   return !/^Handoff (started|ended)\b/.test(text);
 }
 
-function noteText(piece: InterpretPiece, secrets: string[]): string {
+function noteText(piece: InterpretPiece): string {
   const raw = piece.events.map((event) => event.afterText || "").find(Boolean) || "";
-  const cleaned = scrub(raw, secrets)?.replace(/\s+/g, " ").trim() || "";
+  const cleaned = raw.replace(/\s+/g, " ").trim();
   if (cleaned) return cleaned;
   return piece.step.label.replace(/^Note:\s*/, "").trim();
 }
 
-function applyNote(target: InterpretPiece, note: InterpretPiece, secrets: string[]): void {
-  const text = noteText(note, secrets);
+function applyNote(target: InterpretPiece, note: InterpretPiece): void {
+  const text = noteText(note);
   if (text) target.step.intent = text;
   target.events.push(...note.events);
 }
@@ -395,7 +395,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     label: event.op,
     surface,
     identity,
-    locators: scrubLocators(event.locators?.length ? event.locators : locatorsFromIdentity(identity), meta.secrets ?? []),
+    locators: event.locators?.length ? event.locators : locatorsFromIdentity(identity),
     timeoutMs: 8000,
     provenance: event.provenance,
   };
@@ -632,11 +632,8 @@ function normalizeFile(event: TrailEvent): TrailEvent {
 
 function scrub(value: string | undefined, secrets: string[]): string | undefined {
   if (!value) return value;
-  let out = value;
-  for (const secret of secrets) {
-    if (secret) out = out.split(secret).join("");
-  }
-  return out.trim() ? out : undefined;
+  const saved = scrubSaved(value, { secrets });
+  return saved === STRIPPED_SECRET && value !== STRIPPED_SECRET ? undefined : saved;
 }
 
 /** Place Order, Buy, Pay, Submit order, Reserve. Bare Submit and JS Confirm stay clicks. */
@@ -665,18 +662,9 @@ function inferGate(event: TrailEvent, secrets: string[]): "login" | "confirm" | 
 }
 
 function isSecret(event: TrailEvent, secrets: string[]): boolean {
-  if (event.sensitive) return true;
-  if (event.value && secrets.includes(event.value)) return true;
-  if (event.value && isSensitiveValue(event.value)) return true;
-  const id = event.identity;
-  return secretSavedField(id) || isSensitiveField({
-    type: id?.role === "password" ? "password" : id?.inputType,
-    autocomplete: id?.autocomplete,
-    name: id?.nameAttr,
-    id: id?.id,
-    ariaLabel: id?.label || id?.name,
-    value: event.value,
-  });
+  if (event.sensitive || secretSavedField(event.identity)) return true;
+  if (fixedSavedChoice(event)) return false;
+  return !!event.value && (secrets.includes(event.value) || scrubSaved(event.value) === STRIPPED_SECRET);
 }
 
 function openMatch(url: string): string {
@@ -721,27 +709,9 @@ function addInput(inputs: WorkflowInput[], type: WorkflowInput["type"], hint: st
   return input;
 }
 
-function scrubLocators(list: StepLocator[] | undefined, secrets: string[]): StepLocator[] | undefined {
-  if (!list || list.length === 0) return undefined;
-  const out = list.flatMap((locator) => {
-    const blob = `${locator.name || ""} ${locator.value || ""}`;
-    if (secrets.some((secret) => secret && blob.includes(secret))) return [];
-    return [locator];
-  });
-  return out.length ? out : undefined;
-}
-
 function stripSecretValue(identity: Identity | undefined, secrets: string[]): Identity | undefined {
   if (!identity) return undefined;
-  const copy = { ...identity, path: identity.path.map((seg) => ({ ...seg })) };
-  for (const key of ["value", "text", "name", "label", "title", "placeholder"] as const) {
-    const current = copy[key];
-    if (typeof current !== "string") continue;
-    if (secrets.some((secret) => secret && current.includes(secret)) || (key === "value" && isSensitiveValue(current))) {
-      delete copy[key];
-    }
-  }
-  return copy;
+  return scrubSaved({ identity }, { secrets }).identity;
 }
 
 /** 7, 7, +, 5, =  becomes digits {{a}}, click +, digits {{b}}, click = with a numeric postcondition. */
@@ -807,13 +777,7 @@ function attachExpr(steps: WorkflowStep[]): WorkflowStep[] {
   return steps;
 }
 
-function assertClean(doc: WorkflowV2, secrets: string[]): void {
-  const blob = JSON.stringify(doc);
-  for (const secret of secrets) {
-    if (secret && blob.includes(secret)) {
-      throw new Error("interpret kept a secret");
-    }
-  }
+function assertFileSlots(doc: WorkflowV2): void {
   const walk = (step: WorkflowStep): void => {
     if (step.value && step.value.startsWith("/") && !step.value.includes("{{")) {
       throw new Error("interpret kept a file path");
