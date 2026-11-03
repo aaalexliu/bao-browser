@@ -131,7 +131,10 @@ Remove the CI skip when the existing failure is fixed.
 
 `desktop/test/run-v1.mjs` forwards Node test-runner options. CI uses
 `--test-concurrency=2` to bound browser load and `--test-skip-pattern` for this
-single exclusion. A full local run's `extension-shots` timeout passed in a
+single exclusion. TAP reports failures at once. `--test-force-exit` ends each
+test process after its tests finish, so a failed browser startup cannot leave
+a fixture server open until the job times out. Failed assertions still fail
+the job. A full local run's `extension-shots` timeout passed in a
 quiet serial rerun and is not excluded.
 
 ## Compiler floor
