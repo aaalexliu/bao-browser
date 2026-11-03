@@ -8,6 +8,7 @@ export interface DomDump {
   testId?: string;
   id?: string;
   nameAttr?: string;
+  placeholder?: string;
   tag?: string;
   label?: string;
   text?: string;
@@ -194,6 +195,7 @@ export function dumpPage(): PageDump {
       href: el.tagName === "A" ? (el.getAttribute("href") || undefined) : undefined,
       id: el.id || undefined,
       nameAttr: el.getAttribute("name") || undefined,
+      placeholder: el.getAttribute("placeholder") || undefined,
       tag: el.tagName.toLowerCase(),
       label: labelFor(el) || undefined,
       text: text || undefined,

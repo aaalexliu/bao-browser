@@ -559,6 +559,7 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
       home,
       lockFile: path.join(home, "lock"),
       target: { kind: "throwaway", portFile: browser.portFile },
+      selectRun: async () => ({ target: { kind: "throwaway", portFile: browser.portFile }, engineName: "old", artifactRoot: home }),
       helper: () => fakeChromeHelper().helper,
       openProfile: async () => {
         throw new Error("a throwaway Chrome has no profile window");
@@ -628,7 +629,11 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
       assert.equal(click?.skipWhen, MARKER);
       assert.equal(click?.subtreeAfter, "1 ct");
 
-      workflow = new Library(home).read(started.session || "");
+      const library = new Library(home);
+      workflow = library.read(started.session || "");
+      const capture = library.listRuns().find(run => run.workflowId === workflow.id && run.kind === "capture");
+      assert.equal(capture?.status, "failed", "the fixture's refused click remains part of the final state");
+      assert.equal(capture?.modelCalls, undefined, "Bao does not count the recording agent's model calls");
       assertClean(workflow);
       assert.deepEqual(workflow.inputs, []);
       assert.deepEqual(workflow.steps.map((step) => step.action), ["type", "key", "click"]);

@@ -690,6 +690,13 @@ function numberLike(value: string | undefined): boolean {
 }
 
 function nameHint(event: TrailEvent, secret: boolean): string {
+  if (event.source?.adapter === "cdp-live") {
+    for (const field of [event.identity?.label, event.identity?.name, event.identity?.placeholder, event.identity?.nameAttr]) {
+      const name = (field || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      if (name) return /^\d/.test(name) ? `field_${name}` : name;
+    }
+  }
   const hay = [event.identity?.nameAttr, event.identity?.id, event.identity?.label, event.identity?.name]
     .filter(Boolean)
     .join(" ");
@@ -722,7 +729,7 @@ function scrubLocators(list: StepLocator[] | undefined, secrets: string[]): Step
 function stripSecretValue(identity: Identity | undefined, secrets: string[]): Identity | undefined {
   if (!identity) return undefined;
   const copy = { ...identity, path: identity.path.map((seg) => ({ ...seg })) };
-  for (const key of ["value", "text", "name", "label", "title"] as const) {
+  for (const key of ["value", "text", "name", "label", "title", "placeholder"] as const) {
     const current = copy[key];
     if (typeof current !== "string") continue;
     if (secrets.some((secret) => secret && current.includes(secret)) || (key === "value" && isSensitiveValue(current))) {

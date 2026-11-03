@@ -921,7 +921,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       });
       const reason = open.halted || (open.read?.view.reached ? "experian_commit" : "");
       const ask = reason ? ownerStopMessage(reason) : "";
-      library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, toolTimings: open.log.toolTimings(), workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
+      library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, toolTimings: open.log.toolTimings(), workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, videoTruncated, traceUnavailable,
         ...(ask ? { envelope: { status: "needs_human", run_id: open.runId, reason, ask } } : {}),
         ...(video ? { video: `${open.runId}.mp4`, videoStartedAt: open.startedAt } : {}) });
     }

@@ -59,6 +59,7 @@ export interface Identity {
   testId?: string;
   id?: string;
   nameAttr?: string;
+  placeholder?: string;
   tag?: string;
   label?: string;
   text?: string;
