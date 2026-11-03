@@ -3,7 +3,7 @@
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { canonical } from "./canonical";
-import { bindingTokens, INPUT_BINDING, onlyBindings } from "./bindings";
+import { bindingTokens, INPUT_BINDING } from "./bindings";
 import { fixedSavedChoice, hasStrippedSecret } from "./saved-secrets";
 import { documentUsesDataSteps, validateDataSteps, workflowVersionError, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import type { ElementVersion } from "./element-history";
@@ -344,7 +344,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.value && looksLikePath(step.value) && !step.value.includes("{{")) {
       errors.push(`path baked into ${step.id}`);
     }
-    if (step.sensitive && !fixedSavedChoice(step) && step.value && !onlyBindings(step.value, bindingTokens(step.value, names)) && !hasStrippedSecret(step.value)) {
+    if (step.sensitive && !fixedSavedChoice(step) && step.value && !bindingTokens(step.value, names).size && !hasStrippedSecret(step.value)) {
       errors.push(`secret literal ${step.id}`);
     }
     if (step.action === "confirm" && step.human !== true) errors.push(`confirm ${step.id}`);

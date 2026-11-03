@@ -3,12 +3,6 @@ export const ROW_BINDING = /\{\{\s*row\.([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g;
 export const ROW_INDEX_BINDING = /\{\{\s*row_index\s*\}\}/g;
 export const FILE_BINDING = /\{\{\s*([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)\s*\}\}/g;
 
-export function fileBindingTokens(text: unknown, names: ReadonlySet<string>): Set<string> {
-  return new Set(typeof text === "string"
-    ? [...text.matchAll(FILE_BINDING)].filter((match) => names.has(match[1]!)).map((match) => match[0])
-    : []);
-}
-
 export function bindingTokens(text: unknown, names: ReadonlySet<string>, row = false): Set<string> {
   const tokens = new Set<string>();
   if (typeof text !== "string") return tokens;
@@ -20,11 +14,4 @@ export function bindingTokens(text: unknown, names: ReadonlySet<string>, row = f
     for (const match of text.matchAll(ROW_INDEX_BINDING)) tokens.add(match[0]);
   }
   return tokens;
-}
-
-export function onlyBindings(value: unknown, tokens: ReadonlySet<string>): boolean {
-  if (typeof value !== "string" || !value) return false;
-  let remaining = value;
-  for (const token of tokens) remaining = remaining.split(token).join("");
-  return remaining === "";
 }

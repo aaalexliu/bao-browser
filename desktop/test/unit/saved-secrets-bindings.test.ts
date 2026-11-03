@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { liveReplayArgs } from "../../src/cdp-live/live-replay";
+import { startApp } from "../../src/app/server";
+import { scriptedHeal, type HealRecord } from "../../src/v1/heal";
+import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { applyCapturedData, bindStep, materializeOutputs, parseTable, type DataEvent } from "../../src/v1/data-steps";
 import { beginFilesRun, endFilesRun, filesFor, prepareFilesDatesRun, renderTemplate, type TemplateScope } from "../../src/v1/files-dates";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
@@ -13,7 +16,7 @@ import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/sa
 import { subst, validateWorkflow, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { projectTeach, type TeachDecision } from "../../src/v1/teach";
-import { draftVersion, versionDocument } from "../../src/v1/versions";
+import { draftVersion, listVersions, versionDocument } from "../../src/v1/versions";
 
 const PRIVATE = "arbitrary-private-value";
 const CSV = `password\n${PRIVATE}\nsecond-private-value\n`;
@@ -130,6 +133,118 @@ test("all binding representations strip across workflow, trail, run, version and
   }
 });
 
+test("whole-value replacement keeps labels, selectors, free text and existing markers stable across writers", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-whole-value-writers-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const values = ["hunter2", "secret", "strip", "stripped", STRIPPED_SECRET];
+  const doc = {
+    ...workflow(values.map((value) => entry({
+      id: value, sensitive: true, value, label: `see ${value}`, intent: value,
+      identity: { ...FIELD, name: value }, locators: [{ kind: "text", value }],
+    })), []),
+    note: "see hunter2", copies: [...values, "see hunter2", `see ${STRIPPED_SECRET}`],
+  };
+  const original = structuredClone(doc);
+  for (const [surface, save] of writerSurfaces(library, doc)) {
+    const saved = save() as typeof doc;
+    assert.deepEqual(saved.steps.map((step) => step.value), values.map(() => STRIPPED_SECRET), surface);
+    assert.deepEqual(saved.steps.map((step) => step.label), values.map((value) => `see ${value}`), surface);
+    assert.deepEqual(saved.steps.map((step) => step.intent), values, surface);
+    assert.deepEqual(saved.steps.map((step) => step.identity!.name), values, surface);
+    assert.deepEqual(saved.steps.map((step) => step.locators![0]!.value), values, surface);
+    assert.deepEqual(saved.copies, [...values.map(() => STRIPPED_SECRET), "see hunter2", `see ${STRIPPED_SECRET}`], surface);
+    assert.equal(saved.note, "see hunter2", surface);
+    assert.deepEqual(scrubSaved(saved), saved, surface);
+    assert.deepEqual(scrubSaved(scrubSaved(saved)), saved, surface);
+    assert.deepEqual(doc, original, surface);
+  }
+  const file = path.join(home, "runs", "whole.receipts.jsonl");
+  const log = new ReceiptLog(file);
+  for (const value of values) {
+    const body = { kind: "read-back" as const, ts: 1, runId: "whole", workflowId: doc.id, stepId: "hunter2", source: "text" as const, expected: value, actual: `see ${value}`, pass: true };
+    const before = structuredClone(body);
+    const saved = log.append(body, { workflow: doc });
+    assert.equal(saved.expected, STRIPPED_SECRET);
+    assert.equal(saved.actual, `see ${value}`);
+    assert.deepEqual(body, before);
+  }
+  const stored = readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(verifyReceiptChain(stored), true);
+  assert.deepEqual(scrubSaved(stored), stored);
+});
+
+test("copied heal steps retain bindings through HTTP keep, revert, restore and promotion", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-whole-heal-copies-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const stale = { ...FIELD, id: "removed", name: "RemovedBox", testId: "removed" };
+  const current = { ...FIELD, id: "current", name: "PresentBox", testId: "current" };
+  const doc = workflow([entry({
+    id: "credential", sensitive: true, identity: stale, input: "password", value: "{{password}}",
+    label: "Type {{password}}", intent: "Fill {{password}}",
+    postcondition: { kind: "value", match: "{{password}}", timeoutMs: 0 },
+    expect: { kind: "text", match: "Checked {{password}}", timeoutMs: 0 },
+  })], [{ name: "password", type: "secret" }]);
+  library.save(doc);
+  const args = { password: "fresh-credential" };
+  let actual = "";
+  const filled: string[] = [];
+  const driver = (identity: typeof current) => ({
+    tree: async () => ({ nodes: [identity], texts: [`Checked ${actual}`], values: [{ identity, value: actual }], url: doc.startUrl }),
+    snapshot: async () => ({ dom: [] }), fill: async (_node: unknown, value: string) => { actual = value; filled.push(value); }, sleep: async () => {}, notify: async () => {},
+  }) as unknown as Driver;
+  const result = await replay(doc, args, driver(current), {
+    runId: "copy-run", settings: { heal: "auto" }, heal: scriptedHeal({ patch: { identity: current, postcondition: doc.steps[0]!.postcondition }, model: { provider: "fixture", name: "fixture" }, prompt: "fixture", rawResponse: "{}" }),
+  });
+  assert.equal(result.status, "passed", result.failure?.reason);
+  assert.equal(result.heals.length, 1);
+  const active = structuredClone(result.heals);
+  library.saveRun({ id: "copy-run", workflowId: doc.id, status: result.status, at: 1, steps: result.steps, heals: result.heals, inputs: args });
+  const saved = library.readRun("copy-run");
+  const heal = (saved.heals as HealRecord[])[0]!;
+  assert.deepEqual(heal.failedStep, doc.steps[0]);
+  assert.equal(saved.inputs!.password, STRIPPED_SECRET);
+  assert.deepEqual(result.heals, active);
+  const promotion = { workflowId: doc.id, before: structuredClone(doc.steps[0]), replacement: structuredClone(doc.steps[0]), proposal: { label: doc.steps[0]!.label, postcondition: doc.steps[0]!.postcondition } };
+  library.savePromotion(promotion);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(home, "promotions", `${doc.id}.json`), "utf8")), promotion);
+  const bare = { action: "type", input: "password", sensitive: true, value: "{{password}}" };
+  library.saveTrail(doc.id, [bare, { ...bare, id: "unmatched" }]);
+  assert.deepEqual((library.readTrail(doc.id) as { value: string }[]).map((event) => event.value), [STRIPPED_SECRET, STRIPPED_SECRET]);
+  const payload = { password: "{{password}}", document: doc };
+  assert.equal(scrubSaved(payload, { workflow: doc, args: payload }).document.steps[0]!.value, STRIPPED_SECRET);
+  const priorHome = process.env.BAO_HOME;
+  const app = await startApp({ home, port: 0, extensionHost: false, chromeUserData: path.join(home, "source-profile"), liveTarget: "bao", liveLockFile: path.join(home, "live.lock") });
+  try {
+    const post = async (url: string, body: unknown) => {
+      const response = await fetch(`http://127.0.0.1:${app.port}${url}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      assert.equal(response.status, 200, await response.clone().text());
+      return response.json();
+    };
+    await post("/api/heal/keep", { id: doc.id, stepId: "credential", patch: heal.proposedPatch, runId: "copy-run", healId: heal.id });
+    assert.equal((library.readKeptHeal(doc.id) as HealRecord).failedStep.value, "{{password}}");
+    await post("/api/heal/revert", { id: doc.id, runId: "copy-run", healId: heal.id });
+    const reverted = listVersions(library, doc.id).filter((row) => row.source === "restore").at(-1)!;
+    assert.equal(versionDocument(library, doc.id, reverted.n).steps[0]!.value, "{{password}}");
+    const restored = await post(`/api/workflows/${doc.id}/versions`, { action: "restore", n: reverted.n }) as { n: number };
+    await post(`/api/workflows/${doc.id}/versions`, { action: "promote", n: restored.n });
+    const promoted = library.read(doc.id);
+    const step = promoted.steps[0]!;
+    assert.deepEqual([step.value, step.label, step.intent, step.postcondition!.match, step.expect!.match], ["{{password}}", "Type {{password}}", "Fill {{password}}", "{{password}}", "Checked {{password}}"]);
+    assert.equal(expectedText(step.expect!.match!, args), "Checked fresh-credential");
+    actual = "";
+    filled.length = 0;
+    const replayed = await replay(promoted, args, driver(stale), { heal: { available: () => false, propose: async () => { throw new Error("unexpected heal"); } } });
+    assert.equal(replayed.status, "passed", replayed.failure?.reason);
+    assert.deepEqual(filled, ["fresh-credential"]);
+    assert.deepEqual(args, { password: "fresh-credential" });
+  } finally {
+    await app.close();
+    if (priorHome === undefined) delete process.env.BAO_HOME; else process.env.BAO_HOME = priorHome;
+  }
+});
+
 test("copied password rows retain producer token spans through every writer and replay with fresh rows", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-copied-binding-spans-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
@@ -192,7 +307,7 @@ test("copied password rows retain producer token spans through every writer and 
   }
 });
 
-test("scoped row and index spans survive literal redaction in loop metadata", (t) => {
+test("scoped row and index templates remain whole in loop metadata", (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-scoped-binding-spans-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
@@ -213,11 +328,11 @@ test("scoped row and index spans survive literal redaction in loop metadata", (t
     for (const [surface, save] of writerSurfaces(library, doc)) {
       const saved = save();
       const step = saved.steps[0]!.forEach!.steps[0]!;
-      assert.deepEqual([step.value, step.label, step.intent, step.postcondition!.match, step.expect!.match], Array(5).fill(`${STRIPPED_SECRET} ${token}`), surface);
+      assert.deepEqual([step.value, step.label, step.intent, step.postcondition!.match, step.expect!.match], Array(5).fill(mixed), surface);
       const bound = bindStep(step, { password: "fresh-cell" }, 2);
-      assert.equal(bound.value, `${STRIPPED_SECRET} ${resolved}`, surface);
-      assert.equal(expectedText(bound.postcondition!.match!, {}), `${STRIPPED_SECRET} ${resolved}`, surface);
-      assert.equal(expectedText(bound.expect!.match!, {}), `${STRIPPED_SECRET} ${resolved}`, surface);
+      assert.equal(bound.value, `${secret} ${resolved}`, surface);
+      assert.equal(expectedText(bound.postcondition!.match!, {}), `${secret} ${resolved}`, surface);
+      assert.equal(expectedText(bound.expect!.match!, {}), `${secret} ${resolved}`, surface);
       assert.equal(saved.inputs[1]!.name, "row_index", surface);
       assert.equal(saved.inputs[1]!.default, "separate-value", surface);
       assert.deepEqual(validateWorkflow(saved), [], surface);
@@ -281,7 +396,7 @@ test("interpreted input labels and login checks survive secret collisions across
   }
 });
 
-test("canonical metadata scrubs literal segments but preserves declared input spans in every writer", (t) => {
+test("canonical metadata and mixed binding expressions remain unchanged in every writer", (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-mixed-binding-spans-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
@@ -306,9 +421,10 @@ test("canonical metadata scrubs literal segments but preserves declared input sp
       assert.deepEqual([
         step.value, step.label, step.intent, step.postcondition!.match, step.expect!.match,
         step.waitFor!.match, step.gone!.match, step.readBack!.match, saved.readBack!.match,
-      ], Array(9).fill("[secret stripped] {{name}}"), `${secret} / ${surface}`);
-      assert.equal(subst(step.value!, { name: "Fresh Person" }), "[secret stripped] Fresh Person");
-      assert.equal(expectedText(step.expect!.match!, { name: "Fresh Person" }), "[secret stripped] Fresh Person");
+      ], Array(9).fill(mixed), `${secret} / ${surface}`);
+      assert.equal(saved.steps[1]!.value, STRIPPED_SECRET);
+      assert.equal(subst(step.value!, { name: "Fresh Person" }), `${secret} Fresh Person`);
+      assert.equal(expectedText(step.expect!.match!, { name: "Fresh Person" }), `${secret} Fresh Person`);
       assert.deepEqual(validateWorkflow(saved), []);
       assert.deepEqual(scrubSaved(saved), saved);
       assert.deepEqual(doc, original);

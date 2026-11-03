@@ -147,7 +147,7 @@ test("without workflow context, ordinary names and short codes stay outside heur
   const doc = workflow("context", [entry({ input: "value", identity: { ...FIELD, autocomplete: "cc-name" } })]);
   const value = { note: `Hello ${PRIVATE}`, ordinary: "keep this" };
   assert.deepEqual(scrubSaved(value), value);
-  assert.deepEqual(scrubSaved(value, { workflow: doc, args: { value: PRIVATE } }), { note: `Hello ${STRIPPED_SECRET}`, ordinary: "keep this" });
+  assert.deepEqual(scrubSaved(value, { workflow: doc, args: { value: PRIVATE } }), value);
   assert.deepEqual(value, { note: `Hello ${PRIVATE}`, ordinary: "keep this" });
 });
 
@@ -165,7 +165,7 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
     "runs/old.json": { workflowId: doc.id, inputs, failure: { reason: `Rejected ${PRIVATE}` } },
     "resumes/old.json": { workflowId: doc.id, publicInputs: inputs, ask: `Review ${PRIVATE}` },
     "reports/old.json": { workflowId: doc.id, args: inputs, reason: `Rejected ${PRIVATE}` },
-    "reports/linked.json": { workflowId: doc.id, reason: `Rejected ${PRIVATE}` },
+    "reports/linked.json": { workflowId: doc.id, reason: PRIVATE },
     "pending-prompt.json": { ask: { workflowId: doc.id }, inputs, text: `Review ${PRIVATE}` },
   };
   const unchanged: Record<string, unknown> = {
@@ -201,11 +201,11 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
   assert.equal(typeof written.backup, "string");
   for (const file of Object.keys(fixtures)) assert.equal(readFileSync(path.join(written.backup!, file), "utf8"), originals.get(file));
   assert.deepEqual(json(home, `inputs/${doc.id}.json`), expected);
-  assert.deepEqual(json(home, "runs/old.json"), { workflowId: doc.id, inputs: expected, failure: { reason: `Rejected ${STRIPPED_SECRET}` } });
-  assert.deepEqual(json(home, "resumes/old.json"), { workflowId: doc.id, publicInputs: expected, ask: `Review ${STRIPPED_SECRET}` });
-  assert.deepEqual(json(home, "reports/old.json"), { workflowId: doc.id, args: expected, reason: `Rejected ${STRIPPED_SECRET}` });
-  assert.deepEqual(json(home, "reports/linked.json"), { workflowId: doc.id, reason: `Rejected ${STRIPPED_SECRET}` });
-  assert.deepEqual(json(home, "pending-prompt.json"), { ask: { workflowId: doc.id }, inputs: expected, text: `Review ${STRIPPED_SECRET}` });
+  assert.deepEqual(json(home, "runs/old.json"), { workflowId: doc.id, inputs: expected, failure: { reason: `Rejected ${PRIVATE}` } });
+  assert.deepEqual(json(home, "resumes/old.json"), { workflowId: doc.id, publicInputs: expected, ask: `Review ${PRIVATE}` });
+  assert.deepEqual(json(home, "reports/old.json"), { workflowId: doc.id, args: expected, reason: `Rejected ${PRIVATE}` });
+  assert.deepEqual(json(home, "reports/linked.json"), { workflowId: doc.id, reason: STRIPPED_SECRET });
+  assert.deepEqual(json(home, "pending-prompt.json"), { ask: { workflowId: doc.id }, inputs: expected, text: `Review ${PRIVATE}` });
   for (const file of Object.keys(unchanged)) assert.equal(readFileSync(path.join(home, file), "utf8"), originals.get(file));
   assert.equal(readFileSync(path.join(home, relative), "utf8"), bytes);
   assert.equal(verifyReceiptChain([receipt]), true);
@@ -214,6 +214,7 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
   assert.deepEqual(again.skipped, dry.skipped);
   const help = cli(home, "--help");
   assert.match(help, /dry-run by default/i);
+  assert.match(help, /whole secret data values only; secrets embedded in free text remain/i);
   assert.match(help, /receipt chains.*skipped.*never rewritten/i);
   assert.match(help, /historical secrets may remain/i);
   assert.match(help, /new receipts.*before hashing/i);
@@ -265,7 +266,7 @@ test("ReceiptLog strips before hashing, preserves live bodies, and extends legac
   const original = structuredClone(body);
   const first = new ReceiptLog(file).append(body, { workflow: doc, args });
   assert.equal(first.expected, STRIPPED_SECRET);
-  assert.equal(first.actual, `Read ${STRIPPED_SECRET}`);
+  assert.equal(first.actual, `Read ${PRIVATE}`);
   const second = new ReceiptLog(file).append({ ...body, ts: 2, expected: "4111 1111 1111 1111", actual: "keep this" });
   assert.equal(second.expected, STRIPPED_SECRET);
   assert.equal(second.actual, "keep this");
@@ -284,7 +285,7 @@ test("ReceiptLog strips before hashing, preserves live bodies, and extends legac
   writeFileSync(legacyFile, legacyBytes);
   const appended = new ReceiptLog(legacyFile).append({ ...body, ts: 3 }, { workflow: doc, args });
   assert.equal(appended.prev, legacy.hash);
-  assert.equal(appended.actual, `Read ${STRIPPED_SECRET}`);
+  assert.equal(appended.actual, `Read ${PRIVATE}`);
   const after = readFileSync(legacyFile, "utf8");
   assert.equal(after.slice(0, legacyBytes.length), legacyBytes);
   assert.deepEqual(after.trim().split("\n").map((line) => JSON.parse(line)), [legacy, appended]);

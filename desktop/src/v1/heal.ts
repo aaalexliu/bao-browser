@@ -258,14 +258,14 @@ export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env, se
         writeFileSync(path.join(dir, "heal-shot.png"), Buffer.from(failure.snapshot.screenshot, "base64"));
       }
       const prompt = buildPrompt(failure, step, secrets);
-      writeFileSync(path.join(dir, "heal-request.json"), maskText(JSON.stringify(scrubSaved({
+      writeFileSync(path.join(dir, "heal-request.json"), JSON.stringify(scrubSaved({
         intent: failure.intent,
         phase: failure.phase,
         reason: failure.reason,
         step,
         dom: failure.snapshot.dom,
         prompt,
-      }), null, 2), secrets));
+      }, { secrets }), null, 2));
       const responsePath = path.join(dir, "heal-response.json");
       try { unlinkSync(responsePath); } catch { /* first request */ }
       const deadline = Date.now() + Number(env.BAO_HEAL_WAIT_MS || 180000);

@@ -42,12 +42,12 @@ const cases: { name: string; value: string; field?: Partial<Identity>; sensitive
     { name: `password brace literal ${value}`, value, field: { inputType: "password" }, secret: true },
   ]),
   ...["current-password", "new-password", "one-time-code", "cc-name", "cc-given-name", "cc-additional-name", "cc-family-name", "cc-number", "cc-csc", "cc-exp", "cc-exp-month", "cc-exp-year", "cc-type", "cc-future-token", "section-pay shipping cc-given-name"].map((autocomplete) => ({ name: autocomplete, value: "private-entry", field: { autocomplete }, secret: true })),
-  ...["4111111111111111", "4111 1111 1111 1111", "4111-1111-1111-1111", "4111111111111111 12/26", "123-45-6789", "123 45 6789", "123456789", " 123456789 ", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.c2lnbmF0dXJl", "sk-fixture123", "ghp_fixture123", "gho_fixture123", "github_pat_fixture123", "xoxb-fixture123", "xoxp-fixture123", "xoxa-fixture123", "AKIAFIXTURE123456789", "GOCSPX-fixture123"].map((value) => ({ name: value, value, secret: true })),
-  ...["ordinary text", "ordinary{{1}}", "Password", "4111111111111112", "2026-11-03", "742", "hello@example.com", "reference 123456789 next", "1234567890"].map((value) => ({ name: value, value, secret: false })),
+  ...["4111111111111111", "4111 1111 1111 1111", "4111-1111-1111-1111", "123-45-6789", "123 45 6789", "123456789", " 123456789 ", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.c2lnbmF0dXJl", "sk-fixture123", "ghp_fixture123", "gho_fixture123", "github_pat_fixture123", "xoxb-fixture123", "xoxp-fixture123", "xoxa-fixture123", "AKIAFIXTURE123456789", "GOCSPX-fixture123"].map((value) => ({ name: value, value, secret: true })),
+  ...["ordinary text", "ordinary{{1}}", "Password", "4111111111111112", "2026-11-03", "742", "hello@example.com", "reference 123456789 next", "1234567890", "4111111111111111 12/26", "token sk-fixture123 here", "card 4111 1111 1111 1111", "SSN 123-45-6789", "JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.c2lnbmF0dXJl"].map((value) => ({ name: value, value, secret: false })),
   { name: "Password button", value: "ordinary text", field: { role: "button", tag: "button", name: "Password" }, secret: false },
 ];
 
-test("each detection rule crosses every trail, run and workflow save surface", async (t) => {
+test("whole-value rules and metadata stability cross every saved surface", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-table-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
@@ -107,13 +107,47 @@ test("each detection rule crosses every trail, run and workflow save surface", a
         const saved = await save();
         assert.equal(JSON.stringify(event), before, "save mutated the live action");
         const context = `${sample.name} / ${op} / ${surface}`;
-        if (surface !== "session summary" || sample.secret) assert.equal(saved.includes(value), !sample.secret, context);
-        assert.equal(saved.includes(STRIPPED_SECRET), sample.secret, context);
-        const parsed = JSON.parse(saved) as unknown;
+        const parsed = JSON.parse(saved);
+        const field = op === "key" ? "key" : "value";
+        let actual: unknown;
+        if (surface.startsWith("workflow default") || ["workflow literal", "workflow import", "version"].includes(surface)) actual = parsed.inputs.find((input: { name: string }) => input.name === "entry")?.default ?? parsed.steps[0][field];
+        else if (surface === "library trail" || surface === "appended trail") actual = parsed[0][field];
+        else if (surface === "run") actual = parsed.steps[0][field];
+        else if (surface === "remembered inputs") actual = parsed.entry;
+        else if (surface === "runtime run") actual = parsed.inputs.entry;
+        else if (surface === "promotion") actual = parsed.event[field];
+        else if (surface === "receipt") actual = parsed.actual;
+        else if (surface === "heal handoff") actual = parsed.step.value;
+        else if (surface === "observer") actual = parsed.args[field];
+        else if (surface === "AX audit") actual = parsed.what;
+        else if (surface === "AX proxy trail") actual = parsed.source.vendor;
+        else if (surface === "session summary") actual = parsed.intent;
+        else if (surface === "pending prompt") actual = parsed.ask.label;
+        else actual = parsed[field];
+        const metadata = surface === "session summary" || surface === "pending prompt";
+        const expected = surface === "session summary" ? publicLiveSession({ status: "passed", intent: value })!.intent : sample.secret && !metadata ? STRIPPED_SECRET : value;
+        assert.equal(actual, expected, context);
         assert.deepEqual(scrubSaved(parsed), parsed, `${context} must be idempotent`);
       }
     }
   }
+});
+
+test("cursor heal handoffs retain whole-value evidence without rewriting free text", async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-whole-heal-request-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const secrets = ["hunter2", "secret", "strip", "stripped"];
+  const step = workflow({ value: "hunter2", label: "Type hunter2" }).steps[0]!;
+  const failure = { stepId: step.id, index: 0, intent: "Fill", phase: "action" as const, reason: "hunter2", snapshot: { dom: { values: [...secrets, STRIPPED_SECRET, "see hunter2", `see ${STRIPPED_SECRET}`] } } };
+  const original = structuredClone({ step, failure, secrets });
+  await cursorHeal(dir, { BAO_HEAL_WAIT_MS: "0" }, secrets).propose(failure, step);
+  const saved = JSON.parse(readFileSync(path.join(dir, "heal-request.json"), "utf8"));
+  assert.equal(saved.step.value, STRIPPED_SECRET);
+  assert.equal(saved.step.label, "Type hunter2");
+  assert.equal(saved.reason, STRIPPED_SECRET);
+  assert.deepEqual(saved.dom.values, [...secrets.map(() => STRIPPED_SECRET), STRIPPED_SECRET, "see hunter2", `see ${STRIPPED_SECRET}`]);
+  assert.deepEqual(scrubSaved(saved, { secrets }), saved);
+  assert.deepEqual({ step, failure, secrets }, original);
 });
 
 test("structural redaction keeps schema words and input bindings intact", (t) => {
@@ -137,7 +171,7 @@ test("structural redaction keeps schema words and input bindings intact", (t) =>
   }
 });
 
-test("declared workflow bindings protect spans without exempting literal secrets", (t) => {
+test("declared workflow bindings stay metadata while literal secret values strip", (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-braces-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
@@ -146,17 +180,17 @@ test("declared workflow bindings protect spans without exempting literal secrets
   const before = structuredClone(raw);
   library.saveTrail("raw", [raw, { action: "type", sensitive: true, value: "{{private}}", label: "{{private}}" }]);
   assert.deepEqual(library.readTrail("raw"), [
-    { ...raw, value: STRIPPED_SECRET, note: `Copied ${STRIPPED_SECRET}` },
-    { action: "type", sensitive: true, value: STRIPPED_SECRET, label: STRIPPED_SECRET, unresolved: { reason: NEEDS_SECRET_VALUE } },
+    { ...raw, value: STRIPPED_SECRET },
+    { action: "type", sensitive: true, value: STRIPPED_SECRET, label: "{{private}}", unresolved: { reason: NEEDS_SECRET_VALUE } },
   ]);
   assert.deepEqual(raw, before);
 
   for (const value of ["secret{{1}}", "prefix{{entry}}suffix", "{{private}}", "{{entry}}"] as const) {
     const candidate = workflow({ identity, sensitive: true, value, ...(value === "{{entry}}" ? { input: "entry" } : {}) });
     candidate.inputs = [{ name: "entry", type: "text" }];
-    assert.deepEqual(validateWorkflow(candidate), value === "{{entry}}" ? [] : ["secret literal entry"]);
+    assert.deepEqual(validateWorkflow(candidate), value === "{{entry}}" || value === "prefix{{entry}}suffix" ? [] : ["secret literal entry"]);
     library.save(candidate);
-    const expected = value === "{{entry}}" ? value : value === "prefix{{entry}}suffix" ? `${STRIPPED_SECRET}{{entry}}${STRIPPED_SECRET}` : STRIPPED_SECRET;
+    const expected = value === "{{entry}}" || value === "prefix{{entry}}suffix" ? value : STRIPPED_SECRET;
     assert.equal(library.read(candidate.id).steps[0]!.value, expected);
   }
   const doc = workflow({ identity, value: "{{private}}", label: "Copied {{private}}" });
@@ -173,7 +207,7 @@ test("declared workflow bindings protect spans without exempting literal secrets
   const saved = library.read(doc.id);
   assert.deepEqual(validateWorkflow(saved), []);
   assert.equal(saved.steps[0]!.value, STRIPPED_SECRET);
-  assert.equal(saved.steps[0]!.label, `Copied ${STRIPPED_SECRET}`);
+  assert.equal(saved.steps[0]!.label, "Copied {{private}}");
   assert.equal(saved.steps[1]!.value, "{{entry}}");
   assert.equal(saved.steps[1]!.input, "entry");
   assert.equal(saved.steps[2]!.forEach!.steps[0]!.value, "{{row.code}}");
@@ -190,7 +224,6 @@ const metadataCollision = {
   dialogDecision: "accept", valueMode: "full", via: "cdp", tag: "input", subrole: "text",
   cleared: "email", changed: ["text", "label"],
 };
-const shortCollisionWords = new Set(["low", "url", "old", "cdp"]);
 const collisionSecrets = [
   "failed", "pass", "passed", "action", "cdp-live", "auto", "login", "keep", "wait", "value", "needs_human", "lt1s", "signin", "pending",
   "below", "checked", "low", "dismiss", "url", "viewport", "text", "old", "prompt", "accept",
@@ -209,7 +242,7 @@ test("known secret collisions preserve metadata across public saved writers", as
       note: value, detail: `Copied ${value}`,
     };
     const before = structuredClone(event);
-    const copied = `Copied ${shortCollisionWords.has(value) ? value : STRIPPED_SECRET}`;
+    const copied = `Copied ${value}`;
     const expectedEvent = { ...event, value: STRIPPED_SECRET, outcome: copied, note: STRIPPED_SECRET, detail: copied };
     const session: LiveSessionRecord = {
       id: "session", intent: "Fill form", status: "failed", host: "example.test", updatedAt: 1,
@@ -219,7 +252,7 @@ test("known secret collisions preserve metadata across public saved writers", as
     };
     const artifact = [event, session, { ...metadataCollision, reason: value, label: `Copied ${value}`, detail: value }];
     const expected = [expectedEvent, {
-      ...session, audit: [{ ...session.audit[0]!, label: STRIPPED_SECRET }], note: copied,
+      ...session, note: copied,
     }, { ...metadataCollision, reason: STRIPPED_SECRET, label: copied, detail: STRIPPED_SECRET }];
     const activeArtifact = structuredClone(artifact);
     library.saveTrail("collision", artifact);
@@ -288,7 +321,7 @@ test("known secret collisions preserve metadata across public saved writers", as
   }
 });
 
-test("option tokens survive password collisions but free copies do not", (t) => {
+test("option tokens survive password collisions while whole copied data values strip", (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-options-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
@@ -317,11 +350,11 @@ test("option tokens survive password collisions but free copies do not", (t) => 
     const artifact = [select, radio, checkbox, password, view];
     const active = structuredClone(artifact);
     library.saveTrail("options", artifact);
-    const copied = `Copied ${shortCollisionWords.has(value) ? value : STRIPPED_SECRET}`;
+    const copied = `Copied ${value}`;
     const expected = [
       { ...select, note: copied }, radio, checkbox,
       { ...password, value: STRIPPED_SECRET },
-      { options, controls, label: STRIPPED_SECRET, reason: copied, detail: STRIPPED_SECRET },
+      { options, controls, label: value, reason: copied, detail: STRIPPED_SECRET },
     ];
     assert.deepEqual(library.readTrail("options"), expected, value);
     assert.deepEqual(artifact, active);
@@ -366,7 +399,7 @@ test("option tokens survive password collisions but free copies do not", (t) => 
   }
 });
 
-test("SessionLog keeps valid metadata while stripping detector-matched text through its public API", async (t) => {
+test("SessionLog keeps metadata and embedded free text stable through its public API", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-session-metadata-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const log = new SessionLog(home, "Use ghp_fixture123");
@@ -377,9 +410,9 @@ test("SessionLog keeps valid metadata while stripping detector-matched text thro
   assert.equal(saved?.status, "failed");
   assert.equal(saved?.steps[0]!.status, "passed");
   assert.equal(saved?.audit[0]!.via, "cdp");
-  assert.equal(saved?.audit[0]!.label, STRIPPED_SECRET);
-  assert.equal(saved?.intent, `Use ${STRIPPED_SECRET}`);
-  assert.equal(saved?.note, `Copied ${STRIPPED_SECRET}`);
+  assert.equal(saved?.audit[0]!.label, "ghp_fixture123");
+  assert.equal(saved?.intent, "Use ghp_fixture123");
+  assert.equal(saved?.note, "Copied ghp_fixture123");
 });
 
 test("session summaries use the value nets without treating a Password label as a secret", async (t) => {
@@ -387,7 +420,7 @@ test("session summaries use the value nets without treating a Password label as 
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const log = new SessionLog(home, "Use ghp_fixture123");
   await log.flush("passed");
-  assert.ok(readFileSync(path.join(home, "session.json"), "utf8").includes(STRIPPED_SECRET));
+  assert.equal(JSON.parse(readFileSync(path.join(home, "session.json"), "utf8")).intent, "Use ghp_fixture123");
   assert.deepEqual(scrubSaved({ action: "click", label: "Password" }), { action: "click", label: "Password" });
   const media = { screenshot: "ghp_fixture123", png: "ghp_fixture123", base64: "ghp_fixture123", video: "ghp_fixture123" };
   assert.deepEqual(scrubSaved(media), media);
@@ -453,7 +486,7 @@ test("scrub CLI defaults to a read-only plan, backs up every changed file and is
     "runs/old.json": JSON.stringify({ failure: "sk-fixture123", trail: [{ op: "type", value: "private-entry", identity: { inputType: "password" } }] }),
     "trails/old.json": JSON.stringify([{ op: "key", key: "Shift+q", identity: { autocomplete: "one-time-code" } }]),
     "live-session/trail.jsonl": JSON.stringify({ op: "type", value: "private-entry", identity: { autocomplete: "cc-name" } }) + "\n",
-    "live-session/session.json": JSON.stringify({ intent: "Use github_pat_fixture123" }),
+    "live-session/session.json": JSON.stringify({ intent: "Use github_pat_fixture123", note: "github_pat_fixture123" }),
   };
   for (const [file, contents] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(home, file)), { recursive: true });
