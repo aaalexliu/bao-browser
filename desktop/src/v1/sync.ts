@@ -288,11 +288,11 @@ export async function resolveConflict(
   const errors = validateWorkflow(chosen);
   if (errors.length) throw new Error(errors.join(", "));
   library.save(chosen);
-  state.workflows[chosen.id] = { version: result.version, hash: docHash(chosen) };
+  state.workflows[chosen.id] = { version: result.version, hash: docHash(library.read(chosen.id)) };
   if (action === "keep-both" && result.copy && result.copyId && result.copyVersion) {
     const copy = migrate(result.copy);
     library.save(copy);
-    state.workflows[copy.id] = { version: result.copyVersion, hash: docHash(copy) };
+    state.workflows[copy.id] = { version: result.copyVersion, hash: docHash(library.read(copy.id)) };
   }
   clearConflict(library, id);
   state.conflicts = state.conflicts.filter((item) => item.id !== id);
@@ -440,7 +440,7 @@ function applyCatchUp(library: Library, state: SyncState, snapshot: SyncSnapshot
     for (const heal of snapshot.heals ?? []) {
       const id = String(heal.id || "");
       if (!safeKey(id) || existsSync(path.join(dir, `${id}.json`))) continue;
-      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }, null, 2));
+      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(scrubSaved({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }), null, 2));
     }
   }
   if (categoryOn(state, "settings") && snapshot.settings && snapshot.settingsUpdatedAt && snapshot.settingsUpdatedAt !== state.settingsCloudAt) {
@@ -676,7 +676,7 @@ function writeRemote(library: Library, state: SyncState, remote: PullBody): void
   const errors = validateWorkflow(doc);
   if (errors.length) throw new Error(errors.join(", "));
   library.save(doc);
-  state.workflows[doc.id] = { version: remote.version, hash: docHash(doc) };
+  state.workflows[doc.id] = { version: remote.version, hash: docHash(library.read(doc.id)) };
 }
 
 async function saveShots(

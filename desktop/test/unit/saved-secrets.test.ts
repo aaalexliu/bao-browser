@@ -50,7 +50,20 @@ test("each detection rule crosses every trail, run and workflow save surface", a
         ["appended trail", () => { library.saveTrail("saved", []); library.appendTrail("saved", event); return JSON.stringify(library.readTrail("saved")); }],
         ["run", () => { library.saveRun({ id: "saved", workflowId: "saved", at: 1, status: "passed", heals: [], steps: [event], trail: [event], failure: { message: `Copied: ${value}` } }); return JSON.stringify(library.readRun("saved")); }],
         ["workflow literal", () => { library.save(workflow({ action: op, identity, ...(op === "key" ? { key: value } : { value }) })); return JSON.stringify(library.read("saved")); }],
-        ["workflow default", () => { const doc = workflow({ identity, input: "entry", value: "{{entry}}" }); doc.inputs = [{ name: "entry", type: "text", default: value }]; library.save(doc); return JSON.stringify(library.read("saved")); }],
+        ...[0, 1, 2].flatMap((depth) => [true, false].map((explicit) => [
+          `workflow default depth ${depth} / explicit ${explicit}`,
+          () => {
+            const doc = workflow({ identity, ...(explicit ? { input: "entry" } : {}), value: "{{entry}}" });
+            doc.inputs = [{ name: "entry", type: "text", default: value }];
+            for (let level = 0; level < depth; level += 1) {
+              doc.steps = workflow({ action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: doc.steps } }).steps;
+            }
+            if (depth) { doc.version = 3; doc.inputs.push({ name: "rows", type: "table" }); }
+            library.save(doc);
+            return JSON.stringify(library.read("saved"));
+          },
+        ] as [string, () => string])),
+
       ];
       for (const [surface, save] of surfaces) {
         const before = JSON.stringify(event);
@@ -152,6 +165,9 @@ test("scrub CLI defaults to a read-only plan, backs up every changed file and is
     "workflows/sensitive.json": JSON.stringify(workflow({ value: "private-entry", sensitive: true })),
     "reports/old.json": JSON.stringify({ failure: "ghp_fixture123", steps: [null], inputs: [null] }),
     "resumes/old.json": JSON.stringify({ publicInputs: { entry: "ghp_fixture123" } }),
+    "versions/old.json": JSON.stringify([{ document: workflow({ value: "private-entry", identity: { surface: "dom", role: "password", path: [] } }) }]),
+    "heals/old.json": JSON.stringify({ heal: { note: "sk-fixture123" } }),
+    "trail.jsonl": JSON.stringify({ op: "type", value: "private-entry", sensitive: true }) + "\n",
     "runs/old.json": JSON.stringify({ failure: "sk-fixture123", trail: [{ op: "type", value: "private-entry", identity: { inputType: "password" } }] }),
     "trails/old.json": JSON.stringify([{ op: "key", key: "Shift+q", identity: { autocomplete: "one-time-code" } }]),
     "live-session/trail.jsonl": JSON.stringify({ op: "type", value: "private-entry", identity: { autocomplete: "cc-name" } }) + "\n",

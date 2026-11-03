@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -521,7 +521,11 @@ export async function replay(
     }
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
-      const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
+      const needsValue = Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
+      const recovered = !needsValue && await recoverAuth(workflow, step, args, driver, secrets, gate);
+      if (needsValue) {
+        outcome = { ok: false, repairs: [], failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
+      }
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
@@ -1307,6 +1311,9 @@ async function runLogin(
   secrets: string[],
   gate: ApplyGate,
 ): Promise<StepOutcome> {
+  if (Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret)) {
+    return { ok: false, repairs: [], failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
+  }
   const seen = await driver.tree();
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
   const human = !secretArg(workflow, args, step.input);
@@ -1346,10 +1353,10 @@ async function settleLogin(
   gate: ApplyGate,
   human: boolean,
 ): Promise<boolean> {
-  const password = secretArg(workflow, args, step.input);
-  if (!human && password) {
+  const values = loginValues(workflow, args, step.input);
+  if (!human && values.password) {
     try {
-      await fillSecretLogin(workflow, args, driver, gate, password);
+      await fillSecretLogin(values, driver, gate);
     } catch (err) {
       const message = err instanceof Error ? err.message : "login failed";
       if (message === "could not fill the secret field" || message === "password field missing") return false;
@@ -1449,14 +1456,19 @@ async function waitForLogin(workflow: WorkflowV2, step: WorkflowStep, args: Repl
   return loginSatisfied(workflow, step, seen, args);
 }
 
+function loginValues(workflow: WorkflowV2, args: ReplayArgs, preferred?: string) {
+  return {
+    username: textArg(args, "username") || workflow.inputs.find((input) => input.name === "username")?.default || "",
+    password: secretArg(workflow, args, preferred),
+    verifyCode: textArg(args, "code"),
+  };
+}
+
 async function fillSecretLogin(
-  workflow: WorkflowV2,
-  args: ReplayArgs,
+  { username, password, verifyCode }: ReturnType<typeof loginValues>,
   driver: Driver,
   gate: ApplyGate,
-  password: string,
 ): Promise<void> {
-  const username = textArg(args, "username") || workflow.inputs.find((input) => input.name === "username")?.default || "";
   let tree = await driver.tree();
   const user = tree.nodes.find((node) => node.id === "username" || node.nameAttr === "username");
   if (user && username) await driver.fill(user, username, false);
@@ -1480,7 +1492,6 @@ async function fillSecretLogin(
   await (driver.sleep ? driver.sleep(50) : sleep(50));
   tree = await driver.tree();
   const code = tree.nodes.find((node) => node.id === "code" || node.testId === "verify-code");
-  const verifyCode = textArg(args, "code");
   if (code && verifyCode) {
     await driver.fill(code, verifyCode, false);
     const button = tree.nodes.find((node) => node.id === "verify" || node.testId === "verify-submit");

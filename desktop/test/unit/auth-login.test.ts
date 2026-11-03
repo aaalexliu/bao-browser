@@ -13,6 +13,7 @@ import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { filesContaining } from "../../src/v1/secret-scan";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { startApp } from "../../src/app/server";
+import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
 
 const SECRET = "BaoSecretFixture9kQ7m";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -156,6 +157,43 @@ test("a secret from the parameter form fills the masked field and stops before A
   assert.equal(result.receipts[0]?.actual.includes("Status: none"), true);
   assert.equal(JSON.stringify(result).includes(SECRET), false);
   assert.equal(result.trail.some((event) => event.kind === "human-confirm"), false);
+});
+
+test("login and auth recovery reject every stripped credential before filling or submitting", async () => {
+  for (const recovery of [false, true]) {
+    for (const source of ["username argument", "username default", "password", "preferred password", "code"]) {
+      const workflow = freezeWorkflow();
+      if (recovery) {
+        workflow.steps = [workflow.steps[1]!, workflow.steps[0]!, ...workflow.steps.slice(2)];
+        workflow.steps.forEach((step, index) => { step.index = index; });
+      }
+      const args: Record<string, string> = { username: "ada", password: SECRET, code: "123456" };
+      if (source === "username argument") args.username = `prefix ${STRIPPED_SECRET}`;
+      if (source === "username default") {
+        delete args.username;
+        workflow.inputs.find((input) => input.name === "username")!.default = STRIPPED_SECRET;
+      }
+      if (source === "password") args.password = STRIPPED_SECRET;
+      if (source === "preferred password") {
+        workflow.inputs.push({ name: "alternate", type: "secret" });
+        workflow.steps[0]!.input = "alternate";
+        args.alternate = STRIPPED_SECRET;
+      }
+      if (source === "code") args.code = STRIPPED_SECRET;
+      const driver = secretDriver();
+      const fills: string[] = [];
+      driver.fill = async (_node, text) => { fills.push(text); };
+      let proposed = 0;
+      const result = await replay(workflow, args, driver, {
+        heal: { available: () => true, propose: async () => { proposed += 1; return null; } },
+      });
+      assert.equal(result.status, "failed", `${recovery} / ${source}`);
+      assert.equal(result.failure?.reason, NEEDS_SECRET_VALUE, `${recovery} / ${source}`);
+      assert.deepEqual(fills, []);
+      assert.deepEqual(driver.clicks, []);
+      assert.equal(proposed, 0);
+    }
+  }
 });
 
 test("the human handoff signs in and replay stops at confirm", async () => {

@@ -14,6 +14,18 @@ function record(value: unknown): RecordValue {
   return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
 }
 
+function boundSteps(steps: unknown[]): RecordValue[] {
+  return steps.flatMap((item) => {
+    const step = record(item);
+    const nested = record(step.forEach).steps;
+    return [step, ...(Array.isArray(nested) ? boundSteps(nested) : [])];
+  });
+}
+
+function bindsInput(step: RecordValue, name: unknown): boolean {
+  return step.input === name || (typeof step.value === "string" && typeof name === "string" && step.value.includes(`{{${name}}}`));
+}
+
 function secretSavedField(value: unknown): boolean {
   const field = record(value);
   if ([field.type, field.inputType, field.role].some((item) => typeof item === "string" && item.toLowerCase() === "password")) return true;
@@ -71,10 +83,11 @@ export function scrubSaved<T>(value: T): T {
     }
     if (node.type === "secret") remember(node.default);
     if (Array.isArray(node.steps) && Array.isArray(node.inputs)) {
-      for (const step of node.steps.map(record)) {
+      for (const step of boundSteps(node.steps)) {
         if (!step.sensitive && !secretSavedField(step.identity)) continue;
-        const input = node.inputs.map(record).find((input) => input.name === step.input);
-        if (input) remember(input.default);
+        for (const input of node.inputs.map(record)) {
+          if (bindsInput(step, input.name)) remember(input.default);
+        }
       }
     }
     for (const [key, child] of Object.entries(node)) if (!MEDIA.has(key)) collect(child);
@@ -106,9 +119,10 @@ export function scrubSaved<T>(value: T): T {
       node.unresolved = { reason: NEEDS_SECRET_VALUE };
     }
     if (Array.isArray(node.steps) && Array.isArray(node.inputs)) {
-      for (const step of node.steps.map(record)) {
-        const input = node.inputs.map(record).find((input) => input.name === step.input);
-        if (input && hasStrippedSecret(input.default)) step.unresolved = { reason: NEEDS_SECRET_VALUE };
+      for (const step of boundSteps(node.steps)) {
+        if (node.inputs.map(record).some((input) => bindsInput(step, input.name) && hasStrippedSecret(input.default))) {
+          step.unresolved = { reason: NEEDS_SECRET_VALUE };
+        }
       }
     }
     return node;

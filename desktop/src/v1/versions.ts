@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
+import { scrubSaved } from "./saved-secrets";
 
 export type VersionRole = "live" | "draft" | "past";
 export type VersionSource = "saved" | "heal" | "edit" | "restore" | "conflict";
@@ -91,7 +92,7 @@ function readBook(library: Library, id: string): WorkflowVersion[] {
 
 function writeBook(library: Library, id: string, versions: WorkflowVersion[]): void {
   mkdirSync(path.join(library.root, "versions"), { recursive: true });
-  writeFileSync(bookPath(library, id), JSON.stringify(versions, null, 2));
+  writeFileSync(bookPath(library, id), JSON.stringify(scrubSaved(versions), null, 2));
 }
 
 /** A missing or epoch timestamp is not a save. Wall times are milliseconds. */

@@ -24,15 +24,15 @@ export function scrubHome(home: string, write = false): ScrubReport {
       else if (entry.isFile() && /\.jsonl?$/.test(entry.name)) files.push(file);
     }
   };
-  for (const name of ["workflows", "trails", "runs", "inputs", "promotions", "conflicts", "evals", "reports", "resumes"]) {
+  for (const name of ["workflows", "trails", "runs", "inputs", "promotions", "conflicts", "evals", "reports", "resumes", "versions", "heals"]) {
     const dir = path.join(root, name);
     try { if (!lstatSync(dir).isDirectory()) continue; }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
     walk(dir);
   }
-  for (const name of ["trail.jsonl", "session.json"]) {
-    const dir = path.join(root, "live-session");
-    const file = path.join(dir, name);
+  for (const name of ["trail.jsonl", "live-session/trail.jsonl", "live-session/session.json"]) {
+    const file = path.join(root, name);
+    const dir = path.dirname(file);
     try { if (lstatSync(dir).isDirectory() && lstatSync(file).isFile()) files.push(file); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
