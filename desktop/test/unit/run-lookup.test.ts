@@ -263,6 +263,20 @@ for (const wall of ["bot_wall", "login_wall", "normal"]) {
   });
 }
 
+test("stored MCP defaults missing wall evidence to an empty array", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-run-wall-"));
+  try {
+    const library = new Library(root);
+    for (const wall of ["bot_wall", "login_wall"]) {
+      const pageClass = { class: wall, stepId: "read", reason: "Wall detected" };
+      library.saveRun({ ...stored, pageClasses: [pageClass] });
+      assert.deepEqual(getRun(library, stored.id).pageClass, { ...pageClass, vendor: undefined, line: undefined, evidence: [] });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("stored-only MCP lookup keeps failure and human-step details", () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-run-outcome-"));
   try {
@@ -313,7 +327,7 @@ test("missing runs, bad ids, and corrupt files do not become successful lookups"
       for (const corrupt of ["{broken", "null", "{}", "[]"]) {
         writeFileSync(path.join(root, location, "broken.json"), corrupt);
         assert.deepEqual(library.listRuns(), [stored]);
-        const response = await fetch(`http://127.0.0.1:${app.port}/api/state`);
+        const response: Response = await fetch(`http://127.0.0.1:${app.port}/api/state`);
         assert.equal(response.status, 200);
         const state = await response.json() as { runs: StoredRun[] };
         assert.deepEqual(state.runs.map((run) => run.id), [stored.id]);

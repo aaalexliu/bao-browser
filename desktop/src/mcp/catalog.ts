@@ -378,7 +378,7 @@ export function getRun(library: Library, runId: string): WorkflowOutcome {
         reason: lastClass.reason,
         vendor: lastClass.vendor,
         stepId: lastClass.stepId,
-        evidence: lastClass.evidence,
+        evidence: lastClass.evidence ?? [],
         line: lastClass.line,
       },
     } : {}),
