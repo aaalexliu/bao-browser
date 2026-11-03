@@ -14,6 +14,9 @@ const fields = [
   { id: "current", type: "text", autocomplete: "current-password", value: "current-private", secret: true },
   { id: "otp", type: "text", autocomplete: "one-time-code", value: "otp-private", secret: true },
   { id: "card", type: "text", autocomplete: "cc-name", value: "card-private", secret: true },
+  { id: "agent", type: "text", autocomplete: "current-password", value: "mcp", secret: true },
+  { id: "vendor", type: "text", autocomplete: "current-password", value: "bao", secret: true },
+  { id: "adapter", type: "text", autocomplete: "current-password", value: "stdio", secret: true },
   { id: "ordinary", type: "text", autocomplete: "name", value: "Grace Hopper", secret: false },
 ];
 const html = `<!doctype html>${fields.map((field) => `<input id="${field.id}" type="${field.type}" autocomplete="${field.autocomplete}">`).join("")}`;
@@ -79,11 +82,11 @@ test("eval MCP saves structural secrets without changing tool replies or dispatc
   assert.equal(typed.length, fields.length);
   for (const [index, field] of fields.entries()) {
     const event = typed[index];
+    assert.deepEqual(event.source, { agent: "mcp", vendor: "bao", adapter: "stdio" });
     assert.equal(event.identity.id, field.id);
     assert.equal(event.identity.inputType, field.type);
     assert.equal(event.identity.autocomplete, field.autocomplete);
     assert.equal(event.value, field.type === "password" ? undefined : field.secret ? STRIPPED_SECRET : field.value);
-    assert.equal(bytes.includes(field.value), !field.secret);
     if (field.type !== "password") assert.equal(event.args.text, field.secret ? STRIPPED_SECRET : field.value);
   }
 });

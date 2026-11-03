@@ -124,7 +124,7 @@ test("whole-value rules and metadata stability cross every saved surface", async
         else if (surface === "session summary") actual = parsed.intent;
         else if (surface === "pending prompt") actual = parsed.ask.label;
         else actual = parsed[field];
-        const metadata = surface === "session summary" || surface === "pending prompt";
+        const metadata = surface === "session summary" || surface === "pending prompt" || surface === "AX proxy trail";
         const expected = surface === "session summary" ? publicLiveSession({ status: "passed", intent: value })!.intent : sample.secret && !metadata ? STRIPPED_SECRET : value;
         assert.equal(actual, expected, context);
         assert.deepEqual(scrubSaved(parsed), parsed, `${context} must be idempotent`);

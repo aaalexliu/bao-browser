@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { LIVE_SOURCE, typeTrailEvent } from "../../src/mcp/live";
+import { LIVE_TRAIL_SOURCE } from "../../src/cdp-live/live-trail";
+import { inferSavedWorkflow } from "../../src/v1/save-intent";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -78,4 +82,84 @@ test("persisted model identifiers stay stable without exempting argument, defaul
   assert.equal(trail[0].source.model, model.name);
   assert.equal(trail[0].value, STRIPPED_SECRET);
   assert.deepEqual(model, { provider: "openai", name: "gpt-4o", version: "test" });
+});
+
+test("canonical scalar records survive collisions while their payload copies strip", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-source-metadata-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const sources = [
+    LIVE_SOURCE, LIVE_TRAIL_SOURCE, { agent: "mcp", vendor: "bao", adapter: "stdio" },
+    { agent: "scripted-driver", vendor: "configured-vendor", adapter: "configured-model", model: "configured-model" },
+  ];
+  for (const [index, source] of sources.entries()) {
+    const payload = { source, inference, model };
+    const secrets = Object.values(payload).flatMap((record) => Object.values(record).map(String));
+    const args = Object.fromEntries(secrets.map((value, n) => [`private${n}`, value]));
+    const doc = workflow();
+    doc.inputs = Object.keys(args).map((name) => ({ name, type: "secret" }));
+    doc.steps = [];
+    library.save(doc);
+    const step = { ...payload, args: payload, publicInputs: payload, default: payload, rows: [payload] };
+    const original = structuredClone(step);
+    library.saveRun({ id: `source-${index}`, workflowId: doc.id, status: "passed", at: 1, steps: [step], heals: [], inputs: args });
+    const saved = JSON.parse(readFileSync(path.join(home, `runs/source-${index}.json`), "utf8"));
+    assert.deepEqual(saved.steps[0].source, source);
+    assert.deepEqual(saved.steps[0].inference, inference);
+    assert.deepEqual(saved.steps[0].model, model);
+    assert.ok(Object.values(saved.inputs).every((value) => value === STRIPPED_SECRET));
+    const stripped = Object.fromEntries(Object.entries(payload).map(([key, record]) => [key,
+      Object.fromEntries(Object.keys(record).map((field) => [field, STRIPPED_SECRET])),
+    ]));
+    for (const data of [saved.steps[0].args, saved.steps[0].publicInputs, saved.steps[0].default, saved.steps[0].rows[0]]) assert.deepEqual(data, stripped);
+    assert.deepEqual(step, original);
+  }
+  const event = typeTrailEvent("cursor", undefined, Object.values(LIVE_SOURCE));
+  library.saveTrail("live", [event]);
+  const saved = JSON.parse(readFileSync(path.join(home, "trails/live.json"), "utf8"));
+  assert.deepEqual(saved[0].source, LIVE_SOURCE);
+  assert.equal(saved[0].value, STRIPPED_SECRET);
+});
+
+test("save inference persists real successful and skipped metadata despite matching secrets", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-inference-metadata-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const status of ["ok", "skipped"] as const) {
+    const doc = workflow();
+    delete doc.inference;
+    doc.inputs[0]!.default = status;
+    const original = structuredClone(doc);
+    const saved = await inferSavedWorkflow(doc, {
+      floorTitle: "Models", startUrl: doc.startUrl, secrets: [status, model.provider, model.name, "101"],
+    }, {
+      provider: model.provider, model: model.name,
+      complete: async () => status === "ok" ? JSON.stringify({ title: "Fill form", steps: [{ id: "entry", intent: "Fill the field" }] }) : "invalid-json",
+    }, 101);
+    library.save(saved);
+    const stored = JSON.parse(readFileSync(path.join(home, "workflows/models.json"), "utf8"));
+    assert.deepEqual(stored.inference, { at: 101, provider: model.provider, model: model.name, status });
+    assert.equal(stored.inputs[0].default, STRIPPED_SECRET);
+    assert.deepEqual(library.read(doc.id).inference, stored.inference);
+    assert.deepEqual(doc, original);
+  }
+});
+
+test("proxy trail preserves configured BAO_VENDOR and BAO_MODEL without invoking OS tools", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-proxy-metadata-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const file = path.join(home, "proxy.json");
+  const vendor = "ghp_fixtureVendor";
+  const model = "ghp_fixtureModel";
+  const result = spawnSync(process.execPath, [path.resolve(__dirname, "../../src/proxy/mcp-bao.js")], {
+    input: JSON.stringify({ id: 1, method: "tools/call", params: { name: "unknown", arguments: {} } }) + "\n",
+    encoding: "utf8", env: {
+      ...process.env, HOME: home, BAO_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0",
+      BAO_WORK: path.join(home, "work"), BAO_TRAIL: file, BAO_VENDOR: vendor, BAO_MODEL: model,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const stored = JSON.parse(readFileSync(file, "utf8"));
+  assert.deepEqual(stored.source, { agent: "live-model", vendor, model });
+  assert.deepEqual(stored.events, []);
 });
