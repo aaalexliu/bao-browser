@@ -158,7 +158,7 @@ The desktop script stages Playwright and `classic-level` by reading those two ve
 It copies Playwright Chromium to `Contents/Resources/Chromium.app` and signs that bundle. It compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). `build-mcp-launcher.sh` compiles `bao-mcp.c` and `bao-launch.c` into `Contents/MacOS/bao-mcp`, the agents' MCP entry ([Agent quickstart](agent-quickstart.md#mcp)). Before `bao-mcp` and `Bao.app` are signed, `prove-mcp-launcher.mjs` starts that launcher with no `node` on `PATH` and a temp `HOME` that holds only the test library the proof plants. It checks one MCP exchange: the `bao` server, its tools, a search that reads the app's library and not a `.bao-mcp` library in the caller's directory, and a live tool that says to open the app. The launcher is then signed on its own as `dev.bao.mcp`, then `Bao.app` is signed. Before creating `Bao.dmg`, `prove-apple-events.mjs` checks that the built app's `Contents/Info.plist` has a non-empty string for `NSAppleEventsUsageDescription`. This check does not request or verify an Automation grant. The script writes `Bao.dmg` beside the app.
 
 - `npm install` ends without `EBADENGINE`.
-- The desktop script prints `BUNDLED_BROWSER`, `MCP_LAUNCHER ok`, and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
+- The desktop script prints `BUNDLED_BROWSER`, `MCP_LAUNCHER ok`, `APPLE_EVENTS ok`, and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
 - `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
 - `codesign -dvvv` on the nested helper prints `Identifier=dev.bao.oshelper` and `Authority=bao dev signing`.
 
