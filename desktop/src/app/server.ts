@@ -70,7 +70,7 @@ import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromPropos
 import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
-import { isPageAct, selectCardPoster } from "../v1/poster";
+import { isClearPageShot, isPageAct, selectCardPoster } from "../v1/poster";
 import { applySaveEdits, inferSavedWorkflow, saveCompleter, secretValues } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
 import {
@@ -3471,10 +3471,10 @@ function workflowPoster(library: Library, id: string): string | undefined {
   const workflow = library.read(id);
   const dir = path.join(library.root, "shots", "workflows", id);
   const poster = path.join(dir, "poster.png");
-  if (existsSync(poster) && isFullPageShot(readFileSync(poster))) return poster;
-  if (workflow.driver !== "cdp-live") return;
-  const candidates = workflow.steps.map((step) => path.join(dir, workflowShotName(step.id)));
-  return candidates.find((file) => existsSync(file) && isFullPageShot(readFileSync(file)));
+  const live = workflow.driver === "cdp-live";
+  const candidates = live ? [poster, ...workflow.steps.map((step) => path.join(dir, workflowShotName(step.id)))] : [poster];
+  const usable = live ? isClearPageShot : isFullPageShot;
+  return candidates.find((file) => existsSync(file) && usable(readFileSync(file)));
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {

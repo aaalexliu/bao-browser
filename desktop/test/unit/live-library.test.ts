@@ -7,6 +7,7 @@ import { startApp } from "../../src/app/server";
 import { libraryTable, runKind, runViewer, runsList, type RunSummary } from "../../src/app/views";
 import { LIVE_TRAIL_SOURCE, workflowFromTrail } from "../../src/cdp-live/live-trail";
 import { guardPreset } from "../../src/cdp-live/presets";
+import { redactOverlay } from "../../src/cdp-live/driver";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { dumpPage } from "../../src/v1/dom-page";
 import { testChromium } from "../../src/test-browser";
@@ -21,6 +22,16 @@ function recorded(identities: Partial<Identity>[], op: "type" | "select" = "type
     value: `value-${i}`, beforeUrl: "https://example.test/", afterUrl: "https://example.test/",
   }));
   return workflowFromTrail({ id: "wf-live", name: "Live form", intent: "Fill a form", startUrl: "https://example.test/", createdAt: 1, savedAt: 2, events, guard: guardPreset("generic") });
+}
+
+async function pagePng(width: number, height: number, veiled = false): Promise<Buffer> {
+  const browser = await testChromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width, height } });
+    await page.setContent('<main style="margin:15%;font:24px system-ui"><h1>App settings</h1><p>Configure the saved workflow.</p><label>App name <input value="Example" style="font:inherit"></label><p><button style="font:inherit">Continue</button></p></main>');
+    if (veiled) await page.evaluate(redactOverlay, "inspect /settings");
+    return await page.screenshot({ type: "png" });
+  } finally { await browser.close(); }
 }
 
 test("live inputs use field labels, placeholders and names with safe unique tokens", () => {
@@ -145,6 +156,8 @@ test("finished live captures show their end status without uncounted model-call 
 });
 
 test("live card posters use stored full-page workflow pictures, never crops or stripes", async () => {
+  const page = await pagePng(800, 600);
+  const poster = await pagePng(900, 700);
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-poster-"));
   const workflow = recorded([{ label: "App name" }]);
   const library = new Library(home);
@@ -153,7 +166,6 @@ test("live card posters use stored full-page workflow pictures, never crops or s
   mkdirSync(shots, { recursive: true });
   const app = await startApp({ home, port: 0 });
   const url = `http://127.0.0.1:${app.port}/api/workflows/${workflow.id}/poster`;
-  const page = blankPng(800, 600);
   try {
     assert.equal((await fetch(url)).status, 404);
     writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), page);
@@ -171,7 +183,6 @@ test("live card posters use stored full-page workflow pictures, never crops or s
       assert.equal(response.status, 200);
       assert.deepEqual(Buffer.from(await response.arrayBuffer()), page);
     }
-    const poster = blankPng(900, 700);
     writeFileSync(path.join(shots, "poster.png"), poster);
     response = await fetch(url);
     assert.equal(response.status, 200);
@@ -184,5 +195,28 @@ test("live card posters use stored full-page workflow pictures, never crops or s
       writeFileSync(path.join(shots, "poster.png"), rejected);
       assert.equal((await fetch(url)).status, 404, "non-live cards still require a full-page poster");
     }
+  } finally { await app.close(); rmSync(home, { recursive: true, force: true }); }
+});
+
+test("live posters choose the first clear step and hide blank or privacy-veiled pictures", async () => {
+  const clear = await pagePng(800, 600);
+  const later = await pagePng(900, 700);
+  const veiled = await pagePng(800, 600, true);
+  const home = mkdtempSync(path.join(tmpdir(), "bao-clear-poster-"));
+  const workflow = recorded([{ label: "First" }, { label: "Second" }, { label: "Third" }, { label: "Fourth" }]);
+  new Library(home).save(workflow);
+  const shots = path.join(home, "shots", "workflows", workflow.id);
+  mkdirSync(shots, { recursive: true });
+  const pictures = [blankPng(800, 600), veiled, clear, later];
+  for (const [i, step] of workflow.steps.entries()) writeFileSync(path.join(shots, `${step.id}.png`), pictures[i]!);
+  writeFileSync(path.join(shots, "poster.png"), veiled);
+  const app = await startApp({ home, port: 0 });
+  const url = `http://127.0.0.1:${app.port}/api/workflows/${workflow.id}/poster`;
+  try {
+    const response = await fetch(url);
+    assert.equal(response.status, 200);
+    assert.ok(Buffer.from(await response.arrayBuffer()).equals(clear), "the first clear step must win over blank, veiled, or later pictures");
+    for (const step of workflow.steps.slice(2)) rmSync(path.join(shots, `${step.id}.png`));
+    assert.equal((await fetch(url)).status, 404);
   } finally { await app.close(); rmSync(home, { recursive: true, force: true }); }
 });
