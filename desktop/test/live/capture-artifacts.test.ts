@@ -148,7 +148,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
         });
       }
       try {
-        const started = await host.call({ op: "live_session_start", intent: "Search the local fixture", client: "owner-test", url: fixture.url("/store/costco/storefront") }) as Reply;
+        const started = await host.call({ op: "live_session_start", intent: "Search the local fixture", client: "owner-test", careful: mode === "halted", url: fixture.url("/store/costco/storefront") }) as Reply;
         if (mode === "startup-error") {
           assert.equal(started.outcome.kind, "rejected");
           assert.equal(started.outcome.reason, "fixture startup failed after video started");
@@ -161,7 +161,9 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
           } else assert.equal(((await host.call({ op: "live_snapshot" })) as Reply).outcome.kind, "applied");
           if (mode === "refused") assert.equal(((await host.call({ op: "live_click", ref: "expired" })) as Reply).outcome.kind, "refused");
           if (mode === "halted") {
-            await observer.contexts()[0]!.newPage().catch(() => undefined);
+            const page = observer.contexts().flatMap((context) => context.pages()).find((page) => page.url() === fixture.url("/store/costco/storefront"));
+            assert.ok(page);
+            await page.evaluate(() => { window.open("about:blank"); });
             assert.equal(((await host.call({ op: "live_snapshot" })) as Reply).outcome.kind, "halted");
           }
           if (mode === "workflow-save-error") t.mock.method(Library.prototype, "save", () => { throw new Error("fixture workflow save failed"); });
@@ -190,7 +192,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
           assert.equal(runs[0]!.video, path.basename(destination));
           assert.equal(runs[0]!.kind, "capture");
           assert.equal(runs[0]!.status, mode === "refused" ? "failed" : mode === "halted" ? "needs_human" : "passed");
-          assert.equal(runs[0]!.modelCalls, 0);
+          assert.equal(runs[0]!.modelCalls, undefined);
           assert.equal(runs[0]!.traceUnavailable, undefined);
           assert.ok((await stat(destination)).size > 1000);
         } else {

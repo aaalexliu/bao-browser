@@ -592,7 +592,7 @@ export function runViewer(
   const failed = steps.find((step) => step.status === "failed" || step.status === "paused");
   const selected = steps.find((step) => step.id === selectedId) || failed || steps[steps.length - 1];
   const selectedIndex = Math.max(0, selected ? steps.indexOf(selected) : 0);
-  const modelCalls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+  const modelCalls = countedModelCalls(run);
   const passed = steps.filter((step) => step.status === "passed").length;
   const stopped = failed ? steps.indexOf(failed) + 1 : steps.length;
   const failure = run.failure;
@@ -616,8 +616,8 @@ export function runViewer(
         brokenAttr: failure?.brokenAttr,
       })
       : `${esc(workflow.name)} ${run.kind === "capture" ? "recorded" : "passed"}`;
-  const statusWord = run.kind === "capture" ? `recording (${run.status === "needs_human" ? "needs you" : run.status})` : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
-  const badge = modelCalls === 0
+  const statusWord = run.kind === "capture" ? statusLabel(runKind(run)) : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
+  const badge = modelCalls === undefined ? "" : modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
   const segs = steps.map((step) => `<span class="seg ${esc(step.status)}" data-step="${esc(step.id)}" title="${esc(step.label || step.id)}"></span>`).join("");
@@ -734,11 +734,11 @@ function pageClassPane(run: RunSummary): string {
     const note = detail?.trim().toLowerCase() === label.toLowerCase() ? "" : detail;
     return `<li data-class="${esc(item.class)}"><strong>${esc(label)}</strong>${item.vendor ? ` · ${esc(item.vendor)}` : ""}${note ? ` <span class="quiet">${esc(note)}</span>` : ""}</li>`;
   }).join("");
-  const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+  const calls = countedModelCalls(run);
   return `<section id="page-class" data-class="${esc(items[items.length - 1]?.class || "")}">
     <h3>Page</h3>
     <ul id="page-class-list">${rows}</ul>
-    <p id="page-class-calls">${(run.heals || []).length} heals · ${calls} model calls</p>
+    <p id="page-class-calls">${(run.heals || []).length} heals${calls === undefined ? "" : ` · ${calls} model calls`}</p>
   </section>`;
 }
 
@@ -1081,12 +1081,12 @@ function classRows(runs: RunSummary[], workflows: WorkflowSummary[]): string {
   for (const run of runs) {
     for (const item of run.pageClasses || []) {
       const evidence = (item.evidence || []).map((bit) => `${bit.source}: ${ownerStopText(bit.detail)}`).join(" · ");
-      const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+      const calls = countedModelCalls(run);
       rows.push(`<article class="heal-row" data-page-class="${esc(item.class)}" data-run="${esc(run.id)}">
         <strong>${esc(names.get(run.workflowId) || run.workflowId)}</strong> · ${esc(item.stepId)} · ${esc(classLabel(item.class))}
         <span class="quiet">${esc(ownerStopMessage(item.reason, item.line))}</span>
         ${evidence ? `<span class="quiet">${esc(evidence)}</span>` : ""}
-        <span class="quiet">${(run.heals || []).length} heals · ${calls} model calls</span>
+        <span class="quiet">${(run.heals || []).length} heals${calls === undefined ? "" : ` · ${calls} model calls`}</span>
       </article>`);
     }
   }
@@ -1219,9 +1219,15 @@ export function healWorkflowName(
   return heal.failedStep?.label || heal.intent || "this step";
 }
 
+function countedModelCalls(run: RunSummary): number | undefined {
+  // A live capture records an outside agent, whose model calls Bao does not count.
+  if (run.kind === "capture") return undefined;
+  return run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+}
+
 export function runKind(run: RunSummary, promotion?: PromotionView): string {
-  if (run.kind === "capture") return "recording";
   if (run.status === "timed-out") return "timed-out";
+  if (run.kind === "capture") return run.status === "needs_human" ? "paused" : run.status;
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
   if (run.status === "needs_human" || run.status === "paused") return "paused";
   if (run.status === "failed") return "failed";
@@ -1710,7 +1716,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): stri
   }
   const rows = runs.map((run) => {
     const kind = runKind(run);
-    const calls = run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+    const calls = countedModelCalls(run);
     const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
     const when = typeof run.at === "number" ? formatWhen(run.at) : "";
     return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}" aria-label="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td></tr>`;

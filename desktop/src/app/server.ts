@@ -70,7 +70,7 @@ import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromPropos
 import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
-import { isPageAct, selectCardPoster } from "../v1/poster";
+import { isClearPageShot, isPageAct, selectCardPoster } from "../v1/poster";
 import { applySaveEdits, inferSavedWorkflow, saveCompleter, secretValues } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
 import {
@@ -745,7 +745,7 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/poster")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const file = workflowPoster(path.join(library.root, "shots", "workflows", id));
+        const file = workflowPoster(library, id);
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPicture(res, file);
       }
@@ -3467,13 +3467,14 @@ function croppedPng(file: string): boolean {
   return isElementCrop(readFileSync(file));
 }
 
-/** The card poster is the full-page file. An element crop is not a stand-in. */
-function workflowPoster(dir: string): string | undefined {
-  const file = path.join(dir, "poster.png");
-  if (!existsSync(file)) return;
-  const bytes = readFileSync(file);
-  if (!selectCardPoster([{ name: "poster.png", bytes }])) return;
-  return file;
+function workflowPoster(library: Library, id: string): string | undefined {
+  const workflow = library.read(id);
+  const dir = path.join(library.root, "shots", "workflows", id);
+  const poster = path.join(dir, "poster.png");
+  const live = workflow.driver === "cdp-live";
+  const candidates = live ? [poster, ...workflow.steps.map((step) => path.join(dir, workflowShotName(step.id)))] : [poster];
+  const usable = live ? isClearPageShot : isFullPageShot;
+  return candidates.find((file) => existsSync(file) && usable(readFileSync(file)));
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {

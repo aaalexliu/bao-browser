@@ -54,10 +54,14 @@ test("recordings do not trip replay circuits or clear heal streaks", () => {
   ], "s0"), 1);
 });
 
-test("Library labels captures as recordings and keeps untimed truncated video visible", () => {
-  assert.equal(runKind(recording), "recording");
-  assert.match(runsList([recording], []), />recording<\/span>/);
-  assert.match(runViewer(recording, { name: "Recorded task", steps: [] }), /Recorded task recorded/);
+test("Library shows capture end status and keeps untimed truncated video visible", () => {
+  assert.equal(runKind(recording), "passed");
+  const list = runsList([recording], []);
+  assert.match(list, />passed<\/span>/);
+  assert.doesNotMatch(list, /model calls/);
+  const viewer = runViewer(recording, { name: "Recorded task", steps: [] });
+  assert.match(viewer, /Recorded task recorded/);
+  assert.doesNotMatch(viewer, /id="model-calls"/);
   const missingVideo = runViewer({ ...recording, traceUnavailable: "video unavailable: encoder <failed>" }, { name: "Recorded task", steps: [] });
   assert.match(missingVideo, /video unavailable: encoder &lt;failed&gt;/);
   const html = videoBar({ ...recording, video: "recording.webm", videoStartedAt: 100, videoTruncated: true }, []);

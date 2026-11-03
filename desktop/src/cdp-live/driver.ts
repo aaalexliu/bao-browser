@@ -107,6 +107,7 @@ function toIdentity(node: DomDump): Identity {
     testId: node.testId,
     id: node.id,
     nameAttr: node.nameAttr,
+    placeholder: node.placeholder,
     tag: node.tag,
     label: node.label,
     text: node.text,

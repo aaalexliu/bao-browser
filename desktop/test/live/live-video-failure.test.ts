@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -40,7 +40,7 @@ test("video encoding failure keeps saved captures and action status across all s
         selectRun: async () => ({ target, engineName: "old", artifactRoot: home }) });
       let restoreSave: (() => void) | undefined;
       try {
-        const started = await host.call({ op: "live_session_start", intent: "Search the local fixture", client: "fixture-agent", url: fixture.url("/store/costco/storefront") }) as Reply;
+        const started = await host.call({ op: "live_session_start", intent: "Search the local fixture", client: "fixture-agent", careful: mode === "halted", url: fixture.url("/store/costco/storefront") }) as Reply;
         assert.equal(started.outcome.kind, "applied", JSON.stringify(started));
         const ref = started.view?.controls.find((item) => item.label === "Search Costco")?.ref;
         assert.ok(ref);
@@ -48,7 +48,9 @@ test("video encoding failure keeps saved captures and action status across all s
         assert.equal(typed.outcome.kind, "applied", JSON.stringify(typed));
         if (mode === "refused") assert.equal(((await host.call({ op: "live_click", ref: "expired" })) as Reply).outcome.kind, "refused");
         if (mode === "halted") {
-          await observer.contexts()[0]!.newPage().catch(() => undefined);
+          const page = observer.contexts().flatMap((context) => context.pages()).find((page) => page.url() === fixture.url("/store/costco/storefront"));
+          assert.ok(page);
+          await page.evaluate(() => { window.open("about:blank"); });
           assert.equal(((await host.call({ op: "live_snapshot" })) as Reply).outcome.kind, "halted");
         }
         if (mode === "save-error") {
@@ -81,9 +83,14 @@ test("video encoding failure keeps saved captures and action status across all s
         const expected = mode === "refused" ? "failed" : mode === "halted" ? "needs_human" : "passed";
         assert.equal(run.kind, "capture");
         assert.equal(run.status, expected);
-        assert.equal(run.modelCalls, 0);
+        assert.equal(run.modelCalls, undefined);
         assert.equal(run.video, undefined);
-        assert.equal(run.traceUnavailable, "video unavailable: CDP video encoding failed");
+        const errorPrefix = "video unavailable: CDP video encoding failed; video frames retained at ";
+        const traceUnavailable = run.traceUnavailable || "";
+        assert.ok(traceUnavailable.startsWith(errorPrefix));
+        const frameDir = traceUnavailable.slice(errorPrefix.length);
+        assert.equal(path.dirname(frameDir), path.join(home, "videos"));
+        assert.ok((await readdir(frameDir)).some((file) => file.startsWith("frame-")), "failed encoding retains captured frames");
         assert.equal((JSON.parse(await readFile(path.join(home, "live-session", "session.json"), "utf8")) as { status: string }).status, expected);
         assert.ok((run.steps[0] as { afterShot?: string }).afterShot);
         results.push({ mode, stopped, run });

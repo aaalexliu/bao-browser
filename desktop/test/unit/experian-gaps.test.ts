@@ -507,7 +507,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         const capture = app.library.listRuns().find(run => run.workflowId === reply.session && run.kind === "capture");
         assert.equal(capture?.envelope?.reason, reason);
         assert.equal(capture?.envelope?.ask, message);
-        assert.equal(capture?.modelCalls, 0);
+        assert.equal(capture?.modelCalls, undefined);
       }
     }
   });
