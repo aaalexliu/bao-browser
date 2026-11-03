@@ -22,7 +22,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import test, { after, before, describe, it } from "node:test";
 import Ajv from "ajv/dist/2020";
-import type { LiveSessionRecord } from "../../src/cdp-live/live-record";
+import { chromium } from "playwright";
+import { readLivePage, resolveLiveOptions, type PageFacts } from "../../src/cdp-live/live-ops";
+import { redactLabel, type LiveSessionRecord } from "../../src/cdp-live/live-record";
 import { COMMIT_FLOOR, guardPreset } from "../../src/cdp-live/presets";
 import { McpClient } from "../../src/eval/mcp-client";
 import type { WorkflowOutcome } from "../../src/mcp/catalog";
@@ -76,21 +78,27 @@ function refOf(reply: LiveReply, what: string, match: (control: { label: string;
   return ref;
 }
 
-/**
- * The ref of a control the reply names under stopBeforeConfirm and gives no ref. bao numbers
- * each labelled control in page order. On a page with no credential field, the numbers missing
- * from `controls` belong to the stopBeforeConfirm controls, in the same order. An agent can
- * guess the same ref, so this is how the client tries a trap.
- */
-function withheldRef(reply: LiveReply, label: string): string {
+/** Read the fixture's control index to try a withheld ref. Gaps also include unnamed controls. */
+async function withheldRef(reply: LiveReply, label: string, cdpUrl: string): Promise<string> {
   const view = viewOf(reply);
-  assert.equal(view.credentialFields, 0);
-  const at = view.stopBeforeConfirm.findIndex((item) => item.label === label);
-  assert.ok(at >= 0, `${label} in stopBeforeConfirm: ${view.stopBeforeConfirm.map((item) => item.label).join(" | ")}`);
-  const shown = new Set(view.controls.map((item) => Number(item.ref.split(".c")[1])));
-  const withheld: number[] = [];
-  for (let index = 0; withheld.length <= at; index += 1) if (!shown.has(index)) withheld.push(index);
-  return `e${view.epoch}.c${withheld[at]}`;
+  assert.ok(view.stopBeforeConfirm.some((item) => item.label === label), `${label} in stopBeforeConfirm`);
+  const connection = await chromium.connectOverCDP(cdpUrl);
+  try {
+    const pages = connection.contexts().flatMap((context) => context.pages()).filter((page) => new URL(page.url()).host === "www.instacart.com");
+    assert.equal(pages.length, 1, "only the fixture's live page is open");
+    const facts = await pages[0]!.evaluate<PageFacts>(`(() => {
+      const resolveLiveOptions = ${resolveLiveOptions.toString()};
+      return (${readLivePage.toString()})({ markIndex: -1 });
+    })()`);
+    assert.equal(facts.path, view.path, "the fixture still shows the snapshot's page");
+    const matches = facts.controls.filter((control) => redactLabel(control.label) === label);
+    assert.equal(matches.length, 1, `${label} has one control index`);
+    const ref = `e${view.epoch}.c${matches[0]!.index}`;
+    assert.equal(view.controls.some((control) => control.ref === ref), false, `${label} has no public ref`);
+    return ref;
+  } finally {
+    await connection.close();
+  }
 }
 
 /** Keys anywhere in a JSON document. */
@@ -175,7 +183,7 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
 
       // The store's Checkout link (to /checkout) and the header's Log in link. Each is refused before the page is touched.
       for (const label of ["Checkout", "Log in"]) {
-        traps.set(label, (await live(agent, "live_click", { ref: withheldRef(results, label) }, "error")).outcome);
+        traps.set(label, (await live(agent, "live_click", { ref: await withheldRef(results, label, browser.cdpUrl) }, "error")).outcome);
       }
 
       const listed = await live(agent, "live_snapshot", {});
@@ -189,7 +197,7 @@ describe("L1: a scripted agent puts Costco blueberries in the cart through bao m
       // The cart's own /checkout link, which shows once the cart holds the item.
       const cart = await live(agent, "live_click", { ref: refOf(added, "the cart button", (item) => item.label.startsWith("View Cart")) });
       assert.ok(viewOf(cart).stopBeforeConfirm.some((item) => item.label === "Go to checkout"), JSON.stringify(viewOf(cart).stopBeforeConfirm));
-      traps.set("Go to checkout", (await live(agent, "live_click", { ref: withheldRef(cart, "Go to checkout") }, "error")).outcome);
+      traps.set("Go to checkout", (await live(agent, "live_click", { ref: await withheldRef(cart, "Go to checkout", browser.cdpUrl) }, "error")).outcome);
       recorded = fixture.state().writes;
       assert.equal(existsSync(file), false, "nothing is saved while the session is open");
     } finally {
