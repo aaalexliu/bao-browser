@@ -236,7 +236,20 @@ export class Library {
   }
 
   readRun(id: string): StoredRun {
-    return JSON.parse(readFileSync(path.join(this.root, "runs", `${id}.json`), "utf8")) as StoredRun;
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("bad id");
+    let raw: string;
+    try {
+      raw = readFileSync(path.join(this.root, "runs", `${id}.json`), "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error("run not found");
+      throw error;
+    }
+    const run = JSON.parse(raw) as StoredRun;
+    if (!run || run.id !== id || typeof run.workflowId !== "string" || typeof run.status !== "string"
+      || typeof run.at !== "number" || !Array.isArray(run.steps) || !Array.isArray(run.heals)) {
+      throw new Error("invalid run");
+    }
+    return run;
   }
 
   appendDecision(runId: string, decision: NonNullable<StoredRun["decisions"]>[number]): StoredRun {
@@ -253,7 +266,13 @@ export class Library {
   listRuns(): StoredRun[] {
     return readdirSync(path.join(this.root, "runs"))
       .filter((name) => name.endsWith(".json"))
-      .map((name) => this.readRun(name.replace(/\.json$/, "")));
+      .flatMap((name) => {
+        try {
+          return [this.readRun(name.replace(/\.json$/, ""))];
+        } catch {
+          return [];
+        }
+      });
   }
 
   settings(): Settings {
