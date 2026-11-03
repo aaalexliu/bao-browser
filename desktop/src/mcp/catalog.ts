@@ -65,7 +65,7 @@ export interface WorkflowOutcome {
   lastGreen?: string;
   /** Set when a marketplace listing has not been allowed. */
   permissions?: PermissionPreview;
-  /** Structured human step. `completed` is the same run after resume. */
+  /** Saved status spelling; may differ from the normalized outcome. `completed` follows resume. */
   status?: OutcomeName | "completed" | "timed-out" | "timeout" | "stopped" | "passed" | "paused" | "running" | "idle" | "needs-sign-in";
   run_id?: string;
   step?: string;
