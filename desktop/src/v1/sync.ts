@@ -285,8 +285,6 @@ export async function resolveConflict(
     copy?: unknown;
   }>(state, "POST", `/api/workflows/${encodeURIComponent(id)}/conflict`, { action });
   const chosen = action === "keep-mine" ? migrate(JSON.parse(readFileSync(note.file, "utf8"))) : migrate(result.document);
-  const errors = validateWorkflow(chosen);
-  if (errors.length) throw new Error(errors.join(", "));
   library.save(chosen);
   state.workflows[chosen.id] = { version: result.version, hash: docHash(library.read(chosen.id)) };
   if (action === "keep-both" && result.copy && result.copyId && result.copyVersion) {
@@ -636,7 +634,7 @@ function stash(
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, toJson(scrubSaved(local)));
-  const theirs = migrate(remote.document);
+  const theirs = scrubSaved(migrate(remote.document));
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));
   noteConflict(library, {
@@ -673,8 +671,6 @@ function enqueueDirty(library: Library, state: SyncState): void {
 
 function writeRemote(library: Library, state: SyncState, remote: PullBody): void {
   const doc = migrate(remote.document);
-  const errors = validateWorkflow(doc);
-  if (errors.length) throw new Error(errors.join(", "));
   library.save(doc);
   state.workflows[doc.id] = { version: remote.version, hash: docHash(library.read(doc.id)) };
 }

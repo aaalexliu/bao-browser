@@ -48,6 +48,15 @@ test("every version-book write strips document copies and conflict history", (t)
   check();
   clearConflict(library, doc.id);
   check();
+  const brace = document();
+  brace.steps[0] = { ...brace.steps[0]!, sensitive: true, value: "secret{{1}}" };
+  const drafted = draftVersion(library, brace, "edit");
+  assert.equal(drafted.document.steps[0]!.value, STRIPPED_SECRET);
+  noteConflict(library, { mine: library.read(doc.id), theirs: brace, mineDevice: "Here", theirsDevice: "There", remoteVersion: 99, history: [{ version: 99, document: brace }] });
+  assert.equal(listVersions(library, doc.id).some((row) => row.n === 99 && row.role === "past"), true);
+  const book = readFileSync(path.join(home, "versions", "saved.json"), "utf8");
+  assert.equal(book.includes("secret{{1}}"), false);
+  assert.equal(brace.steps[0]!.value, "secret{{1}}");
   assert.equal(doc.steps[0]!.value, "private-entry");
 });
 
@@ -81,16 +90,22 @@ test("nested sensitive bindings strip defaults and mark their actual steps", (t)
 test("sync hashes match saved documents after pull and every conflict choice", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-sync-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  let docs = [document()];
+  const remoteDocument = (id = "saved") => {
+    const doc = document(id);
+    doc.steps[0] = { ...doc.steps[0]!, sensitive: true, value: "secret{{1}}" };
+    return doc;
+  };
+  let docs = [remoteDocument()];
+  let revision = 2;
   let pushes = 0;
   const server = createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     let body: unknown;
-    if (url.pathname === "/api/sync/snapshot") body = { heals: [{ id: "heal", workflowId: "saved", heal: document() }] };
+    if (url.pathname === "/api/sync/snapshot") body = { heals: [{ id: "heal", workflowId: "saved", heal: remoteDocument() }] };
     else if (url.pathname === "/api/devices") body = { devices: [], categories: [] };
     else if (url.pathname === "/api/workflows") body = { workflows: docs.map(({ id }) => ({ id })) };
-    else if (url.pathname.endsWith("/conflict")) body = { version: 2, document: document(), copyId: "copy", copyVersion: 2, copy: document("copy") };
-    else if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) body = { version: 2, document: docs.find((doc) => url.pathname.endsWith(`/${doc.id}`)), shots: [] };
+    else if (url.pathname.endsWith("/conflict")) body = { version: revision, document: remoteDocument(), copyId: "copy", copyVersion: revision, copy: remoteDocument("copy") };
+    else if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) body = { version: revision, document: docs.find((doc) => url.pathname.endsWith(`/${doc.id}`)), shots: [] };
     else if (url.pathname.endsWith("/versions")) { pushes += 1; body = { version: 3 }; }
     else body = { ok: true };
     res.writeHead(200, { "content-type": "application/json" });
@@ -118,16 +133,25 @@ test("sync hashes match saved documents after pull and every conflict choice", a
   await check();
   const heal = readFileSync(path.join(home, "heals", "heal.json"), "utf8");
   assert.equal(heal.includes("private-entry"), false);
+  assert.equal(heal.includes("secret{{1}}"), false);
   assert.ok(heal.includes(STRIPPED_SECRET));
   for (const action of ["keep-mine", "keep-theirs", "keep-both"] as const) {
     const file = path.join(home, "conflicts", "saved.json");
     mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, toJson(document()));
+    writeFileSync(file, toJson(remoteDocument()));
     const state = loadState(home);
     state.conflicts = [{ id: "saved", remoteVersion: 2, at: 1, file }];
     saveState(home, state);
     await resolveConflict(library, "saved", action);
-    if (action === "keep-both") docs = [document(), document("copy")];
+    if (action === "keep-both") docs = [remoteDocument(), remoteDocument("copy")];
     await check();
   }
+  library.save({ ...library.read("saved"), name: "Local edit" });
+  revision += 1;
+  await syncAll(library, "pull");
+  assert.equal(loadState(home).conflicts.some((row) => row.id === "saved"), true);
+  assert.equal(readFileSync(path.join(home, "versions", "saved.json"), "utf8").includes("secret{{1}}"), false);
+  await resolveConflict(library, "saved", "keep-theirs");
+  await check();
+  assert.equal(docs[0]!.steps[0]!.value, "secret{{1}}");
 });

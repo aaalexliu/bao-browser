@@ -9,7 +9,7 @@ import { createLiveHost } from "../../src/cdp-live/live-host";
 import { launchOwnedChrome } from "../../src/launch";
 import { applyHermeticApp } from "../runtime";
 import { LiveTrail } from "../../src/cdp-live/live-trail";
-import { SessionLog } from "../../src/cdp-live/audit";
+import { SessionLog, publicLiveSession, readLiveSession, type LiveSessionRecord } from "../../src/cdp-live/audit";
 import { logAx } from "../../src/cdp-live/ax";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
@@ -37,9 +37,13 @@ const cases: { name: string; value: string; field?: Partial<Identity>; sensitive
   { name: "sensitive flag", value: "private-entry", sensitive: true, secret: true },
   { name: "password type", value: "private-entry", field: { inputType: "password" }, secret: true },
   { name: "password role", value: "private-entry", field: { role: "password" }, secret: true },
+  ...["secret{{1}}", "prefix{{entry}}suffix", "{{private}}", "prefix {{private}} suffix", "left {private} right"].flatMap((value) => [
+    { name: `sensitive brace literal ${value}`, value, sensitive: true, secret: true },
+    { name: `password brace literal ${value}`, value, field: { inputType: "password" }, secret: true },
+  ]),
   ...["current-password", "new-password", "one-time-code", "cc-name", "cc-given-name", "cc-additional-name", "cc-family-name", "cc-number", "cc-csc", "cc-exp", "cc-exp-month", "cc-exp-year", "cc-type", "cc-future-token", "section-pay shipping cc-given-name"].map((autocomplete) => ({ name: autocomplete, value: "private-entry", field: { autocomplete }, secret: true })),
   ...["4111111111111111", "4111 1111 1111 1111", "4111-1111-1111-1111", "4111111111111111 12/26", "123-45-6789", "123 45 6789", "123456789", " 123456789 ", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.c2lnbmF0dXJl", "sk-fixture123", "ghp_fixture123", "gho_fixture123", "github_pat_fixture123", "xoxb-fixture123", "xoxp-fixture123", "xoxa-fixture123", "AKIAFIXTURE123456789", "GOCSPX-fixture123"].map((value) => ({ name: value, value, secret: true })),
-  ...["ordinary text", "Password", "4111111111111112", "2026-11-03", "742", "hello@example.com", "reference 123456789 next", "1234567890"].map((value) => ({ name: value, value, secret: false })),
+  ...["ordinary text", "ordinary{{1}}", "Password", "4111111111111112", "2026-11-03", "742", "hello@example.com", "reference 123456789 next", "1234567890"].map((value) => ({ name: value, value, secret: false })),
   { name: "Password button", value: "ordinary text", field: { role: "button", tag: "button", name: "Password" }, secret: false },
 ];
 
@@ -54,8 +58,8 @@ test("each detection rule crosses every trail, run and workflow save surface", a
       const event: TrailEvent = { id: "entry", ts: 1, kind: "act", op, identity, sensitive: sample.sensitive, ...(op === "key" ? { key: value } : { value }), note: `Copied: ${value}` };
       const contextDoc = workflow({ identity, sensitive: sample.sensitive, input: "entry", value: "{{entry}}" });
       contextDoc.inputs = [{ name: "entry", type: "text" }];
-      const literal = workflow({ action: op, identity, ...(op === "key" ? { key: value } : { value }) });
-      if (sample.sensitive) {
+      const literal = workflow({ action: op, identity, sensitive: sample.sensitive, ...(op === "key" ? { key: value } : { value }) });
+      if (sample.sensitive && !sample.value.includes("{")) {
         literal.steps[0] = { ...literal.steps[0]!, sensitive: true, input: "entry", value: "{{entry}}" };
         literal.inputs = [{ name: "entry", type: "text", default: value }];
       }
@@ -65,6 +69,7 @@ test("each detection rule crosses every trail, run and workflow save surface", a
         ["appended trail", () => { library.saveTrail("saved", []); library.appendTrail("saved", event); return JSON.stringify(library.readTrail("saved")); }],
         ["run", () => { library.saveRun({ id: "saved", workflowId: "saved", at: 1, status: "passed", heals: [], steps: [event], trail: [event], failure: { message: `Copied: ${value}` } }); return JSON.stringify(library.readRun("saved")); }],
         ["workflow literal", () => { library.save(literal); return JSON.stringify(library.read("saved")); }],
+        ["workflow import", () => JSON.stringify(library.importJson(JSON.stringify(literal)))],
         ["remembered inputs", () => { library.save(contextDoc); library.savePublicInputs("saved", { entry: value }); return JSON.stringify(library.readPublicInputs("saved")); }],
         ["runtime run", () => { library.save(contextDoc); library.saveRun({ id: "saved", workflowId: "saved", at: 1, status: "passed", heals: [], steps: [{ id: "entry" }], inputs: { entry: value } }); return JSON.stringify(library.readRun("saved")); }],
         ["promotion", () => { const row = { workflowId: "saved", event }; library.savePromotion(row); return readFileSync(path.join(home, "promotions", "saved.json"), "utf8"); }],
@@ -115,7 +120,7 @@ test("structural redaction keeps schema words and input bindings intact", (t) =>
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-bindings-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
-  for (const value of ["type", "password", "entry", "{{private}}", `new secret ${STRIPPED_SECRET}`]) {
+  for (const value of ["type", "password", "entry", "{{private}}", "{{entry}}", `new secret ${STRIPPED_SECRET}`]) {
     const identity: Identity = { surface: "dom", role: "textbox", inputType: "password", path: [] };
     const event = scrubSaved({ op: "type", value, identity });
     assert.equal(event.op, "type");
@@ -130,6 +135,250 @@ test("structural redaction keeps schema words and input bindings intact", (t) =>
     assert.equal(saved.inputs[0]!.name, "entry");
     assert.equal(saved.inputs[0]!.default, STRIPPED_SECRET);
   }
+});
+
+test("only declared workflow bindings protect pure brace tokens", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-braces-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const identity: Identity = { surface: "dom", role: "textbox", inputType: "password", path: [] };
+  const raw: TrailEvent = { id: "raw", ts: 1, kind: "act", op: "type", identity, value: "{{private}}", note: "Copied {{private}}" };
+  const before = structuredClone(raw);
+  library.saveTrail("raw", [raw, { action: "type", sensitive: true, value: "{{private}}", label: "{{private}}" }]);
+  assert.deepEqual(library.readTrail("raw"), [
+    { ...raw, value: STRIPPED_SECRET, note: `Copied ${STRIPPED_SECRET}` },
+    { action: "type", sensitive: true, value: STRIPPED_SECRET, label: STRIPPED_SECRET, unresolved: { reason: NEEDS_SECRET_VALUE } },
+  ]);
+  assert.deepEqual(raw, before);
+
+  for (const value of ["secret{{1}}", "prefix{{entry}}suffix", "{{private}}", "{{entry}}"] as const) {
+    const candidate = workflow({ identity, sensitive: true, value, ...(value === "{{entry}}" ? { input: "entry" } : {}) });
+    candidate.inputs = [{ name: "entry", type: "text" }];
+    assert.deepEqual(validateWorkflow(candidate), value === "{{entry}}" ? [] : ["secret literal entry"]);
+    library.save(candidate);
+    assert.equal(library.read(candidate.id).steps[0]!.value, value === "{{entry}}" ? value : STRIPPED_SECRET);
+  }
+  const doc = workflow({ identity, value: "{{private}}", label: "Copied {{private}}" });
+  doc.inputs = [{ name: "entry", type: "text", default: "{{private}}" }];
+  doc.steps.push({ ...doc.steps[0]!, id: "bound", index: 1, input: "entry", value: "{{entry}}", label: "Fill form" });
+  doc.steps.push({
+    id: "loop", index: 2, action: "for_each", surface: "dom", label: "Rows", timeoutMs: 50,
+    forEach: { over: { kind: "input", name: "rows" }, steps: [{ ...doc.steps[0]!, id: "cell", value: "{{row.code}}", label: "Fill cell" }] },
+  });
+  doc.version = 3;
+  doc.inputs.push({ name: "rows", type: "table", default: "code,note\n{{private}},public\n" });
+  const active = structuredClone(doc);
+  library.save(doc);
+  const saved = library.read(doc.id);
+  assert.deepEqual(validateWorkflow(saved), []);
+  assert.equal(saved.steps[0]!.value, STRIPPED_SECRET);
+  assert.equal(saved.steps[0]!.label, `Copied ${STRIPPED_SECRET}`);
+  assert.equal(saved.steps[1]!.value, "{{entry}}");
+  assert.equal(saved.steps[1]!.input, "entry");
+  assert.equal(saved.steps[2]!.forEach!.steps[0]!.value, "{{row.code}}");
+  assert.equal(saved.inputs[0]!.default, STRIPPED_SECRET);
+  assert.equal(saved.inputs[1]!.default, `code,note\n${STRIPPED_SECRET},public\n`);
+  assert.deepEqual(doc, active);
+});
+
+const metadataCollision = {
+  status: "failed", outcome: "needs_human", phase: "action", driver: "cdp-live", heal: "auto", class: "login_wall",
+  mode: "auto", decision: "keep", repair: "wait", timing: "lt1s", by: "value", relation: "below",
+  state: "checked", gate: "login", confidence: "low", optional: "dismiss", target: "url", space: "viewport",
+  read: "text", pausedKind: "signin", pageEngine: "old", drift: "pending", dialogType: "prompt",
+  dialogDecision: "accept", valueMode: "full", via: "cdp", tag: "input", subrole: "text",
+  cleared: "email", changed: ["text", "label"],
+};
+const shortCollisionWords = new Set(["low", "url", "old", "cdp"]);
+const collisionSecrets = [
+  "failed", "pass", "passed", "action", "cdp-live", "auto", "login", "keep", "wait", "value", "needs_human", "lt1s", "signin", "pending",
+  "below", "checked", "low", "dismiss", "url", "viewport", "text", "old", "prompt", "accept",
+  "full", "cdp", "input", "email", "label",
+];
+
+test("known secret collisions preserve metadata across public saved writers", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-enums-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const value of collisionSecrets) {
+    const identity: Identity = { surface: "dom", role: "textbox", inputType: "password", tag: "input", path: [] };
+    const event: TrailEvent = {
+      id: "entry", ts: 1, kind: "act", op: "type", identity, value,
+      outcome: `Copied ${value}`, gate: "login", dialogType: "prompt", dialogDecision: "accept", valueMode: "full",
+      note: value, detail: `Copied ${value}`,
+    };
+    const before = structuredClone(event);
+    const copied = `Copied ${shortCollisionWords.has(value) ? value : STRIPPED_SECRET}`;
+    const expectedEvent = { ...event, value: STRIPPED_SECRET, outcome: copied, note: STRIPPED_SECRET, detail: copied };
+    const session: LiveSessionRecord = {
+      id: "session", intent: "Fill form", status: "failed", host: "example.test", updatedAt: 1,
+      steps: [{ name: "Fill form", status: "passed", ms: 1 }],
+      audit: [{ action: "type", label: value, path: "/", isTrusted: true, ms: 1, at: 1, shot: "", via: "cdp" }],
+      note: `Copied ${value}`,
+    };
+    const artifact = [event, session, { ...metadataCollision, reason: value, label: `Copied ${value}`, detail: value }];
+    const expected = [expectedEvent, {
+      ...session, audit: [{ ...session.audit[0]!, label: STRIPPED_SECRET }], note: copied,
+    }, { ...metadataCollision, reason: STRIPPED_SECRET, label: copied, detail: STRIPPED_SECRET }];
+    const activeArtifact = structuredClone(artifact);
+    library.saveTrail("collision", artifact);
+    const savedArtifact = library.readTrail("collision");
+    assert.deepEqual(savedArtifact, expected, value);
+    assert.ok(Array.isArray(savedArtifact));
+    const savedSession = publicLiveSession(savedArtifact[1]);
+    assert.equal(savedSession?.status, "failed", value);
+    assert.equal(savedSession?.steps[0]!.status, "passed", value);
+    assert.equal(savedSession?.audit[0]!.via, "cdp", value);
+    assert.equal(savedSession?.note, copied, value);
+    assert.deepEqual(artifact, activeArtifact);
+
+    const trail = await LiveTrail.open(home);
+    await trail.add(event);
+    const savedEvent = JSON.parse(readFileSync(trail.file, "utf8"));
+    assert.deepEqual(savedEvent, { ...expectedEvent, source: { agent: "live-model", vendor: "bao", adapter: "cdp-live" } }, value);
+    assert.deepEqual(event, before);
+
+    const doc = workflow({ identity, input: "entry", value: "{{entry}}", heal: "auto", gate: "login" });
+    doc.heal = "auto";
+    doc.driver = "cdp-live";
+    doc.inputs = [{ name: "entry", type: "text", default: value },
+      ...Object.keys(metadataCollision).map((name) => ({ name, type: "secret" as const }))];
+    const activeDoc = structuredClone(doc);
+    library.save(doc);
+    const savedDoc = library.read(doc.id);
+    assert.deepEqual(validateWorkflow(savedDoc), [], value);
+    assert.equal(savedDoc.heal, "auto", value);
+    assert.equal(savedDoc.driver, "cdp-live", value);
+    assert.equal(savedDoc.steps[0]!.gate, "login", value);
+    assert.equal(savedDoc.steps[0]!.value, "{{entry}}", value);
+    assert.equal(savedDoc.inputs[0]!.default, STRIPPED_SECRET, value);
+    const version = draftVersion(library, doc, "edit");
+    assert.deepEqual(versionDocument(library, doc.id, version.n), savedDoc, value);
+    assert.deepEqual(doc, activeDoc);
+
+    const args = Object.fromEntries(["entry", ...Object.keys(metadataCollision)].map((key) => [key, value]));
+    const redactedArgs = Object.fromEntries(Object.keys(args).map((key) => [key, STRIPPED_SECRET]));
+    library.savePublicInputs(doc.id, args);
+    assert.deepEqual(library.readPublicInputs(doc.id), redactedArgs, value);
+    const run = { id: "collision", workflowId: doc.id, at: 1, status: "failed", heals: [], inputs: args, steps: [event], failure: { reason: value } };
+    const activeRun = structuredClone(run);
+    library.saveRun(run);
+    assert.deepEqual(library.readRun(run.id), { ...run, inputs: redactedArgs, steps: [expectedEvent], failure: { reason: STRIPPED_SECRET } }, value);
+    assert.deepEqual(run, activeRun);
+    assert.deepEqual(scrubSaved(args, { workflow: doc, args }), redactedArgs, value);
+    assert.deepEqual(args, Object.fromEntries(Object.keys(args).map((key) => [key, value])));
+
+    const receiptFile = path.join(home, "trails", `${value}.receipts.jsonl`);
+    const receipts = new ReceiptLog(receiptFile);
+    const body = { kind: "read-back" as const, ts: 1, runId: "collision", workflowId: doc.id, stepId: "entry", source: "text" as const, expected: value, actual: `Copied ${value}`, pass: true };
+    receipts.append(body, { workflow: doc, args });
+    const receipt = receipts.entries[0]!;
+    assert.equal(receipt.source, "text", value);
+    assert.equal(receipt.expected, STRIPPED_SECRET, value);
+    assert.equal(receipt.actual, copied, value);
+    assert.equal(receipt.pass, true, value);
+    assert.equal(body.expected, value);
+    assert.equal(verifyReceiptChain(readFileSync(receiptFile, "utf8").trim().split("\n").map((line) => JSON.parse(line))), true, value);
+
+    writeFileSync(path.join(home, "trails", "legacy.json"), JSON.stringify(artifact));
+    scrubHome(home, true);
+    assert.deepEqual(library.readTrail("legacy"), expected, value);
+    assert.deepEqual(scrubHome(home, false).files, [], value);
+  }
+});
+
+test("option tokens survive password collisions but free copies do not", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-options-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const value of [...collisionSecrets, "sk-choice-token"]) {
+    const selectIdentity: Identity = { surface: "dom", role: "combobox", tag: "select", name: "Route", path: [] };
+    const select: TrailEvent = { id: "select", ts: 1, kind: "act", op: "select", identity: selectIdentity, value, note: `Copied ${value}` };
+    const password: TrailEvent = {
+      id: "password", ts: 2, kind: "act", op: "type", value,
+      identity: { surface: "dom", role: "textbox", tag: "input", inputType: "password", path: [] },
+    };
+    const radio: TrailEvent = {
+      id: "radio", ts: 3, kind: "act", op: "click",
+      identity: { surface: "dom", role: "radio", tag: "input", inputType: "radio", value, path: [] },
+    };
+    const checkbox: TrailEvent = {
+      id: "checkbox", ts: 4, kind: "act", op: "check", checked: true,
+      identity: { surface: "dom", role: "checkbox", tag: "input", inputType: "checkbox", value, path: [] },
+    };
+    const options = [{ label: value, value, selected: true, disabled: false }, { label: "Other route", value: "other-route", selected: false, disabled: false }];
+    const controls = [
+      { ref: "native", kind: "select", label: "Route", value, options },
+      { ref: "toggle", kind: "field", label: "Toggle", value, field: { type: "checkbox", name: "toggle", autocomplete: "off" } },
+      { ref: "radio", kind: "radio", label: "Radio", value },
+    ];
+    const view = { options, controls, label: value, reason: `Copied ${value}`, detail: value };
+    const artifact = [select, radio, checkbox, password, view];
+    const active = structuredClone(artifact);
+    library.saveTrail("options", artifact);
+    const copied = `Copied ${shortCollisionWords.has(value) ? value : STRIPPED_SECRET}`;
+    const expected = [
+      { ...select, note: copied }, radio, checkbox,
+      { ...password, value: STRIPPED_SECRET },
+      { options, controls, label: STRIPPED_SECRET, reason: copied, detail: STRIPPED_SECRET },
+    ];
+    assert.deepEqual(library.readTrail("options"), expected, value);
+    assert.deepEqual(artifact, active);
+
+    const doc = interpret([select], { id: "options", startUrl: "https://example.test/" });
+    assert.equal(doc.inputs[0]!.type, "text", "recorded selects use text inputs");
+    assert.equal(doc.inputs[0]!.default, value);
+    const selectedInput = doc.inputs[0]!.name;
+    doc.inputs.push({ name: "route", type: "choice", choices: [value, "other-route"], default: value }, { name: "credential", type: "text" });
+    doc.steps.push(
+      { id: "literal", index: 1, action: "select", sensitive: true, surface: "dom", identity: selectIdentity, value, label: "Choose route", timeoutMs: 50 },
+      { id: "conditional", index: 2, action: "click", surface: "dom", identity: radio.identity, when: { input: "route", value }, label: "Choose branch", timeoutMs: 50 },
+      { id: "check", index: 3, action: "check", surface: "dom", identity: checkbox.identity, checked: true, label: "Check branch", timeoutMs: 50 },
+      { id: "password", index: 4, action: "type", input: "credential", surface: "dom", identity: password.identity, value, label: `Copied ${value}`, timeoutMs: 50 },
+    );
+    const activeDoc = structuredClone(doc);
+    library.save(doc);
+    const saved = library.read(doc.id);
+    assert.deepEqual(validateWorkflow(saved), [], value);
+    assert.equal(saved.inputs.find((input) => input.name === selectedInput)!.default, value);
+    assert.deepEqual(saved.inputs.find((input) => input.name === "route"), { name: "route", type: "choice", choices: [value, "other-route"], default: value });
+    assert.equal(saved.steps[0]!.value, `{{${selectedInput}}}`);
+    assert.equal(saved.steps[1]!.value, value);
+    assert.deepEqual(saved.steps[2]!.when, { input: "route", value });
+    assert.equal(saved.steps[2]!.identity!.value, value);
+    assert.equal(saved.steps[3]!.identity!.value, value);
+    assert.equal(saved.steps[4]!.value, STRIPPED_SECRET);
+    assert.equal(saved.steps[4]!.label, copied);
+    assert.deepEqual(doc, activeDoc);
+    const version = draftVersion(library, doc, "edit");
+    const versioned = versionDocument(library, doc.id, version.n);
+    assert.deepEqual(validateWorkflow(versioned), [], value);
+    assert.deepEqual(versioned, saved, value);
+    const args = { [selectedInput]: value, route: value, credential: value, copied: value };
+    library.savePublicInputs(doc.id, args);
+    assert.deepEqual(library.readPublicInputs(doc.id), { [selectedInput]: value, route: value, credential: STRIPPED_SECRET, copied: STRIPPED_SECRET });
+    assert.deepEqual(args, { [selectedInput]: value, route: value, credential: value, copied: value });
+
+    writeFileSync(path.join(home, "trails", "legacy-options.json"), JSON.stringify(artifact));
+    scrubHome(home, true);
+    assert.deepEqual(library.readTrail("legacy-options"), expected, value);
+  }
+});
+
+test("SessionLog keeps valid metadata while stripping detector-matched text through its public API", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-session-metadata-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const log = new SessionLog(home, "Use ghp_fixture123");
+  log.setSteps([{ name: "Fill form", status: "passed", ms: 1 }]);
+  await log.add({ action: "type", label: "ghp_fixture123", path: "/", isTrusted: true, ms: 1, via: "cdp" });
+  await log.flush("failed", "Copied ghp_fixture123", "example.test");
+  const saved = await readLiveSession(home);
+  assert.equal(saved?.status, "failed");
+  assert.equal(saved?.steps[0]!.status, "passed");
+  assert.equal(saved?.audit[0]!.via, "cdp");
+  assert.equal(saved?.audit[0]!.label, STRIPPED_SECRET);
+  assert.equal(saved?.intent, `Use ${STRIPPED_SECRET}`);
+  assert.equal(saved?.note, `Copied ${STRIPPED_SECRET}`);
 });
 
 test("session summaries use the value nets without treating a Password label as a secret", async (t) => {

@@ -149,9 +149,10 @@ export class Library {
   }
 
   save(doc: WorkflowV2): void {
-    const errors = validateWorkflow(doc);
+    const saved = scrubSaved(doc);
+    const errors = validateWorkflow(saved);
     if (errors.length) throw new Error(errors.join(", "));
-    writeFileSync(this.file(doc.id), toJson(scrubSaved(doc)));
+    writeFileSync(this.file(saved.id), toJson(saved));
   }
 
   rename(id: string, name: string): WorkflowV2 {
@@ -166,10 +167,8 @@ export class Library {
 
   importJson(raw: string): WorkflowV2 {
     const doc = migrate(JSON.parse(raw) as unknown);
-    const errors = validateWorkflow(doc);
-    if (errors.length) throw new Error(errors.join(", "));
     this.save(doc);
-    return doc;
+    return this.read(doc.id);
   }
 
   exportJson(id: string): string {

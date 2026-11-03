@@ -314,6 +314,7 @@ export function versionDocument(library: Library, id: string, n: number): Workfl
 }
 
 export function draftVersion(library: Library, document: WorkflowV2, source: Exclude<VersionSource, "saved">): WorkflowVersion {
+  document = scrubSaved(document);
   const errors = validateWorkflow(document);
   if (errors.length) throw new Error(errors.join(", "));
   const versions = seed(library, document.id);
@@ -403,7 +404,7 @@ function cloudRows(history: CloudVersionRow[]): WorkflowVersion[] {
   const rows: WorkflowVersion[] = [];
   for (const item of history) {
     if (item.kind === "conflict" || item.document === undefined) continue;
-    const document = migrate(item.document);
+    const document = scrubSaved(migrate(item.document));
     if (validateWorkflow(document).length) continue;
     rows.push({
       n: item.version,

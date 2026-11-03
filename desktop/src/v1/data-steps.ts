@@ -9,6 +9,7 @@
 // Playwright locators (role, text, test id, css, xpath, in that order).
 
 import type { ReplayArgs, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { ROW_BINDING, ROW_INDEX_BINDING } from "./bindings";
 
 export const DATA_STEPS_VERSION = 3;
 
@@ -697,8 +698,8 @@ async function performForEach(
 export function bindStep(step: WorkflowStep, row: Record<string, string>, index: number): WorkflowStep {
   const copy = structuredClone(step);
   const replace = (text: string): string => text
-    .replace(/\{\{\s*row\.([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g, (_all, name: string) => row[name] ?? "")
-    .replace(/\{\{\s*row_index\s*\}\}/g, String(index + 1));
+    .replace(ROW_BINDING, (_all, name: string) => row[name] ?? "")
+    .replace(ROW_INDEX_BINDING, String(index + 1));
   if (copy.value) copy.value = replace(copy.value);
   if (copy.postcondition?.match) copy.postcondition = { ...copy.postcondition, match: replace(copy.postcondition.match) };
   if (copy.expect?.match) copy.expect = { ...copy.expect, match: replace(copy.expect.match) };

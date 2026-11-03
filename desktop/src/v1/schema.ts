@@ -3,7 +3,8 @@
 
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { canonical } from "./canonical";
-import { hasStrippedSecret } from "./saved-secrets";
+import { bindingTokens, INPUT_BINDING, onlyBindings } from "./bindings";
+import { fixedSavedChoice, hasStrippedSecret } from "./saved-secrets";
 import { documentUsesDataSteps, validateDataSteps, workflowVersionError, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import type { ElementVersion } from "./element-history";
 import { filesDatesErrors, usesFilesDates } from "./files-dates-check";
@@ -300,10 +301,9 @@ export interface FileArg {
 }
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
-const TEMPLATE_RE = /\{\{([A-Za-z][A-Za-z0-9_]*)\}\}/g;
 
 export function subst(template: string, args: ReplayArgs): string {
-  return template.replace(TEMPLATE_RE, (_all, name: string) => {
+  return template.replace(INPUT_BINDING, (_all, name: string) => {
     const value = args[name];
     if (typeof value === "string" || typeof value === "number") return String(value);
     if (value && typeof value === "object" && !Array.isArray(value) && "name" in value) return value.name;
@@ -344,7 +344,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.value && looksLikePath(step.value) && !step.value.includes("{{")) {
       errors.push(`path baked into ${step.id}`);
     }
-    if (step.sensitive && step.value && !step.value.includes("{{") && !hasStrippedSecret(step.value)) {
+    if (step.sensitive && !fixedSavedChoice(step) && step.value && !onlyBindings(step.value, bindingTokens(step.value, names)) && !hasStrippedSecret(step.value)) {
       errors.push(`secret literal ${step.id}`);
     }
     if (step.action === "confirm" && step.human !== true) errors.push(`confirm ${step.id}`);
