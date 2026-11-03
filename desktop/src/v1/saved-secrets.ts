@@ -8,7 +8,7 @@ export const NEEDS_SECRET_VALUE = "This step needs a value. Its saved value was 
 
 const ENTRY = new Set(["type", "input", "fill", "key", "keypress", "digits"]);
 const MEDIA = new Set(["screenshot", "png", "base64", "image", "video"]);
-const STRUCTURE = new Set(["schema", "id", "toolCallId", "op", "action", "kind", "type", "role", "inputType", "autocomplete", "surface", "input", "parameter", "as", "workflowId", "runId", "stepId", "sessionId", "eventId", "versionId", "version", "index", "n", "ts", "at", "createdAt", "updatedAt", "timeoutMs", "stepIndex", "stepCount", "filesDates", "tag", "subrole", "changed", "ref", "identifier", "testId", "nameAttr", "bundleId", "label", "intent", "match", "url", "startUrl", "beforeUrl", "afterUrl", "requestedUrl", "href", "src", "selector", "query", "cssPath", "xpath", "fileInput", "fileFrom", "fromOutput", "endInput"]);
+const STRUCTURE = new Set(["schema", "id", "toolCallId", "op", "action", "kind", "type", "role", "inputType", "autocomplete", "surface", "input", "parameter", "as", "workflowId", "runId", "stepId", "sessionId", "eventId", "versionId", "hash", "prev", "version", "index", "n", "ts", "at", "createdAt", "updatedAt", "timeoutMs", "stepIndex", "stepCount", "filesDates", "tag", "subrole", "changed", "ref", "identifier", "testId", "nameAttr", "bundleId", "label", "intent", "match", "url", "startUrl", "beforeUrl", "afterUrl", "requestedUrl", "href", "src", "selector", "query", "cssPath", "xpath", "fileInput", "fileFrom", "fromOutput", "endInput"]);
 const ENUMS = new Map(Object.entries({
   status: "running passed failed paused pending skipped needs_human idle completed timed-out stopped provisional promoted reverted",
   outcome: "ok needs_human needs_signin needs_approval failed",

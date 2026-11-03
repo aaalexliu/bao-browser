@@ -290,6 +290,27 @@ test("ReceiptLog scrubs string read-backs of numeric OTP args before hashing", (
   assert.deepEqual(readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line)), receipts);
 });
 
+test("run persistence preserves receipt digests that coincide with private input values", (t) => {
+  const home = fixtureHome(t, "bao-secret-receipt-digests-");
+  const library = new Library(home);
+  const doc = workflow("digests", [entry({ input: "value", value: "{{value}}", identity: { ...FIELD, autocomplete: "cc-name" } })]);
+  library.save(doc);
+  const body: ReceiptBody = { kind: "read-back", ts: 1, runId: "digests", workflowId: doc.id, stepId: "entry", source: "value", expected: "public", actual: "public", pass: true };
+  const digest = new ReceiptLog().append(body).hash;
+  const args = { value: digest };
+  const file = path.join(home, "digests.jsonl");
+  const log = new ReceiptLog(file);
+  log.append(body, { workflow: doc, args });
+  log.append({ ...body, ts: 2 }, { workflow: doc, args });
+  assert.equal(verifyReceiptChain(log.entries), true);
+  library.saveRun({ id: "digests", workflowId: doc.id, status: "passed", at: 1, steps: [], heals: [], inputs: args, receipts: log.entries });
+  const saved = library.readRun("digests");
+  assert.equal(saved.inputs!.value, STRIPPED_SECRET);
+  assert.equal(verifyReceiptChain(saved.receipts as Receipt[]), true);
+  assert.deepEqual(saved.receipts, log.entries);
+  assert.deepEqual(args, { value: digest });
+});
+
 test("ReceiptLog strips before hashing, preserves live bodies, and extends legacy chains without rewriting", (t) => {
   const home = fixtureHome(t, "bao-secret-context-receipts-");
   const file = path.join(home, "runs", "future.receipts.jsonl");
