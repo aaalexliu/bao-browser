@@ -139,12 +139,27 @@ test("saved generic input tokens stay usable without a migration", () => {
 
 test("finished live captures show their end status without uncounted model-call claims", () => {
   const workflow = recorded([{ label: "App name" }]);
-  for (const status of ["passed", "needs_human", "failed", "timed-out"]) {
-    const run: RunSummary = { id: "run-live", workflowId: workflow.id, kind: "capture", status, at: 1, modelCalls: 0, heals: [], steps: [] };
-    assert.equal(runKind(run), status === "needs_human" ? "paused" : status);
-    assert.doesNotMatch(runsList([run], []), /recording|model calls/);
-    assert.doesNotMatch(runViewer(run, workflow), /recording \(|id="model-calls"/);
-    assert.doesNotMatch(libraryTable([{ ...workflow, steps: workflow.steps.length }], [run]), />recording</);
+  const provisional = { workflowId: workflow.id, status: "provisional" };
+  for (const status of ["passed", "needs_human", "paused", "failed", "timed-out"]) {
+    for (const workflowPromotion of [undefined, provisional]) {
+      for (const promotion of [undefined, provisional]) {
+        const run: RunSummary = { id: "run-live", workflowId: workflow.id, kind: "capture", status, at: 1, modelCalls: 0, heals: [], steps: [], promotion };
+        const kind = status === "needs_human" ? "paused" : status;
+        const label = kind === "paused" ? "needs you" : kind === "timed-out" ? "stopped, timed out" : kind;
+        assert.equal(runKind(run, workflowPromotion), kind);
+        const list = runsList([run], []);
+        assert.match(list, new RegExp(`class="status ${kind}">${label}</span>`));
+        assert.doesNotMatch(list, /recording|model calls/);
+        const viewer = runViewer(run, workflow);
+        assert.match(viewer, new RegExp(`id="run-status"><strong>${label}</strong>`));
+        assert.doesNotMatch(viewer, /recording \(|id="model-calls"/);
+        const card = libraryTable([{ ...workflow, steps: workflow.steps.length }], [run], workflowPromotion ? [workflowPromotion] : []);
+        assert.match(card, new RegExp(`class="status ${kind}">${label}</span>`));
+        assert.match(card, new RegExp(`class="swatch ${kind}" title="${label}"`));
+        assert.equal(runKind({ ...run, kind: "replay" }, workflowPromotion),
+          status === "timed-out" ? "timed-out" : workflowPromotion || promotion ? "provisional" : kind);
+      }
+    }
   }
   const replay: RunSummary = { id: "run-replay", workflowId: workflow.id, status: "passed", at: 1, modelCalls: 3, heals: [], steps: [] };
   for (const modelCalls of [1, 3]) {

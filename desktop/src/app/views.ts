@@ -1227,6 +1227,7 @@ function countedModelCalls(run: RunSummary): number | undefined {
 
 export function runKind(run: RunSummary, promotion?: PromotionView): string {
   if (run.status === "timed-out") return "timed-out";
+  if (run.kind === "capture") return run.status === "needs_human" ? "paused" : run.status;
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
   if (run.status === "needs_human" || run.status === "paused") return "paused";
   if (run.status === "failed") return "failed";
