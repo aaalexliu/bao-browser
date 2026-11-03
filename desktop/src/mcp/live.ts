@@ -36,26 +36,18 @@ interface Hit {
 
 let seq = 0;
 
-export function scrubTrailText(value: string, secrets: string[]): string {
-  let out = value;
-  for (const secret of secrets) {
-    if (secret) out = out.split(secret).join("[secret]");
-  }
-  return out;
-}
-
 export function typeTrailEvent(text: string, identity: Identity | undefined, secrets: string[]): TrailEvent {
   const sensitive = identity?.role === "password" || secrets.some((secret) => secret && text === secret);
-  return {
+  return scrubSaved({
     id: `live-${++seq}`,
     ts: Date.now(),
     kind: "act",
     op: "type",
     source: LIVE_SOURCE,
     identity,
-    value: sensitive ? undefined : scrubTrailText(text, secrets),
+    value: text,
     sensitive: sensitive || undefined,
-  };
+  }, { secrets });
 }
 
 export class LiveSession {
@@ -188,7 +180,7 @@ export class LiveSession {
       provenance: { x, y, space: "viewport" },
       beforeUrl: before,
       afterUrl: page.url(),
-      afterText: afterText ? scrubTrailText(afterText, this.secrets) : undefined,
+      afterText: afterText || undefined,
       unresolved: actionable ? undefined : { reason: hit.blank ? "hit nothing actionable" : `hit ${hit.tag || "text"}, not a control` },
     });
     return { content: [{ type: "text", text: `${page.url()} ${afterText || hit.text || hit.tag || "blank"}` }], isError: false };
@@ -293,11 +285,7 @@ export class LiveSession {
   }
 
   private write(event: TrailEvent): void {
-    const json = JSON.stringify(scrubSaved(event));
-    if (this.secrets.some((secret) => secret && json.includes(secret))) {
-      throw new Error("refusing to write a secret into the trail");
-    }
-    appendFileSync(this.trailPath, json + "\n");
+    appendFileSync(this.trailPath, JSON.stringify(scrubSaved(event, { secrets: this.secrets })) + "\n");
   }
 }
 

@@ -203,13 +203,14 @@ test("copied heal steps retain bindings through HTTP keep, revert, restore and p
   }, 10);
   t.after(() => clearInterval(respond));
   const result = await replay(doc, args, driver(current), {
-    runId: "copy-run", settings: { heal: "auto" },
+    runId: "copy-run", settings: { heal: "auto" }, secrets: ["pass", "secret", args.password],
     heal: await cursorAccountHeal({ BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_HEAL_CURSOR: "1", BAO_HEAL_DIR: home, BAO_HEAL_WAIT_MS: "3000" }, ["pass", args.password]),
   });
   assert.equal(result.status, "passed", result.failure?.reason);
   assert.equal(result.heals.length, 1);
   const request = JSON.parse(readFileSync(requestFile, "utf8"));
   assert.deepEqual(request.step, doc.steps[0]);
+  assert.equal(result.heals[0]!.prompt, request.prompt);
   assert.deepEqual(JSON.parse(request.prompt.split("\n").find((line: string) => line.startsWith("Step: ")).slice(6)), doc.steps[0]);
   const driftFile = path.join(home, "drift.jsonl");
   appendDriftTrail(driftFile, { before: request.step, private: args.password, note: "see hunter2", marker: STRIPPED_SECRET }, { workflow: doc, args, secrets: ["pass", "secret"] });

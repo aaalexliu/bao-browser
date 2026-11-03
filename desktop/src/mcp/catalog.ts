@@ -768,9 +768,6 @@ function baseOutcome(
 
 function readBack(step: WorkflowStep, status: string, inputs: ReplayArgs): string {
   if (status === "pending") return "";
-  if (step.sensitive) return "[secret]";
-  const input = step.input ? inputs[step.input] : undefined;
-  if (typeof input === "string" && step.sensitive) return "[secret]";
   if (step.postcondition?.match) return expectedText(step.postcondition.match, inputs);
   if (step.value?.includes("{{")) return expectedText(step.value, inputs);
   return step.label;
@@ -832,9 +829,7 @@ function secretStrings(workflow: WorkflowV2, inputs: ReplayArgs): string[] {
 }
 
 function storeOutcome(library: Library, outcome: WorkflowOutcome, secrets: string[], inputs: ReplayArgs): WorkflowOutcome {
-  let json = JSON.stringify(outcome);
-  for (const secret of secrets) json = json.split(secret).join("[secret]");
-  const parsed = library.scrub(JSON.parse(json) as WorkflowOutcome, outcome.workflowId, inputs);
+  const parsed = library.scrub(outcome, outcome.workflowId, inputs, secrets);
   writeReport(library, parsed);
   return parsed;
 }

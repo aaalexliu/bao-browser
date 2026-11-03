@@ -139,13 +139,13 @@ export class Library {
     return doc;
   }
 
-  scrub<T>(value: T, workflowId?: string, args?: Record<string, unknown>): T {
+  scrub<T>(value: T, workflowId?: string, args?: Record<string, unknown>, secrets?: readonly string[]): T {
     let workflow: WorkflowV2 | undefined;
     if (workflowId) {
       try { workflow = JSON.parse(readFileSync(this.file(workflowId), "utf8")) as WorkflowV2; }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
-    return scrubSaved(value, { workflow, args });
+    return scrubSaved(value, { workflow, args, secrets });
   }
 
   save(doc: WorkflowV2): void {

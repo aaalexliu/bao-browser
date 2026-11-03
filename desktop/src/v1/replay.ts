@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, stepNeedsSecretValue } from "./saved-secrets";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -17,9 +17,7 @@ import { formatClock } from "./time";
 import { identityView } from "./run-trace";
 import {
   applyPatch,
-  maskSnapshot,
   stepPolicy,
-  maskText,
   type FailureSnapshot,
   type HealProposal,
   type HealProvider,
@@ -334,7 +332,7 @@ export async function replay(
     const trace = driver.trace?.();
     const downloaded = endFilesRun(runId);
     const outputs = materializeOutputs(workflow, tables);
-    return {
+    return scrubSaved({
       heals,
       repairs,
       locatorHits,
@@ -350,7 +348,7 @@ export async function replay(
       ...(outputs ? { outputs } : {}),
       ...(Object.keys(downloaded).length ? { files: downloaded } : {}),
       modelCalls: heals.filter((item) => item.model).length,
-    };
+    }, { workflow, args, secrets });
   };
 
   const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
@@ -670,8 +668,8 @@ export async function replay(
       mode: mode === "approve" ? "approve" : "auto",
       failedStep: step,
       intent: failure.intent,
-      snapshot: maskSnapshot(failure.snapshot, secrets),
-      prompt: maskText(prompt, secrets),
+      snapshot: failure.snapshot,
+      prompt,
       model: proposal?.model
         ? {
           provider: proposal.model.provider,
@@ -679,7 +677,7 @@ export async function replay(
           version: proposal.model.version || proposal.model.name,
         }
         : undefined,
-      rawResponse: proposal ? maskText(proposal.rawResponse, secrets) : undefined,
+      rawResponse: proposal?.rawResponse,
       proposedPatch: proposal?.patch,
       beforeShot: failure.beforeShot || beforeShot,
       identity: failure.identity,
@@ -747,7 +745,7 @@ export async function replay(
   }
   if (!runPassed(steps, finalCheckFailed)) {
     const reason = executed.length === 0 ? "no steps executed" : "final check failed";
-    const snapshot = maskSnapshot(await driver.snapshot().catch(() => ({})), secrets);
+    const snapshot = await driver.snapshot().catch(() => ({}));
     return finish({
       runId,
       status: "failed",
@@ -825,7 +823,7 @@ async function runStep(
     try {
       if (url && driver.goto) await driver.goto(url);
     } catch (err) {
-      const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+      const reason = err instanceof Error ? err.message : String(err);
       return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
     }
     const held = await readExpect(step, args, driver, repairs, gate, recovery);
@@ -929,7 +927,7 @@ async function runStepAction(
   try {
     await act(step, node, args, driver, gate);
   } catch (err) {
-    const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+    const reason = err instanceof Error ? err.message : String(err);
     const failure = await fail(driver, step, "action", reason, found.hit.brokenAttr, secrets);
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
@@ -1851,7 +1849,7 @@ async function runFilesDatesStep(
     if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     return { ok: true, repairs, acted: step.identity };
   } catch (err) {
-    const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+    const reason = err instanceof Error ? err.message : String(err);
     return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
   }
 }
@@ -1950,7 +1948,7 @@ async function takeReadBack(
   receiptLog: ReceiptLog,
   runId: string,
 ): Promise<StepFailure | undefined> {
-  const expected = maskRead(expectedText(read.match, args), secrets);
+  const expected = expectedText(read.match, args);
   let actual = "";
   let pass = false;
   const start = Date.now();
@@ -1958,10 +1956,10 @@ async function takeReadBack(
   do {
     try {
       const seen = await readActual(read, args, driver);
-      actual = maskRead(clipRead(seen), secrets);
+      actual = clipRead(seen);
       pass = readMatches(expected, actual);
     } catch (err) {
-      actual = maskRead(err instanceof Error ? err.message : String(err), secrets);
+      actual = err instanceof Error ? err.message : String(err);
       pass = false;
     }
     if (pass || Date.now() - start >= timeout) break;
@@ -1977,7 +1975,7 @@ async function takeReadBack(
     expected,
     actual,
     pass,
-  }, { workflow, args });
+  }, { workflow, args, secrets });
   if (pass) return undefined;
   return fail(driver, step, "expect", `read-back expected "${expected}", read "${actual}"`, undefined, secrets);
 }
@@ -2011,10 +2009,6 @@ function readMatches(expected: string, actual: string): boolean {
   return actual.trimEnd() === expected.trimEnd() || actual.includes(expected);
 }
 
-function maskRead(value: string, secrets: string[]): string {
-  return maskText(value, secrets);
-}
-
 function clipRead(value: string): string {
   const flat = value.replace(/\s+/g, " ").trim();
   return flat.length > 500 ? `${flat.slice(0, 500)}…` : flat;
@@ -2041,7 +2035,7 @@ async function fail(
   brokenAttr: string | undefined,
   secrets: string[],
 ): Promise<StepFailure> {
-  const snapshot = maskSnapshot(await driver.snapshot(), secrets);
+  const snapshot = scrubSaved(await driver.snapshot(), { secrets });
   return {
     stepId: step.id,
     index: step.index,

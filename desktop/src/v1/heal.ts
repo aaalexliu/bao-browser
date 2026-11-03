@@ -114,18 +114,6 @@ export function stepPolicy(
   return effectiveMode(workflow, settings);
 }
 
-export function maskText(value: string, secrets: string[]): string {
-  let out = value;
-  for (const secret of secrets) {
-    if (secret) out = out.split(secret).join("[secret]");
-  }
-  return out;
-}
-
-export function maskSnapshot(snapshot: FailureSnapshot, secrets: string[]): FailureSnapshot {
-  return JSON.parse(maskText(JSON.stringify(snapshot), secrets)) as FailureSnapshot;
-}
-
 /** Text the model sees. The PNG stays on the audit record, not inside this string. */
 export function promptSnapshot(snapshot: FailureSnapshot): FailureSnapshot {
   const { screenshot, ...rest } = snapshot;
