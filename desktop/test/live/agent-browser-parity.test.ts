@@ -94,6 +94,8 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
           assert.ok(captured?.video, "captured live run has page video");
           assert.equal(captured.pageEngine, engine);
           assert.equal(captured.kind, "capture");
+          assert.equal(captured.status, "failed");
+          assert.equal(captured.modelCalls, undefined);
           assert.equal(workflow.steps[0]?.value, "blueberries");
           const merged = captured.steps[0] as { afterShot: string };
           assert.deepEqual(await readFile(path.join(home, "shots", "runs", captured.id, merged.afterShot)), await readFile(path.join(home, "live-session", "shots", typed.shot!)));
@@ -118,7 +120,9 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
               library.saveRun(captured);
               await page.reload();
               await page.locator('#rail [data-screen="runs"]').click();
-              assert.ok((await page.locator("#runs").innerText()).includes("recording"));
+              const runsText = await page.locator("#runs").innerText();
+              assert.match(runsText, /\bfailed\b/);
+              assert.doesNotMatch(runsText, /model calls/);
               await page.screenshot({ path: path.join(artifacts, "library-recording-after.png"), fullPage: true });
             } finally { library.saveRun(captured); await ui.close(); }
           }
