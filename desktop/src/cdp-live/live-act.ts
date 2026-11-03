@@ -1,7 +1,5 @@
-// One guarded path for each act on a live page. A live session's tools and the
-// replay of a cdp-live workflow both act through these functions, so a replay
-// keeps every guard the session had: deny and confirm labels, stop paths, the
-// host list, a control that moved, and a credential field.
+// Live tools and saved-workflow replay share these action checks.
+// The live session's mode selects its guards; replay stays careful.
 
 import { navigationGuard } from "./allowlist";
 import { canonicalKey, keyMayInsertText } from "./keys";

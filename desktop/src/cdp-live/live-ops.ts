@@ -412,7 +412,7 @@ export function planClick(read: LiveRead, ref: string): Plan {
   return { ok: true, selector: target.selector };
 }
 
-/** Enter needs a ref. Tab and Escape without one go to whatever has focus. */
+/** Careful Enter needs a ref. Other permitted keys without one use current focus. */
 export function planKey(read: LiveRead, key: string, ref: string): Plan {
   key = canonicalKey(key);
   const parts = key.split("+");

@@ -160,6 +160,7 @@ test("a login wall halts, a new tab opened by the page is blocked, and cookies n
   const document = { title: "Shop", body: { innerText: "Shop" }, querySelectorAll: () => [], querySelector: () => null };
   Object.defineProperty(document, "cookie", spy("cookie"));
   page.document = document;
+  page.window = {};
   page.location = { pathname: "/shop", hash: "" };
   page.HTMLElement = class {};
   for (const name of ["localStorage", "sessionStorage", "indexedDB"]) Object.defineProperty(globalThis, name, spy(name));
@@ -167,7 +168,7 @@ test("a login wall halts, a new tab opened by the page is blocked, and cookies n
     assert.equal(readLivePage({ markIndex: 0 }).path, "/shop");
     focusLiveMark({ markIndex: 0 });
   } finally {
-    for (const name of ["document", "location", "HTMLElement", "localStorage", "sessionStorage", "indexedDB"]) delete page[name];
+    for (const name of ["document", "window", "location", "HTMLElement", "localStorage", "sessionStorage", "indexedDB"]) delete page[name];
   }
   assert.deepEqual(touched, []);
 });

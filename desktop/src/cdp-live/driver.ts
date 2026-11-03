@@ -684,7 +684,7 @@ export class CdpLiveDriver implements Driver {
     return Buffer.from(shot.data, "base64");
   }
 
-  /** Page screenshot after a local blur veil. The PNG stays in this process until the caller writes it. */
+  /** Careful shots use a local veil; YOLO shots stay readable. The caller owns persistence. */
   async captureRedacted(caption: string): Promise<Buffer> {
     this.assertHost();
     if (!this.careful) return this.screenshotPng();
