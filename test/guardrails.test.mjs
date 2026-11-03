@@ -77,6 +77,29 @@ test("graph gate rejects runtime and type-only cross-product imports and runtime
   expect(f.tool("depcruise", runtime), 0);
 });
 
+test("graph resolves web aliases for runtime cycles and cross-product imports", (t) => {
+  const f = fixture(t);
+  f.write("web/tsconfig.json", JSON.stringify({
+    compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "bundler", strict: true, types: [], paths: { "@/*": ["./src/*"] } },
+    include: ["src"],
+  }));
+  const runtime = ["web/src", "--config", ".dependency-cruiser.runtime.cjs"];
+  const ownership = ["web/src", "desktop/src", "--config", ".dependency-cruiser.cjs"];
+  f.write("web/src/a.ts", 'import { b } from "@/b"; export const a: number = b;\n');
+  f.write("web/src/b.ts", 'import { a } from "./a"; export const b: number = a;\n');
+  expect(f.tool("tsc", ["-p", "web/tsconfig.json", "--noEmit"]), 0);
+  expect(f.tool("depcruise", runtime), 1, /no-runtime-cycles/);
+  f.write("web/src/a.ts", "export const a = 1;\n");
+  expect(f.tool("depcruise", runtime), 0);
+  f.write("web/src/b.ts", "export {};\n");
+  f.write("desktop/src/shared.ts", "export const shared = 1;\n");
+  f.write("web/src/a.ts", 'export { shared } from "../../desktop/src/shared";\n');
+  expect(f.tool("depcruise", ownership), 1, /no-web-cross-product-imports/);
+  f.write("web/src/a.ts", 'export { shared } from "@/../../desktop/src/shared";\n');
+  expect(f.tool("tsc", ["-p", "web/tsconfig.json", "--noEmit"]), 0);
+  expect(f.tool("depcruise", ownership), 1, /no-web-cross-product-imports/);
+});
+
 test("baseline gate rejects added/increased lint suppressions and new graph edges, but accepts pruning", (t) => {
   const f = fixture(t);
   const lint = { "src/old.ts": { "@typescript-eslint/no-unsafe-assignment": { count: 2 } } };
