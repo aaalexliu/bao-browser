@@ -144,7 +144,7 @@ test("finished live captures show their end status without uncounted model-call 
   assert.match(runsList([{ ...replay, modelCalls: 0 }], []), /0 model calls/);
 });
 
-test("live card posters fall back to stored full-page steps and video frames, never crops", async () => {
+test("live card posters use stored full-page workflow pictures, never crops or stripes", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-poster-"));
   const workflow = recorded([{ label: "App name" }]);
   const library = new Library(home);
@@ -162,23 +162,27 @@ test("live card posters fall back to stored full-page steps and video frames, ne
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), page);
     writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), blankPng(80, 40));
     assert.equal((await fetch(url)).status, 404);
-    mkdirSync(path.join(home, "videos"), { recursive: true });
-    library.saveRun({ id: "run-live", workflowId: workflow.id, kind: "capture", status: "passed", at: 1, heals: [], steps: [{ id: workflow.steps[0]!.id, afterShot: "0-after.png" }] });
-    writeFileSync(path.join(home, "videos", "run-live.png"), page);
-    response = await fetch(url);
-    assert.equal(response.status, 200);
-    assert.deepEqual(Buffer.from(await response.arrayBuffer()), page);
-    writeFileSync(path.join(home, "videos", "run-live.png"), redactedPng(1));
+    writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), redactedPng(1));
     assert.equal((await fetch(url)).status, 404);
-    const runShots = path.join(home, "shots", "runs", "run-live");
-    mkdirSync(runShots, { recursive: true });
-    writeFileSync(path.join(runShots, "0-after.png"), page);
-    assert.equal((await fetch(url)).status, 200);
-    library.save({ ...workflow, driver: "playwright" });
-    assert.equal((await fetch(url)).status, 404, "non-live cards still require a full-page poster");
+    writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), page);
+    for (const rejected of [blankPng(80, 40), redactedPng(1)]) {
+      writeFileSync(path.join(shots, "poster.png"), rejected);
+      response = await fetch(url);
+      assert.equal(response.status, 200);
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()), page);
+    }
     const poster = blankPng(900, 700);
     writeFileSync(path.join(shots, "poster.png"), poster);
     response = await fetch(url);
+    assert.equal(response.status, 200);
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), poster);
+    library.save({ ...workflow, driver: "playwright" });
+    response = await fetch(url);
+    assert.equal(response.status, 200);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), poster);
+    for (const rejected of [blankPng(80, 40), redactedPng(1)]) {
+      writeFileSync(path.join(shots, "poster.png"), rejected);
+      assert.equal((await fetch(url)).status, 404, "non-live cards still require a full-page poster");
+    }
   } finally { await app.close(); rmSync(home, { recursive: true, force: true }); }
 });

@@ -3467,26 +3467,13 @@ function croppedPng(file: string): boolean {
   return isElementCrop(readFileSync(file));
 }
 
-/** Live recordings save full-page steps and video frames, not a separate poster. */
 function workflowPoster(library: Library, id: string): string | undefined {
   const workflow = library.read(id);
   const dir = path.join(library.root, "shots", "workflows", id);
   const poster = path.join(dir, "poster.png");
   if (existsSync(poster) && isFullPageShot(readFileSync(poster))) return poster;
   if (workflow.driver !== "cdp-live") return;
-  const runs = library.listRuns().filter((run) => run.workflowId === id).sort((a, b) => b.at - a.at);
-  const candidates = [
-    ...workflow.steps.map((step) => path.join(dir, workflowShotName(step.id))),
-    ...runs.flatMap((run) => [
-      path.join(library.root, "videos", `${run.id}.png`),
-      ...run.steps.flatMap((row) => {
-        const step = row as { afterShot?: string; beforeShot?: string };
-        return [step.afterShot, step.beforeShot]
-          .filter((name): name is string => typeof name === "string" && /^[\w.-]+\.png$/.test(name))
-          .map((name) => path.join(library.root, "shots", "runs", run.id, name));
-      }),
-    ]),
-  ];
+  const candidates = workflow.steps.map((step) => path.join(dir, workflowShotName(step.id)));
   return candidates.find((file) => existsSync(file) && isFullPageShot(readFileSync(file)));
 }
 
