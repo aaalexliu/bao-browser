@@ -155,10 +155,10 @@ The desktop script stages Playwright and `classic-level` by reading those two ve
 
 `stage-runtime.sh` also runs `desktop/packaging/stage-agent-browser.mjs`. The version, archive URL, archive checksum, and platform executable checksums come from [`agent-browser-pin.json`](../desktop/packaging/agent-browser-pin.json). Staging checks both hashes, sets the executable bit, and copies the native binary, license, skill data, upstream package metadata, and pin into `Contents/Resources/agent-browser`. It fails on a checksum mismatch or an unpinned platform. `BAO_AGENT_BROWSER_ARCHIVE` can name a local archive instead of downloading it; the same checks still apply. The Mac package signs and verifies the staged executable as `dev.bao.agent-browser` with `BAO_SIGN_IDENTITY`.
 
-It copies Playwright Chromium to `Contents/Resources/Chromium.app` and signs that bundle. It compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). `build-mcp-launcher.sh` compiles `bao-mcp.c` and `bao-launch.c` into `Contents/MacOS/bao-mcp`, the agents' MCP entry ([Agent quickstart](agent-quickstart.md#mcp)). Before `bao-mcp` and `Bao.app` are signed, `prove-mcp-launcher.mjs` starts that launcher with no `node` on `PATH` and a temp `HOME` that holds only the test library the proof plants. It checks one MCP exchange: the `bao` server, its tools, a search that reads the app's library and not a `.bao-mcp` library in the caller's directory, and a live tool that says to open the app. The launcher is then signed on its own as `dev.bao.mcp`, then `Bao.app` is signed. The script writes `Bao.dmg` beside the app.
+It copies Playwright Chromium to `Contents/Resources/Chromium.app` and signs that bundle. It compiles `bao-main.c`, `bao-launch.c`, and `bao-notify.m` into `Bao.app` (`dev.bao.desktop`). `build-mcp-launcher.sh` compiles `bao-mcp.c` and `bao-launch.c` into `Contents/MacOS/bao-mcp`, the agents' MCP entry ([Agent quickstart](agent-quickstart.md#mcp)). Before `bao-mcp` and `Bao.app` are signed, `prove-mcp-launcher.mjs` starts that launcher with no `node` on `PATH` and a temp `HOME` that holds only the test library the proof plants. It checks one MCP exchange: the `bao` server, its tools, a search that reads the app's library and not a `.bao-mcp` library in the caller's directory, and a live tool that says to open the app. The launcher is then signed on its own as `dev.bao.mcp`, then `Bao.app` is signed. Before creating `Bao.dmg`, `prove-apple-events.mjs` checks that the built app's `Contents/Info.plist` has a non-empty string for `NSAppleEventsUsageDescription`. This check does not request or verify an Automation grant. The script writes `Bao.dmg` beside the app.
 
 - `npm install` ends without `EBADENGINE`.
-- The desktop script prints `BUNDLED_BROWSER`, `MCP_LAUNCHER ok`, and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
+- The desktop script prints `BUNDLED_BROWSER`, `MCP_LAUNCHER ok`, `APPLE_EVENTS ok`, and then `WROTE` lines for `Bao.app` and `Bao.dmg`.
 - `file` prints `Mach-O 64-bit executable arm64` for `Contents/MacOS/bao`.
 - `codesign -dvvv` on the nested helper prints `Identifier=dev.bao.oshelper` and `Authority=bao dev signing`.
 
@@ -233,7 +233,7 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-The product window does not need these grants. The nested helper does. Bao's status checks read Accessibility and Automation for Google Chrome without prompting or checking Screen Recording. See [What Bao asks permission for](permissions.md) for grant requirements, Automation prompt timing, and live Chrome readiness. The helper's prompt text is defined in [`Info.plist`](../desktop/os-helper-macos/Info.plist), not in the product window.
+Bao's status checks read Accessibility and Automation for Google Chrome without prompting or checking Screen Recording. See [What Bao asks permission for](permissions.md) for grant requirements, Automation attribution and purpose strings, prompt timing, and live Chrome readiness.
 
 Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the Accessibility row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
 
