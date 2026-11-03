@@ -237,7 +237,28 @@ export class AgentBrowserPage {
 
   async click(selector: string): Promise<void> { await this.unique(selector); await this.request("click", { selector }); }
   async insertText(value: string): Promise<void> { await this.unique(); await this.request("keyboard", { subaction: "insertText", text: value }); }
-  async key(key: string): Promise<void> { await this.unique(); await this.request("press", { key }); }
+  async key(key: string): Promise<void> {
+    await this.unique();
+    const selectAll = process.platform === "darwin" ? /^Meta\+a$/i : /^Control\+a$/i;
+    if (selectAll.test(key)) {
+      const selected = await this.evaluate<boolean>(`(() => {
+        let el = document.activeElement;
+        while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) { el.select(); return true; }
+        if (el instanceof HTMLElement && el.isContentEditable) {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return true;
+        }
+        return false;
+      })()`);
+      if (selected) return;
+    }
+    await this.request("press", { key });
+  }
   async goto(url: string): Promise<void> { await this.request("navigate", { url, waitUntil: "domcontentloaded" }); }
 
   async screenshot(): Promise<Buffer> {

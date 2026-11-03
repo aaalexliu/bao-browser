@@ -8,7 +8,7 @@
 // subtree stays. A JS dialog (Page.javascriptDialogOpening) stays.
 // A login or confirm gate stays. A Help click stays so the hybrid pass can drop it.
 
-import { explain, interpret, type InterpretMeta, type TrailEvent } from "./interpret";
+import { explain, interpret, sameTrailPage, type InterpretMeta, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
 
 const DROP_OP = new Set([
@@ -122,6 +122,7 @@ function nextAct(events: TrailEvent[], index: number): TrailEvent | undefined {
 }
 
 function sameControl(a: TrailEvent, b: TrailEvent): boolean {
+  if (!sameTrailPage(a, b)) return false;
   const left = a.identity?.id || a.identity?.testId;
   const right = b.identity?.id || b.identity?.testId;
   return !!left && left === right;
@@ -201,6 +202,7 @@ function isType(event: TrailEvent): boolean {
 }
 
 function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
+  if (!sameTrailPage(a, b)) return false;
   const left = a.identity;
   const right = b.identity;
   if (!left || !right) return false;

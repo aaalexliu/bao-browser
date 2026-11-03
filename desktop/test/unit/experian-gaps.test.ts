@@ -402,7 +402,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
             assert.equal(failed.status, "running");
             assert.equal(failed.steps.length, before.steps.length + 1);
             assert.deepEqual(failed.steps.slice(0, -1), before.steps);
-            assert.deepEqual(failed.steps.at(-1), { name: op, status: "failed", ms: 0 });
+            assert.deepEqual(failed.steps.at(-1), { name: op, status: "failed", ms: failed.tools!.at(-1)!.ms });
             assert.equal(failed.audit.length, before.audit.length + 1);
             assert.deepEqual(failed.audit.slice(0, -1), before.audit);
             assert.equal(failed.audit.at(-1)?.action, op);

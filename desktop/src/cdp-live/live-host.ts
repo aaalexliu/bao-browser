@@ -1,5 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import type { LiveToolTiming } from "./live-record";
 import path from "node:path";
 import { workflowShotName } from "../v1/shots";
 import { AgentBrowserPage, type PageEngineName } from "../engines/agent-browser";
@@ -96,6 +98,8 @@ interface OpenState {
   read: LiveRead | null;
   /** The page facts behind `read`, before redaction. */
   facts: PageFacts | null;
+  pendingPanel?: { url?: string; signature: string };
+  viewReadiness?: "ready" | "transitional";
   halted: string;
   refused: boolean;
   covered: Map<Identity, string[]>;
@@ -204,12 +208,17 @@ export function createLiveHost(opts: LiveHostOptions): {
   let chain = Promise.resolve();
   let pending = 0;
   let runningStep: OpenState["steps"][number] | undefined;
+  let currentTool: LiveToolTiming | undefined;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let warnTimer: ReturnType<typeof setTimeout> | undefined;
   let warning: LiveIdleWarning | null = null;
   const heldProfiles = new Set<() => Promise<void>>();
 
   function reply(body: Record<string, unknown>): unknown {
+    if (currentTool) body.toolCallId = currentTool.id;
+    if (typeof body.shot === "string" && /^shot-\d+\.png$/.test(body.shot)) {
+      body.shotPath = path.resolve(liveSessionDir(opts.home), "shots", body.shot);
+    }
     const outcome = body.outcome as { kind?: string; reason?: string; instruction?: string } | undefined;
     if (outcome?.kind === "halted" && outcome.reason === "login_wall" && !outcome.instruction) {
       return publicLiveResult({ ...body, outcome: { ...outcome, instruction: LIVE_LOGIN_INSTRUCTION } });
@@ -234,12 +243,45 @@ export function createLiveHost(opts: LiveHostOptions): {
   async function call(raw: unknown): Promise<unknown> {
     disarmIdle();
     pending += 1;
-    const run = chain.then(() => dispatch(raw));
+    const startedAt = Date.now();
+    const run = chain.then(() => timedDispatch(raw, startedAt));
     chain = run.then(() => undefined, () => undefined).then(() => {
       pending -= 1;
       armIdle();
     });
     return run;
+  }
+
+  async function measure<T>(name: string, run: () => Promise<T>): Promise<T> {
+    const started = Date.now();
+    try { return await run(); }
+    finally { if (currentTool) currentTool.spans[name] = (currentTool.spans[name] || 0) + Date.now() - started; }
+  }
+
+  async function timedDispatch(raw: unknown, startedAt: number): Promise<unknown> {
+    const before = open;
+    const stepStart = before?.steps.length || 0;
+    const name = String((raw as { op?: unknown } | null)?.op || "unknown");
+    currentTool = { id: randomUUID(), name, startedAt, ms: 0, spans: { queue: Date.now() - startedAt } };
+    try { return await dispatch(raw); }
+    finally {
+      const tool = currentTool;
+      const state = open || before;
+      currentTool = undefined;
+      tool.ms = Date.now() - startedAt;
+      if (state) {
+        const step = state.steps.slice(state === before ? stepStart : 0).at(-1);
+        if (step) step.ms = tool.ms;
+        state.log.setSteps(state.steps);
+        await state.log.recordTool(tool);
+        if (!open && before) {
+          const library = new Library(opts.home);
+          if (existsSync(path.join(library.root, "runs", `${state.runId}.json`))) {
+            library.saveRun({ ...library.readRun(state.runId), toolTimings: state.log.toolTimings() });
+          }
+        }
+      }
+    }
   }
 
   /** The session saves once no call has come for idleMs, and warns warnMs before that. Each call restarts the wait. */
@@ -279,7 +321,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     open?.driver.touch();
     const body = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const op = typeof body.op === "string" ? body.op : "";
-    if (op === LIVE_DISCONNECT) return disconnect(body);
+    if (op === LIVE_DISCONNECT) return measure("finalization", () => disconnect(body));
     if (op === LIVE_REPLAY) return replayBody(body);
     if (!isLiveOp(op)) {
       return reply({ op, session: "", outcome: { kind: "rejected", reason: "unknown" }, view: null, shot: "" });
@@ -294,7 +336,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
     try {
       if (op === "live_session_start") return await start(body);
-      if (op === "live_stop") return await stop();
+      if (op === "live_stop") return await measure("finalization", () => stop());
       if (!open) return reply({ op, session, outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
       if (open.halted) {
         await stopForOwner(open, open.halted);
@@ -302,7 +344,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       }
       if (op === "live_snapshot") {
         if (body.page !== undefined && open.read) {
-          return reply({ op, session: open.id, outcome: { kind: "applied" }, view: viewPage(open.read.view, Number(body.page)), shot: "" });
+          return reply({ op, session: open.id, outcome: { kind: "applied" }, view: viewPage(open.read.view, Number(body.page)), ...(open.guard.careful === false ? { readiness: { state: open.viewReadiness || "ready" } } : {}), shot: "" });
         }
         return await look("snapshot");
       }
@@ -312,7 +354,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       if (op === "live_select") return await chooseOption(String(body.ref || ""), String(body.option ?? ""));
       if (op === "live_read") return await readRegion(String(body.name || ""), body.selector === undefined ? "body" : String(body.selector));
       if (op === "live_click") return await click(String(body.ref || ""));
-      if (op === "live_type") return await typeInto(String(body.ref || ""), String(body.text || ""));
+      if (op === "live_type") return await typeInto(String(body.ref || ""), String(body.text || ""), body.replace === true && open.guard.careful === false);
       if (op === "live_key") {
         const key = canonicalKey(String(body.key || ""));
         const ref = String(body.ref || "");
@@ -493,7 +535,7 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function reread(state: OpenState): Promise<{ read: LiveRead; facts: PageFacts }> {
     state.epoch += 1;
-    const facts = await state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
+    const facts = await measure("snapshot", () => state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 }));
     state.read = buildView(facts, state.epoch, state.guard);
     state.facts = facts;
     return { read: state.read, facts };
@@ -547,10 +589,39 @@ export function createLiveHost(opts: LiveHostOptions): {
     await note(action, label, human ? "needs_human" : "failed", null);
   }
 
+  async function readyRead(state: OpenState): Promise<{ read: LiveRead; facts: PageFacts; readiness?: { state: "ready" | "transitional" } }> {
+    if (state.guard.careful !== false) return reread(state);
+    const before = state.facts;
+    const signature = (facts: PageFacts) => facts.panel ?? "";
+    const deadline = Date.now() + 1800;
+    let last: string | undefined;
+    let stableAt = 0;
+    let facts: PageFacts;
+    let ready = false;
+    do {
+      facts = await measure("snapshot", () => state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 }));
+      const panel = signature(facts);
+      if (panel !== last) { last = panel; stableAt = Date.now(); }
+      if (before && before.url !== facts.url && state.pendingPanel?.url !== facts.url) {
+        state.pendingPanel = { url: facts.url, signature: signature(before) };
+      }
+      ready = facts.ready !== false && (!state.pendingPanel || (panel !== state.pendingPanel.signature && Date.now() - stableAt >= 150));
+      if (ready || Date.now() >= deadline) break;
+      await measure("wait", () => state.driver.sleep(75));
+    } while (true);
+    if (ready) state.pendingPanel = undefined;
+    state.viewReadiness = ready ? "ready" : "transitional";
+    state.epoch += 1;
+    state.facts = facts;
+    state.read = buildView(facts, state.epoch, state.guard);
+    return { read: state.read, facts, readiness: { state: state.viewReadiness } };
+  }
+
   async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
     if (!open) throw new Error("no live session");
-    const started = Date.now();
-    const { read, facts } = await reread(open);
+    const snapshotBefore = currentTool?.spans.snapshot || 0;
+    const { read, facts, readiness } = await readyRead(open);
+    const viewMs = (currentTool?.spans.snapshot || 0) - snapshotBefore;
     open.read = read;
     const detected = pageHalt({
       blocked: facts.blocked,
@@ -565,7 +636,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const reached = action !== "start" && !halt && open.read.view.reached;
     const reason = halt || (reached ? "experian_commit" : "");
     const message = reason ? await stopForOwner(open, reason) : "";
-    const shot = await record(action, message || (action === "key" ? "key" : open.read.view.title || action), Date.now() - started, reason ? "needs_human" : "passed", null);
+    const shot = await record(action, message || (action === "key" ? "key" : open.read.view.title || action), viewMs, reason ? "needs_human" : "passed", null);
     if (open.guard.freezeCommit && !reason) await open.log.flush("running", "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);
@@ -576,6 +647,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       session: open.id,
       outcome: halt ? { kind: "halted", reason: halt } : reached ? { kind: "reached", reason: "experian_commit", instruction: EXPERIAN_COMMIT_INSTRUCTION } : { kind: "applied", ...(loginNote ? { note: "Sign-in page detected; session remains open." } : {}) },
       view: shown(open.read),
+      ...(readiness ? { readiness } : {}),
       shot,
       ...extra,
     });
@@ -591,13 +663,13 @@ export function createLiveHost(opts: LiveHostOptions): {
     await note("navigate", url, "running", null);
     const beforeUrl = await open.driver.locationHref();
     try {
-      await open.driver.goto(url);
+      await measure("action", () => open!.driver.goto(url));
     } catch (error) {
       if (!(error instanceof LiveNavigationHalt)) throw error;
       await finishAction("navigate", { kind: "halted", reason: error.reason });
       return reply({ op: "live_navigate", session: open.id, outcome: { kind: "halted", reason: error.reason }, view: shown(open.read), shot: "" });
     }
-    await open.trail.add({ op: "navigate", value: url, beforeUrl, afterUrl: await open.driver.locationHref() });
+    await open.trail.add({ toolCallId: currentTool?.id, op: "navigate", value: url, beforeUrl, afterUrl: await open.driver.locationHref() });
     return look("navigate");
   }
 
@@ -635,12 +707,12 @@ export function createLiveHost(opts: LiveHostOptions): {
     const state = open;
     const index = state.read!.targets.byRef.get(ref)?.index ?? -1;
     let before: Before | undefined;
-    const outcome = await selectLive(actTarget(state, state.read!, async (action, label) => {
+    const outcome = await measure("action", () => selectLive(actTarget(state, state.read!, async (action, label) => {
       before = await readBefore(state, index);
       await note(action, label, "running", null);
-    }), ref, option);
+    }), ref, option));
     if (outcome.kind !== "applied") return reply({ op: "live_select", session: state.id, outcome, view: shown(state.read), shot: "" });
-    await state.trail.add({ op: "select", value: option, identity: before?.identity, beforeUrl: before?.side.url, afterUrl: await state.driver.locationHref() });
+    await state.trail.add({ toolCallId: currentTool?.id, op: "select", value: option, identity: before?.identity, beforeUrl: before?.side.url, afterUrl: await state.driver.locationHref() });
     return look("select");
   }
 
@@ -653,7 +725,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     if (state.halted) return looked;
     const read = await state.driver.evaluateFunction<RegionRead>(readLiveRegion, { selector, limit: LIVE_READ_LIMIT, careful: state.guard.careful });
     const url = await state.driver.locationHref();
-    const event = await state.trail.add({ op: "extract", extract: spec, beforeUrl: url, afterUrl: url });
+    const event = await state.trail.add({ toolCallId: currentTool?.id, op: "extract", extract: spec, beforeUrl: url, afterUrl: url });
     if (typeof looked.shot === "string" && looked.shot) state.eventShots.set(event.id, looked.shot);
     return reply({ ...looked, read: { name, ...read } });
   }
@@ -671,7 +743,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const op = LOOK_OPS[action];
     const index = ref ? read.targets.byRef.get(ref)?.index ?? -1 : -1;
     let before: Before | undefined;
-    const outcome = await run({
+    const outcome = await measure("action", () => run({
       driver: state.driver,
       read,
       guard: state.guard,
@@ -683,13 +755,14 @@ export function createLiveHost(opts: LiveHostOptions): {
         await note(name, label, "running", null);
       },
       reread: async () => (await reread(state)).read,
-    });
+    }));
     if (outcome.kind !== "applied") {
       await finishAction(action, outcome);
       return reply({ op, session: state.id, outcome, view: shown(state.read), shot: "" });
     }
     const after = await readAfter(state, -1);
     await state.trail.add({
+      toolCallId: currentTool?.id,
       op: action,
       ...(action === "key" ? keyMayInsertText(what) ? { sensitive: true } : { key: what } : { detail: what }),
       identity: action === "key" ? keyTrailIdentity(before?.identity) : before?.identity,
@@ -718,10 +791,10 @@ export function createLiveHost(opts: LiveHostOptions): {
     const state = open;
     const index = open.read.targets.byRef.get(ref)?.index ?? -1;
     let before: Before | undefined;
-    const outcome: LiveActOutcome = await clickLive(actTarget(state, open.read, async (_action, label) => {
+    const outcome: LiveActOutcome = await measure("action", () => clickLive(actTarget(state, state.read!, async (_action, label) => {
       before = await readBefore(state, index, true);
       await note("click", label, "running", null);
-    }), ref);
+    }), ref));
     if (before) await state.log.patchLast(state.driver.lastTrusted());
     const control = before?.identity;
     const covered = control && [...state.covered.keys()].find((identity) => sameRecordedControl(identity, control));
@@ -746,6 +819,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       async () => (await state.driver.tree().catch(() => null))?.nodes || [],
     );
     const event = await state.trail.add({
+      toolCallId: currentTool?.id,
       op: "click",
       identity: before?.identity,
       beforeUrl: before?.side.url,
@@ -759,15 +833,15 @@ export function createLiveHost(opts: LiveHostOptions): {
     return look("click");
   }
 
-  async function typeInto(ref: string, text: string): Promise<unknown> {
+  async function typeInto(ref: string, text: string, replace = false): Promise<unknown> {
     if (!open?.read) throw new Error("no live page");
     const state = open;
     const index = open.read.targets.byRef.get(ref)?.index ?? -1;
     let before: Before | undefined;
-    const outcome: LiveActOutcome = await typeLive(actTarget(state, open.read, async (_action, label) => {
+    const outcome: LiveActOutcome = await measure("action", () => typeLive(actTarget(state, state.read!, async (_action, label) => {
       before = await readBefore(state, index);
       await note("type", label, "running", null);
-    }), ref, text);
+    }), ref, text, replace));
     if (outcome.kind !== "applied") {
       await finishAction("type", outcome);
       return reply({ op: "live_type", session: state.id, outcome, view: shown(state.read), shot: "" });
@@ -776,10 +850,12 @@ export function createLiveHost(opts: LiveHostOptions): {
     const fact = state.facts?.controls.find((item) => item.index === index);
     const sensitive = !!fact && credentialField(fact);
     await state.trail.add({
+      toolCallId: currentTool?.id,
       op: "type",
       identity: before?.identity,
       // The whole field, as the recorder keeps it. Text typed after a prefilled value includes that value.
-      value: sensitive ? undefined : after.value || `${before?.side.value || ""}${text}`,
+      value: sensitive ? undefined : after.missing ? `${replace ? "" : before?.side.value || ""}${text}` : after.value,
+      valueMode: "full",
       ...(sensitive ? { sensitive: true } : {}),
       // A recorded workflow replays the search it saw. The search text is not an input.
       ...(fact && searchField(fact) ? { literal: true } : {}),
@@ -791,16 +867,17 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function record(action: string, label: string, ms: number, status: string, isTrusted: boolean | null): Promise<string> {
     if (!open) return "";
+    const state = open;
     const completed = updateStep(action, status, ms);
-    const png = await open.driver.captureRedacted(`${action} ${open.read?.view.path || ""}`).catch(() => undefined);
-    return open.log.add({
+    const png = await measure("image", () => state.driver.captureRedacted(`${action} ${state.read?.view.path || ""}`)).catch(() => undefined);
+    return measure("persistence", () => state.log.add({
       action,
       label,
-      path: open.read?.view.path || "",
+      path: state.read?.view.path || "",
       isTrusted,
       ms,
       png,
-    }, completed && status === "needs_human");
+    }, completed && status === "needs_human"));
   }
 
   /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
@@ -844,7 +921,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       });
       const reason = open.halted || (open.read?.view.reached ? "experian_commit" : "");
       const ask = reason ? ownerStopMessage(reason) : "";
-      library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
+      library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, toolTimings: open.log.toolTimings(), workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, modelCalls: 0, videoTruncated, traceUnavailable,
         ...(ask ? { envelope: { status: "needs_human", run_id: open.runId, reason, ask } } : {}),
         ...(video ? { video: `${open.runId}.mp4`, videoStartedAt: open.startedAt } : {}) });
     }

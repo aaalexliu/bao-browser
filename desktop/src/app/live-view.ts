@@ -52,14 +52,14 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
     <p class="quiet">${esc(session.intent)}</p>
     ${session.allowCommit ? `<p class="quiet">Experian commit opt-in: this session may change the freeze. Later sessions and replays still stop for confirmation.</p>` : ""}
     ${session.note ? `<p class="quiet" id="live-note">${esc(ownerStopMessage(session.note))}</p>` : ""}
-    <p class="quiet">These pictures stay on this Mac. Page text is blurred before the file is written, and the app does not upload them.</p>
+    <p class="quiet">These pictures stay on this Mac. The app does not upload them.</p>
     <h3 class="section">Steps</h3>
     <ol id="live-steps">${steps || `<li class="quiet">No steps yet.</li>`}</ol>
     <h3 class="section">Audit</h3>
     <p id="live-audit-page" class="quiet" data-total="${audit.total}" data-page="${audit.page + 1}">Audit page ${audit.page + 1} of ${audit.pages}. ${audit.total} rows.</p>
     <nav id="live-pager" class="row" aria-label="Audit pages"><a class="button" href="?screen=live&amp;page=${Math.max(0, audit.page - 1)}">Previous</a> <a class="button" href="?screen=live&amp;page=${Math.min(audit.pages - 1, audit.page + 1)}">Next</a></nav>
     <table id="live-audit" class="grid">
-      <thead><tr><th>Action</th><th>Target</th><th>Path</th><th>Trusted</th><th>Time</th></tr></thead>
+      <thead><tr><th>Action</th><th>Target</th><th>Path</th><th>Trusted</th><th>View time</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <h3 class="section">Shots</h3>

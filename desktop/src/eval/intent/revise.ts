@@ -5,7 +5,7 @@
 // and a backspaced value keeps only the replacement.
 // Nothing here names a fixture.
 
-import type { TrailEvent } from "../../v1/interpret";
+import { sameTrailPage, type TrailEvent } from "../../v1/interpret";
 import type { WorkflowStep } from "../../v1/schema";
 
 export interface HumanMark {
@@ -317,6 +317,7 @@ function isType(event: TrailEvent): boolean {
 }
 
 function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
+  if (!sameTrailPage(a, b)) return false;
   const left = a.identity;
   const right = b.identity;
   if (!left || !right) return false;

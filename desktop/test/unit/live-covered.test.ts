@@ -70,15 +70,15 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
         const first = await call({ op: "live_click", ref: ref(read, failure === "covered" ? CART : "Browse") });
         assert.deepEqual(first.outcome, { kind: "refused", reason: failure === "covered" ? "element is covered" : "blocked-path" });
         const afterFirst = session();
-        assert.deepEqual(afterFirst.steps.slice(before.steps.length), [{ name: "click", status: failure === "covered" ? "running" : "failed", ms: 0 }]);
+        assert.deepEqual(afterFirst.steps.slice(before.steps.length), [{ name: "click", status: failure === "covered" ? "running" : "failed", ms: afterFirst.tools!.at(-1)!.ms }]);
         assert.equal(afterFirst.audit.length, before.audit.length + 1);
         assert.equal(afterFirst.audit.at(-1)?.action, "click");
         const refused = await call({ op: "live_click", ref: "e0.c0" });
         assert.deepEqual(refused.outcome, { kind: "refused", reason: "stale_ref" });
         const afterRefusal = session();
         assert.deepEqual(afterRefusal.steps.slice(before.steps.length), [
-          { name: "click", status: failure === "covered" ? "running" : "failed", ms: 0 },
-          { name: "click", status: "failed", ms: 0 },
+          afterFirst.steps.at(-1),
+          { name: "click", status: "failed", ms: afterRefusal.tools!.at(-1)!.ms },
         ]);
         assert.equal(afterRefusal.audit.length, afterFirst.audit.length + 1);
         assert.deepEqual(afterRefusal.audit.slice(0, afterFirst.audit.length), afterFirst.audit);
