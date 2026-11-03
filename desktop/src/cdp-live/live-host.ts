@@ -594,8 +594,8 @@ export function createLiveHost(opts: LiveHostOptions): {
     const before = state.facts;
     const signature = (facts: PageFacts) => facts.panel ?? "";
     const deadline = Date.now() + 1800;
-    let last = "";
-    let stableAt = Date.now();
+    let last: string | undefined;
+    let stableAt = 0;
     let facts: PageFacts;
     let ready = false;
     do {

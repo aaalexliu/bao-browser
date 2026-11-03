@@ -47,6 +47,7 @@ for (const engineName of ["old", "agent-browser"] as const) describe(`OAuth run 
     if (pathname === "/done") return res.end('<title>Done</title><h1>Done</h1>');
     if (req.url === "/route") return res.end(`<title>Routing</title><main><h1>Old panel</h1><p>Creation form</p><button onclick="history.pushState({},'', '/next');document.title='Clients';document.querySelector('h1').textContent='Clients';this.textContent='Loading';setTimeout(()=>document.querySelector('main').innerHTML='<h1>New panel</h1><p>Client list</p><button>Ready</button>',450)">Open panel</button></main>`);
     if (req.url === "/pending") return res.end(`<title>Routing</title><main><h1>Old panel</h1><p>Creation form</p><button onclick="history.pushState({},'', '/pending-next');document.title='Clients';document.querySelector('h1').textContent='Clients';this.textContent='Loading'">Open panel</button></main>`);
+    if (req.url === "/slow-empty") return res.end(`<title>Routing</title><main><p>Creation form</p></main><button onclick="history.pushState({},'', '/slow-empty-next');document.querySelector('main').innerHTML='<h1>Blank panel</h1>'">Open panel</button>`);
     if (req.url === "/empty") return res.end(`<title>Routing</title><nav>Old breadcrumb</nav><main></main><button onclick="history.pushState({},'', '/empty-next');document.title='Clients';document.querySelector('nav').textContent='Clients'">Open panel</button>`);
     if (req.url === "/cover") return res.end(`<title>Covered Save</title><style>#save,select{position:fixed;top:100px;left:100px;width:140px;height:40px}select{top:180px}.notice{position:fixed;left:90px;top:90px;width:300px;height:150px;background:white;z-index:100}</style><button id="save" onclick="document.body.dataset.saved='yes'">Save</button><select aria-label="Audience"><option>Internal</option><option>External</option></select><div class="notice" role="status">Branding changes saved!<button aria-label="Dismiss notice" onclick="this.parentElement.remove()">Close</button></div>`);
     res.end(`<title>OAuth local form</title><style>label{display:block;margin:20px}[contenteditable]{min-height:24px}</style><main><h1>App details</h1><label>App name<input value="五秒"></label><label>Note<textarea aria-label="Note">old note</textarea></label><div contenteditable aria-label="Editor">old text</div><label>Client secret<input value="private-oauth-value"></label><label>Note key<input value="sk-fixture_secret_12345678901234567890"></label><label>Password<input type="password" value="private-password"></label></main>`);
@@ -220,7 +221,7 @@ for (const engineName of ["old", "agent-browser"] as const) describe(`OAuth run 
       ] as const) {
         await page().evaluate((name) => {
           const notice = document.querySelector(".notice")!;
-          notice.replaceChildren(document.createTextNode("Authorization token secret for project 123456789012 saved. GOCSPX-private_token sk-private_key ghp-private_key xoxb-private_key AKIAprivate_key eyJprivate_key "));
+          notice.replaceChildren(document.createTextNode("Authorization token secret for project 123456789012 saved. GOCSPX-private_token sk-private_key ghp_private_key gho_private_key xoxb-private_key xoxp-private_key AKIAprivate_key eyJprivate_key "));
           const button = document.createElement("button");
           button.setAttribute("aria-label", name);
           button.textContent = name;
@@ -232,7 +233,7 @@ for (const engineName of ["old", "agent-browser"] as const) describe(`OAuth run 
           assert.equal(reply.outcome.reason, "element is covered");
           const blocker = reply.outcome.blocker!;
           assert.match(blocker.text, /Authorization token secret for project 123456789012 saved/);
-          assert.doesNotMatch(blocker.text, /GOCSPX-|sk-private|ghp-private|xoxb-private|AKIAprivate|eyJprivate/);
+          assert.doesNotMatch(blocker.text, /GOCSPX-|sk-private|ghp_private|gho_private|xoxb-private|xoxp-private|AKIAprivate|eyJprivate/);
           assert.equal(!!blocker.dismissRef, allowed, `${op}: ${name}`);
           if (allowed) assert.equal(reply.view.controls.find((control) => control.ref === blocker.dismissRef)?.label, name);
           assert.equal(await page().evaluate(() => document.body.dataset.saved), undefined);
@@ -277,6 +278,46 @@ for (const engineName of ["old", "agent-browser"] as const) describe(`OAuth run 
         assert.ok(timing.spans.wait >= 150, JSON.stringify(timing));
         assert.ok(timing.ms >= timing.spans.wait + timing.spans.snapshot);
         assert.equal(audit.ms, timing.spans.snapshot, "view duration excludes readiness sleeps");
+      }
+    } finally { await host.close(); }
+  });
+
+  test("slow first empty samples start stability after completion across fresh read entry points", async (t) => {
+    const evaluate = CdpLiveDriver.prototype.evaluateFunction;
+    let slowFirst = false;
+    let observations: { panel: string; completedAt: number }[] = [];
+    t.mock.method(CdpLiveDriver.prototype, "evaluateFunction", async function (this: CdpLiveDriver, ...args: Parameters<CdpLiveDriver["evaluateFunction"]>) {
+      const result = await evaluate.apply(this, args);
+      if (args[0] === readLivePage && (args[1] as { markIndex?: number })?.markIndex === -1) {
+        const facts = result as PageFacts;
+        if (slowFirst) {
+          slowFirst = false;
+          assert.equal(facts.panel, "");
+          await new Promise((resolve) => setTimeout(resolve, 220));
+          await evaluate.call(this, () => { document.querySelector("main")!.innerHTML = "<h1>New panel</h1><p>Destination content</p>"; }, null);
+        }
+        if (facts.url?.endsWith("/slow-empty-next")) observations.push({ panel: facts.panel || "", completedAt: Date.now() });
+      }
+      return result;
+    });
+    const { host, call } = hostFor("slow-first-sample");
+    try {
+      for (const op of ["live_click", "live_snapshot", "live_screenshot"]) {
+        let reply = await call({ op: "live_session_start", intent: "Observe delayed panel", url: url + "/slow-empty" });
+        observations = [];
+        if (op !== "live_click") await page().getByRole("button", { name: "Open panel" }).click();
+        slowFirst = true;
+        reply = await call({ op, ...(op === "live_click" ? { ref: ref(reply, "Open panel") } : {}) });
+        assert.equal(reply.readiness?.state, "ready", op);
+        assert.deepEqual(reply.view.headings, ["New panel"], op);
+        assert.equal(observations[0]?.panel, "");
+        const destination = observations.filter((sample) => sample.panel === "Destination content");
+        assert.ok(destination.length >= 2, `${op}: ${JSON.stringify(observations)}`);
+        assert.ok(destination.at(-1)!.completedAt - destination[0]!.completedAt >= 150, op);
+        const cached = await call({ op: "live_snapshot", page: 1 });
+        assert.equal(cached.readiness?.state, "ready");
+        assert.deepEqual(cached.view, reply.view);
+        await call({ op: "live_stop" });
       }
     } finally { await host.close(); }
   });
